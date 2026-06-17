@@ -17,7 +17,11 @@ export function SessionNavigatorSidebar(props: {
 }) {
     const [sessions, setSessions] = createSignal<SessionTreeNode[]>([])
     const [loading, setLoading] = createSignal(true)
-    const [collapsed, setCollapsed] = createSignal(true)
+    // Persist collapsed state in kv — survives component remount when navigating
+    // to child sessions and back (sidebar unmounts/remounts)
+    const [collapsed, setCollapsed] = createSignal<boolean>(
+        props.api.kv.get("octeam_tasks_collapsed") ?? true
+    )
     const [rootSessionId, setRootSessionId] = createSignal<string | null>(null)
 
     const t = () => props.theme
@@ -66,7 +70,9 @@ export function SessionNavigatorSidebar(props: {
     }
 
     const toggleCollapse = () => {
-        setCollapsed(!collapsed())
+        const next = !collapsed()
+        setCollapsed(next)
+        props.api.kv.set("octeam_tasks_collapsed", next)
     }
 
     const statusColor = (status: string): string => {

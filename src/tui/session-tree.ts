@@ -69,16 +69,18 @@ function formatMs(ms: number): string {
 
 /**
  * Compute real work duration from message timestamps.
- * Uses first message creation → last message completion.
- * Falls back to first message creation → last message creation if no completion.
+ * Message shape: { time: { created: number, completed?: number } }
+ * - UserMessage.time has only created
+ * - AssistantMessage.time has created + completed
+ * Duration = last message time - first message time.
  */
 function computeDuration(messages: any[]): string {
     if (!messages || messages.length === 0) return ""
-    const first = messages[0]?.info?.time?.created
+    const first = messages[0]?.time?.created
     if (!first) return ""
     let last: number | undefined
     for (let i = messages.length - 1; i >= 0; i--) {
-        const t = messages[i]?.info?.time
+        const t = messages[i]?.time
         last = t?.completed ?? t?.created
         if (last) break
     }
@@ -88,11 +90,18 @@ function computeDuration(messages: any[]): string {
 
 /**
  * Load all direct child sessions of the given session.
+ * Uses HTTP API for messages (api.client) — TUI state (api.state) only
+ * has message data for sessions that have been viewed.
  */
 export async function loadChildren(
     api: {
-        client: { session: { list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: Array<{ id: string; title?: string; parentID?: string; time?: { created?: number; updated?: number } }> }> } }
-        state: { session: { status: (id: string) => { type: string } | undefined; messages: (id: string) => any[] } }
+        client: {
+            session: {
+                list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: Array<{ id: string; title?: string; parentID?: string; time?: { created?: number } }> }>
+                messages: (params: { sessionID: string; limit?: number }) => Promise<{ data?: any[] }>
+            }
+        }
+        state: { session: { status: (id: string) => { type: string } | undefined } }
     },
     currentSessionId: string,
 ): Promise<SessionTreeNode[]> {
@@ -100,13 +109,13 @@ export async function loadChildren(
     const allSessions = result?.data ?? []
     const children = allSessions.filter(s => s.parentID === currentSessionId)
 
-    return children.map(s => {
+    const nodes = await Promise.all(children.map(async s => {
         let duration = ""
         try {
-            const msgs = api.state.session.messages(s.id)
-            duration = computeDuration(msgs)
+            const msgResult = await api.client.session.messages({ sessionID: s.id, limit: 100 })
+            duration = computeDuration(msgResult?.data ?? [])
         } catch {
-            // messages() may not have data for all sessions
+            // best effort
         }
         return {
             sessionId: s.id,
@@ -116,5 +125,7 @@ export async function loadChildren(
             status: mapStatus(api.state.session.status(s.id)),
             childCount: allSessions.filter(c => c.parentID === s.id).length,
         }
-    })
+    }))
+
+    return nodes
 }
