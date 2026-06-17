@@ -2,7 +2,7 @@
 
 ## 概述
 
-一个为 OpenCode 实现确定性多 Agent 编排的 plugin。允许用户创建 agent 团队，使 agent 之间能够通信、协作，并以 **parallel**（并行）、**pipeline**（流水线）或 **loop**（循环）模式执行任务——这些协调模式是参考实现（`oh-my-openagent` 的 team mode，仿照 Claude Code Agent Teams 设计）所不提供的。
+一个为 OpenCode 实现确定性多 Agent 编排的 plugin。允许用户创建 agent 团队，使 agent 之间能够通信、协作，并以 **parallel**（并行）、**pipeline**（流水线）、**loop**（循环）或 **delegate**（委派认领）模式执行任务——这些协调模式是参考实现（`oh-my-openagent` 的 team mode，仿照 Claude Code Agent Teams 设计）所不提供的。
 
 ### 设计原则
 
@@ -13,7 +13,7 @@
 | 方面 | `oh-my-openagent`（参考实现） | OCTeam（本设计） |
 |---|---|---|
 | 协调模型 | 委派 + 认领（pull-based tasklist） | 确定性 push-based 调度 |
-| 编排模式 | 无（通过 leader prompt 涌现） | `team_pipeline`、`team_loop`、`team_parallel` |
+| 编排模式 | 无（通过 leader prompt 涌现） | `team_parallel`、`team_pipeline`、`team_loop`、`team_delegate` |
 | 通信 | 文件 mailbox + Transform hook 注入 | **相同**（从参考实现采纳） |
 | 持久化 | 文件系统 JSON + 文件锁 | **相同**（从参考实现采纳） |
 | 资源边界 | 5 种 bound 类型 | **相同**（从参考实现采纳） |
@@ -27,7 +27,7 @@ OCTeam 采纳了参考实现的全部健壮性基础设施，并在此之上增�
 本插件分两个阶段开发：
 
 - **Phase 1（Session Navigator）**：在 sidebar 中显示当前 session 的所有 child session（subagent/background task），点击切换查看。这是 Team sidebar 的前置基础设施。独立设计文档见 [Session Navigator 设计](./SESSION_NAVIGATOR_DESIGN.zh.md)。
-- **Phase 2（Team 编排）**：在 Phase 1 基础上增加 team 编排功能（parallel/pipeline/loop + slash commands + mailbox + persistence）。即本文档的主体内容。
+- **Phase 2（Team 编排）**：在 Phase 1 基础上增加 team 编排功能（parallel/pipeline/loop/delegate + slash commands + mailbox + persistence）。即本文档的主体内容。
 
 ---
 
@@ -41,7 +41,7 @@ OCTeam 采纳了参考实现的全部健壮性基础设施，并在此之上增�
 │  │                                                          │  │
 │  │  ┌─────────────┐  ┌──────────────┐  ┌────────────────┐  │  │
 │  │  │ Tool Handler│  │ Event Handler│  │ Transform Hook │  │  │
-│  │  │ (12 tools)  │  │ (session.    │  │ (messages.     │  │  │
+│  │  │ (15 tools)  │  │ (session.    │  │ (messages.     │  │  │
 │  │  │             │  │  idle)       │  │  transform)    │  │  │
 │  │  └──────┬──────┘  └──────┬───────┘  └───────┬────────┘  │  │
 │  │         │                │                  │           │  │
@@ -253,7 +253,7 @@ async function resolveTeamMember(sessionID: string): Promise<RuntimeMember & { t
 
 ### ActiveTask
 
-每个 team 同一时间只能运行一个编排（parallel/pipeline/loop）。在已有活跃编排时调用新的编排 tool 会返回错误。
+每个 team 同一时间只能运行一个编排（parallel/pipeline/loop/delegate）。在已有活跃编排时调用新的编排 tool 会返回错误。
 
 ```ts
 type ActiveTask = {
@@ -693,13 +693,34 @@ plugin 提取 `<decision>...</decision>` 块并解析 JSON。如果解析失败�
 team_delegate({
     team_id: "auth-team",
     tasks: [
-        { subject: "Implement JWT login",       description: "...", blockedBy: [] },
-        { subject: "Write unit tests",           description: "...", blockedBy: ["task-1"] },
-        { subject: "Add rate limiting",          description: "...", blockedBy: [] },
-        { subject: "Security review",            description: "...", blockedBy: ["task-1", "task-3"] },
+        { ref: "task-1", subject: "Implement JWT login",  description: "...", blockedBy: [] },
+        { ref: "task-2", subject: "Write unit tests",     description: "...", blockedBy: ["task-1"] },
+        { ref: "task-3", subject: "Add rate limiting",    description: "...", blockedBy: [] },
+        { ref: "task-4", subject: "Security review",      description: "...", blockedBy: ["task-1", "task-3"] },
     ],
     timeout_ms: 600000
 })
+```
+
+**位置引用 → UUID 映射（#4 修复）**：输入用 `ref`（人可读的临时标识）声明依赖，`Task.id` 是生成的 UUID。`team_delegate` handler 必须先创建所有 task、捕获返回的 UUID、建立 `ref → uuid` 映射，再重写 `blockedBy`：
+
+```ts
+// 1. Create all tasks first, building ref → uuid map
+const refToUuid = new Map<string, string>()
+for (const t of input.tasks) {
+    const created = await createTask(team.teamRunId, { subject: t.subject, description: t.description })
+    if (t.ref) refToUuid.set(t.ref, created.id)
+}
+// 2. Resolve blockedBy refs → uuids (unknown refs are an input error)
+for (const t of input.tasks) {
+    const uuid = refToUuid.get(t.ref)!
+    const blockedBy = (t.blockedBy ?? []).map(r => {
+        const dep = refToUuid.get(r)
+        if (!dep) throw new ToolError(`team_delegate: unknown blockedBy ref "${r}"`)
+        return dep
+    })
+    await updateTask(team.teamRunId, uuid, { blockedBy })
+}
 ```
 
 **与 parallel/pipeline/loop 的核心差异**：
@@ -722,9 +743,11 @@ team_delegate({
     向 master 报告结果，然后检查是否有更多任务。"
 5. member idle 时 → event handler 检查：
    a. 所有 task 已完成 → 交付摘要给 leader，status = "idle"
-   b. 有可认领 task → re-prompt member 检查 tasklist
+   b. 有可认领 task → re-prompt member 检查 tasklist（受 lastNotifiedAt 限流）
    c. 无可认领 task 且所有 member idle → 死锁，status = "failed"
 ```
+
+**re-prompt 限流（#10 修复，避免认领竞争 busy-loop）**：多个 idle member 竞争少量可认领 task 时，输家会反复被 re-prompt、认领失败、再被 re-prompt——每次空烧一个 LLM turn。用 `member.lastNotifiedAt` 限流：同一 member 在 `NOTIFY_COOLDOWN_MS`（默认 10s）内不重复 re-prompt；且仅在可认领数 > 当前 running member 数时才值得再叫醒额外 member。
 
 **任务依赖处理**：task 的 `blockedBy` 中引用的 task 全部 `completed` 后才可被认领。这允许构建复杂工作流（如 "写测试" 依赖 "写功能"，"安全审查" 依赖 "写功能"+"加速率限制"）。
 
@@ -770,7 +793,17 @@ async function handleDelegateIdle(team: Team, member: RuntimeMember) {
         return  // some members still running, wait
     }
 
-    // Re-prompt this member to check tasklist
+    // Re-prompt this member to check tasklist — RATE-LIMITED (#10) to avoid claim-race busy-loop.
+    const now = Date.now()
+    if (member.lastNotifiedAt && now - member.lastNotifiedAt < NOTIFY_COOLDOWN_MS) {
+        return  // recently notified; let the claim race settle before re-prompting
+    }
+    // Only wake if there are more claimable tasks than members already working on them.
+    const running = team.members.filter(m => m.status === "running" && !m.isMaster).length
+    if (claimable.length <= running) {
+        return  // enough members already heading for the available tasks
+    }
+    member.lastNotifiedAt = now
     await client.session.promptAsync({
         path: { id: member.sessionId! },
         body: {
@@ -886,7 +919,7 @@ team_status({ team_id: "auth-team" })
 // }
 
 team_list({ scope?: "user" | "project" | "all" })
-// Returns: [{ name: "auth-team", status: "active", members: 3 }, ...]
+// Returns: [{ name: "auth-team", status: "idle", members: 3 }, ...]
 ```
 
 ### 4.11 `team_delete`
@@ -959,6 +992,15 @@ agent 与 orchestrator 之间的消息流经三层，每层有不同职责：
 
     // Mark messages as delivered (move to processed)
     await ackMessages(member.teamRunId, member.name, unread)
+}
+
+// Shared formatter for injected mailbox content (Transform hook + master drain path),
+// so the user/member sees a consistent format regardless of delivery route.
+function formatMailboxInjection(msgs: Message[]): string {
+    return msgs.map(m =>
+        `<team_message from="${m.from}"${m.correlationId ? ` correlationId="${m.correlationId}"` : ""}>\n`
+        + `${m.body}\n</team_message>`,
+    ).join("\n\n")
 }
 ```
 
@@ -1173,9 +1215,18 @@ function startSweepTimer() {
         for (const team of teamRegistry.values()) {
             if (!team.activeTask) continue
             await team.mutex.runExclusive(async () => {
-                // Wall-clock / budget / error checks run even if no idle arrives
+                // 1. Reclaim stale resources (crash recovery for in-flight orchestration)
+                await releaseStaleReservations(team.teamRunId, "master")   // mailbox reservations
+                for (const m of team.members) {
+                    await releaseStaleReservations(team.teamRunId, m.name)
+                }
+                if (team.activeTask.type === "delegate") {
+                    await reapStaleClaims(team)   // claim-lock TTL vs Task.status reconciliation
+                }
+                // 2. Wall-clock / budget / error checks run even if no idle arrives
                 await checkTermination(team)
                 if (!team.activeTask) return
+                // 3. Missed-idle reconciliation
                 for (const member of team.members) {
                     if (!member.sessionId || member.status !== "running") continue
                     if (statusMap[member.sessionId]?.type === "idle") {
@@ -1189,7 +1240,7 @@ function startSweepTimer() {
 }
 ```
 
-> sweep timer 同时定期调用 `checkTermination`，使 wall-clock timeout / budget / member-error 即使在完全没有 idle 事件到达时也能触发——不再依赖 idle 作为唯一驱动。
+> sweep timer 承担三项兜底：(1) 释放 stale mailbox 预约 + 复位 stale claim（崩溃恢复）；(2) 定期调用 `checkTermination`，使 wall-clock timeout / budget / member-error 即使在完全没有 idle 事件到达时也能触发；(3) 补触发丢失的 idle。不再依赖 idle 作为唯一驱动。
 
 ### getExpectedMember（M3：按模式区分）
 
@@ -1383,6 +1434,19 @@ async function handleLoopIdle(team: Team, member: RuntimeMember) {
     // The decider was the LAST stage; its output is in responses[deciderMember]
     const decision = parseDecision(task.responses[task.deciderMember!])
 
+    // Track consecutive parse failures (exit condition 6: abort at 3)
+    if (decision.parseFailed) {
+        task.decisionParseFailures++
+        if (task.decisionParseFailures >= 3) {
+            await deliverSummaryToLeader(team, "loop_complete:decision_parse_failure")
+            team.activeTask = undefined
+            team.status = "failed"
+            return
+        }
+    } else {
+        task.decisionParseFailures = 0   // reset on a successful parse
+    }
+
     if (decision.decision === "done") {
         await deliverSummaryToLeader(team, "loop_complete:decider_done")
         task.decisionHistory.push(decision)
@@ -1416,18 +1480,20 @@ async function handleLoopIdle(team: Team, member: RuntimeMember) {
     await advanceToStage(team, stages[0])
 }
 
-function parseDecision(rawText: string): DecisionRecord {
+// parseFailed flags a missing/invalid <decision> block so handleLoopIdle can count
+// consecutive failures (exit condition 6). On failure we default to "continue".
+function parseDecision(rawText: string): DecisionRecord & { parseFailed?: boolean } {
+    const fail = (): DecisionRecord & { parseFailed: boolean } => ({
+        round: 0,
+        decision: "continue",
+        rationale: "Decision parse failed; defaulting to continue",
+        nextActions: [],
+        timestamp: Date.now(),
+        parseFailed: true,
+    })
     // Extract <decision>{...}</decision> JSON block
-    const match = rawText.match(/<decision>\s*(\{[\s\S]*?\})\s*<\/decision>/)
-    if (!match) {
-        return {
-            round: 0,
-            decision: "continue",
-            rationale: "Decision parse failed; defaulting to continue",
-            nextActions: [],
-            timestamp: Date.now(),
-        }
-    }
+    const match = rawText?.match(/<decision>\s*(\{[\s\S]*?\})\s*<\/decision>/)
+    if (!match) return fail()
     try {
         const parsed = JSON.parse(match[1])
         return {
@@ -1438,8 +1504,30 @@ function parseDecision(rawText: string): DecisionRecord {
             timestamp: Date.now(),
         }
     } catch {
-        return { /* same default as above */ }
+        return fail()
     }
+}
+
+// advanceToStage: dispatch the given stage's task to its member, prefixing the prior
+// stage's (or decider's) output. Sets member.status = "running". Shared by loop rounds.
+async function advanceToStage(team: Team, stage: Stage): Promise<void> {
+    const task = team.activeTask!
+    const member = team.members.find(m => m.name === stage.member)!
+    const prevIdx = task.currentStageIndex - 1
+    const prev = prevIdx >= 0 ? task.responses[task.stages[prevIdx].member] : null
+    const text = prev
+        ? `[Prior output]\n${truncateOutput(prev)}\n\n[Your task]\n${stage.task}`
+        : stage.task
+    await client.session.promptAsync({
+        path: { id: member.sessionId! },
+        body: {
+            parts: [{ type: "text", text, synthetic: true }],
+            agent: member.agent ?? "build",
+        },
+        query: { directory: member.worktreePath ?? team.directory },
+    })
+    member.status = "running"
+    member.turnCount++
 }
 ```
 
@@ -1500,7 +1588,7 @@ Leader session 是**被动客户端**。结果仅在 leader idle 时投递（以
 
 ```ts
 async function deliverSummaryToLeader(team: Team, reason: string) {
-    const summary = buildSummary(team.activeTask!, reason)
+    const summary = await buildSummary(team, team.activeTask!, reason)
 
     // Check if leader is idle (M5: session.status takes NO path.id; returns a map of
     //   ALL sessions' status — index by sessionID ourselves)
@@ -1546,6 +1634,34 @@ async function deliverQueuedResultsToMaster(team: Team, masterSessionId: string)
         body: { parts: [{ type: "text", text: formatMailboxInjection(queued), synthetic: true }] },
     })
     await ackMessages(team.teamRunId, "master", queued)   // commit reserved → processed
+}
+
+// Mode-aware summary. delegate aggregates from the TASK LIST (per-task results were
+// delivered to master via team_send_message; responses[] is NOT used for delegate — #3).
+// loop uses decisionHistory (structured) rather than the overwritten responses[].
+async function buildSummary(team: Team, task: ActiveTask, reason: string): Promise<string> {
+    const head = `mode=${task.type} reason=${reason} tokens=${task.tokensUsed}`
+    switch (task.type) {
+        case "delegate": {
+            const tasks = await listAllTasks(team.teamRunId)
+            const lines = tasks.map(t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`)
+            return `${head}\n${lines.join("\n")}`
+        }
+        case "loop": {
+            const last = task.decisionHistory.at(-1)
+            const rounds = task.decisionHistory.map(d => `  round ${d.round}: ${d.decision} — ${d.rationale}`)
+            return `${head} rounds=${task.currentRound}\nfinal: ${last?.decision ?? "n/a"}\n${rounds.join("\n")}`
+        }
+        default: // parallel / pipeline: concatenate each member's captured output
+            return `${head}\n` + Object.entries(task.responses)
+                .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`).join("\n\n")
+    }
+}
+
+// One-line-per-member digest of the current round's outputs, for discussion broadcasts.
+function buildRoundSummary(responses: Record<string, string>): string {
+    return Object.entries(responses)
+        .map(([name, out]) => `- ${name}: ${truncateOutput(out, 500)}`).join("\n")
 }
 ```
 
@@ -1672,7 +1788,22 @@ for (const m of result.data ?? []) {
 }
 ```
 
-聚合计算：`tokensUsed = Σ (input + output + reasoning)` over assistant messages；`costUsed = Σ info.cost`。更高效的做法是订阅 `message.updated` 事件增量累加，避免每轮全量扫描。
+聚合计算：`tokensUsed = Σ (input + output + reasoning)` over assistant messages；`costUsed = Σ info.cost`。event handler Step 2 每次 idle 用 `sumMemberTokens` 重算该 member 的 token 量（重算而非 `+=`，避免重复计数——见 §6）：
+
+```ts
+// Sum a single session's assistant-message tokens. Recomputed per idle from full
+// history (idempotent). cache.read/write are NOT counted toward the budget here
+// (cached reads are typically discounted; adjust if your provider bills them fully).
+function sumMemberTokens(messages: Array<{ info?: any }> | undefined): number {
+    let total = 0
+    for (const m of messages ?? []) {
+        if (m.info?.role !== "assistant") continue
+        const t = m.info.tokens
+        total += (t?.input ?? 0) + (t?.output ?? 0) + (t?.reasoning ?? 0)
+    }
+    return total
+}
+```
 
 ### session.status
 
@@ -1723,9 +1854,9 @@ tui: (api) => {
     // Command 注册
     api.command.register({
         title: "Create Agent Team",
-        value: "team.create",
+        value: "team_create",
         category: "Team",
-        slash: { name: "team-create" },
+        slash: { name: "team_create" },
         onSelect: () => api.ui.dialog.replace(() => <CreateTeamDialog />),
         //           ^^^^.dialog.replace, NOT api.dialog.replace
     })
@@ -1854,7 +1985,7 @@ async function dispatchToMaster(api: TuiPluginApi, command: string) {
         body: {
             parts: [{
                 type: "text",
-                text: `[System] User invoked /${command}. Please use the ${command.replace('-', '_')} tool` +
+                text: `[System] User invoked /${command}. Please use the ${command} tool` +
                       (taskText ? ` with the following task: ${taskText}` : ""),
                 synthetic: true,
             }],
@@ -1912,22 +2043,24 @@ octeam/
       crud.ts                      # Task create/list/update/get
       claim.ts                     # 带文件锁的原子认领
     orchestration/
-      barrier.ts                   # 共享 barrier 原语
-      parallel.ts                  # team_parallel（3 种模式）
+      barrier.ts                   # waitForBarrier（仅 parallel 使用）
+      parallel.ts                  # team_parallel（3 种模式）+ handleParallelIdle + 共识检测
       pipeline.ts                  # team_pipeline
       loop.ts                      # team_loop + 结构化决策解析
-      summary.ts                   # 结果收集 + leader 投递
+      delegate.ts                  # team_delegate + handleDelegateIdle + ref→uuid 映射
+      summary.ts                   # 结果收集 + leader 投递（buildSummary）
       termination.ts               # Timeout/budget/error/no-issues 检查
     tools/
-      team-create.ts
+      team_create.ts
       team_parallel.ts
       team_pipeline.ts
       team_loop.ts
-      team-send-message.ts
-      team-task.ts                 # task_create/list/update/get
-      team-shutdown.ts             # shutdown_request/approve/reject
+      team_delegate.ts
+      team_send_message.ts
+      team_task.ts                 # task_create/list/update/get
+      team_shutdown.ts             # shutdown_request/approve/reject
       team_status.ts               # status/list
-      team-delete.ts
+      team_delete.ts
     hooks/
       event-handler.ts             # session.idle → 带锁状态机
       transform-hook.ts            # messages.transform → mailbox 注入
@@ -1972,7 +2105,7 @@ octeam/
 | Agent context 保留 | Session 持久化在 OpenCode 的 DB 中；`promptAsync` 恢复时保留完整历史 |
 | Agent 间通信 | 文件 mailbox + Transform hook 注入 + 实时投递（三层） |
 | 并发 agent 执行 | 每个 agent 有独立 session，独立 Runner |
-| 确定性编排 | Plugin 通过 pipeline/loop/parallel 顺序 dispatch prompt |
+| 确定性编排 | Plugin 通过 parallel/pipeline/loop/delegate 顺序 dispatch prompt |
 | Agent 唤醒 | Plugin 检测 `session.idle` → `promptAsync` wake hint |
 | 文件隔离（可选） | member 可选启用独立 git worktree，防止写入冲突 |
 | 状态持久化 | 文件系统 JSON + 文件锁；在 plugin/OpenCode 重启后存活 |
