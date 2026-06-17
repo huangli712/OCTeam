@@ -361,9 +361,11 @@ type Task = {
 ├── config.json                             TeamSpec（不可变）
 ├── state.json                              RuntimeState（可变，文件锁保护）
 ├── mailbox/
-│   ├── {memberName}.jsonl                  每个接收者的消息队列（仅追加）
-│   ├── {memberName}.processed.jsonl        已投递消息（审计用）
-│   └── {memberName}.reserved/              投递中的预约（临时）
+│   ├── {recipient}.jsonl                   每个接收者的消息队列（仅追加）
+│   ├── {recipient}.processed.jsonl         已投递消息（审计用）
+│   └── {recipient}.reserved/               投递中的预约（临时）
+│                                           recipient = member 名，或固定值 "master"
+│                                           （master 不在 members[]，但有独立 mailbox 接收 team 结果 — B1）
 ├── tasks/
 │   ├── {taskId}.json                       单个任务
 │   └── claims/
@@ -515,6 +517,42 @@ async function ensureMembersReady(team: Team): Promise<void> {
 ```
 
 > `waitUntil(predicate, opts)` 轮询 `predicate`（每 `pollMs`），在为真时 resolve，超时则 reject。`chunk(arr, n)` 将数组分批。两者为小工具函数。
+
+#### ⚠️ Tool Handler 锁序（必须遵守——否则死锁）
+
+`ensureMembersReady` 末尾的 role-setup barrier（`waitUntil(所有 member.initialized)`）依赖 **event handler** 在 `team.mutex.runExclusive` 内翻转 `initialized`（`processIdle` Step 1.5）。因此：
+
+> **`ensureMembersReady`（含其 `waitUntil` barrier）必须在 team mutex 之外运行。** 若 tool handler 持有 `team.mutex` 调用 `ensureMembersReady`，event handler 将永远拿不到锁 → `initialized` 永不翻转 → `waitUntil` 自旋至超时 → 死锁。
+
+正确的 tool handler 锁序（以 pipeline 为例，四个 workflow tool 同构）：
+
+```ts
+async function teamPipelineTool(args, ctx) {
+    const team = await loadTeamState(args.team_id)
+    // Pre-checks under mutex: reject if already orchestrating (one activeTask at a time)
+    await team.mutex.runExclusive(async () => {
+        if (team.activeTask) throw new ToolError("team already orchestrating")
+        validateStages(args.stages)            // stage uniqueness, member existence
+    })
+
+    // OUTSIDE mutex: spawn sessions + role-setup barrier (event handler needs the
+    //   mutex to flip member.initialized; holding it here would deadlock).
+    await ensureMembersReady(team)
+
+    // Back under mutex: commit activeTask + dispatch first stage atomically.
+    await team.mutex.runExclusive(async () => {
+        team.status = "busy"
+        team.activeTask = { type: "pipeline", stages: args.stages, currentStageIndex: 0,
+                            responses: {}, tokensByMember: {}, tokensUsed: 0,
+                            startedAt: Date.now(), wallClockTimeoutMs: args.timeout_ms ?? 600000,
+                            decisionHistory: [], decisionParseFailures: 0 }
+        await saveTeamState(team)
+        await advanceToStage(team, args.stages[0])   // dispatch stage 0
+    })
+}
+```
+
+**三段式锁序**：(1) mutex 内预检 → (2) **mutex 外** `ensureMembersReady`（barrier）→ (3) mutex 内写 `activeTask` + 首次 dispatch。阶段 (1) 与 (3) 之间存在短暂窗口，但因此时尚未写 `activeTask`，即使有早到的 member idle 也会被 Step 1.5/Step 6 安全跳过。
 
 **优势**：
 - 创建 team 零开销（无 session、无 LLM 调用）
@@ -1144,6 +1182,12 @@ async function processIdle(team: Team, member: RuntimeMember, sessionID: string)
     await saveTeamState(team)
 
     // --- Step 5: Check for unread messages first ---
+    //   countUnreadMessages counts ONLY inbox (not reserved). A message already moved
+    //   to reserved/ by a concurrent drainer is in-flight — it WILL be injected by the
+    //   Transform hook on the next turn, so skipping the wake-hint for it is correct,
+    //   not a miss. If that delivery crashes, releaseStaleReservations (sweep timer)
+    //   returns it to inbox within TTL and the next idle/sweep re-wakes. Wake-hint is
+    //   best-effort; the Transform hook (Layer 3) is the source of truth for delivery.
     const unread = await countUnreadMessages(member.teamRunId, member.name)
     if (unread > 0) {
         // Transform hook will inject on next turn; just send wake hint
@@ -1318,9 +1362,10 @@ async function handleParallelIdle(team: Team, member: RuntimeMember) {
                     return
                 }
                 if (task.currentRound! >= task.maxRounds!) {
+                    // Reached here only when consensus was NOT detected above → failed.
                     await deliverSummaryToLeader(team, "discussion_max_rounds")
                     team.activeTask = undefined
-                    team.status = task.consensusReached ? "idle" : "failed"
+                    team.status = "failed"
                     return
                 }
                 // Next round: broadcast prior-round summary to all, reset to running.
