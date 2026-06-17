@@ -55,6 +55,10 @@
 
 5. **`package.json` 声明**：Phase 1 只声明 `["tui"]`，Phase 2 升级为 `["server", "tui"]`。
 
+6. **已知限制——sidebar 在子 session 上不渲染**：OpenCode TUI 的 session view 组件中，sidebar 可见性由硬编码条件门控：`if (session.parentID) return false`。任何有 `parentID` 的 session（即子 session），整个 sidebar 面板（包括所有 `sidebar_content`/`sidebar_title`/`sidebar_footer` slot）都不渲染。这是 OpenCode 的设计决策，不是 plugin 可控的。导航到子 session 后，用户通过原生左右箭头（同级间切换）和底部 Up 标签（回到 parent session）导航。返回主 session 后 sidebar 自动恢复。
+
+   > **根因验证**：从 OpenCode 1.17.7 二进制中提取的 minified TUI JS 确认，sidebar visibility computed `yU()` 的第一个条件 `if (D()?.parentID) return false` 无条件短路，优先于手动 toggle 和 auto 模式。原生 sidebar 面板（Files/LSP/MCP/Todo）同样在子 session 上消失——它们也注册在 `sidebar_content` slot 上，走同一套门控。
+
 ---
 
 ## 2. 数据模型

@@ -6,7 +6,7 @@
  */
 
 /** Display status derived from OpenCode SessionStatus. */
-export type DisplayStatus = "running" | "idle"
+export type DisplayStatus = "running" | "idle" | "errored"
 
 /** A child session node for sidebar rendering. */
 export type SessionTreeNode = {
@@ -18,14 +18,16 @@ export type SessionTreeNode = {
 
 /**
  * Map OpenCode's SessionStatus ({ type: "busy" | "idle" | "retry" })
- * to our simplified display status.
+ * to our display status.
  *
- * Note: OpenCode has no "completed" or "errored" session status.
- * A finished session is simply "idle". We collapse retry into running.
+ * - busy   → running  (actively working, green)
+ * - retry  → errored  (hit an error, retrying, purple)
+ * - idle   → idle     (finished/stopped, red)
  */
 export function mapStatus(raw: { type: string } | undefined | null): DisplayStatus {
     if (!raw) return "idle"
-    if (raw.type === "busy" || raw.type === "retry") return "running"
+    if (raw.type === "busy") return "running"
+    if (raw.type === "retry") return "errored"
     return "idle"
 }
 
