@@ -30,12 +30,15 @@ export function mapStatus(raw: { type: string } | undefined | null): DisplayStat
 }
 
 /**
- * Extract agent name from session title.
- * OpenCode subagent sessions have titles like "some task (@explore subagent)".
- * Must match @agent specifically before "subagent" to avoid matching
- * other @mentions in the title (e.g. "@opencode-ai/plugin").
+ * Extract agent name from message data.
+ * Message API returns { info: { agent: "explore", ... } }.
+ * Falls back to title parsing (@agent subagent) if no messages.
  */
-function extractAgentName(title: string): string {
+function extractAgentName(messages: any[], title: string): string {
+    for (const msg of messages) {
+        const agent = msg?.info?.agent
+        if (agent) return agent
+    }
     const match = title.match(/@(\w+)\s+subagent/)
     if (match) return match[1]
     return "task"
@@ -76,11 +79,11 @@ function formatMs(ms: number): string {
  */
 function computeDuration(messages: any[]): string {
     if (!messages || messages.length === 0) return ""
-    const first = messages[0]?.time?.created
+    const first = messages[0]?.info?.time?.created
     if (!first) return ""
     let last: number | undefined
     for (let i = messages.length - 1; i >= 0; i--) {
-        const t = messages[i]?.time
+        const t = messages[i]?.info?.time
         last = t?.completed ?? t?.created
         if (last) break
     }
@@ -111,21 +114,26 @@ export async function loadChildren(
 
     const nodes = await Promise.all(children.map(async s => {
         let duration = ""
+        let messages: any[] = []
         try {
             const msgResult = await api.client.session.messages({ sessionID: s.id, limit: 100 })
-            duration = computeDuration(msgResult?.data ?? [])
+            messages = msgResult?.data ?? []
+            duration = computeDuration(messages)
         } catch {
             // best effort
         }
         return {
             sessionId: s.id,
-            agentName: extractAgentName(s.title || s.id),
+            agentName: extractAgentName(messages, s.title || s.id),
             duration,
             startTime: formatTime(s.time?.created),
+            created: s.time?.created ?? 0,
             status: mapStatus(api.state.session.status(s.id)),
             childCount: allSessions.filter(c => c.parentID === s.id).length,
         }
     }))
 
+    // Sort by creation time descending (newest first)
+    nodes.sort((a, b) => b.created - a.created)
     return nodes
 }
