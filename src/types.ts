@@ -1,0 +1,178 @@
+/**
+ * OCTeam data model types (design doc Section 2).
+ *
+ * All types in this file are JSON-serializable — they are persisted to disk
+ * (config.json / state.json / mailbox *.jsonl / tasks/*.json). Runtime-only
+ * constructs that carry non-serializable handles (e.g. the Team wrapper with
+ * its in-process mutex) live in state/store.ts, NOT here.
+ */
+
+// --- TeamSpec (immutable, declarative) — stored as config.json ---
+
+export type TeamSpec = {
+    version: 1
+    name: string                        // /^[a-z0-9-]+$/, unique within scope
+    description?: string
+    createdAt: number                   // epoch ms
+    teamAllowedPaths?: string[]         // restrict file access for members
+    members: TeamMemberSpec[]           // 1-8 members
+}
+
+export type TeamMemberSpec = {
+    name: string                        // unique within team
+    role: string                        // role description for system prompt
+    model?: string                      // model identifier, e.g. "claude-sonnet"
+    agent?: string                      // OpenCode agent type, default "build"
+    worktree?: boolean                  // create isolated git worktree, default false
+}
+
+// --- RuntimeState (mutable, persisted) — stored as state.json ---
+
+export type TeamStatus =
+    | "live"        // config written, no sessions spawned yet
+    | "busy"        // sessions spawned, workflow running
+    | "idle"        // sessions spawned, idle (workflow completed)
+    | "failed"      // agent error or task incomplete (e.g. loop max rounds w/o done)
+    | "dead"        // marked for deletion, about to be cleaned up
+    | "disabled"    // team disabled (e.g. by team_shutdown_request)
+
+export type MemberStatus =
+    | "pending"             // session not yet created
+    | "running"             // actively processing a prompt
+    | "idle"                // finished, awaiting work
+    | "errored"             // LLM/tool failure
+    | "completed"           // finished all assigned work
+    | "shutdown_approved"   // cooperative shutdown approved
+
+export type RuntimeMember = {
+    name: string
+    sessionId?: string                 // set after session.create succeeds
+    model?: string
+    agent?: string
+    status: MemberStatus
+    initialized: boolean               // true after role-setup prompt completes (B3)
+    worktreePath?: string              // absolute path to git worktree
+    pendingMessageCount: number        // unread messages in mailbox
+    turnCount: number                  // incremented per promptAsync dispatch
+    lastTurnMarker?: string            // Transform hook injection dedup
+    lastNotifiedAt?: number            // delegate: rate-limit re-prompts
+    retryingSince?: number             // epoch ms when session entered "retry"
+    error?: string                     // if status === "errored"
+    isMaster?: boolean                 // ONLY on synthetic master record; never persisted
+}
+
+export type RuntimeState = {
+    version: 1
+    teamRunId: string                  // UUID, unique per run
+    teamName: string
+    status: TeamStatus
+    leadSessionId: string              // always context.sessionID; leader name is "master"
+    members: RuntimeMember[]
+    activeTask?: ActiveTask            // only one active orchestration at a time
+    bounds: Bounds                     // resource limits (Section 8)
+    createdAt: number
+    startedAt?: number                 // when first task started
+}
+
+// --- Bounds (resource limits, Section 8) ---
+
+export type Bounds = {
+    maxMembers: number                 // default 8, hard cap
+    maxParallelMembers: number         // default 4, concurrent spawn limit
+    maxMessagesPerRun: number          // default 100, total messages per orchestration
+    maxWallClockMinutes: number        // default 30, hard wall-clock limit
+    maxMemberTurns: number             // default 50, turns per member per orchestration
+    messagePayloadMaxBytes: number     // default 32768 (32KB)
+    messageUnreadMaxBytes: number      // default 1048576 (1MB), backpressure limit
+}
+
+// --- ActiveTask ---
+
+export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate"
+export type ParallelMode = "isolated" | "collaborative" | "discussion"
+
+export type ActiveTask = {
+    type: OrchestrationType
+    mode?: ParallelMode                // parallel only
+    startedAt: number
+    wallClockTimeoutMs: number         // hard timeout, default 300000 (5 min)
+    tokenBudget?: number               // optional cost cap
+    tokensUsed: number                 // running total = sum of tokensByMember (recomputed)
+    tokensByMember: Record<string, number>  // memberName -> sum(input+output+reasoning)
+
+    // result collection (serializable — NOT a Map)
+    responses: Record<string, string>  // memberName -> last assistant text output
+
+    // parallel mode
+    task?: string                      // isolated: uniform task
+    tasks?: Record<string, string>     // collaborative: per-member tasks
+    topic?: string                     // discussion: debate topic
+    maxRounds?: number                 // discussion / loop: round limit
+    currentRound?: number
+
+    // delegate mode: uses shared tasklist (team_task_*), no extra fields
+
+    // pipeline / loop: ordered stages
+    stages: Stage[]
+    currentStageIndex: number
+
+    // loop-specific
+    deciderMember?: string             // member name of decider (NOT "master")
+    decisionHistory: DecisionRecord[]  // structured decisions per round
+    decisionParseFailures: number      // consecutive <decision> parse failures; abort at 3
+
+    // discussion-specific (parallel mode === "discussion")
+    consensusReached?: boolean         // set when all members emit agreed consensus
+}
+
+export type Stage = {
+    member: string                     // member name (validated unique within stages)
+    task: string                       // task description
+    action?: "modify" | "read_only"    // loop mode only
+    completed: boolean
+}
+
+export type DecisionRecord = {
+    round: number
+    decision: "continue" | "done"
+    rationale: string
+    nextActions: string[]              // concrete directives for next round
+    timestamp: number
+}
+
+// --- Message (file mailbox entry) ---
+
+export type Message = {
+    version: 1
+    id: string                         // UUID
+    from: string                       // sender member name, or "orchestrator"
+    to: string                         // recipient member name, or "*" for broadcast
+    kind: "message" | "announcement"
+    body: string                       // max 32KB
+    summary?: string                   // one-line summary for status display
+    timestamp: number
+    correlationId?: string             // UUID for request-response pairing
+    deliveryStatus: "pending" | "delivered" | "processed"
+}
+
+// --- Task (shared task list, for collaborative modes) ---
+
+export type TaskStatus = "pending" | "claimed" | "in_progress" | "completed" | "deleted"
+
+export type Task = {
+    version: 1
+    id: string                         // UUID
+    subject: string
+    description: string
+    status: TaskStatus
+    owner?: string                     // member name who claimed
+    blocks: string[]                   // task IDs this blocks
+    blockedBy: string[]                // task IDs that must complete first
+    createdAt: number
+    updatedAt: number
+    claimedAt?: number
+}
+
+// --- Storage scope (user-scope ~/.octeam vs project-scope <dir>/.octeam) ---
+
+export type StorageScope = "user" | "project"

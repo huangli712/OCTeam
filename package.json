@@ -8,6 +8,10 @@
             "types": "./dist/tui/index.d.ts",
             "import": "./src/tui/index.tsx"
         },
+        "./server": {
+            "types": "./dist/server.d.ts",
+            "import": "./src/server.ts"
+        },
         "./tui": {
             "types": "./dist/tui/index.d.ts",
             "import": "./src/tui/index.tsx"
@@ -15,17 +19,19 @@
     },
     "files": [
         "dist",
-        "src/tui"
+        "src"
     ],
     "oc-plugin": [
+        "server",
         "tui"
     ],
     "scripts": {
-        "build": "bun build src/tui/index.tsx --outfile dist/tui.js --target node --format esm --external @opencode-ai/plugin --external @opencode-ai/plugin/tui --external @opentui/solid --external solid-js && tsc --emitDeclarationOnly",
+        "build": "bun build src/server.ts --outfile dist/server.js --target node --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && bun build src/tui/index.tsx --outfile dist/tui.js --target node --format esm --external @opencode-ai/plugin --external @opencode-ai/plugin/tui --external @opentui/solid --external solid-js && tsc --emitDeclarationOnly",
         "typecheck": "tsc --noEmit"
     },
     "peerDependencies": {
         "@opencode-ai/plugin": ">=1.4.7",
+        "@opencode-ai/sdk": ">=1.4.7",
         "@opentui/core": ">=0.1.99",
         "@opentui/solid": ">=0.1.99",
         "solid-js": ">=1.9.0"
@@ -40,6 +46,7 @@
     },
     "devDependencies": {
         "@opencode-ai/plugin": "1.4.7",
+        "@opencode-ai/sdk": "1.4.7",
         "@opentui/core": "0.1.99",
         "@opentui/solid": "0.1.99",
         "solid-js": "1.9.11",
