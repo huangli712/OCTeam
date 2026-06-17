@@ -122,6 +122,9 @@ export function SessionNavigatorSidebar(props: {
                                     <text fg={statusColor(session.status)}>
                                         {"\u25cf " + session.agentName}
                                     </text>
+                                    {session.duration ? (
+                                        <text fg={textMuted()}>{session.duration}</text>
+                                    ) : null}
                                     {session.startTime ? (
                                         <text fg={textMuted()}>{session.startTime}</text>
                                     ) : null}
