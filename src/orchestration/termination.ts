@@ -33,6 +33,18 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
         return
     }
 
+    // Member turn limit (§8.1 maxMemberTurns): stop a runaway member. turnCount is
+    // bumped at each dispatch; once it exceeds the bound the orchestration is failed.
+    const overTurns = team.members.find(
+        m => !m.isMaster && m.turnCount > team.bounds.maxMemberTurns,
+    )
+    if (overTurns) {
+        await deliverSummaryToLeader(ctx, team, `member_turn_limit:${overTurns.name}`)
+        team.activeTask = undefined
+        team.status = "failed"
+        return
+    }
+
     // Member error
     const errored = team.members.find(m => m.status === "errored")
     if (errored) {

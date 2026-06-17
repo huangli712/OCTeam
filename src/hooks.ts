@@ -9,7 +9,7 @@
 import type { Hooks } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "./context.js"
-import { loadTeamState, activeTeams, saveTeamState } from "./state/store.js"
+import { loadTeamState, activeTeams, listTeamNames, saveTeamState } from "./state/store.js"
 import { resolveTeamMember } from "./utils.js"
 import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservations } from "./mailbox.js"
 import { reapStaleClaims } from "./tasks.js"
@@ -79,21 +79,23 @@ export function createTransformHook(
         if (unread.length === 0) return
 
         const injection = formatMailboxInjection(unread)
-        const syntheticMsg = {
-            info: { role: "user" as const },
-            parts: [{ type: "text" as const, text: injection, synthetic: true }],
-        }
 
-        const messages = output.messages as Array<{ info?: { role?: string } }>
-        let lastUserIdx = -1
+        // M3: append the injection as a synthetic text part to an existing message
+        // (prefer the last user message) rather than fabricating a partial Message
+        // object. A hand-rolled { info: { role } } is missing required Message fields
+        // and risks crashing the host renderer / token accounting.
+        const messages = output.messages as Array<{ info?: { role?: string }; parts?: any[] }>
+        let targetIdx = -1
         for (let i = messages.length - 1; i >= 0; i--) {
             if (messages[i]?.info?.role === "user") {
-                lastUserIdx = i
+                targetIdx = i
                 break
             }
         }
-        if (lastUserIdx >= 0) messages.splice(lastUserIdx, 0, syntheticMsg as any)
-        else messages.push(syntheticMsg as any)
+        if (targetIdx === -1) targetIdx = messages.length - 1
+        if (targetIdx < 0) return // nothing to attach to; leave reserved for retry (do NOT ack)
+        messages[targetIdx].parts = messages[targetIdx].parts ?? []
+        messages[targetIdx].parts.push({ type: "text", text: injection, synthetic: true })
 
         await ackMessages(member.directory, member.name, unread)
     }
@@ -107,12 +109,57 @@ export function createTransformHook(
  *      in plugin state — re-enter processIdle)
  * Started once in server() init.
  */
+/**
+ * Crash recovery (design §3). On plugin startup, reconcile teams left in a
+ * non-terminal state by a previous process that crashed mid-orchestration:
+ *   - busy: the in-flight orchestration cannot resume deterministically — release
+ *     stale mailbox reservations, mark running members errored, and transition the
+ *     team to "failed". Its sessions persist and are reusable by a fresh workflow
+ *     call (ensureMembersReady reuses members that already have a sessionId).
+ *   - idle: release stale reservations (members reusable as-is).
+ * live / failed / dead / disabled are terminal-or-pristine → skipped.
+ * Runs once in server() init, AFTER rebuildSessionIndex, BEFORE startSweepTimer.
+ * Safe to use the mutex here: hooks are not yet registered, so no event handler
+ * runs concurrently.
+ */
+export async function reconcileCrashedTeams(ctx: PluginContext): Promise<void> {
+    const names = await listTeamNames(ctx.storageRoot)
+    for (const name of names) {
+        let team
+        try {
+            team = await loadTeamState(ctx.storageRoot, name)
+        } catch {
+            continue // unreadable state.json — skip
+        }
+        if (team.status !== "busy" && team.status !== "idle") continue
+        await team.mutex.runExclusive(async () => {
+            await releaseStaleReservations(team.directory, "master").catch(() => {})
+            for (const m of team.members) {
+                await releaseStaleReservations(team.directory, m.name).catch(() => {})
+            }
+            if (team.status === "busy") {
+                // Interrupted orchestration is unrecoverable — fail it cleanly.
+                team.activeTask = undefined
+                team.status = "failed"
+                for (const m of team.members) {
+                    if (m.status === "running") {
+                        m.status = "errored"
+                        m.error = "interrupted by plugin/host restart"
+                    }
+                }
+            }
+            await saveTeamState(team).catch(() => {
+                // best-effort persist
+            })
+        })
+    }
+}
+
 export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
     return setInterval(async () => {
         try {
-            const statusResult = await ctx.client.session.status({
-                query: { directory: ctx.directory },
-            })
+            // M6: no directory filter — include sessions in member worktrees too.
+            const statusResult = await ctx.client.session.status({})
             const statusMap = (statusResult.data ?? {}) as Record<string, { type: string }>
 
             for (const team of activeTeams()) {

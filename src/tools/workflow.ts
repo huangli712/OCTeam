@@ -62,6 +62,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
             topic: tool.schema.string().optional().describe("discussion mode: the debate topic"),
             max_rounds: tool.schema.number().min(1).max(20).optional().describe("discussion: round limit"),
             timeout_ms: tool.schema.number().min(1000).optional(),
+            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
         async execute(args) {
             // Validate mode-specific fields.
@@ -83,20 +84,24 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 if (team.activeTask) busy = true
             })
             if (busy) return "Error: team already has an active orchestration"
+            let raced = false
 
             // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
             await ensureMembersReady(ctx, team)
 
             // Phase 3: commit activeTask + initial dispatch (UNDER mutex).
             await team.mutex.runExclusive(async () => {
+                if (team.activeTask) { raced = true; return } // M7: re-check inside mutex
                 team.status = "busy"
                 team.activeTask = {
                     type: "parallel",
                     mode: args.mode,
                     startedAt: Date.now(),
                     wallClockTimeoutMs: args.timeout_ms ?? DEFAULT_TIMEOUT_MS,
+                    tokenBudget: args.token_budget,
                     tokensUsed: 0,
                     tokensByMember: {},
+                    messagesSent: 0,
                     responses: {},
                     stages: [],
                     currentStageIndex: 0,
@@ -105,7 +110,9 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     task: args.task,
                     tasks: args.tasks,
                     topic: args.topic,
-                    maxRounds: args.max_rounds,
+                    // M5: discussion needs a round cap; default to 3 when omitted,
+                    // else `currentRound >= (maxRounds ?? 0)` aborts after round 1.
+                    maxRounds: args.mode === "discussion" ? (args.max_rounds ?? 3) : args.max_rounds,
                     currentRound: args.mode === "discussion" ? 1 : undefined,
                 }
                 await saveTeamState(team)
@@ -118,9 +125,10 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     else if (args.mode === "collaborative") text = args.tasks![m.name] ?? `No task assigned for ${m.name}.`
                     else
                         text = `[Discussion topic] ${args.topic}\n\nRound ${team.activeTask.currentRound}. State your position. End with <consensus>{"agreed": true|false}</consensus>.`
-                    await dispatchToMember(ctx, m, text, m.worktreePath ?? team.directory)
+                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory)
                 }
             })
+            if (raced) return "Error: team already has an active orchestration"
             return `team_parallel (${args.mode}) started on "${args.team_id}".`
         },
     })
@@ -143,6 +151,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 )
                 .min(1),
             timeout_ms: tool.schema.number().min(1000).optional(),
+            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
         async execute(args) {
             const stageMembers = args.stages.map(s => s.member)
@@ -163,10 +172,12 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 if (team.activeTask) busy = true
             })
             if (busy) return "Error: team already has an active orchestration"
+            let raced = false
 
             await ensureMembersReady(ctx, team)
 
             await team.mutex.runExclusive(async () => {
+                if (team.activeTask) { raced = true; return } // M7: re-check inside mutex
                 team.status = "busy"
                 const stages: Stage[] = args.stages.map(s => ({
                     member: s.member,
@@ -177,8 +188,10 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                     type: "pipeline",
                     startedAt: Date.now(),
                     wallClockTimeoutMs: args.timeout_ms ?? 600_000,
+                    tokenBudget: args.token_budget,
                     tokensUsed: 0,
                     tokensByMember: {},
+                    messagesSent: 0,
                     responses: {},
                     stages,
                     currentStageIndex: 0,
@@ -188,8 +201,9 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 await saveTeamState(team)
                 // Dispatch stage 0.
                 const first = team.members.find(m => m.name === stages[0].member)!
-                await dispatchToMember(ctx, first, stages[0].task, first.worktreePath ?? team.directory)
+                await dispatchToMember(ctx, first, stages[0].task, first.worktreePath ?? ctx.directory)
             })
+            if (raced) return "Error: team already has an active orchestration"
             return `team_pipeline started on "${args.team_id}" with ${args.stages.length} stage(s).`
         },
     })
@@ -216,6 +230,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             max_rounds: tool.schema.number().min(1).max(50),
             initial_task: tool.schema.string().min(1),
             timeout_ms: tool.schema.number().min(1000).optional(),
+            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
         async execute(args) {
             if (args.decider === "master") {
@@ -240,10 +255,12 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 if (team.activeTask) busy = true
             })
             if (busy) return "Error: team already has an active orchestration"
+            let raced = false
 
             await ensureMembersReady(ctx, team)
 
             await team.mutex.runExclusive(async () => {
+                if (team.activeTask) { raced = true; return } // M7: re-check inside mutex
                 team.status = "busy"
                 // Append decider as a final read-only stage if not already present.
                 let stages: Stage[] = args.stages.map(s => ({
@@ -264,8 +281,10 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                     type: "loop",
                     startedAt: Date.now(),
                     wallClockTimeoutMs: args.timeout_ms ?? DEFAULT_LOOP_TIMEOUT_MS,
+                    tokenBudget: args.token_budget,
                     tokensUsed: 0,
                     tokensByMember: {},
+                    messagesSent: 0,
                     responses: {},
                     stages,
                     currentStageIndex: 0,
@@ -278,8 +297,9 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 await saveTeamState(team)
                 // Dispatch first stage with the initial task.
                 const first = team.members.find(m => m.name === stages[0].member)!
-                await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? team.directory)
+                await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? ctx.directory)
             })
+            if (raced) return "Error: team already has an active orchestration"
             return `team_loop started on "${args.team_id}" (decider: ${args.decider}, max ${args.max_rounds} rounds).`
         },
     })
@@ -304,6 +324,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 )
                 .min(1),
             timeout_ms: tool.schema.number().min(1000).optional(),
+            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
         async execute(args) {
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
@@ -313,17 +334,21 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 if (team.activeTask) busy = true
             })
             if (busy) return "Error: team already has an active orchestration"
+            let raced = false
 
             await ensureMembersReady(ctx, team)
 
             await team.mutex.runExclusive(async () => {
+                if (team.activeTask) { raced = true; return } // M7: re-check inside mutex
                 team.status = "busy"
                 team.activeTask = {
                     type: "delegate",
                     startedAt: Date.now(),
                     wallClockTimeoutMs: args.timeout_ms ?? DEFAULT_TIMEOUT_MS,
+                    tokenBudget: args.token_budget,
                     tokensUsed: 0,
                     tokensByMember: {},
+                    messagesSent: 0,
                     responses: {},
                     stages: [],
                     currentStageIndex: 0,
@@ -363,9 +388,10 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                         `[Team Orchestrator] You are on team "${team.teamName}" in delegate mode. ` +
                         `${args.tasks.length} task(s) published. Use team_task_list to view, team_task_update (status "claimed") to claim, ` +
                         `execute, then team_send_message to report results to master. Repeat until no tasks remain.`
-                    await dispatchToMember(ctx, m, text, m.worktreePath ?? team.directory)
+                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory)
                 }
             })
+            if (raced) return "Error: team already has an active orchestration"
             return `team_delegate started on "${args.team_id}" with ${args.tasks.length} task(s).`
         },
     })

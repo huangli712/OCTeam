@@ -6,6 +6,7 @@ import { createTools } from "./tools/index.js"
 import {
     createEventHandler,
     createTransformHook,
+    reconcileCrashedTeams,
     startSweepTimer,
 } from "./hooks.js"
 import { rebuildSessionIndex } from "./utils.js"
@@ -28,6 +29,12 @@ const server = async (input: PluginInput): Promise<Hooks> => {
     // so idles/transforms resolve correctly after a plugin/OpenCode restart.
     await rebuildSessionIndex(ctx.storageRoot).catch(() => {
         // best effort — unreadable teams are skipped
+    })
+
+    // Crash recovery (§3): reconcile teams left "busy"/"idle" by a crashed prior
+    // process — release stale reservations, fail interrupted orchestrations.
+    await reconcileCrashedTeams(ctx).catch(() => {
+        // best effort — never block plugin load on recovery
     })
 
     // Background sweep timer: reaps stale resources, enforces termination, and

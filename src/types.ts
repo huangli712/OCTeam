@@ -99,6 +99,7 @@ export type ActiveTask = {
     tokenBudget?: number               // optional cost cap
     tokensUsed: number                 // running total = sum of tokensByMember (recomputed)
     tokensByMember: Record<string, number>  // memberName -> sum(input+output+reasoning)
+    messagesSent: number               // total team_send_message writes this run (§8.1 maxMessagesPerRun)
 
     // result collection (serializable — NOT a Map)
     responses: Record<string, string>  // memberName -> last assistant text output

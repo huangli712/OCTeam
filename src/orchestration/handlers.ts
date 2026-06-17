@@ -314,7 +314,7 @@ async function handlePipelineIdle(ctx: PluginContext, team: Team, member: Runtim
             parts: [{ type: "text", text: fullTask, synthetic: true }],
             agent: nextMember.agent ?? "build",
         },
-        query: { directory: nextMember.worktreePath ?? team.directory },
+        query: { directory: nextMember.worktreePath ?? ctx.directory },
     })
     nextMember.status = "running"
     nextMember.turnCount++
@@ -375,12 +375,19 @@ async function handleLoopIdle(ctx: PluginContext, team: Team, member: RuntimeMem
         return
     }
 
-    // Continue to next round.
+    // Continue to next round — inject the decider's feedback (rationale +
+    // nextActions) into stage 0's prompt so the loop is actually corrective (H1).
+    // Without this the next round re-sends the original task verbatim.
     task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
     task.currentRound = (task.currentRound ?? 0) + 1
     task.currentStageIndex = 0
     for (const s of task.stages) s.completed = false
-    await advanceToStage(ctx, team, stages[0])
+    const feedback =
+        `[Round ${task.currentRound} — decider feedback]\n${decision.rationale}`
+        + (decision.nextActions.length > 0
+            ? `\nNext actions:\n${decision.nextActions.map(a => `- ${a}`).join("\n")}`
+            : "")
+    await advanceToStage(ctx, team, stages[0], feedback)
 }
 
 async function handleDelegateIdle(ctx: PluginContext, team: Team, member: RuntimeMember): Promise<void> {
@@ -466,7 +473,10 @@ export async function handleStatusEvent(
     await team.mutex.runExclusive(async () => {
         const live = team.members.find(m => m.name === member.name)
         if (!live) return
-        const status = await ctx.client.session.status({ query: { directory: ctx.directory } })
+        // M6: omit the directory filter so sessions in member worktrees (a different
+        // directory) are also returned — otherwise a worktree member stuck in retry
+        // is never seen and retry escalation never fires.
+        const status = await ctx.client.session.status({})
         const entry = (status.data as Record<string, { type: string; message?: string }> | undefined)?.[sessionID]
         if (entry?.type === "retry") {
             live.retryingSince ??= Date.now()

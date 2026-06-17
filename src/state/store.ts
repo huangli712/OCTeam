@@ -67,14 +67,13 @@ export async function loadTeamState(
         }
         team = { ...state, mutex: new AsyncMutex(), directory: dir }
         teamRegistry.set(teamName, team)
-    } else {
-        const state = await readJsonOrNull<RuntimeState>(statePath(dir))
-        if (state) {
-            // Refresh persisted fields; keep the original mutex + directory.
-            Object.assign(team, state)
-        }
-        team.directory = dir
     }
+    // M2: once registered, the in-memory Team is the authoritative copy — every
+    // mutation goes through it under the per-team mutex, then saveTeamState writes
+    // it to disk. Re-reading disk here (Object.assign) would clobber an in-flight
+    // mutex holder's unsaved mutations (a lost-update race, since loadTeamState is
+    // called outside the mutex by the event handler). The registry is rebuilt from
+    // disk only on first access or after invalidateTeam (restart / delete).
     return team
 }
 

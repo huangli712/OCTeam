@@ -31,7 +31,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
             const sender = await resolveTeamMember(ctx.storageRoot, context.sessionID)
             if (!sender) return "Error: caller is not a team member of this team"
 
-            const { loadTeamState } = await import("../state/store.js")
+            const { loadTeamState, saveTeamState } = await import("../state/store.js")
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
 
             // Broadcast is master-only; members send point-to-point only.
@@ -54,6 +54,24 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 const unread = await countUnreadMessages(team.directory, r)
                 if (unread > 0 && unread * 1024 > team.bounds.messageUnreadMaxBytes) {
                     return `Error: recipient "${r}" mailbox is full (backpressure). Try later.`
+                }
+            }
+
+            // M1 (§8.1): enforce maxMessagesPerRun during an active orchestration.
+            if (team.activeTask) {
+                let overLimit = false
+                await team.mutex.runExclusive(async () => {
+                    const task = team.activeTask
+                    if (!task) return
+                    if (task.messagesSent + recipients.length > team.bounds.maxMessagesPerRun) {
+                        overLimit = true
+                        return
+                    }
+                    task.messagesSent += recipients.length
+                    await saveTeamState(team)
+                })
+                if (overLimit) {
+                    return `Error: per-run message limit reached (${team.bounds.maxMessagesPerRun}). Message not sent.`
                 }
             }
 

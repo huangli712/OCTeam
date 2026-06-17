@@ -64,6 +64,25 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 names.add(m.name)
             }
 
+            // M4: refuse if this session already leads a non-terminal team. One
+            // interactive session drives one active team at a time (§252); otherwise
+            // indexMaster below would silently overwrite the prior team's master
+            // index and orphan its result delivery.
+            for (const other of await listTeamNames(ctx.storageRoot)) {
+                if (other === args.name) continue
+                try {
+                    const t = await loadTeamState(ctx.storageRoot, other)
+                    if (
+                        t.leadSessionId === context.sessionID
+                        && (t.status === "live" || t.status === "busy" || t.status === "idle")
+                    ) {
+                        return `Error: this session already leads team "${other}" (status ${t.status}). Shut it down or delete it before creating another team.`
+                    }
+                } catch {
+                    // unreadable team state — ignore
+                }
+            }
+
             const now = Date.now()
             const spec: TeamSpec = {
                 version: 1,

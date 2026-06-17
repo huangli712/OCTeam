@@ -15,7 +15,7 @@ import type { PluginContext } from "../context.js"
 import type { Team } from "../state/store.js"
 import { readTeamSpec } from "../state/store.js"
 import { worktreePath } from "../state/paths.js"
-import { buildRolePrompt, chunk, truncateOutput, waitUntil } from "../utils.js"
+import { buildRolePrompt, chunk, indexMember, truncateOutput, waitUntil } from "../utils.js"
 import type { Stage } from "../types.js"
 
 const execFileP = promisify(execFile)
@@ -88,6 +88,11 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
                 const sessionId = result.data?.id
                 if (!sessionId) throw new Error(`session.create returned no id for ${member.name}`)
                 member.sessionId = sessionId
+                // S1: index the freshly spawned session so its role-setup idle
+                // resolves to this member. Without this, resolveTeamMember returns
+                // null in the event handler, member.initialized never flips, and the
+                // role-setup barrier below spins until timeout (every workflow fails).
+                indexMember(sessionId, team.teamName, member.name)
                 member.status = "running" // running role-setup, NOT yet idle
                 member.initialized = false
                 // 3. Send role-setup prompt (members idle when done)
@@ -137,6 +142,7 @@ export async function advanceToStage(
     ctx: PluginContext,
     team: Team,
     stage: Stage,
+    contextPrefix?: string,
 ): Promise<void> {
     const task = team.activeTask
     if (!task) return
@@ -146,16 +152,21 @@ export async function advanceToStage(
     }
     const prevIdx = task.currentStageIndex - 1
     const prev = prevIdx >= 0 ? task.responses[task.stages[prevIdx].member] : null
-    const text = prev
+    const base = prev
         ? `[Prior output]\n${truncateOutput(prev)}\n\n[Your task]\n${stage.task}`
         : stage.task
+    // contextPrefix carries cross-round feedback (e.g. the decider's decision in a
+    // loop) so the next round is actually corrective rather than re-asking verbatim.
+    const text = contextPrefix ? `${contextPrefix}\n\n${base}` : base
     await ctx.client.session.promptAsync({
         path: { id: member.sessionId },
         body: {
             parts: [{ type: "text", text, synthetic: true }],
             agent: member.agent ?? "build",
         },
-        query: { directory: member.worktreePath ?? team.directory },
+        // H2: members work in the PROJECT dir (or their worktree), never the
+        // .octeam state dir. session.create already used ctx.directory.
+        query: { directory: member.worktreePath ?? ctx.directory },
     })
     member.status = "running"
     member.turnCount++
