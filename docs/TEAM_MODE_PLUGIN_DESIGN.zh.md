@@ -164,10 +164,16 @@ type RuntimeMember = {
     model?: string
     agent?: string
     status: MemberStatus
+    initialized: boolean                // B3: true after role-setup prompt completes (member idled once).
+                                        //   Event handler IGNORES idles until initialized, preventing
+                                        //   role-setup idle from being captured as a task result.
     worktreePath?: string               // absolute path to git worktree
     pendingMessageCount: number         // unread messages in mailbox
     turnCount: number                   // M4: incremented per promptAsync dispatch; checked vs bounds.maxMemberTurns
     lastTurnMarker?: string             // for Transform hook injection dedup
+    lastNotifiedAt?: number             // delegate: epoch ms of last "tasks available" re-prompt;
+                                        //   used to rate-limit re-prompts (avoid claim-race busy-loop)
+    retryingSince?: number              // B2: epoch ms when session entered "retry"; escalated to errored after TTL
     error?: string                      // if status === "errored"
     isMaster?: boolean                  // B1: set ONLY on the synthetic master record from resolveTeamMember; never persisted
 }
@@ -181,6 +187,70 @@ type MemberStatus =
     | "shutdown_approved"               // cooperative shutdown approved
 ```
 
+### Team（运行时对象，非持久化）
+
+`RuntimeState` 是**持久化数据**（`state.json`）。handler 操作的是 `Team`——一个**进程级缓存的运行时对象**，包裹 `RuntimeState` 并附加非持久化的运行时句柄（mutex、解析后的工作目录）。
+
+```ts
+type Team = RuntimeState & {
+    mutex: AsyncMutex                    // per-teamName singleton; serializes event-handler state mutations
+    directory: string                   // resolved project/team working directory
+}
+```
+
+**关键：mutex 必须是 per-teamName 进程级单例**。否则若每次 `loadTeamState` 返回新对象、新 mutex，则并发 idle 会获取不同的 mutex → 串行化失效 → 状态损坏。
+
+```ts
+// 进程级注册表：teamName → Team（含其单例 mutex）
+const teamRegistry = new Map<string, Team>()
+
+async function loadTeamState(teamName: string): Promise<Team> {
+    let team = teamRegistry.get(teamName)
+    if (!team) {
+        // First load: create Team with a fresh mutex, read state.json into it
+        const state = await readStateFile(teamName)        // parse state.json
+        team = { ...state, mutex: new AsyncMutex(), directory: resolveTeamDir(teamName) }
+        teamRegistry.set(teamName, team)
+    } else {
+        // Subsequent loads: refresh persisted fields, KEEP the same mutex
+        const state = await readStateFile(teamName)
+        Object.assign(team, state)                          // mutex/directory preserved
+    }
+    return team
+}
+```
+
+`saveTeamState(team)` 将 `team` 的持久化字段（即 `RuntimeState` 部分）经 `withLock` + `atomicWrite` 写回 `state.json`。`mutex`/`directory` 不写入磁盘。plugin 重启后 `teamRegistry` 为空，首次访问各 team 时重建（单实例，安全）。
+
+### sessionID → member 索引（#6 修复——避免热路径扫盘）
+
+`resolveTeamMember(sessionID)` 被 **Transform hook 在每个 session 的每次 chat turn 调用**（包括与 team 无关的用户 session）+ 每个 `session.idle` 调用。若每次都扫描所有 `state.json` 文件判断「是不是 member」，会对**全部 OpenCode 使用**施加 I/O 开销。
+
+用进程级内存索引 O(1) 解析：
+
+```ts
+// sessionID → { teamName, memberName } | { teamName, isMaster: true }
+const sessionIndex = new Map<string, { teamName: string; memberName: string; isMaster?: boolean }>()
+
+// Built at ensureMembersReady (member sessions) and team_create (leadSessionId → master).
+// Invalidated at team_delete. Rebuilt from disk on plugin restart (scan once, not per-turn).
+async function resolveTeamMember(sessionID: string): Promise<RuntimeMember & { teamName: string; teamRunId: string } | null> {
+    const hit = sessionIndex.get(sessionID)
+    if (!hit) return null              // O(1) reject for non-member sessions (the common case)
+    const team = await loadTeamState(hit.teamName)
+    if (hit.isMaster) {
+        // B1: synthetic master pseudo-member (not persisted, not in members[])
+        return { name: "master", isMaster: true, status: "idle", initialized: true,
+                 pendingMessageCount: 0, turnCount: 0,
+                 teamName: team.teamName, teamRunId: team.teamRunId } as any
+    }
+    const member = team.members.find(m => m.name === hit.memberName)
+    return member ? { ...member, teamName: team.teamName, teamRunId: team.teamRunId } : null
+}
+```
+
+> **多 team 共享 leader 的已知限制**：若同一 session 是多个 team 的 leader，`sessionIndex` 只能映射到一个（最后写入者）。设计上建议一个交互 session 同一时间只 active 一个 team；`team_create` 在 leader 已有 active team 时应警告。
+
 ### ActiveTask
 
 每个 team 同一时间只能运行一个编排（parallel/pipeline/loop）。在已有活跃编排时调用新的编排 tool 会返回错误。
@@ -192,12 +262,14 @@ type ActiveTask = {
     startedAt: number
     wallClockTimeoutMs: number          // hard timeout, default 300000 (5 min)
     tokenBudget?: number                // optional cost cap
-    tokensUsed: number                  // running total; sourced by summing AssistantMessage
-                                        //   info.tokens (input+output+reasoning) from session.messages
-                                        //   — NOT from session.status (M5: status has no token data)
+    tokensUsed: number                  // running total = sum of tokensByMember (recomputed, never +=)
+    tokensByMember: Record<string, number>  // memberName → Σ(input+output+reasoning) over that
+                                        //   member's assistant messages. Recomputed per idle to AVOID
+                                        //   double-counting (each idle re-reads full message history).
+                                        //   Source: session.messages info.tokens — NOT session.status (M5).
 
     // result collection (serializable — NOT a Map)
-    responses: Record<string, string>   // memberName → last assistant text output
+    responses: Record<string, string>   // memberName → last assistant text output (NOT used for delegate)
 
     // parallel mode
     task?: string                       // isolated: uniform task
@@ -215,6 +287,10 @@ type ActiveTask = {
     // loop-specific
     deciderMember?: string              // member name of decider (NOT "leader")
     decisionHistory: DecisionRecord[]   // structured decisions per round
+    decisionParseFailures: number       // consecutive <decision> parse failures; loop aborts at 3
+
+    // discussion-specific (parallel mode === "discussion")
+    consensusReached?: boolean          // set when all members emit <consensus>{"agreed":true}</consensus>
 }
 
 type Stage = {
@@ -306,7 +382,22 @@ type Task = {
 
 3. **Mailbox reservation 协议**：投递消息时，plugin 将消息从 `mailbox/{member}.jsonl` 原子移动到 `mailbox/{member}.reserved/{messageId}`（预约中），然后提交到 `processed.jsonl`（已投递）或释放回 inbox（失败）。防止 live 和 poll 路径之间的重复投递。
 
-4. **Task 认领锁**：`team_task_update` 设置 `status: "claimed"` 时通过 `fs.open(lockPath, 'wx')` 获取 `tasks/claims/{taskId}.lock`。stale 锁在 TTL 后被清除。
+4. **Task 认领锁 + stale-claim reaper**：`team_task_update` 设置 `status: "claimed"` 时通过 `fs.open(lockPath, 'wx')` 获取 `tasks/claims/{taskId}.lock`。
+
+   **关键一致性（Oracle 发现）**：锁文件与 `Task.status` 是两份独立状态。若 member 认领后崩溃，锁在 TTL（30s）后过期，但 `Task.status` 仍是 `"claimed"` → 任务进入「锁可用但状态为 claimed」的 limbo，`handleDelegateIdle` 的 `claimable` 过滤（`status === "pending"`）会跳过它，造成假死锁。**reaper 必须同时复位两者**：sweep timer 周期性扫描 claimed 任务，若其锁文件已过期（或不存在）且 `claimedAt` 超过 TTL，则将 `Task.status` 从 `"claimed"` 复位为 `"pending"`，使其可被重新认领。
+
+   ```ts
+   // Run by the sweep timer (Section 6). Reconciles claim-lock TTL with Task.status.
+   async function reapStaleClaims(team: Team): Promise<void> {
+       for (const task of await listAllTasks(team.teamRunId)) {
+           if (task.status !== "claimed") continue
+           const lockAlive = await lockFresh(claimLockPath(team.teamRunId, task.id))  // exists & within TTL
+           if (!lockAlive && Date.now() - (task.claimedAt ?? 0) > CLAIM_TTL_MS) {
+               await updateTask(team.teamRunId, task.id, { status: "pending", owner: undefined })
+           }
+       }
+   }
+   ```
 
 ### 崩溃恢复
 
@@ -373,41 +464,57 @@ team_create({
 4. **不创建 session、不发送 prompt、不创建 worktree**。这些延迟到 workflow tool 执行时。
 5. 返回 team 摘要（不含 session ID，因为尚未创建）。
 
-**Session 按需拉起（`ensureMembersReady`）**：
+**Session 按需拉起（`ensureMembersReady`，含 role-setup barrier — B3 修复）**：
 
-`team_parallel`/`team_pipeline`/`team_loop` 的 tool handler 在写入 `activeTask` 前，先调用 `ensureMembersReady(team)` 拉起 session，然后设置 `team.status = "busy"`，再写入 `activeTask` 并发出首批 prompt：
+`team_parallel`/`team_pipeline`/`team_loop`/`team_delegate` 的 tool handler 在写入 `activeTask` 前，先 `await ensureMembersReady(team)`，然后设置 `team.status = "busy"`，再写入 `activeTask` 并发出首批 prompt。
+
+**关键（B3）**：`ensureMembersReady` 必须**等待所有 member 完成 role-setup（即各自 idle 一次）后才返回**。否则存在竞态：member 的 role-setup idle 会在 `activeTask` 写入后、首个任务 dispatch 前到达，被 event handler 当作 stage 结果捕获并错误推进 pipeline。通过 `initialized` 标志 + readiness barrier 消除此竞态：
 
 ```ts
 async function ensureMembersReady(team: Team): Promise<void> {
-    for (const member of team.members) {
-        if (member.sessionId) continue    // already spawned
+    const toSpawn = team.members.filter(m => !m.sessionId)
+    if (toSpawn.length === 0) return    // team reused; all sessions live & initialized
 
-        // 1. Worktree (if configured)
-        if (member.worktree) {
-            member.worktreePath = await createWorktree(team.teamName, member.name)
-        }
-
-        // 2. Create child session
-        const result = await client.session.create({
-            body: { parentID: team.leadSessionId, title: `${team.teamName}/${member.name}` },
-            query: { directory: member.worktreePath ?? team.directory },
-        })
-        member.sessionId = result.data.id
-        member.status = "idle"
-
-        // 3. Send role setup prompt
-        await client.session.promptAsync({
-            path: { id: member.sessionId },
-            body: {
-                parts: [{ type: "text", text: buildRolePrompt(member, team), synthetic: true }],
-                agent: member.agent ?? "build",
-            },
-        })
-        member.turnCount = 1
+    // Spawn in batches of maxParallelMembers (concurrent session.create + role-setup)
+    for (const batch of chunk(toSpawn, team.bounds.maxParallelMembers)) {
+        await Promise.all(batch.map(async member => {
+            // 1. Worktree (if configured)
+            if (member.worktree) {
+                member.worktreePath = await createWorktree(team.teamName, member.name)
+            }
+            // 2. Create child session
+            const result = await client.session.create({
+                body: { parentID: team.leadSessionId, title: `${team.teamName}/${member.name}` },
+                query: { directory: member.worktreePath ?? team.directory },
+            })
+            member.sessionId = result.data.id
+            member.status = "running"        // running role-setup, NOT yet idle
+            member.initialized = false
+            // 3. Send role-setup prompt (members will idle when done)
+            await client.session.promptAsync({
+                path: { id: member.sessionId },
+                body: {
+                    parts: [{ type: "text", text: buildRolePrompt(member, team), synthetic: true }],
+                    agent: member.agent ?? "build",
+                },
+            })
+            member.turnCount = 1
+        }))
+        await saveTeamState(team)
     }
-    await saveTeamState(team)
+
+    // 4. ROLE-SETUP BARRIER: wait until every spawned member has idled once.
+    //    The event handler sets member.initialized = true on the FIRST idle of an
+    //    uninitialized member, then returns WITHOUT capturing output or advancing.
+    await waitUntil(
+        () => toSpawn.every(m => team.members.find(x => x.name === m.name)?.initialized),
+        { timeoutMs: 120_000, pollMs: 250 },
+    )
+    // If timeout: mark non-idle members errored, throw — tool handler reports failure.
 }
 ```
+
+> `waitUntil(predicate, opts)` 轮询 `predicate`（每 `pollMs`），在为真时 resolve，超时则 reject。`chunk(arr, n)` 将数组分批。两者为小工具函数。
 
 **优势**：
 - 创建 team 零开销（无 session、无 LLM 调用）
@@ -730,7 +837,7 @@ team_task_update({
 team_task_get({ team_id: "auth-team", task_id: "task-uuid" })
 ```
 
-**认领语义**：`status: "claimed"` 原子获取 `tasks/claims/{taskId}.lock`。如果另一个 member 已认领，返回 `TaskAlreadyClaimedError`。这实现了协作模式下的 pull-based 任务分配。
+**认领语义**：`status: "claimed"` 原子获取 `tasks/claims/{taskId}.lock` **并校验 `Task.status === "pending"`**（双重检查：锁可用 + 状态一致）。如果另一个 member 已认领（锁被占用或状态非 pending），返回 `TaskAlreadyClaimedError`。这实现了协作模式下的 pull-based 任务分配。崩溃遗留的 stale claim 由 sweep timer 的 `reapStaleClaims` 复位（见 §3 并发原语）。
 
 ### 4.8 `team_shutdown_request`
 
@@ -857,12 +964,57 @@ agent 与 orchestrator 之间的消息流经三层，每层有不同职责：
 
 ### Reservation 协议（防止重复投递）
 
-由于 Layer 2（实时）和 Layer 3（transform）都可能尝试投递，reservation 协议防止重复：
+master 的 mailbox 被**两条路径** drain：(1) event handler 在 master idle 时的 `deliverQueuedResultsToMaster`，(2) Transform hook 在 master 下一 turn。member 的 mailbox 只被 Transform hook drain（单一 drainer，无竞争）。为防止 master 的双路径重复投递，**`pollMailbox` 必须是原子 read-and-reserve**，而非单纯读取。
 
-1. 当 Layer 2 触发唤醒时，消息被原子地从 `mailbox/{member}.jsonl` 移动到 `mailbox/{member}.reserved/{messageId}`。
-2. Layer 3（Transform hook）拾取已预约的消息并注入。
-3. 注入成功后，消息提交到 `mailbox/{member}.processed.jsonl`。
-4. 如果 session 在注入前出错，预约被释放回 inbox（stale TTL: 30s）。
+**核心：`pollMailbox` 原子预约**。在文件锁下，将 inbox 中的消息移动到 `reserved/`，返回被移动的消息。两个 drainer 调用同一函数；先到者拿走消息并 reserve，后到者看到空 inbox → 不重复投递。
+
+```ts
+// Atomic read-and-reserve under file lock. Returns the messages THIS caller reserved.
+async function pollMailbox(teamRunId: string, recipient: string): Promise<Message[]> {
+    return withLock(mailboxLockPath(teamRunId, recipient), async () => {
+        const inbox = await readJsonl(inboxPath(teamRunId, recipient))   // {recipient}.jsonl
+        if (inbox.length === 0) return []
+        // Move each message to reserved/{messageId} (atomic rename), stamp reservedAt.
+        for (const msg of inbox) {
+            await atomicWrite(
+                reservedPath(teamRunId, recipient, msg.id),
+                JSON.stringify({ ...msg, deliveryStatus: "delivered", reservedAt: Date.now() }),
+            )
+        }
+        await truncateFile(inboxPath(teamRunId, recipient))   // clear inbox in same lock
+        return inbox
+    })
+}
+
+// Commit reserved → processed (delivery confirmed). Removes the reserved files.
+async function ackMessages(teamRunId: string, recipient: string, msgs: Message[]): Promise<void> {
+    for (const msg of msgs) {
+        await appendJsonl(processedPath(teamRunId, recipient), { ...msg, deliveryStatus: "processed" })
+        await rm(reservedPath(teamRunId, recipient, msg.id))
+    }
+}
+
+// Reaper (run by the sweep timer): release reserved messages older than TTL back to inbox.
+// Covers the crash-between-reserve-and-ack case.
+async function releaseStaleReservations(teamRunId: string, recipient: string): Promise<void> {
+    return withLock(mailboxLockPath(teamRunId, recipient), async () => {
+        for (const r of await listReserved(teamRunId, recipient)) {
+            if (Date.now() - r.reservedAt > RESERVATION_TTL_MS) {   // default 30000
+                await appendJsonl(inboxPath(teamRunId, recipient), { ...r, deliveryStatus: "pending" })
+                await rm(reservedPath(teamRunId, recipient, r.id))
+            }
+        }
+    })
+}
+```
+
+**流程**：
+1. drainer 调用 `pollMailbox` → 原子地把 inbox 消息移入 `reserved/` 并返回。
+2. drainer 投递（Transform 注入 / master promptAsync）。
+3. 成功后调用 `ackMessages` → `reserved/` → `processed.jsonl`。
+4. 若投递前崩溃 → 消息滞留 `reserved/` → sweep timer 的 `releaseStaleReservations`（TTL 30s）将其放回 inbox 重新投递。
+
+**`countUnreadMessages` 只数 inbox**（不含 reserved），因此已预约的消息不会触发重复 wake-hint。
 
 ### Idle Wake-Hint
 
@@ -872,13 +1024,17 @@ agent 与 orchestrator 之间的消息流经三层，每层有不同职责：
 
 ## 6. 事件处理——带锁状态机
 
-plugin 通过 `Hooks.event` hook 订阅事件。这是一个**单一 handler**，接收所有事件类型——必须在内部通过 `event.type` 过滤。
+plugin 通过 `Hooks.event` hook 订阅事件。这是一个**单一 handler**，接收所有事件类型——必须在内部通过 `event.type` 过滤。除 `session.idle` 外，还处理 `session.status`（B2：捕获 retry/error）。另有一个独立的 **sweep timer**（B1）兜底丢失的 idle 事件。
 
 ### 核心 Handler
 
 ```ts
 event: async ({ event }) => {
-    // Only process idle events
+    // B2: session.status carries retry/error signals that session.idle does NOT.
+    if (event.type === "session.status") {
+        await handleStatusEvent(event)
+        return
+    }
     if (event.type !== "session.idle") return
 
     const sessionID = event.properties.sessionID
@@ -889,71 +1045,151 @@ event: async ({ event }) => {
 
     // --- Acquire per-team mutex (prevents concurrent state corruption) ---
     await team.mutex.runExclusive(async () => {
-        // --- Step 1: Update member status ---
-        member.status = "idle"
+        await processIdle(team, member, sessionID)
+    })
+}
 
-        // --- Master special case (B1 fix): master is resolved as a synthetic member.
-        //     Deliver any queued team results via promptAsync, then return.
-        //     Master NEVER participates in orchestration dispatch. ---
-        if (member.isMaster) {
-            await deliverQueuedResultsToMaster(team, sessionID)
+async function processIdle(team: Team, member: RuntimeMember, sessionID: string) {
+    // --- Step 0: Master special case (B1 fix): master is a synthetic member.
+    //     Deliver any queued team results, then return. Master NEVER dispatches. ---
+    if (member.isMaster) {
+        await deliverQueuedResultsToMaster(team, sessionID)
+        return
+    }
+
+    // --- Step 1: Update member status ---
+    member.status = "idle"
+    member.retryingSince = undefined        // B2: idle clears any retry tracking
+
+    // --- Step 1.5: Role-setup barrier (B3): the FIRST idle of an uninitialized member
+    //     marks it ready and returns WITHOUT capturing output or advancing. This
+    //     prevents the role-setup response from being mistaken for a task result. ---
+    if (!member.initialized) {
+        member.initialized = true
+        await saveTeamState(team)
+        return
+    }
+
+    // --- Step 2: Token accounting (B2/#2): recompute this member's token tally from
+    //     full message history (recompute, never +=, to avoid double-counting). ---
+    const msgs = await client.session.messages({ path: { id: sessionID } })
+    if (team.activeTask) {
+        team.activeTask.tokensByMember[member.name] = sumMemberTokens(msgs.data)
+        team.activeTask.tokensUsed = Object.values(team.activeTask.tokensByMember)
+            .reduce((a, b) => a + b, 0)
+    }
+
+    // --- Step 3: Identity validation (prevent stray idle from advancing stages) ---
+    if (team.activeTask) {
+        const expectedMember = getExpectedMember(team.activeTask)
+        if (expectedMember && member.name !== expectedMember) {
+            await saveTeamState(team)   // persist token tally; do NOT advance
             return
         }
+    }
 
-        // --- Step 2: Identity validation (prevent stray idle from advancing stages) ---
-        if (team.activeTask) {
-            const expectedMember = getExpectedMember(team.activeTask)
-            if (expectedMember && member.name !== expectedMember) {
-                // This idle is from an unexpected member — record but do NOT advance
-                return
-            }
-        }
-
-        // --- Step 3: Capture this member's output ---
-        const msgs = await client.session.messages({
-            path: { id: sessionID },
-        })
-        const lastAssistant = msgs.data?.findLast(
-            m => m.info?.role === "assistant"
-        )
+    // --- Step 4: Capture this member's output (NULL-GUARDED + mode-aware).
+    //     delegate does NOT use responses[] (per-task results go to master via
+    //     team_send_message; capturing here would overwrite — see #3). ---
+    if (team.activeTask && team.activeTask.type !== "delegate") {
+        const lastAssistant = msgs.data?.findLast(m => m.info?.role === "assistant")
         if (lastAssistant) {
             const text = extractTextFromParts(lastAssistant.parts)
             team.activeTask.responses[member.name] = truncateOutput(text)
         }
+    }
 
-        await saveTeamState(team)
+    await saveTeamState(team)
 
-        // --- Step 4: Check for unread messages first ---
-        const unread = await countUnreadMessages(member.teamRunId, member.name)
-        if (unread > 0) {
-            // Transform hook will inject on next turn; just send wake hint
-            await sendWakeHint(client, sessionID, unread)
-            return
+    // --- Step 5: Check for unread messages first ---
+    const unread = await countUnreadMessages(member.teamRunId, member.name)
+    if (unread > 0) {
+        // Transform hook will inject on next turn; just send wake hint
+        await sendWakeHint(client, sessionID, unread)
+        return
+    }
+
+    // --- Step 6: Dispatch based on active task type ---
+    if (!team.activeTask) return
+
+    switch (team.activeTask.type) {
+        case "parallel":
+            await handleParallelIdle(team, member)
+            break
+        case "pipeline":
+            await handlePipelineIdle(team, member)
+            break
+        case "loop":
+            await handleLoopIdle(team, member)
+            break
+        case "delegate":
+            await handleDelegateIdle(team, member)
+            break
+    }
+
+    // --- Step 7: Check termination conditions ---
+    await checkTermination(team)
+}
+```
+
+### B2：session.status 处理（retry/error 升级）
+
+`session.idle` 不携带错误信号；retry 中的 member 永不 idle。订阅 `session.status` 捕获这两类状态，避免 barrier 无限等待（旧设计中 `checkTermination` 的 member-error 分支是死代码）。
+
+```ts
+async function handleStatusEvent(event: { properties: { sessionID: string } }) {
+    const sessionID = event.properties.sessionID
+    const member = await resolveTeamMember(sessionID)
+    if (!member || member.isMaster) return
+
+    const team = await loadTeamState(member.teamName)
+    await team.mutex.runExclusive(async () => {
+        const status = (await client.session.status()).data?.[sessionID]
+        if (status?.type === "retry") {
+            // Track first retry; escalate to errored after sustained retry TTL (default 60s)
+            member.retryingSince ??= Date.now()
+            if (Date.now() - member.retryingSince > RETRY_ESCALATION_MS) {
+                member.status = "errored"
+                member.error = `sustained retry > ${RETRY_ESCALATION_MS}ms: ${status.message ?? "unknown"}`
+                await saveTeamState(team)
+                await checkTermination(team)   // member-error branch now fires
+            }
+        } else if (status?.type === "idle") {
+            member.retryingSince = undefined
         }
-
-        // --- Step 5: Dispatch based on active task type ---
-        if (!team.activeTask) return
-
-        switch (team.activeTask.type) {
-            case "parallel":
-                await handleParallelIdle(team, member)
-                break
-            case "pipeline":
-                await handlePipelineIdle(team, member)
-                break
-            case "loop":
-                await handleLoopIdle(team, member)
-                break
-            case "delegate":
-                await handleDelegateIdle(team, member)
-                break
-        }
-
-        // --- Step 6: Check termination conditions ---
-        await checkTermination(team)
     })
 }
 ```
+
+### B1：Sweep Timer（丢失 idle 事件兜底）
+
+barrier 模式被单个丢失的 `session.idle` 永久卡住。sweep timer 周期性轮询 `session.status()`——若某 member 在 OpenCode 中已 `idle` 但 plugin 状态仍 `running`（事件丢失），补触发 `processIdle`。这是确定性模式可靠性的关键兜底。
+
+```ts
+// Started in server() init; one interval for the whole plugin.
+function startSweepTimer() {
+    setInterval(async () => {
+        const statusMap = (await client.session.status()).data ?? {}
+        for (const team of teamRegistry.values()) {
+            if (!team.activeTask) continue
+            await team.mutex.runExclusive(async () => {
+                // Wall-clock / budget / error checks run even if no idle arrives
+                await checkTermination(team)
+                if (!team.activeTask) return
+                for (const member of team.members) {
+                    if (!member.sessionId || member.status !== "running") continue
+                    if (statusMap[member.sessionId]?.type === "idle") {
+                        // Missed idle event — reconcile by re-entering the idle path
+                        await processIdle(team, member, member.sessionId)
+                    }
+                }
+            })
+        }
+    }, SWEEP_INTERVAL_MS)   // default 15000
+}
+```
+
+> sweep timer 同时定期调用 `checkTermination`，使 wall-clock timeout / budget / member-error 即使在完全没有 idle 事件到达时也能触发——不再依赖 idle 作为唯一驱动。
 
 ### getExpectedMember（M3：按模式区分）
 
@@ -963,29 +1199,32 @@ Step 2 的身份校验依赖 `getExpectedMember`。**关键**：parallel 模式�
 function getExpectedMember(task: ActiveTask): string | null {
     // parallel (isolated/collaborative/discussion): all members run concurrently
     //   → accept EVERY member's idle event
-        if (task.type === "parallel") return null
-        if (task.type === "delegate") return null   // all members run independently
+    if (task.type === "parallel") return null
+    if (task.type === "delegate") return null   // all members run independently
     // pipeline / loop: only the current stage's member may advance the state machine
     return task.stages[task.currentStageIndex]?.member ?? null
 }
 ```
 
-### Barrier 原语（三种模式共用）
+### Barrier 原语（仅 parallel 模式使用）
 
-所有三种编排模式共享一个共同内部原语：**运行 agent → 等待所有预期 member 达到 idle → 收集输出 → 推进**。
+**重要澄清**：barrier 不是所有模式共用的。pipeline/loop **不使用** `waitForBarrier`——它们通过 event handler 的身份校验（`getExpectedMember` 返回当前 stage 的 member）逐 stage 内联推进，每个 stage 本质是单 member 的隐式 barrier。**只有 parallel（isolated/collaborative/discussion）真正使用 `waitForBarrier`**，因为它需要等待 N 个并发 member 全部 idle。delegate 无 barrier。
+
+`waitForBarrier` 是一个**幂等检查**（非阻塞）：在每次 idle 时由 `handleParallelIdle` 调用，检查所有参与 member 是否都已 idle；是则触发 `onBarrier` 推进，否则返回等待下一个 idle 再检查。
 
 ```ts
 /**
- * Wait for all members in `memberNames` to reach idle, then call `onBarrier`.
- * Returns when the barrier is reached or timeout/budget exceeded.
+ * Idempotent barrier check (NOT blocking). Called from handleParallelIdle on each
+ * idle. If all participating members are idle, fires onBarrier exactly once for this
+ * phase. The mutex (Section 6) guarantees onBarrier's status flips are atomic, so a
+ * later idle in the same phase re-checks and sees members already "running" → no
+ * double-fire.
  */
 async function waitForBarrier(
     team: Team,
     memberNames: string[],
     onBarrier: () => Promise<void>,
 ): Promise<void> {
-    // The event handler (Section 6) sets member.status = "idle" on each idle event.
-    // This function is re-entered on each idle to check if all members are idle.
     const allIdle = memberNames.every(name => {
         const m = team.members.find(m => m.name === name)
         return m?.status === "idle"
@@ -993,10 +1232,82 @@ async function waitForBarrier(
     if (allIdle) {
         await onBarrier()
     }
-    // If not all idle, the function returns; the next idle event will re-check.
-    // Termination is enforced by checkTermination() which runs on every idle.
+    // If not all idle, return; the next idle event re-checks.
+    // Termination is enforced by checkTermination() + the sweep timer (Section 6).
 }
 ```
+
+### Parallel Handler（B1/#5 修复——此前未定义）
+
+`handleParallelIdle` 覆盖 isolated/collaborative/discussion 三个子模式。它用 `waitForBarrier` 等待所有参与 member idle，再按子模式推进。
+
+```ts
+async function handleParallelIdle(team: Team, member: RuntimeMember) {
+    const task = team.activeTask!
+    const participants = team.members.filter(m => !m.isMaster).map(m => m.name)
+
+    await waitForBarrier(team, participants, async () => {
+        // All participants idle → barrier reached for this phase.
+        switch (task.mode) {
+            case "isolated":
+            case "collaborative":
+                // Single barrier: collect all outputs → deliver to leader → done.
+                await deliverSummaryToLeader(team, `parallel_${task.mode}_complete`)
+                team.activeTask = undefined
+                team.status = "idle"
+                return
+
+            case "discussion": {
+                // Detect consensus from this round's outputs (structured protocol below).
+                task.consensusReached = allMembersAgree(task.responses)
+                if (task.consensusReached) {
+                    await deliverSummaryToLeader(team, "discussion_consensus")
+                    team.activeTask = undefined
+                    team.status = "idle"
+                    return
+                }
+                if (task.currentRound! >= task.maxRounds!) {
+                    await deliverSummaryToLeader(team, "discussion_max_rounds")
+                    team.activeTask = undefined
+                    team.status = task.consensusReached ? "idle" : "failed"
+                    return
+                }
+                // Next round: broadcast prior-round summary to all, reset to running.
+                task.currentRound!++
+                const summary = buildRoundSummary(task.responses)
+                for (const m of team.members.filter(x => !x.isMaster)) {
+                    await client.session.promptAsync({
+                        path: { id: m.sessionId! },
+                        body: { parts: [{
+                            type: "text",
+                            text: `[Discussion Round ${task.currentRound}] Others said:\n${summary}\n\n`
+                                + `Respond, then emit <consensus>{"agreed": true|false}</consensus>.`,
+                            synthetic: true,
+                        }] },
+                    })
+                    m.status = "running"
+                    m.turnCount++
+                }
+                return
+            }
+        }
+    })
+}
+
+// Discussion consensus: every participant must emit <consensus>{"agreed":true}</consensus>
+// in its latest output. Mirrors loop's <decision> structured-output protocol.
+function allMembersAgree(responses: Record<string, string>): boolean {
+    const texts = Object.values(responses)
+    if (texts.length === 0) return false
+    return texts.every(t => {
+        const m = t.match(/<consensus>\s*(\{[\s\S]*?\})\s*<\/consensus>/)
+        if (!m) return false
+        try { return JSON.parse(m[1]).agreed === true } catch { return false }
+    })
+}
+```
+
+> **discussion 结构化共识协议**：每个 member 每轮输出末尾必须包含 `<consensus>{"agreed": true|false}</consensus>` 块（与 loop 的 `<decision>` 对称）。`allMembersAgree` 要求**全部** member 都 `agreed: true` 才算达成一致。round 0 的初始 prompt 与每轮 re-prompt 都需指示 member 输出此块。
 
 ### Pipeline Handler（已修正）
 
@@ -1225,15 +1536,16 @@ async function deliverSummaryToLeader(team: Team, reason: string) {
 
 // B1 fix: drain master's mailbox and deliver queued team results when master goes idle.
 // Called from the event handler's master special-case branch.
+// Uses formatMailboxInjection — the SAME formatter as the Transform hook (Layer 3) — so
+// the user sees a consistent format regardless of which drain path delivered the result.
 async function deliverQueuedResultsToMaster(team: Team, masterSessionId: string) {
-    const queued = await pollMailbox(team.teamRunId, "master")   // reserves messages
+    const queued = await pollMailbox(team.teamRunId, "master")   // atomic read-and-reserve
     if (queued.length === 0) return
-    const text = queued.map(m => m.body).join("\n\n")
     await client.session.promptAsync({
         path: { id: masterSessionId },
-        body: { parts: [{ type: "text", text, synthetic: true }] },
+        body: { parts: [{ type: "text", text: formatMailboxInjection(queued), synthetic: true }] },
     })
-    await ackMessages(team.teamRunId, "master", queued)   // commit to processed
+    await ackMessages(team.teamRunId, "master", queued)   // commit reserved → processed
 }
 ```
 
