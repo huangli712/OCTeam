@@ -12,6 +12,7 @@ export type DisplayStatus = "running" | "idle" | "errored"
 export type SessionTreeNode = {
     sessionId: string
     agentName: string
+    duration: string
     startTime: string
     status: DisplayStatus
     childCount: number
@@ -39,7 +40,7 @@ function extractAgentName(title: string): string {
 }
 
 /**
- * Format a Unix timestamp (seconds) as MM/DD HH:MM.
+ * Format a timestamp (ms) as MM/DD HH:MM.
  */
 function formatTime(created: number | undefined): string {
     if (!created) return ""
@@ -52,11 +53,28 @@ function formatTime(created: number | undefined): string {
 }
 
 /**
+ * Format elapsed time between created and updated timestamps.
+ * Falls back to Date.now() if updated is missing (e.g. still running).
+ */
+function formatDuration(created: number | undefined, updated: number | undefined): string {
+    if (!created) return ""
+    const end = updated || Date.now()
+    const diff = end - created
+    if (diff < 0) return ""
+    const seconds = Math.floor(diff / 1000)
+    if (seconds < 60) return `${seconds}s`
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h${minutes % 60}m`
+}
+
+/**
  * Load all direct child sessions of the given session.
  */
 export async function loadChildren(
     api: {
-        client: { session: { list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: Array<{ id: string; title?: string; parentID?: string; time?: { created?: number } }> }> } }
+        client: { session: { list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: Array<{ id: string; title?: string; parentID?: string; time?: { created?: number; updated?: number } }> }> } }
         state: { session: { status: (id: string) => { type: string } | undefined } }
     },
     currentSessionId: string,
@@ -68,6 +86,7 @@ export async function loadChildren(
     return children.map(s => ({
         sessionId: s.id,
         agentName: extractAgentName(s.title || s.id),
+        duration: formatDuration(s.time?.created, s.time?.updated),
         startTime: formatTime(s.time?.created),
         status: mapStatus(api.state.session.status(s.id)),
         childCount: allSessions.filter(c => c.parentID === s.id).length,
