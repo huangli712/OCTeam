@@ -8,19 +8,20 @@ import { loadChildren, type SessionTreeNode } from "./session-tree"
 const COLOR_RUNNING = "#22c55e"
 const COLOR_IDLE = "#ef4444"
 const COLOR_ERRORED = "#a855f7"
-// Section header color — bold black, matches native Context/MCP section labels
-const COLOR_SECTION = "#000000"
-const COLOR_LABEL = "#6b7280"
 
 export function SessionNavigatorSidebar(props: {
     api: any
     sessionID: () => string
+    theme: any
 }) {
     const [sessions, setSessions] = createSignal<SessionTreeNode[]>([])
     const [loading, setLoading] = createSignal(true)
     const [collapsed, setCollapsed] = createSignal(true)
-    // Lock root session ID so the list doesn't change when navigating to a child
     const [rootSessionId, setRootSessionId] = createSignal<string | null>(null)
+
+    const t = () => props.theme
+    const textColor = () => t()?.text ?? "#000000"
+    const textMuted = () => t()?.textMuted ?? "#6b7280"
 
     const refresh = async () => {
         try {
@@ -35,8 +36,6 @@ export function SessionNavigatorSidebar(props: {
         }
     }
 
-    // On first render, lock the root session ID.
-    // Subsequent sessionID changes (navigating to a child) do NOT update rootSessionId.
     createEffect(
         on(props.sessionID, (sid) => {
             if (!sid) return
@@ -62,9 +61,6 @@ export function SessionNavigatorSidebar(props: {
     )
 
     const handleClick = (sessionId: string) => {
-        // Use selectSession (HTTP) instead of route.navigate.
-        // route.navigate changes the entire route layout, causing sidebar_content slot to unmount.
-        // selectSession switches the displayed session content while preserving the sidebar layout.
         props.api.client.tui.selectSession({ sessionID: sessionId })
     }
 
@@ -83,8 +79,12 @@ export function SessionNavigatorSidebar(props: {
 
     return (
         <box flexDirection="column" width="100%">
-            {/* Line 1: Section header */}
-            <text fg={COLOR_SECTION}>{"OCTeam"}</text>
+            {/* Line 1: Section header — bold, themed */}
+            <box width="100%">
+                <text fg={textColor()}>
+                    <b>{"OCTeam"}</b>
+                </text>
+            </box>
 
             {/* Line 2: Collapsible "Tasks" header */}
             <box
@@ -92,12 +92,12 @@ export function SessionNavigatorSidebar(props: {
                 width="100%"
                 onMouseDown={() => toggleCollapse()}
             >
-                <text fg={COLOR_SECTION}>
+                <text fg={textMuted()}>
                     {collapsed() ? "\u25b8 " : "\u25be "}
                 </text>
-                <text fg={COLOR_SECTION}>{"Tasks"}</text>
+                <text fg={textMuted()}>{"Tasks"}</text>
                 {!loading() && sessions().length > 0 ? (
-                    <text fg={COLOR_LABEL}>{" (" + sessions().length + ")"}</text>
+                    <text fg={textMuted()}>{" (" + sessions().length + ")"}</text>
                 ) : null}
             </box>
 
@@ -105,21 +105,23 @@ export function SessionNavigatorSidebar(props: {
             {!collapsed() ? (
                 <box flexDirection="column" width="100%" paddingLeft={1}>
                     {loading() ? (
-                        <text fg={COLOR_LABEL}>{"Loading\u2026"}</text>
+                        <text fg={textMuted()}>{"Loading\u2026"}</text>
                     ) : sessions().length === 0 ? (
-                        <text fg={COLOR_LABEL}>{"No subagents"}</text>
+                        <text fg={textMuted()}>{"No subagents"}</text>
                     ) : (
                         <For each={sessions()}>
                             {(session) => (
                                 <box
                                     flexDirection="row"
                                     width="100%"
+                                    justifyContent="space-between"
                                     onMouseDown={() => handleClick(session.sessionId)}
                                 >
-                                    <text fg={statusColor(session.status)}>{"\u25cf "}</text>
-                                    <text fg={statusColor(session.status)}>{session.title}</text>
-                                    {session.childCount > 0 ? (
-                                        <text fg={COLOR_LABEL}>{" (" + session.childCount + ")"}</text>
+                                    <text fg={statusColor(session.status)}>
+                                        {"\u25cf " + session.agentName}
+                                    </text>
+                                    {session.startTime ? (
+                                        <text fg={textMuted()}>{session.startTime}</text>
                                     ) : null}
                                 </box>
                             )}

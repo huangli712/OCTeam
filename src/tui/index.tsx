@@ -2,6 +2,7 @@
 // @ts-nocheck
 
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
+import { createMemo } from "solid-js"
 import { SessionNavigatorSidebar } from "./sidebar"
 
 const tui: TuiPlugin = async (api) => {
@@ -10,10 +11,12 @@ const tui: TuiPlugin = async (api) => {
             order: 150,
             slots: {
                 sidebar_content: (ctx, value) => {
+                    const theme = createMemo(() => (ctx as any).theme.current)
                     return (
                         <SessionNavigatorSidebar
                             api={api}
                             sessionID={() => value.session_id}
+                            theme={theme()}
                         />
                     )
                 },

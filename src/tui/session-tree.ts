@@ -11,7 +11,8 @@ export type DisplayStatus = "running" | "idle" | "errored"
 /** A child session node for sidebar rendering. */
 export type SessionTreeNode = {
     sessionId: string
-    title: string
+    agentName: string
+    startTime: string
     status: DisplayStatus
     childCount: number
 }
@@ -19,10 +20,6 @@ export type SessionTreeNode = {
 /**
  * Map OpenCode's SessionStatus ({ type: "busy" | "idle" | "retry" })
  * to our display status.
- *
- * - busy   → running  (actively working, green)
- * - retry  → errored  (hit an error, retrying, purple)
- * - idle   → idle     (finished/stopped, red)
  */
 export function mapStatus(raw: { type: string } | undefined | null): DisplayStatus {
     if (!raw) return "idle"
@@ -32,14 +29,34 @@ export function mapStatus(raw: { type: string } | undefined | null): DisplayStat
 }
 
 /**
+ * Extract agent name from session title.
+ * OpenCode subagent sessions have titles like "@explore subagent".
+ */
+function extractAgentName(title: string): string {
+    const match = title.match(/@(\w+)/)
+    if (match) return match[1]
+    return "agent"
+}
+
+/**
+ * Format a Unix timestamp (seconds) as MM/DD HH:MM.
+ */
+function formatTime(created: number | undefined): string {
+    if (!created) return ""
+    const date = new Date(created * 1000)
+    const mo = (date.getMonth() + 1).toString().padStart(2, "0")
+    const d = date.getDate().toString().padStart(2, "0")
+    const h = date.getHours().toString().padStart(2, "0")
+    const m = date.getMinutes().toString().padStart(2, "0")
+    return `${mo}/${d} ${h}:${m}`
+}
+
+/**
  * Load all direct child sessions of the given session.
- *
- * Uses api.client.session.list() to fetch all sessions, then filters
- * by parentID. Status is read synchronously from api.state.session.status().
  */
 export async function loadChildren(
     api: {
-        client: { session: { list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: Array<{ id: string; title?: string; parentID?: string }> }> } }
+        client: { session: { list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: Array<{ id: string; title?: string; parentID?: string; time?: { created?: number } }> }> } }
         state: { session: { status: (id: string) => { type: string } | undefined } }
     },
     currentSessionId: string,
@@ -50,13 +67,9 @@ export async function loadChildren(
 
     return children.map(s => ({
         sessionId: s.id,
-        title: truncate(s.title || s.id, 24),
+        agentName: extractAgentName(s.title || s.id),
+        startTime: formatTime(s.time?.created),
         status: mapStatus(api.state.session.status(s.id)),
         childCount: allSessions.filter(c => c.parentID === s.id).length,
     }))
-}
-
-function truncate(text: string, maxLen: number): string {
-    if (text.length <= maxLen) return text
-    return text.slice(0, maxLen - 1) + "\u2026"
 }
