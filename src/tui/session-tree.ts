@@ -31,12 +31,14 @@ export function mapStatus(raw: { type: string } | undefined | null): DisplayStat
 
 /**
  * Extract agent name from session title.
- * OpenCode subagent sessions have titles like "@explore subagent".
+ * OpenCode subagent sessions have titles like "some task (@explore subagent)".
+ * Must match @agent specifically before "subagent" to avoid matching
+ * other @mentions in the title (e.g. "@opencode-ai/plugin").
  */
 function extractAgentName(title: string): string {
-    const match = title.match(/@(\w+)/)
+    const match = title.match(/@(\w+)\s+subagent/)
     if (match) return match[1]
-    return "agent"
+    return "task"
 }
 
 /**
@@ -53,15 +55,11 @@ function formatTime(created: number | undefined): string {
 }
 
 /**
- * Format elapsed time between created and updated timestamps.
- * Falls back to Date.now() if updated is missing (e.g. still running).
+ * Format milliseconds as compact duration string.
  */
-function formatDuration(created: number | undefined, updated: number | undefined): string {
-    if (!created) return ""
-    const end = updated || Date.now()
-    const diff = end - created
-    if (diff < 0) return ""
-    const seconds = Math.floor(diff / 1000)
+function formatMs(ms: number): string {
+    if (ms < 0) return ""
+    const seconds = Math.floor(ms / 1000)
     if (seconds < 60) return `${seconds}s`
     const minutes = Math.floor(seconds / 60)
     if (minutes < 60) return `${minutes}m`
@@ -70,12 +68,31 @@ function formatDuration(created: number | undefined, updated: number | undefined
 }
 
 /**
+ * Compute real work duration from message timestamps.
+ * Uses first message creation → last message completion.
+ * Falls back to first message creation → last message creation if no completion.
+ */
+function computeDuration(messages: any[]): string {
+    if (!messages || messages.length === 0) return ""
+    const first = messages[0]?.info?.time?.created
+    if (!first) return ""
+    let last: number | undefined
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const t = messages[i]?.info?.time
+        last = t?.completed ?? t?.created
+        if (last) break
+    }
+    if (!last) return ""
+    return formatMs(last - first)
+}
+
+/**
  * Load all direct child sessions of the given session.
  */
 export async function loadChildren(
     api: {
         client: { session: { list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: Array<{ id: string; title?: string; parentID?: string; time?: { created?: number; updated?: number } }> }> } }
-        state: { session: { status: (id: string) => { type: string } | undefined } }
+        state: { session: { status: (id: string) => { type: string } | undefined; messages: (id: string) => any[] } }
     },
     currentSessionId: string,
 ): Promise<SessionTreeNode[]> {
@@ -83,12 +100,21 @@ export async function loadChildren(
     const allSessions = result?.data ?? []
     const children = allSessions.filter(s => s.parentID === currentSessionId)
 
-    return children.map(s => ({
-        sessionId: s.id,
-        agentName: extractAgentName(s.title || s.id),
-        duration: formatDuration(s.time?.created, s.time?.updated),
-        startTime: formatTime(s.time?.created),
-        status: mapStatus(api.state.session.status(s.id)),
-        childCount: allSessions.filter(c => c.parentID === s.id).length,
-    }))
+    return children.map(s => {
+        let duration = ""
+        try {
+            const msgs = api.state.session.messages(s.id)
+            duration = computeDuration(msgs)
+        } catch {
+            // messages() may not have data for all sessions
+        }
+        return {
+            sessionId: s.id,
+            agentName: extractAgentName(s.title || s.id),
+            duration,
+            startTime: formatTime(s.time?.created),
+            status: mapStatus(api.state.session.status(s.id)),
+            childCount: allSessions.filter(c => c.parentID === s.id).length,
+        }
+    })
 }
