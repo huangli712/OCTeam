@@ -43,7 +43,7 @@ function extractAgentName(title: string): string {
  */
 function formatTime(created: number | undefined): string {
     if (!created) return ""
-    const date = new Date(created * 1000)
+    const date = new Date(created)
     const mo = (date.getMonth() + 1).toString().padStart(2, "0")
     const d = date.getDate().toString().padStart(2, "0")
     const h = date.getHours().toString().padStart(2, "0")

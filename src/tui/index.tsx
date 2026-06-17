@@ -3,6 +3,7 @@
 
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 import { createMemo } from "solid-js"
+import { version as packageVersion } from "../../package.json"
 import { SessionNavigatorSidebar } from "./sidebar"
 
 const tui: TuiPlugin = async (api) => {
@@ -17,6 +18,7 @@ const tui: TuiPlugin = async (api) => {
                             api={api}
                             sessionID={() => value.session_id}
                             theme={theme()}
+                            version={packageVersion}
                         />
                     )
                 },

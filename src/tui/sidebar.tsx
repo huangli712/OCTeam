@@ -13,6 +13,7 @@ export function SessionNavigatorSidebar(props: {
     api: any
     sessionID: () => string
     theme: any
+    version: string
 }) {
     const [sessions, setSessions] = createSignal<SessionTreeNode[]>([])
     const [loading, setLoading] = createSignal(true)
@@ -79,11 +80,12 @@ export function SessionNavigatorSidebar(props: {
 
     return (
         <box flexDirection="column" width="100%">
-            {/* Line 1: Section header — bold, themed */}
-            <box width="100%">
+            {/* Line 1: Section header — bold, themed, version right-aligned */}
+            <box width="100%" flexDirection="row" justifyContent="space-between">
                 <text fg={textColor()}>
                     <b>{"OCTeam"}</b>
                 </text>
+                <text fg={textMuted()}>{"v" + props.version}</text>
             </box>
 
             {/* Line 2: Collapsible "Tasks" header */}
@@ -93,7 +95,7 @@ export function SessionNavigatorSidebar(props: {
                 onMouseDown={() => toggleCollapse()}
             >
                 <text fg={textMuted()}>
-                    {collapsed() ? "\u25b8 " : "\u25be "}
+                    {collapsed() ? "\u25b6 " : "\u25bc "}
                 </text>
                 <text fg={textMuted()}>{"Tasks"}</text>
                 {!loading() && sessions().length > 0 ? (
@@ -101,7 +103,7 @@ export function SessionNavigatorSidebar(props: {
                 ) : null}
             </box>
 
-            {/* Expanded task list */}
+            {/* Expanded task list (between Tasks and Teams) */}
             {!collapsed() ? (
                 <box flexDirection="column" width="100%" paddingLeft={1}>
                     {loading() ? (
@@ -129,6 +131,16 @@ export function SessionNavigatorSidebar(props: {
                     )}
                 </box>
             ) : null}
+
+            {/* Line 3: "Teams" header — placeholder for Phase 2 (no-op click) */}
+            <box
+                flexDirection="row"
+                width="100%"
+                onMouseDown={() => { /* Phase 2: team sidebar */ }}
+            >
+                <text fg={textMuted()}>{"\u25b6 "}</text>
+                <text fg={textMuted()}>{"Teams"}</text>
+            </box>
         </box>
     )
 }
