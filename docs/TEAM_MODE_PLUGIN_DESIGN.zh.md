@@ -151,14 +151,12 @@ type RuntimeState = {
 }
 
 type TeamStatus =
-    | "creating"                        // sessions being spawned
-    | "active"                          // ready for tasks
-    | "orchestrating"                   // a parallel/pipeline/loop is running
-    | "shutdown_requested"              // cooperative shutdown in progress
-    | "deleting"
-    | "deleted"
-    | "failed"                          // unrecoverable error
-    | "orphaned"                        // plugin restarted, sessions may be stale
+    | "live"                           // config written, no sessions spawned yet
+    | "busy"                           // sessions spawned, workflow running
+    | "idle"                           // sessions spawned, idle (workflow completed)
+    | "failed"                         // agent error or task incomplete (e.g. loop max rounds reached without done)
+    | "dead"                           // marked for deletion, about to be cleaned up
+    | "disabled"                       // team disabled, cannot be used (e.g. by /team_shutdown_request)
 
 type RuntimeMember = {
     name: string
@@ -189,7 +187,7 @@ type MemberStatus =
 
 ```ts
 type ActiveTask = {
-    type: "parallel" | "pipeline" | "loop"
+    type: "parallel" | "pipeline" | "loop" | "delegate"
     mode?: "isolated" | "collaborative" | "discussion"   // parallel only
     startedAt: number
     wallClockTimeoutMs: number          // hard timeout, default 300000 (5 min)
@@ -207,6 +205,8 @@ type ActiveTask = {
     topic?: string                      // discussion: debate topic
     maxRounds?: number                  // discussion/loop: round limit
     currentRound?: number
+
+    // delegate mode: uses shared tasklist (team_task_*), no extra fields needed
 
     // pipeline / loop: ordered stages
     stages: Stage[]
@@ -311,11 +311,12 @@ type Task = {
 ### 崩溃恢复
 
 plugin 启动时，server hook 扫描 `~/.octeam/teams/` 并：
-1. 对每个 `status: "creating"` 的 team → 转为 `"orphaned"`。
-2. 对每个 `status: "orchestrating"` 的 team → 转为 `"orphaned"`，清除 stale mailbox 预约。
-3. 对每个 `status: "active"` 的 team → 通过 `client.session.status()` 检查 member session 是否仍存在。将 stale member 标记为 `"errored"`。
+1. 对每个 `status: "live"` 的 team → 无需处理（无 session）。
+2. 对每个 `status: "busy"` 的 team → 通过 `client.session.status()` 检查 member session 是否仍存在。若 session 失效，清除 stale mailbox 预约，将 team 转为 `"failed"`。若 session 存活，转为 `"idle"`（中断的 workflow 已无法恢复）。
+3. 对每个 `status: "idle"` 的 team → 同上检查 session 存活性。将 stale member 标记为 `"errored"`。
+4. 对每个 `status: "failed"` 或 `status: "disabled"` 的 team → 无需处理（终态，等待用户决定是否 `team_delete` 或重新拉起）。
 
-Orphaned team 可通过 `team_delete({ force: true })` 恢复或手动重新关联。
+失效的 team 可通过 `team_delete({ force: true })` 清理，或下次 workflow 调用时由 `ensureMembersReady` 重新拉起 session。
 
 ---
 
@@ -327,15 +328,16 @@ Orphaned team 可通过 `team_delete({ force: true })` 恢复或手动重新关�
 
 | 命令 | 作用 | master 接收后的行为 |
 |---|---|---|
-| `/create-team` | 打开创建 team 对话框，配置 member/role/model | master agent 调用 `team_create` tool |
-| `/clear-team` | 清空 `.octeam/teams/` 目录（强制删除所有 team） | master agent 调用 `team_delete({ force: true })` 逐个清理 |
-| `/team-status` | 显示当前 team 状态（member 列表、编排进度、token 使用） | master agent 调用 `team_status` tool，结果注入 sidebar/dialog |
-| `/stop-team` | 停止接受新任务，解散当前 team（协作关闭） | master agent 调用 `team_shutdown_request` 对所有 member 发起关闭 |
-| `/team-parallel [task]` | 以 parallel 模式执行 | master agent 调用 `team_parallel({ task })` |
-| `/team-pipeline [task]` | 以 pipeline 模式执行 | master agent 调用 `team_pipeline({ stages, task })` |
-| `/team-loop [task]` | 以 loop 模式执行 | master agent 调用 `team_loop({ stages, decider, initial_task })` |
+| `/team_create` | 打开创建 team 对话框，配置 member/role/model | master agent 调用 `team_create` tool |
+| `/team_delete` | 清空 `.octeam/teams/` 目录（强制删除所有 team） | master agent 调用 `team_delete({ force: true })` 逐个清理 |
+| `/team_status` | 显示当前 team 状态（member 列表、编排进度、token 使用） | master agent 调用 `team_status` tool，结果注入 sidebar/dialog |
+| `/team_shutdown_request` | 停止接受新任务，解散当前 team（协作关闭） | master agent 调用 `team_shutdown_request` 对所有 member 发起关闭，team 转为 `"disabled"` |
+| `/team_parallel [task]` | 以 parallel 模式执行 | master agent 调用 `team_parallel({ task })` |
+| `/team_pipeline [task]` | 以 pipeline 模式执行 | master agent 调用 `team_pipeline({ stages, task })` |
+| `/team_loop [task]` | 以 loop 模式执行 | master agent 调用 `team_loop({ stages, decider, initial_task })` |
+| `/team_delegate [tasks]` | 以 delegate 模式执行（member 自主认领任务） | master agent 调用 `team_delegate({ tasks })` |
 
-**工作流命令的 UX**：用户在 prompt 中输入 `/team-parallel <任务描述>`。slash command handler 提取任务文本，通过 `promptAsync` 向 master session 发送指令（如 `"请使用 team_parallel tool 执行以下任务：<任务描述>"`）。master agent 接收后调用对应 tool。pipeline/loop 的 member 顺序由 team 创建时的声明顺序决定。
+**工作流命令的 UX**：用户在 prompt 中输入 `/team_parallel <任务描述>`。slash command handler 提取任务文本，通过 `promptAsync` 向 master session 发送指令（如 `"请使用 team_parallel tool 执行以下任务：<任务描述>"`）。master agent 接收后调用对应 tool。pipeline/loop 的 member 顺序由 team 创建时的声明顺序决定。
 
 **注意**：slash command 的参数传递机制（`onSelect` 如何读取 prompt 文本中的 inline 参数）需在 Phase 2.0 验证。如不支持 inline 参数，则改为：command 触发后通过 dialog 收集 task 再发送给 master。
 
@@ -345,7 +347,7 @@ Orphaned team 可通过 `team_delete({ force: true })` 恢复或手动重新关�
 
 ### 4.1 `team_create`
 
-创建一个包含 leader 和 sub-agent member 的 team。
+创建（定义）一个 team。**不 spawn member sessions**——仅写入配置文件。Session 在 workflow tool（`team_parallel`/`team_pipeline`/`team_loop`）首次执行时按需拉起（见 `ensureMembersReady`）。
 
 ```
 team_create({
@@ -367,12 +369,50 @@ team_create({
 **实现**：
 1. 校验 member 名称唯一且匹配 `/^[a-z0-9-]+$/`。
 2. 将调用者的 `context.sessionID` 记录为 `leadSessionId`（leader 名称固定为 `"master"`）。
-3. 对每个 member：
-   a. 如果 `member.worktree === true`，创建 git worktree：`git worktree add worktrees/{memberName} -b team/{teamName}/{memberName}`。否则使用 leader 的当前目录。
-   b. 创建 child session：`client.session.create({ body: { parentID: leadSessionId, title: "{teamName}/{memberName}" }, query: { directory: worktreePath ?? ctx.directory } })`。
-   c. 通过 `promptAsync` 发送包含 member 角色 + team context 的初始 prompt。
-4. 写入 `config.json` + 初始 `state.json`（status: `"active"`）。
-5. 返回包含 member session ID 的 team 摘要。
+3. 写入 `config.json`（TeamSpec）+ 初始 `state.json`（status: `"live"`，所有 member 的 `sessionId: undefined`、`status: "pending"`）。
+4. **不创建 session、不发送 prompt、不创建 worktree**。这些延迟到 workflow tool 执行时。
+5. 返回 team 摘要（不含 session ID，因为尚未创建）。
+
+**Session 按需拉起（`ensureMembersReady`）**：
+
+`team_parallel`/`team_pipeline`/`team_loop` 的 tool handler 在写入 `activeTask` 前，先调用 `ensureMembersReady(team)` 拉起 session，然后设置 `team.status = "busy"`，再写入 `activeTask` 并发出首批 prompt：
+
+```ts
+async function ensureMembersReady(team: Team): Promise<void> {
+    for (const member of team.members) {
+        if (member.sessionId) continue    // already spawned
+
+        // 1. Worktree (if configured)
+        if (member.worktree) {
+            member.worktreePath = await createWorktree(team.teamName, member.name)
+        }
+
+        // 2. Create child session
+        const result = await client.session.create({
+            body: { parentID: team.leadSessionId, title: `${team.teamName}/${member.name}` },
+            query: { directory: member.worktreePath ?? team.directory },
+        })
+        member.sessionId = result.data.id
+        member.status = "idle"
+
+        // 3. Send role setup prompt
+        await client.session.promptAsync({
+            path: { id: member.sessionId },
+            body: {
+                parts: [{ type: "text", text: buildRolePrompt(member, team), synthetic: true }],
+                agent: member.agent ?? "build",
+            },
+        })
+        member.turnCount = 1
+    }
+    await saveTeamState(team)
+}
+```
+
+**优势**：
+- 创建 team 零开销（无 session、无 LLM 调用）
+- Team 可创建后多次使用（多个 workflow 复用同一组 session）
+- 首次 workflow 调用时统一 spawn，避免创建即浪费
 
 **API 调用形态**（已修正）：
 ```ts
@@ -445,7 +485,7 @@ Round 3（最终）：所有 member 发表最终声明 → barrier
 
 **退出条件**：达到 `max_rounds`，或 timeout，或所有 member 达成一致（通过结构化输出检测）。
 
-**初始 dispatch**（三种模式共用）：tool handler 写入 `activeTask` 后**立即**发出首批 prompt——isolated 向所有 member 发送同一 `task`；collaborative 按 `tasks` 映射分别发送；discussion 向所有 member 发送 `topic`（round 0）。此后由 barrier 收集并推进。
+**初始 dispatch**（三种模式共用）：tool handler 先调用 `ensureMembersReady(team)` 拉起尚未创建的 member sessions，然后写入 `activeTask` 并**立即**发出首批 prompt——isolated 向所有 member 发送同一 `task`；collaborative 按 `tasks` 映射分别发送；discussion 向所有 member 发送 `topic`（round 0）。此后由 barrier 收集并推进。
 
 ### 4.3 `team_pipeline`
 
@@ -476,7 +516,7 @@ Stage 2: optimizer 接收："[tester 的输出（截断）] + [你的任务]" �
 - **输出截断**：每个 stage 捕获的输出在传递给下一个 stage 前被截断至 8KB（可配置）。这防止 context-window 爆炸。
 - Plugin 跟踪 `currentStageIndex`，仅在**预期的** member idle 时推进（身份校验）。
 - **Stage 唯一性校验**：单次 pipeline 运行中 `stages` 必须有唯一的 `member` 值。重复的 member 会在 `responses` 中互相覆盖。
-- **初始 dispatch**：tool handler 写入 `activeTask`（`currentStageIndex=0`）后，**立即**对 `stages[0].member` 调用 `promptAsync` 发出首个任务，启动流水线。此后由 event handler 的身份校验逐 stage 推进。
+- **初始 dispatch**：tool handler 先调用 `ensureMembersReady(team)`，然后写入 `activeTask`（`currentStageIndex=0`）后，**立即**对 `stages[0].member` 调用 `promptAsync` 发出首个任务，启动流水线。此后由 event handler 的身份校验逐 stage 推进。
 
 ### 4.4 `team_loop`
 
@@ -536,9 +576,110 @@ plugin 提取 `<decision>...</decision>` 块并解析 JSON。如果解析失败�
 5. Token 预算耗尽。
 6. 连续三次决策解析失败。
 
-**初始 dispatch**：tool handler 写入 `activeTask`（`currentRound=1`、`currentStageIndex=0`）后，**立即**对 `stages[0].member` 发送 `initial_task`，启动首轮。若 `decider` 不在 `stages` 中，先自动追加为最终 read_only stage 再 dispatch。
+**初始 dispatch**：tool handler 先调用 `ensureMembersReady(team)`，然后写入 `activeTask`（`currentRound=1`、`currentStageIndex=0`）后，**立即**对 `stages[0].member` 发送 `initial_task`，启动首轮。若 `decider` 不在 `stages` 中，先自动追加为最终 read_only stage 再 dispatch。
 
-### 4.5 `team_send_message`
+### 4.5 `team_delegate`
+
+委派模式（pull-based 自组织）：leader 发布一组任务到共享 tasklist，idle 的 member 自主认领、执行、交付结果，循环直到所有任务完成。
+
+```
+team_delegate({
+    team_id: "auth-team",
+    tasks: [
+        { subject: "Implement JWT login",       description: "...", blockedBy: [] },
+        { subject: "Write unit tests",           description: "...", blockedBy: ["task-1"] },
+        { subject: "Add rate limiting",          description: "...", blockedBy: [] },
+        { subject: "Security review",            description: "...", blockedBy: ["task-1", "task-3"] },
+    ],
+    timeout_ms: 600000
+})
+```
+
+**与 parallel/pipeline/loop 的核心差异**：
+
+| 方面 | parallel/pipeline/loop | delegate |
+|---|---|---|
+| 任务分配 | 编排器 push 到指定 member | member pull 自主认领 |
+| 执行顺序 | 确定性（固定 stage/round） | 非确定（取决于 member 空闲 + 任务依赖） |
+| Barrier | 需要同步等待 | 无 barrier，各自独立 |
+| 任务依赖 | 无 | 支持（`blockedBy`） |
+
+**流程**：
+```
+1. tool handler 调用 ensureMembersReady(team) 拉起 sessions
+2. 创建所有 task 到共享 tasklist（内部调用 team_task_create）
+3. 设置 team.status = "busy"，写入 activeTask（type: "delegate"）
+4. 向每个 member 发送初始 prompt：
+   "你是 team X 的成员。请用 team_task_list 查看可用任务，
+    用 team_task_update 认领任务，执行后用 team_send_message
+    向 master 报告结果，然后检查是否有更多任务。"
+5. member idle 时 → event handler 检查：
+   a. 所有 task 已完成 → 交付摘要给 leader，status = "idle"
+   b. 有可认领 task → re-prompt member 检查 tasklist
+   c. 无可认领 task 且所有 member idle → 死锁，status = "failed"
+```
+
+**任务依赖处理**：task 的 `blockedBy` 中引用的 task 全部 `completed` 后才可被认领。这允许构建复杂工作流（如 "写测试" 依赖 "写功能"，"安全审查" 依赖 "写功能"+"加速率限制"）。
+
+**动态任务**：执行期间 leader 可通过 `team_task_create` 追加新任务。idle member 会在下一次检查时发现并认领。
+
+**退出条件**：
+1. 所有 task 状态为 `completed` 或 `deleted`。
+2. 死锁：无可认领 task（剩余 task 全被阻塞或已认领）且所有 member idle。
+3. 超过 wall-clock timeout。
+4. Token 预算耗尽。
+5. Member 出错。
+
+**Delegate Handler**（Section 6 event handler 的 `case "delegate"`）：
+
+```ts
+async function handleDelegateIdle(team: Team, member: RuntimeMember) {
+    const tasks = await listAllTasks(team.teamRunId)
+    const incomplete = tasks.filter(t => t.status !== "completed" && t.status !== "deleted")
+
+    // All done?
+    if (incomplete.length === 0) {
+        await deliverSummaryToLeader(team, "delegate_complete")
+        team.activeTask = undefined
+        team.status = "idle"
+        return
+    }
+
+    // Check claimable tasks (pending + all blockers completed)
+    const claimable = incomplete.filter(t =>
+        t.status === "pending" &&
+        t.blockedBy.every(id => tasks.find(x => x.id === id)?.status === "completed")
+    )
+
+    // Deadlock: no claimable tasks and all members idle
+    if (claimable.length === 0) {
+        const allIdle = team.members.every(m => m.status === "idle" || !m.sessionId)
+        if (allIdle) {
+            await deliverSummaryToLeader(team, "delegate_deadlock")
+            team.activeTask = undefined
+            team.status = "failed"
+            return
+        }
+        return  // some members still running, wait
+    }
+
+    // Re-prompt this member to check tasklist
+    await client.session.promptAsync({
+        path: { id: member.sessionId! },
+        body: {
+            parts: [{
+                type: "text",
+                text: `[Team Orchestrator] You have completed your task. ${claimable.length} task(s) available. Use team_task_list to check, team_task_update to claim, execute, then team_send_message to report to master. Repeat until no tasks remain.`,
+                synthetic: true,
+            }],
+        },
+    })
+    member.status = "running"
+    member.turnCount++
+}
+```
+
+### 4.6 `team_send_message`
 
 向 member 的 mailbox 发送消息。
 
@@ -561,7 +702,7 @@ team_send_message({
 
 **注意**：不存在 `team_read` tool。消息由 Transform hook 在每轮自动注入到 member 的 context 中。这消除了多读者 read-flag bug。
 
-### 4.6 `team_task_create` / `team_task_list` / `team_task_update` / `team_task_get`
+### 4.7 `team_task_create` / `team_task_list` / `team_task_update` / `team_task_get`
 
 用于协作协调的共享任务列表（与 parallel/pipeline/loop 互补）。
 
@@ -591,7 +732,7 @@ team_task_get({ team_id: "auth-team", task_id: "task-uuid" })
 
 **认领语义**：`status: "claimed"` 原子获取 `tasks/claims/{taskId}.lock`。如果另一个 member 已认领，返回 `TaskAlreadyClaimedError`。这实现了协作模式下的 pull-based 任务分配。
 
-### 4.7 `team_shutdown_request`
+### 4.8 `team_shutdown_request`
 
 发起对某个 member 的协作关闭。
 
@@ -604,7 +745,7 @@ team_shutdown_request({
 
 **仅限 master**。向 member 的 mailbox 发送 `shutdown_request` 消息。member 看到请求（通过 Transform hook 注入）后可以批准或拒绝。
 
-### 4.8 `team_approve_shutdown` / `team_reject_shutdown`
+### 4.9 `team_approve_shutdown` / `team_reject_shutdown`
 
 ```
 team_approve_shutdown({
@@ -619,14 +760,14 @@ team_reject_shutdown({
 })
 ```
 
-批准后：member 状态 → `"shutdown_approved"`。Worktree 被清理。如果所有 member 都已批准/关闭，team 转为 `"deleted"`。
+批准后：member 状态 → `"shutdown_approved"`。Worktree 被清理。如果所有 member 都已批准/关闭，team 转为 `"dead"`。
 
-### 4.9 `team_status` / `team_list`
+### 4.10 `team_status` / `team_list`
 
 ```
 team_status({ team_id: "auth-team" })
 // Returns: {
-//   status: "orchestrating",
+//   status: "busy",
 //   activeTask: { type: "loop", round: 2, maxRounds: 5 },
 //   members: [
 //     { name: "coder", status: "running", model: "claude-haiku", unreadMessages: 0 },
@@ -641,7 +782,7 @@ team_list({ scope?: "user" | "project" | "all" })
 // Returns: [{ name: "auth-team", status: "active", members: 3 }, ...]
 ```
 
-### 4.10 `team_delete`
+### 4.11 `team_delete`
 
 ```
 team_delete({
@@ -652,7 +793,7 @@ team_delete({
 
 **非 force（默认）**：要求所有 member 为 `shutdown_approved` 或 `completed`。如果有 member 仍为 `running`，返回错误并建议使用 `team_shutdown_request`。
 
-**Force**：立即将 team 转为 `"deleting"`，取消所有 pending worktree，删除状态文件。Session 不被删除（历史记录保留在 OpenCode 的 DB 中）。这是崩溃恢复路径。
+**Force**：立即将 team 转为 `"dead"`，取消所有 pending worktree，删除状态文件。Session 不被删除（历史记录保留在 OpenCode 的 DB 中）。这是崩溃恢复路径。
 
 **关于中断的说明**：OpenCode 不支持对运行中的 agent 进行实时中断。因此，`force: true` 无法真正停止正在进行的 LLM 调用——agent 会完成当前 turn，但 plugin 将不再向其 dispatch 新的 prompt。这在 tool 的描述中诚实记录。
 
@@ -803,6 +944,9 @@ event: async ({ event }) => {
             case "loop":
                 await handleLoopIdle(team, member)
                 break
+            case "delegate":
+                await handleDelegateIdle(team, member)
+                break
         }
 
         // --- Step 6: Check termination conditions ---
@@ -819,7 +963,8 @@ Step 2 的身份校验依赖 `getExpectedMember`。**关键**：parallel 模式�
 function getExpectedMember(task: ActiveTask): string | null {
     // parallel (isolated/collaborative/discussion): all members run concurrently
     //   → accept EVERY member's idle event
-    if (task.type === "parallel") return null
+        if (task.type === "parallel") return null
+        if (task.type === "delegate") return null   // all members run independently
     // pipeline / loop: only the current stage's member may advance the state machine
     return task.stages[task.currentStageIndex]?.member ?? null
 }
@@ -873,7 +1018,7 @@ async function handlePipelineIdle(team: Team, member: RuntimeMember) {
         // All stages complete → deliver summary to leader (if idle)
         await deliverSummaryToLeader(team, "pipeline_complete")
         team.activeTask = undefined
-        team.status = "active"
+        team.status = "idle"
         return
     }
 
@@ -931,7 +1076,7 @@ async function handleLoopIdle(team: Team, member: RuntimeMember) {
         await deliverSummaryToLeader(team, "loop_complete:decider_done")
         task.decisionHistory.push(decision)
         team.activeTask = undefined
-        team.status = "active"
+        team.status = "idle"
         return
     }
 
@@ -939,14 +1084,14 @@ async function handleLoopIdle(team: Team, member: RuntimeMember) {
     if (task.currentRound! >= task.maxRounds!) {
         await deliverSummaryToLeader(team, "loop_complete:max_rounds")
         team.activeTask = undefined
-        team.status = "active"
+        team.status = "failed"       // max rounds reached without decider done
         return
     }
 
     if (allReadOnlyStagesReportNoIssues(task)) {
         await deliverSummaryToLeader(team, "loop_complete:no_issues")
         team.activeTask = undefined
-        team.status = "active"
+        team.status = "idle"
         return
     }
 
@@ -998,7 +1143,7 @@ async function checkTermination(team: Team) {
     if (Date.now() - task.startedAt > task.wallClockTimeoutMs) {
         await deliverSummaryToLeader(team, "timeout")
         team.activeTask = undefined
-        team.status = "active"
+        team.status = "failed"
         return
     }
 
@@ -1006,7 +1151,7 @@ async function checkTermination(team: Team) {
     if (task.tokenBudget && task.tokensUsed > task.tokenBudget) {
         await deliverSummaryToLeader(team, "budget_exceeded")
         team.activeTask = undefined
-        team.status = "active"
+        team.status = "failed"
         return
     }
 
@@ -1015,7 +1160,7 @@ async function checkTermination(team: Team) {
     if (errored) {
         await deliverSummaryToLeader(team, `member_error:${errored.name}:${errored.error}`)
         team.activeTask = undefined
-        team.status = "active"
+        team.status = "failed"
         return
     }
 }
@@ -1036,6 +1181,7 @@ async function checkTermination(team: Team) {
 | Parallel（discussion） | N 个 barrier（每轮一个）：全部响应 → 广播 → 重复 |
 | Pipeline | N 个 barrier（每个 stage 一个），但每个 barrier 是单 member 的 |
 | Loop | 每轮 N 个 barrier × max_rounds，decider 为最终 barrier |
+| Delegate | 无 barrier（member 各自独立认领 + 执行） |
 
 ### 7.2 摘要投递给 Leader
 
@@ -1356,21 +1502,21 @@ tui(api) {
     // Slash commands
     api.command.register({
         title: "Create Team",
-        value: "team.create",
+        value: "team_create",
         category: "Team",
-        slash: { name: "create-team" },
+        slash: { name: "team_create" },
         onSelect: () => api.ui.dialog.replace(() => <CreateTeamDialog api={api} />),
     })
 
     api.command.register({
         title: "Team Parallel",
-        value: "team.parallel",
+        value: "team_parallel",
         category: "Team",
-        slash: { name: "team-parallel" },
-        onSelect: () => dispatchToMaster(api, "team-parallel"),
+        slash: { name: "team_parallel" },
+        onSelect: () => dispatchToMaster(api, "team_parallel"),
     })
 
-    // ... /clear-team, /team-status, /stop-team, /team-pipeline, /team-loop
+    // ... /team_clear, /team_status, /team_stop, /team_pipeline, /team_loop
 
     // Sidebar slot (Phase 1 navigator + Phase 2 team info)
     api.slots.register({
@@ -1462,13 +1608,13 @@ octeam/
       termination.ts               # Timeout/budget/error/no-issues 检查
     tools/
       team-create.ts
-      team-parallel.ts
-      team-pipeline.ts
-      team-loop.ts
+      team_parallel.ts
+      team_pipeline.ts
+      team_loop.ts
       team-send-message.ts
       team-task.ts                 # task_create/list/update/get
       team-shutdown.ts             # shutdown_request/approve/reject
-      team-status.ts               # status/list
+      team_status.ts               # status/list
       team-delete.ts
     hooks/
       event-handler.ts             # session.idle → 带锁状态机
@@ -1493,13 +1639,13 @@ octeam/
 | Phase | 内容 | 可验证结果 | 前置条件 |
 |---|---|---|---|
 | **2.0** | 脚手架扩展：在 Phase 1 TUI module 基础上增加 server module、`PluginContext`、文件 state store + locks。`package.json` 升级为 `"oc-plugin": ["server", "tui"]` | server module 加载成功，tool/event/transform hook 注册，状态持久化到磁盘 | Phase 1 完成 |
-| **2.1** | Slash commands：`/create-team`、`/clear-team`、`/team-status`、`/stop-team` + `dispatchToMaster` 机制 | 4 个管理命令可用，master session 接收指令后调用对应 tool | Phase 2.0 |
-| **2.2** | `team_create` + `team_delete` + `team_list` + worktree 管理 | `/create-team` 能创建 member session + worktree，`/clear-team` 能清理 | Phase 2.1 |
+| **2.1** | Slash commands：`/team_create`、`/team_delete`、`/team_status`、`/team_shutdown_request` + `dispatchToMaster` 机制 | 4 个管理命令可用，master session 接收指令后调用对应 tool | Phase 2.0 |
+| **2.2** | `team_create` + `team_delete` + `team_list` + worktree 管理 | `/team_create` 能创建 member session + worktree，`/team_delete` 能清理 | Phase 2.1 |
 | **2.3** | `team_send_message` + 文件 mailbox + Transform hook 注入 + wake-hint | 广播 + 点对点消息，消息通过 Transform hook 自动注入 | Phase 2.2 |
 | **2.4** | `team_task_*`（create/list/update/get）+ 原子认领 | Task 创建成功，通过文件锁认领，依赖图被遵守 | Phase 2.2 |
-| **2.5** | Slash command 工作流：`/team-parallel`、`/team-pipeline`、`/team-loop` + barrier 原语 + 带锁 event handler + 身份校验 | 3 种编排模式可用，master agent 接收 slash 指令后调用 tool | Phase 2.3 |
+| **2.5** | Slash command 工作流：`/team_parallel`、`/team_pipeline`、`/team_loop` + barrier 原语 + 带锁 event handler + 身份校验 | 3 种编排模式可用，master agent 接收 slash 指令后调用 tool | Phase 2.3 |
 | **2.6** | `team_parallel` 模式 B（collaborative）+ 模式 C（discussion） | 不同任务 + 自由通信；多轮辩论带广播 | Phase 2.5 |
-| **2.7** | 协作关闭（`/stop-team`）+ 错误/取消/timeout/budget 路径 | 优雅的 member 关闭，timeout 终止任务，budget 强制执行 | Phase 2.5 |
+| **2.7** | 协作关闭（`/team_shutdown_request`）+ 错误/取消/timeout/budget 路径 | 优雅的 member 关闭，timeout 终止任务，budget 强制执行 | Phase 2.5 |
 | **2.8** | 崩溃恢复 + orphan 检测 + reservation stale 清除 | Plugin 重启后恢复 team，stale reservation 被清除 | Phase 2.7 |
 | **2.9** | Team sidebar 增强（在 Phase 1 navigator 基础上显示 team 信息） | Sidebar 显示 member/编排/任务状态，点击切换复用 Phase 1 | Phase 2.3, Phase 1 |
 
