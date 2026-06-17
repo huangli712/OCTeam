@@ -29,7 +29,13 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
             blocked_by: tool.schema.array(tool.schema.string()).optional(),
         },
         async execute(args) {
-            const task = await createTask(args.team_id ? await teamDirFor(ctx, args.team_id) : "", {
+            let dir: string
+            try {
+                dir = await teamDirFor(ctx, args.team_id)
+            } catch {
+                return `Error: team "${args.team_id}" not found`
+            }
+            const task = await createTask(dir, {
                 subject: args.subject,
                 description: args.description,
                 blockedBy: args.blocked_by,

@@ -94,8 +94,9 @@ export function createTransformHook(
         }
         if (targetIdx === -1) targetIdx = messages.length - 1
         if (targetIdx < 0) return // nothing to attach to; leave reserved for retry (do NOT ack)
-        messages[targetIdx].parts = messages[targetIdx].parts ?? []
-        messages[targetIdx].parts.push({ type: "text", text: injection, synthetic: true })
+        const target = messages[targetIdx]
+        const parts = (target.parts = target.parts ?? [])
+        parts.push({ type: "text", text: injection, synthetic: true })
 
         await ackMessages(member.directory, member.name, unread)
     }

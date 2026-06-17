@@ -120,7 +120,7 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
     await waitUntil(
         () => toSpawn.every(m => team.members.find(x => x.name === m.name)?.initialized),
         { timeoutMs: ROLE_SETUP_BARRIER_TIMEOUT_MS },
-    ).catch(() => {
+    ).catch(async () => {
         // Mark non-idle members errored; the caller reports the failure.
         for (const m of toSpawn) {
             const cur = team.members.find(x => x.name === m.name)
@@ -129,6 +129,10 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
                 cur.error = "role-setup barrier timed out"
             }
         }
+        // L3: persist the errored state before throwing so a restart sees it
+        // (the tool handler aborts before its Phase 3 saveTeamState).
+        const { saveTeamState } = await import("../state/store.js")
+        await saveTeamState(team).catch(() => {})
         throw new Error("ensureMembersReady: role-setup barrier timed out")
     })
 }

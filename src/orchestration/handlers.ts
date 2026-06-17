@@ -58,7 +58,8 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
         timestamp: Date.now(),
         parseFailed: true,
     })
-    const match = rawText?.match(/<decision>\s*(\{[\s\S]*?\})\s*<\/decision>/)
+    // Greedy {...} so nested braces (e.g. structured nextActions) parse correctly (L2).
+    const match = rawText?.match(/<decision>\s*(\{[\s\S]*\})\s*<\/decision>/)
     if (!match) return fail()
     try {
         const parsed = JSON.parse(match[1])
@@ -90,7 +91,7 @@ export function allMembersAgree(responses: Record<string, string>): boolean {
     const texts = Object.values(responses)
     if (texts.length === 0) return false
     return texts.every(t => {
-        const m = t.match(/<consensus>\s*(\{[\s\S]*?\})\s*<\/consensus>/)
+        const m = t.match(/<consensus>\s*(\{[\s\S]*\})\s*<\/consensus>/)
         if (!m) return false
         try {
             return JSON.parse(m[1]).agreed === true

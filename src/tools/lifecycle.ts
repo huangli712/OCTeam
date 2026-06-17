@@ -8,6 +8,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../context.js"
 import { deleteTeamStorage, initTeamState, listTeamNames, loadTeamState, readTeamSpec, writeTeamSpec } from "../state/store.js"
 import { indexMaster, unindexSession } from "../utils.js"
+import { clearWakeHint } from "../wake-hint.js"
 import type { Bounds, RuntimeMember, TeamMemberSpec, TeamSpec } from "../types.js"
 
 /** Resource bounds with design defaults (§8.1), overridden by user input. */
@@ -207,9 +208,15 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     return `Error: ${busy.length} member(s) still active (${busy.map(m => m.name).join(", ")}). Use team_shutdown_request first, or re-run with force: true.`
                 }
             }
-            // Unindex all known sessions.
-            for (const m of team.members) if (m.sessionId) unindexSession(m.sessionId)
+            // Unindex all known sessions (and drop their wake-hint throttle entries, L1).
+            for (const m of team.members) {
+                if (m.sessionId) {
+                    unindexSession(m.sessionId)
+                    clearWakeHint(m.sessionId)
+                }
+            }
             unindexSession(team.leadSessionId)
+            clearWakeHint(team.leadSessionId)
             await deleteTeamStorage(ctx.storageRoot, args.team_id)
             const { invalidateTeam } = await import("../state/store.js")
             invalidateTeam(args.team_id)

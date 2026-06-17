@@ -42,3 +42,8 @@ export async function sendWakeHint(
             // best-effort — Transform hook remains the delivery source of truth
         })
 }
+
+/** Drop a session's throttle entry (L1) — called on team_delete to bound the map. */
+export function clearWakeHint(sessionID: string): void {
+    wakeHintLastSent.delete(sessionID)
+}
