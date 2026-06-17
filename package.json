@@ -1,0 +1,49 @@
+{
+    "name": "octeam",
+    "version": "0.1.0",
+    "type": "module",
+    "license": "MIT",
+    "exports": {
+        ".": {
+            "types": "./dist/tui/index.d.ts",
+            "import": "./src/tui/index.tsx"
+        },
+        "./tui": {
+            "types": "./dist/tui/index.d.ts",
+            "import": "./src/tui/index.tsx"
+        }
+    },
+    "files": [
+        "dist",
+        "src/tui"
+    ],
+    "oc-plugin": [
+        "tui"
+    ],
+    "scripts": {
+        "build": "bun build src/tui/index.tsx --outfile dist/tui.js --target node --format esm --external @opencode-ai/plugin --external @opencode-ai/plugin/tui --external @opentui/solid --external solid-js && tsc --emitDeclarationOnly",
+        "typecheck": "tsc --noEmit"
+    },
+    "peerDependencies": {
+        "@opencode-ai/plugin": ">=1.4.7",
+        "@opentui/core": ">=0.1.99",
+        "@opentui/solid": ">=0.1.99",
+        "solid-js": ">=1.9.0"
+    },
+    "peerDependenciesMeta": {
+        "@opentui/core": {
+            "optional": true
+        },
+        "@opentui/solid": {
+            "optional": true
+        }
+    },
+    "devDependencies": {
+        "@opencode-ai/plugin": "1.4.7",
+        "@opentui/core": "0.1.99",
+        "@opentui/solid": "0.1.99",
+        "solid-js": "1.9.11",
+        "typescript": "5.8.2",
+        "@types/node": "22.13.9"
+    }
+}
