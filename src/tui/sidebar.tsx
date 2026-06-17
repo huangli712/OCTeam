@@ -8,9 +8,9 @@ import { loadChildren, type SessionTreeNode } from "./session-tree"
 const COLOR_RUNNING = "#22c55e"
 const COLOR_IDLE = "#ef4444"
 const COLOR_ERRORED = "#a855f7"
-const COLOR_CURRENT = "#60a5fa"
-const COLOR_MUTED = "#374151"
-const COLOR_LABEL = "#9ca3af"
+// Section header color — bold black, matches native Context/MCP section labels
+const COLOR_SECTION = "#000000"
+const COLOR_LABEL = "#6b7280"
 
 export function SessionNavigatorSidebar(props: {
     api: any
@@ -83,23 +83,26 @@ export function SessionNavigatorSidebar(props: {
 
     return (
         <box flexDirection="column" width="100%">
-            {/* Header — click to toggle collapse/expand */}
+            {/* Line 1: Section header */}
+            <text fg={COLOR_SECTION}>{"OCTeam"}</text>
+
+            {/* Line 2: Collapsible "Tasks" header */}
             <box
                 flexDirection="row"
                 width="100%"
                 onMouseDown={() => toggleCollapse()}
             >
-                <text fg={COLOR_CURRENT}>
+                <text fg={COLOR_SECTION}>
                     {collapsed() ? "\u25b8 " : "\u25be "}
                 </text>
-                <text fg={COLOR_CURRENT}>{"Sessions"}</text>
-                {!loading() && sessions().length > 0 && (
+                <text fg={COLOR_SECTION}>{"Tasks"}</text>
+                {!loading() && sessions().length > 0 ? (
                     <text fg={COLOR_LABEL}>{" (" + sessions().length + ")"}</text>
-                )}
+                ) : null}
             </box>
 
-            {/* Expanded child session list */}
-            {!collapsed() && (
+            {/* Expanded task list */}
+            {!collapsed() ? (
                 <box flexDirection="column" width="100%" paddingLeft={1}>
                     {loading() ? (
                         <text fg={COLOR_LABEL}>{"Loading\u2026"}</text>
@@ -123,7 +126,7 @@ export function SessionNavigatorSidebar(props: {
                         </For>
                     )}
                 </box>
-            )}
+            ) : null}
         </box>
     )
 }
