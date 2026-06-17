@@ -9,7 +9,6 @@ import {
     statePath,
     teamDir,
 } from "./paths.js"
-
 /**
  * Runtime team object: RuntimeState plus non-persisted handles.
  *
@@ -104,6 +103,35 @@ export async function readTeamSpec(
     return readJsonOrNull<TeamSpec>(configPath(teamDir(storageRoot, teamName)))
 }
 
+/** Write the immutable TeamSpec (config.json) atomically. Used at team_create. */
+export async function writeTeamSpec(
+    storageRoot: string,
+    spec: TeamSpec,
+): Promise<void> {
+    await atomicWrite(configPath(teamDir(storageRoot, spec.name)), JSON.stringify(spec, null, 2))
+}
+
+/**
+ * Write an initial state.json for a brand-new team, then load it into the
+ * registry (creating the Team with a fresh mutex). Used at team_create.
+ */
+export async function initTeamState(
+    storageRoot: string,
+    state: RuntimeState,
+): Promise<Team> {
+    const dir = teamDir(storageRoot, state.teamName)
+    await atomicWrite(statePath(dir), JSON.stringify(state, null, 2))
+    // Register a fresh Team entry; loadTeamState will read what we just wrote.
+    return loadTeamState(storageRoot, state.teamName)
+}
+
+/** Recursively remove a team's on-disk directory. Used at team_delete(force). */
+export async function deleteTeamStorage(storageRoot: string, teamName: string): Promise<void> {
+    await fs.rm(teamDir(storageRoot, teamName), { recursive: true, force: true }).catch(() => {
+        // best effort
+    })
+}
+
 /**
  * List team names present on disk (directories under <storageRoot>/teams).
  * Returns [] if the teams directory does not exist yet.
@@ -126,4 +154,12 @@ export async function listTeamNames(storageRoot: string): Promise<string[]> {
  */
 export function invalidateTeam(teamName: string): void {
     teamRegistry.delete(teamName)
+}
+
+/**
+ * Snapshot of registry teams that currently have an active orchestration. Used
+ * by the sweep timer (it only needs to babysit busy teams) without scanning disk.
+ */
+export function activeTeams(): Team[] {
+    return Array.from(teamRegistry.values()).filter(t => t.activeTask)
 }

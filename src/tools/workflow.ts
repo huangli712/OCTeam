@@ -1,0 +1,372 @@
+/**
+ * Workflow tools: team_parallel, team_pipeline, team_loop, team_delegate
+ * (design §4.2-§4.5).
+ *
+ * All four follow the SAME three-phase lock order (§4.1):
+ *   1. Pre-checks UNDER team.mutex (reject if already orchestrating; validate)
+ *   2. ensureMembersReady OUTSIDE the mutex (the role-setup barrier needs the
+ *      event handler to flip member.initialized, which it does inside the mutex
+ *      — holding it here would deadlock)
+ *   3. Commit activeTask + dispatch the first stage UNDER the mutex
+ *
+ * Between phases 1 and 3 there is a brief window, but activeTask is not yet
+ * written, so any early member idle is safely handled by processIdle Step 1.5
+ * (barrier) / Step 6 (no active task → return).
+ */
+
+import { tool, type ToolDefinition } from "@opencode-ai/plugin"
+
+import type { PluginContext } from "../context.js"
+import { loadTeamState, saveTeamState } from "../state/store.js"
+import { ensureMembersReady, advanceToStage } from "../orchestration/dispatch.js"
+import { createTask, updateTask } from "../tasks.js"
+import type { ActiveTask, RuntimeMember, Stage } from "../types.js"
+
+const DEFAULT_TIMEOUT_MS = 300_000
+const DEFAULT_LOOP_TIMEOUT_MS = 900_000
+
+/** Send a synthetic text prompt to a member; flip it to running. */
+async function dispatchToMember(
+    ctx: PluginContext,
+    member: RuntimeMember,
+    text: string,
+    directory: string,
+): Promise<void> {
+    if (!member.sessionId) return
+    await ctx.client.session.promptAsync({
+        path: { id: member.sessionId },
+        body: {
+            parts: [{ type: "text", text, synthetic: true }],
+            agent: member.agent ?? "build",
+        },
+        query: { directory },
+    })
+    member.status = "running"
+    member.turnCount++
+}
+
+// --- team_parallel ---
+
+export function teamParallelTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Run a task across all members in parallel. Modes: isolated (same task, no comms), collaborative (per-member tasks, free comms), discussion (multi-round structured debate with <consensus> output).",
+        args: {
+            team_id: tool.schema.string().min(1),
+            mode: tool.schema.enum(["isolated", "collaborative", "discussion"]),
+            task: tool.schema.string().optional().describe("isolated mode: the single task sent to all members"),
+            tasks: tool.schema
+                .record(tool.schema.string(), tool.schema.string())
+                .optional()
+                .describe("collaborative mode: { memberName: task }"),
+            topic: tool.schema.string().optional().describe("discussion mode: the debate topic"),
+            max_rounds: tool.schema.number().min(1).max(20).optional().describe("discussion: round limit"),
+            timeout_ms: tool.schema.number().min(1000).optional(),
+        },
+        async execute(args) {
+            // Validate mode-specific fields.
+            if (args.mode === "isolated" && !args.task) {
+                return "Error: isolated mode requires `task`"
+            }
+            if (args.mode === "collaborative" && !args.tasks) {
+                return "Error: collaborative mode requires `tasks`"
+            }
+            if (args.mode === "discussion" && !args.topic) {
+                return "Error: discussion mode requires `topic`"
+            }
+
+            const team = await loadTeamState(ctx.storageRoot, args.team_id)
+
+            // Phase 1: pre-check under mutex.
+            let busy = false
+            await team.mutex.runExclusive(async () => {
+                if (team.activeTask) busy = true
+            })
+            if (busy) return "Error: team already has an active orchestration"
+
+            // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
+            await ensureMembersReady(ctx, team)
+
+            // Phase 3: commit activeTask + initial dispatch (UNDER mutex).
+            await team.mutex.runExclusive(async () => {
+                team.status = "busy"
+                team.activeTask = {
+                    type: "parallel",
+                    mode: args.mode,
+                    startedAt: Date.now(),
+                    wallClockTimeoutMs: args.timeout_ms ?? DEFAULT_TIMEOUT_MS,
+                    tokensUsed: 0,
+                    tokensByMember: {},
+                    responses: {},
+                    stages: [],
+                    currentStageIndex: 0,
+                    decisionHistory: [],
+                    decisionParseFailures: 0,
+                    task: args.task,
+                    tasks: args.tasks,
+                    topic: args.topic,
+                    maxRounds: args.max_rounds,
+                    currentRound: args.mode === "discussion" ? 1 : undefined,
+                }
+                await saveTeamState(team)
+
+                // Initial dispatch.
+                const participants = team.members.filter(m => !m.isMaster)
+                for (const m of participants) {
+                    let text: string
+                    if (args.mode === "isolated") text = args.task!
+                    else if (args.mode === "collaborative") text = args.tasks![m.name] ?? `No task assigned for ${m.name}.`
+                    else
+                        text = `[Discussion topic] ${args.topic}\n\nRound ${team.activeTask.currentRound}. State your position. End with <consensus>{"agreed": true|false}</consensus>.`
+                    await dispatchToMember(ctx, m, text, m.worktreePath ?? team.directory)
+                }
+            })
+            return `team_parallel (${args.mode}) started on "${args.team_id}".`
+        },
+    })
+}
+
+// --- team_pipeline ---
+
+export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Run a linear pipeline: stage N's output is prefixed onto stage N+1's task. Each stage runs on its named member, in order. The final output is summarized to the leader.",
+        args: {
+            team_id: tool.schema.string().min(1),
+            stages: tool.schema
+                .array(
+                    tool.schema.object({
+                        member: tool.schema.string().min(1),
+                        task: tool.schema.string().min(1),
+                    }),
+                )
+                .min(1),
+            timeout_ms: tool.schema.number().min(1000).optional(),
+        },
+        async execute(args) {
+            const stageMembers = args.stages.map(s => s.member)
+            if (new Set(stageMembers).size !== stageMembers.length) {
+                return "Error: pipeline stages must have unique member names"
+            }
+
+            const team = await loadTeamState(ctx.storageRoot, args.team_id)
+            // Validate members exist.
+            for (const name of stageMembers) {
+                if (!team.members.some(m => m.name === name)) {
+                    return `Error: unknown member "${name}" in stages`
+                }
+            }
+
+            let busy = false
+            await team.mutex.runExclusive(async () => {
+                if (team.activeTask) busy = true
+            })
+            if (busy) return "Error: team already has an active orchestration"
+
+            await ensureMembersReady(ctx, team)
+
+            await team.mutex.runExclusive(async () => {
+                team.status = "busy"
+                const stages: Stage[] = args.stages.map(s => ({
+                    member: s.member,
+                    task: s.task,
+                    completed: false,
+                }))
+                team.activeTask = {
+                    type: "pipeline",
+                    startedAt: Date.now(),
+                    wallClockTimeoutMs: args.timeout_ms ?? 600_000,
+                    tokensUsed: 0,
+                    tokensByMember: {},
+                    responses: {},
+                    stages,
+                    currentStageIndex: 0,
+                    decisionHistory: [],
+                    decisionParseFailures: 0,
+                }
+                await saveTeamState(team)
+                // Dispatch stage 0.
+                const first = team.members.find(m => m.name === stages[0].member)!
+                await dispatchToMember(ctx, first, stages[0].task, first.worktreePath ?? team.directory)
+            })
+            return `team_pipeline started on "${args.team_id}" with ${args.stages.length} stage(s).`
+        },
+    })
+}
+
+// --- team_loop ---
+
+export function teamLoopTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Run a corrective loop: code -> review -> decide -> repeat. The decider (a member, NOT master) emits a <decision>{...} block each round. Loops until done, max_rounds, no-issues, timeout, or 3 consecutive parse failures.",
+        args: {
+            team_id: tool.schema.string().min(1),
+            stages: tool.schema
+                .array(
+                    tool.schema.object({
+                        member: tool.schema.string().min(1),
+                        task: tool.schema.string().min(1),
+                        action: tool.schema.enum(["modify", "read_only"]).optional(),
+                    }),
+                )
+                .min(1),
+            decider: tool.schema.string().min(1).describe("member name of the decider (NOT \"master\")"),
+            max_rounds: tool.schema.number().min(1).max(50),
+            initial_task: tool.schema.string().min(1),
+            timeout_ms: tool.schema.number().min(1000).optional(),
+        },
+        async execute(args) {
+            if (args.decider === "master") {
+                return "Error: decider must be a member name, not \"master\""
+            }
+            const team = await loadTeamState(ctx.storageRoot, args.team_id)
+            if (!team.members.some(m => m.name === args.decider)) {
+                return `Error: decider "${args.decider}" is not a member`
+            }
+            const stageMembers = args.stages.map(s => s.member)
+            if (new Set(stageMembers).size !== stageMembers.length) {
+                return "Error: loop stages must have unique member names"
+            }
+            for (const name of stageMembers) {
+                if (!team.members.some(m => m.name === name)) {
+                    return `Error: unknown member "${name}" in stages`
+                }
+            }
+
+            let busy = false
+            await team.mutex.runExclusive(async () => {
+                if (team.activeTask) busy = true
+            })
+            if (busy) return "Error: team already has an active orchestration"
+
+            await ensureMembersReady(ctx, team)
+
+            await team.mutex.runExclusive(async () => {
+                team.status = "busy"
+                // Append decider as a final read-only stage if not already present.
+                let stages: Stage[] = args.stages.map(s => ({
+                    member: s.member,
+                    task: s.task,
+                    action: s.action,
+                    completed: false,
+                }))
+                if (!stages.some(s => s.member === args.decider)) {
+                    stages.push({
+                        member: args.decider,
+                        task: "Review all outputs and emit a <decision>{...} block with decision (continue|done), rationale, and nextActions.",
+                        action: "read_only",
+                        completed: false,
+                    })
+                }
+                team.activeTask = {
+                    type: "loop",
+                    startedAt: Date.now(),
+                    wallClockTimeoutMs: args.timeout_ms ?? DEFAULT_LOOP_TIMEOUT_MS,
+                    tokensUsed: 0,
+                    tokensByMember: {},
+                    responses: {},
+                    stages,
+                    currentStageIndex: 0,
+                    deciderMember: args.decider,
+                    decisionHistory: [],
+                    decisionParseFailures: 0,
+                    currentRound: 1,
+                    maxRounds: args.max_rounds,
+                }
+                await saveTeamState(team)
+                // Dispatch first stage with the initial task.
+                const first = team.members.find(m => m.name === stages[0].member)!
+                await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? team.directory)
+            })
+            return `team_loop started on "${args.team_id}" (decider: ${args.decider}, max ${args.max_rounds} rounds).`
+        },
+    })
+}
+
+// --- team_delegate ---
+
+export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Delegate mode: publish tasks to a shared tasklist; idle members self-claim, execute, and report to master. Supports blockedBy dependencies via human-readable refs.",
+        args: {
+            team_id: tool.schema.string().min(1),
+            tasks: tool.schema
+                .array(
+                    tool.schema.object({
+                        ref: tool.schema.string().optional().describe("human-readable id for blockedBy references"),
+                        subject: tool.schema.string().min(1),
+                        description: tool.schema.string().min(1),
+                        blocked_by: tool.schema.array(tool.schema.string()).optional(),
+                    }),
+                )
+                .min(1),
+            timeout_ms: tool.schema.number().min(1000).optional(),
+        },
+        async execute(args) {
+            const team = await loadTeamState(ctx.storageRoot, args.team_id)
+
+            let busy = false
+            await team.mutex.runExclusive(async () => {
+                if (team.activeTask) busy = true
+            })
+            if (busy) return "Error: team already has an active orchestration"
+
+            await ensureMembersReady(ctx, team)
+
+            await team.mutex.runExclusive(async () => {
+                team.status = "busy"
+                team.activeTask = {
+                    type: "delegate",
+                    startedAt: Date.now(),
+                    wallClockTimeoutMs: args.timeout_ms ?? DEFAULT_TIMEOUT_MS,
+                    tokensUsed: 0,
+                    tokensByMember: {},
+                    responses: {},
+                    stages: [],
+                    currentStageIndex: 0,
+                    decisionHistory: [],
+                    decisionParseFailures: 0,
+                }
+
+                // Create all tasks, building ref -> uuid map, then resolve blockedBy.
+                const refToUuid = new Map<string, string>()
+                for (const t of args.tasks) {
+                    const created = await createTask(team.directory, {
+                        subject: t.subject,
+                        description: t.description,
+                    })
+                    if (t.ref) refToUuid.set(t.ref, created.id)
+                }
+                for (const t of args.tasks) {
+                    if (!t.ref) continue
+                    const uuid = refToUuid.get(t.ref)
+                    if (!uuid) continue
+                    const blockedBy = (t.blocked_by ?? [])
+                        .map(r => {
+                            const dep = refToUuid.get(r)
+                            if (!dep) throw new Error(`team_delegate: unknown blockedBy ref "${r}"`)
+                            return dep
+                        })
+                    if (blockedBy.length > 0) {
+                        await updateTask(team.directory, uuid, { blockedBy })
+                    }
+                }
+
+                await saveTeamState(team)
+
+                // Prompt every member to start pulling from the tasklist.
+                for (const m of team.members.filter(x => !x.isMaster)) {
+                    const text =
+                        `[Team Orchestrator] You are on team "${team.teamName}" in delegate mode. ` +
+                        `${args.tasks.length} task(s) published. Use team_task_list to view, team_task_update (status "claimed") to claim, ` +
+                        `execute, then team_send_message to report results to master. Repeat until no tasks remain.`
+                    await dispatchToMember(ctx, m, text, m.worktreePath ?? team.directory)
+                }
+            })
+            return `team_delegate started on "${args.team_id}" with ${args.tasks.length} task(s).`
+        },
+    })
+}

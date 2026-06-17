@@ -3,6 +3,7 @@
 
 import { createSignal, createEffect, on, onCleanup, For } from "solid-js"
 import { loadChildren, type SessionTreeNode } from "./session-tree"
+import { loadTeams, type TeamSummary } from "./teams"
 
 // Status colors: green=running, red=finished, purple=error
 const COLOR_RUNNING = "#22c55e"
@@ -17,10 +18,14 @@ export function SessionNavigatorSidebar(props: {
 }) {
     const [sessions, setSessions] = createSignal<SessionTreeNode[]>([])
     const [loading, setLoading] = createSignal(true)
+    const [teams, setTeams] = createSignal<TeamSummary[]>([])
     // Persist collapsed state in kv — survives component remount when navigating
     // to child sessions and back (sidebar unmounts/remounts)
     const [collapsed, setCollapsed] = createSignal<boolean>(
         props.api.kv.get("octeam_tasks_collapsed") ?? true
+    )
+    const [teamsCollapsed, setTeamsCollapsed] = createSignal<boolean>(
+        props.api.kv.get("octeam_teams_collapsed") ?? false
     )
     const [rootSessionId, setRootSessionId] = createSignal<string | null>(null)
 
@@ -41,6 +46,14 @@ export function SessionNavigatorSidebar(props: {
         }
     }
 
+    const refreshTeams = async () => {
+        try {
+            setTeams(await loadTeams())
+        } catch {
+            // best-effort
+        }
+    }
+
     createEffect(
         on(props.sessionID, (sid) => {
             if (!sid) return
@@ -49,10 +62,11 @@ export function SessionNavigatorSidebar(props: {
             }
             setLoading(true)
             refresh()
+            refreshTeams()
 
             const unsubs = [
                 props.api.event.on("session.created", refresh),
-                props.api.event.on("session.status", refresh),
+                props.api.event.on("session.status", () => { refresh(); refreshTeams() }),
                 props.api.event.on("session.updated", refresh),
                 props.api.event.on("session.deleted", refresh),
             ]
@@ -75,12 +89,29 @@ export function SessionNavigatorSidebar(props: {
         props.api.kv.set("octeam_tasks_collapsed", next)
     }
 
+    const toggleTeamsCollapse = () => {
+        const next = !teamsCollapsed()
+        setTeamsCollapsed(next)
+        props.api.kv.set("octeam_teams_collapsed", next)
+    }
+
     const statusColor = (status: string): string => {
         switch (status) {
             case "running": return COLOR_RUNNING
             case "idle": return COLOR_IDLE
             case "errored": return COLOR_ERRORED
             default: return COLOR_IDLE
+        }
+    }
+
+    const statusDot = (status: string): string => {
+        switch (status) {
+            case "running": return "\u25cf"
+            case "idle": return "\u25cb"
+            case "errored": return "\u25cf"
+            case "completed":
+            case "shutdown_approved": return "\u25cf"
+            default: return "\u25cb"
         }
     }
 
@@ -146,15 +177,62 @@ export function SessionNavigatorSidebar(props: {
                 </box>
             ) : null}
 
-            {/* Line 3: "Teams" header — placeholder for Phase 2 (no-op click) */}
+            {/* Line 3: "Teams" header — collapsible, shows team info (Phase 2.9) */}
             <box
                 flexDirection="row"
                 width="100%"
-                onMouseDown={() => { /* Phase 2: team sidebar */ }}
+                onMouseDown={() => toggleTeamsCollapse()}
             >
-                <text fg={textMuted()}>{"\u25b6 "}</text>
+                <text fg={textMuted()}>
+                    {teamsCollapsed() ? "\u25b6 " : "\u25bc "}
+                </text>
                 <text fg={textMuted()}>{"Teams"}</text>
+                {teams().length > 0 ? (
+                    <text fg={textMuted()}>{" (" + teams().length + ")"}</text>
+                ) : null}
             </box>
+
+            {!teamsCollapsed() ? (
+                <box flexDirection="column" width="100%" paddingLeft={1}>
+                    {teams().length === 0 ? (
+                        <text fg={textMuted()}>{"No teams"}</text>
+                    ) : (
+                        <For each={teams()}>
+                            {(team) => (
+                                <box flexDirection="column" width="100%">
+                                    <text fg={textColor()}>
+                                        {"\u2500\u2500 " + team.name + " \u2014 " + team.status}
+                                    </text>
+                                    {team.active ? (
+                                        <text fg={textMuted()}>
+                                            {"   " + team.active.type + (team.active.mode ? "/" + team.active.mode : "")
+                                                + (team.active.round ? " round " + team.active.round + "/" + (team.active.maxRounds ?? "?") : "")}
+                                        </text>
+                                    ) : null}
+                                    <For each={team.members}>
+                                        {(member) => (
+                                            <box
+                                                flexDirection="row"
+                                                width="100%"
+                                                justifyContent="space-between"
+                                                onMouseDown={() => member.sessionId ? handleClick(member.sessionId) : undefined}
+                                            >
+                                                <text fg={statusColor(member.status)}>
+                                                    {"  " + statusDot(member.status) + " " + member.name}
+                                                </text>
+                                                <text fg={textMuted()}>
+                                                    {member.model ?? ""}
+                                                    {member.unread ? " " + member.unread + " unread" : ""}
+                                                </text>
+                                            </box>
+                                        )}
+                                    </For>
+                                </box>
+                            )}
+                        </For>
+                    )}
+                </box>
+            ) : null}
         </box>
     )
 }
