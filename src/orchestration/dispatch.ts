@@ -13,7 +13,7 @@ import { promisify } from "node:util"
 
 import type { PluginContext } from "../context.js"
 import type { Team } from "../state/store.js"
-import { readTeamSpec } from "../state/store.js"
+import { readTeamSpec, saveTeamState } from "../state/store.js"
 import { worktreePath } from "../state/paths.js"
 import { buildRolePrompt, chunk, indexMember, truncateOutput, waitUntil } from "../utils.js"
 import type { Stage } from "../types.js"
@@ -110,7 +110,6 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
             }),
         )
         // Persist each batch so a crash mid-spawn leaves recoverable state.
-        const { saveTeamState } = await import("../state/store.js")
         await saveTeamState(team)
     }
 
@@ -131,7 +130,6 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
         }
         // L3: persist the errored state before throwing so a restart sees it
         // (the tool handler aborts before its Phase 3 saveTeamState).
-        const { saveTeamState } = await import("../state/store.js")
         await saveTeamState(team).catch(() => {})
         throw new Error("ensureMembersReady: role-setup barrier timed out")
     })

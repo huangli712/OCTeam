@@ -17,7 +17,7 @@ import path from "node:path"
 import crypto from "node:crypto"
 
 import { CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./state/locks.js"
-import { claimLockPath, claimsDir, taskPath, tasksDir } from "./state/paths.js"
+import { claimLockPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./state/paths.js"
 import type { Task, TaskStatus } from "./types.js"
 
 export class TaskAlreadyClaimedError extends Error {
@@ -90,21 +90,26 @@ export async function updateTask(
     taskId: string,
     patch: Partial<Pick<Task, "status" | "owner" | "blockedBy" | "blocks" | "claimedAt">>,
 ): Promise<Task> {
-    const task = await readTaskFile(teamDirectory, taskId)
-    if (!task) throw new Error(`updateTask: task ${taskId} not found`)
-    Object.assign(task, patch, { updatedAt: Date.now() })
-    await atomicWrite(taskPath(teamDirectory, taskId), JSON.stringify(task, null, 2))
-    // Clean up the persistent claim lock once the task leaves the claim window.
-    if (
-        patch.status === "in_progress"
-        || patch.status === "completed"
-        || patch.status === "deleted"
-    ) {
-        await fs.unlink(claimLockPath(teamDirectory, taskId)).catch(() => {
-            // no lock to clean
-        })
-    }
-    return task
+    // Serialize the read-modify-write against concurrent updateTask calls (e.g.
+    // a member's team_task_update racing the sweep timer's reapStaleClaims) so a
+    // later writer cannot clobber an interleaved update (lost-update race).
+    return withLock(taskUpdateLockPath(teamDirectory, taskId), async () => {
+        const task = await readTaskFile(teamDirectory, taskId)
+        if (!task) throw new Error(`updateTask: task ${taskId} not found`)
+        Object.assign(task, patch, { updatedAt: Date.now() })
+        await atomicWrite(taskPath(teamDirectory, taskId), JSON.stringify(task, null, 2))
+        // Clean up the persistent claim lock once the task leaves the claim window.
+        if (
+            patch.status === "in_progress"
+            || patch.status === "completed"
+            || patch.status === "deleted"
+        ) {
+            await fs.unlink(claimLockPath(teamDirectory, taskId)).catch(() => {
+                // no lock to clean
+            })
+        }
+        return task
+    })
 }
 
 /**

@@ -17,11 +17,11 @@
  */
 
 import type { PluginContext } from "../context.js"
-import type { Team } from "../state/store.js"
+import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { countUnreadMessages } from "../mailbox.js"
-import { reapStaleClaims, listAllTasks } from "../tasks.js"
+import { listAllTasks } from "../tasks.js"
 import { sendWakeHint } from "../wake-hint.js"
-import { extractTextFromParts, sumMemberTokens, truncateOutput } from "../utils.js"
+import { extractTextFromParts, resolveTeamMember, sumMemberTokens, truncateOutput } from "../utils.js"
 import type { ActiveTask, DecisionRecord, RuntimeMember } from "../types.js"
 import { advanceToStage } from "./dispatch.js"
 import { buildRoundSummary, deliverQueuedResultsToMaster, deliverSummaryToLeader } from "./summary.js"
@@ -144,7 +144,6 @@ export async function processIdle(
     // marks it ready and returns WITHOUT capturing output or advancing.
     if (!member.initialized) {
         member.initialized = true
-        const { saveTeamState } = await import("../state/store.js")
         await saveTeamState(team)
         return
     }
@@ -164,7 +163,6 @@ export async function processIdle(
     if (team.activeTask) {
         const expected = getExpectedMember(team.activeTask)
         if (expected !== null && member.name !== expected) {
-            const { saveTeamState } = await import("../state/store.js")
             await saveTeamState(team) // persist token tally; do NOT advance
             return
         }
@@ -187,7 +185,6 @@ export async function processIdle(
         }
     }
 
-    const { saveTeamState } = await import("../state/store.js")
     await saveTeamState(team)
 
     // Step 5: Unread messages — wake hint only (Transform hook injects content).
@@ -449,9 +446,6 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Runtim
     member.turnCount++
 }
 
-// re-export for the sweep timer / event handler to reuse the same reapers
-export { reapStaleClaims }
-
 const RETRY_ESCALATION_MS = 60_000
 
 /**
@@ -466,11 +460,10 @@ export async function handleStatusEvent(
 ): Promise<void> {
     const sessionID = (event.properties as { sessionID?: string } | undefined)?.sessionID
     if (!sessionID) return
-    const { resolveTeamMember } = await import("../utils.js")
     const member = await resolveTeamMember(ctx.storageRoot, sessionID)
     if (!member || member.isMaster) return
 
-    const team = await loadTeamStateLive(ctx, member.teamName)
+    const team = await loadTeamState(ctx.storageRoot, member.teamName)
     await team.mutex.runExclusive(async () => {
         const live = team.members.find(m => m.name === member.name)
         if (!live) return
@@ -484,7 +477,6 @@ export async function handleStatusEvent(
             if (Date.now() - live.retryingSince > RETRY_ESCALATION_MS) {
                 live.status = "errored"
                 live.error = `sustained retry > ${RETRY_ESCALATION_MS}ms: ${entry.message ?? "unknown"}`
-                const { saveTeamState } = await import("../state/store.js")
                 await saveTeamState(team)
                 await checkTermination(ctx, team) // member-error branch now fires
             }
@@ -492,10 +484,4 @@ export async function handleStatusEvent(
             live.retryingSince = undefined
         }
     })
-}
-
-// helper to avoid a top-level store import cycle in this already-heavy module
-async function loadTeamStateLive(ctx: PluginContext, teamName: string) {
-    const { loadTeamState } = await import("../state/store.js")
-    return loadTeamState(ctx.storageRoot, teamName)
 }

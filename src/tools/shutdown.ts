@@ -3,6 +3,10 @@
  * member; the member (or master) approves/rejects. On approval the member's
  * worktree is cleaned and its status flips to shutdown_approved. When all
  * members are approved/shut, the team becomes "dead".
+ *
+ * Auth model: team_shutdown_request is master-only. approve/reject may be
+ * called by the master OR by the member being shut down (the cooperative party),
+ * and the caller must belong to the target team.
  */
 
 import { execFile } from "node:child_process"
@@ -11,11 +15,11 @@ import { promisify } from "node:util"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../context.js"
-import { resolveTeamMember } from "../utils.js"
-import { writeMailboxMessage } from "../mailbox.js"
+import { resolveCallerInTeam } from "../utils.js"
+import { loadTeamState, saveTeamState } from "../state/store.js"
+import { countUnreadMessages, writeMailboxMessage } from "../mailbox.js"
 import { sendWakeHint } from "../wake-hint.js"
-import { countUnreadMessages } from "../mailbox.js"
-import type { Message, RuntimeMember } from "../types.js"
+import type { Message } from "../types.js"
 
 const execFileP = promisify(execFile)
 
@@ -34,11 +38,10 @@ export function teamShutdownRequestTool(ctx: PluginContext): ToolDefinition {
             member: tool.schema.string().min(1),
         },
         async execute(args, context) {
-            const caller = await resolveTeamMember(ctx.storageRoot, context.sessionID)
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_shutdown_request is master-only"
             }
-            const { loadTeamState, saveTeamState } = await import("../state/store.js")
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
             const member = team.members.find(m => m.name === args.member)
             if (!member) return `Error: unknown member "${args.member}"`
@@ -67,13 +70,17 @@ export function teamShutdownRequestTool(ctx: PluginContext): ToolDefinition {
 
 export function teamApproveShutdownTool(ctx: PluginContext): ToolDefinition {
     return tool({
-        description: "Approve cooperative shutdown for a member. Cleans the member's worktree and flips status to shutdown_approved. When all members are approved, the team becomes dead.",
+        description: "Approve cooperative shutdown for a member. Cleans the member's worktree and flips status to shutdown_approved. When all members are approved, the team becomes dead. Callable by the master or by the member being shut down.",
         args: {
             team_id: tool.schema.string().min(1),
             member: tool.schema.string().min(1),
         },
-        async execute(args) {
-            const { loadTeamState, saveTeamState } = await import("../state/store.js")
+        async execute(args, context) {
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller) return "Error: caller is not a member of this team"
+            if (!caller.isMaster && caller.name !== args.member) {
+                return "Error: only the master or the member itself may approve its shutdown"
+            }
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
             return team.mutex.runExclusive(async () => {
                 const member = team.members.find(m => m.name === args.member)
@@ -94,14 +101,18 @@ export function teamApproveShutdownTool(ctx: PluginContext): ToolDefinition {
 
 export function teamRejectShutdownTool(ctx: PluginContext): ToolDefinition {
     return tool({
-        description: "Reject cooperative shutdown for a member, with a reason. The member keeps running.",
+        description: "Reject cooperative shutdown for a member, with a reason. The member keeps running. Callable by the master or by the member being shut down.",
         args: {
             team_id: tool.schema.string().min(1),
             member: tool.schema.string().min(1),
             reason: tool.schema.string().min(1).max(2048),
         },
-        async execute(args) {
-            const { loadTeamState, saveTeamState } = await import("../state/store.js")
+        async execute(args, context) {
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller) return "Error: caller is not a member of this team"
+            if (!caller.isMaster && caller.name !== args.member) {
+                return "Error: only the master or the member itself may reject its shutdown"
+            }
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
             return team.mutex.runExclusive(async () => {
                 const member = team.members.find(m => m.name === args.member)

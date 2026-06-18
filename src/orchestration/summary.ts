@@ -8,9 +8,12 @@
  * The reservation protocol (mailbox.ts) prevents double-delivery.
  */
 
+import crypto from "node:crypto"
+
 import type { PluginContext } from "../context.js"
 import type { Team } from "../state/store.js"
 import { formatMailboxInjection, pollMailbox, ackMessages, writeMailboxMessage } from "../mailbox.js"
+import { listAllTasks } from "../tasks.js"
 import { truncateOutput } from "../utils.js"
 import type { ActiveTask, Message } from "../types.js"
 
@@ -52,7 +55,7 @@ export async function deliverSummaryToLeader(
         // guarantees exactly-once delivery between the two drainers).
         const msg: Message = {
             version: 1,
-            id: cryptoRandom(),
+            id: crypto.randomUUID(),
             from: "orchestrator",
             to: "master",
             kind: "announcement",
@@ -101,7 +104,6 @@ export async function buildSummary(
     const head = `mode=${task.type} reason=${reason} tokens=${task.tokensUsed}`
     switch (task.type) {
         case "delegate": {
-            const { listAllTasks } = await import("../tasks.js")
             const tasks = await listAllTasks(team.directory)
             const lines = tasks.map(
                 t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
@@ -132,8 +134,4 @@ export function buildRoundSummary(responses: Record<string, string>): string {
     return Object.entries(responses)
         .map(([name, out]) => `- ${name}: ${truncateOutput(out, 500)}`)
         .join("\n")
-}
-
-function cryptoRandom(): string {
-    return globalThis.crypto.randomUUID()
 }

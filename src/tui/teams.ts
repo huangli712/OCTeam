@@ -34,6 +34,21 @@ export type TeamSummary = {
     tokensUsed?: number
 }
 
+/**
+ * Count unread mailbox messages for a recipient by reading its inbox jsonl
+ * directly (one non-empty line per pending message). Computed on read so the
+ * sidebar never depends on a persisted counter that could drift. Reserved /
+ * in-flight messages live in a separate dir and are intentionally not counted.
+ */
+async function countUnread(teamDir: string, recipient: string): Promise<number> {
+    try {
+        const raw = await fs.readFile(path.join(teamDir, "mailbox", `${recipient}.jsonl`), "utf8")
+        return raw.split("\n").filter(l => l.length > 0).length
+    } catch {
+        return 0
+    }
+}
+
 async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
     const teamsPath = path.join(root, "teams")
     let entries: import("node:fs").Dirent[]
@@ -46,18 +61,19 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
     for (const e of entries) {
         if (!e.isDirectory()) continue
         try {
-            const raw = await fs.readFile(path.join(teamsPath, e.name, "state.json"), "utf8")
+            const teamDir = path.join(teamsPath, e.name)
+            const raw = await fs.readFile(path.join(teamDir, "state.json"), "utf8")
             const state = JSON.parse(raw)
             out.push({
                 name: state.teamName ?? e.name,
                 status: state.status ?? "unknown",
-                members: (state.members ?? []).map((m: any) => ({
+                members: await Promise.all((state.members ?? []).map(async (m: any) => ({
                     name: m.name,
                     status: m.status,
                     model: m.model,
                     sessionId: m.sessionId,
-                    unread: m.pendingMessageCount,
-                })),
+                    unread: await countUnread(teamDir, m.name),
+                }))),
                 active: state.activeTask
                     ? {
                           type: state.activeTask.type,

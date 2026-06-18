@@ -4,7 +4,6 @@ import path from "node:path"
 import type { PluginInput } from "@opencode-ai/plugin"
 import type { OpencodeClient, Project } from "@opencode-ai/sdk"
 
-import { resolveStorageRoot } from "./state/paths.js"
 import type { StorageScope } from "./types.js"
 
 /**

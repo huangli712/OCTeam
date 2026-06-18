@@ -20,10 +20,24 @@ import type { PluginContext } from "../context.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
 import { ensureMembersReady, advanceToStage } from "../orchestration/dispatch.js"
 import { createTask, updateTask } from "../tasks.js"
-import type { ActiveTask, RuntimeMember, Stage } from "../types.js"
+import { resolveCallerInTeam } from "../utils.js"
+import type { RuntimeMember, Stage } from "../types.js"
 
 const DEFAULT_TIMEOUT_MS = 300_000
 const DEFAULT_LOOP_TIMEOUT_MS = 900_000
+
+/**
+ * Effective wall-clock timeout: the requested timeout (or a mode default)
+ * clamped to the team's hard cap bounds.maxWallClockMinutes (§8.1). Without this
+ * clamp a caller could pass timeout_ms far above the team's configured limit.
+ */
+function effectiveTimeoutMs(
+    requestedMs: number | undefined,
+    defaultMs: number,
+    maxWallClockMinutes: number,
+): number {
+    return Math.min(requestedMs ?? defaultMs, maxWallClockMinutes * 60_000)
+}
 
 /** Send a synthetic text prompt to a member; flip it to running. */
 async function dispatchToMember(
@@ -64,7 +78,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
-        async execute(args) {
+        async execute(args, context) {
             // Validate mode-specific fields.
             if (args.mode === "isolated" && !args.task) {
                 return "Error: isolated mode requires `task`"
@@ -77,6 +91,13 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
             }
 
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
+
+            // Workflow tools are master-only: only the team's leader session may
+            // start an orchestration.
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller?.isMaster) {
+                return "Error: team_parallel is master-only"
+            }
 
             // Phase 1: pre-check under mutex.
             let busy = false
@@ -97,7 +118,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     type: "parallel",
                     mode: args.mode,
                     startedAt: Date.now(),
-                    wallClockTimeoutMs: args.timeout_ms ?? DEFAULT_TIMEOUT_MS,
+                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
                     tokenBudget: args.token_budget,
                     tokensUsed: 0,
                     tokensByMember: {},
@@ -153,13 +174,20 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
-        async execute(args) {
+        async execute(args, context) {
             const stageMembers = args.stages.map(s => s.member)
             if (new Set(stageMembers).size !== stageMembers.length) {
                 return "Error: pipeline stages must have unique member names"
             }
 
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
+
+            // Workflow tools are master-only.
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller?.isMaster) {
+                return "Error: team_pipeline is master-only"
+            }
+
             // Validate members exist.
             for (const name of stageMembers) {
                 if (!team.members.some(m => m.name === name)) {
@@ -187,7 +215,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 team.activeTask = {
                     type: "pipeline",
                     startedAt: Date.now(),
-                    wallClockTimeoutMs: args.timeout_ms ?? 600_000,
+                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, 600_000, team.bounds.maxWallClockMinutes),
                     tokenBudget: args.token_budget,
                     tokensUsed: 0,
                     tokensByMember: {},
@@ -232,11 +260,18 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
-        async execute(args) {
+        async execute(args, context) {
             if (args.decider === "master") {
                 return "Error: decider must be a member name, not \"master\""
             }
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
+
+            // Workflow tools are master-only.
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller?.isMaster) {
+                return "Error: team_loop is master-only"
+            }
+
             if (!team.members.some(m => m.name === args.decider)) {
                 return `Error: decider "${args.decider}" is not a member`
             }
@@ -280,7 +315,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 team.activeTask = {
                     type: "loop",
                     startedAt: Date.now(),
-                    wallClockTimeoutMs: args.timeout_ms ?? DEFAULT_LOOP_TIMEOUT_MS,
+                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_LOOP_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
                     tokenBudget: args.token_budget,
                     tokensUsed: 0,
                     tokensByMember: {},
@@ -326,8 +361,14 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
-        async execute(args) {
+        async execute(args, context) {
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
+
+            // Workflow tools are master-only.
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller?.isMaster) {
+                return "Error: team_delegate is master-only"
+            }
 
             let busy = false
             await team.mutex.runExclusive(async () => {
@@ -344,7 +385,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 team.activeTask = {
                     type: "delegate",
                     startedAt: Date.now(),
-                    wallClockTimeoutMs: args.timeout_ms ?? DEFAULT_TIMEOUT_MS,
+                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
                     tokenBudget: args.token_budget,
                     tokensUsed: 0,
                     tokensByMember: {},

@@ -6,8 +6,9 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../context.js"
-import { deleteTeamStorage, initTeamState, listTeamNames, loadTeamState, readTeamSpec, writeTeamSpec } from "../state/store.js"
-import { indexMaster, unindexSession } from "../utils.js"
+import { deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, writeTeamSpec } from "../state/store.js"
+import { indexMaster, resolveCallerInTeam, unindexSession } from "../utils.js"
+import { countUnreadMessages } from "../mailbox.js"
 import { clearWakeHint } from "../wake-hint.js"
 import type { Bounds, RuntimeMember, TeamMemberSpec, TeamSpec } from "../types.js"
 
@@ -98,7 +99,6 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 name: m.name,
                 status: "pending",
                 initialized: false,
-                pendingMessageCount: 0,
                 turnCount: 0,
                 model: m.model,
                 agent: m.agent,
@@ -157,7 +157,9 @@ export function teamStatusTool(ctx: PluginContext): ToolDefinition {
         args: {
             team_id: tool.schema.string().min(1),
         },
-        async execute(args) {
+        async execute(args, context) {
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller) return "Error: caller is not a member of this team"
             let team
             try {
                 team = await loadTeamState(ctx.storageRoot, args.team_id)
@@ -175,8 +177,11 @@ export function teamStatusTool(ctx: PluginContext): ToolDefinition {
             }
             lines.push("Members:")
             for (const m of team.members) {
+                // P2: unread is computed from the mailbox file on read (no persisted
+                // counter to drift); reserved/in-flight messages are excluded.
+                const unread = await countUnreadMessages(team.directory, m.name)
                 lines.push(
-                    `  - ${m.name}: ${m.status}${m.model ? ` (${m.model})` : ""}${m.pendingMessageCount ? ` ${m.pendingMessageCount} unread` : ""}${m.turnCount ? ` ${m.turnCount} turns` : ""}`,
+                    `  - ${m.name}: ${m.status}${m.model ? ` (${m.model})` : ""}${unread ? ` ${unread} unread` : ""}${m.turnCount ? ` ${m.turnCount} turns` : ""}`,
                 )
             }
             return lines.join("\n")
@@ -192,7 +197,11 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             team_id: tool.schema.string().min(1),
             force: tool.schema.boolean().optional(),
         },
-        async execute(args) {
+        async execute(args, context) {
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller?.isMaster) {
+                return "Error: team_delete is master-only (only the team's leader session can delete it)"
+            }
             let team
             try {
                 team = await loadTeamState(ctx.storageRoot, args.team_id)
@@ -218,7 +227,6 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             unindexSession(team.leadSessionId)
             clearWakeHint(team.leadSessionId)
             await deleteTeamStorage(ctx.storageRoot, args.team_id)
-            const { invalidateTeam } = await import("../state/store.js")
             invalidateTeam(args.team_id)
             return `Team "${args.team_id}" deleted${force ? " (forced)" : ""}.`
         },

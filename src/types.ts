@@ -14,7 +14,6 @@ export type TeamSpec = {
     name: string                        // /^[a-z0-9-]+$/, unique within scope
     description?: string
     createdAt: number                   // epoch ms
-    teamAllowedPaths?: string[]         // restrict file access for members
     members: TeamMemberSpec[]           // 1-8 members
 }
 
@@ -52,7 +51,6 @@ export type RuntimeMember = {
     status: MemberStatus
     initialized: boolean               // true after role-setup prompt completes (B3)
     worktreePath?: string              // absolute path to git worktree
-    pendingMessageCount: number        // unread messages in mailbox
     turnCount: number                  // incremented per promptAsync dispatch
     lastTurnMarker?: string            // Transform hook injection dedup
     lastNotifiedAt?: number            // delegate: rate-limit re-prompts

@@ -1,29 +1,5 @@
 import path from "node:path"
 
-import type { StorageScope } from "../types.js"
-
-const TEAM_NAME_PATTERN = /^[a-z0-9-]+$/
-
-/** Validate a team name matches the allowed pattern /^[a-z0-9-]+$/. */
-export function isValidTeamName(name: string): boolean {
-    return TEAM_NAME_PATTERN.test(name)
-}
-
-/**
- * Resolve the .octeam storage root for a given scope.
- * - project: <projectDir>/.octeam  (teams bound to the project working dir)
- * - user:    <homeDir>/.octeam     (teams shared across the user's projects)
- */
-export function resolveStorageRoot(
-    scope: StorageScope,
-    projectDir: string,
-    homeDir: string,
-): string {
-    return scope === "project"
-        ? path.join(projectDir, ".octeam")
-        : path.join(homeDir, ".octeam")
-}
-
 // --- Scope-level paths ---
 
 /** <storageRoot>/teams */
@@ -107,6 +83,11 @@ export function claimLockPath(teamDirectory: string, taskId: string): string {
     return path.join(claimsDir(teamDirectory), `${taskId}.lock`)
 }
 
+/** tasks/claims/{taskId}.update.lock — short-lived lock serializing updateTask read-modify-write */
+export function taskUpdateLockPath(teamDirectory: string, taskId: string): string {
+    return path.join(claimsDir(teamDirectory), `${taskId}.update.lock`)
+}
+
 // --- worktrees/ (only when member worktree: true) ---
 
 export function worktreesDir(teamDirectory: string): string {
@@ -117,12 +98,4 @@ export function worktreePath(teamDirectory: string, memberName: string): string 
     return path.join(worktreesDir(teamDirectory), memberName)
 }
 
-// --- runs/ (per-run artifacts: logs, outputs) ---
 
-export function runsDir(teamDirectory: string): string {
-    return path.join(teamDirectory, "runs")
-}
-
-export function runDir(teamDirectory: string, teamRunId: string): string {
-    return path.join(runsDir(teamDirectory), teamRunId)
-}

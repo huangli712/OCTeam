@@ -10,10 +10,10 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../context.js"
-import { resolveTeamMember } from "../utils.js"
-import { writeMailboxMessage } from "../mailbox.js"
+import { resolveCallerInTeam } from "../utils.js"
+import { loadTeamState, saveTeamState } from "../state/store.js"
+import { countUnreadMessages, writeMailboxMessage } from "../mailbox.js"
 import { sendWakeHint } from "../wake-hint.js"
-import { countUnreadMessages } from "../mailbox.js"
 import type { Message } from "../types.js"
 
 export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
@@ -28,11 +28,17 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
             correlation_id: tool.schema.string().optional(),
         },
         async execute(args, context) {
-            const sender = await resolveTeamMember(ctx.storageRoot, context.sessionID)
-            if (!sender) return "Error: caller is not a team member of this team"
+            const sender = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!sender) return "Error: caller is not a member of this team"
 
-            const { loadTeamState, saveTeamState } = await import("../state/store.js")
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
+
+            // P1 (§8.1): enforce the configurable per-message payload cap. The
+            // schema .max() is a static safety net; bounds.messagePayloadMaxBytes
+            // is the team's actual limit and is measured in UTF-8 bytes.
+            if (Buffer.byteLength(args.body, "utf8") > team.bounds.messagePayloadMaxBytes) {
+                return `Error: message body exceeds payload limit (${team.bounds.messagePayloadMaxBytes} bytes).`
+            }
 
             // Broadcast is master-only; members send point-to-point only.
             if (args.to === "*" && !sender.isMaster) {

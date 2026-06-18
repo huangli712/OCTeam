@@ -3,12 +3,17 @@
  * Used by collaborative modes (parallel-collaborative, delegate) for
  * pull-based coordination. team_task_update with status "claimed" acquires the
  * persistent claim lock atomically (claimTask).
+ *
+ * Every tool is team-scoped: the caller must be a member (or master) of
+ * args.team_id, enforced via resolveCallerInTeam. Non-claim status updates
+ * additionally require task ownership (or master) so a member cannot mutate
+ * another member's claimed task.
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../context.js"
-import { resolveTeamMember } from "../utils.js"
+import { resolveCallerInTeam } from "../utils.js"
 import {
     TaskAlreadyClaimedError,
     claimTask,
@@ -28,14 +33,10 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
             description: tool.schema.string().min(1).max(8192),
             blocked_by: tool.schema.array(tool.schema.string()).optional(),
         },
-        async execute(args) {
-            let dir: string
-            try {
-                dir = await teamDirFor(ctx, args.team_id)
-            } catch {
-                return `Error: team "${args.team_id}" not found`
-            }
-            const task = await createTask(dir, {
+        async execute(args, context) {
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller) return "Error: caller is not a member of this team"
+            const task = await createTask(caller.directory, {
                 subject: args.subject,
                 description: args.description,
                 blockedBy: args.blocked_by,
@@ -55,9 +56,10 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
                 .optional(),
             owner: tool.schema.string().optional(),
         },
-        async execute(args) {
-            const dir = await teamDirFor(ctx, args.team_id)
-            let tasks = await listAllTasks(dir)
+        async execute(args, context) {
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller) return "Error: caller is not a member of this team"
+            let tasks = await listAllTasks(caller.directory)
             if (args.status) tasks = tasks.filter(t => t.status === (args.status as TaskStatus))
             if (args.owner) tasks = tasks.filter(t => t.owner === args.owner)
             if (tasks.length === 0) return "No tasks."
@@ -74,19 +76,19 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
 export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Update a task. Setting status to \"claimed\" atomically acquires the claim lock (fails if another member holds it). The caller becomes the task owner on claim.",
+            "Update a task. Setting status to \"claimed\" atomically acquires the claim lock (fails if another member holds it). The caller becomes the task owner on claim. Other status changes require the caller to be the task owner or master.",
         args: {
             team_id: tool.schema.string().min(1),
             task_id: tool.schema.string().min(1),
             status: tool.schema.enum(["claimed", "in_progress", "completed", "deleted"]),
         },
         async execute(args, context) {
-            const dir = await teamDirFor(ctx, args.team_id)
-            const caller = await resolveTeamMember(ctx.storageRoot, context.sessionID)
-            const owner = caller?.name ?? "unknown"
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller) return "Error: caller is not a member of this team"
+            const dir = caller.directory
             if (args.status === "claimed") {
                 try {
-                    const task = await claimTask(dir, args.task_id, owner)
+                    const task = await claimTask(dir, args.task_id, caller.name)
                     return `Claimed task ${task.id} [${task.subject}].`
                 } catch (err) {
                     if (err instanceof TaskAlreadyClaimedError) {
@@ -94,6 +96,13 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                     }
                     throw err
                 }
+            }
+            // Non-claim updates: only the current owner (or master) may change a
+            // task's status, so one member cannot overwrite another's claimed work.
+            const existing = await getTask(dir, args.task_id)
+            if (!existing) return `Error: task ${args.task_id} not found`
+            if (!caller.isMaster && existing.owner !== caller.name) {
+                return `Error: only the task owner (@${existing.owner ?? "unassigned"}) or master can update task ${args.task_id}.`
             }
             const task = await updateTask(dir, args.task_id, {
                 status: args.status as TaskStatus,
@@ -110,9 +119,10 @@ export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
             team_id: tool.schema.string().min(1),
             task_id: tool.schema.string().min(1),
         },
-        async execute(args) {
-            const dir = await teamDirFor(ctx, args.team_id)
-            const task = await getTask(dir, args.task_id)
+        async execute(args, context) {
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller) return "Error: caller is not a member of this team"
+            const task = await getTask(caller.directory, args.task_id)
             if (!task) return `Error: task ${args.task_id} not found`
             return [
                 `Task ${task.id}`,
@@ -125,11 +135,4 @@ export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
                 .join("\n")
         },
     })
-}
-
-/** Resolve a team_id to its on-disk directory (validates the team exists). */
-async function teamDirFor(ctx: PluginContext, teamId: string): Promise<string> {
-    const { loadTeamState } = await import("../state/store.js")
-    const team = await loadTeamState(ctx.storageRoot, teamId)
-    return team.directory
 }

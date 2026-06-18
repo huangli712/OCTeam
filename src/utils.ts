@@ -3,10 +3,7 @@
  * polling primitives, and the role-setup prompt builder.
  */
 
-import crypto from "node:crypto"
-
-import { teamDir } from "./state/paths.js"
-import { loadTeamState } from "./state/store.js"
+import { listTeamNames, loadTeamState } from "./state/store.js"
 import type { RuntimeMember, TeamMemberSpec, TeamSpec } from "./types.js"
 
 // --- sessionID -> member index (process-level, O(1) resolve) ---
@@ -56,7 +53,6 @@ export async function resolveTeamMember(
             isMaster: true,
             status: "idle",
             initialized: true,
-            pendingMessageCount: 0,
             turnCount: 0,
             teamName: team.teamName,
             teamRunId: team.teamRunId,
@@ -70,12 +66,28 @@ export async function resolveTeamMember(
 }
 
 /**
+ * Authorization gate for team-scoped tools. Resolves the caller's session to a
+ * member (or synthetic master) and returns it ONLY when the caller belongs to
+ * `teamId`. Returns null when the caller is not a team member at all OR belongs
+ * to a different team — callers turn null into an "unauthorized" error. This is
+ * what prevents a member of team A from mutating team B's state.
+ */
+export async function resolveCallerInTeam(
+    storageRoot: string,
+    sessionID: string,
+    teamId: string,
+): Promise<ResolvedMember | null> {
+    const caller = await resolveTeamMember(storageRoot, sessionID)
+    if (!caller || caller.teamName !== teamId) return null
+    return caller
+}
+
+/**
  * Rebuild the session index from disk on plugin startup. Scans every team's
  * state.json once (NOT per-turn) and indexes each member session and the
  * leader session. Call from server() init.
  */
 export async function rebuildSessionIndex(storageRoot: string): Promise<void> {
-    const { listTeamNames } = await import("./state/store.js")
     const names = await listTeamNames(storageRoot)
     for (const name of names) {
         try {
@@ -160,11 +172,6 @@ export function chunk<T>(arr: T[], n: number): T[][] {
     const out: T[][] = []
     for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
     return out
-}
-
-/** Generate a UUID. */
-export function uuid(): string {
-    return crypto.randomUUID()
 }
 
 /**
