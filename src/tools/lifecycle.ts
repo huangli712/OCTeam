@@ -1,5 +1,5 @@
 /**
- * Team lifecycle tools: team_create, team_delete, team_list, team_status.
+ * Team lifecycle tools: team_create, team_delete, team_list, team_details.
  * (design §4.1, §4.10, §4.11)
  */
 
@@ -232,7 +232,7 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
     })
 }
 
-export function teamStatusTool(ctx: PluginContext): ToolDefinition {
+export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description: "Show a team's current status: orchestration progress, member states, and token usage.",
         args: {
@@ -264,6 +264,55 @@ export function teamStatusTool(ctx: PluginContext): ToolDefinition {
                 lines.push(
                     `  - ${m.name}: ${m.status}${m.model ? ` (${m.model.split("/").pop()})` : ""}${unread ? ` ${unread} unread` : ""}${m.turnCount ? ` ${m.turnCount} turns` : ""}`,
                 )
+            }
+            return lines.join("\n")
+        },
+    })
+}
+
+export function teamQueryTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description: "Query detailed information about a specific team member by name.",
+        args: {
+            team_id: tool.schema.string().min(1),
+            member_name: tool.schema.string().min(1),
+        },
+        async execute(args, context) {
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller) return "Error: caller is not a member of this team"
+            let team
+            try {
+                team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+            } catch {
+                return `Error: team "${args.team_id}" not found`
+            }
+            const member = team.members.find(m => m.name === args.member_name)
+            if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
+
+            // Role lives in the spec (config.json), not in runtime state.
+            let role: string | undefined
+            try {
+                const spec = await readTeamSpec(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+                role = spec?.members.find(m => m.name === args.member_name)?.role
+            } catch {
+                // spec unreadable
+            }
+
+            const lines: string[] = [
+                `Name: ${member.name}`,
+                `Role: ${role ?? "unknown"}`,
+                `Agent: ${member.agent ?? "build"}`,
+                `Model: ${member.model ?? "unknown"}`,
+                `Status: ${member.status}`,
+                `Initialized: ${member.initialized}`,
+                `Turn count: ${member.turnCount}`,
+            ]
+            if (member.sessionId) lines.push(`Session ID: ${member.sessionId}`)
+            if (member.worktreePath) lines.push(`Worktree: ${member.worktreePath}`)
+            if (member.error) lines.push(`Error: ${member.error}`)
+            if (member.shutdownRequested) lines.push(`Shutdown requested: yes`)
+            if (team.activeTask?.tokensByMember?.[member.name]) {
+                lines.push(`Tokens used: ${team.activeTask.tokensByMember[member.name]}`)
             }
             return lines.join("\n")
         },
