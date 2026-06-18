@@ -16,6 +16,7 @@ import type { PluginContext } from "../context.js"
 import { resolveCallerInTeam } from "../utils.js"
 import { loadTeamState } from "../state/store.js"
 import {
+    TASK_ID_PATTERN,
     TaskAlreadyClaimedError,
     claimTask,
     createTask,
@@ -24,15 +25,6 @@ import {
     updateTask,
 } from "../tasks.js"
 import type { TaskStatus } from "../tasks.js"
-
-/**
- * Task IDs are always crypto.randomUUID() (see createTask). Validating task_id
- * against the canonical UUID shape stops a caller from smuggling path separators
- * ("../") into taskPath/claimLockPath/taskUpdateLockPath and traversing out of
- * the team directory into another team's files.
- */
-const TASK_ID_PATTERN =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
     return tool({

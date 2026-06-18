@@ -27,6 +27,27 @@ export class TaskAlreadyClaimedError extends Error {
     }
 }
 
+/**
+ * Canonical task-id shape. Task IDs are always crypto.randomUUID() (see
+ * createTask). Exported so the tool layer (task.ts) validates the same shape at
+ * the schema boundary — a single source of truth for both layers.
+ */
+export const TASK_ID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Defense-in-depth backstop: reject any taskId that is not a canonical UUID
+ * before it is path-joined into taskPath/claimLockPath/taskUpdateLockPath. The
+ * tool layer already validates task_id via schema, so this only fires if a
+ * future or internal caller passes an unsanitized id — preventing "../" from
+ * traversing out of the team's tasks directory.
+ */
+function assertValidTaskId(taskId: string): void {
+    if (!TASK_ID_PATTERN.test(taskId)) {
+        throw new Error(`Invalid task id: ${JSON.stringify(taskId)}`)
+    }
+}
+
 async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task | null> {
     try {
         const raw = await fs.readFile(taskPath(teamDirectory, taskId), "utf8")
@@ -59,6 +80,7 @@ export async function createTask(
 }
 
 export async function getTask(teamDirectory: string, taskId: string): Promise<Task | null> {
+    assertValidTaskId(taskId)
     return readTaskFile(teamDirectory, taskId)
 }
 
@@ -90,6 +112,7 @@ export async function updateTask(
     taskId: string,
     patch: Partial<Pick<Task, "status" | "owner" | "blockedBy" | "blocks" | "claimedAt">>,
 ): Promise<Task> {
+    assertValidTaskId(taskId)
     // Serialize the read-modify-write against concurrent updateTask calls (e.g.
     // a member's team_task_update racing the sweep timer's reapStaleClaims) so a
     // later writer cannot clobber an interleaved update (lost-update race).
@@ -123,6 +146,7 @@ export async function claimTask(
     taskId: string,
     owner: string,
 ): Promise<Task> {
+    assertValidTaskId(taskId)
     const lockPath = claimLockPath(teamDirectory, taskId)
     await fs.mkdir(claimsDir(teamDirectory), { recursive: true }).catch(() => {
         // may exist
