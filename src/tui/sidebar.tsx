@@ -243,7 +243,7 @@ export function SessionNavigatorSidebar(props: {
                                                             {"  " + statusDot(member.status) + " " + member.name}
                                                         </text>
                                                         <text fg={textMuted()}>
-                                                            {member.model ?? ""}
+                                                            {member.model ? member.model.split("/").pop() : ""}
                                                             {member.unread ? " " + member.unread + " unread" : ""}
                                                         </text>
                                                     </box>

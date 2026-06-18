@@ -242,7 +242,7 @@ export function teamStatusTool(ctx: PluginContext): ToolDefinition {
                 // counter to drift); reserved/in-flight messages are excluded.
                 const unread = await countUnreadMessages(team.directory, m.name)
                 lines.push(
-                    `  - ${m.name}: ${m.status}${m.model ? ` (${m.model})` : ""}${unread ? ` ${unread} unread` : ""}${m.turnCount ? ` ${m.turnCount} turns` : ""}`,
+                    `  - ${m.name}: ${m.status}${m.model ? ` (${m.model.split("/").pop()})` : ""}${unread ? ` ${unread} unread` : ""}${m.turnCount ? ` ${m.turnCount} turns` : ""}`,
                 )
             }
             return lines.join("\n")
