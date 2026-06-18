@@ -59,7 +59,7 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
     const toSpawn = team.members.filter(m => !m.sessionId)
     if (toSpawn.length === 0) return // team reused; all sessions live & initialized
 
-    const spec = await readTeamSpec(ctx.storageRoot, team.teamName)
+    const spec = await readTeamSpec(ctx.storageRoot, team.teamName, team.leadSessionId)
     if (!spec) throw new Error(`ensureMembersReady: no config.json for team "${team.teamName}"`)
     const specByName = new Map(spec.members.map(m => [m.name, m]))
     const peerNames = spec.members.map(m => m.name)
