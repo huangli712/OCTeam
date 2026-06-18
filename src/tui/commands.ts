@@ -90,11 +90,11 @@ function buildCommands(api: TuiPluginApi): Cmd[] {
             name: "octeam.create",
             title: "OCTeam: Create Team",
             category: "OCTeam",
-            slashName: "team_create",
+            slashName: "team-create",
             run: () =>
                 void dispatchToMaster(
                     api,
-                    "[System] User invoked /team_create. Ask the user for a team name and members (each member: name, role, optional model/agent), then call the team_create tool.",
+                    "[System] User invoked /team-create. Ask the user for a team name and members (each member: name, role, optional model/agent), then call the team_create tool.",
                 ),
         },
         {
@@ -102,20 +102,20 @@ function buildCommands(api: TuiPluginApi): Cmd[] {
             name: "octeam.list",
             title: "OCTeam: List Teams",
             category: "OCTeam",
-            slashName: "team_list",
+            slashName: "team-list",
             run: () =>
-                void dispatchToMaster(api, "[System] User invoked /team_list. Call the team_list tool and report the teams."),
+                void dispatchToMaster(api, "[System] User invoked /team-list. Call the team_list tool and report the teams."),
         },
         {
             namespace: "palette",
             name: "octeam.status",
             title: "OCTeam: Team Status",
             category: "OCTeam",
-            slashName: "team_status",
+            slashName: "team-status",
             run: () =>
                 void dispatchToMaster(
                     api,
-                    "[System] User invoked /team_status. Call team_list, then team_status for the active team, and report the result.",
+                    "[System] User invoked /team-status. Call team_list, then team_status for the active team, and report the result.",
                 ),
         },
         {
@@ -123,7 +123,7 @@ function buildCommands(api: TuiPluginApi): Cmd[] {
             name: "octeam.delete",
             title: "OCTeam: Delete All Teams",
             category: "OCTeam",
-            slashName: "team_delete",
+            slashName: "team-delete",
             run: () =>
                 api.ui.dialog.replace(() =>
                     api.ui.DialogConfirm({
@@ -133,7 +133,7 @@ function buildCommands(api: TuiPluginApi): Cmd[] {
                             api.ui.dialog.clear()
                             void dispatchToMaster(
                                 api,
-                                "[System] User confirmed /team_delete. For each team returned by team_list, call team_delete with force:true.",
+                                "[System] User confirmed /team-delete. For each team returned by team_list, call team_delete with force:true.",
                             )
                         },
                         onCancel: () => api.ui.dialog.clear(),
@@ -145,11 +145,11 @@ function buildCommands(api: TuiPluginApi): Cmd[] {
             name: "octeam.shutdown",
             title: "OCTeam: Request Shutdown",
             category: "OCTeam",
-            slashName: "team_shutdown_request",
+            slashName: "team-shutdown-request",
             run: () =>
                 void dispatchToMaster(
                     api,
-                    "[System] User invoked /team_shutdown_request. Identify the active team and call team_shutdown_request for each member to begin cooperative shutdown.",
+                    "[System] User invoked /team-shutdown-request. Identify the active team and call team_shutdown_request for each member to begin cooperative shutdown.",
                 ),
         },
         {
@@ -157,14 +157,14 @@ function buildCommands(api: TuiPluginApi): Cmd[] {
             name: "octeam.parallel",
             title: "OCTeam: Parallel Workflow",
             category: "OCTeam",
-            slashName: "team_parallel",
+            slashName: "team-parallel",
             run: () =>
                 promptThenDispatch(
                     api,
                     "team_parallel",
                     "Describe the task to run in parallel across all members...",
                     (text) =>
-                        `[System] User invoked /team_parallel with task: ${text}. Call team_parallel with mode "isolated" and this task.`,
+                        `[System] User invoked /team-parallel with task: ${text}. Call team_parallel with mode "isolated" and this task.`,
                 ),
         },
         {
@@ -172,11 +172,11 @@ function buildCommands(api: TuiPluginApi): Cmd[] {
             name: "octeam.pipeline",
             title: "OCTeam: Pipeline Workflow",
             category: "OCTeam",
-            slashName: "team_pipeline",
+            slashName: "team-pipeline",
             run: () =>
                 void dispatchToMaster(
                     api,
-                    "[System] User invoked /team_pipeline. Ask the user for the team and an ordered list of stages (member + task each), then call team_pipeline.",
+                    "[System] User invoked /team-pipeline. Ask the user for the team and an ordered list of stages (member + task each), then call team_pipeline.",
                 ),
         },
         {
@@ -184,11 +184,11 @@ function buildCommands(api: TuiPluginApi): Cmd[] {
             name: "octeam.loop",
             title: "OCTeam: Loop Workflow",
             category: "OCTeam",
-            slashName: "team_loop",
+            slashName: "team-loop",
             run: () =>
                 void dispatchToMaster(
                     api,
-                    "[System] User invoked /team_loop. Ask the user for the team, stages (member/task/action), decider member, max_rounds, and initial_task, then call team_loop.",
+                    "[System] User invoked /team-loop. Ask the user for the team, stages (member/task/action), decider member, max_rounds, and initial_task, then call team_loop.",
                 ),
         },
         {
@@ -196,14 +196,14 @@ function buildCommands(api: TuiPluginApi): Cmd[] {
             name: "octeam.delegate",
             title: "OCTeam: Delegate Workflow",
             category: "OCTeam",
-            slashName: "team_delegate",
+            slashName: "team-delegate",
             run: () =>
                 promptThenDispatch(
                     api,
                     "team_delegate",
                     "Describe the tasks to publish (one per line)...",
                     (text) =>
-                        `[System] User invoked /team_delegate with tasks: ${text}. Parse these into task objects (subject/description) and call team_delegate.`,
+                        `[System] User invoked /team-delegate with tasks: ${text}. Parse these into task objects (subject/description) and call team_delegate.`,
                 ),
         },
     ]
