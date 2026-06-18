@@ -8,6 +8,7 @@ dist/
 # OpenCode / magic-context runtime data
 .omo/
 .opencode/
+.octeam/
 
 # Logs
 *.log
