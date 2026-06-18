@@ -29,9 +29,9 @@ const tui: TuiPlugin = async (api) => {
         // Host may not support api.slots; skip gracefully
     }
 
-    // Phase 2.1: slash commands (/team_create, /team_delete, /team_status,
-    // /team_shutdown_request, /team_parallel, /team_pipeline, /team_loop,
-    // /team_delegate). Each instructs the master session to call the tool.
+    // Phase 2.1: slash commands (/team-create, /team-delete, /team-status,
+    // /team-shutdown-request, /team-parallel, /team-pipeline, /team-loop,
+    // /team-delegate). Each instructs the master session to call the tool.
     registerTeamCommands(api)
 }
 

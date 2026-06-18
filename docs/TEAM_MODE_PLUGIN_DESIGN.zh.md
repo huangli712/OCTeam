@@ -155,7 +155,7 @@ type TeamStatus =
     | "idle"                           // sessions spawned, idle (workflow completed)
     | "failed"                         // agent error or task incomplete (e.g. loop max rounds reached without done)
     | "dead"                           // marked for deletion, about to be cleaned up
-    | "disabled"                       // team disabled, cannot be used (e.g. by /team_shutdown_request)
+    | "disabled"                       // team disabled, cannot be used (e.g. by /team-shutdown-request)
 
 type RuntimeMember = {
     name: string
@@ -420,16 +420,16 @@ plugin 启动时，server hook 扫描 `~/.octeam/teams/` 并：
 
 | 命令 | 作用 | master 接收后的行为 |
 |---|---|---|
-| `/team_create` | 打开创建 team 对话框，配置 member/role/model | master agent 调用 `team_create` tool |
-| `/team_delete` | 清空 `.octeam/teams/` 目录（强制删除所有 team） | master agent 调用 `team_delete({ force: true })` 逐个清理 |
-| `/team_status` | 显示当前 team 状态（member 列表、编排进度、token 使用） | master agent 调用 `team_status` tool，结果注入 sidebar/dialog |
-| `/team_shutdown_request` | 停止接受新任务，解散当前 team（协作关闭） | master agent 调用 `team_shutdown_request` 对所有 member 发起关闭，team 转为 `"disabled"` |
-| `/team_parallel [task]` | 以 parallel 模式执行 | master agent 调用 `team_parallel({ task })` |
-| `/team_pipeline [task]` | 以 pipeline 模式执行 | master agent 调用 `team_pipeline({ stages, task })` |
-| `/team_loop [task]` | 以 loop 模式执行 | master agent 调用 `team_loop({ stages, decider, initial_task })` |
-| `/team_delegate [tasks]` | 以 delegate 模式执行（member 自主认领任务） | master agent 调用 `team_delegate({ tasks })` |
+| `/team-create` | 打开创建 team 对话框，配置 member/role/model | master agent 调用 `team_create` tool |
+| `/team-delete` | 清空 `.octeam/teams/` 目录（强制删除所有 team） | master agent 调用 `team_delete({ force: true })` 逐个清理 |
+| `/team-status` | 显示当前 team 状态（member 列表、编排进度、token 使用） | master agent 调用 `team_status` tool，结果注入 sidebar/dialog |
+| `/team-shutdown-request` | 停止接受新任务，解散当前 team（协作关闭） | master agent 调用 `team_shutdown_request` 对所有 member 发起关闭，team 转为 `"disabled"` |
+| `/team-parallel [task]` | 以 parallel 模式执行 | master agent 调用 `team_parallel({ task })` |
+| `/team-pipeline [task]` | 以 pipeline 模式执行 | master agent 调用 `team_pipeline({ stages, task })` |
+| `/team-loop [task]` | 以 loop 模式执行 | master agent 调用 `team_loop({ stages, decider, initial_task })` |
+| `/team-delegate [tasks]` | 以 delegate 模式执行（member 自主认领任务） | master agent 调用 `team_delegate({ tasks })` |
 
-**工作流命令的 UX**：用户在 prompt 中输入 `/team_parallel <任务描述>`。slash command handler 提取任务文本，通过 `promptAsync` 向 master session 发送指令（如 `"请使用 team_parallel tool 执行以下任务：<任务描述>"`）。master agent 接收后调用对应 tool。pipeline/loop 的 member 顺序由 team 创建时的声明顺序决定。
+**工作流命令的 UX**：用户在 prompt 中输入 `/team-parallel <任务描述>`。slash command handler 提取任务文本，通过 `promptAsync` 向 master session 发送指令（如 `"请使用 team_parallel tool 执行以下任务：<任务描述>"`）。master agent 接收后调用对应 tool。pipeline/loop 的 member 顺序由 team 创建时的声明顺序决定。
 
 **注意**：slash command 的参数传递机制（`onSelect` 如何读取 prompt 文本中的 inline 参数）需在 Phase 2.0 验证。如不支持 inline 参数，则改为：command 触发后通过 dialog 收集 task 再发送给 master。
 
@@ -2021,7 +2021,7 @@ tui(api) {
         title: "Create Team",
         value: "team_create",
         category: "Team",
-        slash: { name: "team_create" },
+        slash: { name: "team-create" },
         onSelect: () => api.ui.dialog.replace(() => <CreateTeamDialog api={api} />),
     })
 
@@ -2029,11 +2029,11 @@ tui(api) {
         title: "Team Parallel",
         value: "team_parallel",
         category: "Team",
-        slash: { name: "team_parallel" },
+        slash: { name: "team-parallel" },
         onSelect: () => dispatchToMaster(api, "team_parallel"),
     })
 
-    // ... /team_clear, /team_status, /team_stop, /team_pipeline, /team_loop
+    // ... /team-clear, /team-status, /team-stop, /team-pipeline, /team-loop
 
     // Sidebar slot (Phase 1 navigator + Phase 2 team info)
     api.slots.register({
@@ -2158,13 +2158,13 @@ octeam/
 | Phase | 内容 | 可验证结果 | 前置条件 |
 |---|---|---|---|
 | **2.0** | 脚手架扩展：在 Phase 1 TUI module 基础上增加 server module、`PluginContext`、文件 state store + locks。`package.json` 升级为 `"oc-plugin": ["server", "tui"]` | server module 加载成功，tool/event/transform hook 注册，状态持久化到磁盘 | Phase 1 完成 |
-| **2.1** | Slash commands：`/team_create`、`/team_delete`、`/team_status`、`/team_shutdown_request` + `dispatchToMaster` 机制 | 4 个管理命令可用，master session 接收指令后调用对应 tool | Phase 2.0 |
-| **2.2** | `team_create` + `team_delete` + `team_list` + worktree 管理 | `/team_create` 能创建 member session + worktree，`/team_delete` 能清理 | Phase 2.1 |
+| **2.1** | Slash commands：`/team-create`、`/team-delete`、`/team-status`、`/team-shutdown-request` + `dispatchToMaster` 机制 | 4 个管理命令可用，master session 接收指令后调用对应 tool | Phase 2.0 |
+| **2.2** | `team_create` + `team_delete` + `team_list` + worktree 管理 | `/team-create` 能创建 member session + worktree，`/team-delete` 能清理 | Phase 2.1 |
 | **2.3** | `team_send_message` + 文件 mailbox + Transform hook 注入 + wake-hint | 广播 + 点对点消息，消息通过 Transform hook 自动注入 | Phase 2.2 |
 | **2.4** | `team_task_*`（create/list/update/get）+ 原子认领 | Task 创建成功，通过文件锁认领，依赖图被遵守 | Phase 2.2 |
-| **2.5** | Slash command 工作流：`/team_parallel`、`/team_pipeline`、`/team_loop` + barrier 原语 + 带锁 event handler + 身份校验 | 3 种编排模式可用，master agent 接收 slash 指令后调用 tool | Phase 2.3 |
+| **2.5** | Slash command 工作流：`/team-parallel`、`/team-pipeline`、`/team-loop` + barrier 原语 + 带锁 event handler + 身份校验 | 3 种编排模式可用，master agent 接收 slash 指令后调用 tool | Phase 2.3 |
 | **2.6** | `team_parallel` 模式 B（collaborative）+ 模式 C（discussion） | 不同任务 + 自由通信；多轮辩论带广播 | Phase 2.5 |
-| **2.7** | 协作关闭（`/team_shutdown_request`）+ 错误/取消/timeout/budget 路径 | 优雅的 member 关闭，timeout 终止任务，budget 强制执行 | Phase 2.5 |
+| **2.7** | 协作关闭（`/team-shutdown-request`）+ 错误/取消/timeout/budget 路径 | 优雅的 member 关闭，timeout 终止任务，budget 强制执行 | Phase 2.5 |
 | **2.8** | 崩溃恢复 + orphan 检测 + reservation stale 清除 | Plugin 重启后恢复 team，stale reservation 被清除 | Phase 2.7 |
 | **2.9** | Team sidebar 增强（在 Phase 1 navigator 基础上显示 team 信息） | Sidebar 显示 member/编排/任务状态，点击切换复用 Phase 1 | Phase 2.3, Phase 1 |
 
