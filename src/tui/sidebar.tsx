@@ -235,7 +235,6 @@ export function SessionNavigatorSidebar(props: {
                                     </box>
                                     {isTeamExpanded(team.name) ? (
                                         <box flexDirection="column" width="100%">
-                                            <text fg={textMuted()}>{"   Name : " + team.name}</text>
                                             <text fg={textMuted()}>{"   Mode : " + (team.active?.type ?? "unknown")}</text>
                                             <text fg={textMuted()}>{"   Status : " + team.status}</text>
                                             <text fg={textMuted()}>{"   Size : " + team.members.length}</text>
@@ -244,10 +243,10 @@ export function SessionNavigatorSidebar(props: {
                                                 width="100%"
                                                 onMouseDown={() => toggleMembers(team.name)}
                                             >
+                                                <text fg={textMuted()}>{"   Members: "}</text>
                                                 <text fg={textMuted()}>
-                                                    {"   " + (isMembersExpanded(team.name) ? "\u25bc " : "\u25b6 ")}
+                                                    {isMembersExpanded(team.name) ? "\u25bc" : "\u25b6"}
                                                 </text>
-                                                <text fg={textMuted()}>{"Members:"}</text>
                                             </box>
                                             {isMembersExpanded(team.name) ? (
                                                 <For each={team.members}>
