@@ -1,15 +1,18 @@
 /**
- * Team lifecycle tools: team_create, team_delete, team_list, team_details.
+ * Team lifecycle tools: team_create, team_delete, team_list, team_details, team_query, team_fix.
  * (design §4.1, §4.10, §4.11)
  */
+
+import fs from "node:fs/promises"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../context.js"
-import { deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, writeTeamSpec } from "../state/store.js"
-import { indexMaster, isIndexedMember, resolveCallerInTeam, unindexSession } from "../utils.js"
+import { deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../state/store.js"
+import { indexMember, indexMaster, isIndexedMember, resolveCallerInTeam, unindexSession } from "../utils.js"
 import { countUnreadMessages } from "../mailbox.js"
 import { clearWakeHint } from "../wake-hint.js"
+import { inboxPath } from "../state/paths.js"
 import type { Bounds, RuntimeMember, TeamMemberSpec, TeamSpec } from "../types.js"
 
 /** Resource bounds with design defaults (§8.1), overridden by user input. */
@@ -315,6 +318,110 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
                 lines.push(`Tokens used: ${team.activeTask.tokensByMember[member.name]}`)
             }
             return lines.join("\n")
+        },
+    })
+}
+
+export function teamFixTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Modify a team member's name, role, and/or agent. Changing the agent automatically updates the model to the agent's bound model (if one exists in the agent registry). Only allowed when the team is not busy.",
+        args: {
+            team_id: tool.schema.string().min(1),
+            member_name: tool.schema.string().min(1),
+            new_name: tool.schema.string().min(1).max(32).regex(/^[a-z0-9-]+$/).optional(),
+            new_role: tool.schema.string().min(1).max(2048).optional(),
+            new_agent: tool.schema.string().min(1).optional(),
+        },
+        async execute(args, context) {
+            if (!args.new_name && !args.new_role && !args.new_agent) {
+                return "Error: provide at least one of new_name, new_role, or new_agent"
+            }
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller) return "Error: caller is not a member of this team"
+            let team
+            try {
+                team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+            } catch {
+                return `Error: team "${args.team_id}" not found`
+            }
+            if (team.status === "busy") {
+                return `Error: team "${args.team_id}" is busy. Wait for the workflow to finish before modifying members.`
+            }
+            const member = team.members.find(m => m.name === args.member_name)
+            if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
+
+            let spec: TeamSpec | null = null
+            try {
+                spec = await readTeamSpec(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+            } catch { /* best-effort */ }
+            const specMember = spec?.members.find(m => m.name === args.member_name)
+
+            const changes: string[] = []
+
+            // --- new_name: rename member across state, spec, index, mailbox ---
+            if (args.new_name && args.new_name !== args.member_name) {
+                if (team.members.some(m => m.name === args.new_name)) {
+                    return `Error: name "${args.new_name}" already exists in this team`
+                }
+                const oldName = member.name
+                member.name = args.new_name
+                if (specMember) specMember.name = args.new_name
+                if (member.sessionId) {
+                    unindexSession(member.sessionId)
+                    indexMember(member.sessionId, team.teamName, args.new_name, caller.leadSessionId, ctx.storageRoot)
+                }
+                try {
+                    await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, args.new_name))
+                } catch { /* inbox may not exist yet */ }
+                if (team.activeTask) {
+                    const at = team.activeTask
+                    if (at.tokensByMember[oldName] !== undefined) {
+                        at.tokensByMember[args.new_name] = at.tokensByMember[oldName]
+                        delete at.tokensByMember[oldName]
+                    }
+                    if (at.responses[oldName] !== undefined) {
+                        at.responses[args.new_name] = at.responses[oldName]
+                        delete at.responses[oldName]
+                    }
+                    if (at.deciderMember === oldName) at.deciderMember = args.new_name
+                    for (const s of at.stages) {
+                        if (s.member === oldName) s.member = args.new_name
+                    }
+                }
+                changes.push(`name: ${oldName} → ${args.new_name}`)
+            }
+
+            // --- new_role: spec only (role is a config field) ---
+            if (args.new_role && specMember) {
+                specMember.role = args.new_role
+                changes.push("role: updated")
+            }
+
+            // --- new_agent: update spec + state, auto-resolve bound model ---
+            if (args.new_agent) {
+                member.agent = args.new_agent
+                if (specMember) specMember.agent = args.new_agent
+                try {
+                    const agentsRes = await ctx.client.app.agents({ query: { directory: ctx.directory } })
+                    const entry = (agentsRes.data ?? []).find(a => a.name === args.new_agent)
+                    if (entry?.model) {
+                        const m = `${entry.model.providerID}/${entry.model.modelID}`
+                        member.model = m
+                        if (specMember) specMember.model = m
+                        changes.push(`agent: ${args.new_agent}, model: ${m}`)
+                    } else {
+                        changes.push(`agent: ${args.new_agent} (no bound model — model unchanged)`)
+                    }
+                } catch {
+                    changes.push(`agent: ${args.new_agent} (registry unavailable — model unchanged)`)
+                }
+            }
+
+            await saveTeamState(team)
+            if (spec) await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
+
+            return `Member "${args.member_name}" updated — ${changes.join("; ")}`
         },
     })
 }
