@@ -106,6 +106,16 @@ export function SessionNavigatorSidebar(props: {
     }
     const isTeamExpanded = (name: string) => expandedTeams().has(name)
 
+    // Per-team members-section expand state (nested under team expand).
+    const [expandedMembers, setExpandedMembers] = createSignal<Set<string>>(new Set())
+    const toggleMembers = (name: string) => {
+        const next = new Set(expandedMembers())
+        if (next.has(name)) next.delete(name)
+        else next.add(name)
+        setExpandedMembers(next)
+    }
+    const isMembersExpanded = (name: string) => expandedMembers().has(name)
+
     const statusColor = (status: string): string => {
         switch (status) {
             case "running": return COLOR_RUNNING
@@ -225,30 +235,40 @@ export function SessionNavigatorSidebar(props: {
                                     </box>
                                     {isTeamExpanded(team.name) ? (
                                         <box flexDirection="column" width="100%">
-                                            {team.active ? (
+                                            <text fg={textMuted()}>{"   Name : " + team.name}</text>
+                                            <text fg={textMuted()}>{"   Mode : " + (team.active?.type ?? "unknown")}</text>
+                                            <text fg={textMuted()}>{"   Status : " + team.status}</text>
+                                            <text fg={textMuted()}>{"   Size : " + team.members.length}</text>
+                                            <box
+                                                flexDirection="row"
+                                                width="100%"
+                                                onMouseDown={() => toggleMembers(team.name)}
+                                            >
                                                 <text fg={textMuted()}>
-                                                    {"   " + team.active.type + (team.active.mode ? "/" + team.active.mode : "")
-                                                        + (team.active.round ? " round " + team.active.round + "/" + (team.active.maxRounds ?? "?") : "")}
+                                                    {"   " + (isMembersExpanded(team.name) ? "\u25bc " : "\u25b6 ")}
                                                 </text>
+                                                <text fg={textMuted()}>{"Members:"}</text>
+                                            </box>
+                                            {isMembersExpanded(team.name) ? (
+                                                <For each={team.members}>
+                                                    {(member) => (
+                                                        <box
+                                                            flexDirection="row"
+                                                            width="100%"
+                                                            justifyContent="space-between"
+                                                            onMouseDown={() => member.sessionId ? handleClick(member.sessionId) : undefined}
+                                                        >
+                                                            <text fg={statusColor(member.status)}>
+                                                                {"     " + statusDot(member.status) + " " + member.name}
+                                                            </text>
+                                                            <text fg={textMuted()}>
+                                                                {member.model ? member.model.split("/").pop() : ""}
+                                                                {member.unread ? " " + member.unread + " unread" : ""}
+                                                            </text>
+                                                        </box>
+                                                    )}
+                                                </For>
                                             ) : null}
-                                            <For each={team.members}>
-                                                {(member) => (
-                                                    <box
-                                                        flexDirection="row"
-                                                        width="100%"
-                                                        justifyContent="space-between"
-                                                        onMouseDown={() => member.sessionId ? handleClick(member.sessionId) : undefined}
-                                                    >
-                                                        <text fg={statusColor(member.status)}>
-                                                            {"  " + statusDot(member.status) + " " + member.name}
-                                                        </text>
-                                                        <text fg={textMuted()}>
-                                                            {member.model ? member.model.split("/").pop() : ""}
-                                                            {member.unread ? " " + member.unread + " unread" : ""}
-                                                        </text>
-                                                    </box>
-                                                )}
-                                            </For>
                                         </box>
                                     ) : null}
                                 </box>

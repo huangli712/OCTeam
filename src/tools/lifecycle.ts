@@ -138,9 +138,29 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             } catch {
                 // best-effort — build/agents with no model use the provider default
             }
+            // Final fallback: the leader session's active model (from its most
+            // recent assistant message). Covers the built-in "build" agent which
+            // has no explicit model and inherits whatever the leader session uses.
+            let sessionModel: string | undefined
+            try {
+                const msgsRes = await ctx.client.session.messages({
+                    path: { id: context.sessionID },
+                    query: { directory: ctx.directory, limit: 10 },
+                })
+                const msgs = msgsRes.data ?? []
+                for (let i = msgs.length - 1; i >= 0; i--) {
+                    const info = msgs[i].info
+                    if (info.role === "assistant") {
+                        sessionModel = `${info.providerID}/${info.modelID}`
+                        break
+                    }
+                }
+            } catch {
+                // best-effort
+            }
             const resolved: TeamMemberSpec[] = args.members.map(m => {
                 const agent = m.agent ?? deriveAgent(m.role)
-                const model = m.model ?? modelByAgent.get(agent) ?? defaultModel
+                const model = m.model ?? modelByAgent.get(agent) ?? defaultModel ?? sessionModel
                 return { name: m.name, role: m.role, agent, model, worktree: m.worktree }
             })
 
