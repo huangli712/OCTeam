@@ -14,6 +14,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../context.js"
 import { resolveCallerInTeam } from "../utils.js"
+import { loadTeamState } from "../state/store.js"
 import {
     TaskAlreadyClaimedError,
     claimTask,
@@ -23,6 +24,15 @@ import {
     updateTask,
 } from "../tasks.js"
 import type { TaskStatus } from "../tasks.js"
+
+/**
+ * Task IDs are always crypto.randomUUID() (see createTask). Validating task_id
+ * against the canonical UUID shape stops a caller from smuggling path separators
+ * ("../") into taskPath/claimLockPath/taskUpdateLockPath and traversing out of
+ * the team directory into another team's files.
+ */
+const TASK_ID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -36,6 +46,15 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller) return "Error: caller is not a member of this team"
+            // P2 (§8.1): cap live (non-deleted) tasks per team to bound disk use
+            // and prevent a member from flooding the shared tasklist (DoS).
+            const team = await loadTeamState(ctx.storageRoot, args.team_id)
+            const liveTasks = (await listAllTasks(caller.directory)).filter(
+                t => t.status !== "deleted",
+            ).length
+            if (liveTasks >= team.bounds.maxTasks) {
+                return `Error: team task limit reached (${team.bounds.maxTasks}). Complete or delete tasks before creating more.`
+            }
             const task = await createTask(caller.directory, {
                 subject: args.subject,
                 description: args.description,
@@ -79,7 +98,7 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
             "Update a task. Setting status to \"claimed\" atomically acquires the claim lock (fails if another member holds it). The caller becomes the task owner on claim. Other status changes require the caller to be the task owner or master.",
         args: {
             team_id: tool.schema.string().min(1),
-            task_id: tool.schema.string().min(1),
+            task_id: tool.schema.string().regex(TASK_ID_PATTERN, "must be a task UUID"),
             status: tool.schema.enum(["claimed", "in_progress", "completed", "deleted"]),
         },
         async execute(args, context) {
@@ -117,7 +136,7 @@ export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
         description: "Get full details of a single task.",
         args: {
             team_id: tool.schema.string().min(1),
-            task_id: tool.schema.string().min(1),
+            task_id: tool.schema.string().regex(TASK_ID_PATTERN, "must be a task UUID"),
         },
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)

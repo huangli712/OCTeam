@@ -45,6 +45,9 @@ export function teamShutdownRequestTool(ctx: PluginContext): ToolDefinition {
             const team = await loadTeamState(ctx.storageRoot, args.team_id)
             const member = team.members.find(m => m.name === args.member)
             if (!member) return `Error: unknown member "${args.member}"`
+            // Mark the pending request so approve/reject can only act on a member
+            // whose shutdown was actually requested.
+            member.shutdownRequested = true
 
             const msg: Message = {
                 version: 1,
@@ -85,8 +88,12 @@ export function teamApproveShutdownTool(ctx: PluginContext): ToolDefinition {
             return team.mutex.runExclusive(async () => {
                 const member = team.members.find(m => m.name === args.member)
                 if (!member) return `Error: unknown member "${args.member}"`
+                if (!member.shutdownRequested) {
+                    return `Error: no active shutdown request for "${args.member}" — call team_shutdown_request first`
+                }
                 await cleanWorktree(member.worktreePath)
                 member.status = "shutdown_approved"
+                member.shutdownRequested = undefined
                 member.worktreePath = undefined
                 const allDown = team.members.every(
                     m => m.status === "shutdown_approved" || m.status === "completed",
@@ -117,6 +124,11 @@ export function teamRejectShutdownTool(ctx: PluginContext): ToolDefinition {
             return team.mutex.runExclusive(async () => {
                 const member = team.members.find(m => m.name === args.member)
                 if (!member) return `Error: unknown member "${args.member}"`
+                if (!member.shutdownRequested) {
+                    return `Error: no active shutdown request for "${args.member}" — nothing to reject`
+                }
+                // Request declined; clear the marker so the member keeps running.
+                member.shutdownRequested = undefined
                 member.error = `shutdown rejected: ${args.reason}`
                 await saveTeamState(team)
                 return `Member "${args.member}" rejected shutdown: ${args.reason}`

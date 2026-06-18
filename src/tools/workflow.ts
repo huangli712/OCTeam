@@ -29,14 +29,18 @@ const DEFAULT_LOOP_TIMEOUT_MS = 900_000
 /**
  * Effective wall-clock timeout: the requested timeout (or a mode default)
  * clamped to the team's hard cap bounds.maxWallClockMinutes (§8.1). Without this
- * clamp a caller could pass timeout_ms far above the team's configured limit.
+ * clamp a caller could pass timeout_ms far above the team's configured limit. A
+ * non-positive cap (e.g. a hand-edited state.json) is treated as "no cap" rather
+ * than collapsing the timeout to 0, which would abort every orchestration.
  */
 function effectiveTimeoutMs(
     requestedMs: number | undefined,
     defaultMs: number,
     maxWallClockMinutes: number,
 ): number {
-    return Math.min(requestedMs ?? defaultMs, maxWallClockMinutes * 60_000)
+    const requested = requestedMs ?? defaultMs
+    const cap = maxWallClockMinutes > 0 ? maxWallClockMinutes * 60_000 : Infinity
+    return Math.min(requested, cap)
 }
 
 /** Send a synthetic text prompt to a member; flip it to running. */

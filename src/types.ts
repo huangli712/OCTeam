@@ -55,6 +55,7 @@ export type RuntimeMember = {
     lastTurnMarker?: string            // Transform hook injection dedup
     lastNotifiedAt?: number            // delegate: rate-limit re-prompts
     retryingSince?: number             // epoch ms when session entered "retry"
+    shutdownRequested?: boolean        // true after master requests cooperative shutdown
     error?: string                     // if status === "errored"
     isMaster?: boolean                 // ONLY on synthetic master record; never persisted
 }
@@ -80,6 +81,7 @@ export type Bounds = {
     maxMessagesPerRun: number          // default 100, total messages per orchestration
     maxWallClockMinutes: number        // default 30, hard wall-clock limit
     maxMemberTurns: number             // default 50, turns per member per orchestration
+    maxTasks: number                   // default 200, max live tasks in the shared tasklist
     messagePayloadMaxBytes: number     // default 32768 (32KB)
     messageUnreadMaxBytes: number      // default 1048576 (1MB), backpressure limit
 }

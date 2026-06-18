@@ -26,6 +26,17 @@ export function unindexSession(sessionID: string): void {
     sessionIndex.delete(sessionID)
 }
 
+/**
+ * True if this session is already indexed as a (non-master) team member. Used by
+ * team_create to refuse a member (child) session from spawning its own team —
+ * which would overwrite its index entry (orphaning its original team) and let it
+ * escalate to master of a new team.
+ */
+export function isIndexedMember(sessionID: string): boolean {
+    const hit = sessionIndex.get(sessionID)
+    return hit !== undefined && hit.isMaster !== true
+}
+
 /** A team member resolved from a sessionID, plus the team context it belongs to. */
 export type ResolvedMember = RuntimeMember & {
     teamName: string

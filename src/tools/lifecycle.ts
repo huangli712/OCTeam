@@ -7,7 +7,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../context.js"
 import { deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, writeTeamSpec } from "../state/store.js"
-import { indexMaster, resolveCallerInTeam, unindexSession } from "../utils.js"
+import { indexMaster, isIndexedMember, resolveCallerInTeam, unindexSession } from "../utils.js"
 import { countUnreadMessages } from "../mailbox.js"
 import { clearWakeHint } from "../wake-hint.js"
 import type { Bounds, RuntimeMember, TeamMemberSpec, TeamSpec } from "../types.js"
@@ -20,6 +20,7 @@ function defaultBounds(override?: Partial<Bounds>): Bounds {
         maxMessagesPerRun: 100,
         maxWallClockMinutes: 30,
         maxMemberTurns: 50,
+        maxTasks: 200,
         messagePayloadMaxBytes: 32768,
         messageUnreadMaxBytes: 1048576,
         ...override,
@@ -51,17 +52,31 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 .max(8),
             bounds: tool.schema
                 .object({
-                    maxMembers: tool.schema.number().optional(),
-                    maxParallelMembers: tool.schema.number().optional(),
-                    maxMessagesPerRun: tool.schema.number().optional(),
-                    maxWallClockMinutes: tool.schema.number().optional(),
-                    maxMemberTurns: tool.schema.number().optional(),
+                    maxMembers: tool.schema.number().min(1).optional(),
+                    maxParallelMembers: tool.schema.number().min(1).optional(),
+                    maxMessagesPerRun: tool.schema.number().min(1).optional(),
+                    maxWallClockMinutes: tool.schema.number().min(1).optional(),
+                    maxMemberTurns: tool.schema.number().min(1).optional(),
+                    maxTasks: tool.schema.number().min(1).optional(),
                 })
                 .optional(),
         },
         async execute(args, context) {
+            // A member (child) session must not create its own team: indexMaster
+            // below would overwrite its member index entry, orphaning its original
+            // team and escalating it to master of a new team.
+            if (isIndexedMember(context.sessionID)) {
+                return "Error: a team member session cannot create a team"
+            }
+
             const names = new Set<string>()
             for (const m of args.members) {
+                // "master" and "orchestrator" are reserved synthetic identities
+                // (the leader pseudo-member and the orchestrator message sender);
+                // a real member by either name would collide with them.
+                if (m.name === "master" || m.name === "orchestrator") {
+                    return `Error: "${m.name}" is a reserved name and cannot be a member name`
+                }
                 if (names.has(m.name)) return `Error: duplicate member name "${m.name}"`
                 names.add(m.name)
             }

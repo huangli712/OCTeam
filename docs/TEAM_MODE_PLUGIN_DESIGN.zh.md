@@ -119,7 +119,6 @@ type TeamSpec = {
     name: string                        // /^[a-z0-9-]+$/, unique within scope
     description?: string
     createdAt: number                   // epoch ms
-    teamAllowedPaths?: string[]         // restrict file access for members
     members: TeamMemberSpec[]           // 1-8 members
 }
 
@@ -168,12 +167,12 @@ type RuntimeMember = {
                                         //   Event handler IGNORES idles until initialized, preventing
                                         //   role-setup idle from being captured as a task result.
     worktreePath?: string               // absolute path to git worktree
-    pendingMessageCount: number         // unread messages in mailbox
     turnCount: number                   // M4: incremented per promptAsync dispatch; checked vs bounds.maxMemberTurns
     lastTurnMarker?: string             // for Transform hook injection dedup
     lastNotifiedAt?: number             // delegate: epoch ms of last "tasks available" re-prompt;
                                         //   used to rate-limit re-prompts (avoid claim-race busy-loop)
     retryingSince?: number              // B2: epoch ms when session entered "retry"; escalated to errored after TTL
+    shutdownRequested?: boolean         // true after master requests cooperative shutdown; gates approve/reject
     error?: string                      // if status === "errored"
     isMaster?: boolean                  // B1: set ONLY on the synthetic master record from resolveTeamMember; never persisted
 }
@@ -241,7 +240,7 @@ async function resolveTeamMember(sessionID: string): Promise<RuntimeMember & { t
     if (hit.isMaster) {
         // B1: synthetic master pseudo-member (not persisted, not in members[])
         return { name: "master", isMaster: true, status: "idle", initialized: true,
-                 pendingMessageCount: 0, turnCount: 0,
+                 turnCount: 0,
                  teamName: team.teamName, teamRunId: team.teamRunId } as any
     }
     const member = team.members.find(m => m.name === hit.memberName)
@@ -437,6 +436,25 @@ plugin 启动时，server hook 扫描 `~/.octeam/teams/` 并：
 > Slash command 注册在 TUI module 中通过 `api.command.register({ slash: { name: "..." }, onSelect: ... })` 完成。所有 tool（4.1–4.10）保持不变，agent 可直接调用，也可经 slash command 触发。
 
 所有 tool 通过 `@opencode-ai/plugin/tool` 的 `tool()` 函数注册。调用 session 通过 `execute(args, context)` 签名中的 `context.sessionID` 识别——无需手动 caller-ID 传递。
+
+### 4.0.1 授权模型（team-scoped auth）
+
+所有带 `team_id` 的 tool 都先经 `resolveCallerInTeam(storageRoot, sessionID, team_id)` 鉴权：它把 `context.sessionID` 解析为 member（或合成 master），仅当 `caller.teamName === team_id` 时返回，否则返回 `null`（调用方据此回 `"Error: caller is not a member of this team"`）。这是**跨团队隔离**的核心——A 团队的 member 无法对 B 团队下达指令。
+
+| Tool | 授权要求 |
+|---|---|
+| `team_create` | 无 team_id（尚无 team）。调用者成为 master。**拒绝已是某团队 member 的会话**（防止 child session 自建团队、自我提权）；member 名禁用保留名 `master`/`orchestrator`；M4 规则：同一会话不能同时领导多个 non-terminal 团队 |
+| `team_list` | 无授权、无 team_id：枚举当前 scope 下所有团队（单用户本地，仅记录在案） |
+| `team_status` | 本团队 member 或 master |
+| `team_delete` | **仅 master** |
+| `team_send_message` | 本团队 member 或 master；广播（`to: "*"`）**仅 master** |
+| `team_task_create` / `team_task_list` | 本团队 member 或 master |
+| `team_task_update` / `team_task_get` | 本团队 member 或 master；`task_id` **必须为 UUID**（schema 正则校验，杜绝 `../` 路径遍历）；`team_task_update` 的非 claim 状态变更额外要求调用者是任务 owner 或 master |
+| `team_shutdown_request` | **仅 master** |
+| `team_approve_shutdown` / `team_reject_shutdown` | master **或被关闭的 member 本人**；且该 member 必须已有 master 发起的关闭请求（`shutdownRequested`） |
+| `team_parallel` / `team_pipeline` / `team_loop` / `team_delegate` | **仅 master** |
+
+> **路径参数安全**：`team_id` 经鉴权门禁约束为调用者真实团队名（`team_create` 已用 `/^[a-z0-9-]+$/` 校验），`task_id` 经 UUID 正则校验，`recipient`/`member` 经「必须是已存在 member」校验——三者均不会把未净化字符串拼入文件路径。
 
 ### 4.1 `team_create`
 
@@ -908,7 +926,9 @@ team_task_update({
 team_task_get({ team_id: "auth-team", task_id: "task-uuid" })
 ```
 
-**认领语义**：`status: "claimed"` 原子获取 `tasks/claims/{taskId}.lock` **并校验 `Task.status === "pending"`**（双重检查：锁可用 + 状态一致）。如果另一个 member 已认领（锁被占用或状态非 pending），返回 `TaskAlreadyClaimedError`。这实现了协作模式下的 pull-based 任务分配。崩溃遗留的 stale claim 由 sweep timer 的 `reapStaleClaims` 复位（见 §3 并发原语）。
+**认领语义**：`status: "claimed"` 原子获取 `tasks/claims/{taskId}.lock` **并校验 `Task.status === "pending"`**（双重检查：锁可用 + 状态一致）。如果另一个 member 已认领（锁被占用或状态非 pending），返回 `TaskAlreadyClaimedError`。这实现了协作模式下的 pull-based 任务分配。崩溃遗留的 stale claim 由 sweep timer 的 `reapStaleClaims` 复位（见 §3 并发原语）。`updateTask` 的读-改-写经 `withLock(taskUpdateLockPath)` 串行化，避免与 `reapStaleClaims` 并发时丢失更新。
+
+**鉴权与校验**（见 §4.0.1）：四个 tool 均要求调用者属于 `team_id`。`task_id` 必须为 UUID（schema 正则），杜绝 `../` 路径遍历。`team_task_update` 的非 claim 状态变更（in_progress/completed/deleted）额外要求调用者是任务 owner 或 master。`team_task_create` 受 `bounds.maxTasks`（默认 200 个存活任务）限制。
 
 ### 4.8 `team_shutdown_request`
 
@@ -940,6 +960,8 @@ team_reject_shutdown({
 
 批准后：member 状态 → `"shutdown_approved"`。Worktree 被清理。如果所有 member 都已批准/关闭，team 转为 `"dead"`。
 
+**鉴权**（见 §4.0.1）：可由 master 或被关闭的 member 本人调用，且调用者必须属于该 team。两者都要求该 member 已有 master 通过 `team_shutdown_request` 发起的关闭请求（`member.shutdownRequested === true`）——无 pending 请求时 approve/reject 均拒绝。reject 会清除该标记，member 继续运行。
+
 ### 4.10 `team_status` / `team_list`
 
 ```
@@ -956,9 +978,12 @@ team_status({ team_id: "auth-team" })
 //   tokensUsed: 45200
 // }
 
-team_list({ scope?: "user" | "project" | "all" })
+team_list()
+// 无参数：枚举当前 scope（<cwd>/.octeam）下的所有 team。
 // Returns: [{ name: "auth-team", status: "idle", members: 3 }, ...]
 ```
+
+`team_status` 的 per-member 未读数在读取时从 mailbox 文件实时计算（`countUnreadMessages`，不含已预留消息），不再依赖持久化计数器。`team_list` 无参数、无授权门禁（单用户本地，枚举风险低）。
 
 ### 4.11 `team_delete`
 
@@ -1725,6 +1750,7 @@ type Bounds = {
     maxMessagesPerRun: number          // default 100, total messages per orchestration
     maxWallClockMinutes: number        // default 30, hard wall-clock limit
     maxMemberTurns: number             // default 50, turns per member per orchestration
+    maxTasks: number                   // default 200, max live (non-deleted) tasks in the shared tasklist
     messagePayloadMaxBytes: number     // default 32768 (32KB)
     messageUnreadMaxBytes: number      // default 1048576 (1MB), backpressure limit
 }
@@ -1735,6 +1761,9 @@ type Bounds = {
 - **`maxMemberTurns` 强制**：每次对某 member 调用 `promptAsync` 前递增 `member.turnCount` 并检查；若达到上限，该 member 不再被 dispatch，编排以 `member_turn_limit:{member}` 终止。
 - **`maxMessagesPerRun` 强制**：`team_send_message` 在写入前检查当前 run 的消息总数，超限拒绝。
 - **`maxParallelMembers` 强制**：`team_create` 并发 spawn session 时分批，单批并发数不超过该值。
+- **`messagePayloadMaxBytes` 强制**：`team_send_message` 在写入前以 `Buffer.byteLength(body, "utf8")` 校验单条消息体的 UTF-8 字节数，超限拒绝（schema 的 `.max()` 仅为静态兜底，运行时以本边界为准）。
+- **`maxWallClockMinutes` 强制**：workflow tool 的 `timeout_ms` 通过 `effectiveTimeoutMs()` 钳制到 `maxWallClockMinutes * 60_000`；非正的上限（如手改 state.json）按「无上限」处理，避免超时被压成 0 而立即中止。
+- **`maxTasks` 强制**：`team_task_create` 在创建前统计当前存活（非 `deleted`）任务数，达到上限即拒绝，防止成员刷满共享 tasklist（磁盘 DoS）。
 - **`tokenBudget` 强制（M5 已验证）**：`tokensUsed` 由累加各 member session 中 `AssistantMessage` 的 `info.tokens`（input+output+reasoning）得出——只能走 `session.messages`，**不能走 `session.status`**（status 无 token 数据）。推荐订阅 `message.updated` 事件增量累加，避免每轮全量扫描。需明确 `cache.read`/`cache.write` token 是否计入预算（缓存读通常按折计费）。
 
 ### 8.2 Agent 资格
