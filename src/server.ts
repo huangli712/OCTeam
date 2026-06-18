@@ -27,7 +27,7 @@ const server = async (input: PluginInput): Promise<Hooks> => {
 
     // Crash recovery: rebuild the sessionID -> member index from on-disk state
     // so idles/transforms resolve correctly after a plugin/OpenCode restart.
-    await rebuildSessionIndex(ctx.storageRoot).catch(() => {
+    await rebuildSessionIndex(ctx.projectStorageRoot, ctx.userStorageRoot).catch(() => {
         // best effort — unreadable teams are skipped
     })
 

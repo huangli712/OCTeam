@@ -31,7 +31,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
             const sender = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!sender) return "Error: caller is not a member of this team"
 
-            const team = await loadTeamState(ctx.storageRoot, args.team_id)
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, sender.leadSessionId)
 
             // P1 (§8.1): enforce the configurable per-message payload cap. The
             // schema .max() is a static safety net; bounds.messagePayloadMaxBytes

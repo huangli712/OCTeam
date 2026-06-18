@@ -42,7 +42,7 @@ export function teamShutdownRequestTool(ctx: PluginContext): ToolDefinition {
             if (!caller?.isMaster) {
                 return "Error: team_shutdown_request is master-only"
             }
-            const team = await loadTeamState(ctx.storageRoot, args.team_id)
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
             const member = team.members.find(m => m.name === args.member)
             if (!member) return `Error: unknown member "${args.member}"`
             // Mark the pending request so approve/reject can only act on a member
@@ -84,7 +84,7 @@ export function teamApproveShutdownTool(ctx: PluginContext): ToolDefinition {
             if (!caller.isMaster && caller.name !== args.member) {
                 return "Error: only the master or the member itself may approve its shutdown"
             }
-            const team = await loadTeamState(ctx.storageRoot, args.team_id)
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
             return team.mutex.runExclusive(async () => {
                 const member = team.members.find(m => m.name === args.member)
                 if (!member) return `Error: unknown member "${args.member}"`
@@ -120,7 +120,7 @@ export function teamRejectShutdownTool(ctx: PluginContext): ToolDefinition {
             if (!caller.isMaster && caller.name !== args.member) {
                 return "Error: only the master or the member itself may reject its shutdown"
             }
-            const team = await loadTeamState(ctx.storageRoot, args.team_id)
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
             return team.mutex.runExclusive(async () => {
                 const member = team.members.find(m => m.name === args.member)
                 if (!member) return `Error: unknown member "${args.member}"`

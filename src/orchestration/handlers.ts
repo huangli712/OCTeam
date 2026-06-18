@@ -463,7 +463,7 @@ export async function handleStatusEvent(
     const member = await resolveTeamMember(ctx.storageRoot, sessionID)
     if (!member || member.isMaster) return
 
-    const team = await loadTeamState(ctx.storageRoot, member.teamName)
+    const team = await loadTeamState(ctx.storageRoot, member.teamName, member.leadSessionId)
     await team.mutex.runExclusive(async () => {
         const live = team.members.find(m => m.name === member.name)
         if (!live) return

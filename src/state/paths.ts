@@ -2,14 +2,23 @@ import path from "node:path"
 
 // --- Scope-level paths ---
 
-/** <storageRoot>/teams */
-export function teamsDir(storageRoot: string): string {
-    return path.join(storageRoot, "teams")
+/**
+ * Teams root for a scope.
+ *
+ * - leadSessionId present → <storageRoot>/<leadSessionId>/teams
+ *   (project scope: teams are segmented under their lead session).
+ * - leadSessionId absent  → <storageRoot>/teams
+ *   (user scope: flat/global, shared across sessions).
+ */
+export function teamsDir(storageRoot: string, leadSessionId?: string): string {
+    return leadSessionId
+        ? path.join(storageRoot, leadSessionId, "teams")
+        : path.join(storageRoot, "teams")
 }
 
-/** <storageRoot>/teams/{teamName} */
-export function teamDir(storageRoot: string, teamName: string): string {
-    return path.join(teamsDir(storageRoot), teamName)
+/** <storageRoot>[/<leadSessionId>]/teams/{teamName} */
+export function teamDir(storageRoot: string, teamName: string, leadSessionId?: string): string {
+    return path.join(teamsDir(storageRoot, leadSessionId), teamName)
 }
 
 // --- Per-team file paths (take the resolved team directory) ---

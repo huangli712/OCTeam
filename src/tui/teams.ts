@@ -10,7 +10,6 @@
  */
 
 import fs from "node:fs/promises"
-import os from "node:os"
 import path from "node:path"
 
 export type TeamMemberRow = {
@@ -91,11 +90,13 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
     return out
 }
 
-/** Load teams from project-local (<cwd>/.octeam) and user (~/.octeam) scopes. */
-export async function loadTeams(): Promise<TeamSummary[]> {
-    const project = await readTeamsFrom(path.join(process.cwd(), ".octeam"))
-    const user = await readTeamsFrom(path.join(os.homedir(), ".octeam"))
-    // Project scope takes precedence on name collisions.
-    const seen = new Set(project.map(t => t.name))
-    return [...project, ...user.filter(t => !seen.has(t.name))]
+/**
+ * Load teams visible to the given session. Session-scoping: only project-scope
+ * teams owned by this session (under <cwd>/.octeam/<sessionId>/teams/) show.
+ * User-scope (~/.octeam) teams are global and intentionally excluded from the
+ * per-session sidebar view.
+ */
+export async function loadTeams(sessionId: string): Promise<TeamSummary[]> {
+    const root = path.join(process.cwd(), ".octeam", sessionId)
+    return readTeamsFrom(root)
 }

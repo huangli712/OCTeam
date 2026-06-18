@@ -48,7 +48,7 @@ export function SessionNavigatorSidebar(props: {
 
     const refreshTeams = async () => {
         try {
-            setTeams(await loadTeams())
+            setTeams(await loadTeams(props.sessionID()))
         } catch {
             // best-effort
         }

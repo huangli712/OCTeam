@@ -92,7 +92,7 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
                 // resolves to this member. Without this, resolveTeamMember returns
                 // null in the event handler, member.initialized never flips, and the
                 // role-setup barrier below spins until timeout (every workflow fails).
-                indexMember(sessionId, team.teamName, member.name)
+                indexMember(sessionId, team.teamName, member.name, team.leadSessionId, ctx.storageRoot)
                 member.status = "running" // running role-setup, NOT yet idle
                 member.initialized = false
                 // 3. Send role-setup prompt (members idle when done)

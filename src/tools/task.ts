@@ -40,7 +40,7 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
             if (!caller) return "Error: caller is not a member of this team"
             // P2 (§8.1): cap live (non-deleted) tasks per team to bound disk use
             // and prevent a member from flooding the shared tasklist (DoS).
-            const team = await loadTeamState(ctx.storageRoot, args.team_id)
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
             const liveTasks = (await listAllTasks(caller.directory)).filter(
                 t => t.status !== "deleted",
             ).length

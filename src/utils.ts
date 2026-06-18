@@ -3,23 +3,45 @@
  * polling primitives, and the role-setup prompt builder.
  */
 
-import { listTeamNames, loadTeamState } from "./state/store.js"
+import { listAllTeams, loadTeamState } from "./state/store.js"
 import type { RuntimeMember, TeamMemberSpec, TeamSpec } from "./types.js"
 
 // --- sessionID -> member index (process-level, O(1) resolve) ---
 
 type IndexEntry =
-    | { teamName: string; memberName: string; isMaster?: false }
-    | { teamName: string; isMaster: true }
+    | {
+          teamName: string
+          memberName: string
+          isMaster?: false
+          leadSessionId?: string
+          storageRoot: string
+      }
+    | {
+          teamName: string
+          isMaster: true
+          leadSessionId?: string
+          storageRoot: string
+      }
 
 const sessionIndex = new Map<string, IndexEntry>()
 
-export function indexMember(sessionID: string, teamName: string, memberName: string): void {
-    sessionIndex.set(sessionID, { teamName, memberName })
+export function indexMember(
+    sessionID: string,
+    teamName: string,
+    memberName: string,
+    leadSessionId: string | undefined,
+    storageRoot: string,
+): void {
+    sessionIndex.set(sessionID, { teamName, memberName, leadSessionId, storageRoot })
 }
 
-export function indexMaster(sessionID: string, teamName: string): void {
-    sessionIndex.set(sessionID, { teamName, isMaster: true })
+export function indexMaster(
+    sessionID: string,
+    teamName: string,
+    leadSessionId: string | undefined,
+    storageRoot: string,
+): void {
+    sessionIndex.set(sessionID, { teamName, isMaster: true, leadSessionId, storageRoot })
 }
 
 export function unindexSession(sessionID: string): void {
@@ -42,6 +64,9 @@ export type ResolvedMember = RuntimeMember & {
     teamName: string
     teamRunId: string
     directory: string
+    leadSessionId?: string
+    /** Storage root this team lives under (project or user scope). */
+    storageRoot: string
 }
 
 /**
@@ -57,7 +82,11 @@ export async function resolveTeamMember(
 ): Promise<ResolvedMember | null> {
     const hit = sessionIndex.get(sessionID)
     if (!hit) return null
-    const team = await loadTeamState(storageRoot, hit.teamName)
+    // Resolve against the scope captured at index time (entry.storageRoot +
+    // entry.leadSessionId), NOT the caller's storageRoot. A project-team member is
+    // indexed under its LEADER's session segment, so it resolves to the leader's
+    // team dir rather than anything scoped to the member's own session.
+    const team = await loadTeamState(hit.storageRoot, hit.teamName, hit.leadSessionId)
     if (hit.isMaster) {
         return {
             name: "master",
@@ -68,11 +97,20 @@ export async function resolveTeamMember(
             teamName: team.teamName,
             teamRunId: team.teamRunId,
             directory: team.directory,
+            leadSessionId: hit.leadSessionId,
+            storageRoot: hit.storageRoot,
         }
     }
     const member = team.members.find(m => m.name === hit.memberName)
     return member
-        ? { ...member, teamName: team.teamName, teamRunId: team.teamRunId, directory: team.directory }
+        ? {
+              ...member,
+              teamName: team.teamName,
+              teamRunId: team.teamRunId,
+              directory: team.directory,
+              leadSessionId: hit.leadSessionId,
+              storageRoot: hit.storageRoot,
+          }
         : null
 }
 
@@ -98,14 +136,26 @@ export async function resolveCallerInTeam(
  * state.json once (NOT per-turn) and indexes each member session and the
  * leader session. Call from server() init.
  */
-export async function rebuildSessionIndex(storageRoot: string): Promise<void> {
-    const names = await listTeamNames(storageRoot)
-    for (const name of names) {
+export async function rebuildSessionIndex(
+    projectStorageRoot: string,
+    userStorageRoot: string,
+): Promise<void> {
+    // Project scope is segmented (<root>/<sid>/teams); user scope is flat (<root>/teams).
+    await indexScope(projectStorageRoot, true)
+    await indexScope(userStorageRoot, false)
+}
+
+/** Index every team in one scope. Shared by the project + user passes above. */
+async function indexScope(storageRoot: string, segmented: boolean): Promise<void> {
+    const teams = await listAllTeams(storageRoot, segmented)
+    for (const { leadSessionId, teamName } of teams) {
         try {
-            const team = await loadTeamState(storageRoot, name)
-            indexMaster(team.leadSessionId, team.teamName)
+            const team = await loadTeamState(storageRoot, teamName, leadSessionId)
+            indexMaster(team.leadSessionId, team.teamName, leadSessionId, storageRoot)
             for (const m of team.members) {
-                if (m.sessionId) indexMember(m.sessionId, team.teamName, m.name)
+                if (m.sessionId) {
+                    indexMember(m.sessionId, team.teamName, m.name, leadSessionId, storageRoot)
+                }
             }
         } catch {
             // unreadable team state — skip

@@ -27,7 +27,8 @@
     ],
     "scripts": {
         "build": "bun build src/server.ts --outfile dist/server.js --target node --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && bun build src/tui/index.tsx --outfile dist/tui.js --target node --format esm --external @opencode-ai/plugin --external @opencode-ai/plugin/tui --external @opentui/solid --external solid-js && tsc --emitDeclarationOnly",
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "test": "bun test"
     },
     "peerDependencies": {
         "@opencode-ai/plugin": ">=1.4.7",

@@ -94,14 +94,14 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 return "Error: discussion mode requires `topic`"
             }
 
-            const team = await loadTeamState(ctx.storageRoot, args.team_id)
-
             // Workflow tools are master-only: only the team's leader session may
             // start an orchestration.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_parallel is master-only"
             }
+
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
 
             // Phase 1: pre-check under mutex.
             let busy = false
@@ -184,13 +184,13 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 return "Error: pipeline stages must have unique member names"
             }
 
-            const team = await loadTeamState(ctx.storageRoot, args.team_id)
-
             // Workflow tools are master-only.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_pipeline is master-only"
             }
+
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
 
             // Validate members exist.
             for (const name of stageMembers) {
@@ -268,13 +268,13 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             if (args.decider === "master") {
                 return "Error: decider must be a member name, not \"master\""
             }
-            const team = await loadTeamState(ctx.storageRoot, args.team_id)
-
             // Workflow tools are master-only.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_loop is master-only"
             }
+
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
 
             if (!team.members.some(m => m.name === args.decider)) {
                 return `Error: decider "${args.decider}" is not a member`
@@ -366,13 +366,13 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
         async execute(args, context) {
-            const team = await loadTeamState(ctx.storageRoot, args.team_id)
-
             // Workflow tools are master-only.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_delegate is master-only"
             }
+
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
 
             let busy = false
             await team.mutex.runExclusive(async () => {

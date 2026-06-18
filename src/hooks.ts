@@ -6,11 +6,14 @@
  * missed-idle reconciliation, termination enforcement).
  */
 
+import fs from "node:fs/promises"
+import path from "node:path"
+
 import type { Hooks } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "./context.js"
-import { loadTeamState, activeTeams, listTeamNames, saveTeamState } from "./state/store.js"
-import { resolveTeamMember } from "./utils.js"
+import { loadTeamState, activeTeams, listAllTeams, invalidateTeam, saveTeamState } from "./state/store.js"
+import { resolveTeamMember, unindexSession } from "./utils.js"
 import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservations } from "./mailbox.js"
 import { reapStaleClaims } from "./tasks.js"
 import { handleStatusEvent, processIdle } from "./orchestration/handlers.js"
@@ -34,6 +37,17 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
             await handleStatusEvent(ctx, event as { properties?: Record<string, unknown>; type?: string })
             return
         }
+
+        // Session-scoping cleanup: when a session is deleted, remove any
+        // project-scope teams it owned and drop its index entry. User-scope is
+        // flat (no session segment) so only unindex applies there.
+        if (type === "session.deleted") {
+            const sid = (props as { sessionID?: string } | undefined)?.sessionID
+                ?? (event as { id?: string }).id
+            if (sid) await handleSessionDeleted(ctx, sid)
+            return
+        }
+
         if (type !== "session.idle") return
 
         const sessionID = (props as { sessionID?: string } | undefined)?.sessionID
@@ -42,7 +56,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
         const member = await resolveTeamMember(ctx.storageRoot, sessionID)
         if (!member) return // not a team member (the common case)
 
-        const team = await loadTeamState(ctx.storageRoot, member.teamName)
+        const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
         await team.mutex.runExclusive(async () => {
             if (member.isMaster) {
                 // synthetic master — Step 0 drains queued results, no dispatch
@@ -103,14 +117,6 @@ export function createTransformHook(
 }
 
 /**
- * Sweep timer (design §6, B1). Three jobs, every SWEEP_INTERVAL_MS:
- *   1. Release stale mailbox reservations + reap stale task claims (crash recovery)
- *   2. Run checkTermination so wall-clock/budget/error fire even without idles
- *   3. Reconcile missed idle events (member idle in OpenCode but still "running"
- *      in plugin state — re-enter processIdle)
- * Started once in server() init.
- */
-/**
  * Crash recovery (design §3). On plugin startup, reconcile teams left in a
  * non-terminal state by a previous process that crashed mid-orchestration:
  *   - busy: the in-flight orchestration cannot resume deterministically — release
@@ -121,39 +127,79 @@ export function createTransformHook(
  * live / failed / dead / disabled are terminal-or-pristine → skipped.
  * Runs once in server() init, AFTER rebuildSessionIndex, BEFORE startSweepTimer.
  * Safe to use the mutex here: hooks are not yet registered, so no event handler
- * runs concurrently.
+ * runs concurrently. Iterates BOTH scopes: project (session-segmented) + user
+ * (flat).
  */
+async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>): Promise<void> {
+    if (team.status !== "busy" && team.status !== "idle") return
+    await team.mutex.runExclusive(async () => {
+        await releaseStaleReservations(team.directory, "master").catch(() => {})
+        for (const m of team.members) {
+            await releaseStaleReservations(team.directory, m.name).catch(() => {})
+        }
+        if (team.status === "busy") {
+            // Interrupted orchestration is unrecoverable — fail it cleanly.
+            team.activeTask = undefined
+            team.status = "failed"
+            for (const m of team.members) {
+                if (m.status === "running") {
+                    m.status = "errored"
+                    m.error = "interrupted by plugin/host restart"
+                }
+            }
+        }
+        await saveTeamState(team).catch(() => {
+            // best-effort persist
+        })
+    })
+}
+
 export async function reconcileCrashedTeams(ctx: PluginContext): Promise<void> {
-    const names = await listTeamNames(ctx.storageRoot)
-    for (const name of names) {
-        let team
+    // Project scope: teams live under <projectStorageRoot>/<leadSessionId>/teams/.
+    for (const { leadSessionId, teamName } of await listAllTeams(ctx.projectStorageRoot, true)) {
         try {
-            team = await loadTeamState(ctx.storageRoot, name)
+            const team = await loadTeamState(ctx.projectStorageRoot, teamName, leadSessionId)
+            await reconcileOne(team)
         } catch {
             continue // unreadable state.json — skip
         }
-        if (team.status !== "busy" && team.status !== "idle") continue
-        await team.mutex.runExclusive(async () => {
-            await releaseStaleReservations(team.directory, "master").catch(() => {})
-            for (const m of team.members) {
-                await releaseStaleReservations(team.directory, m.name).catch(() => {})
-            }
-            if (team.status === "busy") {
-                // Interrupted orchestration is unrecoverable — fail it cleanly.
-                team.activeTask = undefined
-                team.status = "failed"
-                for (const m of team.members) {
-                    if (m.status === "running") {
-                        m.status = "errored"
-                        m.error = "interrupted by plugin/host restart"
-                    }
-                }
-            }
-            await saveTeamState(team).catch(() => {
-                // best-effort persist
-            })
-        })
     }
+    // User scope: flat layout (<userStorageRoot>/teams/<name>/), no session segment.
+    for (const { teamName } of await listAllTeams(ctx.userStorageRoot, false)) {
+        try {
+            const team = await loadTeamState(ctx.userStorageRoot, teamName)
+            await reconcileOne(team)
+        } catch {
+            continue // unreadable state.json — skip
+        }
+    }
+}
+
+/**
+ * Session-scoping cleanup on session.deleted. Removes any project-scope teams
+ * owned by the deleted session (the whole <projectStorageRoot>/<sid>/ dir) and
+ * drops its sessionIndex entry. For a deleted MEMBER session (no owned dir),
+ * only the unindex applies. User-scope is flat — nothing to remove there.
+ */
+async function handleSessionDeleted(ctx: PluginContext, sessionID: string): Promise<void> {
+    try {
+        const teams = await listAllTeams(ctx.projectStorageRoot, true)
+        for (const { leadSessionId, teamName } of teams) {
+            if (leadSessionId !== sessionID) continue
+            try {
+                const team = await loadTeamState(ctx.projectStorageRoot, teamName, leadSessionId)
+                invalidateTeam(team.directory)
+            } catch {
+                // already gone — skip
+            }
+        }
+        const sessionDir = path.join(ctx.projectStorageRoot, sessionID)
+        await fs.rm(sessionDir, { recursive: true, force: true })
+    } catch {
+        // best-effort — never block the event handler on cleanup
+    }
+    // Always unindex (covers lead sessions with teams AND bare member sessions).
+    unindexSession(sessionID)
 }
 
 export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
