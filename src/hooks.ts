@@ -23,6 +23,31 @@ import type { RuntimeMember } from "./types.js"
 const SWEEP_INTERVAL_MS = 15_000
 
 /**
+ * Compaction-context suppression (Q2 guard). The `experimental.chat.messages.transform`
+ * hook fires both on live prompt turns AND during session compaction (where it
+ * receives a structuredClone of the head messages — see decompiled trigger site).
+ * Injecting into the clone is lost, but pollMailbox+ackMessages have REAL side
+ * effects → silent message loss. We can't distinguish the two from input (`{}`),
+ * so we mark a session as "compacting" via the experimental.session.compacting
+ * hook and consume-once-skip the very next transform for it. TTL bounds a stuck
+ * flag (if compaction aborts before transform) to a single delayed turn.
+ */
+const compacting = new Map<string, number>() // sessionID -> expiresAt
+const COMPACTING_FLAG_TTL_MS = 15_000
+
+/**
+ * Marks a session as currently compacting (Q2 guard). Registered under
+ * experimental.session.compacting in server init. The transform hook consumes
+ * this flag once to skip the compaction-clone turn.
+ */
+export function createCompactingHook(): NonNullable<Hooks["experimental.session.compacting"]> {
+    return async input => {
+        const sid = (input as { sessionID?: string }).sessionID
+        if (sid) compacting.set(sid, Date.now() + COMPACTING_FLAG_TTL_MS)
+    }
+}
+
+/**
  * The single event handler (design §6). Filters by event.type, resolves the
  * session to a team member, and runs processIdle under the team mutex. Master
  * sessions are resolved as synthetic members (B1) so their queued results drain.
@@ -72,22 +97,49 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
 }
 
 /**
- * Transform hook (design §5, Layer 3). On each chat turn for a team member (or
- * master), atomically poll-and-reserve its mailbox and inject unread messages
- * as a synthetic user message before the last user message. Uses the same
- * reservation protocol as the master drain path → exactly-once delivery.
+ * Transform hook (design §5, Layer 3). On each chat turn for a team member,
+ * atomically poll-and-reserve its mailbox and inject unread messages as a
+ * synthetic text part on the last user message. Uses the same reservation
+ * protocol as the master drain path → exactly-once delivery.
+ *
+ * sessionID source (Q1 fix): the SDK types this hook's `input` as `{}` and the
+ * runtime passes `{}` at BOTH trigger sites (main loop + compaction), so the old
+ * `input.sessionID` read was always undefined → the hook early-returned every
+ * time and the mailbox was never drained. Each Message (UserMessage |
+ * AssistantMessage) carries a required `info.sessionID`, so we read it from
+ * `output.messages` instead — all messages in one transform call belong to the
+ * same session.
  */
 export function createTransformHook(
     ctx: PluginContext,
 ): NonNullable<Hooks["experimental.chat.messages.transform"]> {
-    // The SDK types the input as {} but runtime provides sessionID; cast for access.
-    return async (input, output) => {
-        const rec = input as { sessionID?: string; session?: { id?: string } }
-        const sessionID = rec.sessionID ?? rec.session?.id
+    return async (_input, output) => {
+        // Q1: read sessionID from the messages (input is `{}`). All messages in a
+        // single transform call share one sessionID.
+        const messages = output.messages as Array<{
+            info?: { sessionID?: string; role?: string }
+            parts?: any[]
+        }>
+        const sessionID = messages.find(m => m.info?.sessionID)?.info?.sessionID
         if (!sessionID) return
 
         const member = await resolveTeamMember(ctx.storageRoot, sessionID)
         if (!member) return
+
+        // Q3: the master (leader) mailbox is drained by the event handler's
+        // deliverQueuedResultsToMaster (promptAsync, distinct turn). Skip it here
+        // to avoid inline-injecting team results into the user's interactive turn.
+        if (member.isMaster) return
+
+        // Q2: compaction guard. This hook also fires on a structuredClone of the
+        // head during compaction — injecting there is lost, but pollMailbox +
+        // ackMessages have real side effects → silent message loss. Consume the
+        // compacting flag once and skip the clone turn (TTL bounds a stuck flag).
+        const deadline = compacting.get(sessionID)
+        if (deadline !== undefined) {
+            compacting.delete(sessionID) // consume-once: next live transform proceeds
+            if (Date.now() < deadline) return
+        }
 
         const unread = await pollMailbox(member.directory, member.name)
         if (unread.length === 0) return
@@ -98,7 +150,6 @@ export function createTransformHook(
         // (prefer the last user message) rather than fabricating a partial Message
         // object. A hand-rolled { info: { role } } is missing required Message fields
         // and risks crashing the host renderer / token accounting.
-        const messages = output.messages as Array<{ info?: { role?: string }; parts?: any[] }>
         let targetIdx = -1
         for (let i = messages.length - 1; i >= 0; i--) {
             if (messages[i]?.info?.role === "user") {

@@ -4,6 +4,7 @@ import { createPluginContext } from "./context.js"
 import type { PluginContext } from "./context.js"
 import { createTools } from "./tools/index.js"
 import {
+    createCompactingHook,
     createEventHandler,
     createTransformHook,
     reconcileCrashedTeams,
@@ -45,6 +46,7 @@ const server = async (input: PluginInput): Promise<Hooks> => {
         tool: createTools(ctx),
         event: createEventHandler(ctx),
         "experimental.chat.messages.transform": createTransformHook(ctx),
+        "experimental.session.compacting": createCompactingHook(),
     }
 }
 
