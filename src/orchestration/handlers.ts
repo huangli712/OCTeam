@@ -59,7 +59,7 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
         parseFailed: true,
     })
     // Greedy {...} so nested braces (e.g. structured nextActions) parse correctly (L2).
-    const match = rawText?.match(/<decision>\s*(\{[\s\S]*\})\s*<\/decision>/)
+    const match = rawText?.match(/<(?:decision|决策)>\s*(\{[\s\S]*\})\s*<\/(?:decision|决策)>/)
     if (!match) return fail()
     try {
         const parsed = JSON.parse(match[1])

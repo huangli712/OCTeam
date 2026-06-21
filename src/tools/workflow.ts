@@ -311,7 +311,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 if (!stages.some(s => s.member === args.decider)) {
                     stages.push({
                         member: args.decider,
-                        task: 'Review all outputs, then emit a <decision> block with JSON body. Required fields: "decision" (string, literally "done" or "continue" — not boolean), "rationale" (string), "nextActions" (string[]). Example: <decision>{"decision":"done","rationale":"checks passed","nextActions":[]}</decision>',
+                        task: 'Review all outputs, then emit a <decision> block with JSON body. The tags must be the literal English <decision> and </decision> — do NOT use translated tags such as <决策>. Required JSON fields: "decision" (string, literally "done" or "continue" — not boolean), "rationale" (string), "nextActions" (string[]). Example: <decision>{"decision":"done","rationale":"checks passed","nextActions":[]}</decision>',
                         action: "read_only",
                         completed: false,
                     })
