@@ -20,6 +20,7 @@ export type TeamMemberRow = {
     sessionId?: string
     unread?: number
     totalMessages?: number
+    turnCount?: number
 }
 
 export type TeamSummary = {
@@ -84,6 +85,7 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
                         sessionId: m.sessionId,
                         unread: mailbox.unread,
                         totalMessages: mailbox.total,
+                        turnCount: m.turnCount,
                     }
                 })),
                 active: state.activeTask

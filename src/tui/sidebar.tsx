@@ -249,8 +249,9 @@ export function SessionNavigatorSidebar(props: {
                                                                 >
                                                                     <text fg={textMuted()}>{"      Agent   : " + (member.agent ?? "unknown")}</text>
                                                                     <text fg={textMuted()}>{"      Model   : " + (member.model ? member.model.split("/").pop() : "unknown")}</text>
-                                                                    <text fg={textMuted()}>{"      Status  : " + member.status}</text>
                                                                     <text fg={textMuted()}>{"      Mailbox : " + (member.unread ?? 0) + " / " + (member.totalMessages ?? 0)}</text>
+                                                                    <text fg={textMuted()}>{"      Turn    : " + (member.turnCount ?? 0)}</text>
+                                                                    <text fg={textMuted()}>{"      Status  : " + member.status}</text>
                                                                 </box>
                                                             ) : null}
                                                         </box>
