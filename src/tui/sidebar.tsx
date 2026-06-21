@@ -236,7 +236,6 @@ export function SessionNavigatorSidebar(props: {
                                     {isTeamExpanded(team.name) ? (
                                         <box flexDirection="column" width="100%">
                                             <text fg={textMuted()}>{"   Mode    : " + (team.active?.type ?? "unknown")}</text>
-                                            <text fg={textMuted()}>{"   Status  : " + team.status}</text>
                                             <text fg={textMuted()}>{"   Size    : " + team.members.length}</text>
                                             <box
                                                 flexDirection="row"
