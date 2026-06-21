@@ -15,6 +15,7 @@ import path from "node:path"
 export type TeamMemberRow = {
     name: string
     status: string
+    agent?: string
     model?: string
     sessionId?: string
     unread?: number
@@ -69,6 +70,7 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
                 members: await Promise.all((state.members ?? []).map(async (m: any) => ({
                     name: m.name,
                     status: m.status,
+                    agent: m.agent,
                     model: m.model,
                     sessionId: m.sessionId,
                     unread: await countUnread(teamDir, m.name),

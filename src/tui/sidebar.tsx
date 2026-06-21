@@ -237,36 +237,31 @@ export function SessionNavigatorSidebar(props: {
                                         <box flexDirection="column" width="100%">
                                             <text fg={textMuted()}>{"   Mode    : " + (team.active?.type ?? "unknown")}</text>
                                             <text fg={textMuted()}>{"   Size    : " + team.members.length}</text>
-                                            <box
-                                                flexDirection="row"
-                                                width="100%"
-                                                onMouseDown={() => toggleMembers(team.name)}
-                                            >
-                                                <text fg={textMuted()}>{"   Members : "}</text>
-                                                <text fg={textMuted()}>
-                                                    {isMembersExpanded(team.name) ? "\u25bc" : "\u25b6"}
-                                                </text>
-                                            </box>
-                                            {isMembersExpanded(team.name) ? (
-                                                <For each={team.members}>
-                                                    {(member) => (
-                                                        <box
-                                                            flexDirection="row"
-                                                            width="100%"
-                                                            justifyContent="space-between"
-                                                            onMouseDown={() => member.sessionId ? handleClick(member.sessionId) : undefined}
-                                                        >
-                                                            <text fg={statusColor(member.status)}>
-                                                                {"     " + statusDot(member.status) + " " + member.name}
-                                                            </text>
-                                                            <text fg={textMuted()}>
-                                                                {member.model ? member.model.split("/").pop() : ""}
-                                                                {member.unread ? " " + member.unread + " unread" : ""}
-                                                            </text>
+                                            <For each={team.members}>
+                                                {(member) => {
+                                                    const memberKey = team.name + "/" + member.name
+                                                    return (
+                                                        <box flexDirection="column" width="100%">
+                                                            <box
+                                                                flexDirection="row"
+                                                                width="100%"
+                                                                onMouseDown={() => toggleMembers(memberKey)}
+                                                            >
+                                                                <text fg={textMuted()}>
+                                                                    {"   " + (isMembersExpanded(memberKey) ? "\u25bc " : "\u25b6 ")}
+                                                                </text>
+                                                                <text fg={textColor()}>{"Member : " + member.name}</text>
+                                                            </box>
+                                                            {isMembersExpanded(memberKey) ? (
+                                                                <box flexDirection="column" width="100%">
+                                                                    <text fg={textMuted()}>{"      Agent : " + (member.agent ?? "unknown")}</text>
+                                                                    <text fg={textMuted()}>{"      Model : " + (member.model ? member.model.split("/").pop() : "unknown")}</text>
+                                                                </box>
+                                                            ) : null}
                                                         </box>
-                                                    )}
-                                                </For>
-                                            ) : null}
+                                                    )
+                                                }}
+                                            </For>
                                         </box>
                                     ) : null}
                                 </box>
