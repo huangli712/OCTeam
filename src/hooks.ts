@@ -11,7 +11,6 @@ import path from "node:path"
 
 import type { Hooks } from "@opencode-ai/plugin"
 
-import { diag } from './_diag.js';
 import type { PluginContext } from "./context.js"
 import { loadTeamState, activeTeams, listAllTeams, invalidateTeam, saveTeamState } from "./state/store.js"
 import { resolveTeamMember, unindexSession } from "./utils.js"
@@ -81,13 +80,6 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
 
         const member = await resolveTeamMember(ctx.storageRoot, sessionID)
         if (!member) return // not a team member (the common case)
-        diag("event:session.idle:resolved", {
-            sessionID,
-            teamName: member.teamName,
-            memberName: member.name,
-            isMaster: member.isMaster ?? false,
-        })
-
         const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
         await team.mutex.runExclusive(async () => {
             if (member.isMaster) {
