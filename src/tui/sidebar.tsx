@@ -125,17 +125,6 @@ export function SessionNavigatorSidebar(props: {
         }
     }
 
-    const statusDot = (status: string): string => {
-        switch (status) {
-            case "running": return "\u25cf"
-            case "idle": return "\u25cb"
-            case "errored": return "\u25cf"
-            case "completed":
-            case "shutdown_approved": return "\u25cf"
-            default: return "\u25cb"
-        }
-    }
-
     return (
         <box flexDirection="column" width="100%">
             {/* Line 1: Section header — bold, themed, version right-aligned */}
@@ -254,8 +243,10 @@ export function SessionNavigatorSidebar(props: {
                                                             </box>
                                                             {isMembersExpanded(memberKey) ? (
                                                                 <box flexDirection="column" width="100%">
-                                                                    <text fg={textMuted()}>{"      Agent : " + (member.agent ?? "unknown")}</text>
-                                                                    <text fg={textMuted()}>{"      Model : " + (member.model ? member.model.split("/").pop() : "unknown")}</text>
+                                                                    <text fg={textMuted()}>{"      Status  : " + member.status}</text>
+                                                                    <text fg={textMuted()}>{"      Agent   : " + (member.agent ?? "unknown")}</text>
+                                                                    <text fg={textMuted()}>{"      Model   : " + (member.model ? member.model.split("/").pop() : "unknown")}</text>
+                                                                    <text fg={textMuted()}>{"      Mailbox : " + (member.unread ? member.unread + " unread" : "empty")}</text>
                                                                 </box>
                                                             ) : null}
                                                         </box>
