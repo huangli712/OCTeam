@@ -243,10 +243,10 @@ export function SessionNavigatorSidebar(props: {
                                                             </box>
                                                             {isMembersExpanded(memberKey) ? (
                                                                 <box flexDirection="column" width="100%">
-                                                                    <text fg={textMuted()}>{"      Status  : " + member.status}</text>
                                                                     <text fg={textMuted()}>{"      Agent   : " + (member.agent ?? "unknown")}</text>
                                                                     <text fg={textMuted()}>{"      Model   : " + (member.model ? member.model.split("/").pop() : "unknown")}</text>
-                                                                    <text fg={textMuted()}>{"      Mailbox : unread (" + (member.unread ?? 0) + ") / total (" + (member.totalMessages ?? 0) + ")"}</text>
+                                                                    <text fg={textMuted()}>{"      Status  : " + member.status}</text>
+                                                                    <text fg={textMuted()}>{"      Mailbox : " + (member.unread ?? 0) + " / " + (member.totalMessages ?? 0)}</text>
                                                                 </box>
                                                             ) : null}
                                                         </box>
