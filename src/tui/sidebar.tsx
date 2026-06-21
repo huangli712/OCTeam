@@ -242,7 +242,11 @@ export function SessionNavigatorSidebar(props: {
                                                                 <text fg={textColor()}>{"Member : " + member.name}</text>
                                                             </box>
                                                             {isMembersExpanded(memberKey) ? (
-                                                                <box flexDirection="column" width="100%">
+                                                                <box
+                                                                    flexDirection="column"
+                                                                    width="100%"
+                                                                    onMouseDown={() => member.sessionId ? handleClick(member.sessionId) : undefined}
+                                                                >
                                                                     <text fg={textMuted()}>{"      Agent   : " + (member.agent ?? "unknown")}</text>
                                                                     <text fg={textMuted()}>{"      Model   : " + (member.model ? member.model.split("/").pop() : "unknown")}</text>
                                                                     <text fg={textMuted()}>{"      Status  : " + member.status}</text>
