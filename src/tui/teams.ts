@@ -19,6 +19,7 @@ export type TeamMemberRow = {
     model?: string
     sessionId?: string
     unread?: number
+    totalMessages?: number
 }
 
 export type TeamSummary = {
@@ -35,18 +36,24 @@ export type TeamSummary = {
 }
 
 /**
- * Count unread mailbox messages for a recipient by reading its inbox jsonl
- * directly (one non-empty line per pending message). Computed on read so the
- * sidebar never depends on a persisted counter that could drift. Reserved /
- * in-flight messages live in a separate dir and are intentionally not counted.
+ * Count mailbox messages for a recipient by reading its inbox and processed
+ * jsonl files directly (one non-empty line per message). Computed on read so
+ * the sidebar never depends on a persisted counter that could drift. Returns
+ * unread (inbox) and total (inbox + processed). Reserved / in-flight messages
+ * live in a separate dir and are intentionally not counted.
  */
-async function countUnread(teamDir: string, recipient: string): Promise<number> {
-    try {
-        const raw = await fs.readFile(path.join(teamDir, "mailbox", `${recipient}.jsonl`), "utf8")
-        return raw.split("\n").filter(l => l.length > 0).length
-    } catch {
-        return 0
+async function countMailbox(teamDir: string, recipient: string): Promise<{ unread: number; total: number }> {
+    const countLines = async (file: string): Promise<number> => {
+        try {
+            const raw = await fs.readFile(path.join(teamDir, "mailbox", file), "utf8")
+            return raw.split("\n").filter(l => l.length > 0).length
+        } catch {
+            return 0
+        }
     }
+    const unread = await countLines(`${recipient}.jsonl`)
+    const processed = await countLines(`${recipient}.processed.jsonl`)
+    return { unread, total: unread + processed }
 }
 
 async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
@@ -67,14 +74,18 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
             out.push({
                 name: state.teamName ?? e.name,
                 status: state.status ?? "unknown",
-                members: await Promise.all((state.members ?? []).map(async (m: any) => ({
-                    name: m.name,
-                    status: m.status,
-                    agent: m.agent,
-                    model: m.model,
-                    sessionId: m.sessionId,
-                    unread: await countUnread(teamDir, m.name),
-                }))),
+                members: await Promise.all((state.members ?? []).map(async (m: any) => {
+                    const mailbox = await countMailbox(teamDir, m.name)
+                    return {
+                        name: m.name,
+                        status: m.status,
+                        agent: m.agent,
+                        model: m.model,
+                        sessionId: m.sessionId,
+                        unread: mailbox.unread,
+                        totalMessages: mailbox.total,
+                    }
+                })),
                 active: state.activeTask
                     ? {
                           type: state.activeTask.type,
