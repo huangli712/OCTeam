@@ -311,7 +311,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 if (!stages.some(s => s.member === args.decider)) {
                     stages.push({
                         member: args.decider,
-                        task: "Review all outputs and emit a <decision>{...} block with decision (continue|done), rationale, and nextActions.",
+                        task: 'Review all outputs, then emit a <decision> block with JSON body. Required fields: "decision" (string, literally "done" or "continue" — not boolean), "rationale" (string), "nextActions" (string[]). Example: <decision>{"decision":"done","rationale":"checks passed","nextActions":[]}</decision>',
                         action: "read_only",
                         completed: false,
                     })

@@ -65,7 +65,7 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
         const parsed = JSON.parse(match[1])
         return {
             round: 0,
-            decision: parsed.decision === "done" ? "done" : "continue",
+            decision: parsed.decision === "done" || parsed.done === true ? "done" : "continue",
             rationale: parsed.rationale ?? "No rationale provided",
             nextActions: Array.isArray(parsed.nextActions) ? parsed.nextActions : [],
             timestamp: Date.now(),
