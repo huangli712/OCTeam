@@ -10,6 +10,7 @@
 
 import crypto from "node:crypto"
 
+import { diag } from '../_diag.js';
 import type { PluginContext } from "../context.js"
 import type { Team } from "../state/store.js"
 import { formatMailboxInjection, pollMailbox, ackMessages, writeMailboxMessage } from "../mailbox.js"
@@ -20,8 +21,18 @@ import type { ActiveTask, Message } from "../types.js"
 /** Check whether the leader session is currently idle. */
 async function leaderIsIdle(ctx: PluginContext, team: Team): Promise<boolean> {
     const status = await ctx.client.session.status({ query: { directory: ctx.directory } })
-    const leaderStatus = (status.data as Record<string, { type: string }> | undefined)?.[team.leadSessionId]
-    return leaderStatus?.type === "idle"
+    const map = (status.data as Record<string, { type: string }> | undefined) ?? {}
+    const leaderStatus = map[team.leadSessionId]
+    const result = leaderStatus?.type === "idle"
+    diag("leaderIsIdle", {
+        leadSessionId: team.leadSessionId,
+        directory: ctx.directory,
+        leaderPresent: team.leadSessionId in map,
+        leaderType: leaderStatus?.type ?? null,
+        sessionTypes: Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v?.type])),
+        result,
+    })
+    return result
 }
 
 /**
@@ -36,19 +47,35 @@ export async function deliverSummaryToLeader(
     if (!team.activeTask) return
     const summary = await buildSummary(team, team.activeTask, reason)
 
-    if (await leaderIsIdle(ctx, team)) {
-        await ctx.client.session.promptAsync({
-            path: { id: team.leadSessionId },
-            body: {
-                parts: [
-                    {
-                        type: "text",
-                        text: `<team_result team="${team.teamName}">\n${summary}\n</team_result>`,
-                        synthetic: true,
-                    },
-                ],
-            },
-        })
+    const idle = await leaderIsIdle(ctx, team)
+    diag("deliverSummaryToLeader", {
+        reason,
+        teamName: team.teamName,
+        leadSessionId: team.leadSessionId,
+        leaderIdle: idle,
+        branch: idle ? "push" : "queue",
+    })
+    if (idle) {
+        try {
+            await ctx.client.session.promptAsync({
+                path: { id: team.leadSessionId },
+                body: {
+                    parts: [
+                        {
+                            type: "text",
+                            text: `<team_result team="${team.teamName}">\n${summary}\n</team_result>`,
+                            synthetic: true,
+                        },
+                    ],
+                },
+            })
+            diag("deliverSummaryToLeader:push:ok", { leadSessionId: team.leadSessionId })
+        } catch (e) {
+            diag("deliverSummaryToLeader:push:error", {
+                leadSessionId: team.leadSessionId,
+                error: String(e),
+            })
+        }
     } else {
         // Queue to master mailbox; drained by event handler on master idle
         // and/or Transform hook on master's next turn (reservation protocol
@@ -65,6 +92,10 @@ export async function deliverSummaryToLeader(
             deliveryStatus: "pending",
         }
         await writeMailboxMessage(team.directory, "master", msg)
+        diag("deliverSummaryToLeader:queued", {
+            teamName: team.teamName,
+            directory: team.directory,
+        })
     }
 }
 
@@ -80,6 +111,7 @@ export async function deliverQueuedResultsToMaster(
     masterSessionId: string,
 ): Promise<void> {
     const queued = await pollMailbox(team.directory, "master")
+    diag("deliverQueuedResultsToMaster", { masterSessionId, queuedCount: queued.length })
     if (queued.length === 0) return
     await ctx.client.session.promptAsync({
         path: { id: masterSessionId },
@@ -87,6 +119,7 @@ export async function deliverQueuedResultsToMaster(
             parts: [{ type: "text", text: formatMailboxInjection(queued), synthetic: true }],
         },
     })
+    diag("deliverQueuedResultsToMaster:delivered", { masterSessionId, count: queued.length })
     await ackMessages(team.directory, "master", queued)
 }
 
