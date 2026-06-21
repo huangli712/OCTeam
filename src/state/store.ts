@@ -21,6 +21,21 @@ export type Team = RuntimeState & {
     directory: string
 }
 
+/**
+ * Clear the active task while preserving its mode in `lastMode` for sidebar
+ * display. Called at every orchestration completion/termination site.
+ */
+export function clearActiveTask(team: Team): void {
+    if (team.activeTask) {
+        team.lastMode = {
+            type: team.activeTask.type,
+            mode: team.activeTask.mode,
+            finishedAt: Date.now(),
+        }
+    }
+    team.activeTask = undefined
+}
+
 // Process-level registry: resolved teamDir (absolute path) -> Team (with its
 // singleton mutex). Keying by the RESOLVED directory — not teamName — is what
 // keeps team "aaa" under session ses_x distinct from "aaa" under ses_y, and

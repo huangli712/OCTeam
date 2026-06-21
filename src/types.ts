@@ -68,6 +68,7 @@ export type RuntimeState = {
     leadSessionId: string              // always context.sessionID; leader name is "master"
     members: RuntimeMember[]
     activeTask?: ActiveTask            // only one active orchestration at a time
+    lastMode?: LastModeRecord          // most recent orchestration mode (survives activeTask cleanup)
     bounds: Bounds                     // resource limits (Section 8)
     createdAt: number
     startedAt?: number                 // when first task started
@@ -124,6 +125,14 @@ export type ActiveTask = {
 
     // discussion-specific (parallel mode === "discussion")
     consensusReached?: boolean         // set when all members emit agreed consensus
+}
+
+// --- LastModeRecord (persists after activeTask cleanup, for sidebar display) ---
+
+export type LastModeRecord = {
+    type: OrchestrationType
+    mode?: ParallelMode                // parallel only
+    finishedAt: number                 // epoch ms when activeTask was cleared
 }
 
 export type Stage = {

@@ -95,7 +95,12 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
                           round: state.activeTask.currentRound,
                           maxRounds: state.activeTask.maxRounds,
                       }
-                    : undefined,
+                    : state.lastMode
+                      ? {
+                            type: state.lastMode.type,
+                            mode: state.lastMode.mode,
+                        }
+                      : undefined,
                 tokensUsed: state.activeTask?.tokensUsed,
             })
         } catch {

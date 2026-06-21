@@ -17,7 +17,7 @@
  */
 
 import type { PluginContext } from "../context.js"
-import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
+import { type Team, clearActiveTask, loadTeamState, saveTeamState } from '../state/store.js';
 import { countUnreadMessages } from "../mailbox.js"
 import { listAllTasks } from "../tasks.js"
 import { sendWakeHint } from "../wake-hint.js"
@@ -228,7 +228,7 @@ async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void>
             case "collaborative": {
                 // Single barrier: collect outputs → deliver to leader → done.
                 await deliverSummaryToLeader(ctx, team, `parallel_${task.mode}_complete`)
-                team.activeTask = undefined
+                clearActiveTask(team)
                 team.status = "idle"
                 return
             }
@@ -236,14 +236,14 @@ async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void>
                 task.consensusReached = allMembersAgree(task.responses)
                 if (task.consensusReached) {
                     await deliverSummaryToLeader(ctx, team, "discussion_consensus")
-                    team.activeTask = undefined
+                    clearActiveTask(team)
                     team.status = "idle"
                     return
                 }
                 if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
                     // Reached here only when consensus was NOT detected → failed.
                     await deliverSummaryToLeader(ctx, team, "discussion_max_rounds")
-                    team.activeTask = undefined
+                    clearActiveTask(team)
                     team.status = "failed"
                     return
                 }
@@ -291,7 +291,7 @@ async function handlePipelineIdle(ctx: PluginContext, team: Team, member: Runtim
     if (nextIndex === -1) {
         // All stages complete → deliver summary to leader.
         await deliverSummaryToLeader(ctx, team, "pipeline_complete")
-        team.activeTask = undefined
+        clearActiveTask(team)
         team.status = "idle"
         return
     }
@@ -343,7 +343,7 @@ async function handleLoopIdle(ctx: PluginContext, team: Team, member: RuntimeMem
         task.decisionParseFailures++
         if (task.decisionParseFailures >= 3) {
             await deliverSummaryToLeader(ctx, team, "loop_complete:decision_parse_failure")
-            team.activeTask = undefined
+            clearActiveTask(team)
             team.status = "failed"
             return
         }
@@ -354,21 +354,21 @@ async function handleLoopIdle(ctx: PluginContext, team: Team, member: RuntimeMem
     if (decision.decision === "done") {
         await deliverSummaryToLeader(ctx, team, "loop_complete:decider_done")
         task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
-        team.activeTask = undefined
+        clearActiveTask(team)
         team.status = "idle"
         return
     }
 
     if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
         await deliverSummaryToLeader(ctx, team, "loop_complete:max_rounds")
-        team.activeTask = undefined
+        clearActiveTask(team)
         team.status = "failed"
         return
     }
 
     if (allReadOnlyStagesReportNoIssues(task)) {
         await deliverSummaryToLeader(ctx, team, "loop_complete:no_issues")
-        team.activeTask = undefined
+        clearActiveTask(team)
         team.status = "idle"
         return
     }
@@ -395,7 +395,7 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Runtim
     // All done?
     if (incomplete.length === 0) {
         await deliverSummaryToLeader(ctx, team, "delegate_complete")
-        team.activeTask = undefined
+        clearActiveTask(team)
         team.status = "idle"
         return
     }
@@ -412,7 +412,7 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Runtim
         const allIdle = team.members.every(m => m.status === "idle" || !m.sessionId)
         if (allIdle) {
             await deliverSummaryToLeader(ctx, team, "delegate_deadlock")
-            team.activeTask = undefined
+            clearActiveTask(team)
             team.status = "failed"
             return
         }

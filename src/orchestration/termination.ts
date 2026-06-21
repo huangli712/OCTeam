@@ -6,6 +6,7 @@
  */
 
 import type { PluginContext } from "../context.js"
+import { clearActiveTask } from '../state/store.js';
 import type { Team } from "../state/store.js"
 import { deliverSummaryToLeader } from "./summary.js"
 
@@ -20,7 +21,7 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
     // Wall-clock timeout
     if (Date.now() - task.startedAt > task.wallClockTimeoutMs) {
         await deliverSummaryToLeader(ctx, team, "timeout")
-        team.activeTask = undefined
+        clearActiveTask(team)
         team.status = "failed"
         return
     }
@@ -28,7 +29,7 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
     // Token budget
     if (task.tokenBudget !== undefined && task.tokensUsed > task.tokenBudget) {
         await deliverSummaryToLeader(ctx, team, "budget_exceeded")
-        team.activeTask = undefined
+        clearActiveTask(team)
         team.status = "failed"
         return
     }
@@ -40,7 +41,7 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
     )
     if (overTurns) {
         await deliverSummaryToLeader(ctx, team, `member_turn_limit:${overTurns.name}`)
-        team.activeTask = undefined
+        clearActiveTask(team)
         team.status = "failed"
         return
     }
@@ -49,7 +50,7 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
     const errored = team.members.find(m => m.status === "errored")
     if (errored) {
         await deliverSummaryToLeader(ctx, team, `member_error:${errored.name}:${errored.error ?? "unknown"}`)
-        team.activeTask = undefined
+        clearActiveTask(team)
         team.status = "failed"
         return
     }

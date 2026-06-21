@@ -12,7 +12,7 @@ import path from "node:path"
 import type { Hooks } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "./context.js"
-import { loadTeamState, activeTeams, listAllTeams, invalidateTeam, saveTeamState } from "./state/store.js"
+import { activeTeams, clearActiveTask, invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from './state/store.js';
 import { resolveTeamMember, unindexSession } from "./utils.js"
 import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservations } from "./mailbox.js"
 import { reapStaleClaims } from "./tasks.js"
@@ -196,7 +196,7 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>): Pr
         }
         if (team.status === "busy") {
             // Interrupted orchestration is unrecoverable — fail it cleanly.
-            team.activeTask = undefined
+            clearActiveTask(team)
             team.status = "failed"
             for (const m of team.members) {
                 if (m.status === "running") {
