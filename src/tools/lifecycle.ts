@@ -435,15 +435,21 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             force: tool.schema.boolean().optional(),
         },
         async execute(args, context) {
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-            if (!caller?.isMaster) {
-                return "Error: team_delete is master-only (only the team's leader session can delete it)"
-            }
+            // team_delete bypasses sessionIndex and reads team state directly
+            // from disk. sessionIndex maps sessionID -> {teamName} 1:1, so
+            // creating a second team in the same session (allowed by M4 when the
+            // prior team is failed/dead) overwrites the prior team's index
+            // entry. Without this bypass, orphaned teams cannot be cleaned up
+            // because resolveCallerInTeam returns null.
+            const pathLeadSessionId = ctx.scope === "project" ? context.sessionID : undefined
             let team
             try {
-                team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+                team = await loadTeamState(ctx.storageRoot, args.team_id, pathLeadSessionId)
             } catch {
                 return `Error: team "${args.team_id}" not found`
+            }
+            if (team.leadSessionId !== context.sessionID) {
+                return "Error: team_delete is master-only (only the team's leader session can delete it)"
             }
             const force = args.force ?? false
             if (!force) {
@@ -463,7 +469,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             }
             unindexSession(team.leadSessionId)
             clearWakeHint(team.leadSessionId)
-            await deleteTeamStorage(ctx.storageRoot, args.team_id, caller.leadSessionId)
+            await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
             invalidateTeam(team.directory)
             return `Team "${args.team_id}" deleted${force ? " (forced)" : ""}.`
         },
