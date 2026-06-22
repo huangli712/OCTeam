@@ -174,6 +174,41 @@ export function extractTextFromParts(parts: unknown): string {
         .join("\n")
 }
 
+/** Tools whose invocations represent member work product (code, commands).
+ * Excludes team-* coordination tools (send_message, task_*, workflow tools). */
+const WORK_TOOLS = new Set([
+    "write", "edit", "bash",
+    "aft_write", "aft_edit", "aft_bash", "aft_apply_patch",
+])
+
+/**
+ * Extract member output from an assistant message's parts: text + work-tool
+ * invocations (write/edit content, bash commands, patches). Excludes team-*
+ * tools (coordination, not deliverables) so that summaries reflect actual
+ * work product rather than just conversation text.
+ */
+export function extractOutputFromParts(parts: unknown): string {
+    if (!Array.isArray(parts)) return ""
+    const segments: string[] = []
+    for (const p of parts as any[]) {
+        if (!p) continue
+        if (p.type === "text" && typeof p.text === "string") {
+            if (p.text.trim()) segments.push(p.text)
+        } else if (p.type === "tool_use" && WORK_TOOLS.has(p.name)) {
+            const input = p.input ?? {}
+            if (typeof input.content === "string" && input.content.trim()) {
+                const fp = typeof input.filePath === "string" ? input.filePath : ""
+                segments.push(fp ? `[File: ${fp}]\n${input.content}` : input.content)
+            } else if (typeof input.command === "string" && input.command.trim()) {
+                segments.push(`$ ${input.command}`)
+            } else if (typeof input.patchText === "string" && input.patchText.trim()) {
+                segments.push(`[Patch]\n${input.patchText}`)
+            }
+        }
+    }
+    return segments.join("\n\n")
+}
+
 /** Truncate output to maxBytes (default 8KB) to prevent context-window blowups. */
 export function truncateOutput(text: string, maxBytes: number = 8192): string {
     if (text.length <= maxBytes) return text

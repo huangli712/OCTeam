@@ -21,7 +21,7 @@ import { type Team, clearActiveTask, loadTeamState, saveTeamState } from '../sta
 import { countUnreadMessages } from "../mailbox.js"
 import { listAllTasks } from "../tasks.js"
 import { sendWakeHint } from "../wake-hint.js"
-import { extractTextFromParts, resolveTeamMember, sumMemberTokens, truncateOutput } from "../utils.js"
+import { extractOutputFromParts, resolveTeamMember, sumMemberTokens, truncateOutput } from "../utils.js"
 import type { ActiveTask, DecisionRecord, RuntimeMember } from "../types.js"
 import { advanceToStage } from "./dispatch.js"
 import { buildRoundSummary, buildSummary, deliverQueuedResultsToMaster, deliverSummaryToLeader } from "./summary.js"
@@ -209,19 +209,31 @@ export async function processIdle(
     // responses[] (per-task results go to master via team_send_message; capturing
     // here would overwrite — #3). Exception: signoff stage must capture reviewer
     // output regardless of task type (to parse <signoff> tags).
+    //
+    // Scans ALL assistant messages in the current turn (not just the last) and
+    // extracts both text and work-tool invocations (write/edit/bash) so that
+    // members who use tools to produce code are properly captured.
     if (team.activeTask) {
         const shouldCapture = team.activeTask.type !== "delegate" || !!team.activeTask.signoffStage
         if (shouldCapture) {
-            let lastAssistant: { parts?: any } | undefined
+            // Find the start of the current turn (last user message).
+            let turnStart = 0
             for (let i = messages.length - 1; i >= 0; i--) {
-                if ((messages[i] as any)?.info?.role === "assistant") {
-                    lastAssistant = messages[i]
+                if ((messages[i] as any)?.info?.role === "user") {
+                    turnStart = i + 1
                     break
                 }
             }
-            if (lastAssistant) {
-                const text = extractTextFromParts(lastAssistant.parts)
-                team.activeTask.responses[member.name] = truncateOutput(text)
+            // Collect all assistant messages in the current turn.
+            const outputs: string[] = []
+            for (let i = turnStart; i < messages.length; i++) {
+                if ((messages[i] as any)?.info?.role === "assistant") {
+                    const text = extractOutputFromParts((messages[i] as any).parts)
+                    if (text) outputs.push(text)
+                }
+            }
+            if (outputs.length > 0) {
+                team.activeTask.responses[member.name] = truncateOutput(outputs.join("\n\n"))
             }
         }
     }
