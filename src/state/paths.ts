@@ -97,6 +97,13 @@ export function taskUpdateLockPath(teamDirectory: string, taskId: string): strin
     return path.join(claimsDir(teamDirectory), `${taskId}.update.lock`)
 }
 
+/** tasks/claims/claim-mutex.lock — team-level mutex serializing the
+ * ownership-check + claim critical section so two concurrent claims by the
+ * same member cannot both pass the "no active task" check (TOCTOU). */
+export function claimMutexPath(teamDirectory: string): string {
+    return path.join(claimsDir(teamDirectory), "claim-mutex.lock")
+}
+
 // --- worktrees/ (only when member worktree: true) ---
 
 export function worktreesDir(teamDirectory: string): string {

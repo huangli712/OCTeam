@@ -17,13 +17,27 @@ import path from "node:path"
 import crypto from "node:crypto"
 
 import { CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./state/locks.js"
-import { claimLockPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./state/paths.js"
+import { claimLockPath, claimMutexPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./state/paths.js"
 import type { Task, TaskStatus } from "./types.js"
 
 export class TaskAlreadyClaimedError extends Error {
     constructor(taskId: string) {
         super(`Task ${taskId} is already claimed or not claimable`)
         this.name = "TaskAlreadyClaimedError"
+    }
+}
+
+/**
+ * Raised by claimTask when the calling member already holds another task in
+ * the "claimed" or "in_progress" window. Enforces the
+ * claim → complete → idle → claim-next workflow (one active task per member).
+ */
+export class MemberHoldsActiveTaskError extends Error {
+    constructor(member: string, heldTaskId: string, heldStatus: string) {
+        super(
+            `Member ${member} already holds task ${heldTaskId} in ${heldStatus} state; complete it before claiming another`,
+        )
+        this.name = "MemberHoldsActiveTaskError"
     }
 }
 
@@ -139,7 +153,10 @@ export async function updateTask(
  * Atomically claim a pending task: acquire the persistent claim lock
  * (fs.open 'wx'), double-check status === "pending", then flip to "claimed".
  * Throws TaskAlreadyClaimedError if another member holds a fresh lock or the
- * task is not pending.
+ * task is not pending. Throws MemberHoldsActiveTaskError if `owner` already
+ * holds another task in the "claimed" or "in_progress" window — this enforces
+ * the claim → complete → idle → claim-next workflow (one active task per
+ * member at a time).
  */
 export async function claimTask(
     teamDirectory: string,
@@ -147,48 +164,67 @@ export async function claimTask(
     owner: string,
 ): Promise<Task> {
     assertValidTaskId(taskId)
-    const lockPath = claimLockPath(teamDirectory, taskId)
     await fs.mkdir(claimsDir(teamDirectory), { recursive: true }).catch(() => {
         // may exist
     })
 
-    // 1. Acquire the persistent claim lock (reap stale entries inline).
-    try {
-        const fh = await fs.open(lockPath, "wx")
-        await fh.writeFile(owner)
-        await fh.close()
-    } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
-        if (await lockFresh(lockPath, CLAIM_TTL_MS)) {
-            throw new TaskAlreadyClaimedError(taskId)
+    // Team-level mutex serializes the ownership-check + claim critical section
+    // across all callers so two concurrent claims by the same member cannot
+    // both pass the "no active task" check (TOCTOU). Claim is not a hot path,
+    // so a single team-wide mutex is acceptable.
+    return withLock(claimMutexPath(teamDirectory), async () => {
+        // 0. Per-member concurrency cap (1): reject if this owner already
+        // holds a task in the "claimed" or "in_progress" window.
+        const allTasks = await listAllTasks(teamDirectory)
+        const held = allTasks.find(
+            t =>
+                t.owner === owner
+                && (t.status === "claimed" || t.status === "in_progress"),
+        )
+        if (held) {
+            throw new MemberHoldsActiveTaskError(owner, held.id, held.status)
         }
-        // Stale lock — reap and retry once.
-        await fs.unlink(lockPath).catch(() => {
-            // raced
-        })
+
+        const lockPath = claimLockPath(teamDirectory, taskId)
+
+        // 1. Acquire the persistent claim lock (reap stale entries inline).
         try {
             const fh = await fs.open(lockPath, "wx")
             await fh.writeFile(owner)
             await fh.close()
-        } catch {
+        } catch (err: unknown) {
+            if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
+            if (await lockFresh(lockPath, CLAIM_TTL_MS)) {
+                throw new TaskAlreadyClaimedError(taskId)
+            }
+            // Stale lock — reap and retry once.
+            await fs.unlink(lockPath).catch(() => {
+                // raced
+            })
+            try {
+                const fh = await fs.open(lockPath, "wx")
+                await fh.writeFile(owner)
+                await fh.close()
+            } catch {
+                throw new TaskAlreadyClaimedError(taskId)
+            }
+        }
+
+        // 2. Double-check status under the lock; flip to "claimed".
+        const task = await readTaskFile(teamDirectory, taskId)
+        if (!task || task.status !== "pending") {
+            await fs.unlink(lockPath).catch(() => {
+                // release our lock since we are not claiming
+            })
             throw new TaskAlreadyClaimedError(taskId)
         }
-    }
-
-    // 2. Double-check status under the lock; flip to "claimed".
-    const task = await readTaskFile(teamDirectory, taskId)
-    if (!task || task.status !== "pending") {
-        await fs.unlink(lockPath).catch(() => {
-            // release our lock since we are not claiming
+        const updated = await updateTask(teamDirectory, taskId, {
+            status: "claimed",
+            owner,
+            claimedAt: Date.now(),
         })
-        throw new TaskAlreadyClaimedError(taskId)
-    }
-    const updated = await updateTask(teamDirectory, taskId, {
-        status: "claimed",
-        owner,
-        claimedAt: Date.now(),
+        return updated
     })
-    return updated
 }
 
 /**

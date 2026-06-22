@@ -17,6 +17,7 @@ import { resolveCallerInTeam } from "../utils.js"
 import { loadTeamState } from "../state/store.js"
 import {
     TASK_ID_PATTERN,
+    MemberHoldsActiveTaskError,
     TaskAlreadyClaimedError,
     claimTask,
     createTask,
@@ -104,6 +105,9 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                 } catch (err) {
                     if (err instanceof TaskAlreadyClaimedError) {
                         return `Error: task ${args.task_id} already claimed or not claimable.`
+                    }
+                    if (err instanceof MemberHoldsActiveTaskError) {
+                        return `Error: ${err.message}`
                     }
                     throw err
                 }
