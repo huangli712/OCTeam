@@ -79,6 +79,28 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .describe("collaborative mode: { memberName: task }"),
             topic: tool.schema.string().optional().describe("discussion mode: the debate topic"),
             max_rounds: tool.schema.number().min(1).max(20).optional().describe("discussion: round limit"),
+            reduce_policy: tool.schema
+                .enum(["summarize", "select", "merge", "rubric"])
+                .optional()
+                .describe("parallel isolated/collaborative only: how to combine member outputs. Ignored for discussion mode."),
+            reduce_rubric: tool.schema
+                .string()
+                .optional()
+                .describe("scoring rubric when reduce_policy='rubric'"),
+            signoff_policy: tool.schema
+                .enum(["none", "decider", "peer-quorum"])
+                .optional()
+                .describe("parallel isolated/collaborative only: post-completion review gate. Ignored for discussion mode."),
+            signoff_decider: tool.schema
+                .string()
+                .optional()
+                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
+            signoff_quorum: tool.schema
+                .number()
+                .min(0)
+                .max(1)
+                .optional()
+                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
@@ -139,6 +161,15 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     // else `currentRound >= (maxRounds ?? 0)` aborts after round 1.
                     maxRounds: args.mode === "discussion" ? (args.max_rounds ?? 3) : args.max_rounds,
                     currentRound: args.mode === "discussion" ? 1 : undefined,
+                    reducePolicy: (args.mode === "isolated" || args.mode === "collaborative")
+                        ? (args.reduce_policy ?? "summarize")
+                        : undefined,
+                    reduceRubric: args.reduce_rubric,
+                    signoffPolicy: (args.mode === "isolated" || args.mode === "collaborative")
+                        ? (args.signoff_policy ?? "none")
+                        : "none",
+                    signoffDecider: args.signoff_decider,
+                    signoffQuorum: args.signoff_quorum,
                 }
                 await saveTeamState(team)
 
@@ -175,6 +206,20 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                     }),
                 )
                 .min(1),
+            signoff_policy: tool.schema
+                .enum(["none", "decider", "peer-quorum"])
+                .optional()
+                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote (Phase D)."),
+            signoff_decider: tool.schema
+                .string()
+                .optional()
+                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
+            signoff_quorum: tool.schema
+                .number()
+                .min(0)
+                .max(1)
+                .optional()
+                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
@@ -229,6 +274,9 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                     currentStageIndex: 0,
                     decisionHistory: [],
                     decisionParseFailures: 0,
+                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffDecider: args.signoff_decider,
+                    signoffQuorum: args.signoff_quorum,
                 }
                 await saveTeamState(team)
                 // Dispatch stage 0.
@@ -362,6 +410,20 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     }),
                 )
                 .min(1),
+            signoff_policy: tool.schema
+                .enum(["none", "decider", "peer-quorum"])
+                .optional()
+                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote (Phase D)."),
+            signoff_decider: tool.schema
+                .string()
+                .optional()
+                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
+            signoff_quorum: tool.schema
+                .number()
+                .min(0)
+                .max(1)
+                .optional()
+                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
@@ -399,6 +461,9 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     currentStageIndex: 0,
                     decisionHistory: [],
                     decisionParseFailures: 0,
+                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffDecider: args.signoff_decider,
+                    signoffQuorum: args.signoff_quorum,
                 }
 
                 // Create all tasks, building ref -> uuid map, then resolve blockedBy.

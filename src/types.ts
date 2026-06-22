@@ -91,6 +91,8 @@ export type Bounds = {
 
 export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate"
 export type ParallelMode = "isolated" | "collaborative" | "discussion"
+export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
+export type SignoffPolicy = "none" | "decider" | "peer-quorum"
 
 export type ActiveTask = {
     type: OrchestrationType
@@ -111,6 +113,17 @@ export type ActiveTask = {
     topic?: string                     // discussion: debate topic
     maxRounds?: number                 // discussion / loop: round limit
     currentRound?: number
+
+    // reduce policy (parallel isolated/collaborative only)
+    reducePolicy?: ReducePolicy
+    reduceRubric?: string              // when reducePolicy === "rubric"
+
+    // signoff policy (parallel isolated/collaborative, pipeline, delegate; NOT loop)
+    signoffPolicy?: SignoffPolicy
+    signoffDecider?: string              // member name (decider mode)
+    signoffQuorum?: number               // 0-1, default 0.5 (peer-quorum mode, Phase D)
+    signoffApprovals?: Record<string, boolean>  // collected approvals
+    signoffStage?: boolean               // true when in signoff phase
 
     // delegate mode: uses shared tasklist (team_task_*), no extra fields
 

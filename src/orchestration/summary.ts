@@ -95,13 +95,48 @@ export async function buildSummary(
             return `${head} rounds=${task.currentRound}\nfinal: ${last?.decision ?? "n/a"}\n${rounds.join("\n")}`
         }
         default: {
-            // parallel / pipeline: concatenate each member's captured output
-            return (
-                `${head}\n`
-                + Object.entries(task.responses)
-                    .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
-                    .join("\n\n")
-            )
+            const outputs = Object.entries(task.responses)
+            const candidates = outputs
+                .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+                .join("\n\n")
+
+            // pipeline: keep existing behavior (concatenate stage outputs)
+            if (task.type === "pipeline") {
+                return `${head}\n${candidates}`
+            }
+
+            // parallel: switch on reducePolicy
+            switch (task.reducePolicy ?? "summarize") {
+                case "summarize":
+                    return `${head}\n${candidates}`
+                case "select":
+                    return (
+                        `${head}\n`
+                        + `[Reduce policy: SELECT]\n`
+                        + `The following ${outputs.length} candidates were produced. `
+                        + `Select the single best answer. State your choice and reasoning.\n\n`
+                        + candidates
+                    )
+                case "merge":
+                    return (
+                        `${head}\n`
+                        + `[Reduce policy: MERGE]\n`
+                        + `The following ${outputs.length} solutions were produced. `
+                        + `Merge them into a single best solution, resolving conflicts. `
+                        + `Cite which candidate contributed each part.\n\n`
+                        + candidates
+                    )
+                case "rubric": {
+                    const rubric = task.reduceRubric ?? "correctness (40%), clarity (30%), completeness (30%)"
+                    return (
+                        `${head}\n`
+                        + `[Reduce policy: RUBRIC]\n`
+                        + `Rubric: ${rubric}\n`
+                        + `Score each candidate on the rubric, then select the top-scoring one.\n\n`
+                        + candidates
+                    )
+                }
+            }
         }
     }
 }

@@ -24,7 +24,7 @@ import { sendWakeHint } from "../wake-hint.js"
 import { extractTextFromParts, resolveTeamMember, sumMemberTokens, truncateOutput } from "../utils.js"
 import type { ActiveTask, DecisionRecord, RuntimeMember } from "../types.js"
 import { advanceToStage } from "./dispatch.js"
-import { buildRoundSummary, deliverQueuedResultsToMaster, deliverSummaryToLeader } from "./summary.js"
+import { buildRoundSummary, buildSummary, deliverQueuedResultsToMaster, deliverSummaryToLeader } from "./summary.js"
 import { checkTermination } from "./termination.js"
 
 const NOTIFY_COOLDOWN_MS = 10_000
@@ -39,6 +39,8 @@ const NO_ISSUES_KEYWORDS = ["no issues", "no bugs found", "no improvements", "al
  * value here makes parallel degrade to serial or pipeline advance on stray idles.
  */
 export function getExpectedMember(task: ActiveTask): string | null {
+    // signoff stage: any reviewer may advance
+    if (task.signoffStage) return null
     if (task.type === "parallel") return null
     if (task.type === "delegate") return null
     return task.stages[task.currentStageIndex]?.member ?? null
@@ -99,6 +101,41 @@ export function allMembersAgree(responses: Record<string, string>): boolean {
             return false
         }
     })
+}
+
+/**
+ * Parse a <signoff>{"approved": true|false, "rationale": "..."}</signoff> block
+ * from a reviewer's output. Returns null if no valid signoff tag found.
+ */
+export function parseSignoff(text: string): { approved: boolean; rationale: string } | null {
+    const m = text?.match(/<signoff>\s*(\{[\s\S]*\})\s*<\/signoff>/)
+    if (!m) return null
+    try {
+        const parsed = JSON.parse(m[1])
+        return {
+            approved: parsed.approved === true,
+            rationale: typeof parsed.rationale === "string" ? parsed.rationale : "",
+        }
+    } catch {
+        return null
+    }
+}
+
+/**
+ * Check peer-quorum signoff status. Returns whether all reviewers have
+ * responded, whether the quorum threshold was reached, and the approval count.
+ * Exported for unit testing.
+ */
+export function isQuorumReached(
+    approvals: Record<string, boolean>,
+    reviewerCount: number,
+    quorum: number,
+): { allResponded: boolean; reached: boolean; approvedCount: number } {
+    const responses = Object.keys(approvals).length
+    const allResponded = responses >= reviewerCount
+    const approvedCount = Object.values(approvals).filter(Boolean).length
+    const reached = allResponded && reviewerCount > 0 && approvedCount / reviewerCount >= quorum
+    return { allResponded, reached, approvedCount }
 }
 
 /**
@@ -170,18 +207,22 @@ export async function processIdle(
 
     // Step 4: Capture output (null-guarded + mode-aware). delegate does NOT use
     // responses[] (per-task results go to master via team_send_message; capturing
-    // here would overwrite — #3).
-    if (team.activeTask && team.activeTask.type !== "delegate") {
-        let lastAssistant: { parts?: any } | undefined
-        for (let i = messages.length - 1; i >= 0; i--) {
-            if ((messages[i] as any)?.info?.role === "assistant") {
-                lastAssistant = messages[i]
-                break
+    // here would overwrite — #3). Exception: signoff stage must capture reviewer
+    // output regardless of task type (to parse <signoff> tags).
+    if (team.activeTask) {
+        const shouldCapture = team.activeTask.type !== "delegate" || !!team.activeTask.signoffStage
+        if (shouldCapture) {
+            let lastAssistant: { parts?: any } | undefined
+            for (let i = messages.length - 1; i >= 0; i--) {
+                if ((messages[i] as any)?.info?.role === "assistant") {
+                    lastAssistant = messages[i]
+                    break
+                }
             }
-        }
-        if (lastAssistant) {
-            const text = extractTextFromParts(lastAssistant.parts)
-            team.activeTask.responses[member.name] = truncateOutput(text)
+            if (lastAssistant) {
+                const text = extractTextFromParts(lastAssistant.parts)
+                team.activeTask.responses[member.name] = truncateOutput(text)
+            }
         }
     }
 
@@ -196,6 +237,12 @@ export async function processIdle(
 
     // Step 6: Dispatch by active-task type.
     if (!team.activeTask) return
+    // signoff stage takes priority over normal mode dispatch
+    if (team.activeTask.signoffStage) {
+        await handleSignoffIdle(ctx, team, member)
+        await checkTermination(ctx, team)
+        return
+    }
     switch (team.activeTask.type) {
         case "parallel":
             await handleParallelIdle(ctx, team)
@@ -215,6 +262,103 @@ export async function processIdle(
     await checkTermination(ctx, team)
 }
 
+// --- signoff helpers (Phase B: decider mode; Phase D adds peer-quorum) ---
+
+/**
+ * Check if a signoff stage is required and trigger it if so. Returns true if
+ * signoff was triggered (caller must NOT deliver summary); false if no signoff
+ * needed (caller proceeds with deliverSummaryToLeader).
+ */
+async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<boolean> {
+    const task = team.activeTask
+    if (!task) return false
+    if (!task.signoffPolicy || task.signoffPolicy === "none") return false
+    if (task.signoffStage) return true  // already in signoff
+
+    task.signoffStage = true
+    task.signoffApprovals = {}
+
+    const summary = await buildSummary(team, task, "pending_signoff")
+    const reviewPrompt =
+        `[Signoff review] Review the following workflow output. `
+        + `If it meets quality standards, emit <signoff>{"approved": true, "rationale": "..."}</signoff>. `
+        + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
+
+    if (task.signoffPolicy === "decider") {
+        const decider = team.members.find(m => m.name === task.signoffDecider && !m.isMaster)
+        if (!decider?.sessionId) {
+            // decider unavailable, fall back to direct delivery
+            task.signoffStage = false
+            return false
+        }
+        await ctx.client.session.promptAsync({
+            path: { id: decider.sessionId },
+            body: {
+                parts: [{ type: "text", text: reviewPrompt, synthetic: true }],
+            },
+        })
+        decider.status = "running"
+        decider.turnCount++
+    } else if (task.signoffPolicy === "peer-quorum") {
+        // Dispatch to all non-master members with a session.
+        const reviewers = team.members.filter(m => !m.isMaster && m.sessionId)
+        if (reviewers.length === 0) {
+            task.signoffStage = false
+            return false
+        }
+        for (const m of reviewers) {
+            await ctx.client.session.promptAsync({
+                path: { id: m.sessionId! },
+                body: {
+                    parts: [{ type: "text", text: reviewPrompt, synthetic: true }],
+                },
+            })
+            m.status = "running"
+            m.turnCount++
+        }
+    }
+
+    await saveTeamState(team)
+    return true
+}
+
+/**
+ * Handle a reviewer's idle during the signoff stage. Parses <signoff> from the
+ * reviewer's output and either delivers the final summary (decider mode) or
+ * waits for more reviewers (peer-quorum mode, Phase D).
+ */
+async function handleSignoffIdle(ctx: PluginContext, team: Team, member: RuntimeMember): Promise<void> {
+    const task = team.activeTask
+    if (!task?.signoffStage) return
+
+    const memberOutput = task.responses[member.name] ?? ""
+    const signoff = parseSignoff(memberOutput)
+    // record approval (false if parse failed)
+    task.signoffApprovals![member.name] = signoff?.approved === true
+
+    if (task.signoffPolicy === "decider") {
+        const approved = signoff?.approved === true
+        const reason = approved ? "signoff_approved" : "signoff_rejected"
+        await deliverSummaryToLeader(ctx, team, reason)
+        clearActiveTask(team)
+        team.status = "idle"
+    } else if (task.signoffPolicy === "peer-quorum") {
+        // Wait for all reviewers to respond, then check quorum.
+        const reviewers = team.members.filter(m => !m.isMaster && m.sessionId).map(m => m.name)
+        const { allResponded, reached } = isQuorumReached(
+            task.signoffApprovals ?? {},
+            reviewers.length,
+            task.signoffQuorum ?? 0.5,
+        )
+        if (!allResponded) return  // wait for more
+
+        const reason = reached ? "signoff_quorum_reached" : "signoff_quorum_not_reached"
+        await deliverSummaryToLeader(ctx, team, reason)
+        clearActiveTask(team)
+        team.status = "idle"
+    }
+}
+
 // --- per-mode handlers ---
 
 async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void> {
@@ -226,6 +370,10 @@ async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void>
         switch (task.mode) {
             case "isolated":
             case "collaborative": {
+                // Maybe trigger signoff before delivering.
+                if (await maybeTriggerSignoff(ctx, team)) {
+                    return  // signoff in progress
+                }
                 // Single barrier: collect outputs → deliver to leader → done.
                 await deliverSummaryToLeader(ctx, team, `parallel_${task.mode}_complete`)
                 clearActiveTask(team)
@@ -289,7 +437,10 @@ async function handlePipelineIdle(ctx: PluginContext, team: Team, member: Runtim
 
     const nextIndex = stages.findIndex(s => !s.completed)
     if (nextIndex === -1) {
-        // All stages complete → deliver summary to leader.
+        // All stages complete → maybe trigger signoff, then deliver.
+        if (await maybeTriggerSignoff(ctx, team)) {
+            return  // signoff in progress
+        }
         await deliverSummaryToLeader(ctx, team, "pipeline_complete")
         clearActiveTask(team)
         team.status = "idle"
@@ -394,6 +545,9 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Runtim
 
     // All done?
     if (incomplete.length === 0) {
+        if (await maybeTriggerSignoff(ctx, team)) {
+            return  // signoff in progress
+        }
         await deliverSummaryToLeader(ctx, team, "delegate_complete")
         clearActiveTask(team)
         team.status = "idle"
