@@ -29,16 +29,16 @@ export type MemberSpec = {
 // --- TeamState (mutable, persisted) — stored as state.json ---
 
 export type TeamStatus =
-    | "live"        // config written, no sessions spawned yet
-    | "busy"        // sessions spawned, workflow running
-    | "idle"        // sessions spawned, idle (workflow completed)
-    | "failed"      // agent error or task incomplete (e.g. loop max rounds w/o done)
+    | "live"                            // config written, no sessions spawned yet
+    | "busy"                            // sessions spawned, workflow running
+    | "idle"                            // sessions spawned, idle (workflow completed)
+    | "failed"                          // agent error or task incomplete (e.g. loop max rounds w/o done)
 
 export type MemberStatus =
-    | "pending"             // session not yet created
-    | "running"             // actively processing a prompt
-    | "idle"                // finished, awaiting work
-    | "errored"             // LLM/tool failure
+    | "pending"                         // session not yet created
+    | "running"                         // actively processing a prompt
+    | "idle"                            // finished, awaiting work
+    | "errored"                         // LLM/tool failure
 
 export type MemberState = {
     name: string
@@ -122,10 +122,10 @@ export type ActiveTask = {
 
     // signoff policy (parallel isolated/collaborative, pipeline, delegate; NOT loop)
     signoffPolicy?: SignoffPolicy
-    signoffDecider?: string              // member name (decider mode)
-    signoffQuorum?: number               // 0-1, default 0.5 (peer-quorum mode, Phase D)
+    signoffDecider?: string            // member name (decider mode)
+    signoffQuorum?: number             // 0-1, default 0.5 (peer-quorum mode, Phase D)
     signoffApprovals?: Record<string, boolean>  // collected approvals
-    signoffStage?: boolean               // true when in signoff phase
+    signoffStage?: boolean             // true when in signoff phase
 
     // delegate mode: uses shared tasklist (team_task_*), no extra fields
 

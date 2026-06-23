@@ -9,6 +9,8 @@ import { loadTeams, type TeamSummary } from "./teams"
 const COLOR_RUNNING = "#22c55e"
 const COLOR_IDLE = "#ef4444"
 const COLOR_ERRORED = "#a855f7"
+const COLOR_ACTIVE = "#22c55e"
+const COLOR_INACTIVE = "#ef4444"
 
 export function SessionNavigatorSidebar(props: {
     api: any
@@ -218,9 +220,13 @@ export function SessionNavigatorSidebar(props: {
                                         <text fg={textMuted()}>
                                             {isTeamExpanded(team.name) ? "\u25bc " : "\u25b6 "}
                                         </text>
-                                        <text fg={textColor()}>
-                                            {(team.activated ? "\u2605 " : "") + team.name + " [" + team.status + "]"}
-                                        </text>
+                                        <box flexDirection="row">
+                                            <text fg={textColor()}>{team.name}</text>
+                                            <text fg={team.activated ? COLOR_ACTIVE : COLOR_INACTIVE}>
+                                                {team.activated ? " [active]" : " [inactive]"}
+                                            </text>
+                                            <text fg={textMuted()}>{" [" + team.status + "]"}</text>
+                                        </box>
                                     </box>
                                     {isTeamExpanded(team.name) ? (
                                         <box flexDirection="column" width="100%">
