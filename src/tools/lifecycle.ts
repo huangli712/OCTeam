@@ -15,6 +15,7 @@ import { activationError, indexMember, indexMasterTeam, isIndexedMember, resolve
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { clearWakeHint } from "../messaging/wake-hint.js"
 import { inboxPath } from "../state/paths.js"
+import { normalizeRole, roleAgent } from "../core/role-presets.js"
 import type { Bounds, MemberState, MemberSpec, TeamSpec } from "../core/types.js"
 
 const execFileP = promisify(execFile)
@@ -78,23 +79,6 @@ function defaultBounds(override?: Partial<Bounds>): Bounds {
 }
 
 /**
- * Derive a reasonable agent from a member's role label (a single English word
- * like "coder", "explorer", "reviewer"). Ordered FIRST-hit substring match
- * (case-insensitive). Ordering matters where one term contains another:
- * "researcher" contains "search", so explore is checked before librarian.
- * Note: verifier maps to build (writing/running tests needs write access),
- * NOT the read-only oracle — only review/audit/architect stay read-only.
- */
-export function deriveAgent(role: string): string {
-    const r = role.toLowerCase()
-    if (r.includes("research") || r.includes("explor")) return "explore"
-    if (r.includes("review") || r.includes("architect") || r.includes("audit")) return "oracle"
-    if (r.includes("find") || r.includes("search") || r.includes("librar")) return "librarian"
-    if (r.includes("cod") || r.includes("verif") || r.includes("implement") || r.includes("writ") || r.includes("develop") || r.includes("build")) return "build"
-    return "build"
-}
-
-/**
  * Candidate name pool for members whose name is omitted at creation. A name is
  * drawn at random and not reused within the same team. The pool (16) exceeds the
  * 8-member team cap, so it never runs out for a single team.
@@ -117,7 +101,7 @@ export function pickName(taken: Set<string>): string {
 export function teamCreateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Define an agent team. Each member has a name (optional — auto-picked from a name pool if omitted), a role label (e.g. \"coder\", \"verifier\"), and a prompt (the member's system-prompt instructions). Writes config.json + initial state.json. Does NOT spawn member sessions — they are spawned lazily on the first workflow call (team_parallel/pipeline/loop/delegate). The calling session becomes the team leader (\"master\").",
+            "Define an agent team. Each member has a role, a prompt (the member's instructions), and an optional name. role must be one of the preset roles (coder, debugger, optimizer, tester, reviewer, architect, explorer, writer, mathematician, physicist, simulator, chemist, analyst, visualizer, researcher, author, fantast, almighty); it fixes the member's agent and preset instruction, and any unknown role falls back to \"almighty\". name, if given, must be one of the preset pool names; if omitted it is auto-picked from the pool. Writes config.json + initial state.json. Does NOT spawn member sessions — they are spawned lazily on the first workflow call (team_parallel/pipeline/loop/delegate). The calling session becomes the team leader (\"master\").",
         args: {
             name: tool.schema
                 .string()
@@ -168,6 +152,9 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // a real member by either name would collide with them.
                 if (m.name === "master" || m.name === "orchestrator") {
                     return `Error: "${m.name}" is a reserved name and cannot be a member name`
+                }
+                if (!(MEMBER_NAME_POOL as readonly string[]).includes(m.name)) {
+                    return `Error: name "${m.name}" is not a preset pool name. Choose one of: ${MEMBER_NAME_POOL.join(", ")}`
                 }
                 if (taken.has(m.name)) return `Error: duplicate member name "${m.name}"`
                 taken.add(m.name)
@@ -246,9 +233,12 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // best-effort
             }
             const resolved: MemberSpec[] = named.map(m => {
-                const agent = m.agent ?? deriveAgent(m.role)
+                // role is a closed enum: normalize to a preset (unknown → almighty).
+                // The agent is fixed by the role unless explicitly overridden.
+                const role = normalizeRole(m.role)
+                const agent = m.agent ?? roleAgent(role)
                 const model = m.model ?? modelByAgent.get(agent) ?? defaultModel ?? sessionModel
-                return { name: m.name, role: m.role, prompt: m.prompt, agent, model, worktree: m.worktree }
+                return { name: m.name, role, prompt: m.prompt, agent, model, worktree: m.worktree }
             })
 
             const now = Date.now()
@@ -421,7 +411,7 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
 export function teamFixTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Modify a team member's name, role, system prompt, and/or agent. Changing the agent automatically updates the model to the agent's bound model (if one exists in the agent registry). Only allowed when the team is not busy.",
+            "Modify a team member's name, role, system prompt, and/or agent. new_role must be a preset role (unknown → \"almighty\") and re-derives the member's agent unless new_agent is also given. new_name must be a preset pool name. Changing the agent re-resolves the model from the agent registry. Only allowed when the team is not busy.",
         args: {
             team_id: tool.schema.string().min(1),
             member_name: tool.schema.string().min(1),
@@ -461,6 +451,9 @@ export function teamFixTool(ctx: PluginContext): ToolDefinition {
 
             // --- new_name: rename member across state, spec, index, mailbox ---
             if (args.new_name && args.new_name !== args.member_name) {
+                if (!(MEMBER_NAME_POOL as readonly string[]).includes(args.new_name)) {
+                    return `Error: name "${args.new_name}" is not a preset pool name. Choose one of: ${MEMBER_NAME_POOL.join(", ")}`
+                }
                 if (team.members.some(m => m.name === args.new_name)) {
                     return `Error: name "${args.new_name}" already exists in this team`
                 }
@@ -492,10 +485,10 @@ export function teamFixTool(ctx: PluginContext): ToolDefinition {
                 changes.push(`name: ${oldName} → ${args.new_name}`)
             }
 
-            // --- new_role: spec only (role is a config field) ---
+            // --- new_role: normalize to a preset role (unknown → almighty) ---
             if (args.new_role && specMember) {
-                specMember.role = args.new_role
-                changes.push("role: updated")
+                specMember.role = normalizeRole(args.new_role)
+                changes.push(`role: ${specMember.role}`)
             }
 
             // --- new_prompt: spec only (prompt is a config field) ---
@@ -504,23 +497,27 @@ export function teamFixTool(ctx: PluginContext): ToolDefinition {
                 changes.push("prompt: updated")
             }
 
-            // --- new_agent: update spec + state, auto-resolve bound model ---
-            if (args.new_agent) {
-                member.agent = args.new_agent
-                if (specMember) specMember.agent = args.new_agent
+            // --- agent: explicit new_agent wins; otherwise a changed role
+            // re-derives the agent (role → agent is fixed). Either way the
+            // bound model is re-resolved from the agent registry. ---
+            const targetAgent =
+                args.new_agent ?? (args.new_role ? roleAgent(normalizeRole(args.new_role)) : undefined)
+            if (targetAgent) {
+                member.agent = targetAgent
+                if (specMember) specMember.agent = targetAgent
                 try {
                     const agentsRes = await ctx.client.app.agents({ query: { directory: ctx.directory } })
-                    const entry = (agentsRes.data ?? []).find(a => a.name === args.new_agent)
+                    const entry = (agentsRes.data ?? []).find(a => a.name === targetAgent)
                     if (entry?.model) {
                         const m = `${entry.model.providerID}/${entry.model.modelID}`
                         member.model = m
                         if (specMember) specMember.model = m
-                        changes.push(`agent: ${args.new_agent}, model: ${m}`)
+                        changes.push(`agent: ${targetAgent}, model: ${m}`)
                     } else {
-                        changes.push(`agent: ${args.new_agent} (no bound model — model unchanged)`)
+                        changes.push(`agent: ${targetAgent} (no bound model — model unchanged)`)
                     }
                 } catch {
-                    changes.push(`agent: ${args.new_agent} (registry unavailable — model unchanged)`)
+                    changes.push(`agent: ${targetAgent} (registry unavailable — model unchanged)`)
                 }
             }
 

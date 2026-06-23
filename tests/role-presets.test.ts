@@ -1,49 +1,116 @@
 import { describe, expect, test } from "bun:test"
 
-import { ROLE_PRESETS, rolePreset } from "../src/core/role-presets.js"
+import {
+    DEFAULT_ROLE,
+    ROLES,
+    ROLE_NAMES,
+    normalizeRole,
+    roleAgent,
+    rolePreset,
+} from "../src/core/role-presets.js"
 import { buildRolePrompt } from "../src/core/utils.js"
 
-describe("rolePreset (role → preset instruction)", () => {
-    test("returns a non-empty preset for standard roles", () => {
-        for (const role of [
-            "coder",
-            "verifier",
-            "reviewer",
-            "researcher",
-            "finder",
-            "architect",
-            "explorer",
-            "auditor",
-        ]) {
-            const preset = rolePreset(role)
-            expect(preset).toBeDefined()
-            expect(preset!.length).toBeGreaterThan(0)
+describe("ROLES catalogue", () => {
+    test("has 18 roles, each with a non-empty agent and instruction", () => {
+        expect(ROLE_NAMES.length).toBe(18)
+        for (const name of ROLE_NAMES) {
+            const def = ROLES[name]
+            expect(def.agent.length).toBeGreaterThan(0)
+            expect(def.instruction.length).toBeGreaterThan(0)
+        }
+    })
+
+    test("DEFAULT_ROLE is a real role", () => {
+        expect(DEFAULT_ROLE).toBe("almighty")
+        expect(ROLE_NAMES).toContain("almighty")
+    })
+})
+
+describe("normalizeRole (closed enum, unknown → almighty)", () => {
+    test("known roles map to themselves", () => {
+        for (const name of ROLE_NAMES) {
+            expect(normalizeRole(name)).toBe(name)
         }
     })
 
     test("is case-insensitive", () => {
-        expect(rolePreset("Coder")).toBe(ROLE_PRESETS.coder)
-        expect(rolePreset("CODER")).toBe(ROLE_PRESETS.coder)
-        expect(rolePreset("ReViewer")).toBe(ROLE_PRESETS.reviewer)
+        expect(normalizeRole("Coder")).toBe("coder")
+        expect(normalizeRole("REVIEWER")).toBe("reviewer")
     })
 
-    test("returns undefined for an unknown role", () => {
-        expect(rolePreset("frobnicator")).toBeUndefined()
-        expect(rolePreset("")).toBeUndefined()
+    test("unknown role falls back to almighty", () => {
+        expect(normalizeRole("frobnicator")).toBe("almighty")
+        expect(normalizeRole("")).toBe("almighty")
+    })
+
+    test("inherited Object keys do not falsely match", () => {
+        expect(normalizeRole("constructor")).toBe("almighty")
+        expect(normalizeRole("toString")).toBe("almighty")
+        expect(normalizeRole("hasOwnProperty")).toBe("almighty")
+    })
+})
+
+describe("roleAgent (role → fixed agent)", () => {
+    test("software roles", () => {
+        expect(roleAgent("coder")).toBe("build")
+        expect(roleAgent("debugger")).toBe("build")
+        expect(roleAgent("optimizer")).toBe("build")
+        expect(roleAgent("tester")).toBe("build")
+        expect(roleAgent("writer")).toBe("build")
+        expect(roleAgent("reviewer")).toBe("oracle")
+        expect(roleAgent("architect")).toBe("oracle")
+        expect(roleAgent("explorer")).toBe("explore")
+    })
+
+    test("science roles", () => {
+        expect(roleAgent("mathematician")).toBe("build")
+        expect(roleAgent("physicist")).toBe("build")
+        expect(roleAgent("simulator")).toBe("build")
+        expect(roleAgent("chemist")).toBe("build")
+        expect(roleAgent("analyst")).toBe("build")
+        expect(roleAgent("visualizer")).toBe("build")
+    })
+
+    test("research / writing / ideation", () => {
+        expect(roleAgent("researcher")).toBe("librarian")
+        expect(roleAgent("author")).toBe("build")
+        expect(roleAgent("fantast")).toBe("sisyphus")
+    })
+
+    test("almighty (fallback) uses sisyphus", () => {
+        expect(roleAgent("almighty")).toBe("sisyphus")
+        expect(roleAgent("frobnicator")).toBe("sisyphus")
+    })
+
+    test("is case-insensitive", () => {
+        expect(roleAgent("Reviewer")).toBe("oracle")
+        expect(roleAgent("FANTAST")).toBe("sisyphus")
+    })
+})
+
+describe("rolePreset (always a non-empty instruction)", () => {
+    test("known role returns its instruction", () => {
+        expect(rolePreset("coder")).toBe(ROLES.coder.instruction)
+        expect(rolePreset("Reviewer")).toBe(ROLES.reviewer.instruction)
+    })
+
+    test("unknown role returns the almighty instruction", () => {
+        expect(rolePreset("frobnicator")).toBe(ROLES.almighty.instruction)
+        expect(rolePreset("").length).toBeGreaterThan(0)
     })
 })
 
 describe("buildRolePrompt role-instruction injection", () => {
     const peers = ["alice", "bob"]
 
-    test("injects <role-instruction> when the role has a preset", () => {
+    test("injects <role-instruction> with the role's preset", () => {
         const out = buildRolePrompt(
             { name: "alice", role: "coder", prompt: "Implement the login endpoint." },
             "auth-team",
             peers,
         )
         expect(out).toContain("<role-instruction>")
-        expect(out).toContain(ROLE_PRESETS.coder)
+        expect(out).toContain(ROLES.coder.instruction)
         expect(out).toContain("<user-instruction>")
         expect(out).toContain("Implement the login endpoint.")
     })
@@ -57,14 +124,14 @@ describe("buildRolePrompt role-instruction injection", () => {
         expect(out.indexOf("<role-instruction>")).toBeLessThan(out.indexOf("<user-instruction>"))
     })
 
-    test("omits <role-instruction> when the role has no preset (user instruction still injected)", () => {
+    test("unknown role still injects the almighty instruction", () => {
         const out = buildRolePrompt(
             { name: "alice", role: "frobnicator", prompt: "do the thing" },
             "t",
             peers,
         )
-        expect(out).not.toContain("<role-instruction>")
-        expect(out).toContain("<user-instruction>")
+        expect(out).toContain("<role-instruction>")
+        expect(out).toContain(ROLES.almighty.instruction)
         expect(out).toContain("do the thing")
     })
 })

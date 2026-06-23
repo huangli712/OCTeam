@@ -1,55 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { MEMBER_NAME_POOL, deriveAgent, pickName } from "../src/tools/lifecycle.js"
-
-describe("deriveAgent (role label → agent)", () => {
-    test("coder/developer/implementer → build", () => {
-        expect(deriveAgent("coder")).toBe("build")
-        expect(deriveAgent("developer")).toBe("build")
-        expect(deriveAgent("implementer")).toBe("build")
-        expect(deriveAgent("writer")).toBe("build")
-    })
-
-    test("reviewer/architect/auditor → oracle (read-only)", () => {
-        expect(deriveAgent("reviewer")).toBe("oracle")
-        expect(deriveAgent("architect")).toBe("oracle")
-        expect(deriveAgent("auditor")).toBe("oracle")
-    })
-
-    test("verifier/verification → build (writes/runs tests, needs write access)", () => {
-        expect(deriveAgent("verifier")).toBe("build")
-        expect(deriveAgent("verification")).toBe("build")
-        expect(deriveAgent("verify")).toBe("build")
-    })
-
-    test("researcher/explorer → explore", () => {
-        expect(deriveAgent("researcher")).toBe("explore")
-        expect(deriveAgent("explorer")).toBe("explore")
-    })
-
-    test("finder/searcher/librarian → librarian", () => {
-        expect(deriveAgent("finder")).toBe("librarian")
-        expect(deriveAgent("searcher")).toBe("librarian")
-        expect(deriveAgent("librarian")).toBe("librarian")
-    })
-
-    test("research checked before search (researcher → explore, not librarian)", () => {
-        // "researcher" contains the substring "search"; ordering must resolve it
-        // to explore, not librarian.
-        expect(deriveAgent("researcher")).toBe("explore")
-    })
-
-    test("case-insensitive", () => {
-        expect(deriveAgent("CODER")).toBe("build")
-        expect(deriveAgent("Reviewer")).toBe("oracle")
-    })
-
-
-    test("unknown label → build (default)", () => {
-        expect(deriveAgent("foobar")).toBe("build")
-        expect(deriveAgent("")).toBe("build")
-    })
-})
+import { MEMBER_NAME_POOL, pickName } from "../src/tools/lifecycle.js"
 
 describe("pickName (random, no reuse)", () => {
     test("returns a pool name when nothing taken", () => {
