@@ -9,6 +9,7 @@ import type { ToolDefinition } from "@opencode-ai/plugin"
 import {
     teamActivateTool,
     teamCreateTool,
+    teamDeactivateTool,
     teamDeleteTool,
     teamDetailsTool,
     teamFixTool,
@@ -35,6 +36,7 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
     return {
         team_create: teamCreateTool(ctx),
         team_activate: teamActivateTool(ctx),
+        team_deactivate: teamDeactivateTool(ctx),
         team_delete: teamDeleteTool(ctx),
         team_list: teamListTool(ctx),
         team_query: teamQueryTool(ctx),

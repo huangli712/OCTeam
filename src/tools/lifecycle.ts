@@ -11,7 +11,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec, type Team } from "../state/store.js"
-import { activationError, indexMember, indexMasterTeam, isIndexedMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../core/utils.js"
+import { activationError, clearActiveTeam, indexMember, indexMasterTeam, isIndexedMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../core/utils.js"
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { clearWakeHint } from "../messaging/wake-hint.js"
 import { inboxPath } from "../state/paths.js"
@@ -655,6 +655,57 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                 if (Y) await saveTeamState(Y).catch(() => {})
                 await saveTeamState(X).catch(() => {})
                 result = `Team "${args.team_id}" activated.${Y ? ` Team "${Y.teamName}" deactivated.` : ""}`
+            })
+            return result
+        },
+    })
+}
+
+export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Deactivate the session's active team. After this, no team is available in the " +
+            "session — call team_activate to pick one. A team that is mid-orchestration (busy) " +
+            "cannot be deactivated — finish or wait first. Idempotent: deactivating an already-" +
+            "inactive team is a no-op. The master may only deactivate its own team.",
+        args: {
+            team_id: tool.schema.string().min(1),
+        },
+        async execute(args, context) {
+            // Direct disk load (like team_delete): an inactive team is not resolvable
+            // through the single-active interaction gate, so we read it directly to
+            // support deactivating any team the session owns.
+            const pathLeadSessionId = ctx.scope === "project" ? context.sessionID : undefined
+            let team: Team
+            try {
+                team = await loadTeamState(ctx.storageRoot, args.team_id, pathLeadSessionId)
+            } catch {
+                return `Error: team "${args.team_id}" not found`
+            }
+            if (team.leadSessionId !== context.sessionID) {
+                return "Error: team_deactivate is master-only (only the team's leader session can deactivate it)"
+            }
+            // Refuse mid-orchestration. busy ⟹ active is an invariant
+            // (utils.ts:isInteractionForbidden); dropping activatedAt while busy
+            // would desync member dispatch and the activation gate.
+            if (team.status === "busy" || team.activeTask !== undefined) {
+                return `Error: team "${args.team_id}" is busy with an active orchestration. Wait for it to finish before deactivating.`
+            }
+
+            // TOCTOU-safe under mutex: re-check activatedAt inside the lock so a
+            // racing team_activate cannot re-arm what we are about to clear.
+            let result = ""
+            await team.mutex.runExclusive(async () => {
+                if (team.activatedAt === undefined) {
+                    result = `Team "${args.team_id}" is already inactive.`
+                    return
+                }
+                // Synchronous in-memory update (no await between clear + persist) so
+                // no observer ever sees an active team that's inactive on disk.
+                team.activatedAt = undefined
+                clearActiveTeam(context.sessionID)
+                await saveTeamState(team).catch(() => {})
+                result = `Team "${args.team_id}" deactivated. No team is active in this session — call team_activate to pick one.`
             })
             return result
         },
