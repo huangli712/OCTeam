@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { waitForBarrier } from "../src/orchestration/handlers.js"
-import type { ActiveTask, RuntimeMember, RuntimeState } from "../src/types.js"
+import type { ActiveTask, RuntimeMember, TeamState } from "../src/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 
 /**
@@ -12,7 +12,7 @@ function makeTeam(opts: {
     members: Array<Partial<RuntimeMember> & Pick<RuntimeMember, "name">>
     activeTask?: Partial<ActiveTask>
     directory?: string
-}): RuntimeState & { mutex: AsyncMutex; directory: string } {
+}): TeamState & { mutex: AsyncMutex; directory: string } {
     const members: RuntimeMember[] = opts.members.map(m => ({
         name: m.name,
         status: m.status ?? "idle",
@@ -58,7 +58,7 @@ function makeTeam(opts: {
         activeTask: task,
         mutex: new AsyncMutex(),
         directory: opts.directory ?? "/tmp/test-team",
-    } as RuntimeState & { mutex: AsyncMutex; directory: string }
+    } as TeamState & { mutex: AsyncMutex; directory: string }
 }
 
 describe("waitForBarrier: default mode (no require_done_ack)", () => {

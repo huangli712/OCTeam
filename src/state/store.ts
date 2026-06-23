@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 
-import type { RuntimeState, TeamSpec } from "../types.js"
+import type { TeamState, TeamSpec } from "../types.js"
 import { atomicWrite, AsyncMutex, withLock } from "./locks.js"
 import {
     configPath,
@@ -10,13 +10,13 @@ import {
     teamsDir,
 } from "./paths.js"
 /**
- * Runtime team object: RuntimeState plus non-persisted handles.
+ * Runtime team object: TeamState plus non-persisted handles.
  *
  * `mutex` is a per-teamName process-level singleton (see teamRegistry) — it
  * serializes event-handler state mutations. `directory` is the resolved team
  * working directory on disk. Neither field is written to state.json.
  */
-export type Team = RuntimeState & {
+export type Team = TeamState & {
     mutex: AsyncMutex
     directory: string
 }
@@ -43,8 +43,8 @@ export function clearActiveTask(team: Team): void {
 // restart; first access creates the entry, later accesses keep the mutex.
 const teamRegistry = new Map<string, Team>()
 
-/** Strip the non-persisted runtime fields, leaving the pure RuntimeState. */
-function stripRuntimeFields(team: Team): RuntimeState {
+/** Strip the non-persisted runtime fields, leaving the pure TeamState. */
+function stripRuntimeFields(team: Team): TeamState {
     const { mutex: _mutex, directory: _directory, ...state } = team
     return state
 }
@@ -81,7 +81,7 @@ export async function loadTeamState(
     const dir = teamDir(storageRoot, teamName, leadSessionId)
     let team = teamRegistry.get(dir)
     if (!team) {
-        const state = await readJsonOrNull<RuntimeState>(statePath(dir))
+        const state = await readJsonOrNull<TeamState>(statePath(dir))
         if (!state) {
             throw new Error(`loadTeamState: no state.json for team "${teamName}"`)
         }
@@ -97,7 +97,7 @@ export async function loadTeamState(
 }
 
 /**
- * Persist the RuntimeState portion of a team to state.json via a cross-process
+ * Persist the TeamState portion of a team to state.json via a cross-process
  * file lock + atomic write. The mutex/directory fields are NOT persisted.
  *
  * The caller is expected to already hold team.mutex.runExclusive for in-process
@@ -145,7 +145,7 @@ export async function writeTeamSpec(
  */
 export async function initTeamState(
     storageRoot: string,
-    state: RuntimeState,
+    state: TeamState,
     leadSessionId?: string,
 ): Promise<Team> {
     const dir = teamDir(storageRoot, state.teamName, leadSessionId)

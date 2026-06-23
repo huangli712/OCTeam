@@ -131,12 +131,12 @@ type TeamMemberSpec = {
 }
 ```
 
-### RuntimeState（可变，持久化）
+### TeamState（可变，持久化）
 
 存储为 `state.json`。在文件锁下通过原子更新（写临时文件 + rename）修改。
 
 ```ts
-type RuntimeState = {
+type TeamState = {
     version: 1
     teamRunId: string                   // UUID, unique per run
     teamName: string
@@ -188,10 +188,10 @@ type MemberStatus =
 
 ### Team（运行时对象，非持久化）
 
-`RuntimeState` 是**持久化数据**（`state.json`）。handler 操作的是 `Team`——一个**进程级缓存的运行时对象**，包裹 `RuntimeState` 并附加非持久化的运行时句柄（mutex、解析后的工作目录）。
+`TeamState` 是**持久化数据**（`state.json`）。handler 操作的是 `Team`——一个**进程级缓存的运行时对象**，包裹 `TeamState` 并附加非持久化的运行时句柄（mutex、解析后的工作目录）。
 
 ```ts
-type Team = RuntimeState & {
+type Team = TeamState & {
     mutex: AsyncMutex                    // per-teamName singleton; serializes event-handler state mutations
     directory: string                   // resolved project/team working directory
 }
@@ -219,7 +219,7 @@ async function loadTeamState(teamName: string): Promise<Team> {
 }
 ```
 
-`saveTeamState(team)` 将 `team` 的持久化字段（即 `RuntimeState` 部分）经 `withLock` + `atomicWrite` 写回 `state.json`。`mutex`/`directory` 不写入磁盘。plugin 重启后 `teamRegistry` 为空，首次访问各 team 时重建（单实例，安全）。
+`saveTeamState(team)` 将 `team` 的持久化字段（即 `TeamState` 部分）经 `withLock` + `atomicWrite` 写回 `state.json`。`mutex`/`directory` 不写入磁盘。plugin 重启后 `teamRegistry` 为空，首次访问各 team 时重建（单实例，安全）。
 
 ### sessionID → member 索引（#6 修复——避免热路径扫盘）
 
@@ -358,7 +358,7 @@ type Task = {
 ```
 ~/.octeam/teams/{teamName}/                 （或 <project>/.octeam/teams/{teamName}/）
 ├── config.json                             TeamSpec（不可变）
-├── state.json                              RuntimeState（可变，文件锁保护）
+├── state.json                              TeamState（可变，文件锁保护）
 ├── mailbox/
 │   ├── {recipient}.jsonl                   每个接收者的消息队列（仅追加）
 │   ├── {recipient}.processed.jsonl         已投递消息（审计用）
@@ -2072,7 +2072,7 @@ async function dispatchToMaster(api: TuiPluginApi, command: string) {
 
 当当前 session 是一个 team 的 master 时，sidebar 在 Phase 1 navigator 的基础上额外显示 team 信息（member 列表、编排状态、任务列表）。Team member 本质上也是当前 session 的 child session（通过 `parentID` 关联），因此点击交互复用 Phase 1 的 `api.route.navigate` 机制。
 
-> **数据源区分**：team/member/task/mailbox 等 plugin 私有 RuntimeState 走文件读取（配合 fs.watch 或轮询）；child session 类信息（状态/消息/列表）走 `api.state` / `api.client.session.*`。两者不要混浆。
+> **数据源区分**：team/member/task/mailbox 等 plugin 私有 TeamState 走文件读取（配合 fs.watch 或轮询）；child session 类信息（状态/消息/列表）走 `api.state` / `api.client.session.*`。两者不要混浆。
 
 ```
 ┌─ Sessions Sidebar ────────────────┐
@@ -2104,7 +2104,7 @@ octeam/
     context.ts                     # PluginContext：捕获 client、config、storageDir
     types.ts                       # 所有类型定义
     state/
-      store.ts                     # 基于文件的 RuntimeState CRUD + 原子写入
+      store.ts                     # 基于文件的 TeamState CRUD + 原子写入
       locks.ts                     # withLock + atomicWrite + stale 清除
       paths.ts                     # team 产物的文件路径解析
     mailbox/

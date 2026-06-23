@@ -28,7 +28,7 @@ export function configPath(teamDirectory: string): string {
     return path.join(teamDirectory, "config.json")
 }
 
-/** state.json — RuntimeState (mutable, lock-protected) */
+/** state.json — TeamState (mutable, lock-protected) */
 export function statePath(teamDirectory: string): string {
     return path.join(teamDirectory, "state.json")
 }

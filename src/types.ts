@@ -25,7 +25,7 @@ export type TeamMemberSpec = {
     worktree?: boolean                  // create isolated git worktree, default false
 }
 
-// --- RuntimeState (mutable, persisted) — stored as state.json ---
+// --- TeamState (mutable, persisted) — stored as state.json ---
 
 export type TeamStatus =
     | "live"        // config written, no sessions spawned yet
@@ -56,7 +56,7 @@ export type RuntimeMember = {
     declaredDone?: boolean             // require_done_ack: member has called team_done() this run
 }
 
-export type RuntimeState = {
+export type TeamState = {
     version: 1
     teamRunId: string                  // UUID, unique per run
     teamName: string
