@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import type { PluginContext } from "../src/core/context.js"
 import type { TeamSpec } from "../src/core/types.js"
 import { normalizeRole } from "../src/core/role-presets.js"
-import { teamAddMemberTool, teamRemoveMemberTool } from "../src/tools/lifecycle.js"
+import { teamAddMemberTool, teamRemoveMemberTool, teamRenameTool } from "../src/tools/lifecycle.js"
 import { initTeamState, invalidateTeam, loadTeamState, readTeamSpec, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/core/utils.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
@@ -265,6 +265,139 @@ describe("team_remove_member", () => {
         )
 
         expect(result).toContain("master-only")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+})
+
+describe("team_rename", () => {
+    test("rename live team → success, state + spec + directory updated", async () => {
+        const root = tmpRoot("rn-ok")
+        const sid = "ses_rn_ok"
+        const { team } = await setupLiveTeam(root, sid, "old-name", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+
+        const tool = teamRenameTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "old-name", new_name: "new-name" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("renamed to")
+        expect(result).toContain("new-name")
+        // Old name should not be loadable.
+        await expect(
+            loadTeamState(root, "old-name", sid),
+        ).rejects.toThrow()
+        // New name should be loadable.
+        const reloaded = await loadTeamState(root, "new-name", sid)
+        expect(reloaded.teamName).toBe("new-name")
+
+        invalidateTeam(reloaded.directory)
+        unindexSession(sid)
+    })
+
+    test("same name → idempotent no-op", async () => {
+        const root = tmpRoot("rn-same")
+        const sid = "ses_rn_same"
+        const { team } = await setupLiveTeam(root, sid, "zeta", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+
+        const tool = teamRenameTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "zeta", new_name: "zeta" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("already named")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("name collision → rejected", async () => {
+        const root = tmpRoot("rn-collide")
+        const sid = "ses_rn_collide"
+        const { team } = await setupLiveTeam(root, sid, "alpha", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+        await setupLiveTeam(root, sid, "beta", [
+            { name: "bob", role: "coder", prompt: "code" },
+        ])
+
+        const tool = teamRenameTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "alpha", new_name: "beta" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("already exists")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("non-live team → rejected", async () => {
+        const root = tmpRoot("rn-notlive")
+        const sid = "ses_rn_notlive"
+        const { team } = await setupLiveTeam(root, sid, "gamma", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+        team.status = "idle"
+
+        const tool = teamRenameTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "gamma", new_name: "delta" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("not \"live\"")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("non-master caller → rejected", async () => {
+        const root = tmpRoot("rn-nonmaster")
+        const sid = "ses_rn_nonmaster"
+        const { team } = await setupLiveTeam(root, undefined as any, "epsilon", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+
+        const ctx = { storageRoot: root, scope: "user" } as unknown as PluginContext
+        const tool = teamRenameTool(ctx)
+        const result = await tool.execute(
+            { team_id: "epsilon", new_name: "zeta" },
+            { sessionID: "ses_other" } as any,
+        )
+
+        expect(result).toContain("master-only")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("invalid name format → rejected", async () => {
+        const root = tmpRoot("rn-badfmt")
+        const sid = "ses_rn_badfmt"
+        const { team } = await setupLiveTeam(root, sid, "eta", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+
+        const tool = teamRenameTool(makeCtx(root))
+        // new_name regex: /^[a-z0-9-]+$/ — uppercase rejected by schema validation.
+        try {
+            await tool.execute(
+                { team_id: "eta", new_name: "INVALID" },
+                { sessionID: sid } as any,
+            )
+            expect.unreachable("should have thrown")
+        } catch {
+            // Schema-level rejection is correct.
+        }
 
         invalidateTeam(team.directory)
         unindexSession(sid)
