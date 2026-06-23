@@ -4,7 +4,7 @@
  */
 
 import { listAllTeams, loadTeamState } from "./state/store.js"
-import type { RuntimeMember, TeamMemberSpec, TeamSpec } from "./types.js"
+import type { RuntimeMember, MemberSpec, TeamSpec } from "./types.js"
 
 // --- sessionID -> member index (process-level, O(1) resolve) ---
 
@@ -272,11 +272,11 @@ export function chunk<T>(arr: T[], n: number): T[][] {
 
 /**
  * Build the role-setup prompt sent to a freshly spawned member session. Role
- * comes from the TeamMemberSpec (config.json), since RuntimeMember does not
+ * comes from the MemberSpec (config.json), since RuntimeMember does not
  * persist the role field.
  */
 export function buildRolePrompt(
-    spec: TeamMemberSpec,
+    spec: MemberSpec,
     teamName: string,
     peerNames: string[],
 ): string {

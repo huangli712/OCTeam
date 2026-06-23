@@ -14,10 +14,10 @@ export type TeamSpec = {
     name: string                        // /^[a-z0-9-]+$/, unique within scope
     description?: string
     createdAt: number                   // epoch ms
-    members: TeamMemberSpec[]           // 1-8 members
+    members: MemberSpec[]           // 1-8 members
 }
 
-export type TeamMemberSpec = {
+export type MemberSpec = {
     name: string                        // unique within team
     role: string                        // role description for system prompt
     model?: string                      // model identifier, e.g. "claude-sonnet"

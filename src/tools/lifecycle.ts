@@ -15,7 +15,7 @@ import { indexMember, indexMaster, isIndexedMember, resolveCallerInTeam, unindex
 import { countUnreadMessages } from "../mailbox.js"
 import { clearWakeHint } from "../wake-hint.js"
 import { inboxPath } from "../state/paths.js"
-import type { Bounds, RuntimeMember, TeamMemberSpec, TeamSpec } from "../types.js"
+import type { Bounds, RuntimeMember, MemberSpec, TeamSpec } from "../types.js"
 
 const execFileP = promisify(execFile)
 
@@ -182,7 +182,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             } catch {
                 // best-effort
             }
-            const resolved: TeamMemberSpec[] = args.members.map(m => {
+            const resolved: MemberSpec[] = args.members.map(m => {
                 const agent = m.agent ?? deriveAgent(m.role)
                 const model = m.model ?? modelByAgent.get(agent) ?? defaultModel ?? sessionModel
                 return { name: m.name, role: m.role, agent, model, worktree: m.worktree }
