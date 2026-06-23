@@ -467,10 +467,11 @@ team_create({
     description: "JWT authentication implementation team",
     members: [
         // name 可省略 → 从备选池随机分配；显式 name 必须是池中的名字（alice/bob/carol/...）
-        // agent 由 role 自动派生（coder→build、tester→build、reviewer→oracle），无需显式指定
-        { name: "alice", role: "coder",    prompt: "Implement the JWT auth endpoints and middleware." },
-        { role: "tester",                  prompt: "Design the test plan, then write and run tests for the auth flow." },
-        { role: "reviewer",                prompt: "Review the code for security and correctness." },
+        // agent 由 role 自动派生（coder/tester/optimizer→build、reviewer→oracle），无需显式指定
+        { name: "alice", role: "coder",     prompt: "Implement the JWT auth endpoints and middleware." },                  // alice = coder
+        { name: "bob",   role: "tester",    prompt: "Design the test plan, then write and run tests for the auth flow." }, // bob = tester
+        { name: "carol", role: "optimizer", prompt: "Profile and optimize the auth hot paths." },                          // carol = optimizer
+        { name: "dave",  role: "reviewer",  prompt: "Review the code for security and correctness." },                     // dave = reviewer
     ],
     bounds?: {                          // optional, all have defaults
         maxWallClockMinutes: 30,
@@ -615,9 +616,10 @@ team_parallel({
     team_id: "auth-team",
     mode: "collaborative",
     tasks: {
-        coder:     "Implement OAuth2 login flow",
-        tester:    "Write comprehensive test suite",
-        optimizer: "Review architecture and suggest improvements"
+        // keys are MEMBER names (pool names); each member's role drives its behavior
+        alice: "Implement OAuth2 login flow",                    // alice = coder
+        bob:   "Write comprehensive test suite",                 // bob = tester
+        carol: "Review architecture and suggest improvements"    // carol = optimizer
     }
 })
 ```
@@ -661,9 +663,10 @@ Round 3（最终）：所有 member 发表最终声明 → barrier
 team_pipeline({
     team_id: "auth-team",
     stages: [
-        { member: "coder",     task: "Implement JWT authentication middleware" },
-        { member: "tester",    task: "Write unit tests and integration tests" },
-        { member: "optimizer", task: "Review code quality and performance" },
+        // member must be a pool name; its role (set at team_create) drives behavior
+        { member: "alice", task: "Implement JWT authentication middleware" },  // alice = coder
+        { member: "bob",   task: "Write unit tests and integration tests" },   // bob = tester
+        { member: "carol", task: "Review code quality and performance" },      // carol = optimizer
     ],
     timeout_ms: 600000
 })
@@ -671,9 +674,9 @@ team_pipeline({
 
 **流程**：
 ```
-Stage 0: coder 接收原始任务 → idle → 输出被捕获
-Stage 1: tester 接收："[coder 的输出（截断至 8KB）] + [你的任务]" → idle → 输出被捕获
-Stage 2: optimizer 接收："[tester 的输出（截断）] + [你的任务]" → idle → 输出被捕获
+Stage 0: alice 接收原始任务 → idle → 输出被捕获
+Stage 1: bob 接收："[alice 的输出（截断至 8KB）] + [你的任务]" → idle → 输出被捕获
+Stage 2: carol 接收："[bob 的输出（截断）] + [你的任务]" → idle → 输出被捕获
          → Leader（如果 idle）接收所有 stage 输出的摘要
 ```
 
@@ -692,11 +695,12 @@ Stage 2: optimizer 接收："[tester 的输出（截断）] + [你的任务]" �
 team_loop({
     team_id: "auth-team",
     stages: [
-        { member: "coder",      task: "Implement JWT auth",          action: "modify"    },
-        { member: "bugfinder",  task: "Find bugs, report only",     action: "read_only" },
-        { member: "optimizer",  task: "Suggest improvements only",   action: "read_only" },
+        // member must be a pool name; its role (set at team_create) drives behavior
+        { member: "alice", task: "Implement JWT auth",          action: "modify"    },  // alice = coder
+        { member: "dave",  task: "Find bugs, report only",      action: "read_only" },  // dave = reviewer
+        { member: "carol", task: "Suggest improvements only",   action: "read_only" },  // carol = optimizer
     ],
-    decider: "optimizer",               // a MEMBER name, NOT "master"
+    decider: "carol",               // a MEMBER name (pool name), NOT "master"
     max_rounds: 5,
     initial_task: "Implement secure JWT authentication middleware",
     timeout_ms: 900000
@@ -707,9 +711,9 @@ team_loop({
 
 **Loop 协议**（每轮）：
 ```
-Stage 0: coder(modify)     → 接收任务/决策 → 编写代码 → idle → 输出: code_vN
-Stage 1: bugfinder(ro)     → 接收 coder 输出 → idle → 输出: bug report
-Stage 2: optimizer(ro)     → 接收 coder 输出 + bug report → idle → 输出: 改进建议
+Stage 0: alice(modify)     → 接收任务/决策 → 编写代码 → idle → 输出: code_vN
+Stage 1: dave(ro)          → 接收 alice 输出 → idle → 输出: bug report
+Stage 2: carol(ro)         → 接收 alice 输出 + bug report → idle → 输出: 改进建议
 Stage 3: decider           → 接收所有输出 → 产生结构化决策 → idle
          → 决策被解析 → 如果 "continue"，下一轮；如果 "done"，loop 结束
          → 结果注入 leader session（如果 idle）
@@ -885,7 +889,7 @@ async function handleDelegateIdle(team: Team, member: MemberState) {
 ```
 team_send_message({
     team_id: "auth-team",
-    to: "tester",                       // member name, or "*" for broadcast
+    to: "bob",                          // member name (pool name), or "*" for broadcast
     body: "API endpoint changed to /v2/auth",
     summary?: "API endpoint update",    // optional one-line summary
     correlationId?: "uuid"              // optional for request-response pairing
@@ -916,7 +920,7 @@ team_task_create({
 team_task_list({
     team_id: "auth-team",
     status?: "pending" | "claimed" | "completed",
-    owner?: "tester"
+    owner?: "bob"                       // member name (pool name)
 })
 
 team_task_update({
@@ -973,8 +977,8 @@ team_status({ team_id: "auth-team" })
 //   status: "busy",
 //   activeTask: { type: "loop", round: 2, maxRounds: 5 },
 //   members: [
-//     { name: "coder", status: "running", model: "claude-haiku", unreadMessages: 0 },
-//     { name: "tester", status: "idle", model: "gpt-4o", unreadMessages: 2 },
+//     { name: "alice", status: "running", model: "claude-haiku", unreadMessages: 0 },
+//     { name: "bob", status: "idle", model: "gpt-4o", unreadMessages: 2 },
 //     ...
 //   ],
 //   bounds: { ... },
