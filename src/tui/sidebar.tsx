@@ -253,9 +253,10 @@ export function SessionNavigatorSidebar(props: {
                                                                 <box
                                                                     flexDirection="column"
                                                                     width="100%"
-                                                                    onMouseDown={() => member.sessionId ? handleClick(member.sessionId) : undefined}
-                                                                >
-                                                                    <text fg={textMuted()}>{"      Agent   : " + (member.agent ?? "unknown")}</text>
+                                                                     onMouseDown={() => member.sessionId ? handleClick(member.sessionId) : undefined}
+                                                                 >
+                                                                     <text fg={textMuted()}>{"      Role    : " + (member.role ?? "unknown")}</text>
+                                                                     <text fg={textMuted()}>{"      Agent   : " + (member.agent ?? "unknown")}</text>
                                                                     <text fg={textMuted()}>{"      Model   : " + (member.model ? member.model.split("/").pop() : "unknown")}</text>
                                                                     <text fg={textMuted()}>{"      Mailbox : " + (member.unread ?? 0) + " / " + (member.totalMessages ?? 0)}</text>
                                                                     <text fg={textMuted()}>{"      Turn    : " + (member.turnCount ?? 0)}</text>

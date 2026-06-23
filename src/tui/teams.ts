@@ -14,6 +14,7 @@ import path from "node:path"
 
 export type TeamMemberRow = {
     name: string
+    role?: string
     status: string
     agent?: string
     model?: string
@@ -73,6 +74,17 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
             const teamDir = path.join(teamsPath, e.name)
             const raw = await fs.readFile(path.join(teamDir, "state.json"), "utf8")
             const state = JSON.parse(raw)
+            // Also read config.json for member roles (role lives in MemberSpec, not MemberState).
+            let roleMap: Record<string, string> = {}
+            try {
+                const configRaw = await fs.readFile(path.join(teamDir, "config.json"), "utf8")
+                const config = JSON.parse(configRaw)
+                for (const m of (config.members ?? [])) {
+                    roleMap[m.name] = m.role
+                }
+            } catch {
+                // config.json may be absent for legacy teams
+            }
             out.push({
                 name: state.teamName ?? e.name,
                 status: state.status ?? "unknown",
@@ -81,6 +93,7 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
                     const mailbox = await countMailbox(teamDir, m.name)
                     return {
                         name: m.name,
+                        role: roleMap[m.name],
                         status: m.status,
                         agent: m.agent,
                         model: m.model,
