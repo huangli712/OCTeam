@@ -85,8 +85,8 @@ export type Bounds = {
 
 // --- ActiveTask ---
 
-export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate"
-export type ParallelMode = "isolated" | "collaborative" | "discussion"
+export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus"
+export type ParallelMode = "isolated" | "collaborative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
 
@@ -106,8 +106,8 @@ export type ActiveTask = {
     // parallel mode
     task?: string                      // isolated: uniform task
     tasks?: Record<string, string>     // collaborative: per-member tasks
-    topic?: string                     // discussion: debate topic
-    maxRounds?: number                 // discussion / loop: round limit
+    topic?: string                     // consensus: debate topic
+    maxRounds?: number                 // consensus / loop: round limit
     currentRound?: number
 
     // reduce policy (parallel isolated/collaborative only)
@@ -132,7 +132,7 @@ export type ActiveTask = {
     decisionHistory: DecisionRecord[]  // structured decisions per round
     decisionParseFailures: number      // consecutive <decision> parse failures; abort at 3
 
-    // discussion-specific (parallel mode === "discussion")
+    // consensus-specific (type === "consensus")
     consensusReached?: boolean         // set when all members emit agreed consensus
 
     // require_done_ack (parallel isolated/collaborative only): when true, the

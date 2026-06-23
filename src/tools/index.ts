@@ -22,6 +22,7 @@ import {
     teamTaskUpdateTool,
 } from "./task.js"
 import {
+    teamConsensusTool,
     teamDelegateTool,
     teamLoopTool,
     teamParallelTool,
@@ -43,6 +44,7 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_task_update: teamTaskUpdateTool(ctx),
         team_task_get: teamTaskGetTool(ctx),
         team_parallel: teamParallelTool(ctx),
+        team_consensus: teamConsensusTool(ctx),
         team_pipeline: teamPipelineTool(ctx),
         team_loop: teamLoopTool(ctx),
         team_delegate: teamDelegateTool(ctx),

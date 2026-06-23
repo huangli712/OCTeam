@@ -42,6 +42,7 @@ export function getExpectedMember(task: ActiveTask): string | null {
     // signoff stage: any reviewer may advance
     if (task.signoffStage) return null
     if (task.type === "parallel") return null
+    if (task.type === "consensus") return null
     if (task.type === "delegate") return null
     return task.stages[task.currentStageIndex]?.member ?? null
 }
@@ -88,7 +89,7 @@ export function allReadOnlyStagesReportNoIssues(task: ActiveTask): boolean {
     })
 }
 
-/** Discussion consensus: every participant must emit agreed consensus. */
+/** Consensus: every participant must emit agreed consensus. */
 export function allMembersAgree(responses: Record<string, string>): boolean {
     const texts = Object.values(responses)
     if (texts.length === 0) return false
@@ -305,6 +306,9 @@ export async function processIdle(
             }
             await handleParallelIdle(ctx, team)
             break
+        case "consensus":
+            await handleConsensusIdle(ctx, team)
+            break
         case "pipeline":
             await handlePipelineIdle(ctx, team, member)
             break
@@ -425,60 +429,58 @@ async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void>
     const participants = team.members.filter(m => !m.isMaster).map(m => m.name)
 
     await waitForBarrier(team, participants, async () => {
-        switch (task.mode) {
-            case "isolated":
-            case "collaborative": {
-                // Maybe trigger signoff before delivering.
-                if (await maybeTriggerSignoff(ctx, team)) {
-                    return  // signoff in progress
-                }
-                // Single barrier: collect outputs → deliver to leader → done.
-                await deliverSummaryToLeader(ctx, team, `parallel_${task.mode}_complete`)
-                clearActiveTask(team)
-                team.status = "idle"
-                return
-            }
-            case "discussion": {
-                task.consensusReached = allMembersAgree(task.responses)
-                if (task.consensusReached) {
-                    await deliverSummaryToLeader(ctx, team, "discussion_consensus")
-                    clearActiveTask(team)
-                    team.status = "idle"
-                    return
-                }
-                if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
-                    // Reached here only when consensus was NOT detected → failed.
-                    await deliverSummaryToLeader(ctx, team, "discussion_max_rounds")
-                    clearActiveTask(team)
-                    team.status = "failed"
-                    return
-                }
-                // Next round: broadcast prior-round summary, reset to running.
-                task.currentRound = (task.currentRound ?? 0) + 1
-                const summary = buildRoundSummary(task.responses)
-                for (const m of team.members.filter(x => !x.isMaster)) {
-                    if (!m.sessionId) continue
-                    await ctx.client.session.promptAsync({
-                        path: { id: m.sessionId },
-                        body: {
-                            parts: [
-                                {
-                                    type: "text",
-                                    text:
-                                        `[Discussion Round ${task.currentRound}] Others said:\n${summary}\n\n`
-                                        + `Respond, then emit <consensus>{"agreed": true|false}</consensus>.`,
-                                    synthetic: true,
-                                },
-                            ],
+        // Maybe trigger signoff before delivering.
+        if (await maybeTriggerSignoff(ctx, team)) {
+            return  // signoff in progress
+        }
+        // Single barrier: collect outputs → deliver to leader → done.
+        await deliverSummaryToLeader(ctx, team, `parallel_${task.mode}_complete`)
+        clearActiveTask(team)
+        team.status = "idle"
+    })
+}
+
+async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void> {
+    const task = team.activeTask
+    if (!task) return
+    const participants = team.members.filter(m => !m.isMaster).map(m => m.name)
+
+    await waitForBarrier(team, participants, async () => {
+        task.consensusReached = allMembersAgree(task.responses)
+        if (task.consensusReached) {
+            await deliverSummaryToLeader(ctx, team, "consensus_reached")
+            clearActiveTask(team)
+            team.status = "idle"
+            return
+        }
+        if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
+            // Reached here only when consensus was NOT detected → failed.
+            await deliverSummaryToLeader(ctx, team, "consensus_max_rounds")
+            clearActiveTask(team)
+            team.status = "failed"
+            return
+        }
+        // Next round: broadcast prior-round summary, reset to running.
+        task.currentRound = (task.currentRound ?? 0) + 1
+        const summary = buildRoundSummary(task.responses)
+        for (const m of team.members.filter(x => !x.isMaster)) {
+            if (!m.sessionId) continue
+            await ctx.client.session.promptAsync({
+                path: { id: m.sessionId },
+                body: {
+                    parts: [
+                        {
+                            type: "text",
+                            text:
+                                `[Consensus Round ${task.currentRound}] Others said:\n${summary}\n\n`
+                                + `Respond, then emit <consensus>{"agreed": true|false}</consensus>.`,
+                            synthetic: true,
                         },
-                    })
-                    m.status = "running"
-                    m.turnCount++
-                }
-                return
-            }
-            default:
-                return
+                    ],
+                },
+            })
+            m.status = "running"
+            m.turnCount++
         }
     })
 }

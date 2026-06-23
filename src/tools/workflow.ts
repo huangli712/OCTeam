@@ -68,21 +68,19 @@ async function dispatchToMember(
 export function teamParallelTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Run a task across all members in parallel. Modes: isolated (same task, no comms), collaborative (per-member tasks, free comms), discussion (multi-round structured debate with <consensus> output).",
+            "Run a task across all members in parallel. Modes: isolated (same task, no comms), collaborative (per-member tasks, free comms). For multi-round debate to consensus, use team_consensus.",
         args: {
             team_id: tool.schema.string().min(1),
-            mode: tool.schema.enum(["isolated", "collaborative", "discussion"]),
+            mode: tool.schema.enum(["isolated", "collaborative"]),
             task: tool.schema.string().optional().describe("isolated mode: the single task sent to all members"),
             tasks: tool.schema
                 .record(tool.schema.string(), tool.schema.string())
                 .optional()
                 .describe("collaborative mode: { memberName: task }"),
-            topic: tool.schema.string().optional().describe("discussion mode: the debate topic"),
-            max_rounds: tool.schema.number().min(1).max(20).optional().describe("discussion: round limit"),
             reduce_policy: tool.schema
                 .enum(["summarize", "select", "merge", "rubric"])
                 .optional()
-                .describe("parallel isolated/collaborative only: how to combine member outputs. Ignored for discussion mode."),
+                .describe("how to combine member outputs (default: summarize)."),
             reduce_rubric: tool.schema
                 .string()
                 .optional()
@@ -90,7 +88,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
             signoff_policy: tool.schema
                 .enum(["none", "decider", "peer-quorum"])
                 .optional()
-                .describe("parallel isolated/collaborative only: post-completion review gate. Ignored for discussion mode."),
+                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
             signoff_decider: tool.schema
                 .string()
                 .optional()
@@ -106,7 +104,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
             require_done_ack: tool.schema
                 .boolean()
                 .optional()
-                .describe("parallel isolated/collaborative only: when true, the all-idle barrier is replaced by an all-acked barrier. Members must call team_done() to signal completion; members that go idle without acking receive an automatic re-prompt. Prevents premature barrier when a member idles waiting for a dependency. Default false (backward compatible)."),
+                .describe("when true, the all-idle barrier is replaced by an all-acked barrier. Members must call team_done() to signal completion; members that go idle without acking receive an automatic re-prompt. Prevents premature barrier when a member idles waiting for a dependency. Default false (backward compatible)."),
         },
         async execute(args, context) {
             // Validate mode-specific fields.
@@ -115,12 +113,6 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
             }
             if (args.mode === "collaborative" && !args.tasks) {
                 return "Error: collaborative mode requires `tasks`"
-            }
-            if (args.mode === "discussion" && !args.topic) {
-                return "Error: discussion mode requires `topic`"
-            }
-            if (args.require_done_ack && args.mode === "discussion") {
-                return "Error: require_done_ack applies to parallel isolated/collaborative only (discussion uses consensus detection)"
             }
 
             // Workflow tools are master-only: only the team's leader session may
@@ -163,23 +155,12 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     decisionParseFailures: 0,
                     task: args.task,
                     tasks: args.tasks,
-                    topic: args.topic,
-                    // M5: discussion needs a round cap; default to 3 when omitted,
-                    // else `currentRound >= (maxRounds ?? 0)` aborts after round 1.
-                    maxRounds: args.mode === "discussion" ? (args.max_rounds ?? 3) : args.max_rounds,
-                    currentRound: args.mode === "discussion" ? 1 : undefined,
-                    reducePolicy: (args.mode === "isolated" || args.mode === "collaborative")
-                        ? (args.reduce_policy ?? "summarize")
-                        : undefined,
+                    reducePolicy: args.reduce_policy ?? "summarize",
                     reduceRubric: args.reduce_rubric,
-                    signoffPolicy: (args.mode === "isolated" || args.mode === "collaborative")
-                        ? (args.signoff_policy ?? "none")
-                        : "none",
+                    signoffPolicy: args.signoff_policy ?? "none",
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
-                    requireDoneAck: (args.mode === "isolated" || args.mode === "collaborative")
-                        ? (args.require_done_ack === true)
-                        : false,
+                    requireDoneAck: args.require_done_ack === true,
                 }
                 // Reset per-member done flag for the new run so a previous run's
                 // acks don't bleed in. Only relevant when requireDoneAck is true,
@@ -192,16 +173,87 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 // Initial dispatch.
                 const participants = team.members.filter(m => !m.isMaster)
                 for (const m of participants) {
-                    let text: string
-                    if (args.mode === "isolated") text = args.task!
-                    else if (args.mode === "collaborative") text = args.tasks![m.name] ?? `No task assigned for ${m.name}.`
-                    else
-                        text = `[Discussion topic] ${args.topic}\n\nRound ${team.activeTask.currentRound}. State your position. End with <consensus>{"agreed": true|false}</consensus>.`
+                    const text = args.mode === "isolated"
+                        ? args.task!
+                        : (args.tasks![m.name] ?? `No task assigned for ${m.name}.`)
                     await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory)
                 }
             })
             if (raced) return "Error: team already has an active orchestration"
             return `team_parallel (${args.mode}) started on "${args.team_id}".`
+        },
+    })
+}
+
+// --- team_consensus ---
+
+export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Run a multi-round structured debate across all members until they reach consensus. Each round, members state positions and emit <consensus>{\"agreed\": true|false}</consensus>; the run ends when all agree, or fails when max_rounds is hit without consensus.",
+        args: {
+            team_id: tool.schema.string().min(1),
+            topic: tool.schema.string().min(1).describe("the debate topic"),
+            max_rounds: tool.schema.number().min(1).max(20).optional().describe("round limit (default 3)"),
+            timeout_ms: tool.schema.number().min(1000).optional(),
+            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
+        },
+        async execute(args, context) {
+            // Workflow tools are master-only: only the team's leader session may
+            // start an orchestration.
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller?.isMaster) {
+                return "Error: team_consensus is master-only"
+            }
+
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+
+            // Phase 1: pre-check under mutex.
+            let busy = false
+            await team.mutex.runExclusive(async () => {
+                if (team.activeTask) busy = true
+            })
+            if (busy) return "Error: team already has an active orchestration"
+            let raced = false
+
+            // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
+            await ensureMembersReady(ctx, team)
+
+            // Phase 3: commit activeTask + initial dispatch (UNDER mutex).
+            await team.mutex.runExclusive(async () => {
+                if (team.activeTask) { raced = true; return } // M7: re-check inside mutex
+                team.status = "busy"
+                team.activeTask = {
+                    type: "consensus",
+                    startedAt: Date.now(),
+                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
+                    tokenBudget: args.token_budget,
+                    tokensUsed: 0,
+                    tokensByMember: {},
+                    messagesSent: 0,
+                    responses: {},
+                    stages: [],
+                    currentStageIndex: 0,
+                    decisionHistory: [],
+                    decisionParseFailures: 0,
+                    topic: args.topic,
+                    // M5: needs a round cap; default to 3 when omitted, else
+                    // `currentRound >= (maxRounds ?? 0)` aborts after round 1.
+                    maxRounds: args.max_rounds ?? 3,
+                    currentRound: 1,
+                    signoffPolicy: "none",
+                }
+                await saveTeamState(team)
+
+                // Initial dispatch: round 1 to every participant.
+                const participants = team.members.filter(m => !m.isMaster)
+                for (const m of participants) {
+                    const text = `[Consensus topic] ${args.topic}\n\nRound ${team.activeTask.currentRound}. State your position. End with <consensus>{"agreed": true|false}</consensus>.`
+                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory)
+                }
+            })
+            if (raced) return "Error: team already has an active orchestration"
+            return `team_consensus started on "${args.team_id}".`
         },
     })
 }

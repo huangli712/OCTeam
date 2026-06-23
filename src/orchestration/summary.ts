@@ -7,7 +7,7 @@
  * mid-turn and drives a new turn when the leader becomes available.
  *
  * Detailed per-member results that were sent to the master mailbox during the
- * workflow (e.g. via team_send_message in delegate/discussion modes) are
+ * workflow (e.g. via team_send_message in delegate/consensus modes) are
  * drained separately by deliverQueuedResultsToMaster on the master's idle
  * event.
  */
@@ -141,7 +141,7 @@ export async function buildSummary(
     }
 }
 
-/** One-line-per-member digest of the current round's outputs (discussion). */
+/** One-line-per-member digest of the current round's outputs (consensus). */
 export function buildRoundSummary(responses: Record<string, string>): string {
     return Object.entries(responses)
         .map(([name, out]) => `- ${name}: ${truncateOutput(out, 500)}`)
