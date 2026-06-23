@@ -410,9 +410,9 @@ export function chunk<T>(arr: T[], n: number): T[][] {
 }
 
 /**
- * Build the role-setup prompt sent to a freshly spawned member session. Role
- * comes from the MemberSpec (config.json), since MemberState does not
- * persist the role field.
+ * Build the role-setup prompt sent to a freshly spawned member session. The
+ * role label and the member's instructions (prompt) come from the MemberSpec
+ * (config.json), since MemberState does not persist them.
  */
 export function buildRolePrompt(
     spec: MemberSpec,
@@ -428,6 +428,9 @@ export function buildRolePrompt(
     ]
     if (spec.model) lines.push(`Your model: ${spec.model}`)
     if (peers.length > 0) lines.push(`Your teammates: ${peers.join(", ")}`)
+    if (spec.prompt) {
+        lines.push("", "Your instructions:", spec.prompt)
+    }
     lines.push(
         "",
         "You collaborate via the team tools available to you:",

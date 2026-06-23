@@ -78,23 +78,44 @@ function defaultBounds(override?: Partial<Bounds>): Bounds {
 }
 
 /**
- * Derive a reasonable agent from a member's role text. Ordered FIRST-hit
- * substring match (case-insensitive). NOTE: "research" must be checked before
- * "search" — "research" contains the substring "search".
+ * Derive a reasonable agent from a member's role label. Ordered FIRST-hit
+ * substring match (case-insensitive). Ordering matters where one term contains
+ * another: "researcher" contains "search", and the Chinese "审查" (review)
+ * contains "查" (search) — so explore and oracle are checked before librarian.
  */
-function deriveAgent(role: string): string {
+export function deriveAgent(role: string): string {
     const r = role.toLowerCase()
-    if (r.includes("research") || r.includes("研究")) return "explore"
-    if (r.includes("find") || r.includes("search") || r.includes("查")) return "librarian"
-    if (r.includes("review") || r.includes("architect") || r.includes("审查") || r.includes("架构")) return "oracle"
-    if (r.includes("implement") || r.includes("write") || r.includes("实现") || r.includes("写")) return "build"
+    if (r.includes("research") || r.includes("explor") || r.includes("研究")) return "explore"
+    if (r.includes("review") || r.includes("verif") || r.includes("architect") || r.includes("audit") || r.includes("审查") || r.includes("校验") || r.includes("架构")) return "oracle"
+    if (r.includes("find") || r.includes("search") || r.includes("librar") || r.includes("查")) return "librarian"
+    if (r.includes("cod") || r.includes("implement") || r.includes("writ") || r.includes("develop") || r.includes("build") || r.includes("实现") || r.includes("写") || r.includes("编码")) return "build"
     return "build"
+}
+
+/**
+ * Candidate name pool for members whose name is omitted at creation. A name is
+ * drawn at random and not reused within the same team. The pool (16) exceeds the
+ * 8-member team cap, so it never runs out for a single team.
+ */
+export const MEMBER_NAME_POOL = [
+    "alice", "bob", "carol", "dave", "erin", "frank", "grace", "henry",
+    "iris", "jack", "kate", "leo", "mona", "nina", "omar", "pat",
+] as const
+
+/**
+ * Pick a random name from MEMBER_NAME_POOL not present in `taken`. Falls back to
+ * "member-N" (N = taken.size + 1) if every pool name is already taken.
+ */
+export function pickName(taken: Set<string>): string {
+    const available = MEMBER_NAME_POOL.filter(n => !taken.has(n))
+    if (available.length === 0) return `member-${taken.size + 1}`
+    return available[Math.floor(Math.random() * available.length)]
 }
 
 export function teamCreateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Define an agent team. Writes config.json + initial state.json. Does NOT spawn member sessions — they are spawned lazily on the first workflow call (team_parallel/pipeline/loop/delegate). The calling session becomes the team leader (\"master\").",
+            "Define an agent team. Each member has a name (optional — auto-picked from a name pool if omitted), a role label (e.g. \"coder\", \"verifier\"), and a prompt (the member's system-prompt instructions). Writes config.json + initial state.json. Does NOT spawn member sessions — they are spawned lazily on the first workflow call (team_parallel/pipeline/loop/delegate). The calling session becomes the team leader (\"master\").",
         args: {
             name: tool.schema
                 .string()
@@ -105,8 +126,9 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             members: tool.schema
                 .array(
                     tool.schema.object({
-                        name: tool.schema.string().min(1).max(32).regex(/^[a-z0-9-]+$/),
-                        role: tool.schema.string().min(1).max(2048),
+                        name: tool.schema.string().min(1).max(32).regex(/^[a-z0-9-]+$/).optional(),
+                        role: tool.schema.string().min(1).max(64),
+                        prompt: tool.schema.string().min(1).max(8192),
                         model: tool.schema.string().optional(),
                         agent: tool.schema.string().optional(),
                         worktree: tool.schema.boolean().optional(),
@@ -133,17 +155,29 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 return "Error: a team member session cannot create a team"
             }
 
-            const names = new Set<string>()
+            // Validate explicitly-provided names; collect them so the pool picker
+            // avoids collisions. Members may omit `name` — those are assigned a
+            // random pool name below.
+            const taken = new Set<string>()
             for (const m of args.members) {
+                if (m.name === undefined) continue
                 // "master" and "orchestrator" are reserved synthetic identities
                 // (the leader pseudo-member and the orchestrator message sender);
                 // a real member by either name would collide with them.
                 if (m.name === "master" || m.name === "orchestrator") {
                     return `Error: "${m.name}" is a reserved name and cannot be a member name`
                 }
-                if (names.has(m.name)) return `Error: duplicate member name "${m.name}"`
-                names.add(m.name)
+                if (taken.has(m.name)) return `Error: duplicate member name "${m.name}"`
+                taken.add(m.name)
             }
+
+            // Resolve names: explicit names are kept; omitted names are drawn from
+            // MEMBER_NAME_POOL at random with no reuse within this team.
+            const named = args.members.map(m => {
+                const name = m.name ?? pickName(taken)
+                taken.add(name)
+                return { ...m, name }
+            })
 
             // Session scoping: project-scope teams are stored under
             // <storageRoot>/<leadSessionId>/teams/<name>/; user-scope teams stay
@@ -172,7 +206,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             }
 
             // Auto-assign agent + model for members that omitted them. The agent
-            // is derived from the role text; the model is resolved from the
+            // is derived from the role label; the model is resolved from the
             // opencode agent registry (client.app.agents) or the global default.
             const modelByAgent = new Map<string, string | undefined>()
             try {
@@ -209,10 +243,10 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             } catch {
                 // best-effort
             }
-            const resolved: MemberSpec[] = args.members.map(m => {
+            const resolved: MemberSpec[] = named.map(m => {
                 const agent = m.agent ?? deriveAgent(m.role)
                 const model = m.model ?? modelByAgent.get(agent) ?? defaultModel ?? sessionModel
-                return { name: m.name, role: m.role, agent, model, worktree: m.worktree }
+                return { name: m.name, role: m.role, prompt: m.prompt, agent, model, worktree: m.worktree }
             })
 
             const now = Date.now()
@@ -349,11 +383,14 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
             const member = team.members.find(m => m.name === args.member_name)
             if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
 
-            // Role lives in the spec (config.json), not in runtime state.
+            // Role and prompt live in the spec (config.json), not in runtime state.
             let role: string | undefined
+            let prompt: string | undefined
             try {
                 const spec = await readTeamSpec(ctx.storageRoot, caller.teamName, caller.leadSessionId)
-                role = spec?.members.find(m => m.name === args.member_name)?.role
+                const sm = spec?.members.find(m => m.name === args.member_name)
+                role = sm?.role
+                prompt = sm?.prompt
             } catch {
                 // spec unreadable
             }
@@ -361,6 +398,7 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
             const lines: string[] = [
                 `Name: ${member.name}`,
                 `Role: ${role ?? "unknown"}`,
+                `Prompt: ${prompt ?? "unknown"}`,
                 `Agent: ${member.agent ?? "build"}`,
                 `Model: ${member.model ?? "unknown"}`,
                 `Status: ${member.status}`,
@@ -381,17 +419,18 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
 export function teamFixTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Modify a team member's name, role, and/or agent. Changing the agent automatically updates the model to the agent's bound model (if one exists in the agent registry). Only allowed when the team is not busy.",
+            "Modify a team member's name, role, system prompt, and/or agent. Changing the agent automatically updates the model to the agent's bound model (if one exists in the agent registry). Only allowed when the team is not busy.",
         args: {
             team_id: tool.schema.string().min(1),
             member_name: tool.schema.string().min(1),
             new_name: tool.schema.string().min(1).max(32).regex(/^[a-z0-9-]+$/).optional(),
-            new_role: tool.schema.string().min(1).max(2048).optional(),
+            new_role: tool.schema.string().min(1).max(64).optional(),
+            new_prompt: tool.schema.string().min(1).max(8192).optional(),
             new_agent: tool.schema.string().min(1).optional(),
         },
         async execute(args, context) {
-            if (!args.new_name && !args.new_role && !args.new_agent) {
-                return "Error: provide at least one of new_name, new_role, or new_agent"
+            if (!args.new_name && !args.new_role && !args.new_prompt && !args.new_agent) {
+                return "Error: provide at least one of new_name, new_role, new_prompt, or new_agent"
             }
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller) return "Error: caller is not a member of this team"
@@ -455,6 +494,12 @@ export function teamFixTool(ctx: PluginContext): ToolDefinition {
             if (args.new_role && specMember) {
                 specMember.role = args.new_role
                 changes.push("role: updated")
+            }
+
+            // --- new_prompt: spec only (prompt is a config field) ---
+            if (args.new_prompt && specMember) {
+                specMember.prompt = args.new_prompt
+                changes.push("prompt: updated")
             }
 
             // --- new_agent: update spec + state, auto-resolve bound model ---

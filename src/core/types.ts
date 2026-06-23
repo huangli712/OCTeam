@@ -14,12 +14,13 @@ export type TeamSpec = {
     name: string                        // /^[a-z0-9-]+$/, unique within scope
     description?: string
     createdAt: number                   // epoch ms
-    members: MemberSpec[]           // 1-8 members
+    members: MemberSpec[]               // 1-8 members
 }
 
 export type MemberSpec = {
-    name: string                        // unique within team
-    role: string                        // role description for system prompt
+    name: string                        // unique within team, e.g. "alice" (auto-picked from a name pool if omitted at creation)
+    role: string                        // role label, e.g. "coder", "verifier"
+    prompt: string                      // system prompt content (the member's instructions)
     model?: string                      // model identifier, e.g. "claude-sonnet"
     agent?: string                      // OpenCode agent type, default "build"
     worktree?: boolean                  // create isolated git worktree, default false
