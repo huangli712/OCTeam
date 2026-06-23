@@ -222,9 +222,11 @@ export function SessionNavigatorSidebar(props: {
                                         </text>
                                         <box flexDirection="row">
                                             <text fg={textColor()}>{team.name}</text>
+                                            <text fg={textMuted()}> [</text>
                                             <text fg={team.activated ? COLOR_ACTIVE : COLOR_INACTIVE}>
-                                                {team.activated ? " [active]" : " [inactive]"}
+                                                {team.activated ? "active" : "inactive"}
                                             </text>
+                                            <text fg={textMuted()}>]</text>
                                             <text fg={textMuted()}>{" [" + team.status + "]"}</text>
                                         </box>
                                     </box>
