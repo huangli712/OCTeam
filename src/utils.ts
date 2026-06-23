@@ -6,24 +6,34 @@
 import { listAllTeams, loadTeamState } from "./state/store.js"
 import type { MemberState, MemberSpec, TeamSpec } from "./types.js"
 
-// --- sessionID -> member index (process-level, O(1) resolve) ---
+// --- sessionID -> team index (process-level, O(1) resolve) ---
+//
+// Two maps by role. A member session belongs to exactly one team (1:1), so the
+// member index keeps its original shape. A master (leader) session may own
+// MULTIPLE teams (1:many) but interacts with at most one "active" team at a
+// time, so the master index holds a per-team map plus an active pointer.
 
-type IndexEntry =
-    | {
-          teamName: string
-          memberName: string
-          isMaster?: false
-          leadSessionId?: string
-          storageRoot: string
-      }
-    | {
-          teamName: string
-          isMaster: true
-          leadSessionId?: string
-          storageRoot: string
-      }
+type MemberIndexEntry = {
+    teamName: string
+    memberName: string
+    leadSessionId?: string
+    storageRoot: string
+}
 
-const sessionIndex = new Map<string, IndexEntry>()
+type MasterTeamEntry = {
+    teamName: string
+    leadSessionId?: string
+    storageRoot: string
+    directory: string                  // resolved teamDir (absolute) — unique key
+}
+
+type MasterIndexEntry = {
+    teams: Map<string, MasterTeamEntry> // keyed by directory
+    activeDirectory?: string            // the ONE available team; undefined ⇒ none active
+}
+
+const memberIndex = new Map<string, MemberIndexEntry>()
+const masterIndex = new Map<string, MasterIndexEntry>()
 
 export function indexMember(
     sessionID: string,
@@ -32,20 +42,73 @@ export function indexMember(
     leadSessionId: string | undefined,
     storageRoot: string,
 ): void {
-    sessionIndex.set(sessionID, { teamName, memberName, leadSessionId, storageRoot })
+    memberIndex.set(sessionID, { teamName, memberName, leadSessionId, storageRoot })
 }
 
-export function indexMaster(
+/**
+ * Add a team to a master session's team map. Does NOT change the active pointer.
+ * Replaces the old 1:1 indexMaster — adding a second team no longer overwrites
+ * the first (which previously orphaned its result delivery).
+ */
+export function indexMasterTeam(
     sessionID: string,
     teamName: string,
     leadSessionId: string | undefined,
     storageRoot: string,
+    directory: string,
 ): void {
-    sessionIndex.set(sessionID, { teamName, isMaster: true, leadSessionId, storageRoot })
+    let entry = masterIndex.get(sessionID)
+    if (!entry) {
+        entry = { teams: new Map() }
+        masterIndex.set(sessionID, entry)
+    }
+    entry.teams.set(directory, { teamName, leadSessionId, storageRoot, directory })
 }
 
+/** Mark `directory` as the master session's active (available) team. */
+export function setActiveTeam(sessionID: string, directory: string): void {
+    const entry = masterIndex.get(sessionID)
+    if (entry) entry.activeDirectory = directory
+}
+
+/** Clear the master session's active pointer (no team available). */
+export function clearActiveTeam(sessionID: string): void {
+    const entry = masterIndex.get(sessionID)
+    if (entry) entry.activeDirectory = undefined
+}
+
+/**
+ * Remove ONE team from a master session's map (team_delete). Clears the active
+ * pointer if it referenced the removed team. Drops the whole master entry once
+ * its team map empties. This is what team_delete must call instead of
+ * unindexSession, which would wipe EVERY team the session owns.
+ */
+export function unindexMasterTeam(sessionID: string, directory: string): void {
+    const entry = masterIndex.get(sessionID)
+    if (!entry) return
+    entry.teams.delete(directory)
+    if (entry.activeDirectory === directory) entry.activeDirectory = undefined
+    if (entry.teams.size === 0) masterIndex.delete(sessionID)
+}
+
+/**
+ * Remove a session from BOTH indexes entirely. Used on session.deleted (full
+ * teardown of a leader or bare member session).
+ */
 export function unindexSession(sessionID: string): void {
-    sessionIndex.delete(sessionID)
+    memberIndex.delete(sessionID)
+    masterIndex.delete(sessionID)
+}
+
+/** True if this session owns at least one team as master. */
+export function isMasterSession(sessionID: string): boolean {
+    return masterIndex.has(sessionID)
+}
+
+/** Enumerate every team a master session owns (drain-all enumeration). */
+export function resolveMasterTeams(sessionID: string): MasterTeamEntry[] {
+    const entry = masterIndex.get(sessionID)
+    return entry ? Array.from(entry.teams.values()) : []
 }
 
 /**
@@ -55,8 +118,35 @@ export function unindexSession(sessionID: string): void {
  * escalate to master of a new team.
  */
 export function isIndexedMember(sessionID: string): boolean {
-    const hit = sessionIndex.get(sessionID)
-    return hit !== undefined && hit.isMaster !== true
+    return memberIndex.has(sessionID)
+}
+
+/**
+ * Master-only activation gate (pure predicate). Members always pass — a member's
+ * team is necessarily active while it is busy (busy ⟹ active), so the gate would
+ * never legitimately block a member. A master may only interact with its active
+ * team, so an inactive target (activatedAt === undefined) is forbidden.
+ */
+export function isInteractionForbidden(
+    callerIsMaster: boolean,
+    targetTeamActivatedAt: number | undefined,
+): boolean {
+    if (!callerIsMaster) return false
+    return targetTeamActivatedAt === undefined
+}
+
+/**
+ * Actionable error string for a master interacting with an inactive team, or
+ * null when the team is active. Centralizes the message used by master-only
+ * mutating tools (workflow / team_fix).
+ */
+export function activationError(
+    teamName: string,
+    activatedAt: number | undefined,
+): string | null {
+    return activatedAt === undefined
+        ? `Error: team "${teamName}" is not the active team. Call team_activate(team_id="${teamName}") first.`
+        : null
 }
 
 /** A team member resolved from a sessionID, plus the team context it belongs to. */
@@ -69,66 +159,109 @@ export type ResolvedMember = MemberState & {
     storageRoot: string
 }
 
+/** Build the synthetic master pseudo-member for a resolved team. */
+function syntheticMaster(team: {
+    teamName: string
+    teamRunId: string
+    directory: string
+}, leadSessionId: string | undefined, storageRoot: string): ResolvedMember {
+    return {
+        name: "master",
+        isMaster: true,
+        status: "idle",
+        initialized: true,
+        turnCount: 0,
+        teamName: team.teamName,
+        teamRunId: team.teamRunId,
+        directory: team.directory,
+        leadSessionId,
+        storageRoot,
+    }
+}
+
 /**
  * Resolve a sessionID to its team member. Returns null for non-team sessions
- * (the common case — O(1) reject via sessionIndex). For the leader session,
- * returns a synthetic master pseudo-member (B1 fix) that is never persisted and
- * never participates in orchestration dispatch — it only lets the master
- * mailbox be drained like any other recipient.
+ * (the common case — O(1) reject). For a member session, resolves its single
+ * team. For a master (leader) session that owns multiple teams, resolves the
+ * synthetic master of the ACTIVE team only (or null if none is active) — the
+ * synthetic master never participates in orchestration dispatch; it only lets
+ * the active team's master mailbox be drained like any other recipient.
  */
 export async function resolveTeamMember(
     storageRoot: string,
     sessionID: string,
 ): Promise<ResolvedMember | null> {
-    const hit = sessionIndex.get(sessionID)
-    if (!hit) return null
-    // Resolve against the scope captured at index time (entry.storageRoot +
-    // entry.leadSessionId), NOT the caller's storageRoot. A project-team member is
-    // indexed under its LEADER's session segment, so it resolves to the leader's
-    // team dir rather than anything scoped to the member's own session.
-    const team = await loadTeamState(hit.storageRoot, hit.teamName, hit.leadSessionId)
-    if (hit.isMaster) {
-        return {
-            name: "master",
-            isMaster: true,
-            status: "idle",
-            initialized: true,
-            turnCount: 0,
-            teamName: team.teamName,
-            teamRunId: team.teamRunId,
-            directory: team.directory,
-            leadSessionId: hit.leadSessionId,
-            storageRoot: hit.storageRoot,
-        }
+    // Member path (1:1). Resolve against the scope captured at index time, NOT
+    // the caller's storageRoot — a project-team member is indexed under its
+    // LEADER's session segment.
+    const m = memberIndex.get(sessionID)
+    if (m) {
+        const team = await loadTeamState(m.storageRoot, m.teamName, m.leadSessionId)
+        const member = team.members.find(x => x.name === m.memberName)
+        return member
+            ? {
+                  ...member,
+                  teamName: team.teamName,
+                  teamRunId: team.teamRunId,
+                  directory: team.directory,
+                  leadSessionId: m.leadSessionId,
+                  storageRoot: m.storageRoot,
+              }
+            : null
     }
-    const member = team.members.find(m => m.name === hit.memberName)
-    return member
-        ? {
-              ...member,
-              teamName: team.teamName,
-              teamRunId: team.teamRunId,
-              directory: team.directory,
-              leadSessionId: hit.leadSessionId,
-              storageRoot: hit.storageRoot,
-          }
-        : null
+    // Master path (1:many) — resolve the ACTIVE team only.
+    const master = masterIndex.get(sessionID)
+    if (!master || !master.activeDirectory) return null
+    const entry = master.teams.get(master.activeDirectory)
+    if (!entry) return null
+    const team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
+    return syntheticMaster(team, entry.leadSessionId, entry.storageRoot)
 }
 
 /**
- * Authorization gate for team-scoped tools. Resolves the caller's session to a
- * member (or synthetic master) and returns it ONLY when the caller belongs to
- * `teamId`. Returns null when the caller is not a team member at all OR belongs
- * to a different team — callers turn null into an "unauthorized" error. This is
- * what prevents a member of team A from mutating team B's state.
+ * Authorization gate for team-scoped tools. Resolves the caller's session and
+ * returns it ONLY when the caller belongs to `teamId`. Returns null when the
+ * caller is not a team member at all OR belongs to a different team — callers
+ * turn null into an "unauthorized" error. This prevents a member of team A from
+ * mutating team B's state.
+ *
+ * For a master, the team is found by explicit `teamId` across ALL owned teams
+ * (not via the active pointer). When `opts.requireActive` is true (default),
+ * a master interacting with an inactive team is rejected (null) — the
+ * single-active interaction gate. Read-only tools pass `requireActive: false`.
  */
 export async function resolveCallerInTeam(
     storageRoot: string,
     sessionID: string,
     teamId: string,
+    opts: { requireActive?: boolean } = {},
 ): Promise<ResolvedMember | null> {
-    const caller = await resolveTeamMember(storageRoot, sessionID)
-    if (!caller || caller.teamName !== teamId) return null
-    return caller
+    const requireActive = opts.requireActive ?? true
+    // Member path (1:1) — activation never gates members.
+    const m = memberIndex.get(sessionID)
+    if (m) {
+        if (m.teamName !== teamId) return null
+        const team = await loadTeamState(m.storageRoot, m.teamName, m.leadSessionId)
+        const member = team.members.find(x => x.name === m.memberName)
+        return member
+            ? {
+                  ...member,
+                  teamName: team.teamName,
+                  teamRunId: team.teamRunId,
+                  directory: team.directory,
+                  leadSessionId: m.leadSessionId,
+                  storageRoot: m.storageRoot,
+              }
+            : null
+    }
+    // Master path (1:many) — find the team by explicit teamId.
+    const master = masterIndex.get(sessionID)
+    if (!master) return null
+    const entry = Array.from(master.teams.values()).find(t => t.teamName === teamId)
+    if (!entry) return null
+    const team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
+    if (requireActive && isInteractionForbidden(true, team.activatedAt)) return null
+    return syntheticMaster(team, entry.leadSessionId, entry.storageRoot)
 }
 
 /**
@@ -151,7 +284,13 @@ async function indexScope(storageRoot: string, segmented: boolean): Promise<void
     for (const { leadSessionId, teamName } of teams) {
         try {
             const team = await loadTeamState(storageRoot, teamName, leadSessionId)
-            indexMaster(team.leadSessionId, team.teamName, leadSessionId, storageRoot)
+            indexMasterTeam(team.leadSessionId, team.teamName, leadSessionId, storageRoot, team.directory)
+            // Restore the active pointer from the persisted flag. If >1 team has
+            // activatedAt (crash mid-switch), this overwrites — reconcileActivation
+            // (run after rebuild) keeps only the latest on disk.
+            if (team.activatedAt !== undefined) {
+                setActiveTeam(team.leadSessionId, team.directory)
+            }
             for (const m of team.members) {
                 if (m.sessionId) {
                     indexMember(m.sessionId, team.teamName, m.name, leadSessionId, storageRoot)

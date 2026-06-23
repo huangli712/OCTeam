@@ -68,6 +68,11 @@ export type TeamState = {
     bounds: Bounds                     // resource limits (Section 8)
     createdAt: number
     startedAt?: number                 // when first task started
+    activatedAt?: number               // epoch ms; presence ⇒ "available" team for its
+                                       // leadSessionId. INVARIANT: ≤1 team per leadSessionId
+                                       // has this set, enforced by team_activate (deactivates
+                                       // sibling) + startup reconcile (keeps latest on >1
+                                       // violation). Orthogonal to TeamStatus lifecycle.
 }
 
 // --- Bounds (resource limits, Section 8) ---

@@ -219,7 +219,7 @@ export function SessionNavigatorSidebar(props: {
                                             {isTeamExpanded(team.name) ? "\u25bc " : "\u25b6 "}
                                         </text>
                                         <text fg={textColor()}>
-                                            {team.name + " [" + team.status + "]"}
+                                            {(team.activated ? "\u2605 " : "") + team.name + " [" + team.status + "]"}
                                         </text>
                                     </box>
                                     {isTeamExpanded(team.name) ? (

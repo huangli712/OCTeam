@@ -20,7 +20,7 @@ import type { PluginContext } from "../context.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
 import { ensureMembersReady, advanceToStage } from "../orchestration/dispatch.js"
 import { createTask, updateTask } from "../tasks.js"
-import { resolveCallerInTeam } from "../utils.js"
+import { activationError, resolveCallerInTeam } from "../utils.js"
 import type { MemberState, Stage } from "../types.js"
 
 const DEFAULT_TIMEOUT_MS = 300_000
@@ -124,6 +124,11 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
 
             const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
 
+            // Single-active interaction gate: the master may only orchestrate the
+            // active team.
+            const gate = activationError(team.teamName, team.activatedAt)
+            if (gate) return gate
+
             // Phase 1: pre-check under mutex.
             let busy = false
             await team.mutex.runExclusive(async () => {
@@ -207,6 +212,11 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
             }
 
             const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+
+            // Single-active interaction gate: the master may only orchestrate the
+            // active team.
+            const gate = activationError(team.teamName, team.activatedAt)
+            if (gate) return gate
 
             // Phase 1: pre-check under mutex.
             let busy = false
@@ -305,6 +315,11 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
 
             const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
 
+            // Single-active interaction gate: the master may only orchestrate the
+            // active team.
+            const gate = activationError(team.teamName, team.activatedAt)
+            if (gate) return gate
+
             // Validate members exist.
             for (const name of stageMembers) {
                 if (!team.members.some(m => m.name === name)) {
@@ -391,6 +406,11 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             }
 
             const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+
+            // Single-active interaction gate: the master may only orchestrate the
+            // active team.
+            const gate = activationError(team.teamName, team.activatedAt)
+            if (gate) return gate
 
             if (!team.members.some(m => m.name === args.decider)) {
                 return `Error: decider "${args.decider}" is not a member`
@@ -503,6 +523,11 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
             }
 
             const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+
+            // Single-active interaction gate: the master may only orchestrate the
+            // active team.
+            const gate = activationError(team.teamName, team.activatedAt)
+            if (gate) return gate
 
             let busy = false
             await team.mutex.runExclusive(async () => {

@@ -10,8 +10,8 @@ import { promisify } from "node:util"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../context.js"
-import { deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../state/store.js"
-import { indexMember, indexMaster, isIndexedMember, resolveCallerInTeam, unindexSession } from "../utils.js"
+import { deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec, type Team } from "../state/store.js"
+import { activationError, indexMember, indexMasterTeam, isIndexedMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../utils.js"
 import { countUnreadMessages } from "../mailbox.js"
 import { clearWakeHint } from "../wake-hint.js"
 import { inboxPath } from "../state/paths.js"
@@ -34,6 +34,32 @@ async function cleanWorktree(
     }).catch(() => {
         // best effort
     })
+}
+
+/**
+ * Pure decision for team_activate (exported for unit tests). The busy guard
+ * fires on the OUTGOING team only (locked decision 4): you cannot deactivate a
+ * team mid-orchestration. The target's own status never blocks activation —
+ * activating an already-active team is a no-op.
+ */
+export type ActivateDecision =
+    | { kind: "noop" }
+    | { kind: "ok" }
+    | { kind: "error"; message: string }
+
+export function decideActivate(opts: {
+    targetIsAlreadyActive: boolean
+    outgoingBusy: boolean
+    outgoingName?: string
+}): ActivateDecision {
+    if (opts.targetIsAlreadyActive) return { kind: "noop" }
+    if (opts.outgoingBusy) {
+        return {
+            kind: "error",
+            message: `Cannot switch: team "${opts.outgoingName}" is mid-orchestration (busy). Wait for it to finish or complete before switching to another team.`,
+        }
+    }
+    return { kind: "ok" }
 }
 
 /** Resource bounds with design defaults (§8.1), overridden by user input. */
@@ -100,9 +126,9 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 .optional(),
         },
         async execute(args, context) {
-            // A member (child) session must not create its own team: indexMaster
-            // below would overwrite its member index entry, orphaning its original
-            // team and escalating it to master of a new team.
+            // A member (child) session must not create its own team: indexing it
+            // as master below would let it escalate to master of a new team while
+            // it is still a member of its original team.
             if (isIndexedMember(context.sessionID)) {
                 return "Error: a team member session cannot create a team"
             }
@@ -125,19 +151,20 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             // for user scope.
             const leadSessionId = ctx.scope === "project" ? context.sessionID : undefined
 
-            // M4: refuse if this session already leads a non-terminal team. One
-            // interactive session drives one active team at a time (§252); otherwise
-            // indexMaster below would silently overwrite the prior team's master
-            // index and orphan its result delivery.
+            // A session may own multiple teams (1:many master index), but at most
+            // one is "available" (active) at a time. Determine whether this session
+            // already has an active team: if not, the new team auto-activates
+            // (preserves the single-team UX); otherwise it is created inactive and
+            // the user must team_activate to switch. The single-active invariant is
+            // enforced by team_activate, not by refusing creation.
+            let sessionHasActiveTeam = false
             for (const other of await listTeamNames(ctx.storageRoot, leadSessionId)) {
                 if (other === args.name) continue
                 try {
                     const t = await loadTeamState(ctx.storageRoot, other, leadSessionId)
-                    if (
-                        t.leadSessionId === context.sessionID
-                        && (t.status === "live" || t.status === "busy" || t.status === "idle")
-                    ) {
-                        return `Error: this session already leads team "${other}" (status ${t.status}). Shut it down or delete it before creating another team.`
+                    if (t.leadSessionId === context.sessionID && t.activatedAt !== undefined) {
+                        sessionHasActiveTeam = true
+                        break
                     }
                 } catch {
                     // unreadable team state — ignore
@@ -207,7 +234,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 agent: m.agent,
             }))
 
-            await initTeamState(ctx.storageRoot, {
+            const createdTeam = await initTeamState(ctx.storageRoot, {
                 version: 1,
                 teamRunId: crypto.randomUUID(),
                 teamName: args.name,
@@ -216,13 +243,20 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 members,
                 bounds: defaultBounds(args.bounds),
                 createdAt: now,
+                // First team for this session auto-activates; subsequent teams are
+                // created inactive (user switches explicitly via team_activate).
+                activatedAt: sessionHasActiveTeam ? undefined : now,
             }, leadSessionId)
 
-            // Index the leader session as master so its mailbox (queued team
-            // results) can be drained by the event handler / Transform hook.
-            indexMaster(context.sessionID, args.name, leadSessionId, ctx.storageRoot)
+            // Index the leader session as master (1:many) so this team's mailbox
+            // (queued team results) can be drained by the event handler. Set the
+            // active pointer when this is the session's first/only active team.
+            indexMasterTeam(context.sessionID, args.name, leadSessionId, ctx.storageRoot, createdTeam.directory)
+            if (!sessionHasActiveTeam) {
+                setActiveTeam(context.sessionID, createdTeam.directory)
+            }
 
-            return `Team "${args.name}" created with ${members.length} member(s): ${members.map(m => m.name).join(", ")}. Status: live. Sessions will spawn on first workflow call.`
+            return `Team "${args.name}" created with ${members.length} member(s): ${members.map(m => m.name).join(", ")}. Status: live${sessionHasActiveTeam ? " (inactive — call team_activate to switch to it)" : " (active)"}. Sessions will spawn on first workflow call.`
         },
     })
 }
@@ -263,7 +297,8 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
             team_id: tool.schema.string().min(1),
         },
         async execute(args, context) {
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            // Read-only inspection: allowed on inactive teams (opt out of the gate).
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false })
             if (!caller) return "Error: caller is not a member of this team"
             let team
             try {
@@ -302,7 +337,8 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
             member_name: tool.schema.string().min(1),
         },
         async execute(args, context) {
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            // Read-only inspection: allowed on inactive teams (opt out of the gate).
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false })
             if (!caller) return "Error: caller is not a member of this team"
             let team
             try {
@@ -368,6 +404,9 @@ export function teamFixTool(ctx: PluginContext): ToolDefinition {
             if (team.status === "busy") {
                 return `Error: team "${args.team_id}" is busy. Wait for the workflow to finish before modifying members.`
             }
+            // Master-only mutating tool: only the active team may be modified.
+            const gate = activationError(team.teamName, team.activatedAt)
+            if (gate) return gate
             const member = team.members.find(m => m.name === args.member_name)
             if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
 
@@ -455,12 +494,10 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             force: tool.schema.boolean().optional(),
         },
         async execute(args, context) {
-            // team_delete bypasses sessionIndex and reads team state directly
-            // from disk. sessionIndex maps sessionID -> {teamName} 1:1, so
-            // creating a second team in the same session (allowed by M4 when the
-            // prior team is failed) overwrites the prior team's index
-            // entry. Without this bypass, orphaned teams cannot be cleaned up
-            // because resolveCallerInTeam returns null.
+            // team_delete reads team state directly from disk rather than via the
+            // caller index: an inactive team is not resolvable through the
+            // single-active interaction gate, so a direct load is needed to clean
+            // up any team the session owns (active or not).
             const pathLeadSessionId = ctx.scope === "project" ? context.sessionID : undefined
             let team
             try {
@@ -475,9 +512,11 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             if (!force && team.status === "busy") {
                 return `Error: team "${args.team_id}" is busy with an active orchestration. Wait for it to finish, or re-run with force: true.`
             }
-            // Clean up worktrees, then unindex all known sessions (and drop their
-            // wake-hint throttle entries, L1). Worktree teardown must precede
-            // deleteTeamStorage so git can remove the still-present worktree files.
+            // Clean up worktrees, then unindex the team. Worktree teardown must
+            // precede deleteTeamStorage so git can remove the still-present worktree
+            // files. Member sessions are 1:1 (full unindex); the master owns this
+            // team in a 1:many index, so remove ONLY this team from the master's map
+            // (unindexSession on the leader would wipe the session's OTHER teams).
             for (const m of team.members) {
                 await cleanWorktree(ctx.directory, m.worktreePath)
                 if (m.sessionId) {
@@ -485,11 +524,95 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     clearWakeHint(m.sessionId)
                 }
             }
-            unindexSession(team.leadSessionId)
+            unindexMasterTeam(team.leadSessionId, team.directory)
             clearWakeHint(team.leadSessionId)
             await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
             invalidateTeam(team.directory)
             return `Team "${args.team_id}" deleted${force ? " (forced)" : ""}.`
+        },
+    })
+}
+
+/** Run fn while holding every team's mutex, acquired in a deterministic order
+ * (by directory string) to prevent deadlock between racing switches. */
+async function withOrderedLocks(teams: Team[], fn: () => Promise<void>): Promise<void> {
+    const ordered = [...teams].sort((a, b) => a.directory.localeCompare(b.directory))
+    const run = async (i: number): Promise<void> => {
+        if (i >= ordered.length) return fn()
+        await ordered[i].mutex.runExclusive(() => run(i + 1))
+    }
+    await run(0)
+}
+
+export function teamActivateTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Make a team the session's active (available) team. At most one team is active per " +
+            "session; the previously-active sibling is deactivated. A team that is mid-orchestration " +
+            "(busy) cannot be switched away from — finish or wait first. Idempotent: activating the " +
+            "already-active team is a no-op. The master may only interact with the active team.",
+        args: {
+            team_id: tool.schema.string().min(1),
+        },
+        async execute(args, context) {
+            const leadSessionId = ctx.scope === "project" ? context.sessionID : undefined
+            let X: Team
+            try {
+                X = await loadTeamState(ctx.storageRoot, args.team_id, leadSessionId)
+            } catch {
+                return `Error: team "${args.team_id}" not found`
+            }
+            if (X.leadSessionId !== context.sessionID) {
+                return "Error: team_activate is master-only (only the team's leader session can activate it)"
+            }
+
+            // Find the currently-active sibling Y (if any) by scanning the
+            // session's teams for the one with activatedAt set and a different dir.
+            let Y: Team | undefined
+            for (const other of await listTeamNames(ctx.storageRoot, leadSessionId)) {
+                try {
+                    const t = await loadTeamState(ctx.storageRoot, other, leadSessionId)
+                    if (
+                        t.leadSessionId === context.sessionID
+                        && t.activatedAt !== undefined
+                        && t.directory !== X.directory
+                    ) {
+                        Y = t
+                        break
+                    }
+                } catch {
+                    // unreadable team state — ignore
+                }
+            }
+
+            let result = ""
+            await withOrderedLocks([X, Y].filter((t): t is Team => t !== undefined), async () => {
+                const decision = decideActivate({
+                    targetIsAlreadyActive: X.activatedAt !== undefined && Y === undefined,
+                    // Re-check Y busy under the lock (TOCTOU-safe).
+                    outgoingBusy: Y !== undefined && (Y.activeTask !== undefined || Y.status === "busy"),
+                    outgoingName: Y?.teamName,
+                })
+                if (decision.kind === "noop") {
+                    result = `Team "${args.team_id}" is already the active team.`
+                    return
+                }
+                if (decision.kind === "error") {
+                    result = decision.message
+                    return
+                }
+                // In-memory update is SYNCHRONOUS (no await between clear+set) so no
+                // observer ever sees 0 or 2 active teams in memory.
+                const now = Date.now()
+                if (Y) Y.activatedAt = undefined
+                X.activatedAt = now
+                setActiveTeam(context.sessionID, X.directory)
+                // Persist: clear Y FIRST (fail-safe to 0-available on crash), then set X.
+                if (Y) await saveTeamState(Y).catch(() => {})
+                await saveTeamState(X).catch(() => {})
+                result = `Team "${args.team_id}" activated.${Y ? ` Team "${Y.teamName}" deactivated.` : ""}`
+            })
+            return result
         },
     })
 }

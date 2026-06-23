@@ -7,6 +7,7 @@ import {
     createCompactingHook,
     createEventHandler,
     createTransformHook,
+    reconcileActivation,
     reconcileCrashedTeams,
     startSweepTimer,
 } from "./hooks.js"
@@ -17,7 +18,7 @@ const id = "octeam"
 /**
  * Server plugin module entry. Builds the PluginContext closure, rebuilds the
  * session index from disk (crash recovery), starts the sweep timer, and wires
- * all 16 tools + the event/transform hooks.
+ * all 18 tools + the event/transform hooks.
  *
  * Pipeline (design §1): tool handlers + event handler + transform hook all
  * share ctx; event handler + sweep timer drive the per-team locked state
@@ -30,6 +31,12 @@ const server = async (input: PluginInput): Promise<Hooks> => {
     // so idles/transforms resolve correctly after a plugin/OpenCode restart.
     await rebuildSessionIndex(ctx.projectStorageRoot, ctx.userStorageRoot).catch(() => {
         // best effort — unreadable teams are skipped
+    })
+
+    // Reconcile the single-active invariant: backfill legacy single-team
+    // sessions, and resolve any >1-active violation left by a crash mid-switch.
+    await reconcileActivation(ctx).catch(() => {
+        // best effort — never block plugin load on reconcile
     })
 
     // Crash recovery (§3): reconcile teams left "busy"/"idle" by a crashed prior

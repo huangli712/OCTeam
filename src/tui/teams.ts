@@ -26,6 +26,7 @@ export type TeamMemberRow = {
 export type TeamSummary = {
     name: string
     status: string
+    activated?: boolean        // true ⇒ this is the session's active (available) team
     members: TeamMemberRow[]
     active?: {
         type: string
@@ -75,6 +76,7 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
             out.push({
                 name: state.teamName ?? e.name,
                 status: state.status ?? "unknown",
+                activated: state.activatedAt !== undefined,
                 members: await Promise.all((state.members ?? []).map(async (m: any) => {
                     const mailbox = await countMailbox(teamDir, m.name)
                     return {

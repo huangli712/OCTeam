@@ -25,6 +25,7 @@ export function makeState(
     teamName: string,
     leadSessionId: string,
     members: MemberState[] = [],
+    activatedAt?: number,
 ): TeamState {
     return {
         version: 1,
@@ -44,5 +45,6 @@ export function makeState(
             messageUnreadMaxBytes: 1048576,
         },
         createdAt: Date.now(),
+        activatedAt,
     }
 }

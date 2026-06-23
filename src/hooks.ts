@@ -13,7 +13,7 @@ import type { Hooks } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "./context.js"
 import { activeTeams, clearActiveTask, invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from './state/store.js';
-import { resolveTeamMember, unindexSession } from "./utils.js"
+import { resolveMasterTeams, resolveTeamMember, isMasterSession, setActiveTeam, unindexSession } from "./utils.js"
 import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservations } from "./mailbox.js"
 import { reapStaleClaims } from "./tasks.js"
 import { handleStatusEvent, processIdle } from "./orchestration/handlers.js"
@@ -78,19 +78,36 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
         const sessionID = (props as { sessionID?: string } | undefined)?.sessionID
         if (!sessionID) return
 
+        // Master drain-all: a master session may own MULTIPLE teams. Drain each
+        // owned team's master mailbox under that team's own mutex, independent of
+        // which team is "active" — activation governs interaction, not delivery.
+        // processIdle's master branch (Step 0) drains queued results; no dispatch.
+        if (isMasterSession(sessionID)) {
+            for (const e of resolveMasterTeams(sessionID)) {
+                try {
+                    const team = await loadTeamState(e.storageRoot, e.teamName, e.leadSessionId)
+                    await team.mutex.runExclusive(async () => {
+                        await processIdle(ctx, team, masterPseudoMember(), sessionID)
+                        await saveTeamState(team).catch(() => {
+                            // best-effort persist
+                        })
+                    })
+                } catch {
+                    // unreadable team state — skip
+                }
+            }
+            return
+        }
+
+        // Member path — single team (1:1). Unchanged behavior.
         const member = await resolveTeamMember(ctx.storageRoot, sessionID)
         if (!member) return // not a team member (the common case)
         const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
         await team.mutex.runExclusive(async () => {
-            if (member.isMaster) {
-                // synthetic master — Step 0 drains queued results, no dispatch
-                await processIdle(ctx, team, member as MemberState, sessionID)
-            } else {
-                // operate on the LIVE member object so mutations persist
-                const live = team.members.find(m => m.name === member.name)
-                if (!live) return
-                await processIdle(ctx, team, live, sessionID)
-            }
+            // operate on the LIVE member object so mutations persist
+            const live = team.members.find(m => m.name === member.name)
+            if (!live) return
+            await processIdle(ctx, team, live, sessionID)
             // Flush any terminal transition (busy→idle/failed) the handlers made
             // under the mutex. processIdle's internal save runs before dispatch while
             // status is still "busy"; without this the idle/failed status never reaches
@@ -99,6 +116,17 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                 // best-effort persist
             })
         })
+    }
+}
+
+/** Build the synthetic master pseudo-member for a team's drain-all pass. */
+function masterPseudoMember(): MemberState & { isMaster: true } {
+    return {
+        name: "master",
+        isMaster: true,
+        status: "idle",
+        initialized: true,
+        turnCount: 0,
     }
 }
 
@@ -233,10 +261,105 @@ export async function reconcileCrashedTeams(ctx: PluginContext): Promise<void> {
 }
 
 /**
+ * Reconcile the single-active invariant on startup (multi-team feature). Runs
+ * once in server() init, AFTER rebuildSessionIndex. For each leader session:
+ *   - 0 active + exactly 1 team → backfill-activate it (preserves the legacy
+ *     single-team UX, where the sole team was implicitly active).
+ *   - 0 active + multiple teams → leave ALL inactive (do not guess; the user
+ *     activates explicitly).
+ *   - >1 active (crash mid-switch or hand-edited disk) → keep the latest
+ *     activatedAt (tiebreak by directory string for determinism), clear the rest.
+ * Also syncs the in-memory active pointer to the final on-disk state.
+ */
+export async function reconcileActivation(ctx: PluginContext): Promise<void> {
+    for (const scope of [
+        { root: ctx.projectStorageRoot, seg: true },
+        { root: ctx.userStorageRoot, seg: false },
+    ]) {
+        // Group every team by its leader session.
+        const bySession = new Map<string, { name: string; lead?: string; dir: string; at?: number }[]>()
+        for (const { leadSessionId, teamName } of await listAllTeams(scope.root, scope.seg)) {
+            try {
+                const t = await loadTeamState(scope.root, teamName, leadSessionId)
+                const arr = bySession.get(t.leadSessionId) ?? []
+                arr.push({ name: teamName, lead: leadSessionId, dir: t.directory, at: t.activatedAt })
+                bySession.set(t.leadSessionId, arr)
+            } catch {
+                // unreadable team state — skip
+            }
+        }
+
+        for (const [sid, teams] of bySession) {
+            const active = teams.filter(t => t.at !== undefined)
+            if (active.length === 0) {
+                // Legacy backfill: a lone team auto-activates; multiple stay inactive.
+                if (teams.length === 1) {
+                    await activateOnDisk(scope.root, teams[0].name, teams[0].lead, sid, teams[0].dir, Date.now())
+                }
+            } else if (active.length > 1) {
+                // Invariant violation: keep the latest, clear the rest. Tiebreak on
+                // identical activatedAt by directory string (deterministic).
+                const keep = active.reduce((a, b) =>
+                    b.at! > a.at! || (b.at! === a.at! && b.dir < a.dir) ? b : a,
+                )
+                for (const t of active) {
+                    if (t.dir === keep.dir) continue
+                    await deactivateOnDisk(scope.root, t.name, t.lead, t.dir)
+                }
+                setActiveTeam(sid, keep.dir)
+            } else {
+                // Exactly one active — already consistent; sync the in-memory pointer.
+                setActiveTeam(sid, active[0].dir)
+            }
+        }
+    }
+}
+
+/** Set activatedAt on a team and point the in-memory active pointer at it. */
+async function activateOnDisk(
+    storageRoot: string,
+    teamName: string,
+    leadSessionId: string | undefined,
+    sessionID: string,
+    directory: string,
+    at: number,
+): Promise<void> {
+    try {
+        const team = await loadTeamState(storageRoot, teamName, leadSessionId)
+        await team.mutex.runExclusive(async () => {
+            team.activatedAt = at
+            await saveTeamState(team)
+        })
+        setActiveTeam(sessionID, directory)
+    } catch {
+        // best-effort
+    }
+}
+
+/** Clear activatedAt on a team (does not touch the in-memory active pointer). */
+async function deactivateOnDisk(
+    storageRoot: string,
+    teamName: string,
+    leadSessionId: string | undefined,
+    _directory: string,
+): Promise<void> {
+    try {
+        const team = await loadTeamState(storageRoot, teamName, leadSessionId)
+        await team.mutex.runExclusive(async () => {
+            team.activatedAt = undefined
+            await saveTeamState(team)
+        })
+    } catch {
+        // best-effort
+    }
+}
+
+/**
  * Session-scoping cleanup on session.deleted. Removes any project-scope teams
  * owned by the deleted session (the whole <projectStorageRoot>/<sid>/ dir) and
- * drops its sessionIndex entry. For a deleted MEMBER session (no owned dir),
- * only the unindex applies. User-scope is flat — nothing to remove there.
+ * drops its index entry (both member and master maps). For a deleted MEMBER
+ * session (no owned dir), only the unindex applies. User-scope is flat —
+ * nothing to remove there.
  */
 async function handleSessionDeleted(ctx: PluginContext, sessionID: string): Promise<void> {
     try {

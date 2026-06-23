@@ -8,7 +8,7 @@ import { countUnreadMessages, writeMailboxMessage } from "../src/mailbox.js"
 import { processedPath, reservedDir, teamDir } from "../src/state/paths.js"
 import { initTeamState } from "../src/state/store.js"
 import type { Message } from "../src/types.js"
-import { indexMaster, indexMember, unindexSession } from "../src/utils.js"
+import { indexMasterTeam, indexMember, setActiveTeam, unindexSession } from "../src/utils.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const LEAD = "ses_lead"
@@ -132,8 +132,9 @@ describe("transform hook compaction guard (Q2 — no silent message loss)", () =
 describe("transform hook master exclusion (Q3)", () => {
     test("master session is not drained by the transform hook", async () => {
         const root = tmpRoot("transform-master")
-        await initTeamState(root, makeState(TEAM, LEAD, [makeMember(MEMBER_NAME, MEMBER)]), LEAD)
-        indexMaster(LEAD, TEAM, LEAD, root)
+        const team = await initTeamState(root, makeState(TEAM, LEAD, [makeMember(MEMBER_NAME, MEMBER)], Date.now()), LEAD)
+        indexMasterTeam(LEAD, TEAM, LEAD, root, team.directory)
+        setActiveTeam(LEAD, team.directory)
         const dir = teamDir(root, TEAM, LEAD)
         await writeMailboxMessage(dir, "master", makeMsg("m1", "result", "master"))
 

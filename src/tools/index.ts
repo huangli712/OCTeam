@@ -7,6 +7,7 @@
 import type { PluginContext } from "../context.js"
 import type { ToolDefinition } from "@opencode-ai/plugin"
 import {
+    teamActivateTool,
     teamCreateTool,
     teamDeleteTool,
     teamDetailsTool,
@@ -33,6 +34,7 @@ import { teamDoneTool } from "./done.js"
 export function createTools(ctx: PluginContext): Record<string, ToolDefinition> {
     return {
         team_create: teamCreateTool(ctx),
+        team_activate: teamActivateTool(ctx),
         team_delete: teamDeleteTool(ctx),
         team_list: teamListTool(ctx),
         team_query: teamQueryTool(ctx),
