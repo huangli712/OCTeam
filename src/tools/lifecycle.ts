@@ -129,7 +129,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 .array(
                     tool.schema.object({
                         name: tool.schema.string().min(1).max(32).regex(/^[a-z0-9-]+$/).optional(),
-                        role: tool.schema.string().min(1).max(64),
+                        role: tool.schema.string().min(1).max(64).regex(/^[a-zA-Z]+$/, "a single English word, letters only, e.g. \"coder\""),
                         prompt: tool.schema.string().min(1).max(8192),
                         model: tool.schema.string().optional(),
                         agent: tool.schema.string().optional(),
@@ -426,7 +426,7 @@ export function teamFixTool(ctx: PluginContext): ToolDefinition {
             team_id: tool.schema.string().min(1),
             member_name: tool.schema.string().min(1),
             new_name: tool.schema.string().min(1).max(32).regex(/^[a-z0-9-]+$/).optional(),
-            new_role: tool.schema.string().min(1).max(64).optional(),
+            new_role: tool.schema.string().min(1).max(64).regex(/^[a-zA-Z]+$/, "a single English word, letters only, e.g. \"coder\"").optional(),
             new_prompt: tool.schema.string().min(1).max(8192).optional(),
             new_agent: tool.schema.string().min(1).optional(),
         },

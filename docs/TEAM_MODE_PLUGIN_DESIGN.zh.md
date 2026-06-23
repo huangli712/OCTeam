@@ -124,7 +124,7 @@ type TeamSpec = {
 
 type MemberSpec = {
     name: string                        // unique within team, e.g. "alice" (auto-picked from a name pool if omitted)
-    role: string                        // role label, e.g. "coder", "verifier"
+    role: string                        // role label — a single English word, e.g. "coder", "verifier"
     prompt: string                      // system prompt content (the member's instructions)
     model?: string                      // model identifier, e.g. "claude-sonnet"
     agent?: string                      // OpenCode agent type, default "build" (derived from role label if omitted)
@@ -480,7 +480,7 @@ team_create({
 ```
 
 **实现**：
-1. 校验显式提供的 member 名称唯一且匹配 `/^[a-z0-9-]+$/`；省略 `name` 的 member 从备选池（`MEMBER_NAME_POOL`，16 个名字）随机分配且不重复。未显式指定 `agent` 时由 `role` 标签派生（`deriveAgent`：coder→build、reviewer/verifier→oracle、researcher→explore、finder→librarian）。
+1. 校验显式提供的 member 名称唯一且匹配 `/^[a-z0-9-]+$/`；省略 `name` 的 member 从备选池（`MEMBER_NAME_POOL`，16 个名字）随机分配且不重复。`role` 必须是单个英文单词（`/^[a-zA-Z]+$/`，如 coder/explorer）。未显式指定 `agent` 时由 `role` 标签派生（`deriveAgent`：coder/verifier→build、reviewer/architect→oracle、researcher→explore、finder→librarian）。
 2. 将调用者的 `context.sessionID` 记录为 `leadSessionId`（leader 名称固定为 `"master"`）。
 3. 写入 `config.json`（TeamSpec）+ 初始 `state.json`（status: `"live"`，所有 member 的 `sessionId: undefined`、`status: "pending"`）。
 4. **不创建 session、不发送 prompt、不创建 worktree**。这些延迟到 workflow tool 执行时。
