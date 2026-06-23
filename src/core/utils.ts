@@ -429,7 +429,7 @@ export function buildRolePrompt(
     if (spec.model) lines.push(`Your model: ${spec.model}`)
     if (peers.length > 0) lines.push(`Your teammates: ${peers.join(", ")}`)
     if (spec.prompt) {
-        lines.push("", "Your instructions:", spec.prompt)
+        lines.push("", "<user-instruction>", spec.prompt, "</user-instruction>")
     }
     lines.push(
         "",
