@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 
-import type { TeamState, TeamSpec } from "../types.js"
+import type { TeamState, TeamSpec } from "../core/types.js"
 import { atomicWrite, AsyncMutex, withLock } from "./locks.js"
 import {
     configPath,

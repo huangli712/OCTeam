@@ -11,7 +11,7 @@ import {
     setActiveTeam,
     unindexMasterTeam,
     unindexSession,
-} from "../src/utils.js"
+} from "../src/core/utils.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const LEAD = "ses_lead"

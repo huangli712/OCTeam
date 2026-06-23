@@ -5,7 +5,7 @@
  * idle events arriving.
  */
 
-import type { PluginContext } from "../context.js"
+import type { PluginContext } from "../core/context.js"
 import { clearActiveTask } from '../state/store.js';
 import type { Team } from "../state/store.js"
 import { deliverSummaryToLeader } from "./summary.js"

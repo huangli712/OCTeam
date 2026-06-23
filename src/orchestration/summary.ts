@@ -12,12 +12,12 @@
  * event.
  */
 
-import type { PluginContext } from "../context.js"
+import type { PluginContext } from "../core/context.js"
 import type { Team } from "../state/store.js"
-import { formatMailboxInjection, pollMailbox, ackMessages } from "../mailbox.js"
-import { listAllTasks } from "../tasks.js"
-import { truncateOutput } from "../utils.js"
-import type { ActiveTask } from "../types.js"
+import { formatMailboxInjection, pollMailbox, ackMessages } from "../messaging/mailbox.js"
+import { listAllTasks } from "../state/tasks.js"
+import { truncateOutput } from "../core/utils.js"
+import type { ActiveTask } from "../core/types.js"
 
 /**
  * Deliver the workflow summary to the leader. Always pushes via promptAsync

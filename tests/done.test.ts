@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { waitForBarrier } from "../src/orchestration/handlers.js"
-import type { ActiveTask, MemberState, TeamState } from "../src/types.js"
+import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 
 /**

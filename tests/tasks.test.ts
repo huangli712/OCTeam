@@ -7,7 +7,7 @@ import {
     claimTask,
     createTask,
     updateTask,
-} from "../src/tasks.js"
+} from "../src/state/tasks.js"
 import { claimMutexPath } from "../src/state/paths.js"
 import { tmpRoot } from "./helpers.js"
 

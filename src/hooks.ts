@@ -11,14 +11,14 @@ import path from "node:path"
 
 import type { Hooks } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "./context.js"
+import type { PluginContext } from "./core/context.js"
 import { activeTeams, clearActiveTask, invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from './state/store.js';
-import { resolveMasterTeams, resolveTeamMember, isMasterSession, setActiveTeam, unindexSession } from "./utils.js"
-import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservations } from "./mailbox.js"
-import { reapStaleClaims } from "./tasks.js"
+import { resolveMasterTeams, resolveTeamMember, isMasterSession, setActiveTeam, unindexSession } from "./core/utils.js"
+import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
+import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent, processIdle } from "./orchestration/handlers.js"
 import { checkTermination } from "./orchestration/termination.js"
-import type { MemberState } from "./types.js"
+import type { MemberState } from "./core/types.js"
 
 const SWEEP_INTERVAL_MS = 15_000
 

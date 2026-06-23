@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/context.js"
+import type { PluginContext } from "../src/core/context.js"
 import { createEventHandler } from "../src/hooks.js"
-import { countUnreadMessages, writeMailboxMessage } from "../src/mailbox.js"
+import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { initTeamState } from "../src/state/store.js"
-import type { Message } from "../src/types.js"
-import { indexMasterTeam, setActiveTeam, unindexSession } from "../src/utils.js"
+import type { Message } from "../src/core/types.js"
+import { indexMasterTeam, setActiveTeam, unindexSession } from "../src/core/utils.js"
 import { makeState, tmpRoot } from "./helpers.js"
 
 const LEAD = "ses_lead_drain"

@@ -4,7 +4,7 @@
  * shared PluginContext.
  */
 
-import type { PluginContext } from "../context.js"
+import type { PluginContext } from "../core/context.js"
 import type { ToolDefinition } from "@opencode-ai/plugin"
 import {
     teamActivateTool,

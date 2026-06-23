@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { extractOutputFromParts, extractTextFromParts } from "../src/utils.js"
+import { extractOutputFromParts, extractTextFromParts } from "../src/core/utils.js"
 
 describe("extractTextFromParts (baseline regression)", () => {
     test("extracts text from text-only parts", () => {

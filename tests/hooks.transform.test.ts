@@ -2,13 +2,13 @@ import fs from "node:fs/promises"
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/context.js"
+import type { PluginContext } from "../src/core/context.js"
 import { createCompactingHook, createTransformHook } from "../src/hooks.js"
-import { countUnreadMessages, writeMailboxMessage } from "../src/mailbox.js"
+import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { processedPath, reservedDir, teamDir } from "../src/state/paths.js"
 import { initTeamState } from "../src/state/store.js"
-import type { Message } from "../src/types.js"
-import { indexMasterTeam, indexMember, setActiveTeam, unindexSession } from "../src/utils.js"
+import type { Message } from "../src/core/types.js"
+import { indexMasterTeam, indexMember, setActiveTeam, unindexSession } from "../src/core/utils.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const LEAD = "ses_lead"

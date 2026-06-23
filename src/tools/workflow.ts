@@ -16,12 +16,12 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../context.js"
+import type { PluginContext } from "../core/context.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
 import { ensureMembersReady, advanceToStage } from "../orchestration/dispatch.js"
-import { createTask, updateTask } from "../tasks.js"
-import { activationError, resolveCallerInTeam } from "../utils.js"
-import type { MemberState, Stage } from "../types.js"
+import { createTask, updateTask } from "../state/tasks.js"
+import { activationError, resolveCallerInTeam } from "../core/utils.js"
+import type { MemberState, Stage } from "../core/types.js"
 
 const DEFAULT_TIMEOUT_MS = 300_000
 const DEFAULT_LOOP_TIMEOUT_MS = 900_000

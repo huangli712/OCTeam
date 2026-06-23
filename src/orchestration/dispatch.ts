@@ -11,12 +11,12 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 
-import type { PluginContext } from "../context.js"
+import type { PluginContext } from "../core/context.js"
 import type { Team } from "../state/store.js"
 import { readTeamSpec, saveTeamState } from "../state/store.js"
 import { worktreePath } from "../state/paths.js"
-import { buildRolePrompt, chunk, indexMember, truncateOutput, waitUntil } from "../utils.js"
-import type { Stage } from "../types.js"
+import { buildRolePrompt, chunk, indexMember, truncateOutput, waitUntil } from "../core/utils.js"
+import type { Stage } from "../core/types.js"
 
 const execFileP = promisify(execFile)
 

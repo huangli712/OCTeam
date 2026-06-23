@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { buildSummary } from "../src/orchestration/summary.js"
-import type { ActiveTask } from "../src/types.js"
+import type { ActiveTask } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 
 // For parallel/pipeline, buildSummary's default branch does not access

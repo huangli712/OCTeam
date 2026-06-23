@@ -9,12 +9,12 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../context.js"
-import { resolveCallerInTeam } from "../utils.js"
+import type { PluginContext } from "../core/context.js"
+import { resolveCallerInTeam } from "../core/utils.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
-import { countUnreadMessages, writeMailboxMessage } from "../mailbox.js"
-import { sendWakeHint } from "../wake-hint.js"
-import type { Message, ParallelMode } from "../types.js"
+import { countUnreadMessages, writeMailboxMessage } from "../messaging/mailbox.js"
+import { sendWakeHint } from "../messaging/wake-hint.js"
+import type { Message, ParallelMode } from "../core/types.js"
 
 /**
  * isolated-mode comms gate: in an isolated parallel run, members may not send

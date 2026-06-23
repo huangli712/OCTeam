@@ -1,7 +1,7 @@
 import type { Hooks, PluginInput, PluginModule } from "@opencode-ai/plugin"
 
-import { createPluginContext } from "./context.js"
-import type { PluginContext } from "./context.js"
+import { createPluginContext } from "./core/context.js"
+import type { PluginContext } from "./core/context.js"
 import { createTools } from "./tools/index.js"
 import {
     createCompactingHook,
@@ -11,7 +11,7 @@ import {
     reconcileCrashedTeams,
     startSweepTimer,
 } from "./hooks.js"
-import { rebuildSessionIndex } from "./utils.js"
+import { rebuildSessionIndex } from "./core/utils.js"
 
 const id = "octeam"
 

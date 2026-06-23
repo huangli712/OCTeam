@@ -18,8 +18,8 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../context.js"
-import { resolveCallerInTeam } from "../utils.js"
+import type { PluginContext } from "../core/context.js"
+import { resolveCallerInTeam } from "../core/utils.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
 
 export function teamDoneTool(ctx: PluginContext): ToolDefinition {

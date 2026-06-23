@@ -16,13 +16,13 @@
  *   7. Termination checks
  */
 
-import type { PluginContext } from "../context.js"
+import type { PluginContext } from "../core/context.js"
 import { type Team, clearActiveTask, loadTeamState, saveTeamState } from '../state/store.js';
-import { countUnreadMessages } from "../mailbox.js"
-import { listAllTasks } from "../tasks.js"
-import { sendWakeHint } from "../wake-hint.js"
-import { extractOutputFromParts, resolveTeamMember, sumMemberTokens, truncateOutput } from "../utils.js"
-import type { ActiveTask, DecisionRecord, MemberState } from "../types.js"
+import { countUnreadMessages } from "../messaging/mailbox.js"
+import { listAllTasks } from "../state/tasks.js"
+import { sendWakeHint } from "../messaging/wake-hint.js"
+import { extractOutputFromParts, resolveTeamMember, sumMemberTokens, truncateOutput } from "../core/utils.js"
+import type { ActiveTask, DecisionRecord, MemberState } from "../core/types.js"
 import { advanceToStage } from "./dispatch.js"
 import { buildRoundSummary, buildSummary, deliverQueuedResultsToMaster, deliverSummaryToLeader } from "./summary.js"
 import { checkTermination } from "./termination.js"

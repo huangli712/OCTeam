@@ -12,8 +12,8 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../context.js"
-import { resolveCallerInTeam } from "../utils.js"
+import type { PluginContext } from "../core/context.js"
+import { resolveCallerInTeam } from "../core/utils.js"
 import { loadTeamState } from "../state/store.js"
 import {
     TASK_ID_PATTERN,
@@ -24,8 +24,8 @@ import {
     getTask,
     listAllTasks,
     updateTask,
-} from "../tasks.js"
-import type { TaskStatus } from "../tasks.js"
+} from "../state/tasks.js"
+import type { TaskStatus } from "../state/tasks.js"
 
 export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
     return tool({

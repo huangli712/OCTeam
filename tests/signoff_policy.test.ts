@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { getExpectedMember, isQuorumReached, parseSignoff } from "../src/orchestration/handlers.js"
-import type { ActiveTask } from "../src/types.js"
+import type { ActiveTask } from "../src/core/types.js"
 
 function makeTask(opts: Partial<ActiveTask> = {}): ActiveTask {
     return {

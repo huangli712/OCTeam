@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import type { MemberState, TeamState } from "../src/types.js"
+import type { MemberState, TeamState } from "../src/core/types.js"
 
 /** Create an isolated tmp storage root for a test. */
 export function tmpRoot(label: string): string {

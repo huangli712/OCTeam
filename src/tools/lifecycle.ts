@@ -9,13 +9,13 @@ import { promisify } from "node:util"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../context.js"
+import type { PluginContext } from "../core/context.js"
 import { deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec, type Team } from "../state/store.js"
-import { activationError, indexMember, indexMasterTeam, isIndexedMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../utils.js"
-import { countUnreadMessages } from "../mailbox.js"
-import { clearWakeHint } from "../wake-hint.js"
+import { activationError, indexMember, indexMasterTeam, isIndexedMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../core/utils.js"
+import { countUnreadMessages } from "../messaging/mailbox.js"
+import { clearWakeHint } from "../messaging/wake-hint.js"
 import { inboxPath } from "../state/paths.js"
-import type { Bounds, MemberState, MemberSpec, TeamSpec } from "../types.js"
+import type { Bounds, MemberState, MemberSpec, TeamSpec } from "../core/types.js"
 
 const execFileP = promisify(execFile)
 
