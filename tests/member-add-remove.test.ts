@@ -1,0 +1,272 @@
+import { describe, expect, test } from "bun:test"
+
+import type { PluginContext } from "../src/core/context.js"
+import type { TeamSpec } from "../src/core/types.js"
+import { normalizeRole } from "../src/core/role-presets.js"
+import { teamAddMemberTool, teamRemoveMemberTool } from "../src/tools/lifecycle.js"
+import { initTeamState, invalidateTeam, loadTeamState, readTeamSpec, writeTeamSpec } from "../src/state/store.js"
+import { unindexSession } from "../src/core/utils.js"
+import { makeMember, makeState, tmpRoot } from "./helpers.js"
+
+function makeCtx(storageRoot: string): PluginContext {
+    return { storageRoot, scope: "project" } as unknown as PluginContext
+}
+
+/** Create a live team with both state.json and config.json for testing member add/remove. */
+async function setupLiveTeam(
+    root: string,
+    sid: string,
+    name: string,
+    members: { name: string; role: string; prompt: string }[],
+) {
+    const spec: TeamSpec = {
+        version: 1,
+        name,
+        description: "test",
+        createdAt: Date.now(),
+        members: members.map(m => ({
+            name: m.name,
+            role: normalizeRole(m.role),
+            prompt: m.prompt,
+        })),
+    }
+    await writeTeamSpec(root, spec, sid)
+    const state = makeState(name, sid, members.map(m => makeMember(m.name)))
+    const team = await initTeamState(root, state, sid)
+    return { team, spec }
+}
+
+describe("team_add_member", () => {
+    test("adds member to live team → success, spec + state updated", async () => {
+        const root = tmpRoot("add-ok")
+        const sid = "ses_add_ok"
+        const { team } = await setupLiveTeam(root, sid, "alpha", [
+            { name: "alice", role: "coder", prompt: "code" },
+            { name: "bob", role: "tester", prompt: "test" },
+        ])
+
+        const tool = teamAddMemberTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "alpha", role: "physicist", prompt: "do physics" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("added to team")
+        expect(result).toContain("3 members")
+        const reloaded = await loadTeamState(root, "alpha", sid)
+        expect(reloaded.members.length).toBe(3)
+        const spec = await readTeamSpec(root, "alpha", sid)
+        expect(spec?.members.length).toBe(3)
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("adds member with explicit name → name honored", async () => {
+        const root = tmpRoot("add-name")
+        const sid = "ses_add_name"
+        const { team } = await setupLiveTeam(root, sid, "beta", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+
+        const tool = teamAddMemberTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "beta", name: "bob", role: "tester", prompt: "test" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("bob")
+        const reloaded = await loadTeamState(root, "beta", sid)
+        expect(reloaded.members.find(m => m.name === "bob")).toBeTruthy()
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("duplicate name → rejected", async () => {
+        const root = tmpRoot("add-dup")
+        const sid = "ses_add_dup"
+        const { team } = await setupLiveTeam(root, sid, "gamma", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+
+        const tool = teamAddMemberTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "gamma", name: "alice", role: "tester", prompt: "test" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("already exists")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("reserved name 'master' → rejected", async () => {
+        const root = tmpRoot("add-master")
+        const sid = "ses_add_master"
+        const { team } = await setupLiveTeam(root, sid, "delta", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+
+        const tool = teamAddMemberTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "delta", name: "master", role: "coder", prompt: "c" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("reserved")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("non-live team → rejected", async () => {
+        const root = tmpRoot("add-notlive")
+        const sid = "ses_add_notlive"
+        const { team } = await setupLiveTeam(root, sid, "epsilon", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+        // Force status to idle (simulating post-spawn).
+        team.status = "idle"
+
+        const tool = teamAddMemberTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "epsilon", role: "coder", prompt: "p" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("not \"live\"")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("non-master caller → rejected", async () => {
+        const root = tmpRoot("add-nonmaster")
+        const sid = "ses_add_nonmaster"
+        const { team } = await setupLiveTeam(root, undefined as any, "zeta", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+
+        const ctx = { storageRoot: root, scope: "user" } as unknown as PluginContext
+        const tool = teamAddMemberTool(ctx)
+        const result = await tool.execute(
+            { team_id: "zeta", role: "coder", prompt: "p" },
+            { sessionID: "ses_other" } as any,
+        )
+
+        expect(result).toContain("master-only")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+})
+
+describe("team_remove_member", () => {
+    test("removes member from live 2+ team → success", async () => {
+        const root = tmpRoot("rm-ok")
+        const sid = "ses_rm_ok"
+        const { team } = await setupLiveTeam(root, sid, "alpha", [
+            { name: "alice", role: "coder", prompt: "code" },
+            { name: "bob", role: "tester", prompt: "test" },
+        ])
+
+        const tool = teamRemoveMemberTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "alpha", member_name: "bob" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("removed")
+        expect(result).toContain("1 members remaining")
+        const reloaded = await loadTeamState(root, "alpha", sid)
+        expect(reloaded.members.length).toBe(1)
+        expect(reloaded.members[0].name).toBe("alice")
+        const spec = await readTeamSpec(root, "alpha", sid)
+        expect(spec?.members.length).toBe(1)
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("last member → rejected", async () => {
+        const root = tmpRoot("rm-last")
+        const sid = "ses_rm_last"
+        const { team } = await setupLiveTeam(root, sid, "beta", [
+            { name: "solo", role: "coder", prompt: "code" },
+        ])
+
+        const tool = teamRemoveMemberTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "beta", member_name: "solo" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("Cannot remove the last member")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("non-existent member → rejected", async () => {
+        const root = tmpRoot("rm-missing")
+        const sid = "ses_rm_missing"
+        const { team } = await setupLiveTeam(root, sid, "gamma", [
+            { name: "alice", role: "coder", prompt: "code" },
+        ])
+
+        const tool = teamRemoveMemberTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "gamma", member_name: "ghost" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("not found")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("non-live team → rejected", async () => {
+        const root = tmpRoot("rm-notlive")
+        const sid = "ses_rm_notlive"
+        const { team } = await setupLiveTeam(root, sid, "delta", [
+            { name: "alice", role: "coder", prompt: "code" },
+            { name: "bob", role: "tester", prompt: "test" },
+        ])
+        team.status = "idle"
+
+        const tool = teamRemoveMemberTool(makeCtx(root))
+        const result = await tool.execute(
+            { team_id: "delta", member_name: "bob" },
+            { sessionID: sid } as any,
+        )
+
+        expect(result).toContain("not \"live\"")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+
+    test("non-master caller → rejected", async () => {
+        const root = tmpRoot("rm-nonmaster")
+        const sid = "ses_rm_nonmaster"
+        const { team } = await setupLiveTeam(root, undefined as any, "epsilon", [
+            { name: "alice", role: "coder", prompt: "code" },
+            { name: "bob", role: "tester", prompt: "test" },
+        ])
+
+        const ctx = { storageRoot: root, scope: "user" } as unknown as PluginContext
+        const tool = teamRemoveMemberTool(ctx)
+        const result = await tool.execute(
+            { team_id: "epsilon", member_name: "bob" },
+            { sessionID: "ses_other" } as any,
+        )
+
+        expect(result).toContain("master-only")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+    })
+})

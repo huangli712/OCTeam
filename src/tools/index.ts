@@ -8,6 +8,7 @@ import type { PluginContext } from "../core/context.js"
 import type { ToolDefinition } from "@opencode-ai/plugin"
 import {
     teamActivateTool,
+    teamAddMemberTool,
     teamCreateTool,
     teamDeactivateTool,
     teamDeleteTool,
@@ -15,6 +16,7 @@ import {
     teamFixMemberTool,
     teamListTool,
     teamQueryTool,
+    teamRemoveMemberTool,
 } from "./lifecycle.js"
 import { teamSendMessageTool } from "./messaging.js"
 import {
@@ -37,6 +39,8 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_create: teamCreateTool(ctx),
         team_activate: teamActivateTool(ctx),
         team_deactivate: teamDeactivateTool(ctx),
+        team_add_member: teamAddMemberTool(ctx),
+        team_remove_member: teamRemoveMemberTool(ctx),
         team_delete: teamDeleteTool(ctx),
         team_list: teamListTool(ctx),
         team_query: teamQueryTool(ctx),
