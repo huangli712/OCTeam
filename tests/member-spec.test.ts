@@ -10,11 +10,16 @@ describe("deriveAgent (role label → agent)", () => {
         expect(deriveAgent("writer")).toBe("build")
     })
 
-    test("reviewer/verifier/architect/auditor → oracle", () => {
+    test("reviewer/architect/auditor → oracle (read-only)", () => {
         expect(deriveAgent("reviewer")).toBe("oracle")
-        expect(deriveAgent("verifier")).toBe("oracle")
         expect(deriveAgent("architect")).toBe("oracle")
         expect(deriveAgent("auditor")).toBe("oracle")
+    })
+
+    test("verifier/verification → build (writes/runs tests, needs write access)", () => {
+        expect(deriveAgent("verifier")).toBe("build")
+        expect(deriveAgent("verification")).toBe("build")
+        expect(deriveAgent("verify")).toBe("build")
     })
 
     test("researcher/explorer → explore", () => {
@@ -44,6 +49,7 @@ describe("deriveAgent (role label → agent)", () => {
         expect(deriveAgent("审查")).toBe("oracle")
         expect(deriveAgent("研究")).toBe("explore")
         expect(deriveAgent("查找")).toBe("librarian")
+        expect(deriveAgent("校验")).toBe("build")
     })
 
     test("unknown label → build (default)", () => {
