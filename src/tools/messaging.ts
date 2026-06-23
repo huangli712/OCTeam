@@ -14,7 +14,22 @@ import { resolveCallerInTeam } from "../utils.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
 import { countUnreadMessages, writeMailboxMessage } from "../mailbox.js"
 import { sendWakeHint } from "../wake-hint.js"
-import type { Message } from "../types.js"
+import type { Message, ParallelMode } from "../types.js"
+
+/**
+ * isolated-mode comms gate: in an isolated parallel run, members may not send
+ * point-to-point messages to other members (lateral comms). member<->master in
+ * both directions stays allowed. Returns true when the message must be rejected.
+ */
+export function isForbiddenLateralMessage(
+    mode: ParallelMode | undefined,
+    senderIsMaster: boolean,
+    recipients: string[],
+): boolean {
+    if (mode !== "isolated") return false
+    if (senderIsMaster) return false
+    return recipients.some(r => r !== "master")
+}
 
 export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -53,6 +68,13 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 if (!team.members.some(m => m.name === r) && r !== "master") {
                     return `Error: unknown recipient "${r}"`
                 }
+            }
+
+            // isolated mode: forbid member<->member lateral comms. member<->master
+            // (both directions) stays allowed so members can report up and the
+            // master can coordinate down.
+            if (isForbiddenLateralMessage(team.activeTask?.mode, sender.isMaster === true, recipients)) {
+                return `Error: isolated mode forbids member-to-member messaging. You may message "master" only.`
             }
 
             // Backpressure: enforce unread mailbox cap per recipient.
