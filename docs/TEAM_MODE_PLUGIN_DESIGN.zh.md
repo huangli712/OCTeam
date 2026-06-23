@@ -123,10 +123,11 @@ type TeamSpec = {
 }
 
 type MemberSpec = {
-    name: string                        // unique within team
-    role: string                        // role description for system prompt
+    name: string                        // unique within team, e.g. "alice" (auto-picked from a name pool if omitted)
+    role: string                        // role label, e.g. "coder", "verifier"
+    prompt: string                      // system prompt content (the member's instructions)
     model?: string                      // model identifier, e.g. "claude-sonnet"
-    agent?: string                      // OpenCode agent type, default "build"
+    agent?: string                      // OpenCode agent type, default "build" (derived from role label if omitted)
     worktree?: boolean                  // create isolated git worktree, default false (opt-in)
 }
 ```
@@ -420,7 +421,7 @@ plugin 启动时，server hook 扫描 `~/.octeam/teams/` 并：
 
 | 命令 | 作用 | master 接收后的行为 |
 |---|---|---|
-| `/team-create` | 打开创建 team 对话框，配置 member/role/model | master agent 调用 `team_create` tool |
+| `/team-create` | 打开创建 team 对话框，配置 member/role/prompt/model | master agent 调用 `team_create` tool |
 | `/team-delete` | 清空 `.octeam/teams/` 目录（强制删除所有 team） | master agent 调用 `team_delete({ force: true })` 逐个清理 |
 | `/team-status` | 显示当前 team 状态（member 列表、编排进度、token 使用） | master agent 调用 `team_status` tool，结果注入 sidebar/dialog |
 | `/team-shutdown-request` | 停止接受新任务，解散当前 team（协作关闭） | master agent 调用 `team_shutdown_request` 对所有 member 发起关闭，team 转为 `"disabled"` |
@@ -465,9 +466,10 @@ team_create({
     name: "auth-team",
     description: "JWT authentication implementation team",
     members: [
-        { name: "coder",     role: "responsible for writing code",             model: "claude-haiku" },
-        { name: "tester",    role: "responsible for testing and verification",  model: "gpt-4o" },
-        { name: "optimizer", role: "responsible for code review",               model: "claude-sonnet" },
+        // name 可省略 — 省略时从备选池随机分配（alice/bob/carol/...），不重复
+        { name: "coder", role: "coder",    prompt: "Implement the JWT auth endpoints and middleware.", model: "claude-haiku" },
+        { role: "verifier",                prompt: "Write tests and verify the auth flow end-to-end.",  model: "gpt-4o" },
+        { role: "reviewer",                prompt: "Review the code for security and correctness.",      model: "claude-sonnet" },
     ],
     bounds?: {                          // optional, all have defaults
         maxWallClockMinutes: 30,
@@ -478,7 +480,7 @@ team_create({
 ```
 
 **实现**：
-1. 校验 member 名称唯一且匹配 `/^[a-z0-9-]+$/`。
+1. 校验显式提供的 member 名称唯一且匹配 `/^[a-z0-9-]+$/`；省略 `name` 的 member 从备选池（`MEMBER_NAME_POOL`，16 个名字）随机分配且不重复。未显式指定 `agent` 时由 `role` 标签派生（`deriveAgent`：coder→build、reviewer/verifier→oracle、researcher→explore、finder→librarian）。
 2. 将调用者的 `context.sessionID` 记录为 `leadSessionId`（leader 名称固定为 `"master"`）。
 3. 写入 `config.json`（TeamSpec）+ 初始 `state.json`（status: `"live"`，所有 member 的 `sessionId: undefined`、`status: "pending"`）。
 4. **不创建 session、不发送 prompt、不创建 worktree**。这些延迟到 workflow tool 执行时。
