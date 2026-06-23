@@ -58,6 +58,7 @@ export type RuntimeMember = {
     shutdownRequested?: boolean        // true after master requests cooperative shutdown
     error?: string                     // if status === "errored"
     isMaster?: boolean                 // ONLY on synthetic master record; never persisted
+    declaredDone?: boolean             // require_done_ack: member has called team_done() this run
 }
 
 export type RuntimeState = {
@@ -138,6 +139,12 @@ export type ActiveTask = {
 
     // discussion-specific (parallel mode === "discussion")
     consensusReached?: boolean         // set when all members emit agreed consensus
+
+    // require_done_ack (parallel isolated/collaborative only): when true, the
+    // barrier waits for every participant's `declaredDone === true` instead of
+    // `status === "idle"`. Members must call team_done() to ack — premature
+    // idle is recovered by an automatic re-prompt (processIdle Step 6).
+    requireDoneAck?: boolean
 }
 
 // --- LastModeRecord (persists after activeTask cleanup, for sidebar display) ---

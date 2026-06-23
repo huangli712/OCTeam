@@ -143,20 +143,32 @@ export function isQuorumReached(
  * each idle. If all participating members are idle, fires onBarrier exactly
  * once for this phase (the mutex guarantees the status flips are atomic, so a
  * later idle in the same phase sees members already "running" → no double-fire).
+ *
+ * require_done_ack mode: the readiness signal is `declaredDone === true`
+ * (set by team_done tool) instead of `status === "idle"`. This prevents the
+ * barrier from firing when a member goes idle prematurely (e.g. waiting for a
+ * dependency); the barrier only fires after every participant has explicitly
+ * acknowledged completion.
+ *
+ * Exported for direct unit testing of the readiness predicate.
  */
-async function waitForBarrier(
+export async function waitForBarrier(
     team: Team,
     memberNames: string[],
     onBarrier: () => Promise<void>,
 ): Promise<void> {
-    const allIdle = memberNames.every(name => {
+    const requireDoneAck = team.activeTask?.requireDoneAck === true
+    const allReady = memberNames.every(name => {
         const m = team.members.find(x => x.name === name)
-        return m?.status === "idle"
+        if (!m) return false
+        return requireDoneAck
+            ? m.declaredDone === true
+            : m.status === "idle"
     })
-    if (allIdle) {
+    if (allReady) {
         await onBarrier()
     }
-    // else: return — the next idle re-checks. checkTermination + sweep enforce timeouts.
+    // else: return — the next idle/ack re-checks. checkTermination + sweep enforce timeouts.
 }
 
 // --- main entry ---
@@ -257,6 +269,40 @@ export async function processIdle(
     }
     switch (team.activeTask.type) {
         case "parallel":
+            // require_done_ack recovery: a member that went idle without calling
+            // team_done() is "premature idle". Re-prompt it with explicit
+            // instructions instead of consulting the barrier (which would not
+            // fire anyway, since declaredDone is still false, but re-prompting
+            // here gives the member a chance to ack or report a blocker).
+            // maxMemberTurns / wall-clock timeout (checkTermination) cap retries.
+            if (
+                team.activeTask.requireDoneAck
+                && (team.activeTask.mode === "isolated" || team.activeTask.mode === "collaborative")
+                && !member.declaredDone
+                && member.sessionId
+            ) {
+                const text =
+                    `[Team Orchestrator] You went idle on team "${team.teamName}" without calling `
+                    + `team_done(team_id="${team.teamName}"). This run uses require_done_ack: the `
+                    + `barrier fires ONLY after every participant calls team_done. `
+                    + `If your work is complete (including required messages and self-verification), `
+                    + `call team_done now. If you are blocked waiting for a dependency, briefly say `
+                    + `what you are waiting for AND do any other independent work you can; do NOT go `
+                    + `idle again without either acking or making concrete progress.`
+                await ctx.client.session.promptAsync({
+                    path: { id: member.sessionId },
+                    body: {
+                        parts: [{ type: "text", text, synthetic: true }],
+                        agent: member.agent ?? "build",
+                    },
+                    query: { directory: member.worktreePath ?? ctx.directory },
+                })
+                member.status = "running"
+                member.turnCount++
+                await saveTeamState(team)
+                await checkTermination(ctx, team)
+                return
+            }
             await handleParallelIdle(ctx, team)
             break
         case "pipeline":

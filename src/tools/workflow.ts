@@ -103,6 +103,10 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
+            require_done_ack: tool.schema
+                .boolean()
+                .optional()
+                .describe("parallel isolated/collaborative only: when true, the all-idle barrier is replaced by an all-acked barrier. Members must call team_done() to signal completion; members that go idle without acking receive an automatic re-prompt. Prevents premature barrier when a member idles waiting for a dependency. Default false (backward compatible)."),
         },
         async execute(args, context) {
             // Validate mode-specific fields.
@@ -114,6 +118,9 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
             }
             if (args.mode === "discussion" && !args.topic) {
                 return "Error: discussion mode requires `topic`"
+            }
+            if (args.require_done_ack && args.mode === "discussion") {
+                return "Error: require_done_ack applies to parallel isolated/collaborative only (discussion uses consensus detection)"
             }
 
             // Workflow tools are master-only: only the team's leader session may
@@ -170,6 +177,15 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                         : "none",
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
+                    requireDoneAck: (args.mode === "isolated" || args.mode === "collaborative")
+                        ? (args.require_done_ack === true)
+                        : false,
+                }
+                // Reset per-member done flag for the new run so a previous run's
+                // acks don't bleed in. Only relevant when requireDoneAck is true,
+                // but cheap to always reset.
+                for (const m of team.members) {
+                    m.declaredDone = false
                 }
                 await saveTeamState(team)
 

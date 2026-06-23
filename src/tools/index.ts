@@ -32,6 +32,7 @@ import {
     teamParallelTool,
     teamPipelineTool,
 } from "./workflow.js"
+import { teamDoneTool } from "./done.js"
 
 export function createTools(ctx: PluginContext): Record<string, ToolDefinition> {
     return {
@@ -53,5 +54,6 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_pipeline: teamPipelineTool(ctx),
         team_loop: teamLoopTool(ctx),
         team_delegate: teamDelegateTool(ctx),
+        team_done: teamDoneTool(ctx),
     }
 }
