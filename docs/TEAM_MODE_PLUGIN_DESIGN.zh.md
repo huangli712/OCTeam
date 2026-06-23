@@ -123,11 +123,11 @@ type TeamSpec = {
 }
 
 type MemberSpec = {
-    name: string                        // unique within team, e.g. "alice" (auto-picked from a name pool if omitted)
-    role: string                        // role label — a single English word, e.g. "coder", "verifier"
-    prompt: string                      // system prompt content (the member's instructions)
+    name: string                        // one of the preset pool names (auto-picked from the pool if omitted)
+    role: string                        // one of the preset roles (unknown → "almighty"); fixes the member's agent + preset instruction
+    prompt: string                      // user instruction (the member's task), injected as <user-instruction>
     model?: string                      // model identifier, e.g. "claude-sonnet"
-    agent?: string                      // OpenCode agent type, default "build" (derived from role label if omitted)
+    agent?: string                      // OpenCode agent type; defaults to the role's fixed agent (ROLES table)
     worktree?: boolean                  // create isolated git worktree, default false (opt-in)
 }
 ```
@@ -466,10 +466,11 @@ team_create({
     name: "auth-team",
     description: "JWT authentication implementation team",
     members: [
-        // name 可省略 — 省略时从备选池随机分配（alice/bob/carol/...），不重复
-        { name: "coder", role: "coder",    prompt: "Implement the JWT auth endpoints and middleware.", model: "claude-haiku" },
-        { role: "verifier",                prompt: "Write tests and verify the auth flow end-to-end.",  model: "gpt-4o" },
-        { role: "reviewer",                prompt: "Review the code for security and correctness.",      model: "claude-sonnet" },
+        // name 可省略 → 从备选池随机分配；显式 name 必须是池中的名字（alice/bob/carol/...）
+        // agent 由 role 自动派生（coder→build、tester→build、reviewer→oracle），无需显式指定
+        { name: "alice", role: "coder",    prompt: "Implement the JWT auth endpoints and middleware." },
+        { role: "tester",                  prompt: "Design the test plan, then write and run tests for the auth flow." },
+        { role: "reviewer",                prompt: "Review the code for security and correctness." },
     ],
     bounds?: {                          // optional, all have defaults
         maxWallClockMinutes: 30,
@@ -480,7 +481,7 @@ team_create({
 ```
 
 **实现**：
-1. 校验显式提供的 member 名称唯一且匹配 `/^[a-z0-9-]+$/`；省略 `name` 的 member 从备选池（`MEMBER_NAME_POOL`，16 个名字）随机分配且不重复。`role` 必须是单个英文单词（`/^[a-zA-Z]+$/`，如 coder/explorer）。未显式指定 `agent` 时由 `role` 标签派生（`deriveAgent`：coder/verifier→build、reviewer/architect→oracle、researcher→explore、finder→librarian）。
+1. 校验显式提供的 member `name` 必须是备选池（`MEMBER_NAME_POOL`，16 个名字 alice..pat）中的一个且不重复；省略 `name` 的 member 从池中随机分配。`role` 是封闭枚举：必须是 18 个预设 role 之一（coder/debugger/optimizer/tester/reviewer/architect/explorer/writer/mathematician/physicist/simulator/chemist/analyst/visualizer/researcher/author/fantast/almighty），不匹配则归一化为 `almighty`。每个 role 在 `ROLES` 表（`src/core/role-presets.ts`）中写死其 `agent`（未显式 `agent` 时按此派生）与预设 `instruction`（spawn 时注入成员上下文的 `<role-instruction>`）。
 2. 将调用者的 `context.sessionID` 记录为 `leadSessionId`（leader 名称固定为 `"master"`）。
 3. 写入 `config.json`（TeamSpec）+ 初始 `state.json`（status: `"live"`，所有 member 的 `sessionId: undefined`、`status: "pending"`）。
 4. **不创建 session、不发送 prompt、不创建 worktree**。这些延迟到 workflow tool 执行时。
