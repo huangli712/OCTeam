@@ -4,6 +4,8 @@
  */
 
 import fs from "node:fs/promises"
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
@@ -14,6 +16,25 @@ import { countUnreadMessages } from "../mailbox.js"
 import { clearWakeHint } from "../wake-hint.js"
 import { inboxPath } from "../state/paths.js"
 import type { Bounds, RuntimeMember, TeamMemberSpec, TeamSpec } from "../types.js"
+
+const execFileP = promisify(execFile)
+
+/**
+ * Best-effort git worktree teardown. Removes the worktree registration + files
+ * for a member that was created with worktree: true. Must run BEFORE the team
+ * directory is deleted, while the worktree files still exist on disk.
+ */
+async function cleanWorktree(
+    projectDir: string,
+    worktreePath: string | undefined,
+): Promise<void> {
+    if (!worktreePath) return
+    await execFileP("git", ["worktree", "remove", worktreePath, "--force"], {
+        cwd: projectDir,
+    }).catch(() => {
+        // best effort
+    })
+}
 
 /** Resource bounds with design defaults (§8.1), overridden by user input. */
 function defaultBounds(override?: Partial<Bounds>): Bounds {
@@ -313,7 +334,6 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
             if (member.sessionId) lines.push(`Session ID: ${member.sessionId}`)
             if (member.worktreePath) lines.push(`Worktree: ${member.worktreePath}`)
             if (member.error) lines.push(`Error: ${member.error}`)
-            if (member.shutdownRequested) lines.push(`Shutdown requested: yes`)
             if (team.activeTask?.tokensByMember?.[member.name]) {
                 lines.push(`Tokens used: ${team.activeTask.tokensByMember[member.name]}`)
             }
@@ -429,7 +449,7 @@ export function teamFixTool(ctx: PluginContext): ToolDefinition {
 export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Delete a team. Without force, requires all members to be shutdown_approved/completed. With force, removes on-disk state immediately (sessions stay in OpenCode history; running agents finish their current turn but receive no further dispatch).",
+            "Delete a team. Without force, refuses while the team is busy with an active orchestration. With force, removes on-disk state immediately (member worktrees are cleaned up; sessions stay in OpenCode history; running agents finish their current turn but receive no further dispatch).",
         args: {
             team_id: tool.schema.string().min(1),
             force: tool.schema.boolean().optional(),
@@ -438,7 +458,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             // team_delete bypasses sessionIndex and reads team state directly
             // from disk. sessionIndex maps sessionID -> {teamName} 1:1, so
             // creating a second team in the same session (allowed by M4 when the
-            // prior team is failed/dead) overwrites the prior team's index
+            // prior team is failed) overwrites the prior team's index
             // entry. Without this bypass, orphaned teams cannot be cleaned up
             // because resolveCallerInTeam returns null.
             const pathLeadSessionId = ctx.scope === "project" ? context.sessionID : undefined
@@ -452,16 +472,14 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 return "Error: team_delete is master-only (only the team's leader session can delete it)"
             }
             const force = args.force ?? false
-            if (!force) {
-                const busy = team.members.filter(
-                    m => m.status !== "shutdown_approved" && m.sessionId,
-                )
-                if (busy.length > 0) {
-                    return `Error: ${busy.length} member(s) still active (${busy.map(m => m.name).join(", ")}). Use team_shutdown_request first, or re-run with force: true.`
-                }
+            if (!force && team.status === "busy") {
+                return `Error: team "${args.team_id}" is busy with an active orchestration. Wait for it to finish, or re-run with force: true.`
             }
-            // Unindex all known sessions (and drop their wake-hint throttle entries, L1).
+            // Clean up worktrees, then unindex all known sessions (and drop their
+            // wake-hint throttle entries, L1). Worktree teardown must precede
+            // deleteTeamStorage so git can remove the still-present worktree files.
             for (const m of team.members) {
+                await cleanWorktree(ctx.directory, m.worktreePath)
                 if (m.sessionId) {
                     unindexSession(m.sessionId)
                     clearWakeHint(m.sessionId)

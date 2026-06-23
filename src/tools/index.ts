@@ -22,11 +22,6 @@ import {
     teamTaskUpdateTool,
 } from "./task.js"
 import {
-    teamApproveShutdownTool,
-    teamRejectShutdownTool,
-    teamShutdownRequestTool,
-} from "./shutdown.js"
-import {
     teamDelegateTool,
     teamLoopTool,
     teamParallelTool,
@@ -47,9 +42,6 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_task_list: teamTaskListTool(ctx),
         team_task_update: teamTaskUpdateTool(ctx),
         team_task_get: teamTaskGetTool(ctx),
-        team_shutdown_request: teamShutdownRequestTool(ctx),
-        team_approve_shutdown: teamApproveShutdownTool(ctx),
-        team_reject_shutdown: teamRejectShutdownTool(ctx),
         team_parallel: teamParallelTool(ctx),
         team_pipeline: teamPipelineTool(ctx),
         team_loop: teamLoopTool(ctx),

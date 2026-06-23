@@ -38,7 +38,6 @@ export type MemberStatus =
     | "running"             // actively processing a prompt
     | "idle"                // finished, awaiting work
     | "errored"             // LLM/tool failure
-    | "shutdown_approved"   // cooperative shutdown approved
 
 export type RuntimeMember = {
     name: string
@@ -52,7 +51,6 @@ export type RuntimeMember = {
     lastTurnMarker?: string            // Transform hook injection dedup
     lastNotifiedAt?: number            // delegate: rate-limit re-prompts
     retryingSince?: number             // epoch ms when session entered "retry"
-    shutdownRequested?: boolean        // true after master requests cooperative shutdown
     error?: string                     // if status === "errored"
     isMaster?: boolean                 // ONLY on synthetic master record; never persisted
     declaredDone?: boolean             // require_done_ack: member has called team_done() this run
