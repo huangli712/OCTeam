@@ -1,5 +1,5 @@
 /**
- * Team lifecycle tools: team_create, team_delete, team_list, team_details, team_query, team_fix.
+ * Team lifecycle tools: team_create, team_delete, team_list, team_details, team_query, team_fix_member.
  * (design §4.1, §4.10, §4.11)
  */
 
@@ -408,7 +408,7 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
     })
 }
 
-export function teamFixTool(ctx: PluginContext): ToolDefinition {
+export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
             "Modify a team member's name, role, system prompt, and/or agent. new_role must be a preset role (unknown → \"almighty\") and re-derives the member's agent unless new_agent is also given. new_name must be a preset pool name. Changing the agent re-resolves the model from the agent registry. Only allowed when the team is not busy.",

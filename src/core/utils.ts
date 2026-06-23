@@ -139,7 +139,7 @@ export function isInteractionForbidden(
 /**
  * Actionable error string for a master interacting with an inactive team, or
  * null when the team is active. Centralizes the message used by master-only
- * mutating tools (workflow / team_fix).
+ * mutating tools (workflow / team_fix_member).
  */
 export function activationError(
     teamName: string,

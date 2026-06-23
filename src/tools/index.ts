@@ -12,7 +12,7 @@ import {
     teamDeactivateTool,
     teamDeleteTool,
     teamDetailsTool,
-    teamFixTool,
+    teamFixMemberTool,
     teamListTool,
     teamQueryTool,
 } from "./lifecycle.js"
@@ -41,7 +41,7 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_list: teamListTool(ctx),
         team_query: teamQueryTool(ctx),
         team_details: teamDetailsTool(ctx),
-        team_fix: teamFixTool(ctx),
+        team_fix_member: teamFixMemberTool(ctx),
         team_send_message: teamSendMessageTool(ctx),
         team_task_create: teamTaskCreateTool(ctx),
         team_task_list: teamTaskListTool(ctx),

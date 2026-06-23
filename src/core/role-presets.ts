@@ -3,7 +3,7 @@
  * one of the keys below, and any unrecognized value normalizes to DEFAULT_ROLE
  * ("almighty"). Each role fixes two things in code:
  *   - agent:       which OpenCode agent the member runs as (role → agent is
- *                  hardcoded here; team_create/team_fix derive it from the role).
+ *                  hardcoded here; team_create/team_fix_member derive it from the role).
  *   - instruction: the preset role guidance injected into the member's
  *                  role-setup prompt, wrapped in <role-instruction>, alongside
  *                  the user-written <user-instruction> (MemberSpec.prompt) when
