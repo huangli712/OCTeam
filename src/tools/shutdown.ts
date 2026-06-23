@@ -1,8 +1,7 @@
 /**
  * Cooperative shutdown tools (design §4.8, §4.9). Master requests shutdown of a
  * member; the member (or master) approves/rejects. On approval the member's
- * worktree is cleaned and its status flips to shutdown_approved. When all
- * members are shutdown_approved, the team becomes "dead".
+ * worktree is cleaned and its status flips to shutdown_approved.
  *
  * Auth model: team_shutdown_request is master-only. approve/reject may be
  * called by the master OR by the member being shut down (the cooperative party),
@@ -73,7 +72,7 @@ export function teamShutdownRequestTool(ctx: PluginContext): ToolDefinition {
 
 export function teamApproveShutdownTool(ctx: PluginContext): ToolDefinition {
     return tool({
-        description: "Approve cooperative shutdown for a member. Cleans the member's worktree and flips status to shutdown_approved. When all members are shutdown_approved, the team becomes dead. Callable by the master or by the member being shut down.",
+        description: "Approve cooperative shutdown for a member. Cleans the member's worktree and flips status to shutdown_approved. Callable by the master or by the member being shut down.",
         args: {
             team_id: tool.schema.string().min(1),
             member: tool.schema.string().min(1),
@@ -98,9 +97,8 @@ export function teamApproveShutdownTool(ctx: PluginContext): ToolDefinition {
                 const allDown = team.members.every(
                     m => m.status === "shutdown_approved",
                 )
-                if (allDown) team.status = "dead"
                 await saveTeamState(team)
-                return `Member "${args.member}" approved shutdown.${allDown ? " All members down — team is dead." : ""}`
+                return `Member "${args.member}" approved shutdown.${allDown ? " All members down." : ""}`
             })
         },
     })

@@ -181,7 +181,7 @@ export function createTransformHook(
  *     team to "failed". Its sessions persist and are reusable by a fresh workflow
  *     call (ensureMembersReady reuses members that already have a sessionId).
  *   - idle: release stale reservations (members reusable as-is).
- * live / failed / dead are terminal-or-pristine → skipped.
+ * live / failed are terminal-or-pristine → skipped.
  * Runs once in server() init, AFTER rebuildSessionIndex, BEFORE startSweepTimer.
  * Safe to use the mutex here: hooks are not yet registered, so no event handler
  * runs concurrently. Iterates BOTH scopes: project (session-segmented) + user

@@ -32,7 +32,6 @@ export type TeamStatus =
     | "busy"        // sessions spawned, workflow running
     | "idle"        // sessions spawned, idle (workflow completed)
     | "failed"      // agent error or task incomplete (e.g. loop max rounds w/o done)
-    | "dead"        // marked for deletion, about to be cleaned up
 
 export type MemberStatus =
     | "pending"             // session not yet created
