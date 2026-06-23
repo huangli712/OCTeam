@@ -454,7 +454,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             const force = args.force ?? false
             if (!force) {
                 const busy = team.members.filter(
-                    m => m.status !== "shutdown_approved" && m.status !== "completed" && m.sessionId,
+                    m => m.status !== "shutdown_approved" && m.sessionId,
                 )
                 if (busy.length > 0) {
                     return `Error: ${busy.length} member(s) still active (${busy.map(m => m.name).join(", ")}). Use team_shutdown_request first, or re-run with force: true.`

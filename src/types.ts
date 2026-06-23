@@ -33,14 +33,12 @@ export type TeamStatus =
     | "idle"        // sessions spawned, idle (workflow completed)
     | "failed"      // agent error or task incomplete (e.g. loop max rounds w/o done)
     | "dead"        // marked for deletion, about to be cleaned up
-    | "disabled"    // team disabled (e.g. by team_shutdown_request)
 
 export type MemberStatus =
     | "pending"             // session not yet created
     | "running"             // actively processing a prompt
     | "idle"                // finished, awaiting work
     | "errored"             // LLM/tool failure
-    | "completed"           // finished all assigned work
     | "shutdown_approved"   // cooperative shutdown approved
 
 export type RuntimeMember = {
