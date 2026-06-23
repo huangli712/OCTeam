@@ -4,6 +4,7 @@
  */
 
 import { listAllTeams, loadTeamState } from "../state/store.js"
+import { rolePreset } from "./role-presets.js"
 import type { MemberState, MemberSpec, TeamSpec } from "./types.js"
 
 // --- sessionID -> team index (process-level, O(1) resolve) ---
@@ -428,6 +429,12 @@ export function buildRolePrompt(
     ]
     if (spec.model) lines.push(`Your model: ${spec.model}`)
     if (peers.length > 0) lines.push(`Your teammates: ${peers.join(", ")}`)
+    // Preset role guidance (by role label), injected before the user's task
+    // instruction. Roles without a preset get no role-instruction block.
+    const preset = rolePreset(spec.role)
+    if (preset) {
+        lines.push("", "<role-instruction>", preset, "</role-instruction>")
+    }
     if (spec.prompt) {
         lines.push("", "<user-instruction>", spec.prompt, "</user-instruction>")
     }
