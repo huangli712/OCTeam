@@ -18,7 +18,7 @@ import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservati
 import { reapStaleClaims } from "./tasks.js"
 import { handleStatusEvent, processIdle } from "./orchestration/handlers.js"
 import { checkTermination } from "./orchestration/termination.js"
-import type { RuntimeMember } from "./types.js"
+import type { MemberState } from "./types.js"
 
 const SWEEP_INTERVAL_MS = 15_000
 
@@ -84,7 +84,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
         await team.mutex.runExclusive(async () => {
             if (member.isMaster) {
                 // synthetic master — Step 0 drains queued results, no dispatch
-                await processIdle(ctx, team, member as RuntimeMember, sessionID)
+                await processIdle(ctx, team, member as MemberState, sessionID)
             } else {
                 // operate on the LIVE member object so mutations persist
                 const live = team.members.find(m => m.name === member.name)

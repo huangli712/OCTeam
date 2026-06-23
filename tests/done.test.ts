@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { waitForBarrier } from "../src/orchestration/handlers.js"
-import type { ActiveTask, RuntimeMember, TeamState } from "../src/types.js"
+import type { ActiveTask, MemberState, TeamState } from "../src/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 
 /**
@@ -9,11 +9,11 @@ import { AsyncMutex } from "../src/state/locks.js"
  * are populated; everything else is bypassed via type assertion.
  */
 function makeTeam(opts: {
-    members: Array<Partial<RuntimeMember> & Pick<RuntimeMember, "name">>
+    members: Array<Partial<MemberState> & Pick<MemberState, "name">>
     activeTask?: Partial<ActiveTask>
     directory?: string
 }): TeamState & { mutex: AsyncMutex; directory: string } {
-    const members: RuntimeMember[] = opts.members.map(m => ({
+    const members: MemberState[] = opts.members.map(m => ({
         name: m.name,
         status: m.status ?? "idle",
         initialized: m.initialized ?? true,

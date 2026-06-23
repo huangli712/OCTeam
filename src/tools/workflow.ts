@@ -21,7 +21,7 @@ import { loadTeamState, saveTeamState } from "../state/store.js"
 import { ensureMembersReady, advanceToStage } from "../orchestration/dispatch.js"
 import { createTask, updateTask } from "../tasks.js"
 import { resolveCallerInTeam } from "../utils.js"
-import type { RuntimeMember, Stage } from "../types.js"
+import type { MemberState, Stage } from "../types.js"
 
 const DEFAULT_TIMEOUT_MS = 300_000
 const DEFAULT_LOOP_TIMEOUT_MS = 900_000
@@ -46,7 +46,7 @@ function effectiveTimeoutMs(
 /** Send a synthetic text prompt to a member; flip it to running. */
 async function dispatchToMember(
     ctx: PluginContext,
-    member: RuntimeMember,
+    member: MemberState,
     text: string,
     directory: string,
 ): Promise<void> {

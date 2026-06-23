@@ -22,7 +22,7 @@ import { countUnreadMessages } from "../mailbox.js"
 import { listAllTasks } from "../tasks.js"
 import { sendWakeHint } from "../wake-hint.js"
 import { extractOutputFromParts, resolveTeamMember, sumMemberTokens, truncateOutput } from "../utils.js"
-import type { ActiveTask, DecisionRecord, RuntimeMember } from "../types.js"
+import type { ActiveTask, DecisionRecord, MemberState } from "../types.js"
 import { advanceToStage } from "./dispatch.js"
 import { buildRoundSummary, buildSummary, deliverQueuedResultsToMaster, deliverSummaryToLeader } from "./summary.js"
 import { checkTermination } from "./termination.js"
@@ -177,7 +177,7 @@ export async function waitForBarrier(
 export async function processIdle(
     ctx: PluginContext,
     team: Team,
-    member: RuntimeMember,
+    member: MemberState,
     sessionID: string,
 ): Promise<void> {
     // Step 0: Master special case (B1) — synthetic member, never dispatches.
@@ -389,7 +389,7 @@ async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<bool
  * reviewer's output and either delivers the final summary (decider mode) or
  * waits for more reviewers (peer-quorum mode, Phase D).
  */
-async function handleSignoffIdle(ctx: PluginContext, team: Team, member: RuntimeMember): Promise<void> {
+async function handleSignoffIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
     const task = team.activeTask
     if (!task?.signoffStage) return
 
@@ -485,7 +485,7 @@ async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void
     })
 }
 
-async function handlePipelineIdle(ctx: PluginContext, team: Team, member: RuntimeMember): Promise<void> {
+async function handlePipelineIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
     const task = team.activeTask
     if (!task) return
     const stages = task.stages
@@ -529,7 +529,7 @@ async function handlePipelineIdle(ctx: PluginContext, team: Team, member: Runtim
     nextMember.turnCount++
 }
 
-async function handleLoopIdle(ctx: PluginContext, team: Team, member: RuntimeMember): Promise<void> {
+async function handleLoopIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
     const task = team.activeTask
     if (!task) return
     const stages = task.stages
@@ -599,7 +599,7 @@ async function handleLoopIdle(ctx: PluginContext, team: Team, member: RuntimeMem
     await advanceToStage(ctx, team, stages[0], feedback)
 }
 
-async function handleDelegateIdle(ctx: PluginContext, team: Team, member: RuntimeMember): Promise<void> {
+async function handleDelegateIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
     const tasks = await listAllTasks(team.directory)
     const incomplete = tasks.filter(t => t.status !== "completed" && t.status !== "deleted")
 

@@ -142,7 +142,7 @@ type TeamState = {
     teamName: string
     status: TeamStatus
     leadSessionId: string               // always context.sessionID, leader name is always "master"
-    members: RuntimeMember[]
+    members: MemberState[]
     activeTask?: ActiveTask             // only one active orchestration at a time
     bounds: Bounds                      // resource limits (see Section 8)
     createdAt: number
@@ -157,7 +157,7 @@ type TeamStatus =
     | "dead"                           // marked for deletion, about to be cleaned up
     | "disabled"                       // team disabled, cannot be used (e.g. by /team-shutdown-request)
 
-type RuntimeMember = {
+type MemberState = {
     name: string
     sessionId?: string                  // set after session.create succeeds
     model?: string
@@ -233,7 +233,7 @@ const sessionIndex = new Map<string, { teamName: string; memberName: string; isM
 
 // Built at ensureMembersReady (member sessions) and team_create (leadSessionId → master).
 // Invalidated at team_delete. Rebuilt from disk on plugin restart (scan once, not per-turn).
-async function resolveTeamMember(sessionID: string): Promise<RuntimeMember & { teamName: string; teamRunId: string } | null> {
+async function resolveTeamMember(sessionID: string): Promise<MemberState & { teamName: string; teamRunId: string } | null> {
     const hit = sessionIndex.get(sessionID)
     if (!hit) return null              // O(1) reject for non-member sessions (the common case)
     const team = await loadTeamState(hit.teamName)
@@ -819,7 +819,7 @@ for (const t of input.tasks) {
 **Delegate Handler**（Section 6 event handler 的 `case "delegate"`）：
 
 ```ts
-async function handleDelegateIdle(team: Team, member: RuntimeMember) {
+async function handleDelegateIdle(team: Team, member: MemberState) {
     const tasks = await listAllTasks(team.teamRunId)
     const incomplete = tasks.filter(t => t.status !== "completed" && t.status !== "deleted")
 
@@ -1154,7 +1154,7 @@ event: async ({ event }) => {
     })
 }
 
-async function processIdle(team: Team, member: RuntimeMember, sessionID: string) {
+async function processIdle(team: Team, member: MemberState, sessionID: string) {
     // --- Step 0: Master special case (B1 fix): master is a synthetic member.
     //     Deliver any queued team results, then return. Master NEVER dispatches. ---
     if (member.isMaster) {
@@ -1362,7 +1362,7 @@ async function waitForBarrier(
 `handleParallelIdle` 覆盖 isolated/collaborative/discussion 三个子模式。它用 `waitForBarrier` 等待所有参与 member idle，再按子模式推进。
 
 ```ts
-async function handleParallelIdle(team: Team, member: RuntimeMember) {
+async function handleParallelIdle(team: Team, member: MemberState) {
     const task = team.activeTask!
     const participants = team.members.filter(m => !m.isMaster).map(m => m.name)
 
@@ -1433,7 +1433,7 @@ function allMembersAgree(responses: Record<string, string>): boolean {
 ### Pipeline Handler（已修正）
 
 ```ts
-async function handlePipelineIdle(team: Team, member: RuntimeMember) {
+async function handlePipelineIdle(team: Team, member: MemberState) {
     const task = team.activeTask!
     const stages = task.stages
 
@@ -1483,7 +1483,7 @@ async function handlePipelineIdle(team: Team, member: RuntimeMember) {
 ### Loop Handler（已修正——decider 是一个 stage）
 
 ```ts
-async function handleLoopIdle(team: Team, member: RuntimeMember) {
+async function handleLoopIdle(team: Team, member: MemberState) {
     const task = team.activeTask!
     const stages = task.stages
 

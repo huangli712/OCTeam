@@ -2,15 +2,15 @@ import { mkdtempSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import type { RuntimeMember, TeamState } from "../src/types.js"
+import type { MemberState, TeamState } from "../src/types.js"
 
 /** Create an isolated tmp storage root for a test. */
 export function tmpRoot(label: string): string {
     return mkdtempSync(path.join(os.tmpdir(), `octeam-${label}-`))
 }
 
-/** Minimal valid RuntimeMember for fixtures. */
-export function makeMember(name: string, sessionId?: string): RuntimeMember {
+/** Minimal valid MemberState for fixtures. */
+export function makeMember(name: string, sessionId?: string): MemberState {
     return {
         name,
         sessionId,
@@ -24,7 +24,7 @@ export function makeMember(name: string, sessionId?: string): RuntimeMember {
 export function makeState(
     teamName: string,
     leadSessionId: string,
-    members: RuntimeMember[] = [],
+    members: MemberState[] = [],
 ): TeamState {
     return {
         version: 1,

@@ -39,7 +39,7 @@ export type MemberStatus =
     | "idle"                // finished, awaiting work
     | "errored"             // LLM/tool failure
 
-export type RuntimeMember = {
+export type MemberState = {
     name: string
     sessionId?: string                 // set after session.create succeeds
     model?: string
@@ -62,7 +62,7 @@ export type TeamState = {
     teamName: string
     status: TeamStatus
     leadSessionId: string              // always context.sessionID; leader name is "master"
-    members: RuntimeMember[]
+    members: MemberState[]
     activeTask?: ActiveTask            // only one active orchestration at a time
     lastMode?: LastModeRecord          // most recent orchestration mode (survives activeTask cleanup)
     bounds: Bounds                     // resource limits (Section 8)

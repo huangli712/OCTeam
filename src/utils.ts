@@ -4,7 +4,7 @@
  */
 
 import { listAllTeams, loadTeamState } from "./state/store.js"
-import type { RuntimeMember, MemberSpec, TeamSpec } from "./types.js"
+import type { MemberState, MemberSpec, TeamSpec } from "./types.js"
 
 // --- sessionID -> member index (process-level, O(1) resolve) ---
 
@@ -60,7 +60,7 @@ export function isIndexedMember(sessionID: string): boolean {
 }
 
 /** A team member resolved from a sessionID, plus the team context it belongs to. */
-export type ResolvedMember = RuntimeMember & {
+export type ResolvedMember = MemberState & {
     teamName: string
     teamRunId: string
     directory: string
@@ -272,7 +272,7 @@ export function chunk<T>(arr: T[], n: number): T[][] {
 
 /**
  * Build the role-setup prompt sent to a freshly spawned member session. Role
- * comes from the MemberSpec (config.json), since RuntimeMember does not
+ * comes from the MemberSpec (config.json), since MemberState does not
  * persist the role field.
  */
 export function buildRolePrompt(
