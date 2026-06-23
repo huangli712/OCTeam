@@ -11,15 +11,15 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import { RESERVATION_TTL_MS, atomicWrite, withLock } from "./state/locks.js"
+import { RESERVATION_TTL_MS, atomicWrite, withLock } from "../state/locks.js"
 import {
     inboxPath,
     mailboxLockPath,
     processedPath,
     reservedDir,
     reservedPath,
-} from "./state/paths.js"
-import type { Message } from "./types.js"
+} from "../state/paths.js"
+import type { Message } from "../core/types.js"
 
 // --- low-level jsonl helpers ---
 

@@ -6,7 +6,7 @@
  * avoid wake loops.
  */
 
-import type { PluginContext } from "./context.js"
+import type { PluginContext } from "../core/context.js"
 
 const WAKE_HINT_THROTTLE_MS = 30_000
 const wakeHintLastSent = new Map<string, number>()

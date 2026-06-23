@@ -3,7 +3,7 @@
  * polling primitives, and the role-setup prompt builder.
  */
 
-import { listAllTeams, loadTeamState } from "./state/store.js"
+import { listAllTeams, loadTeamState } from "../state/store.js"
 import type { MemberState, MemberSpec, TeamSpec } from "./types.js"
 
 // --- sessionID -> team index (process-level, O(1) resolve) ---

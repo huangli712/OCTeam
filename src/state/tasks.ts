@@ -16,9 +16,9 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import crypto from "node:crypto"
 
-import { CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./state/locks.js"
-import { claimLockPath, claimMutexPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./state/paths.js"
-import type { Task, TaskStatus } from "./types.js"
+import { CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./locks.js"
+import { claimLockPath, claimMutexPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./paths.js"
+import type { Task, TaskStatus } from "../core/types.js"
 
 export class TaskAlreadyClaimedError extends Error {
     constructor(taskId: string) {
