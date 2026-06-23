@@ -78,19 +78,19 @@ function defaultBounds(override?: Partial<Bounds>): Bounds {
 }
 
 /**
- * Derive a reasonable agent from a member's role label. Ordered FIRST-hit
- * substring match (case-insensitive). Ordering matters where one term contains
- * another: "researcher" contains "search", and the Chinese "审查" (review)
- * contains "查" (search) — so explore and oracle are checked before librarian.
- * Note: verifier/校验 map to build (writing/running tests needs write access),
+ * Derive a reasonable agent from a member's role label (a single English word
+ * like "coder", "explorer", "reviewer"). Ordered FIRST-hit substring match
+ * (case-insensitive). Ordering matters where one term contains another:
+ * "researcher" contains "search", so explore is checked before librarian.
+ * Note: verifier maps to build (writing/running tests needs write access),
  * NOT the read-only oracle — only review/audit/architect stay read-only.
  */
 export function deriveAgent(role: string): string {
     const r = role.toLowerCase()
-    if (r.includes("research") || r.includes("explor") || r.includes("研究")) return "explore"
-    if (r.includes("review") || r.includes("architect") || r.includes("audit") || r.includes("审查") || r.includes("架构")) return "oracle"
-    if (r.includes("find") || r.includes("search") || r.includes("librar") || r.includes("查")) return "librarian"
-    if (r.includes("cod") || r.includes("verif") || r.includes("implement") || r.includes("writ") || r.includes("develop") || r.includes("build") || r.includes("实现") || r.includes("校验") || r.includes("写") || r.includes("编码")) return "build"
+    if (r.includes("research") || r.includes("explor")) return "explore"
+    if (r.includes("review") || r.includes("architect") || r.includes("audit")) return "oracle"
+    if (r.includes("find") || r.includes("search") || r.includes("librar")) return "librarian"
+    if (r.includes("cod") || r.includes("verif") || r.includes("implement") || r.includes("writ") || r.includes("develop") || r.includes("build")) return "build"
     return "build"
 }
 

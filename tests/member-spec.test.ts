@@ -44,13 +44,6 @@ describe("deriveAgent (role label → agent)", () => {
         expect(deriveAgent("Reviewer")).toBe("oracle")
     })
 
-    test("Chinese labels", () => {
-        expect(deriveAgent("编码")).toBe("build")
-        expect(deriveAgent("审查")).toBe("oracle")
-        expect(deriveAgent("研究")).toBe("explore")
-        expect(deriveAgent("查找")).toBe("librarian")
-        expect(deriveAgent("校验")).toBe("build")
-    })
 
     test("unknown label → build (default)", () => {
         expect(deriveAgent("foobar")).toBe("build")
