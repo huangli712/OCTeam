@@ -23,7 +23,7 @@ import { listAllTasks } from "../state/tasks.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"
 import { extractOutputFromParts, resolveTeamMember, sumMemberTokens, truncateOutput } from "../core/utils.js"
 import type { ActiveTask, DecisionRecord, MemberState } from "../core/types.js"
-import { advanceToStage } from "./dispatch.js"
+import { advanceToStage, dispatchToMember } from "./dispatch.js"
 import { buildRoundSummary, buildSummary, deliverQueuedResultsToMaster, deliverSummaryToLeader } from "./summary.js"
 import { checkTermination } from "./termination.js"
 
@@ -353,14 +353,7 @@ async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<bool
             task.signoffStage = false
             return false
         }
-        await ctx.client.session.promptAsync({
-            path: { id: decider.sessionId },
-            body: {
-                parts: [{ type: "text", text: reviewPrompt, synthetic: true }],
-            },
-        })
-        decider.status = "running"
-        decider.turnCount++
+        await dispatchToMember(ctx, decider, reviewPrompt, decider.worktreePath ?? ctx.directory)
     } else if (task.signoffPolicy === "peer-quorum") {
         // Dispatch to all non-master members with a session.
         const reviewers = team.members.filter(m => !m.isMaster && m.sessionId)
@@ -369,14 +362,7 @@ async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<bool
             return false
         }
         for (const m of reviewers) {
-            await ctx.client.session.promptAsync({
-                path: { id: m.sessionId! },
-                body: {
-                    parts: [{ type: "text", text: reviewPrompt, synthetic: true }],
-                },
-            })
-            m.status = "running"
-            m.turnCount++
+            await dispatchToMember(ctx, m, reviewPrompt, m.worktreePath ?? ctx.directory)
         }
     }
 
@@ -463,24 +449,11 @@ async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void
         // Next round: broadcast prior-round summary, reset to running.
         task.currentRound = (task.currentRound ?? 0) + 1
         const summary = buildRoundSummary(task.responses)
+        const roundText =
+            `[Consensus Round ${task.currentRound}] Others said:\n${summary}\n\n`
+            + `Respond, then emit <consensus>{"agreed": true|false}</consensus>.`
         for (const m of team.members.filter(x => !x.isMaster)) {
-            if (!m.sessionId) continue
-            await ctx.client.session.promptAsync({
-                path: { id: m.sessionId },
-                body: {
-                    parts: [
-                        {
-                            type: "text",
-                            text:
-                                `[Consensus Round ${task.currentRound}] Others said:\n${summary}\n\n`
-                                + `Respond, then emit <consensus>{"agreed": true|false}</consensus>.`,
-                            synthetic: true,
-                        },
-                    ],
-                },
-            })
-            m.status = "running"
-            m.turnCount++
+            await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory)
         }
     })
 }
@@ -644,20 +617,11 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Member
     }
     if (!member.sessionId) return
     member.lastNotifiedAt = now
-    await ctx.client.session.promptAsync({
-        path: { id: member.sessionId },
-        body: {
-            parts: [
-                {
-                    type: "text",
-                    text: `[Team Orchestrator] You have completed your task. ${claimable.length} task(s) available. Use team_task_list to check, team_task_update to claim, execute, then team_send_message to report to master. Repeat until no tasks remain.`,
-                    synthetic: true,
-                },
-            ],
-        },
-    })
-    member.status = "running"
-    member.turnCount++
+    const reprompt =
+        `[Team Orchestrator] You have completed your task. ${claimable.length} task(s) available. `
+        + `Use team_task_list to check, team_task_update to claim, execute, then team_send_message `
+        + `to report to master. Repeat until no tasks remain.`
+    await dispatchToMember(ctx, member, reprompt, member.worktreePath ?? ctx.directory)
 }
 
 const RETRY_ESCALATION_MS = 60_000

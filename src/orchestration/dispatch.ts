@@ -16,7 +16,7 @@ import type { Team } from "../state/store.js"
 import { readTeamSpec, saveTeamState } from "../state/store.js"
 import { worktreePath } from "../state/paths.js"
 import { buildRolePrompt, chunk, indexMember, truncateOutput, waitUntil } from "../core/utils.js"
-import type { Stage } from "../core/types.js"
+import type { MemberState, Stage } from "../core/types.js"
 
 const execFileP = promisify(execFile)
 
@@ -169,6 +169,33 @@ export async function advanceToStage(
         // Members work in the PROJECT dir (or their worktree), never the
         // .octeam state dir. session.create already used ctx.directory.
         query: { directory: member.worktreePath ?? ctx.directory },
+    })
+    member.status = "running"
+    member.turnCount++
+}
+
+/**
+ * Send a synthetic text prompt to a member; flip it to running. The single
+ * canonical member-dispatch primitive — every member prompt MUST go through
+ * here so body.agent (role routing) and query.directory (worktree isolation)
+ * are always set. OpenCode resolves both per-prompt (omitting agent falls back
+ * to "build"; omitting directory falls back to the server cwd), so they cannot
+ * be inherited from session.create.
+ */
+export async function dispatchToMember(
+    ctx: PluginContext,
+    member: MemberState,
+    text: string,
+    directory: string,
+): Promise<void> {
+    if (!member.sessionId) return
+    await ctx.client.session.promptAsync({
+        path: { id: member.sessionId },
+        body: {
+            parts: [{ type: "text", text, synthetic: true }],
+            agent: member.agent ?? "build",
+        },
+        query: { directory },
     })
     member.status = "running"
     member.turnCount++

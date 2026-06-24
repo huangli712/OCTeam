@@ -18,10 +18,10 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
-import { ensureMembersReady, advanceToStage } from "../orchestration/dispatch.js"
+import { ensureMembersReady, advanceToStage, dispatchToMember } from "../orchestration/dispatch.js"
 import { createTask, updateTask } from "../state/tasks.js"
 import { activationError, resolveCallerInTeam } from "../core/utils.js"
-import type { MemberState, Stage } from "../core/types.js"
+import type { Stage } from "../core/types.js"
 
 const DEFAULT_TIMEOUT_MS = 300_000
 const DEFAULT_LOOP_TIMEOUT_MS = 900_000
@@ -43,25 +43,6 @@ function effectiveTimeoutMs(
     return Math.min(requested, cap)
 }
 
-/** Send a synthetic text prompt to a member; flip it to running. */
-async function dispatchToMember(
-    ctx: PluginContext,
-    member: MemberState,
-    text: string,
-    directory: string,
-): Promise<void> {
-    if (!member.sessionId) return
-    await ctx.client.session.promptAsync({
-        path: { id: member.sessionId },
-        body: {
-            parts: [{ type: "text", text, synthetic: true }],
-            agent: member.agent ?? "build",
-        },
-        query: { directory },
-    })
-    member.status = "running"
-    member.turnCount++
-}
 
 // --- team_parallel ---
 
