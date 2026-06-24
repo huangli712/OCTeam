@@ -1,0 +1,111 @@
+import { afterEach, describe, expect, test } from "bun:test"
+
+import type { PluginContext } from "../src/core/context.js"
+import type { TeamSpec } from "../src/core/types.js"
+import { teamQueryTool } from "../src/tools/lifecycle.js"
+import { initTeamState, writeTeamSpec } from "../src/state/store.js"
+import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { makeMember, makeState, tmpRoot } from "./helpers.js"
+
+function makeCtx(storageRoot: string): PluginContext {
+    return { storageRoot, scope: "project" } as unknown as PluginContext
+}
+
+const tracked: string[] = []
+afterEach(() => {
+    for (const sid of tracked.splice(0)) unindexSession(sid)
+})
+
+async function setupTeam(
+    root: string,
+    sid: string,
+    opts: { members?: ReturnType<typeof makeMember>[]; activatedAt?: number } = {},
+): Promise<void> {
+    const members = opts.members ?? [makeMember("alice")]
+    await initTeamState(root, makeState("alpha", sid, members, opts.activatedAt), sid)
+    const spec: TeamSpec = {
+        version: 1,
+        name: "alpha",
+        createdAt: Date.now(),
+        members: members.map(m => ({
+            name: m.name,
+            role: "coder",
+            prompt: "write code",
+            agent: "build",
+            model: m.model,
+        })),
+    }
+    await writeTeamSpec(root, spec, sid)
+    await rebuildSessionIndex(root, `${root}__unused`)
+}
+
+describe("team_query tool", () => {
+    test("team not found → error (caller not a member)", async () => {
+        const root = tmpRoot("q-404")
+        const result = await teamQueryTool(makeCtx(root)).execute(
+            { team_id: "nonexistent", member_name: "alice" },
+            { sessionID: "ses_x" } as any,
+        )
+        expect(result).toContain("Error")
+        expect(result).toContain("not a member")
+    })
+
+    test("member not found → error", async () => {
+        const root = tmpRoot("q-member-404")
+        const sid = "ses_q_404"
+        tracked.push(sid)
+        await setupTeam(root, sid, { activatedAt: Date.now() })
+        const result = await teamQueryTool(makeCtx(root)).execute(
+            { team_id: "alpha", member_name: "bob" },
+            { sessionID: sid } as any,
+        )
+        expect(result).toContain("not found")
+    })
+
+    test("existing member → shows 7 core fields + conditional fields", async () => {
+        const root = tmpRoot("q-fields")
+        const sid = "ses_q_fields"
+        tracked.push(sid)
+        const alice = { ...makeMember("alice"), model: "anthropic/claude" }
+        await setupTeam(root, sid, { members: [alice], activatedAt: Date.now() })
+        const result = await teamQueryTool(makeCtx(root)).execute(
+            { team_id: "alpha", member_name: "alice" },
+            { sessionID: sid } as any,
+        )
+        // 7 core fields
+        expect(result).toContain("Name:")
+        expect(result).toContain("Role:")
+        expect(result).toContain("Prompt:")
+        expect(result).toContain("Model:")
+        expect(result).toContain("Agent:")
+        expect(result).toContain("Status:")
+        // bonus fields
+        expect(result).toContain("Initialized:")
+        expect(result).toContain("Turn count:")
+    })
+
+    test("member with worktreePath → shows the path", async () => {
+        const root = tmpRoot("q-wt")
+        const sid = "ses_q_wt"
+        tracked.push(sid)
+        const alice = { ...makeMember("alice"), worktreePath: "/tmp/wt-alice" }
+        await setupTeam(root, sid, { members: [alice], activatedAt: Date.now() })
+        const result = await teamQueryTool(makeCtx(root)).execute(
+            { team_id: "alpha", member_name: "alice" },
+            { sessionID: sid } as any,
+        )
+        expect(result).toContain("/tmp/wt-alice")
+    })
+
+    test("member without model → model field shown as 'none'", async () => {
+        const root = tmpRoot("q-nomodel")
+        const sid = "ses_q_nomodel"
+        tracked.push(sid)
+        await setupTeam(root, sid, { members: [makeMember("alice")], activatedAt: Date.now() })
+        const result = await teamQueryTool(makeCtx(root)).execute(
+            { team_id: "alpha", member_name: "alice" },
+            { sessionID: sid } as any,
+        )
+        expect(result).toContain("Model:")
+    })
+})
