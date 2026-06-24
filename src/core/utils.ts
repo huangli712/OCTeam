@@ -286,12 +286,9 @@ async function indexScope(storageRoot: string, segmented: boolean): Promise<void
         try {
             const team = await loadTeamState(storageRoot, teamName, leadSessionId)
             indexMasterTeam(team.leadSessionId, team.teamName, leadSessionId, storageRoot, team.directory)
-            // Restore the active pointer from the persisted flag. If >1 team has
-            // activatedAt (crash mid-switch), this overwrites — reconcileActivation
-            // (run after rebuild) keeps only the latest on disk.
-            if (team.activatedAt !== undefined) {
-                setActiveTeam(team.leadSessionId, team.directory)
-            }
+            // Restart invariant: never auto-activate. The active pointer is NOT
+            // restored from persisted activatedAt — reconcileActivation clears
+            // all on-disk activatedAt, and the user must team_activate explicitly.
             for (const m of team.members) {
                 if (m.sessionId) {
                     indexMember(m.sessionId, team.teamName, m.name, leadSessionId, storageRoot)

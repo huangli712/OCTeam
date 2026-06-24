@@ -3,14 +3,15 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { PluginContext } from "../src/core/context.js"
 import { reconcileActivation } from "../src/hooks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
-import { rebuildSessionIndex, resolveMasterTeams, resolveTeamMember, unindexSession } from "../src/core/utils.js"
+import { rebuildSessionIndex, resolveTeamMember, unindexSession } from "../src/core/utils.js"
 import { makeState, tmpRoot } from "./helpers.js"
 
 /**
- * reconcileActivation only reads ctx.{projectStorageRoot,userStorageRoot}. The
- * fixtures here use the PROJECT scope (segmented) so leadSessionId is honored.
- * Real startup order: rebuildSessionIndex (builds the master index + restores the
- * active pointer from activatedAt) THEN reconcileActivation. The tests mirror it.
+ * reconcileActivation enforces "never auto-activate on restart": it clears
+ * every team's persisted activatedAt so all teams are inactive after an
+ * OpenCode restart, regardless of prior state. rebuildSessionIndex builds the
+ * master index but does NOT restore the active pointer. The tests mirror the
+ * real startup order: rebuildSessionIndex THEN reconcileActivation.
  */
 function ctxFor(root: string): PluginContext {
     return {
@@ -29,19 +30,18 @@ async function startup(root: string): Promise<void> {
     await reconcileActivation(ctxFor(root))
 }
 
-describe("reconcileActivation migration / invariant", () => {
-    test("single legacy team (no activatedAt) → backfilled active", async () => {
-        const root = tmpRoot("recon-single")
+describe("reconcileActivation restart invariant: never auto-activate", () => {
+    test("single team with activatedAt → cleared on restart", async () => {
+        const root = tmpRoot("recon-single-active")
         const sid = "ses_a"
         tracked.push(sid)
-        await initTeamState(root, makeState("solo", sid), sid)
+        await initTeamState(root, makeState("solo", sid, [], 1000), sid)
 
         await startup(root)
 
-        const t = await loadTeamState(root, "solo", sid)
-        expect(t.activatedAt).toBeDefined()
-        // in-memory pointer now resolves the team
-        expect((await resolveTeamMember(root, sid))?.teamName).toBe("solo")
+        expect((await loadTeamState(root, "solo", sid)).activatedAt).toBeUndefined()
+        // no active team → master resolves to null
+        expect(await resolveTeamMember(root, sid)).toBeNull()
     })
 
     test("two legacy teams, none active → both stay inactive", async () => {
@@ -55,60 +55,49 @@ describe("reconcileActivation migration / invariant", () => {
 
         expect((await loadTeamState(root, "aaa", sid)).activatedAt).toBeUndefined()
         expect((await loadTeamState(root, "bbb", sid)).activatedAt).toBeUndefined()
-        // no active team → master resolves to null
         expect(await resolveTeamMember(root, sid)).toBeNull()
     })
 
-    test("two teams both active (crash residue) → only the later retained", async () => {
+    test("two teams both active (crash residue) → ALL cleared on restart", async () => {
         const root = tmpRoot("recon-multi-both")
         const sid = "ses_c"
         tracked.push(sid)
-        const early = 1000
-        const late = 2000
-        await initTeamState(root, makeState("aaa", sid, [], early), sid)
-        await initTeamState(root, makeState("bbb", sid, [], late), sid)
+        await initTeamState(root, makeState("aaa", sid, [], 1000), sid)
+        await initTeamState(root, makeState("bbb", sid, [], 2000), sid)
 
         await startup(root)
 
         expect((await loadTeamState(root, "aaa", sid)).activatedAt).toBeUndefined()
-        expect((await loadTeamState(root, "bbb", sid)).activatedAt).toBe(late)
-        expect((await resolveTeamMember(root, sid))?.teamName).toBe("bbb")
+        expect((await loadTeamState(root, "bbb", sid)).activatedAt).toBeUndefined()
+        expect(await resolveTeamMember(root, sid)).toBeNull()
     })
 
-    test("one active + one legacy-inactive → unchanged", async () => {
+    test("one active + one inactive → ALL cleared on restart", async () => {
         const root = tmpRoot("recon-mixed")
         const sid = "ses_d"
         tracked.push(sid)
-        const at = 5000
-        await initTeamState(root, makeState("aaa", sid, [], at), sid)
-        await initTeamState(root, makeState("bbb", sid), sid) // legacy inactive
+        await initTeamState(root, makeState("aaa", sid, [], 5000), sid)
+        await initTeamState(root, makeState("bbb", sid), sid)
 
         await startup(root)
 
-        expect((await loadTeamState(root, "aaa", sid)).activatedAt).toBe(at)
+        expect((await loadTeamState(root, "aaa", sid)).activatedAt).toBeUndefined()
         expect((await loadTeamState(root, "bbb", sid)).activatedAt).toBeUndefined()
-        expect((await resolveTeamMember(root, sid))?.teamName).toBe("aaa")
+        expect(await resolveTeamMember(root, sid)).toBeNull()
     })
 
-    test("identical activatedAt tiebreak is deterministic (lower directory wins)", async () => {
+    test("identical activatedAt → ALL cleared (no tiebreak)", async () => {
         const root = tmpRoot("recon-tie")
         const sid = "ses_e"
         tracked.push(sid)
         const same = 7000
-        const a = await initTeamState(root, makeState("aaa", sid, [], same), sid)
-        const b = await initTeamState(root, makeState("bbb", sid, [], same), sid)
+        await initTeamState(root, makeState("aaa", sid, [], same), sid)
+        await initTeamState(root, makeState("bbb", sid, [], same), sid)
 
         await startup(root)
 
-        // tiebreak keeps the lexicographically-smaller directory
-        const keepDir = a.directory < b.directory ? a.directory : b.directory
-        const teams = resolveMasterTeams(sid)
-        // exactly one remains active on disk
-        const aActive = (await loadTeamState(root, "aaa", sid)).activatedAt !== undefined
-        const bActive = (await loadTeamState(root, "bbb", sid)).activatedAt !== undefined
-        expect(aActive !== bActive).toBe(true) // exactly one
-        const resolved = await resolveTeamMember(root, sid)
-        expect(resolved?.directory).toBe(keepDir)
-        expect(teams.length).toBe(2)
+        expect((await loadTeamState(root, "aaa", sid)).activatedAt).toBeUndefined()
+        expect((await loadTeamState(root, "bbb", sid)).activatedAt).toBeUndefined()
+        expect(await resolveTeamMember(root, sid)).toBeNull()
     })
 })

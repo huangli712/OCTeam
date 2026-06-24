@@ -33,8 +33,8 @@ const server = async (input: PluginInput): Promise<Hooks> => {
         // best effort — unreadable teams are skipped
     })
 
-    // Reconcile the single-active invariant: backfill legacy single-team
-    // sessions, and resolve any >1-active violation left by a crash mid-switch.
+    // Restart invariant: clear all teams' activatedAt so none is auto-active
+    // after a restart. Users must team_activate explicitly.
     await reconcileActivation(ctx).catch(() => {
         // best effort — never block plugin load on reconcile
     })

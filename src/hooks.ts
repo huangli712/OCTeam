@@ -13,7 +13,7 @@ import type { Hooks } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "./core/context.js"
 import { activeTeams, clearActiveTask, invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from './state/store.js';
-import { resolveMasterTeams, resolveTeamMember, isMasterSession, setActiveTeam, unindexSession } from "./core/utils.js"
+import { resolveMasterTeams, resolveTeamMember, isMasterSession, unindexSession } from "./core/utils.js"
 import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
 import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent, processIdle } from "./orchestration/handlers.js"
@@ -261,96 +261,30 @@ export async function reconcileCrashedTeams(ctx: PluginContext): Promise<void> {
 }
 
 /**
- * Reconcile the single-active invariant on startup (multi-team feature). Runs
- * once in server() init, AFTER rebuildSessionIndex. For each leader session:
- *   - 0 active + exactly 1 team → backfill-activate it (preserves the legacy
- *     single-team UX, where the sole team was implicitly active).
- *   - 0 active + multiple teams → leave ALL inactive (do not guess; the user
- *     activates explicitly).
- *   - >1 active (crash mid-switch or hand-edited disk) → keep the latest
- *     activatedAt (tiebreak by directory string for determinism), clear the rest.
- * Also syncs the in-memory active pointer to the final on-disk state.
+ * Restart invariant: never auto-activate. Clears every team's persisted
+ * activatedAt on plugin startup so that, after an OpenCode restart, ALL teams
+ * are inactive regardless of their prior state. The in-memory active pointer is
+ * likewise empty — indexScope no longer restores it from activatedAt. The user
+ * must call team_activate explicitly to make a team available. Runs once in
+ * server() init, AFTER rebuildSessionIndex.
  */
 export async function reconcileActivation(ctx: PluginContext): Promise<void> {
     for (const scope of [
         { root: ctx.projectStorageRoot, seg: true },
         { root: ctx.userStorageRoot, seg: false },
     ]) {
-        // Group every team by its leader session.
-        const bySession = new Map<string, { name: string; lead?: string; dir: string; at?: number }[]>()
         for (const { leadSessionId, teamName } of await listAllTeams(scope.root, scope.seg)) {
             try {
-                const t = await loadTeamState(scope.root, teamName, leadSessionId)
-                const arr = bySession.get(t.leadSessionId) ?? []
-                arr.push({ name: teamName, lead: leadSessionId, dir: t.directory, at: t.activatedAt })
-                bySession.set(t.leadSessionId, arr)
+                const team = await loadTeamState(scope.root, teamName, leadSessionId)
+                if (team.activatedAt === undefined) continue
+                await team.mutex.runExclusive(async () => {
+                    team.activatedAt = undefined
+                    await saveTeamState(team)
+                })
             } catch {
                 // unreadable team state — skip
             }
         }
-
-        for (const [sid, teams] of bySession) {
-            const active = teams.filter(t => t.at !== undefined)
-            if (active.length === 0) {
-                // Legacy backfill: a lone team auto-activates; multiple stay inactive.
-                if (teams.length === 1) {
-                    await activateOnDisk(scope.root, teams[0].name, teams[0].lead, sid, teams[0].dir, Date.now())
-                }
-            } else if (active.length > 1) {
-                // Invariant violation: keep the latest, clear the rest. Tiebreak on
-                // identical activatedAt by directory string (deterministic).
-                const keep = active.reduce((a, b) =>
-                    b.at! > a.at! || (b.at! === a.at! && b.dir < a.dir) ? b : a,
-                )
-                for (const t of active) {
-                    if (t.dir === keep.dir) continue
-                    await deactivateOnDisk(scope.root, t.name, t.lead, t.dir)
-                }
-                setActiveTeam(sid, keep.dir)
-            } else {
-                // Exactly one active — already consistent; sync the in-memory pointer.
-                setActiveTeam(sid, active[0].dir)
-            }
-        }
-    }
-}
-
-/** Set activatedAt on a team and point the in-memory active pointer at it. */
-async function activateOnDisk(
-    storageRoot: string,
-    teamName: string,
-    leadSessionId: string | undefined,
-    sessionID: string,
-    directory: string,
-    at: number,
-): Promise<void> {
-    try {
-        const team = await loadTeamState(storageRoot, teamName, leadSessionId)
-        await team.mutex.runExclusive(async () => {
-            team.activatedAt = at
-            await saveTeamState(team)
-        })
-        setActiveTeam(sessionID, directory)
-    } catch {
-        // best-effort
-    }
-}
-
-/** Clear activatedAt on a team (does not touch the in-memory active pointer). */
-async function deactivateOnDisk(
-    storageRoot: string,
-    teamName: string,
-    leadSessionId: string | undefined,
-    _directory: string,
-): Promise<void> {
-    try {
-        const team = await loadTeamState(storageRoot, teamName, leadSessionId)
-        await team.mutex.runExclusive(async () => {
-            team.activatedAt = undefined
-            await saveTeamState(team)
-        })
-    } catch {
-        // best-effort
     }
 }
 

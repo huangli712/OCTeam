@@ -175,23 +175,12 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             // for user scope.
             const leadSessionId = ctx.scope === "project" ? context.sessionID : undefined
 
-            // A session may own multiple teams (1:many master index), but at most
-            // one is "available" (active) at a time. Determine whether this session
-            // already has an active team: if not, the new team auto-activates
-            // (preserves the single-team UX); otherwise it is created inactive and
-            // the user must team_activate to switch. The single-active invariant is
-            // enforced by team_activate, not by refusing creation.
-            let sessionHasActiveTeam = false
+            // Reject name collisions with any existing team in this scope. A
+            // same-named team shares the on-disk directory and would silently
+            // overwrite the prior team's config.json/state.json.
             for (const other of await listTeamNames(ctx.storageRoot, leadSessionId)) {
-                if (other === args.name) continue
-                try {
-                    const t = await loadTeamState(ctx.storageRoot, other, leadSessionId)
-                    if (t.leadSessionId === context.sessionID && t.activatedAt !== undefined) {
-                        sessionHasActiveTeam = true
-                        break
-                    }
-                } catch {
-                    // unreadable team state — ignore
+                if (other === args.name) {
+                    return `Error: team name "${args.name}" already exists in this ${ctx.scope} scope`
                 }
             }
 
@@ -270,20 +259,17 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 members,
                 bounds: defaultBounds(args.bounds),
                 createdAt: now,
-                // First team for this session auto-activates; subsequent teams are
-                // created inactive (user switches explicitly via team_activate).
-                activatedAt: sessionHasActiveTeam ? undefined : now,
+                // Per project rule: never auto-activate. Every new team starts
+                // inactive; the user must explicitly call team_activate.
+                activatedAt: undefined,
             }, leadSessionId)
 
             // Index the leader session as master (1:many) so this team's mailbox
-            // (queued team results) can be drained by the event handler. Set the
-            // active pointer when this is the session's first/only active team.
+            // (queued team results) can be drained by the event handler. The team
+            // is NOT auto-activated — call team_activate to make it available.
             indexMasterTeam(context.sessionID, args.name, leadSessionId, ctx.storageRoot, createdTeam.directory)
-            if (!sessionHasActiveTeam) {
-                setActiveTeam(context.sessionID, createdTeam.directory)
-            }
 
-            return `Team "${args.name}" created with ${members.length} member(s): ${members.map(m => m.name).join(", ")}. Status: live${sessionHasActiveTeam ? " (inactive — call team_activate to switch to it)" : " (active)"}. Sessions will spawn on first workflow call.`
+            return `Team "${args.name}" created with ${members.length} member(s): ${members.map(m => m.name).join(", ")}. Status: live (inactive — call team_activate to activate it). Sessions will spawn on first workflow call.`
         },
     })
 }
