@@ -470,7 +470,7 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
 export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Modify a team member's name, role, system prompt, and/or agent. new_role must be a preset role (unknown → \"almighty\") and re-derives the member's agent unless new_agent is also given. new_name must be a preset pool name. Changing the agent re-resolves the model from the agent registry. Only allowed when the team is not busy.",
+            "Modify a team member's name, role, system prompt, and/or agent. new_role must be a preset role (unknown → \"almighty\") and re-derives the member's agent unless new_agent is also given. new_name must be a preset pool name. Changing the agent re-resolves the model from the agent registry. Only allowed when the team is not busy and the target member is not running.",
         args: {
             team_id: tool.schema.string().min(1),
             member_name: tool.schema.string().min(1),
@@ -497,6 +497,9 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             }
             const member = team.members.find(m => m.name === args.member_name)
             if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
+            if (member.status === "running") {
+                return `Error: member "${args.member_name}" is currently running. Wait for it to finish before modifying.`
+            }
 
             let spec: TeamSpec | null = null
             try {
