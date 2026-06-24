@@ -2,49 +2,36 @@ import { describe, expect, test } from "bun:test"
 
 import { decideActivate } from "../src/tools/lifecycle.js"
 
-const X_STATES = ["live", "idle", "failed", "busy"] as const
-
 describe("decideActivate truth table", () => {
-    test("target already active → no-op (any X status)", () => {
-        for (const _ of X_STATES) {
-            expect(decideActivate({ targetIsAlreadyActive: true, outgoingBusy: false })).toEqual({
-                kind: "noop",
-            })
-        }
+    test("target already active → no-op", () => {
+        expect(decideActivate({ targetIsAlreadyActive: true, outgoingExists: false })).toEqual({
+            kind: "noop",
+        })
     })
 
-    test("no active sibling → ok (any X status)", () => {
-        for (const _ of X_STATES) {
-            expect(decideActivate({ targetIsAlreadyActive: false, outgoingBusy: false })).toEqual({
-                kind: "ok",
-            })
-        }
+    test("no active sibling → ok (activate allowed)", () => {
+        expect(decideActivate({ targetIsAlreadyActive: false, outgoingExists: false })).toEqual({
+            kind: "ok",
+        })
     })
 
-    test("sibling live/idle/failed (not busy) → ok", () => {
-        // outgoing not busy regardless of which non-busy lifecycle state it is in
-        expect(
-            decideActivate({ targetIsAlreadyActive: false, outgoingBusy: false, outgoingName: "yyy" }),
-        ).toEqual({ kind: "ok" })
-    })
-
-    test("sibling busy → error naming the outgoing team", () => {
+    test("another team already active → error naming it + hints team_deactivate", () => {
         const d = decideActivate({
             targetIsAlreadyActive: false,
-            outgoingBusy: true,
+            outgoingExists: true,
             outgoingName: "yyy",
         })
         expect(d.kind).toBe("error")
         if (d.kind === "error") {
             expect(d.message).toContain('"yyy"')
-            expect(d.message).toContain("busy")
+            expect(d.message).toContain("team_deactivate")
         }
     })
 
-    test("already-active takes precedence over a busy sibling flag", () => {
-        // Defensive: targetIsAlreadyActive short-circuits before the busy check.
+    test("already-active takes precedence over an outgoingExists flag", () => {
+        // Defensive: targetIsAlreadyActive short-circuits before the outgoing check.
         expect(
-            decideActivate({ targetIsAlreadyActive: true, outgoingBusy: true, outgoingName: "yyy" }),
+            decideActivate({ targetIsAlreadyActive: true, outgoingExists: true, outgoingName: "yyy" }),
         ).toEqual({ kind: "noop" })
     })
 })

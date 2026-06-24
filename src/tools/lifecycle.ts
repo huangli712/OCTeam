@@ -39,10 +39,10 @@ async function cleanWorktree(
 }
 
 /**
- * Pure decision for team_activate (exported for unit tests). The busy guard
- * fires on the OUTGOING team only (locked decision 4): you cannot deactivate a
- * team mid-orchestration. The target's own status never blocks activation —
- * activating an already-active team is a no-op.
+ * Pure decision for team_activate (exported for unit tests). Auto-switching
+ * is disabled: the decision refuses when another team is already active (the
+ * user must team_deactivate it first). Activating an already-active team is a
+ * no-op.
  */
 export type ActivateDecision =
     | { kind: "noop" }
@@ -51,14 +51,14 @@ export type ActivateDecision =
 
 export function decideActivate(opts: {
     targetIsAlreadyActive: boolean
-    outgoingBusy: boolean
+    outgoingExists: boolean
     outgoingName?: string
 }): ActivateDecision {
     if (opts.targetIsAlreadyActive) return { kind: "noop" }
-    if (opts.outgoingBusy) {
+    if (opts.outgoingExists) {
         return {
             kind: "error",
-            message: `Cannot switch: team "${opts.outgoingName}" is mid-orchestration (busy). Wait for it to finish or complete before switching to another team.`,
+            message: `Cannot activate: team "${opts.outgoingName}" is currently active. Call team_deactivate("${opts.outgoingName}") first — auto-switching is disabled.`,
         }
     }
     return { kind: "ok" }
@@ -579,9 +579,9 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
             "Make a team the session's active (available) team. At most one team is active per " +
-            "session; the previously-active sibling is deactivated. A team that is mid-orchestration " +
-            "(busy) cannot be switched away from — finish or wait first. Idempotent: activating the " +
-            "already-active team is a no-op. The master may only interact with the active team.",
+            "session. Refuses if another team is already active — call team_deactivate on it first " +
+            "(auto-switching is disabled). Idempotent: activating the already-active team is a " +
+            "no-op. The master may only interact with the active team.",
         args: {
             team_id: tool.schema.string().min(1),
         },
@@ -620,8 +620,8 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
             await withOrderedLocks([X, Y].filter((t): t is Team => t !== undefined), async () => {
                 const decision = decideActivate({
                     targetIsAlreadyActive: X.activatedAt !== undefined && Y === undefined,
-                    // Re-check Y busy under the lock (TOCTOU-safe).
-                    outgoingBusy: Y !== undefined && (Y.activeTask !== undefined || Y.status === "busy"),
+                    // Y is the other currently-active team, if any (stable under lock).
+                    outgoingExists: Y !== undefined,
                     outgoingName: Y?.teamName,
                 })
                 if (decision.kind === "noop") {
@@ -632,16 +632,12 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                     result = decision.message
                     return
                 }
-                // In-memory update is SYNCHRONOUS (no await between clear+set) so no
-                // observer ever sees 0 or 2 active teams in memory.
+                // No auto-switching: only reach here when no other team is active.
                 const now = Date.now()
-                if (Y) Y.activatedAt = undefined
                 X.activatedAt = now
                 setActiveTeam(context.sessionID, X.directory)
-                // Persist: clear Y FIRST (fail-safe to 0-available on crash), then set X.
-                if (Y) await saveTeamState(Y).catch(() => {})
                 await saveTeamState(X).catch(() => {})
-                result = `Team "${args.team_id}" activated.${Y ? ` Team "${Y.teamName}" deactivated.` : ""}`
+                result = `Team "${args.team_id}" activated.`
             })
             return result
         },
