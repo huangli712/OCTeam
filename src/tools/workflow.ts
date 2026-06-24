@@ -514,8 +514,8 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 .array(
                     tool.schema.object({
                         ref: tool.schema.string().optional().describe("human-readable id for blockedBy references"),
-                        subject: tool.schema.string().min(1),
-                        description: tool.schema.string().min(1),
+                        subject: tool.schema.string().min(1).max(500),
+                        description: tool.schema.string().min(1).max(8192),
                         blocked_by: tool.schema.array(tool.schema.string()).optional(),
                     }),
                 )
@@ -550,6 +550,28 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
             // active team.
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
+
+            // Pre-validate blockedBy refs against declared refs (before activeTask
+            // is set) so an invalid ref cannot leave the team in a dirty state.
+            const declaredRefs = new Set(args.tasks.filter(t => t.ref).map(t => t.ref!))
+            for (const t of args.tasks) {
+                if (!t.blocked_by) continue
+                for (const dep of t.blocked_by) {
+                    if (!declaredRefs.has(dep)) {
+                        return `Error: unknown blockedBy ref "${dep}"`
+                    }
+                }
+            }
+
+            // Validate signoff_decider is a real member.
+            if (args.signoff_policy === "decider") {
+                if (!args.signoff_decider) {
+                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                }
+                if (!team.members.some(m => m.name === args.signoff_decider)) {
+                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
+                }
+            }
 
             let busy = false
             await team.mutex.runExclusive(async () => {
@@ -595,11 +617,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     const uuid = refToUuid.get(t.ref)
                     if (!uuid) continue
                     const blockedBy = (t.blocked_by ?? [])
-                        .map(r => {
-                            const dep = refToUuid.get(r)
-                            if (!dep) throw new Error(`team_delegate: unknown blockedBy ref "${r}"`)
-                            return dep
-                        })
+                        .map(r => refToUuid.get(r)!)
                     if (blockedBy.length > 0) {
                         await updateTask(team.directory, uuid, { blockedBy })
                     }
