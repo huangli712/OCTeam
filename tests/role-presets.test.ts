@@ -74,17 +74,17 @@ describe("roleAgent (role → fixed agent)", () => {
     test("research / writing / ideation", () => {
         expect(roleAgent("researcher")).toBe("librarian")
         expect(roleAgent("author")).toBe("build")
-        expect(roleAgent("fantast")).toBe("sisyphus")
+        expect(roleAgent("fantast")).toBe("oracle")
     })
 
-    test("almighty (fallback) uses sisyphus", () => {
-        expect(roleAgent("almighty")).toBe("sisyphus")
-        expect(roleAgent("frobnicator")).toBe("sisyphus")
+    test("almighty (fallback) uses build", () => {
+        expect(roleAgent("almighty")).toBe("build")
+        expect(roleAgent("frobnicator")).toBe("build")
     })
 
     test("is case-insensitive", () => {
         expect(roleAgent("Reviewer")).toBe("oracle")
-        expect(roleAgent("FANTAST")).toBe("sisyphus")
+        expect(roleAgent("FANTAST")).toBe("oracle")
     })
 })
 
