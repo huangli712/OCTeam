@@ -129,6 +129,17 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
 
+            // Validate signoff_decider is a real member (prevents a runtime stall
+            // in the signoff phase when the named decider doesn't exist).
+            if (args.signoff_policy === "decider") {
+                if (!args.signoff_decider) {
+                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                }
+                if (!team.members.some(m => m.name === args.signoff_decider)) {
+                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
+                }
+            }
+
             // Phase 1: pre-check under mutex.
             let busy = false
             await team.mutex.runExclusive(async () => {
