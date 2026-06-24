@@ -184,7 +184,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     fantast: {
-        agent: "sisyphus",
+        agent: "oracle",
         instruction: [
             "You are the team's ideator.",
             "Generate novel, unconventional, even contrarian ideas",
@@ -196,7 +196,7 @@ export const ROLES: Record<string, RoleDef> = {
     },
     // --- fallback ---
     almighty: {
-        agent: "sisyphus",
+        agent: "build",
         instruction: [
             "You are an all-round team member.",
             "Take on whatever the task requires — implementation, analysis,",
