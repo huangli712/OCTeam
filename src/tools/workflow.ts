@@ -209,7 +209,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
             "Run a multi-round structured debate across all members until they reach consensus. Each round, members state positions and emit <consensus>{\"agreed\": true|false}</consensus>; the run ends when all agree, or fails when max_rounds is hit without consensus.",
         args: {
             team_id: tool.schema.string().min(1),
-            topic: tool.schema.string().min(1).describe("the debate topic"),
+            topic: tool.schema.string().min(1).max(4096).describe("the debate topic"),
             max_rounds: tool.schema.number().min(1).max(20).optional().describe("round limit (default 3)"),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
@@ -291,7 +291,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 .array(
                     tool.schema.object({
                         member: tool.schema.string().min(1),
-                        task: tool.schema.string().min(1),
+                        task: tool.schema.string().min(1).max(8192),
                     }),
                 )
                 .min(1),
@@ -330,6 +330,17 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
             // active team.
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
+
+            // Validate signoff_decider is a real member (prevents a runtime stall
+            // in the signoff phase when the named decider doesn't exist).
+            if (args.signoff_policy === "decider") {
+                if (!args.signoff_decider) {
+                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                }
+                if (!team.members.some(m => m.name === args.signoff_decider)) {
+                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
+                }
+            }
 
             // Validate members exist.
             for (const name of stageMembers) {
