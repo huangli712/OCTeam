@@ -1,5 +1,5 @@
 /**
- * Best-effort wake hint (Layer 2 delivery, design §5). When a member/master has
+ * Best-effort wake hint (Layer 2 of the three-layer communication model). When a member/master has
  * unread mailbox messages and is idle, send a lightweight reminder (NOT the
  * message content) via promptAsync. The actual content is injected by the
  * Transform hook (Layer 3) on the next turn. Throttled per-session to 1/30s to

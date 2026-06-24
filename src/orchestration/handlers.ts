@@ -1,10 +1,10 @@
 /**
- * The locked state machine (design §6). processIdle is the single entry point
+ * The locked state machine. processIdle is the single entry point
  * driven by session.idle events (and the sweep timer's missed-idle
  * reconciliation). It MUST be called inside team.mutex.runExclusive — the
  * event-handler wrapper acquires the mutex, this function mutates state freely.
  *
- * Steps (per §6 processIdle):
+ * Steps:
  *   0. Master special case — drain queued results, return (master never dispatches)
  *   1. Flip member to idle
  *   1.5. Role-setup barrier — first idle of uninitialized member marks it ready, returns
@@ -33,7 +33,7 @@ const NO_ISSUES_KEYWORDS = ["no issues", "no bugs found", "no improvements", "al
 // --- helpers ---
 
 /**
- * Identity validation (M3): which member may advance the state machine for this
+ * Identity validation: which member may advance the state machine for this
  * task? parallel/delegate accept EVERY member's idle (all run concurrently);
  * pipeline/loop accept only the current stage's member. Returning the wrong
  * value here makes parallel degrade to serial or pipeline advance on stray idles.
@@ -180,7 +180,7 @@ export async function processIdle(
     member: MemberState,
     sessionID: string,
 ): Promise<void> {
-    // Step 0: Master special case (B1) — synthetic member, never dispatches.
+    // Step 0: Master special case — synthetic member, never dispatches.
     if (member.isMaster) {
         await deliverQueuedResultsToMaster(ctx, team, sessionID)
         return
@@ -188,9 +188,9 @@ export async function processIdle(
 
     // Step 1: member is now idle.
     member.status = "idle"
-    member.retryingSince = undefined // B2: idle clears retry tracking
+    member.retryingSince = undefined // idle clears retry tracking
 
-    // Step 1.5: Role-setup barrier (B3) — first idle of an uninitialized member
+    // Step 1.5: Role-setup barrier — first idle of an uninitialized member
     // marks it ready and returns WITHOUT capturing output or advancing.
     if (!member.initialized) {
         member.initialized = true
@@ -220,7 +220,7 @@ export async function processIdle(
 
     // Step 4: Capture output (null-guarded + mode-aware). delegate does NOT use
     // responses[] (per-task results go to master via team_send_message; capturing
-    // here would overwrite — #3). Exception: signoff stage must capture reviewer
+    // here would overwrite). Exception: signoff stage must capture reviewer
     // output regardless of task type (to parse <signoff> tags).
     //
     // Scans ALL assistant messages in the current turn (not just the last) and
@@ -585,7 +585,7 @@ async function handleLoopIdle(ctx: PluginContext, team: Team, member: MemberStat
     }
 
     // Continue to next round — inject the decider's feedback (rationale +
-    // nextActions) into stage 0's prompt so the loop is actually corrective (H1).
+    // nextActions) into stage 0's prompt so the loop is actually corrective.
     // Without this the next round re-sends the original task verbatim.
     task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
     task.currentRound = (task.currentRound ?? 0) + 1
@@ -633,7 +633,7 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Member
         return // some members still running, wait
     }
 
-    // Re-prompt this member — RATE-LIMITED (#10) to avoid claim-race busy-loop.
+    // Re-prompt this member — RATE-LIMITED to avoid claim-race busy-loop.
     const now = Date.now()
     if (member.lastNotifiedAt && now - member.lastNotifiedAt < NOTIFY_COOLDOWN_MS) {
         return
@@ -663,7 +663,7 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Member
 const RETRY_ESCALATION_MS = 60_000
 
 /**
- * B2: handle session.status events. session.idle carries no error signal and a
+ * handle session.status events. session.idle carries no error signal and a
  * retrying member never idles, so we subscribe to session.status to catch
  * retry/error and escalate a sustained retry to "errored" (otherwise the
  * barrier would wait forever). Mutates member state under the team mutex.
@@ -681,7 +681,7 @@ export async function handleStatusEvent(
     await team.mutex.runExclusive(async () => {
         const live = team.members.find(m => m.name === member.name)
         if (!live) return
-        // M6: omit the directory filter so sessions in member worktrees (a different
+        // Omit the directory filter so sessions in member worktrees (a different
         // directory) are also returned — otherwise a worktree member stuck in retry
         // is never seen and retry escalation never fires.
         const status = await ctx.client.session.status({})

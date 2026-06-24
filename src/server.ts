@@ -20,7 +20,7 @@ const id = "octeam"
  * session index from disk (crash recovery), starts the sweep timer, and wires
  * all 18 tools + the event/transform hooks.
  *
- * Pipeline (design §1): tool handlers + event handler + transform hook all
+ * Pipeline: tool handlers + event handler + transform hook all
  * share ctx; event handler + sweep timer drive the per-team locked state
  * machine; mailbox/tasks/store persist under ~/.octeam (or <dir>/.octeam).
  */
@@ -39,7 +39,7 @@ const server = async (input: PluginInput): Promise<Hooks> => {
         // best effort — never block plugin load on reconcile
     })
 
-    // Crash recovery (§3): reconcile teams left "busy"/"idle" by a crashed prior
+    // Crash recovery: reconcile teams left "busy"/"idle" by a crashed prior
     // process — release stale reservations, fail interrupted orchestrations.
     await reconcileCrashedTeams(ctx).catch(() => {
         // best effort — never block plugin load on recovery

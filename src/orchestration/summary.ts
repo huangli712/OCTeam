@@ -1,5 +1,5 @@
 /**
- * Result summary construction and leader delivery (design §7.2).
+ * Result summary construction and leader delivery.
  *
  * The leader session is always notified via promptAsync when a workflow
  * completes — the summary is pushed immediately regardless of the leader's
@@ -47,7 +47,7 @@ export async function deliverSummaryToLeader(
 
 /**
  * Drain the master mailbox and deliver queued team results when the master goes
- * idle (B1 fix). Called from the event handler's master special-case branch.
+ * idle. Called from the event handler's master special-case branch.
  * Uses the same formatter as the Transform hook so the user sees consistent
  * formatting regardless of which drain path delivered the result.
  */
@@ -70,7 +70,7 @@ export async function deliverQueuedResultsToMaster(
 /**
  * Mode-aware summary. delegate aggregates from the task list (per-task results
  * were already delivered to master via team_send_message; responses[] is NOT
- * used for delegate — #3). loop uses decisionHistory (structured) rather than
+ * used for delegate). loop uses decisionHistory (structured) rather than
  * the overwritten responses[]. parallel/pipeline concatenate captured outputs.
  */
 export async function buildSummary(

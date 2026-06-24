@@ -3,10 +3,10 @@
 
 /**
  * Phase 2.9: file-based team loader for the sidebar. Team/member/task state is
- * the server module's private TeamState (design §10) — the TUI reads it
+ * the server module's private TeamState — the TUI reads it
  * straight from disk (<cwd>/.octeam and ~/.octeam) since TUI and server share
  * the same process filesystem. Polls on refresh; child-session info still comes
- * from api.state/api.client (kept separate per §10).
+ * from api.state/api.client.
  */
 
 import fs from "node:fs/promises"

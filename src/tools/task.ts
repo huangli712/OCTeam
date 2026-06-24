@@ -1,5 +1,5 @@
 /**
- * Shared task-list tools: team_task_create/list/update/get (design §4.7).
+ * Shared task-list tools: team_task_create/list/update/get.
  * Used by collaborative modes (parallel-collaborative, delegate) for
  * pull-based coordination. team_task_update with status "claimed" acquires the
  * persistent claim lock atomically (claimTask).
@@ -40,7 +40,7 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller) return "Error: caller is not a member of this team"
-            // P2 (§8.1): cap live (non-deleted) tasks per team to bound disk use
+            // Cap live (non-deleted) tasks per team to bound disk use
             // and prevent a member from flooding the shared tasklist (DoS).
             let team
             try {

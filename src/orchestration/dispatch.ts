@@ -2,7 +2,7 @@
  * Dispatch primitives: ensureMembersReady (spawn + role-setup barrier) and
  * advanceToStage (dispatch one stage's task, prefixing prior output).
  *
- * CRITICAL lock-order (design §4.1): ensureMembersReady MUST run OUTSIDE the
+ * CRITICAL lock-order: ensureMembersReady MUST run OUTSIDE the
  * team mutex. Its role-setup barrier waits for the event handler to flip
  * member.initialized, which the event handler does INSIDE team.mutex.runExclusive.
  * Holding the mutex here would deadlock the barrier.
@@ -49,7 +49,7 @@ async function createWorktree(
 
 /**
  * Spawn (or reuse) member sessions and wait for every spawned member to idle
- * once on its role-setup prompt (the role-setup barrier, B3). After this
+ * once on its role-setup prompt (the role-setup barrier). After this
  * returns, all members are `initialized: true` and idle, ready for the first
  * real dispatch.
  *
@@ -166,7 +166,7 @@ export async function advanceToStage(
             parts: [{ type: "text", text, synthetic: true }],
             agent: member.agent ?? "build",
         },
-        // H2: members work in the PROJECT dir (or their worktree), never the
+        // Members work in the PROJECT dir (or their worktree), never the
         // .octeam state dir. session.create already used ctx.directory.
         query: { directory: member.worktreePath ?? ctx.directory },
     })

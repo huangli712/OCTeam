@@ -88,7 +88,7 @@ export async function loadTeamState(
         team = { ...state, mutex: new AsyncMutex(), directory: dir }
         teamRegistry.set(dir, team)
     }
-    // M2: once registered, the in-memory Team is the authoritative copy — every
+    // Once registered, the in-memory Team is the authoritative copy — every
     // mutation goes through it under the per-team mutex, then saveTeamState writes
     // it to disk. Re-reading disk here would clobber an in-flight mutex holder's
     // unsaved mutations. The registry is rebuilt from disk only on first access or

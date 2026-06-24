@@ -1,5 +1,5 @@
 /**
- * team_send_message tool (design §4.6). Writes a message to the recipient's
+ * team_send_message tool. Writes a message to the recipient's
  * mailbox file (Layer 1) and sends a best-effort wake hint if the recipient is
  * idle (Layer 2). The Transform hook (Layer 3) injects the actual content on
  * the recipient's next turn — the wake hint is only a reminder, never content.
@@ -53,7 +53,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 return `Error: team "${args.team_id}" not found`
             }
 
-            // P1 (§8.1): enforce the configurable per-message payload cap. The
+            // Enforce the configurable per-message payload cap. The
             // schema .max() is a static safety net; bounds.messagePayloadMaxBytes
             // is the team's actual limit and is measured in UTF-8 bytes.
             if (Buffer.byteLength(args.body, "utf8") > team.bounds.messagePayloadMaxBytes) {
@@ -90,7 +90,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 }
             }
 
-            // M1 (§8.1): enforce maxMessagesPerRun during an active orchestration.
+            // Enforce maxMessagesPerRun during an active orchestration.
             if (team.activeTask) {
                 let overLimit = false
                 await team.mutex.runExclusive(async () => {

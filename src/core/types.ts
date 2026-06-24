@@ -46,7 +46,7 @@ export type MemberState = {
     model?: string
     agent?: string
     status: MemberStatus
-    initialized: boolean               // true after role-setup prompt completes (B3)
+    initialized: boolean               // true after role-setup prompt completes
     worktreePath?: string              // absolute path to git worktree
     turnCount: number                  // incremented per promptAsync dispatch
     lastTurnMarker?: string            // Transform hook injection dedup
@@ -104,7 +104,7 @@ export type ActiveTask = {
     tokenBudget?: number               // optional cost cap
     tokensUsed: number                 // running total = sum of tokensByMember (recomputed)
     tokensByMember: Record<string, number>  // memberName -> sum(input+output+reasoning)
-    messagesSent: number               // total team_send_message writes this run (§8.1 maxMessagesPerRun)
+    messagesSent: number               // total team_send_message writes this run (maxMessagesPerRun)
 
     // result collection (serializable — NOT a Map)
     responses: Record<string, string>  // memberName -> last assistant text output

@@ -1,5 +1,5 @@
 /**
- * Hook factories + sweep timer (design §6). These adapt the orchestration core
+ * Hook factories + sweep timer. These adapt the orchestration core
  * (processIdle, handleStatusEvent) and the mailbox drain (Transform hook) into
  * the OpenCode Hooks.event / experimental.chat.messages.transform signatures,
  * and run a periodic sweep timer that babysits busy teams (crash recovery,
@@ -48,16 +48,16 @@ export function createCompactingHook(): NonNullable<Hooks["experimental.session.
 }
 
 /**
- * The single event handler (design §6). Filters by event.type, resolves the
+ * The single event handler. Filters by event.type, resolves the
  * session to a team member, and runs processIdle under the team mutex. Master
- * sessions are resolved as synthetic members (B1) so their queued results drain.
+ * sessions are resolved as synthetic members so their queued results drain.
  */
 export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event"]> {
     return async ({ event }) => {
         const type = (event as { type?: string }).type
         const props = (event as { properties?: Record<string, unknown> }).properties
 
-        // B2: session.status carries retry/error signals that session.idle does not.
+        // session.status carries retry/error signals that session.idle does not.
         if (type === "session.status") {
             await handleStatusEvent(ctx, event as { properties?: Record<string, unknown>; type?: string })
             return
@@ -131,7 +131,7 @@ function masterPseudoMember(): MemberState & { isMaster: true } {
 }
 
 /**
- * Transform hook (design §5, Layer 3). On each chat turn for a team member,
+ * Transform hook (Layer 3 of the three-layer communication model). On each chat turn for a team member,
  * atomically poll-and-reserve its mailbox and inject unread messages as a
  * synthetic text part on the last user message. Uses the same reservation
  * protocol as the master drain path → exactly-once delivery.
@@ -180,7 +180,7 @@ export function createTransformHook(
 
         const injection = formatMailboxInjection(unread)
 
-        // M3: append the injection as a synthetic text part to an existing message
+        // Append the injection as a synthetic text part to an existing message
         // (prefer the last user message) rather than fabricating a partial Message
         // object. A hand-rolled { info: { role } } is missing required Message fields
         // and risks crashing the host renderer / token accounting.
@@ -202,7 +202,7 @@ export function createTransformHook(
 }
 
 /**
- * Crash recovery (design §3). On plugin startup, reconcile teams left in a
+ * Crash recovery. On plugin startup, reconcile teams left in a
  * non-terminal state by a previous process that crashed mid-orchestration:
  *   - busy: the in-flight orchestration cannot resume deterministically — release
  *     stale mailbox reservations, mark running members errored, and transition the
@@ -319,7 +319,7 @@ async function handleSessionDeleted(ctx: PluginContext, sessionID: string): Prom
 export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
     return setInterval(async () => {
         try {
-            // M6: no directory filter — include sessions in member worktrees too.
+            // No directory filter — include sessions in member worktrees too.
             const statusResult = await ctx.client.session.status({})
             const statusMap = (statusResult.data ?? {}) as Record<string, { type: string }>
 

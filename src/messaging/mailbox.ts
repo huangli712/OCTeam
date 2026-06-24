@@ -1,10 +1,10 @@
 /**
- * File mailbox (Layer 1 of the three-layer communication model, design §5).
+ * File mailbox (Layer 1 of the three-layer communication model).
  *
  * Each recipient has its own append-only inbox `mailbox/{recipient}.jsonl`.
  * Broadcasts are copied into every recipient's inbox at send time (no global
  * read-flag — eliminates multi-reader bugs). Delivery uses the atomic
- * read-and-reserve protocol (§5 Reservation) so the two master drainers
+ * read-and-reserve protocol so the two master drainers
  * (event-handler proactive drain + Transform hook) never double-deliver.
  */
 

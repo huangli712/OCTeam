@@ -1,8 +1,8 @@
 /**
  * Workflow tools: team_parallel, team_pipeline, team_loop, team_delegate
- * (design §4.2-§4.5).
+ * (parallel/consesnus/pipeline/loop/delegate).
  *
- * All four follow the SAME three-phase lock order (§4.1):
+ * All four follow the SAME three-phase lock order:
  *   1. Pre-checks UNDER team.mutex (reject if already orchestrating; validate)
  *   2. ensureMembersReady OUTSIDE the mutex (the role-setup barrier needs the
  *      event handler to flip member.initialized, which it does inside the mutex
@@ -28,7 +28,7 @@ const DEFAULT_LOOP_TIMEOUT_MS = 900_000
 
 /**
  * Effective wall-clock timeout: the requested timeout (or a mode default)
- * clamped to the team's hard cap bounds.maxWallClockMinutes (§8.1). Without this
+ * clamped to the team's hard cap bounds.maxWallClockMinutes. Without this
  * clamp a caller could pass timeout_ms far above the team's configured limit. A
  * non-positive cap (e.g. a hand-edited state.json) is treated as "no cap" rather
  * than collapsing the timeout to 0, which would abort every orchestration.
@@ -153,7 +153,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
 
             // Phase 3: commit activeTask + initial dispatch (UNDER mutex).
             await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return } // M7: re-check inside mutex
+                if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
                 team.status = "busy"
                 team.activeTask = {
                     type: "parallel",
@@ -242,7 +242,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
 
             // Phase 3: commit activeTask + initial dispatch (UNDER mutex).
             await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return } // M7: re-check inside mutex
+                if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
                 team.status = "busy"
                 team.activeTask = {
                     type: "consensus",
@@ -258,7 +258,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                     decisionHistory: [],
                     decisionParseFailures: 0,
                     topic: args.topic,
-                    // M5: needs a round cap; default to 3 when omitted, else
+                    // Needs a round cap; default to 3 when omitted, else
                     // `currentRound >= (maxRounds ?? 0)` aborts after round 1.
                     maxRounds: args.max_rounds ?? 3,
                     currentRound: 1,
@@ -359,7 +359,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
             await ensureMembersReady(ctx, team)
 
             await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return } // M7: re-check inside mutex
+                if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
                 team.status = "busy"
                 const stages: Stage[] = args.stages.map(s => ({
                     member: s.member,
@@ -457,7 +457,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             await ensureMembersReady(ctx, team)
 
             await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return } // M7: re-check inside mutex
+                if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
                 team.status = "busy"
                 // Append decider as a final read-only stage if not already present.
                 let stages: Stage[] = args.stages.map(s => ({
@@ -583,7 +583,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
             await ensureMembersReady(ctx, team)
 
             await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return } // M7: re-check inside mutex
+                if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
                 team.status = "busy"
                 team.activeTask = {
                     type: "delegate",

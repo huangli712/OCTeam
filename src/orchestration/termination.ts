@@ -1,5 +1,5 @@
 /**
- * Termination checks (design §6 checkTermination). Enforces wall-clock timeout,
+ * Termination checks. Enforces wall-clock timeout,
  * token budget, and member-error exit conditions. Called from processIdle after
  * each dispatch AND from the sweep timer so these conditions fire even with no
  * idle events arriving.
@@ -34,7 +34,7 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
         return
     }
 
-    // Member turn limit (§8.1 maxMemberTurns): stop a runaway member. turnCount is
+    // Member turn limit: stop a runaway member. turnCount is
     // bumped at each dispatch; once it exceeds the bound the orchestration is failed.
     const overTurns = team.members.find(
         m => !m.isMaster && m.turnCount > team.bounds.maxMemberTurns,

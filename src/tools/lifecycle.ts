@@ -1,6 +1,6 @@
 /**
  * Team lifecycle tools: team_create, team_delete, team_list, team_details, team_query, team_fix_member.
- * (design §4.1, §4.10, §4.11)
+ *
  */
 
 import fs from "node:fs/promises"
@@ -82,7 +82,7 @@ export function decideActivate(opts: {
     return { kind: "ok" }
 }
 
-/** Resource bounds with design defaults (§8.1), overridden by user input. */
+/** Resource bounds with design defaults, overridden by user input. */
 function defaultBounds(override?: Partial<Bounds>): Bounds {
     return {
         maxMembers: 8,
