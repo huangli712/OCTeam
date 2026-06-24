@@ -406,14 +406,14 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 .array(
                     tool.schema.object({
                         member: tool.schema.string().min(1),
-                        task: tool.schema.string().min(1),
+                        task: tool.schema.string().min(1).max(8192),
                         action: tool.schema.enum(["modify", "read_only"]).optional(),
                     }),
                 )
                 .min(1),
             decider: tool.schema.string().min(1).describe("member name of the decider (NOT \"master\")"),
             max_rounds: tool.schema.number().min(1).max(50),
-            initial_task: tool.schema.string().min(1),
+            initial_task: tool.schema.string().min(1).max(8192),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
         },
