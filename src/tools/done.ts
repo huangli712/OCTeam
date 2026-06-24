@@ -36,7 +36,12 @@ export function teamDoneTool(ctx: PluginContext): ToolDefinition {
                 return "Error: team_done is a member-only acknowledgement; the master does not call it"
             }
 
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+            let team
+            try {
+                team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+            } catch {
+                return `Error: team "${args.team_id}" not found`
+            }
 
             const task = team.activeTask
             if (!task) {
