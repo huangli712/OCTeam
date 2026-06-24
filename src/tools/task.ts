@@ -19,6 +19,7 @@ import {
     TASK_ID_PATTERN,
     MemberHoldsActiveTaskError,
     TaskAlreadyClaimedError,
+    TaskOwnershipError,
     claimTask,
     createTask,
     getTask,
@@ -41,7 +42,12 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
             if (!caller) return "Error: caller is not a member of this team"
             // P2 (§8.1): cap live (non-deleted) tasks per team to bound disk use
             // and prevent a member from flooding the shared tasklist (DoS).
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+            let team
+            try {
+                team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+            } catch {
+                return `Error: team "${args.team_id}" not found`
+            }
             const liveTasks = (await listAllTasks(caller.directory)).filter(
                 t => t.status !== "deleted",
             ).length
@@ -112,17 +118,24 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                     throw err
                 }
             }
-            // Non-claim updates: only the current owner (or master) may change a
-            // task's status, so one member cannot overwrite another's claimed work.
+            // Non-claim updates: owner check is TOCTOU-safe inside updateTask's
+            // lock (expectedOwner). Master bypasses the owner check.
             const existing = await getTask(dir, args.task_id)
             if (!existing) return `Error: task ${args.task_id} not found`
-            if (!caller.isMaster && existing.owner !== caller.name) {
-                return `Error: only the task owner (@${existing.owner ?? "unassigned"}) or master can update task ${args.task_id}.`
+            try {
+                const task = await updateTask(
+                    dir,
+                    args.task_id,
+                    { status: args.status as TaskStatus },
+                    caller.isMaster ? {} : { expectedOwner: caller.name },
+                )
+                return `Task ${task.id} updated to ${args.status}.`
+            } catch (err) {
+                if (err instanceof TaskOwnershipError) {
+                    return `Error: only the task owner (@${existing.owner ?? "unassigned"}) or master can update task ${args.task_id}.`
+                }
+                throw err
             }
-            const task = await updateTask(dir, args.task_id, {
-                status: args.status as TaskStatus,
-            })
-            return `Task ${task.id} updated to ${args.status}.`
         },
     })
 }

@@ -42,6 +42,17 @@ export class MemberHoldsActiveTaskError extends Error {
 }
 
 /**
+ * Raised by updateTask when opts.expectedOwner is set and the task's current
+ * owner does not match — a TOCTOU-safe ownership check inside the update lock.
+ */
+export class TaskOwnershipError extends Error {
+    constructor(taskId: string, actualOwner: string) {
+        super(`Task ${taskId} is owned by @${actualOwner}`)
+        this.name = "TaskOwnershipError"
+    }
+}
+
+/**
  * Canonical task-id shape. Task IDs are always crypto.randomUUID() (see
  * createTask). Exported so the tool layer (task.ts) validates the same shape at
  * the schema boundary — a single source of truth for both layers.
@@ -125,6 +136,7 @@ export async function updateTask(
     teamDirectory: string,
     taskId: string,
     patch: Partial<Pick<Task, "status" | "owner" | "blockedBy" | "blocks" | "claimedAt">>,
+    opts: { expectedOwner?: string } = {},
 ): Promise<Task> {
     assertValidTaskId(taskId)
     // Serialize the read-modify-write against concurrent updateTask calls (e.g.
@@ -133,6 +145,11 @@ export async function updateTask(
     return withLock(taskUpdateLockPath(teamDirectory, taskId), async () => {
         const task = await readTaskFile(teamDirectory, taskId)
         if (!task) throw new Error(`updateTask: task ${taskId} not found`)
+        // TOCTOU-safe ownership check: expectedOwner is verified inside the lock
+        // so a racing owner change cannot let a non-owner slip through.
+        if (opts.expectedOwner !== undefined && task.owner !== opts.expectedOwner) {
+            throw new TaskOwnershipError(taskId, task.owner ?? "unassigned")
+        }
         Object.assign(task, patch, { updatedAt: Date.now() })
         await atomicWrite(taskPath(teamDirectory, taskId), JSON.stringify(task, null, 2))
         // Clean up the persistent claim lock once the task leaves the claim window.
