@@ -11,34 +11,34 @@
 
 export type TeamSpec = {
     version: 1
-    name: string                        // /^[a-z0-9-]+$/, unique within scope
+    name: string                       // /^[a-z0-9-]+$/, unique within scope
     description?: string
-    createdAt: number                   // epoch ms
-    members: MemberSpec[]               // 1-8 members
+    createdAt: number                  // epoch ms
+    members: MemberSpec[]              // 1-8 members
 }
 
 export type MemberSpec = {
-    name: string                        // unique within team, e.g. "alice" (auto-picked from a name pool if omitted at creation)
-    role: string                        // role label, e.g. "coder", "verifier"
-    prompt: string                      // system prompt content (the member's instructions)
-    model?: string                      // model identifier, e.g. "claude-sonnet"
-    agent?: string                      // OpenCode agent type, default "build"
-    worktree?: boolean                  // create isolated git worktree, default false
+    name: string                       // unique within team, e.g. "alice" (auto-picked from a name pool if omitted at creation)
+    role: string                       // role label, e.g. "coder", "verifier"
+    prompt: string                     // system prompt content (the member's instructions)
+    model?: string                     // model identifier, e.g. "claude-sonnet"
+    agent?: string                     // OpenCode agent type, default "build"
+    worktree?: boolean                 // create isolated git worktree, default false
 }
 
 // --- TeamState (mutable, persisted) — stored as state.json ---
 
 export type TeamStatus =
-    | "live"                            // config written, no sessions spawned yet
-    | "busy"                            // sessions spawned, workflow running
-    | "idle"                            // sessions spawned, idle (workflow completed)
-    | "failed"                          // agent error or task incomplete (e.g. loop max rounds w/o done)
+    | "live"                           // config written, no sessions spawned yet
+    | "busy"                           // sessions spawned, workflow running
+    | "idle"                           // sessions spawned, idle (workflow completed)
+    | "failed"                         // agent error or task incomplete (e.g. loop max rounds w/o done)
 
 export type MemberStatus =
-    | "pending"                         // session not yet created
-    | "running"                         // actively processing a prompt
-    | "idle"                            // finished, awaiting work
-    | "errored"                         // LLM/tool failure
+    | "pending"                        // session not yet created
+    | "running"                        // actively processing a prompt
+    | "idle"                           // finished, awaiting work
+    | "errored"                        // LLM/tool failure
 
 export type MemberState = {
     name: string
