@@ -11,7 +11,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec, type Team } from "../state/store.js"
-import { activationError, clearActiveTeam, indexMember, indexMasterTeam, isIndexedMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../core/utils.js"
+import { clearActiveTeam, indexMember, indexMasterTeam, isIndexedMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../core/utils.js"
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { clearWakeHint } from "../messaging/wake-hint.js"
 import { inboxPath } from "../state/paths.js"
@@ -483,8 +483,9 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             if (!args.new_name && !args.new_role && !args.new_prompt && !args.new_agent) {
                 return "Error: provide at least one of new_name, new_role, new_prompt, or new_agent"
             }
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false })
             if (!caller) return "Error: caller is not a member of this team"
+            if (!caller.isMaster) return "Error: team_fix_member is master-only (only the team's leader session can modify members)"
             let team
             try {
                 team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
@@ -494,9 +495,6 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             if (team.status === "busy") {
                 return `Error: team "${args.team_id}" is busy. Wait for the workflow to finish before modifying members.`
             }
-            // Master-only mutating tool: only the active team may be modified.
-            const gate = activationError(team.teamName, team.activatedAt)
-            if (gate) return gate
             const member = team.members.find(m => m.name === args.member_name)
             if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
 
