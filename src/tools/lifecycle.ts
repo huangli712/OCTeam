@@ -39,6 +39,23 @@ async function cleanWorktree(
 }
 
 /**
+ * Best-effort check: does the worktree at `worktreePath` have uncommitted
+ * changes (staged, unstaged, or untracked)? Returns false if the path is
+ * missing, not a git repo, or git itself fails — never blocks deletion on a
+ * git error.
+ */
+async function hasUncommittedChanges(worktreePath: string): Promise<boolean> {
+    try {
+        const { stdout } = await execFileP("git", ["status", "--porcelain"], {
+            cwd: worktreePath,
+        })
+        return stdout.trim().length > 0
+    } catch {
+        return false
+    }
+}
+
+/**
  * Pure decision for team_activate (exported for unit tests). Auto-switching
  * is disabled: the decision refuses when another team is already active (the
  * user must team_deactivate it first). Activating an already-active team is a
@@ -519,7 +536,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
 export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Delete a team. Without force, refuses while the team is busy with an active orchestration. With force, removes on-disk state immediately (member worktrees are cleaned up; sessions stay in OpenCode history; running agents finish their current turn but receive no further dispatch).",
+            "Delete a team. Without force, refuses while the team is busy with an active orchestration, or if any member worktree has uncommitted changes. With force, removes on-disk state immediately (member worktrees are cleaned up; sessions stay in OpenCode history; running agents finish their current turn but receive no further dispatch).",
         args: {
             team_id: tool.schema.string().min(1),
             force: tool.schema.boolean().optional(),
@@ -542,6 +559,19 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             const force = args.force ?? false
             if (!force && team.status === "busy") {
                 return `Error: team "${args.team_id}" is busy with an active orchestration. Wait for it to finish, or re-run with force: true.`
+            }
+            // Protect uncommitted work: if any member's worktree is dirty, refuse
+            // unless force: true — regardless of team status.
+            if (!force) {
+                const dirty: string[] = []
+                for (const m of team.members) {
+                    if (m.worktreePath && await hasUncommittedChanges(m.worktreePath)) {
+                        dirty.push(m.name)
+                    }
+                }
+                if (dirty.length > 0) {
+                    return `Error: member(s) ${dirty.join(", ")} have uncommitted changes in their worktrees. Commit or stash them first, or re-run with force: true.`
+                }
             }
             // Clean up worktrees, then unindex the team. Worktree teardown must
             // precede deleteTeamStorage so git can remove the still-present worktree
