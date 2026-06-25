@@ -121,6 +121,13 @@ export type ActiveTask = {
     // reduce policy (parallel isolated/collaborative only)
     reducePolicy?: ReducePolicy
     reduceRubric?: string              // when reducePolicy === "rubric"
+    // #4 real map-reduce: when reducePolicy != summarize AND reducerMember names
+    // a live member AND there are >1 candidates, a dedicated reducer member is
+    // dispatched post-barrier to combine outputs into one. Otherwise (undefined
+    // reducerMember) the reduce guidance is delivered to master (legacy behavior).
+    reducerMember?: string
+    reduceStage?: boolean              // true while the reducer stage is in flight
+    reducedResult?: string             // reducer's combined output; delivered verbatim once set
 
     // signoff policy (parallel isolated/collaborative, pipeline, delegate; NOT loop)
     signoffPolicy?: SignoffPolicy
@@ -200,6 +207,29 @@ export type RunRecord = {
     memberOutputs: Record<string, { bytes: number; file: string }>
     // delegate snapshot of the shared task list at completion
     tasks?: Array<{ id: string; subject: string; status: string; owner?: string }>
+}
+
+// --- RunEvent (append-only run timeline, stored as runs/<runId>/events.jsonl) ---
+
+export type RunEventKind =
+    | "dispatched"      // a member was prompted with a task
+    | "captured"        // a member's output was captured
+    | "retry"           // a sustained-retry grace window was consumed
+    | "errored"         // a member was marked terminally errored
+    | "stage_advanced"  // pipeline/loop moved to a new stage
+    | "round"           // consensus/loop incremented the round
+    | "signoff"         // a signoff review stage was triggered
+    | "terminated"      // the orchestration ended (any reason)
+
+export type RunEvent = {
+    timestamp: number                  // epoch ms (readers sort by this, not file order)
+    kind: RunEventKind
+    member?: string
+    stage?: number                     // currentStageIndex (pipeline/loop)
+    round?: number                     // currentRound (consensus/loop)
+    reason?: string                    // terminated / errored reason
+    bytes?: number                     // captured output size
+    detail?: string                    // free-form (signoff policy, "grace n/max", …)
 }
 
 export type Stage = {

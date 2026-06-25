@@ -288,6 +288,14 @@ export async function processIdle(
     // Step 6: Dispatch by active-task type.
     if (!team.activeTask) return
     // signoff stage takes priority over normal mode dispatch
+    // reduce stage takes priority (real map-reduce): the reducer's idle is
+    // captured into reducedResult, then signoff/deliver runs.
+    if (team.activeTask.reduceStage) {
+        await handleReduceIdle(ctx, team, member)
+        await checkTermination(ctx, team)
+        return
+    }
+    // signoff stage takes priority over normal mode dispatch
     if (team.activeTask.signoffStage) {
         await handleSignoffIdle(ctx, team, member)
         await checkTermination(ctx, team)
@@ -437,6 +445,56 @@ async function handleSignoffIdle(ctx: PluginContext, team: Team, member: MemberS
 
 // --- per-mode handlers ---
 
+/**
+ * Real map-reduce (#4). When reducePolicy != summarize AND a live reducerMember
+ * is named AND there is >1 candidate, dispatch that member to combine all member
+ * outputs into ONE result (captured into reducedResult by handleReduceIdle).
+ * Returns true if a reducer was dispatched (caller must NOT deliver); false if no
+ * real reduce is needed (caller falls back to the legacy header summary).
+ * Mirrors maybeTriggerSignoff.
+ */
+export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promise<boolean> {
+    const task = team.activeTask
+    if (!task || task.type !== "parallel") return false
+    if (!task.reducePolicy || task.reducePolicy === "summarize") return false
+    if (task.reduceStage) return true                          // already reducing
+    if (Object.keys(task.responses).length <= 1) return false  // N<=1: nothing to reduce
+    const reducer = team.members.find(m => m.name === task.reducerMember && !m.isMaster)
+    if (!reducer?.sessionId) return false                      // no reducer → legacy delivery
+
+    task.reduceStage = true
+    // Reuse the existing [Reduce policy: X] header + candidates as the reducer
+    // prompt (reducedResult is still unset here, so buildSummary returns the
+    // guidance block, not the verbatim result).
+    const body = await buildSummary(team, task, "pending_reduce")
+    const prompt =
+        `[Reduce task] You are the reducer for a parallel run. Combine the candidate `
+        + `outputs below into ONE final result per the policy. Output ONLY the final `
+        + `result, with no preamble.\n\n${body}`
+    await dispatchToMember(ctx, reducer, prompt, reducer.worktreePath ?? ctx.directory)
+    await saveTeamState(team)
+    return true
+}
+
+/**
+ * Handle the reducer's idle during the reduce stage. Captures its output as
+ * reducedResult (delivered verbatim by buildSummary), then runs the post-reduce
+ * tail: signoff reviews the reduced result, else deliver. Mirrors handleSignoffIdle.
+ */
+async function handleReduceIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
+    const task = team.activeTask
+    if (!task?.reduceStage) return
+    if (member.name !== task.reducerMember) return  // ignore stray non-reducer idle
+
+    task.reducedResult = task.responses[member.name] ?? ""
+    task.reduceStage = false
+    // Post-reduce tail: signoff reviews the single reduced artifact, else deliver.
+    if (await maybeTriggerSignoff(ctx, team)) return
+    await deliverSummaryToLeader(ctx, team, `parallel_${task.mode}_reduced:${task.reducePolicy}`)
+    clearActiveTask(team)
+    team.status = "idle"
+}
+
 async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task) return
@@ -456,6 +514,16 @@ async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void>
             clearActiveTask(team)
             team.status = "failed"
             return
+        }
+        // Reduce (real map-reduce) BEFORE signoff: signoff then reviews the single
+        // reduced artifact, not the N raw outputs. Re-entry while reduceStage is
+        // still set means the reducer reached a terminal state without idling
+        // (errored) — fall back to non-reduced delivery (reducedResult stays unset)
+        // so the successful mappers' work is not wasted and the run cannot hang.
+        if (task.reduceStage) {
+            task.reduceStage = false
+        } else if (await maybeTriggerReduce(ctx, team)) {
+            return  // reducer dispatched; handleReduceIdle finishes the run
         }
         // Maybe trigger signoff before delivering.
         if (await maybeTriggerSignoff(ctx, team)) {

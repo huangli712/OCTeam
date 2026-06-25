@@ -110,6 +110,13 @@ export async function buildSummary(
             return outputs ? `${decisions}\n\n${outputs}` : decisions
         }
         default: {
+            // #4 real reduce: once the reducer member has produced a combined
+            // result, deliver it verbatim instead of the [Reduce policy:X] header.
+            // (Gated on reducedResult presence, NOT the reason, so reduce_policy
+            // tests that exercise the header path stay green.)
+            if (task.type === "parallel" && task.reducedResult !== undefined) {
+                return `${head}\n${task.reducedResult}`
+            }
             const outputs = Object.entries(task.responses)
             const candidates = outputs
                 .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)

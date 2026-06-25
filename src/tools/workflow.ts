@@ -66,6 +66,10 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .string()
                 .optional()
                 .describe("scoring rubric when reduce_policy='rubric'"),
+            reducer_member: tool.schema
+                .string()
+                .optional()
+                .describe("member that performs a real reduce when reduce_policy != summarize. If omitted, the reduce guidance is delivered to master (legacy behavior)."),
             signoff_policy: tool.schema
                 .enum(["none", "decider", "peer-quorum"])
                 .optional()
@@ -123,6 +127,14 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 }
             }
 
+            // Validate reducer_member is a real member (a real reduce stage is
+            // dispatched to it; an unknown name would silently fall back to legacy
+            // delivery, so reject it explicitly).
+            if (args.reduce_policy && args.reduce_policy !== "summarize" && args.reducer_member
+                && !team.members.some(m => m.name === args.reducer_member)) {
+                return `Error: reducer_member "${args.reducer_member}" is not a member of team "${args.team_id}"`
+            }
+
             // Phase 1: pre-check under mutex.
             let busy = false
             await team.mutex.runExclusive(async () => {
@@ -156,6 +168,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     tasks: args.tasks,
                     reducePolicy: args.reduce_policy ?? "summarize",
                     reduceRubric: args.reduce_rubric,
+                    reducerMember: args.reducer_member,
                     signoffPolicy: args.signoff_policy ?? "none",
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
