@@ -27,12 +27,17 @@ import { atomicWrite } from "../state/locks.js"
 import { runMemberOutputPath } from "../state/paths.js"
 import { logSwallowed } from "../core/log.js"
 import type { ActiveTask, DecisionRecord, MemberState } from "../core/types.js"
-import { advanceToStage, dispatchToMember } from "./dispatch.js"
+import { advanceToStage, buildUpstreamContext, dispatchToMember } from "./dispatch.js"
 import { buildRoundSummary, buildSummary, deliverQueuedResultsToMaster, deliverSummaryToLeader } from "./summary.js"
 import { checkTermination } from "./termination.js"
 
 const NOTIFY_COOLDOWN_MS = 10_000
-const NO_ISSUES_KEYWORDS = ["no issues", "no bugs found", "no improvements", "all clear"]
+// Structured, i18n-consistent "no issues" signal for loop read_only stages. A
+// read_only stage emits <no_issues/> (or the Chinese <无问题/>) to declare clean.
+// Replaces the old English keyword-substring heuristic, which both false-matched
+// negated contexts ("there are no issues with X, but bugs in Y") and never fired
+// for non-English agents.
+const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>/
 
 // --- helpers ---
 
@@ -82,15 +87,11 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
     }
 }
 
-/** Loop exit condition 2: all read_only stages report no issues (keyword match). */
+/** Loop exit condition 2: every read_only stage emitted a <no_issues/> tag. */
 export function allReadOnlyStagesReportNoIssues(task: ActiveTask): boolean {
     const roStages = task.stages.filter(s => s.action === "read_only")
     if (roStages.length === 0) return false
-    return roStages.every(s => {
-        const out = task.responses[s.member] ?? ""
-        const lower = out.toLowerCase()
-        return NO_ISSUES_KEYWORDS.some(k => lower.includes(k))
-    })
+    return roStages.every(s => NO_ISSUES_TAG.test(task.responses[s.member] ?? ""))
 }
 
 /** Consensus: every participant must emit agreed consensus. */
@@ -98,7 +99,9 @@ export function allMembersAgree(responses: Record<string, string>): boolean {
     const texts = Object.values(responses)
     if (texts.length === 0) return false
     return texts.every(t => {
-        const m = t.match(/<consensus>\s*(\{[\s\S]*\})\s*<\/consensus>/)
+        // Bilingual tag, aligned with parseDecision's <(?:decision|决策)> so a
+        // non-English agent emitting <共识> is recognized.
+        const m = t.match(/<(?:consensus|共识)>\s*(\{[\s\S]*\})\s*<\/(?:consensus|共识)>/)
         if (!m) return false
         try {
             return JSON.parse(m[1]).agreed === true
@@ -493,7 +496,7 @@ async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void
         const summary = buildRoundSummary(task.responses)
         const roundText =
             `[Consensus Round ${task.currentRound}] Others said:\n${summary}\n\n`
-            + `Respond, then emit <consensus>{"agreed": true|false}</consensus>.`
+            + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`
         for (const m of team.members.filter(x => !x.isMaster)) {
             await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory)
         }
@@ -527,9 +530,9 @@ async function handlePipelineIdle(ctx: PluginContext, team: Team, member: Member
     const nextMember = team.members.find(m => m.name === nextStage.member)
     if (!nextMember || !nextMember.sessionId) return
 
-    const prevResult = nextIndex > 0 ? task.responses[stages[nextIndex - 1].member] : null
-    const fullTask = prevResult
-        ? `[Output from ${stages[nextIndex - 1].member}]\n${truncateOutput(prevResult)}\n\n[Your task]\n${nextStage.task}`
+    const upstream = buildUpstreamContext(stages, task.responses, nextIndex)
+    const fullTask = upstream
+        ? `${upstream}\n\n[Your task]\n${nextStage.task}`
         : nextStage.task
 
     await ctx.client.session.promptAsync({

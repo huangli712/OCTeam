@@ -261,7 +261,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                 // Initial dispatch: round 1 to every participant.
                 const participants = team.members.filter(m => !m.isMaster)
                 for (const m of participants) {
-                    const text = `[Consensus topic] ${args.topic}\n\nRound ${team.activeTask.currentRound}. State your position. End with <consensus>{"agreed": true|false}</consensus>.`
+                    const text = `[Consensus topic] ${args.topic}\n\nRound ${team.activeTask.currentRound}. State your position. End with <consensus>{"agreed": true|false}</consensus> (or the Chinese <共识>{"agreed": ...}</共识>).`
                     await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory)
                 }
             })

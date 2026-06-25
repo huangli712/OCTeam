@@ -101,7 +101,13 @@ export async function buildSummary(
             const rounds = task.decisionHistory.map(
                 d => `  round ${d.round}: ${d.decision} — ${d.rationale}`,
             )
-            return `${head} rounds=${task.currentRound}\nfinal: ${last?.decision ?? "n/a"}\n${rounds.join("\n")}`
+            const decisions = `${head} rounds=${task.currentRound}\nfinal: ${last?.decision ?? "n/a"}\n${rounds.join("\n")}`
+            // Include the actual member outputs (the work product), not just the
+            // decision log — otherwise a finished loop delivers nothing usable.
+            const outputs = Object.entries(task.responses)
+                .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+                .join("\n\n")
+            return outputs ? `${decisions}\n\n${outputs}` : decisions
         }
         default: {
             const outputs = Object.entries(task.responses)

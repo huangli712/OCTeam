@@ -23,6 +23,46 @@ const execFileP = promisify(execFile)
 
 const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000
 
+// Total byte budget for injected upstream context (sum across all prior
+// stages). Without a cap, a long pipeline/loop would grow the prompt linearly
+// with stage count. Each stage is also individually truncated (truncateOutput).
+const UPSTREAM_TOTAL_CAP = 32_768
+
+// read_only loop stages signal "clean" with this structured tag (i18n-consistent
+// with allReadOnlyStagesReportNoIssues in handlers.ts).
+const NO_ISSUES_CONTRACT =
+    'If you find NO issues, end your reply with the literal tag <no_issues/> ' +
+    '(or <无问题/>). Emit it ONLY when truly clean — it ends the loop.'
+
+/**
+ * Build the upstream-context prefix for a pipeline/loop stage: ALL completed
+ * prior stages (not just the immediate predecessor), each labelled by member
+ * and individually truncated, then capped at UPSTREAM_TOTAL_CAP total bytes.
+ * Returns "" when there is no completed upstream. Exported for unit testing.
+ */
+export function buildUpstreamContext(
+    stages: Stage[],
+    responses: Record<string, string>,
+    uptoIndex: number,
+): string {
+    const blocks: string[] = []
+    let used = 0
+    for (let i = 0; i < uptoIndex; i++) {
+        const s = stages[i]
+        if (!s?.completed) continue
+        const out = responses[s.member]
+        if (!out) continue
+        const block = `[Output from ${s.member}]\n${truncateOutput(out)}`
+        if (used + block.length > UPSTREAM_TOTAL_CAP) {
+            blocks.push(`[…upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`)
+            break
+        }
+        blocks.push(block)
+        used += block.length
+    }
+    return blocks.join("\n\n")
+}
+
 /**
  * Create an isolated git worktree for a member: `git worktree add <path> -b team/<team>/<member>`.
  * Only called when the member spec has worktree: true. Runs git in the project
@@ -155,11 +195,14 @@ export async function advanceToStage(
     if (!member || !member.sessionId) {
         throw new Error(`advanceToStage: member "${stage.member}" has no session`)
     }
-    const prevIdx = task.currentStageIndex - 1
-    const prev = prevIdx >= 0 ? task.responses[task.stages[prevIdx].member] : null
-    const base = prev
-        ? `[Prior output]\n${truncateOutput(prev)}\n\n[Your task]\n${stage.task}`
-        : stage.task
+    // Inject ALL completed upstream stages (capped), not just the immediate
+    // predecessor — a later stage may depend on an earlier one whose output the
+    // intermediate stage did not forward.
+    const upstream = buildUpstreamContext(task.stages, task.responses, task.currentStageIndex)
+    const roContract = stage.action === "read_only" ? `\n\n${NO_ISSUES_CONTRACT}` : ""
+    const base = upstream
+        ? `${upstream}\n\n[Your task]\n${stage.task}${roContract}`
+        : `${stage.task}${roContract}`
     // contextPrefix carries cross-round feedback (e.g. the decider's decision in a
     // loop) so the next round is actually corrective rather than re-asking verbatim.
     const text = contextPrefix ? `${contextPrefix}\n\n${base}` : base
