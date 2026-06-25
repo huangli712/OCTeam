@@ -6,6 +6,9 @@ import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.
 import { teamResumeTool } from "../src/tools/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import fs from "node:fs/promises"
+import { createTask, listAllTasks, updateTask } from "../src/state/tasks.js"
+import { processIdle } from "../src/orchestration/handlers.js"
 
 // --- helpers ---
 
@@ -180,6 +183,135 @@ describe("team_resume", () => {
         )
         // Re-dispatched despite having a response — completion = declaredDone.
         expect(calls).toEqual(["ses_alice"])
+    })
+
+    test("(b) pipeline: advanceToStage uses responses[] context (no .md read) [O3]", async () => {
+        const root = tmpRoot("resume-b")
+        const sid = "ses_resume_b"
+        tracked.push(sid)
+        const task = makeTask({
+            type: "pipeline",
+            stages: [
+                { member: "alice", task: "do A", completed: true },
+                { member: "bob", task: "do B", completed: false },
+            ],
+            currentStageIndex: 1,
+            responses: { alice: "ALICE_UPSTREAM_OUTPUT" },
+        })
+        await setupFailed(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        let bobPrompt = ""
+        const ctx = makeCtx(root, async (req: any) => {
+            if (req.path.id === "ses_bob") bobPrompt = req.body.parts[0].text
+        })
+        await teamResumeTool(ctx).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        expect(bobPrompt).toContain("ALICE_UPSTREAM_OUTPUT")
+    })
+
+    test("(d) Phase 1 does NOT commit activeTask [O1 BLOCKER]", async () => {
+        const root = tmpRoot("resume-d")
+        const sid = "ses_resume_d"
+        tracked.push(sid)
+        const task = makeTask() // no responses → bob dispatched (triggers promptAsync)
+        const team = await setupFailed(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        let captured: unknown
+        const ctx = makeCtx(root, async () => {
+            // Disk state during Phase 3 dispatch = Phase 1 save (Phase 3 save not yet).
+            const raw = await fs.readFile(`${team.directory}/state.json`, "utf8")
+            captured = JSON.parse(raw).activeTask
+        })
+        await teamResumeTool(ctx).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        expect(captured).toBeUndefined()
+    })
+
+    test("(e) processIdle with no activeTask → no summary (O1 absorption)", async () => {
+        const root = tmpRoot("resume-e")
+        const sid = "ses_resume_e"
+        tracked.push(sid)
+        const team = await setupFailed(root, sid, null, [makeMember("alice", "ses_alice")])
+        let delivered = false
+        const ctx = makeCtx(root, async () => { delivered = true })
+        await processIdle(ctx, team, team.members[0], team.members[0].sessionId!)
+        expect(delivered).toBe(false)
+    })
+
+    test("(f) token_budget override applied", async () => {
+        const root = tmpRoot("resume-f")
+        const sid = "ses_resume_f"
+        tracked.push(sid)
+        const task = makeTask({ tokensUsed: 1000, tokenBudget: 500 })
+        const team = await setupFailed(root, sid, task, [makeMember("alice", "ses_alice")])
+        const ctx = makeCtx(root, async () => {})
+        await teamResumeTool(ctx).execute(
+            { team_id: "alpha", token_budget: 5000 },
+            { sessionID: sid } as any,
+        )
+        expect(team.activeTask?.tokenBudget).toBe(5000)
+    })
+
+    test("(g) delegate: claimed + in_progress → pending [O8]", async () => {
+        const root = tmpRoot("resume-g")
+        const sid = "ses_resume_g"
+        tracked.push(sid)
+        const task = makeTask({ type: "delegate" })
+        const team = await setupFailed(root, sid, task, [makeMember("alice", "ses_alice")])
+        const dir = team.directory
+        const t1 = await createTask(dir, { subject: "claimed", description: "x" })
+        const t2 = await createTask(dir, { subject: "inprogress", description: "y" })
+        const t3 = await createTask(dir, { subject: "pending", description: "z" })
+        await updateTask(dir, t1.id, { status: "claimed", owner: "alice" })
+        await updateTask(dir, t2.id, { status: "in_progress", owner: "alice" })
+        const ctx = makeCtx(root, async () => {})
+        await teamResumeTool(ctx).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const after = await listAllTasks(dir)
+        const byId = (id: string) => after.find(t => t.id === id)!.status
+        expect(byId(t1.id)).toBe("pending")
+        expect(byId(t2.id)).toBe("pending")
+        expect(byId(t3.id)).toBe("pending")
+    })
+
+    test("(h2) consensus zero-dispatch → handleConsensusIdle re-drives [MAJOR-A]", async () => {
+        const root = tmpRoot("resume-h2")
+        const sid = "ses_resume_h2"
+        tracked.push(sid)
+        const task = makeTask({
+            type: "consensus",
+            topic: "debate",
+            currentRound: 1,
+            maxRounds: 1,
+            responses: { alice: "agree", bob: "disagree" },
+        })
+        const team = await setupFailed(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        const calls: string[] = []
+        const ctx = makeCtx(root, async (req: any) => { calls.push(req.path.id) })
+        await teamResumeTool(ctx).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        expect(calls).toEqual([sid])
+        expect(team.status).toBe("failed")
+    })
+
+    test("(i2) Phase 3 post-commit throw → active-reset rollback [MAJOR-B]", async () => {
+        const root = tmpRoot("resume-i2")
+        const sid = "ses_resume_i2"
+        tracked.push(sid)
+        const task = makeTask()
+        const team = await setupFailed(root, sid, task, [makeMember("alice", "ses_alice")])
+        const ctx = makeCtx(root, async () => { throw new Error("dead session") })
+        const res = await teamResumeTool(ctx).execute(
+            { team_id: "alpha" },
+            { sessionID: sid } as any,
+        )
+        expect(res).toContain("resume failed")
+        expect(team.activeTask).toBeUndefined()
+        expect(team.status).toBe("failed")
+        expect(team.lastInterruptedTask).toBeDefined()
     })
 
     test("(k) no checkpoint → clear error", async () => {
