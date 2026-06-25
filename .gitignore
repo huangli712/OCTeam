@@ -9,6 +9,7 @@ dist/
 .omo/
 .opencode/
 .octeam/
+.cortexkit/
 
 # Logs
 *.log
