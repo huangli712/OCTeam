@@ -114,6 +114,18 @@ export async function buildSummary(
                 .join("\n\n")
             return outputs ? `${decisions}\n\n${outputs}` : decisions
         }
+        case "route": {
+            // Exclude the router's <route> decision JSON (noise); show only the
+            // selected targets' outputs plus the router's rationale.
+            const targets = task.routeTargets ?? []
+            const outputs = targets
+                .map(name => `### ${name}\n${truncateOutput(task.responses[name] ?? "")}`)
+                .join("\n\n")
+            const rationale = task.routeDecisionRationale
+                ? `\nRouter rationale: ${task.routeDecisionRationale}`
+                : ""
+            return `${head}${rationale}\n${outputs}`
+        }
         default: {
             // #4 real reduce: once the reducer member has produced a combined
             // result, deliver it verbatim instead of the [Reduce policy:X] header.

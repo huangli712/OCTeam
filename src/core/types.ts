@@ -93,7 +93,7 @@ export type Bounds = {
 
 // --- ActiveTask ---
 
-export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus"
+export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route"
 export type ParallelMode = "isolated" | "collaborative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
@@ -149,6 +149,13 @@ export type ActiveTask = {
 
     // consensus-specific (type === "consensus")
     consensusReached?: boolean         // set when all members emit agreed consensus
+
+    // route-specific (type === "route")
+    routerMember?: string              // the router member name (NOT master, NOT a branch member)
+    routeBranches?: RouteBranch[]      // caller-declared branches the router selects from
+    routeTargets?: string[]            // resolved target member names after the router's decision
+    routeStage?: boolean               // false/undefined = router phase; true = target fan-out phase
+    routeDecisionRationale?: string    // router's stated rationale (observability)
 
     // require_done_ack (parallel isolated/collaborative only): when true, the
     // barrier waits for every participant's `declaredDone === true` instead of
@@ -220,6 +227,7 @@ export type RunEventKind =
     | "round"           // consensus/loop incremented the round
     | "signoff"         // a signoff review stage was triggered
     | "terminated"      // the orchestration ended (any reason)
+    | "routed"          // router selected target branch(es) (route mode)
 
 export type RunEvent = {
     timestamp: number                  // epoch ms (readers sort by this, not file order)
@@ -245,6 +253,13 @@ export type DecisionRecord = {
     rationale: string
     nextActions: string[]              // concrete directives for next round
     timestamp: number
+}
+
+export type RouteBranch = {
+    name: string                       // branch label the router selects by (unique)
+    member: string                     // target member to dispatch to (unique across branches)
+    task?: string                      // per-branch task; if omitted, target receives the routing `task`
+    description?: string               // optional hint shown to the router
 }
 
 // --- Message (file mailbox entry) ---

@@ -21,7 +21,7 @@ import { loadTeamState, saveTeamState } from "../state/store.js"
 import { ensureMembersReady, advanceToStage, dispatchToMember } from "../orchestration/dispatch.js"
 import { createTask, updateTask } from "../state/tasks.js"
 import { activationError, resolveCallerInTeam } from "../core/utils.js"
-import type { Stage } from "../core/types.js"
+import type { RouteBranch, Stage } from "../core/types.js"
 
 const DEFAULT_TIMEOUT_MS = 300_000
 const DEFAULT_LOOP_TIMEOUT_MS = 900_000
@@ -666,6 +666,175 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
             })
             if (raced) return "Error: team already has an active orchestration"
             return `team_delegate started on "${args.team_id}" with ${args.tasks.length} task(s).`
+        },
+    })
+}
+
+// --- team_route ---
+
+/**
+ * Build the router member's dispatch prompt: the input to route, the available
+ * branches, and the <route> decision format the router must emit.
+ */
+export function buildRouterPrompt(teamName: string, input: string, branches: RouteBranch[]): string {
+    const list = branches
+        .map(b => {
+            const desc = b.description ? ` — ${b.description}` : ""
+            return `- ${b.name} (-> ${b.member})${desc}`
+        })
+        .join("\n")
+    return (
+        `[Route task] You are the router for team "${teamName}". Analyze the input below and `
+        + `select which branch(es) should handle it. Available branches:\n${list}\n\n`
+        + `Emit your decision as:\n`
+        + `<route>{"branch": "<name>", "rationale": "<why>"}</route>\n`
+        + `For multiple branches: <route>{"branches": ["a","b"], "rationale": "..."}</route>\n`
+        + `The tags must be the literal English <route> and </route> — do NOT use translated tags such as <路由>.\n\n`
+        + `[Input]\n${input}`
+    )
+}
+
+export function teamRouteTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Content-Based Routing: a router member inspects the input and decides which branch(es) handle it; "
+            + "selected branches run in parallel and their outputs are summarized to the leader. No default route — "
+            + "an unmatched input fails the run.",
+        args: {
+            team_id: tool.schema.string().min(1),
+            router: tool.schema.string().min(1).describe("member name of the router (NOT \"master\", NOT a branch member)"),
+            input: tool.schema.string().min(1).max(32768).describe("the content to be routed (dispatched to the router; if a branch has no per-branch task, the branch member receives this input)"),
+            routes: tool.schema
+                .array(
+                    tool.schema.object({
+                        name: tool.schema.string().min(1).describe("branch label the router selects by (unique)"),
+                        member: tool.schema.string().min(1).describe("target member to dispatch to (unique across branches)"),
+                        task: tool.schema.string().min(1).max(8192).optional().describe("per-branch task; if omitted, the branch member receives the routing `input`"),
+                        description: tool.schema.string().max(1024).optional().describe("hint shown to the router"),
+                    }),
+                )
+                .min(1),
+            signoff_policy: tool.schema
+                .enum(["none", "decider", "peer-quorum"])
+                .optional()
+                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
+            signoff_decider: tool.schema
+                .string()
+                .optional()
+                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
+            signoff_quorum: tool.schema
+                .number()
+                .min(0)
+                .max(1)
+                .optional()
+                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+            timeout_ms: tool.schema.number().min(1000).optional(),
+            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+        },
+        async execute(args, context) {
+            if (args.router === "master") {
+                return "Error: router must be a member name, not \"master\""
+            }
+
+            // Workflow tools are master-only.
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller?.isMaster) {
+                return "Error: team_route is master-only"
+            }
+
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+
+            // Single-active interaction gate.
+            const gate = activationError(team.teamName, team.activatedAt)
+            if (gate) return gate
+
+            // Validate routes: unique names, unique members, members exist, and
+            // the router must not also be a branch target (it is the sole Phase-A
+            // advancer — routing to itself would deadlock).
+            const branchNames = args.routes.map(r => r.name)
+            if (new Set(branchNames).size !== branchNames.length) {
+                return "Error: route branch names must be unique"
+            }
+            const branchMembers = args.routes.map(r => r.member)
+            if (new Set(branchMembers).size !== branchMembers.length) {
+                return "Error: route branch members must be unique"
+            }
+            if (branchMembers.includes(args.router)) {
+                return "Error: router must not also be a branch target"
+            }
+            for (const name of [args.router, ...branchMembers]) {
+                if (!team.members.some(m => m.name === name)) {
+                    return `Error: unknown member "${name}" in router/routes`
+                }
+            }
+
+            // Validate signoff_decider is a real member.
+            if (args.signoff_policy === "decider") {
+                if (!args.signoff_decider) {
+                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                }
+                if (!team.members.some(m => m.name === args.signoff_decider)) {
+                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
+                }
+            }
+
+            // Phase 1: pre-check under mutex.
+            let busy = false
+            await team.mutex.runExclusive(async () => {
+                if (team.activeTask) busy = true
+            })
+            if (busy) return "Error: team already has an active orchestration"
+            let raced = false
+
+            // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
+            await ensureMembersReady(ctx, team)
+
+            // Phase 3: commit activeTask + dispatch ONLY the router (UNDER mutex).
+            await team.mutex.runExclusive(async () => {
+                if (team.activeTask) { raced = true; return }
+                team.status = "busy"
+                const branches: RouteBranch[] = args.routes.map(r => ({
+                    name: r.name,
+                    member: r.member,
+                    task: r.task,
+                    description: r.description,
+                }))
+                team.activeTask = {
+                    type: "route",
+                    runId: crypto.randomUUID(),
+                    startedAt: Date.now(),
+                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
+                    tokenBudget: args.token_budget,
+                    tokensUsed: 0,
+                    tokensByMember: {},
+                    messagesSent: 0,
+                    responses: {},
+                    stages: [],
+                    currentStageIndex: 0,
+                    decisionHistory: [],
+                    decisionParseFailures: 0,
+                    task: args.input,
+                    routerMember: args.router,
+                    routeBranches: branches,
+                    routeStage: false,
+                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffDecider: args.signoff_decider,
+                    signoffQuorum: args.signoff_quorum,
+                    maxRetries: args.max_retries,
+                }
+                await saveTeamState(team)
+                for (const m of team.members) {
+                    m.declaredDone = false
+                    m.retryCount = 0
+                }
+                // Dispatch ONLY the router; it decides the targets (Phase A).
+                const routerMember = team.members.find(m => m.name === args.router)!
+                const prompt = buildRouterPrompt(team.teamName, args.input, branches)
+                await dispatchToMember(ctx, routerMember, prompt, routerMember.worktreePath ?? ctx.directory, team)
+            })
+            if (raced) return "Error: team already has an active orchestration"
+            return `team_route started on "${args.team_id}" (router: ${args.router}, ${args.routes.length} route(s)).`
         },
     })
 }

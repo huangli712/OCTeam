@@ -35,7 +35,8 @@ import {
     dispatchToMember,
     ensureMembersReady,
 } from "../orchestration/dispatch.js"
-import { handleConsensusIdle, handleParallelIdle } from "../orchestration/handlers.js"
+import { handleConsensusIdle, handleParallelIdle, handleRouteIdle } from "../orchestration/handlers.js"
+import { buildRouterPrompt } from "./workflow.js"
 import { deliverSummaryToLeader } from "../orchestration/summary.js"
 import { clearActiveTask, loadTeamState, saveTeamState } from "../state/store.js"
 import { listAllTasks, reapStaleClaims, updateTask } from "../state/tasks.js"
@@ -208,6 +209,56 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                                     team,
                                 )
                                 dispatched++
+                            }
+                            break
+                        }
+                        case "route": {
+                            if (!task.routeStage) {
+                                // Phase A: router hadn't transitioned to targets. If its
+                                // output is captured, re-run Phase A (parse -> dispatch
+                                // targets); else re-dispatch the router.
+                                if (task.routerMember && task.responses[task.routerMember]) {
+                                    await handleRouteIdle(ctx, team)
+                                } else {
+                                    const router = team.members.find(
+                                        m => m.name === task.routerMember && !m.isMaster,
+                                    )
+                                    if (router) {
+                                        const prompt = buildRouterPrompt(
+                                            team.teamName,
+                                            task.task ?? "",
+                                            task.routeBranches ?? [],
+                                        )
+                                        await dispatchToMember(
+                                            ctx,
+                                            router,
+                                            prompt,
+                                            router.worktreePath ?? ctx.directory,
+                                            team,
+                                        )
+                                        dispatched++
+                                    }
+                                }
+                            } else {
+                                // Phase B: re-dispatch targets without responses; else
+                                // re-drive the barrier.
+                                for (const m of team.members) {
+                                    if (m.isMaster || m.status === "running") continue
+                                    const isTarget = task.routeTargets?.includes(m.name) ?? false
+                                    if (isTarget && !task.responses[m.name]) {
+                                        const branch = task.routeBranches?.find(b => b.member === m.name)
+                                        const text = branch?.task ?? task.task ?? ""
+                                        await dispatchToMember(
+                                            ctx,
+                                            m,
+                                            text,
+                                            m.worktreePath ?? ctx.directory,
+                                            team,
+                                        )
+                                        dispatched++
+                                    }
+                                }
+                                if (dispatched === 0) await handleRouteIdle(ctx, team)
                             }
                             break
                         }

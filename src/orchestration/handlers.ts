@@ -54,6 +54,10 @@ export function getExpectedMember(task: ActiveTask): string | null {
     if (task.type === "parallel") return null
     if (task.type === "consensus") return null
     if (task.type === "delegate") return null
+    if (task.type === "route") {
+        // router phase: only the router advances; target phase: any target (like parallel)
+        return task.routeStage ? null : (task.routerMember ?? null)
+    }
     return task.stages[task.currentStageIndex]?.member ?? null
 }
 
@@ -85,6 +89,32 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
         }
     } catch {
         return fail()
+    }
+}
+
+/**
+ * Parse a router's <route>{...}</route> (or <路由>) decision block into the
+ * selected branch names. Pure extraction — branch existence is validated in
+ * handleRouteIdle. Returns parseFailed:true when no tag or no names are found.
+ * Accepts branch/branches/target/targets aliases for LLM robustness.
+ */
+export function parseRouteDecision(
+    rawText: string,
+): { targets: string[]; rationale: string; parseFailed?: boolean } {
+    const match = rawText?.match(/<(?:route|路由)>\s*(\{[\s\S]*\})\s*<\/(?:route|路由)>/)
+    if (!match) return { targets: [], rationale: "", parseFailed: true }
+    try {
+        const p = JSON.parse(match[1]) as Record<string, unknown>
+        const raw = p.branches ?? p.targets ?? p.branch ?? p.target
+        const targets = (Array.isArray(raw) ? raw : raw != null ? [raw] : [])
+            .filter((x: unknown): x is string => typeof x === "string" && x.length > 0)
+        if (targets.length === 0) return { targets: [], rationale: "", parseFailed: true }
+        return {
+            targets,
+            rationale: typeof p.rationale === "string" ? p.rationale : "",
+        }
+    } catch {
+        return { targets: [], rationale: "", parseFailed: true }
     }
 }
 
@@ -357,6 +387,9 @@ export async function processIdle(
             break
         case "delegate":
             await handleDelegateIdle(ctx, team, member)
+            break
+        case "route":
+            await handleRouteIdle(ctx, team)
             break
     }
 
@@ -758,6 +791,72 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Member
         + `Use team_task_list to check, team_task_update to claim, execute, then team_send_message `
         + `to report to master. Repeat until no tasks remain.`
     await dispatchToMember(ctx, member, reprompt, member.worktreePath ?? ctx.directory, team)
+}
+
+/**
+ * Content-Based Routing (route mode). Two-phase orchestration:
+ *   Phase A (router): a single member inspects the input and emits a
+ *     <route>{...} decision naming the branch(es) to dispatch to. Only the
+ *     router's idle advances the state machine (getExpectedMember gate).
+ *   Phase B (targets): the selected branches' members run in parallel; their
+ *     barrier converges to delivery (mirrors parallel, including failure
+ *     isolation and optional signoff).
+ *
+ * No default route: a parse failure or zero matching branches fails the run
+ * with a reason containing "decision_parse_failure" so runStatusFromReason
+ * classifies it as failed.
+ */
+export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<void> {
+    const task = team.activeTask
+    if (!task) return
+
+    // Phase A: router phase (routeStage not yet set).
+    if (!task.routeStage) {
+        const decision = parseRouteDecision(task.responses[task.routerMember ?? ""] ?? "")
+        const branches = task.routeBranches ?? []
+        const selected = branches.filter(b => decision.targets.includes(b.name))
+
+        if (decision.parseFailed || selected.length === 0) {
+            // No default route: unmatched input fails the run.
+            await deliverSummaryToLeader(ctx, team, "route_complete:decision_parse_failure")
+            clearActiveTask(team)
+            team.status = "failed"
+            return
+        }
+
+        // Transition to Phase B: resolve targets, fan out.
+        task.routeStage = true
+        task.routeTargets = selected.map(b => b.member)
+        task.routeDecisionRationale = decision.rationale
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "routed",
+            member: task.routerMember,
+            detail: `targets: ${task.routeTargets.join(",")}`,
+        })
+        for (const b of selected) {
+            const m = team.members.find(x => x.name === b.member && !x.isMaster)
+            if (!m?.sessionId) continue
+            const text = b.task ?? task.task ?? ""
+            await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
+        }
+        await saveTeamState(team)
+        return
+    }
+
+    // Phase B: target barrier (any selected target's idle re-checks readiness).
+    const targets = task.routeTargets ?? []
+    await waitForBarrier(team, targets, async () => {
+        // checkTermination owns fail-fast for route errors (route is excluded
+        // from termination's concurrent set, so tolerance is 0); by the time the
+        // barrier fires, all targets are idle.
+        if (await maybeTriggerSignoff(ctx, team)) {
+            return // signoff in progress
+        }
+        await deliverSummaryToLeader(ctx, team, "route_complete")
+        clearActiveTask(team)
+        team.status = "idle"
+    })
 }
 
 const RETRY_ESCALATION_MS = 60_000
