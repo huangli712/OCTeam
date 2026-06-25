@@ -437,9 +437,6 @@ async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void
 
     await waitForBarrier(team, participants, async () => {
         task.consensusReached = allMembersAgree(task.responses)
-        if (!task.consensusReached) {
-            logEvent(ctx, "debug", "consensus tag parse failed", { team: team.teamName })
-        }
         if (task.consensusReached) {
             await deliverSummaryToLeader(ctx, team, "consensus_reached")
             clearActiveTask(team)
