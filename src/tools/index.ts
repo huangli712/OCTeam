@@ -37,6 +37,9 @@ import {
 import { teamDoneTool } from "./done.js"
 import { teamResultsTool, teamResultGetTool } from "./results.js"
 import { teamProgressTool } from "./progress.js"
+import { teamInterveneTool } from "./intervene.js"
+import { teamMetricsTool } from "./metrics.js"
+
 
 export function createTools(ctx: PluginContext): Record<string, ToolDefinition> {
     return {
@@ -66,5 +69,7 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_results: teamResultsTool(ctx),
         team_result_get: teamResultGetTool(ctx),
         team_progress: teamProgressTool(ctx),
+        team_intervene: teamInterveneTool(ctx),
+        team_metrics: teamMetricsTool(ctx),
     }
 }
