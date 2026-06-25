@@ -17,7 +17,7 @@ import type { PluginContext } from "../core/context.js"
 import { resolveCallerInTeam } from "../core/utils.js"
 import { truncateOutput } from "../core/utils.js"
 import { listRunRecords, readRunRecord } from "../orchestration/runs.js"
-import { runMemberOutputPath } from "../state/paths.js"
+import { runMemberOutputPath, isSafePathSegment } from "../state/paths.js"
 import type { RunRecord } from "../core/types.js"
 
 function formatRunLine(r: RunRecord): string {
@@ -63,6 +63,15 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                 requireActive: false,
             })
             if (!caller) return "Error: caller is not a member of this team"
+
+            // Path-safety: run_id / member are interpolated into runs/<...> paths.
+            // Reject traversal so a caller cannot read another team's records.
+            if (args.run_id !== undefined && !isSafePathSegment(args.run_id)) {
+                return `Error: invalid run_id "${args.run_id}"`
+            }
+            if (args.member !== undefined && !isSafePathSegment(args.member)) {
+                return `Error: invalid member "${args.member}"`
+            }
 
             let record: RunRecord | null
             if (args.run_id) {

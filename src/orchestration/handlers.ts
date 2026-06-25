@@ -468,7 +468,10 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     if (task.reduceStage) return true                          // already reducing
     if (Object.keys(task.responses).length <= 1) return false  // N<=1: nothing to reduce
     const reducer = team.members.find(m => m.name === task.reducerMember && !m.isMaster)
-    if (!reducer?.sessionId) return false                      // no reducer → legacy delivery
+    // Require a LIVE, non-errored reducer. Dispatching to an errored member would
+    // flip it back to running (violating the errored-is-terminal invariant) and
+    // stall the reduce stage. No live reducer → fall back to legacy delivery.
+    if (!reducer?.sessionId || reducer.status === "errored") return false
 
     task.reduceStage = true
     // Reuse the existing [Reduce policy: X] header + candidates as the reducer
@@ -823,9 +826,19 @@ export async function handleStatusEvent(
                 if (team.activeTask?.type === "parallel") {
                     await handleParallelIdle(ctx, team)
                 }
+                // Persist the terminal transition: checkTermination / the barrier
+                // re-drive may have cleared activeTask and flipped team.status, but
+                // the only save above predates them. Without this, state.json stays
+                // "busy" on disk after the run actually finished here — staling the
+                // sidebar and mis-reconciling a completed run as failed on restart.
+                // NOTE: delegate's tolerant last-errored case is NOT re-driven here
+                // (handleDelegateIdle needs an idle member); it is reconciled by the
+                // sweep timer instead — a known, wall-clock-bounded limitation.
+                await saveTeamState(team)
             }
         } else if (entry?.type === "idle") {
             live.retryingSince = undefined
+            await saveTeamState(team)
         }
     })
 }

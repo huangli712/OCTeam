@@ -15,6 +15,7 @@ import type { PluginContext } from "../core/context.js"
 import { resolveCallerInTeam } from "../core/utils.js"
 import { loadTeamState } from "../state/store.js"
 import { listRunRecords, readRunEvents } from "../orchestration/runs.js"
+import { isSafePathSegment } from "../state/paths.js"
 import type { RunEvent } from "../core/types.js"
 import type { Team } from "../state/store.js"
 
@@ -77,6 +78,12 @@ export function teamProgressTool(ctx: PluginContext): ToolDefinition {
                 requireActive: false,
             })
             if (!caller) return "Error: caller is not a member of this team"
+
+            // Path-safety: run_id is interpolated into runs/<...> paths. Reject
+            // traversal so a caller cannot read another team's event timeline.
+            if (args.run_id !== undefined && !isSafePathSegment(args.run_id)) {
+                return `Error: invalid run_id "${args.run_id}"`
+            }
 
             let team
             try {
