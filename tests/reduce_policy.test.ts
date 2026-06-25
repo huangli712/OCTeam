@@ -27,6 +27,12 @@ function makeParallelTask(opts: Partial<ActiveTask> = {}): ActiveTask {
     }
 }
 
+// NOTE (#4): the [Reduce policy: X] header these tests assert is no longer
+// necessarily what the master receives. When a real reducer member runs, the
+// header becomes that reducer's PROMPT and the master gets task.reducedResult
+// verbatim (see reducer.test.ts). These tests validate the reducer-prompt /
+// legacy-fallback construction path (reducedResult unset, reducerMember unset).
+
 describe("buildSummary reduce_policy (parallel)", () => {
     test("summarize (default): concatenates outputs without reduce header", async () => {
         const task = makeParallelTask({

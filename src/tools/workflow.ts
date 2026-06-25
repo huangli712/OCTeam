@@ -152,6 +152,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 team.status = "busy"
                 team.activeTask = {
                     type: "parallel",
+                    runId: crypto.randomUUID(),
                     mode: args.mode,
                     startedAt: Date.now(),
                     wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
@@ -191,7 +192,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     const text = args.mode === "isolated"
                         ? args.task!
                         : (args.tasks![m.name] ?? `No task assigned for ${m.name}.`)
-                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory)
+                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
                 }
             })
             if (raced) return "Error: team already has an active orchestration"
@@ -246,6 +247,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                 team.status = "busy"
                 team.activeTask = {
                     type: "consensus",
+                    runId: crypto.randomUUID(),
                     startedAt: Date.now(),
                     wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
                     tokenBudget: args.token_budget,
@@ -275,7 +277,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                 const participants = team.members.filter(m => !m.isMaster)
                 for (const m of participants) {
                     const text = `[Consensus topic] ${args.topic}\n\nRound ${team.activeTask.currentRound}. State your position. End with <consensus>{"agreed": true|false}</consensus> (or the Chinese <共识>{"agreed": ...}</共识>).`
-                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory)
+                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
                 }
             })
             if (raced) return "Error: team already has an active orchestration"
@@ -374,6 +376,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 }))
                 team.activeTask = {
                     type: "pipeline",
+                    runId: crypto.randomUUID(),
                     startedAt: Date.now(),
                     wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, 600_000, team.bounds.maxWallClockMinutes),
                     tokenBudget: args.token_budget,
@@ -397,7 +400,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 }
                 // Dispatch stage 0.
                 const first = team.members.find(m => m.name === stages[0].member)!
-                await dispatchToMember(ctx, first, stages[0].task, first.worktreePath ?? ctx.directory)
+                await dispatchToMember(ctx, first, stages[0].task, first.worktreePath ?? ctx.directory, team)
             })
             if (raced) return "Error: team already has an active orchestration"
             return `team_pipeline started on "${args.team_id}" with ${args.stages.length} stage(s).`
@@ -488,6 +491,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 }
                 team.activeTask = {
                     type: "loop",
+                    runId: crypto.randomUUID(),
                     startedAt: Date.now(),
                     wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_LOOP_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
                     tokenBudget: args.token_budget,
@@ -511,7 +515,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 }
                 // Dispatch first stage with the initial task.
                 const first = team.members.find(m => m.name === stages[0].member)!
-                await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? ctx.directory)
+                await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? ctx.directory, team)
             })
             if (raced) return "Error: team already has an active orchestration"
             return `team_loop started on "${args.team_id}" (decider: ${args.decider}, max ${args.max_rounds} rounds).`
@@ -606,6 +610,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 team.status = "busy"
                 team.activeTask = {
                     type: "delegate",
+                    runId: crypto.randomUUID(),
                     startedAt: Date.now(),
                     wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
                     tokenBudget: args.token_budget,
@@ -656,7 +661,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                         `[Team Orchestrator] You are on team "${team.teamName}" in delegate mode. ` +
                         `${args.tasks.length} task(s) published. Use team_task_list to view, team_task_update (status "claimed") to claim, ` +
                         `execute, then team_send_message to report results to master. Repeat until no tasks remain.`
-                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory)
+                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
                 }
             })
             if (raced) return "Error: team already has an active orchestration"

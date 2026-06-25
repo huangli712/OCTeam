@@ -18,6 +18,7 @@ import { worktreePath } from "../state/paths.js"
 import { buildRolePrompt, chunk, indexMember, truncateOutput, waitUntil } from "../core/utils.js"
 import type { MemberState, Stage } from "../core/types.js"
 import { logSwallowed } from "../core/log.js"
+import { recordEvent } from "./events.js"
 
 const execFileP = promisify(execFile)
 
@@ -219,6 +220,13 @@ export async function advanceToStage(
     member.lastTask = text
     member.status = "running"
     member.turnCount++
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "dispatched",
+        member: member.name,
+        stage: task.currentStageIndex,
+        round: task.currentRound,
+    })
 }
 
 /**
@@ -234,6 +242,7 @@ export async function dispatchToMember(
     member: MemberState,
     text: string,
     directory: string,
+    team?: Team,   // when provided, emit a 'dispatched' run event (#5 observability)
 ): Promise<void> {
     if (!member.sessionId) return
     await ctx.client.session.promptAsync({
@@ -247,4 +256,7 @@ export async function dispatchToMember(
     member.lastTask = text
     member.status = "running"
     member.turnCount++
+    if (team) {
+        recordEvent(team, { timestamp: Date.now(), kind: "dispatched", member: member.name })
+    }
 }

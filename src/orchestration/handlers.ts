@@ -30,6 +30,7 @@ import type { ActiveTask, DecisionRecord, MemberState } from "../core/types.js"
 import { advanceToStage, buildUpstreamContext, dispatchToMember } from "./dispatch.js"
 import { buildRoundSummary, buildSummary, deliverQueuedResultsToMaster, deliverSummaryToLeader } from "./summary.js"
 import { checkTermination } from "./termination.js"
+import { recordEvent } from "./events.js"
 
 const NOTIFY_COOLDOWN_MS = 10_000
 // Structured, i18n-consistent "no issues" signal for loop read_only stages. A
@@ -272,6 +273,12 @@ export async function processIdle(
                         member: member.name,
                     }),
                 )
+                recordEvent(team, {
+                    timestamp: Date.now(),
+                    kind: "captured",
+                    member: member.name,
+                    bytes: full.length,
+                })
             }
         }
     }
@@ -372,6 +379,7 @@ async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<bool
 
     task.signoffStage = true
     task.signoffApprovals = {}
+    recordEvent(team, { timestamp: Date.now(), kind: "signoff", detail: task.signoffPolicy })
 
     const summary = await buildSummary(team, task, "pending_signoff")
     const reviewPrompt =
@@ -386,7 +394,7 @@ async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<bool
             task.signoffStage = false
             return false
         }
-        await dispatchToMember(ctx, decider, reviewPrompt, decider.worktreePath ?? ctx.directory)
+        await dispatchToMember(ctx, decider, reviewPrompt, decider.worktreePath ?? ctx.directory, team)
     } else if (task.signoffPolicy === "peer-quorum") {
         // Dispatch to all non-master members with a session.
         const reviewers = team.members.filter(m => !m.isMaster && m.sessionId)
@@ -395,7 +403,7 @@ async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<bool
             return false
         }
         for (const m of reviewers) {
-            await dispatchToMember(ctx, m, reviewPrompt, m.worktreePath ?? ctx.directory)
+            await dispatchToMember(ctx, m, reviewPrompt, m.worktreePath ?? ctx.directory, team)
         }
     }
 
@@ -471,7 +479,7 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
         `[Reduce task] You are the reducer for a parallel run. Combine the candidate `
         + `outputs below into ONE final result per the policy. Output ONLY the final `
         + `result, with no preamble.\n\n${body}`
-    await dispatchToMember(ctx, reducer, prompt, reducer.worktreePath ?? ctx.directory)
+    await dispatchToMember(ctx, reducer, prompt, reducer.worktreePath ?? ctx.directory, team)
     await saveTeamState(team)
     return true
 }
@@ -561,12 +569,13 @@ async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void
         }
         // Next round: broadcast prior-round summary, reset to running.
         task.currentRound = (task.currentRound ?? 0) + 1
+        recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
         const summary = buildRoundSummary(task.responses)
         const roundText =
             `[Consensus Round ${task.currentRound}] Others said:\n${summary}\n\n`
             + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`
         for (const m of team.members.filter(x => !x.isMaster)) {
-            await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory)
+            await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory, team)
         }
     })
 }
@@ -613,6 +622,12 @@ async function handlePipelineIdle(ctx: PluginContext, team: Team, member: Member
     })
     nextMember.status = "running"
     nextMember.turnCount++
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "stage_advanced",
+        member: nextMember.name,
+        stage: nextIndex,
+    })
 }
 
 async function handleLoopIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
@@ -676,6 +691,7 @@ async function handleLoopIdle(ctx: PluginContext, team: Team, member: MemberStat
     // Without this the next round re-sends the original task verbatim.
     task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
     task.currentRound = (task.currentRound ?? 0) + 1
+    recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
     task.currentStageIndex = 0
     for (const s of task.stages) s.completed = false
     const feedback =
@@ -738,7 +754,7 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Member
         `[Team Orchestrator] You have completed your task. ${claimable.length} task(s) available. `
         + `Use team_task_list to check, team_task_update to claim, execute, then team_send_message `
         + `to report to master. Repeat until no tasks remain.`
-    await dispatchToMember(ctx, member, reprompt, member.worktreePath ?? ctx.directory)
+    await dispatchToMember(ctx, member, reprompt, member.worktreePath ?? ctx.directory, team)
 }
 
 const RETRY_ESCALATION_MS = 60_000
@@ -778,6 +794,12 @@ export async function handleStatusEvent(
                     // member is marked errored only after maxRetries windows.
                     live.retryCount = (live.retryCount ?? 0) + 1
                     live.retryingSince = Date.now()
+                    recordEvent(team, {
+                        timestamp: Date.now(),
+                        kind: "retry",
+                        member: live.name,
+                        detail: `grace ${live.retryCount}/${maxRetries}`,
+                    })
                     await saveTeamState(team)
                     return
                 }
@@ -787,6 +809,12 @@ export async function handleStatusEvent(
                     + ((live.retryCount ?? 0) > 0 ? ` after ${live.retryCount} retries` : "")
                     + `: ${entry.message ?? "unknown"}`
                 await saveTeamState(team)
+                recordEvent(team, {
+                    timestamp: Date.now(),
+                    kind: "errored",
+                    member: live.name,
+                    reason: live.error,
+                })
                 await checkTermination(ctx, team) // fail-fast if over tolerance / all errored
                 // Re-drive the barrier: if this errored member was the LAST to reach
                 // a terminal state, no further idle event will arrive to fire the

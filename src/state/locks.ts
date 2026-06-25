@@ -110,6 +110,19 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
 }
 
 /**
+ * Append a line to a file (creating it + parent dir if needed). Used for the
+ * append-only run event log (events.jsonl). fs.appendFile opens with O_APPEND,
+ * so concurrent appends do not corrupt a line; readers sort by timestamp rather
+ * than trusting file order.
+ */
+export async function appendJsonl(filePath: string, line: string): Promise<void> {
+    await fs.mkdir(path.dirname(filePath), { recursive: true }).catch(() => {
+        // parent may already exist
+    })
+    await fs.appendFile(filePath, line, "utf8")
+}
+
+/**
  * Check whether a lock/claim file is fresh (exists and within TTL). Used by the
  * stale-claim reaper to reconcile claim-lock TTL with Task.status.
  */

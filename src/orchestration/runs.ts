@@ -18,7 +18,8 @@ import fs from "node:fs/promises"
 import type { Team } from "../state/store.js"
 import type { RunRecord, RunStatus } from "../core/types.js"
 import { atomicWrite } from "../state/locks.js"
-import { runsDir, runDir, runRecordPath } from "../state/paths.js"
+import { runsDir, runDir, runRecordPath, runEventsPath } from "../state/paths.js"
+import type { RunEvent } from "../core/types.js"
 import { listAllTasks } from "../state/tasks.js"
 
 /** Keep at most this many run records per team; older ones are pruned. */
@@ -179,4 +180,29 @@ export async function readRunRecord(teamDirectory: string, runId: string): Promi
     } catch {
         return null
     }
+}
+
+/**
+ * Read a run's event timeline (runs/<runId>/events.jsonl), sorted by timestamp
+ * (NOT file order — events are appended fire-and-forget). Bad lines are skipped.
+ * Returns [] when the file is absent (run produced no events yet).
+ */
+export async function readRunEvents(teamDirectory: string, runId: string): Promise<RunEvent[]> {
+    let raw: string
+    try {
+        raw = await fs.readFile(runEventsPath(teamDirectory, runId), "utf8")
+    } catch {
+        return []
+    }
+    const events: RunEvent[] = []
+    for (const line of raw.split("\n")) {
+        if (!line.trim()) continue
+        try {
+            events.push(JSON.parse(line) as RunEvent)
+        } catch {
+            // skip malformed line
+        }
+    }
+    events.sort((a, b) => a.timestamp - b.timestamp)
+    return events
 }

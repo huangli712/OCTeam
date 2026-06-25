@@ -135,3 +135,8 @@ export function runRecordPath(teamDirectory: string, runId: string): string {
 export function runMemberOutputPath(teamDirectory: string, runId: string, memberName: string): string {
     return path.join(runDir(teamDirectory, runId), `${memberName}.md`)
 }
+
+/** runs/{runId}/events.jsonl — append-only run timeline (one RunEvent per line) */
+export function runEventsPath(teamDirectory: string, runId: string): string {
+    return path.join(runDir(teamDirectory, runId), "events.jsonl")
+}

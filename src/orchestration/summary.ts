@@ -19,6 +19,7 @@ import { listAllTasks } from "../state/tasks.js"
 import { truncateOutput } from "../core/utils.js"
 import { logSwallowed } from "../core/log.js"
 import { persistRun } from "./runs.js"
+import { recordEvent } from "./events.js"
 import type { ActiveTask } from "../core/types.js"
 
 /**
@@ -32,6 +33,10 @@ export async function deliverSummaryToLeader(
 ): Promise<void> {
     if (!team.activeTask) return
     const summary = await buildSummary(team, team.activeTask, reason)
+
+    // Timeline (#5): emit the terminated event while runId is still on the task
+    // (clearActiveTask runs at every call site right after this).
+    recordEvent(team, { timestamp: Date.now(), kind: "terminated", reason })
 
     // Persist the run record (#2) BEFORE clearing/delivering. Best-effort: a
     // persistence failure must never block leader delivery. Runs under the

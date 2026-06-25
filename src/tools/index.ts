@@ -36,6 +36,7 @@ import {
 } from "./workflow.js"
 import { teamDoneTool } from "./done.js"
 import { teamResultsTool, teamResultGetTool } from "./results.js"
+import { teamProgressTool } from "./progress.js"
 
 export function createTools(ctx: PluginContext): Record<string, ToolDefinition> {
     return {
@@ -64,5 +65,6 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_done: teamDoneTool(ctx),
         team_results: teamResultsTool(ctx),
         team_result_get: teamResultGetTool(ctx),
+        team_progress: teamProgressTool(ctx),
     }
 }
