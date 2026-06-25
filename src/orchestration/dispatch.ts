@@ -217,7 +217,6 @@ export async function advanceToStage(
         // .octeam state dir. session.create already used ctx.directory.
         query: { directory: member.worktreePath ?? ctx.directory },
     })
-    member.lastTask = text
     member.status = "running"
     member.turnCount++
     recordEvent(team, {
@@ -253,7 +252,6 @@ export async function dispatchToMember(
         },
         query: { directory },
     })
-    member.lastTask = text
     member.status = "running"
     member.turnCount++
     if (team) {

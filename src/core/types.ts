@@ -55,8 +55,7 @@ export type MemberState = {
     error?: string                     // if status === "errored"
     isMaster?: boolean                 // ONLY on synthetic master record; never persisted
     declaredDone?: boolean             // require_done_ack: member has called team_done() this run
-    retryCount?: number                // OCTeam-level re-dispatch attempts this run (reset to 0 at task commit)
-    lastTask?: string                  // last dispatched task text, for re-dispatch on retry
+    retryCount?: number                // OCTeam-level grace-extension windows consumed this run (reset to 0 at task commit)
 }
 
 export type TeamState = {

@@ -40,6 +40,7 @@ const FAILED_REASON_MARKERS = [
     "max_rounds",          // consensus_max_rounds, loop_complete:max_rounds
     "deadlock",            // delegate_deadlock
     "decision_parse_failure",
+    "interrupted",         // crash-reconcile of an interrupted run (hooks.ts)
 ] as const
 
 /** Derive run status from the verbatim termination reason (heuristic; see set above). */

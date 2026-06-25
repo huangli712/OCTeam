@@ -18,6 +18,8 @@ import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservati
 import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent, processIdle } from "./orchestration/handlers.js"
 import { checkTermination } from "./orchestration/termination.js"
+import { persistRun } from "./orchestration/runs.js"
+import { recordEvent } from "./orchestration/events.js"
 import type { MemberState } from "./core/types.js"
 import { logEvent, logSwallowed } from "./core/log.js"
 
@@ -225,6 +227,17 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
         }
         if (team.status === "busy") {
             // Interrupted orchestration is unrecoverable — fail it cleanly.
+            // Persist a run record + terminated event for the in-flight run BEFORE
+            // clearing it, so a crashed run is not orphaned (its captured member
+            // outputs become retrievable via team_results). deliverSummaryToLeader
+            // is intentionally skipped — there is no live leader to prompt after a
+            // restart. Best-effort: failure must not block reconciliation.
+            if (team.activeTask) {
+                recordEvent(team, { timestamp: Date.now(), kind: "terminated", reason: "interrupted" })
+                await persistRun(team, "interrupted").catch((err) =>
+                    logSwallowed(ctx, "persist run record failed (reconcile)", err, { team: team.teamName })
+                )
+            }
             clearActiveTask(team)
             team.status = "failed"
             for (const m of team.members) {
