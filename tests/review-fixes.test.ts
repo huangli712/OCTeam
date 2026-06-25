@@ -1,0 +1,210 @@
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdtempSync } from "node:fs"
+import fs from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
+import type { PluginContext } from "../src/core/context.js"
+import { teamResultGetTool } from "../src/tools/results.js"
+import { teamProgressTool } from "../src/tools/progress.js"
+import { maybeTriggerReduce } from "../src/orchestration/handlers.js"
+import { runStatusFromReason, readRunRecord, readRunEvents } from "../src/orchestration/runs.js"
+import { reconcileCrashedTeams } from "../src/hooks.js"
+import { isSafePathSegment, teamDir, runDir, runMemberOutputPath } from "../src/state/paths.js"
+import { initTeamState, loadTeamState } from "../src/state/store.js"
+import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import type { ActiveTask, MemberState } from "../src/core/types.js"
+import type { Team } from "../src/state/store.js"
+import { AsyncMutex } from "../src/state/locks.js"
+import { makeMember, makeState, tmpRoot } from "./helpers.js"
+
+// ============================================================================
+// Fix1 — path-traversal rejection (BLOCKING-1, security)
+// ============================================================================
+
+describe("Fix1: isSafePathSegment", () => {
+    test("accepts plain segments (uuid, member names)", () => {
+        expect(isSafePathSegment("alice")).toBe(true)
+        expect(isSafePathSegment("4f3a-9c2e-run")).toBe(true)
+        expect(isSafePathSegment("a1b2c3d4-0000-1111-2222-333344445555")).toBe(true)
+    })
+    test("rejects traversal, separators, dot segments, empty, NUL", () => {
+        expect(isSafePathSegment("../../etc")).toBe(false)
+        expect(isSafePathSegment("..")).toBe(false)
+        expect(isSafePathSegment(".")).toBe(false)
+        expect(isSafePathSegment("a/b")).toBe(false)
+        expect(isSafePathSegment("a\\b")).toBe(false)
+        expect(isSafePathSegment("a\0b")).toBe(false)
+        expect(isSafePathSegment("")).toBe(false)
+    })
+})
+
+describe("Fix1: tools reject traversal in run_id / member", () => {
+    const tracked: string[] = []
+    afterEach(() => {
+        for (const sid of tracked.splice(0)) unindexSession(sid)
+    })
+    function makeCtx(storageRoot: string): PluginContext {
+        return { storageRoot, scope: "project" } as unknown as PluginContext
+    }
+    async function setup(root: string, sid: string, memberSid: string): Promise<void> {
+        await initTeamState(root, makeState("alpha", sid, [makeMember("alice", memberSid)], Date.now()), sid)
+        await rebuildSessionIndex(root, `${root}__unused`)
+    }
+
+    test("team_result_get rejects run_id with '..'", async () => {
+        const root = tmpRoot("fix1-rg-runid")
+        const sid = "ses_f1_m", memberSid = "ses_f1_a"
+        tracked.push(sid, memberSid)
+        await setup(root, sid, memberSid)
+        const result = await teamResultGetTool(makeCtx(root)).execute(
+            { team_id: "alpha", run_id: "../../../../etc" },
+            { sessionID: memberSid } as any,
+        )
+        expect(result).toContain("invalid run_id")
+    })
+
+    test("team_result_get rejects member with separator", async () => {
+        const root = tmpRoot("fix1-rg-member")
+        const sid = "ses_f1b_m", memberSid = "ses_f1b_a"
+        tracked.push(sid, memberSid)
+        await setup(root, sid, memberSid)
+        const result = await teamResultGetTool(makeCtx(root)).execute(
+            { team_id: "alpha", member: "../alice" },
+            { sessionID: memberSid } as any,
+        )
+        expect(result).toContain("invalid member")
+    })
+
+    test("team_progress rejects run_id with '..'", async () => {
+        const root = tmpRoot("fix1-pr-runid")
+        const sid = "ses_f1c_m", memberSid = "ses_f1c_a"
+        tracked.push(sid, memberSid)
+        await setup(root, sid, memberSid)
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: "alpha", run_id: "../../other/runs/x" },
+            { sessionID: memberSid } as any,
+        )
+        expect(result).toContain("invalid run_id")
+    })
+})
+
+// ============================================================================
+// Fix2 — maybeTriggerReduce skips an errored reducer (BLOCKING-2)
+// ============================================================================
+
+describe("Fix2: maybeTriggerReduce skips errored reducer", () => {
+    const mockCtx = {} as PluginContext // never touched on early-return
+    function makeTeam(members: Array<Partial<MemberState> & Pick<MemberState, "name">>): Team {
+        const ms: MemberState[] = members.map(m => ({
+            name: m.name,
+            status: m.status ?? "idle",
+            initialized: true,
+            turnCount: 0,
+            sessionId: m.sessionId,
+        }))
+        const task = {
+            type: "parallel",
+            mode: "isolated",
+            startedAt: 0,
+            responses: { alice: "1", bob: "2" },
+            stages: [],
+            currentStageIndex: 0,
+            decisionHistory: [],
+            decisionParseFailures: 0,
+            reducePolicy: "select",
+            reducerMember: "alice",
+        } as unknown as ActiveTask
+        return {
+            teamName: "t",
+            members: ms,
+            activeTask: task,
+            mutex: new AsyncMutex(),
+            directory: "/tmp/x",
+        } as unknown as Team
+    }
+
+    test("errored reducer → false (legacy delivery, no re-dispatch)", async () => {
+        const team = makeTeam([
+            { name: "alice", sessionId: "s", status: "errored" },
+            { name: "bob", sessionId: "s2", status: "idle" },
+        ])
+        expect(await maybeTriggerReduce(mockCtx, team)).toBe(false)
+        // reducer stays errored — NOT flipped back to running
+        expect(team.members.find(m => m.name === "alice")!.status).toBe("errored")
+        expect(team.activeTask!.reduceStage).toBeUndefined()
+    })
+})
+
+// ============================================================================
+// Fix4 — crash reconcile persists a run record + terminated event
+// ============================================================================
+
+describe("Fix4: runStatusFromReason('interrupted') → failed", () => {
+    test("interrupted is a failure marker", () => {
+        expect(runStatusFromReason("interrupted")).toBe("failed")
+    })
+})
+
+describe("Fix4: reconcileCrashedTeams persists interrupted run", () => {
+    const tracked: string[] = []
+    afterEach(() => {
+        for (const sid of tracked.splice(0)) unindexSession(sid)
+    })
+    function ctxFor(root: string): PluginContext {
+        return {
+            projectStorageRoot: root,
+            userStorageRoot: `${root}__user_unused`,
+        } as unknown as PluginContext
+    }
+
+    test("busy team → record.json (status=failed, reason=interrupted) + terminated event", async () => {
+        const root = tmpRoot("fix4-recon")
+        const sid = "ses_f4"
+        tracked.push(sid)
+        const busy = {
+            ...makeState("crash", sid, [makeMember("alice", "ses_alice")]),
+            status: "busy" as const,
+            activeTask: {
+                type: "parallel",
+                mode: "isolated",
+                runId: "run-x",
+                startedAt: 1000,
+                wallClockTimeoutMs: 300000,
+                tokensUsed: 42,
+                tokensByMember: { alice: 42 },
+                messagesSent: 0,
+                responses: { alice: "truncated" },
+                stages: [],
+                currentStageIndex: 0,
+                decisionHistory: [],
+                decisionParseFailures: 0,
+            } as ActiveTask,
+        }
+        await initTeamState(root, busy, sid)
+
+        // Stage a captured member output, as a real run would have at crash time.
+        const dir = teamDir(root, "crash", sid)
+        await fs.mkdir(runDir(dir, "run-x"), { recursive: true })
+        await fs.writeFile(runMemberOutputPath(dir, "run-x", "alice"), "alice full output")
+
+        await reconcileCrashedTeams(ctxFor(root))
+        // terminated event is fire-and-forget — let it flush
+        await new Promise(r => setTimeout(r, 60))
+
+        const rec = await readRunRecord(dir, "run-x")
+        expect(rec).not.toBeNull()
+        expect(rec!.status).toBe("failed")
+        expect(rec!.reason).toBe("interrupted")
+        expect(rec!.memberOutputs.alice).toBeDefined()
+        expect(rec!.memberOutputs.alice.bytes).toBe("alice full output".length)
+
+        const events = await readRunEvents(dir, "run-x")
+        expect(events.some(e => e.kind === "terminated" && e.reason === "interrupted")).toBe(true)
+
+        // team transitioned to failed and activeTask cleared
+        const reloaded = await loadTeamState(root, "crash", sid)
+        expect(reloaded.status).toBe("failed")
+        expect(reloaded.activeTask).toBeUndefined()
+    })
+})
