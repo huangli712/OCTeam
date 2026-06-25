@@ -115,3 +115,23 @@ export function worktreePath(teamDirectory: string, memberName: string): string 
 }
 
 
+// --- runs/ (per-orchestration result records + full member outputs) ---
+
+export function runsDir(teamDirectory: string): string {
+    return path.join(teamDirectory, "runs")
+}
+
+/** runs/{runId} — one directory per orchestration run */
+export function runDir(teamDirectory: string, runId: string): string {
+    return path.join(runsDir(teamDirectory), runId)
+}
+
+/** runs/{runId}/record.json — RunRecord (metadata + output file references) */
+export function runRecordPath(teamDirectory: string, runId: string): string {
+    return path.join(runDir(teamDirectory, runId), "record.json")
+}
+
+/** runs/{runId}/{member}.md — a single member's full (untruncated) output */
+export function runMemberOutputPath(teamDirectory: string, runId: string, memberName: string): string {
+    return path.join(runDir(teamDirectory, runId), `${memberName}.md`)
+}

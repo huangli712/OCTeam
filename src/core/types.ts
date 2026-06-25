@@ -157,6 +157,11 @@ export type ActiveTask = {
     // bounded retry (all modes): re-dispatch a member up to N times before
     // marking it terminally errored. undefined ⇒ 0 (no retry — current behavior).
     maxRetries?: number
+
+    // per-orchestration run id (lazily generated at first output capture). Used to
+    // key runs/<runId>/ for persistent result records. NOT teamRunId (which is
+    // team-constant); each orchestration gets a fresh runId.
+    runId?: string
 }
 
 // --- LastModeRecord (persists after activeTask cleanup, for sidebar display) ---
@@ -165,6 +170,36 @@ export type LastModeRecord = {
     type: OrchestrationType
     mode?: ParallelMode                // parallel only
     finishedAt: number                 // epoch ms when activeTask was cleared
+}
+
+// --- RunRecord (persistent per-orchestration result, stored as runs/<runId>/record.json) ---
+
+export type RunStatus = "completed" | "failed"
+
+export type RunRecord = {
+    version: 1
+    runId: string                      // per-orchestration UUID
+    teamRunId: string                  // team-constant id; correlates a team's runs
+    teamName: string
+    type: OrchestrationType
+    mode?: ParallelMode
+    reason: string                     // verbatim reason passed to deliverSummaryToLeader
+    status: RunStatus                  // derived via runStatusFromReason
+    startedAt: number                  // task.startedAt
+    finishedAt: number                 // epoch ms at persist
+    tokensUsed: number
+    tokensByMember: Record<string, number>
+    messagesSent: number
+    currentRound?: number              // consensus / loop
+    decisionHistory?: DecisionRecord[] // loop
+    consensusReached?: boolean         // consensus
+    signoffPolicy?: SignoffPolicy
+    signoffApprovals?: Record<string, boolean>
+    // per-member full outputs, path-referenced (NOT inlined). file is relative to
+    // runs/<runId>/ (e.g. "alice.md").
+    memberOutputs: Record<string, { bytes: number; file: string }>
+    // delegate snapshot of the shared task list at completion
+    tasks?: Array<{ id: string; subject: string; status: string; owner?: string }>
 }
 
 export type Stage = {

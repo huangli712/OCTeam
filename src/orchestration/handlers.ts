@@ -23,6 +23,9 @@ import { countUnreadMessages } from "../messaging/mailbox.js"
 import { listAllTasks } from "../state/tasks.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"
 import { extractOutputFromParts, resolveTeamMember, sumMemberTokens, truncateOutput } from "../core/utils.js"
+import { atomicWrite } from "../state/locks.js"
+import { runMemberOutputPath } from "../state/paths.js"
+import { logSwallowed } from "../core/log.js"
 import type { ActiveTask, DecisionRecord, MemberState } from "../core/types.js"
 import { advanceToStage, dispatchToMember } from "./dispatch.js"
 import { buildRoundSummary, buildSummary, deliverQueuedResultsToMaster, deliverSummaryToLeader } from "./summary.js"
@@ -251,7 +254,21 @@ export async function processIdle(
                 }
             }
             if (outputs.length > 0) {
-                team.activeTask.responses[member.name] = truncateOutput(outputs.join("\n\n"))
+                const full = outputs.join("\n\n")
+                // responses[] stays truncated for context-safety (loaded into state.json
+                // and injected into prompts). The FULL output is persisted separately to
+                // runs/<runId>/<member>.md so #2 retrieval can recover it losslessly.
+                team.activeTask.responses[member.name] = truncateOutput(full)
+                const runId = (team.activeTask.runId ??= crypto.randomUUID())
+                await atomicWrite(
+                    runMemberOutputPath(team.directory, runId, member.name),
+                    full,
+                ).catch(err =>
+                    logSwallowed(ctx, "persist member output failed", err, {
+                        team: team.teamName,
+                        member: member.name,
+                    }),
+                )
             }
         }
     }

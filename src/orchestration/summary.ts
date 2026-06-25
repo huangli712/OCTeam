@@ -17,6 +17,8 @@ import type { Team } from "../state/store.js"
 import { formatMailboxInjection, pollMailbox, ackMessages } from "../messaging/mailbox.js"
 import { listAllTasks } from "../state/tasks.js"
 import { truncateOutput } from "../core/utils.js"
+import { logSwallowed } from "../core/log.js"
+import { persistRun } from "./runs.js"
 import type { ActiveTask } from "../core/types.js"
 
 /**
@@ -30,6 +32,13 @@ export async function deliverSummaryToLeader(
 ): Promise<void> {
     if (!team.activeTask) return
     const summary = await buildSummary(team, team.activeTask, reason)
+
+    // Persist the run record (#2) BEFORE clearing/delivering. Best-effort: a
+    // persistence failure must never block leader delivery. Runs under the
+    // team mutex (every call site holds it), so the runId dir has one writer.
+    await persistRun(team, reason).catch(err =>
+        logSwallowed(ctx, "persist run record failed", err, { team: team.teamName, reason }),
+    )
 
     await ctx.client.session.promptAsync({
         path: { id: team.leadSessionId },
