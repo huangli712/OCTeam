@@ -66,6 +66,7 @@ export type TeamState = {
     leadSessionId: string              // always context.sessionID; leader name is "master"
     members: MemberState[]
     activeTask?: ActiveTask            // only one active orchestration at a time
+    lastInterruptedTask?: ActiveTask       // task to resume on reconnect (survives activeTask cleanup)
     lastMode?: LastModeRecord          // most recent orchestration mode (survives activeTask cleanup)
     bounds: Bounds                     // resource limits (Section 8)
     createdAt: number
@@ -253,11 +254,12 @@ export type Message = {
     id: string                         // UUID
     from: string                       // sender member name, or "orchestrator"
     to: string                         // recipient member name, or "*" for broadcast
-    kind: "message" | "announcement"
+    kind: "message" | "announcement" | "directive"
     body: string                       // max 32KB
     summary?: string                   // one-line summary for status display
     timestamp: number
     correlationId?: string             // UUID for request-response pairing
+    runId?: string                      // per-orchestration run id for directive messages
     deliveryStatus: "pending" | "delivered" | "processed"
 }
 

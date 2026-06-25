@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
-import { createEventHandler } from "../src/hooks.js"
+import { createEventHandler, reconcileCrashedTeams } from "../src/hooks.js"
 import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailbox.js"
-import { initTeamState } from "../src/state/store.js"
-import type { Message } from "../src/core/types.js"
+import { initTeamState, loadTeamState } from "../src/state/store.js"
+import type { ActiveTask, Message, TeamState } from "../src/core/types.js"
 import { indexMasterTeam, setActiveTeam, unindexSession } from "../src/core/utils.js"
-import { makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const LEAD = "ses_lead_drain"
 
@@ -89,5 +89,113 @@ describe("event handler master drain-all", () => {
         expect(calls.length).toBe(1)
 
         unindexSession(LEAD)
+    })
+})
+
+/** Minimal ActiveTask fixture for reconcile tests. */
+function makeActiveTask(overrides?: Partial<ActiveTask>): ActiveTask {
+    return {
+        type: "parallel",
+        mode: "collaborative",
+        startedAt: 1000,
+        wallClockTimeoutMs: 300000,
+        tokensUsed: 0,
+        tokensByMember: {},
+        messagesSent: 0,
+        responses: {},
+        stages: [],
+        currentStageIndex: 0,
+        decisionHistory: [],
+        decisionParseFailures: 0,
+        ...overrides,
+    }
+}
+
+/**
+ * Reconcile ctx: reconcileCrashedTeams scans both scopes and only touches
+ * ctx.client on error paths. userStorageRoot points at a non-existent dir so the
+ * user-scope scan is a no-op; the team lives under project scope.
+ */
+function reconcileCtx(root: string): PluginContext {
+    return {
+        storageRoot: root,
+        directory: root,
+        projectStorageRoot: root,
+        userStorageRoot: `${root}/__user_scope_unused__`,
+        client: {
+            app: { log: async () => ({}) },
+        },
+    } as unknown as PluginContext
+}
+
+describe("reconcileCrashedTeams preserves lastInterruptedTask (T3)", () => {
+    test("busy crash: lastInterruptedTask === original activeTask; status → failed; running member → errored", async () => {
+        const root = tmpRoot("reconcile-busy")
+        const sid = "ses_crash_busy"
+        const task = makeActiveTask({ runId: "run-x", type: "parallel" })
+        const state: TeamState = {
+            ...makeState("crashed", sid, [{ ...makeMember("alice", "ses_alice"), status: "running" }]),
+            status: "busy",
+            activeTask: task,
+        }
+        await initTeamState(root, state, sid)
+
+        await reconcileCrashedTeams(reconcileCtx(root))
+
+        const team = await loadTeamState(root, "crashed", sid)
+        // Force-fail semantics unchanged.
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        expect(team.members[0].status).toBe("errored")
+        // T3: the interrupted task is preserved for an explicit team_resume.
+        expect(team.lastInterruptedTask).toEqual(task)
+    })
+
+    test("double crash: most-recent interrupted task overwrites the older one", async () => {
+        const root = tmpRoot("reconcile-double")
+        const sid = "ses_crash_double"
+        const older = makeActiveTask({ runId: "run-old", type: "loop" })
+        const newer = makeActiveTask({ runId: "run-new", type: "parallel" })
+        const state: TeamState = {
+            ...makeState("crashed2", sid, [makeMember("bob", "ses_bob")]),
+            status: "busy",
+            activeTask: newer,
+            lastInterruptedTask: older,
+        }
+        await initTeamState(root, state, sid)
+
+        await reconcileCrashedTeams(reconcileCtx(root))
+
+        const team = await loadTeamState(root, "crashed2", sid)
+        expect(team.lastInterruptedTask).toEqual(newer)
+        expect(team.lastInterruptedTask?.runId).toBe("run-new")
+    })
+
+    test("idle team with no activeTask: lastInterruptedTask stays undefined", async () => {
+        const root = tmpRoot("reconcile-idle")
+        const sid = "ses_crash_idle"
+        const state: TeamState = {
+            ...makeState("idleteam", sid, [makeMember("carol", "ses_carol")]),
+            status: "idle",
+        }
+        await initTeamState(root, state, sid)
+
+        await reconcileCrashedTeams(reconcileCtx(root))
+
+        const team = await loadTeamState(root, "idleteam", sid)
+        expect(team.lastInterruptedTask).toBeUndefined()
+        expect(team.status).toBe("idle")
+    })
+
+    test("live team is skipped entirely: lastInterruptedTask undefined, status unchanged", async () => {
+        const root = tmpRoot("reconcile-live")
+        const sid = "ses_crash_live"
+        await initTeamState(root, makeState("liveteam", sid, [makeMember("dave", "ses_dave")]), sid)
+
+        await reconcileCrashedTeams(reconcileCtx(root))
+
+        const team = await loadTeamState(root, "liveteam", sid)
+        expect(team.lastInterruptedTask).toBeUndefined()
+        expect(team.status).toBe("live")
     })
 })

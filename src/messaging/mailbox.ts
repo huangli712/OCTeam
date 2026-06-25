@@ -179,13 +179,20 @@ export async function countUnreadMessages(
  * Format messages for injection as a synthetic user message. Shared by the
  * Transform hook (member delivery) and the master drain path so both routes
  * present identical formatting.
+ *
+ * Directive priority: messages with kind === "directive" are rendered FIRST,
+ * each prefixed with a [DIRECTIVE] marker, so they take visual precedence in
+ * the injected prompt. Regular messages follow after, preserving their order.
  */
 export function formatMailboxInjection(msgs: Message[]): string {
-    return msgs
-        .map(
-            m =>
-                `<team_message from="${m.from}"${m.correlationId ? ` correlationId="${m.correlationId}"` : ""}>\n`
-                + `${m.body}\n</team_message>`,
-        )
-        .join("\n\n")
+    const render = (m: Message, prefix: string): string =>
+        `<team_message from="${m.from}"${m.correlationId ? ` correlationId="${m.correlationId}"` : ""}>\n`
+        + `${prefix}${m.body}\n</team_message>`
+    // Directives first (with marker), then regular messages in original order.
+    const directives = msgs.filter(m => m.kind === "directive")
+    const regular = msgs.filter(m => m.kind !== "directive")
+    return [
+        ...directives.map(m => render(m, "[DIRECTIVE] ")),
+        ...regular.map(m => render(m, "")),
+    ].join("\n\n")
 }

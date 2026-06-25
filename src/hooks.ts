@@ -238,6 +238,8 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
                     logSwallowed(ctx, "persist run record failed (reconcile)", err, { team: team.teamName })
                 )
             }
+            // Preserve for explicit team_resume; NOT auto-resumed (never-auto-activate rule).
+            team.lastInterruptedTask = team.activeTask
             clearActiveTask(team)
             team.status = "failed"
             for (const m of team.members) {
