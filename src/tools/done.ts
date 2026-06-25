@@ -66,7 +66,7 @@ export function teamDoneTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 member.declaredDone = true
-                void saveTeamState(team)
+                await saveTeamState(team)
             })
 
             if (alreadyAcked) {

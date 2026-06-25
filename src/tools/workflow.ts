@@ -82,6 +82,8 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
+            max_errored_members: tool.schema.number().int().min(0).optional().describe("tolerate up to N terminally-errored members and still deliver survivors' work. Default 0 (any member error fails the run)."),
+            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
             require_done_ack: tool.schema
                 .boolean()
                 .optional()
@@ -158,12 +160,15 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
                     requireDoneAck: args.require_done_ack === true,
+                    maxErroredMembers: args.max_errored_members,
+                    maxRetries: args.max_retries,
                 }
                 // Reset per-member done flag for the new run so a previous run's
                 // acks don't bleed in. Only relevant when requireDoneAck is true,
                 // but cheap to always reset.
                 for (const m of team.members) {
                     m.declaredDone = false
+                    m.retryCount = 0
                 }
                 await saveTeamState(team)
 
@@ -194,6 +199,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
             max_rounds: tool.schema.number().min(1).max(20).optional().describe("round limit (default 3)"),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
             // Workflow tools are master-only: only the team's leader session may
@@ -244,8 +250,13 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                     maxRounds: args.max_rounds ?? 3,
                     currentRound: 1,
                     signoffPolicy: "none",
+                    maxRetries: args.max_retries,
                 }
                 await saveTeamState(team)
+                for (const m of team.members) {
+                    m.declaredDone = false
+                    m.retryCount = 0
+                }
 
                 // Initial dispatch: round 1 to every participant.
                 const participants = team.members.filter(m => !m.isMaster)
@@ -292,6 +303,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
             const stageMembers = args.stages.map(s => s.member)
@@ -363,8 +375,13 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                     signoffPolicy: args.signoff_policy ?? "none",
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
+                    maxRetries: args.max_retries,
                 }
                 await saveTeamState(team)
+                for (const m of team.members) {
+                    m.declaredDone = false
+                    m.retryCount = 0
+                }
                 // Dispatch stage 0.
                 const first = team.members.find(m => m.name === stages[0].member)!
                 await dispatchToMember(ctx, first, stages[0].task, first.worktreePath ?? ctx.directory)
@@ -397,6 +414,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             initial_task: tool.schema.string().min(1).max(8192),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
             if (args.decider === "master") {
@@ -471,8 +489,13 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                     decisionParseFailures: 0,
                     currentRound: 1,
                     maxRounds: args.max_rounds,
+                    maxRetries: args.max_retries,
                 }
                 await saveTeamState(team)
+                for (const m of team.members) {
+                    m.declaredDone = false
+                    m.retryCount = 0
+                }
                 // Dispatch first stage with the initial task.
                 const first = team.members.find(m => m.name === stages[0].member)!
                 await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? ctx.directory)
@@ -517,6 +540,8 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
+            max_errored_members: tool.schema.number().int().min(0).optional().describe("tolerate up to N terminally-errored members and still deliver survivors' work. Default 0 (any member error fails the run)."),
+            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
             // Workflow tools are master-only.
@@ -582,6 +607,8 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     signoffPolicy: args.signoff_policy ?? "none",
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
+                    maxErroredMembers: args.max_errored_members,
+                    maxRetries: args.max_retries,
                 }
 
                 // Create all tasks, building ref -> uuid map, then resolve blockedBy.
@@ -605,6 +632,10 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 }
 
                 await saveTeamState(team)
+                for (const m of team.members) {
+                    m.declaredDone = false
+                    m.retryCount = 0
+                }
 
                 // Prompt every member to start pulling from the tasklist.
                 for (const m of team.members.filter(x => !x.isMaster)) {

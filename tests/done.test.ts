@@ -304,3 +304,65 @@ describe("waitForBarrier: edge cases", () => {
         expect(fired).toBe(2)
     })
 })
+
+describe("waitForBarrier: errored is terminal (failure isolation)", () => {
+    test("errored member counts as ready → barrier fires with idle survivors", async () => {
+        const team = makeTeam({
+            members: [
+                { name: "alice", status: "idle" },
+                { name: "bob", status: "errored", error: "boom" },
+            ],
+            activeTask: { requireDoneAck: false },
+        })
+        let fired = 0
+        await waitForBarrier(team, ["alice", "bob"], async () => {
+            fired++
+        })
+        expect(fired).toBe(1)
+    })
+
+    test("errored counts as ready even under require_done_ack (no team_done possible)", async () => {
+        const team = makeTeam({
+            members: [
+                { name: "alice", declaredDone: true },
+                { name: "bob", status: "errored", error: "boom", declaredDone: false },
+            ],
+            activeTask: { requireDoneAck: true },
+        })
+        let fired = 0
+        await waitForBarrier(team, ["alice", "bob"], async () => {
+            fired++
+        })
+        expect(fired).toBe(1)
+    })
+
+    test("errored + a still-running member → barrier does NOT fire", async () => {
+        const team = makeTeam({
+            members: [
+                { name: "alice", status: "errored", error: "boom" },
+                { name: "bob", status: "running" },
+            ],
+            activeTask: { requireDoneAck: false },
+        })
+        let fired = 0
+        await waitForBarrier(team, ["alice", "bob"], async () => {
+            fired++
+        })
+        expect(fired).toBe(0)
+    })
+
+    test("all-errored → barrier fires (onBarrier decides fail vs survivors)", async () => {
+        const team = makeTeam({
+            members: [
+                { name: "alice", status: "errored", error: "a" },
+                { name: "bob", status: "errored", error: "b" },
+            ],
+            activeTask: { requireDoneAck: false },
+        })
+        let fired = 0
+        await waitForBarrier(team, ["alice", "bob"], async () => {
+            fired++
+        })
+        expect(fired).toBe(1)
+    })
+})

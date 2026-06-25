@@ -46,12 +46,23 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
         return
     }
 
-    // Member error
-    const errored = team.members.find(m => m.status === "errored")
-    if (errored) {
-        await deliverSummaryToLeader(ctx, team, `member_error:${errored.name}:${errored.error ?? "unknown"}`)
-        clearActiveTask(team)
-        team.status = "failed"
-        return
+    // Member error (tolerance-aware fail-fast). Concurrent modes (parallel/
+    // delegate) tolerate up to maxErroredMembers; the barrier (handleParallelIdle)
+    // / handleDelegateIdle owns succeed-with-survivors. checkTermination owns ONLY
+    // the fail decisions: all-errored, or over-tolerance. Sequential modes
+    // (pipeline/loop/consensus) get tolerance 0 — one active member, no survivors.
+    const erroredMembers = team.members.filter(m => !m.isMaster && m.status === "errored")
+    if (erroredMembers.length > 0) {
+        const concurrent = task.type === "parallel" || task.type === "delegate"
+        const tolerance = concurrent ? (task.maxErroredMembers ?? 0) : 0
+        const survivors = team.members.filter(m => !m.isMaster).length - erroredMembers.length
+        if (erroredMembers.length > tolerance || survivors === 0) {
+            const first = erroredMembers[0]
+            await deliverSummaryToLeader(ctx, team, `member_error:${first.name}:${first.error ?? "unknown"}`)
+            clearActiveTask(team)
+            team.status = "failed"
+            return
+        }
+        // within tolerance with survivors → NO-OP. The barrier delivers survivors.
     }
 }

@@ -163,6 +163,10 @@ export async function waitForBarrier(
     const allReady = memberNames.every(name => {
         const m = team.members.find(x => x.name === name)
         if (!m) return false
+        // errored is TERMINAL: it counts toward the barrier so survivors can be
+        // delivered (failure isolation). Checked first so it also unblocks a
+        // require_done_ack run, where an errored member never calls team_done().
+        if (m.status === "errored") return true
         return requireDoneAck
             ? m.declaredDone === true
             : m.status === "idle"
@@ -419,12 +423,29 @@ async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void>
     const participants = team.members.filter(m => !m.isMaster).map(m => m.name)
 
     await waitForBarrier(team, participants, async () => {
+        // Failure isolation: count terminally-errored members. Within tolerance →
+        // deliver survivors (partial success); over tolerance or no survivors → fail.
+        const errored = participants.filter(
+            n => team.members.find(m => m.name === n)?.status === "errored",
+        )
+        const tolerance = task.maxErroredMembers ?? 0
+        const survivors = participants.length - errored.length
+        if (survivors === 0 || errored.length > tolerance) {
+            const e = team.members.find(m => m.name === errored[0])
+            await deliverSummaryToLeader(ctx, team, `member_error:${e?.name}:${e?.error ?? "unknown"}`)
+            clearActiveTask(team)
+            team.status = "failed"
+            return
+        }
         // Maybe trigger signoff before delivering.
         if (await maybeTriggerSignoff(ctx, team)) {
             return  // signoff in progress
         }
         // Single barrier: collect outputs → deliver to leader → done.
-        await deliverSummaryToLeader(ctx, team, `parallel_${task.mode}_complete`)
+        const reason = errored.length > 0
+            ? `parallel_${task.mode}_partial:${errored.length}_errored`
+            : `parallel_${task.mode}_complete`
+        await deliverSummaryToLeader(ctx, team, reason)
         clearActiveTask(team)
         team.status = "idle"
     })
@@ -601,7 +622,10 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Member
 
     // Deadlock: no claimable tasks and all members idle.
     if (claimable.length === 0) {
-        const allIdle = team.members.every(m => m.status === "idle" || !m.sessionId)
+        // errored counts as terminal (like idle) so an errored member cannot wedge
+        // the deadlock check — its claimed tasks are reaped by the sweep and a
+        // survivor reclaims them.
+        const allIdle = team.members.every(m => m.status === "idle" || m.status === "errored" || !m.sessionId)
         if (allIdle) {
             await deliverSummaryToLeader(ctx, team, "delegate_deadlock")
             clearActiveTask(team)
@@ -658,10 +682,31 @@ export async function handleStatusEvent(
         if (entry?.type === "retry") {
             live.retryingSince ??= Date.now()
             if (Date.now() - live.retryingSince > RETRY_ESCALATION_MS) {
+                const maxRetries = team.activeTask?.maxRetries ?? 0
+                if ((live.retryCount ?? 0) < maxRetries) {
+                    // Bounded retry (grace-extension): give the provider another
+                    // RETRY_ESCALATION_MS window instead of erroring immediately.
+                    // Host-safe (no re-dispatch of an in-flight session); the
+                    // member is marked errored only after maxRetries windows.
+                    live.retryCount = (live.retryCount ?? 0) + 1
+                    live.retryingSince = Date.now()
+                    await saveTeamState(team)
+                    return
+                }
                 live.status = "errored"
-                live.error = `sustained retry > ${RETRY_ESCALATION_MS}ms: ${entry.message ?? "unknown"}`
+                live.error =
+                    `sustained retry > ${RETRY_ESCALATION_MS}ms`
+                    + ((live.retryCount ?? 0) > 0 ? ` after ${live.retryCount} retries` : "")
+                    + `: ${entry.message ?? "unknown"}`
                 await saveTeamState(team)
-                await checkTermination(ctx, team) // member-error branch now fires
+                await checkTermination(ctx, team) // fail-fast if over tolerance / all errored
+                // Re-drive the barrier: if this errored member was the LAST to reach
+                // a terminal state, no further idle event will arrive to fire the
+                // barrier. checkTermination above only fails fast; within tolerance it
+                // is a no-op, so deliver survivors here.
+                if (team.activeTask?.type === "parallel") {
+                    await handleParallelIdle(ctx, team)
+                }
             }
         } else if (entry?.type === "idle") {
             live.retryingSince = undefined

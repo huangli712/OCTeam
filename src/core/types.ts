@@ -55,6 +55,8 @@ export type MemberState = {
     error?: string                     // if status === "errored"
     isMaster?: boolean                 // ONLY on synthetic master record; never persisted
     declaredDone?: boolean             // require_done_ack: member has called team_done() this run
+    retryCount?: number                // OCTeam-level re-dispatch attempts this run (reset to 0 at task commit)
+    lastTask?: string                  // last dispatched task text, for re-dispatch on retry
 }
 
 export type TeamState = {
@@ -146,6 +148,15 @@ export type ActiveTask = {
     // `status === "idle"`. Members must call team_done() to ack — premature
     // idle is recovered by an automatic re-prompt (processIdle Step 6).
     requireDoneAck?: boolean
+
+    // failure isolation (parallel/delegate only): tolerate up to N terminally-
+    // errored members and deliver survivors' work. undefined ⇒ 0 (any member
+    // error fails the whole run — backward-compatible default).
+    maxErroredMembers?: number
+
+    // bounded retry (all modes): re-dispatch a member up to N times before
+    // marking it terminally errored. undefined ⇒ 0 (no retry — current behavior).
+    maxRetries?: number
 }
 
 // --- LastModeRecord (persists after activeTask cleanup, for sidebar display) ---
