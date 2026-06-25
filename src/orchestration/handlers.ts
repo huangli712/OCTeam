@@ -506,7 +506,7 @@ async function handleReduceIdle(ctx: PluginContext, team: Team, member: MemberSt
     team.status = "idle"
 }
 
-async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void> {
+export async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task) return
     const participants = team.members.filter(m => !m.isMaster).map(m => m.name)
@@ -550,7 +550,7 @@ async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void>
     })
 }
 
-async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void> {
+export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task) return
     const participants = team.members.filter(m => !m.isMaster).map(m => m.name)

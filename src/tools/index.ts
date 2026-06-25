@@ -39,6 +39,7 @@ import { teamResultsTool, teamResultGetTool } from "./results.js"
 import { teamProgressTool } from "./progress.js"
 import { teamInterveneTool } from "./intervene.js"
 import { teamMetricsTool } from "./metrics.js"
+import { teamResumeTool } from "./resume.js"
 
 
 export function createTools(ctx: PluginContext): Record<string, ToolDefinition> {
@@ -71,5 +72,6 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_progress: teamProgressTool(ctx),
         team_intervene: teamInterveneTool(ctx),
         team_metrics: teamMetricsTool(ctx),
+        team_resume: teamResumeTool(ctx),
     }
 }
