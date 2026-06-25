@@ -19,6 +19,7 @@ import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent, processIdle } from "./orchestration/handlers.js"
 import { checkTermination } from "./orchestration/termination.js"
 import type { MemberState } from "./core/types.js"
+import { logEvent, logSwallowed } from "./core/log.js"
 
 const SWEEP_INTERVAL_MS = 15_000
 
@@ -88,12 +89,12 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                     const team = await loadTeamState(e.storageRoot, e.teamName, e.leadSessionId)
                     await team.mutex.runExclusive(async () => {
                         await processIdle(ctx, team, masterPseudoMember(), sessionID)
-                        await saveTeamState(team).catch(() => {
-                            // best-effort persist
-                        })
+                        await saveTeamState(team).catch((err) =>
+                            logSwallowed(ctx, "persist team state failed (master idle)", err, { team: team.teamName })
+                        )
                     })
-                } catch {
-                    // unreadable team state — skip
+                } catch (err) {
+                    logSwallowed(ctx, "skipped unreadable team state", err, { dir: e.directory })
                 }
             }
             return
@@ -112,9 +113,9 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
             // under the mutex. processIdle's internal save runs before dispatch while
             // status is still "busy"; without this the idle/failed status never reaches
             // disk and the sidebar (which reads state.json directly) stays stale.
-            await saveTeamState(team).catch(() => {
-                // best-effort persist
-            })
+            await saveTeamState(team).catch((err) =>
+                logSwallowed(ctx, "persist team state failed (member idle)", err, { team: team.teamName, member: live.name })
+            )
         })
     }
 }
@@ -215,7 +216,7 @@ export function createTransformHook(
  * runs concurrently. Iterates BOTH scopes: project (session-segmented) + user
  * (flat).
  */
-async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>): Promise<void> {
+async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx: PluginContext): Promise<void> {
     if (team.status !== "busy" && team.status !== "idle") return
     await team.mutex.runExclusive(async () => {
         await releaseStaleReservations(team.directory, "master").catch(() => {})
@@ -233,9 +234,9 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>): Pr
                 }
             }
         }
-        await saveTeamState(team).catch(() => {
-            // best-effort persist
-        })
+        await saveTeamState(team).catch((err) =>
+            logSwallowed(ctx, "persist team state failed (reconcile)", err, { team: team.teamName })
+        )
     })
 }
 
@@ -244,18 +245,20 @@ export async function reconcileCrashedTeams(ctx: PluginContext): Promise<void> {
     for (const { leadSessionId, teamName } of await listAllTeams(ctx.projectStorageRoot, true)) {
         try {
             const team = await loadTeamState(ctx.projectStorageRoot, teamName, leadSessionId)
-            await reconcileOne(team)
-        } catch {
-            continue // unreadable state.json — skip
+            await reconcileOne(team, ctx)
+        } catch (err) {
+            logSwallowed(ctx, "skipped unreadable state (reconcile)", err, { dir: teamName })
+            continue
         }
     }
     // User scope: flat layout (<userStorageRoot>/teams/<name>/), no session segment.
     for (const { teamName } of await listAllTeams(ctx.userStorageRoot, false)) {
         try {
             const team = await loadTeamState(ctx.userStorageRoot, teamName)
-            await reconcileOne(team)
-        } catch {
-            continue // unreadable state.json — skip
+            await reconcileOne(team, ctx)
+        } catch (err) {
+            logSwallowed(ctx, "skipped unreadable state (reconcile)", err, { dir: teamName })
+            continue
         }
     }
 }
@@ -281,8 +284,8 @@ export async function reconcileActivation(ctx: PluginContext): Promise<void> {
                     team.activatedAt = undefined
                     await saveTeamState(team)
                 })
-            } catch {
-                // unreadable team state — skip
+            } catch (err) {
+                logSwallowed(ctx, "skipped unreadable team state (reconcileActivation)", err, { dir: teamName })
             }
         }
     }
@@ -343,13 +346,13 @@ export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
                             await processIdle(ctx, team, member, member.sessionId)
                         }
                     }
-                    await saveTeamState(team).catch(() => {
-                        // best-effort persist
-                    })
+                    await saveTeamState(team).catch((err) =>
+                        logSwallowed(ctx, "persist team state failed (sweep)", err, { team: team.teamName })
+                    )
                 })
             }
-        } catch {
-            // sweep must never throw — it would kill the interval
+        } catch (err) {
+            logEvent(ctx, "error", "sweep iteration failed", { error: err instanceof Error ? err.message : String(err) })
         }
     }, SWEEP_INTERVAL_MS)
 }

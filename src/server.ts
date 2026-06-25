@@ -12,6 +12,7 @@ import {
     startSweepTimer,
 } from "./hooks.js"
 import { rebuildSessionIndex } from "./core/utils.js"
+import { logSwallowed } from "./core/log.js"
 
 const id = "octeam"
 
@@ -29,20 +30,20 @@ const server = async (input: PluginInput): Promise<Hooks> => {
 
     // Crash recovery: rebuild the sessionID -> member index from on-disk state
     // so idles/transforms resolve correctly after a plugin/OpenCode restart.
-    await rebuildSessionIndex(ctx.projectStorageRoot, ctx.userStorageRoot).catch(() => {
-        // best effort — unreadable teams are skipped
+    await rebuildSessionIndex(ctx.projectStorageRoot, ctx.userStorageRoot, ctx).catch((err) => {
+        logSwallowed(ctx, "rebuildSessionIndex failed", err)
     })
 
     // Restart invariant: clear all teams' activatedAt so none is auto-active
     // after a restart. Users must team_activate explicitly.
-    await reconcileActivation(ctx).catch(() => {
-        // best effort — never block plugin load on reconcile
+    await reconcileActivation(ctx).catch((err) => {
+        logSwallowed(ctx, "reconcileActivation failed", err)
     })
 
     // Crash recovery: reconcile teams left "busy"/"idle" by a crashed prior
     // process — release stale reservations, fail interrupted orchestrations.
-    await reconcileCrashedTeams(ctx).catch(() => {
-        // best effort — never block plugin load on recovery
+    await reconcileCrashedTeams(ctx).catch((err) => {
+        logSwallowed(ctx, "reconcileCrashedTeams failed", err)
     })
 
     // Background sweep timer: reaps stale resources, enforces termination, and

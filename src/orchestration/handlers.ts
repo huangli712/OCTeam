@@ -17,6 +17,7 @@
  */
 
 import type { PluginContext } from "../core/context.js"
+import { logEvent } from "../core/log.js"
 import { type Team, clearActiveTask, loadTeamState, saveTeamState } from '../state/store.js';
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { listAllTasks } from "../state/tasks.js"
@@ -381,6 +382,9 @@ async function handleSignoffIdle(ctx: PluginContext, team: Team, member: MemberS
 
     const memberOutput = task.responses[member.name] ?? ""
     const signoff = parseSignoff(memberOutput)
+    if (!signoff) {
+        logEvent(ctx, "debug", "signoff tag parse failed", { team: team.teamName, member: member.name })
+    }
     // record approval (false if parse failed)
     task.signoffApprovals![member.name] = signoff?.approved === true
 
@@ -433,6 +437,9 @@ async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void
 
     await waitForBarrier(team, participants, async () => {
         task.consensusReached = allMembersAgree(task.responses)
+        if (!task.consensusReached) {
+            logEvent(ctx, "debug", "consensus tag parse failed", { team: team.teamName })
+        }
         if (task.consensusReached) {
             await deliverSummaryToLeader(ctx, team, "consensus_reached")
             clearActiveTask(team)
@@ -524,6 +531,7 @@ async function handleLoopIdle(ctx: PluginContext, team: Team, member: MemberStat
     const decision = parseDecision(deciderOutput ?? "")
 
     if (decision.parseFailed) {
+        logEvent(ctx, "warn", "decision parse failed", { team: team.teamName, member: member.name })
         task.decisionParseFailures++
         if (task.decisionParseFailures >= 3) {
             await deliverSummaryToLeader(ctx, team, "loop_complete:decision_parse_failure")

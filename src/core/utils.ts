@@ -4,8 +4,10 @@
  */
 
 import { listAllTeams, loadTeamState } from "../state/store.js"
+import type { PluginContext } from "./context.js"
 import { rolePreset } from "./role-presets.js"
 import type { MemberState, MemberSpec, TeamSpec } from "./types.js"
+import { logSwallowed } from "./log.js"
 
 // --- sessionID -> team index (process-level, O(1) resolve) ---
 //
@@ -273,14 +275,15 @@ export async function resolveCallerInTeam(
 export async function rebuildSessionIndex(
     projectStorageRoot: string,
     userStorageRoot: string,
+    ctx?: PluginContext,
 ): Promise<void> {
     // Project scope is segmented (<root>/<sid>/teams); user scope is flat (<root>/teams).
-    await indexScope(projectStorageRoot, true)
-    await indexScope(userStorageRoot, false)
+    await indexScope(projectStorageRoot, true, ctx)
+    await indexScope(userStorageRoot, false, ctx)
 }
 
 /** Index every team in one scope. Shared by the project + user passes above. */
-async function indexScope(storageRoot: string, segmented: boolean): Promise<void> {
+async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginContext): Promise<void> {
     const teams = await listAllTeams(storageRoot, segmented)
     for (const { leadSessionId, teamName } of teams) {
         try {
@@ -294,8 +297,8 @@ async function indexScope(storageRoot: string, segmented: boolean): Promise<void
                     indexMember(m.sessionId, team.teamName, m.name, leadSessionId, storageRoot)
                 }
             }
-        } catch {
-            // unreadable team state — skip
+        } catch (err) {
+            if (ctx) logSwallowed(ctx, "indexScope skipped unreadable state", err, { dir: teamName })
         }
     }
 }

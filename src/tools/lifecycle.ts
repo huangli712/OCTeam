@@ -9,8 +9,10 @@ import { promisify } from "node:util"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
+import { logSwallowed } from "../core/log.js"
 import type { PluginContext } from "../core/context.js"
-import { deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec, type Team } from "../state/store.js"
+import { clearActiveTask, deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec, type Team } from "../state/store.js"
+import { deliverSummaryToLeader } from "../orchestration/summary.js"
 import { clearActiveTeam, indexMember, indexMasterTeam, isIndexedMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../core/utils.js"
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { clearWakeHint } from "../messaging/wake-hint.js"
@@ -722,7 +724,9 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                 const now = Date.now()
                 X.activatedAt = now
                 setActiveTeam(context.sessionID, X.directory)
-                await saveTeamState(X).catch(() => {})
+                await saveTeamState(X).catch((err) =>
+                    logSwallowed(ctx, "persist team state failed (activate)", err, { team: X.teamName })
+                )
                 result = `Team "${args.team_id}" activated.`
             })
             return result
@@ -773,13 +777,84 @@ export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
                 // no observer ever sees an active team that's inactive on disk.
                 team.activatedAt = undefined
                 clearActiveTeam(context.sessionID)
-                await saveTeamState(team).catch(() => {})
+                await saveTeamState(team).catch((err) =>
+                    logSwallowed(ctx, "persist team state failed (deactivate)", err, { team: team.teamName })
+                )
                 result = `Team "${args.team_id}" deactivated. No team is active in this session — call team_activate to pick one.`
             })
             return result
         },
     })
 }
+
+// --- team_cancel ---
+
+export function teamCancelTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Cancel the in-flight orchestration on a busy team. Aborts running " +
+            "member turns, clears the active task, and returns the team to idle " +
+            "WITHOUT deleting it (members, sessions, and worktrees are kept and " +
+            "reusable). Master-only. No-op error if the team has no active " +
+            "orchestration.",
+        args: {
+            team_id: tool.schema.string().min(1),
+        },
+        async execute(args, context) {
+            const pathLeadSessionId = ctx.scope === "project" ? context.sessionID : undefined
+            let team: Team
+            try {
+                team = await loadTeamState(ctx.storageRoot, args.team_id, pathLeadSessionId)
+            } catch {
+                return `Error: team "${args.team_id}" not found`
+            }
+            if (team.leadSessionId !== context.sessionID) {
+                return "Error: team_cancel is master-only (only the team's leader session can cancel it)"
+            }
+            if (team.status !== "busy" || team.activeTask === undefined) {
+                return `Error: team "${args.team_id}" has no active orchestration to cancel.`
+            }
+
+            let result = ""
+            await team.mutex.runExclusive(async () => {
+                // Re-check under the lock: a racing completion may have cleared it.
+                if (team.status !== "busy" || team.activeTask === undefined) {
+                    result = `Team "${args.team_id}" has no active orchestration to cancel.`
+                    return
+                }
+                // a. Abort running member turns (best-effort).
+                for (const m of team.members) {
+                    if (!m.isMaster && m.sessionId && m.status === "running") {
+                        await ctx.client.session
+                            .abort({
+                                path: { id: m.sessionId },
+                                query: { directory: m.worktreePath ?? ctx.directory },
+                            })
+                            .catch(() => {
+                                // best-effort: a failed abort must not block cancel
+                            })
+                    }
+                }
+                // b. Notify master BEFORE clearing (summary reads activeTask).
+                await deliverSummaryToLeader(ctx, team, "cancelled")
+                // c. Clear + transition to idle (NOT failed).
+                clearActiveTask(team)
+                team.status = "idle"
+                for (const m of team.members) {
+                    if (m.isMaster) continue
+                    m.status = "idle"
+                    m.declaredDone = false
+                    m.retryingSince = undefined
+                }
+                // d. Persist.
+                await saveTeamState(team)
+                result = `Team "${args.team_id}" orchestration cancelled. Team is idle and reusable.`
+            })
+            return result
+        },
+    })
+}
+
 
 // --- team_add_member ---
 

@@ -17,6 +17,7 @@ import { readTeamSpec, saveTeamState } from "../state/store.js"
 import { worktreePath } from "../state/paths.js"
 import { buildRolePrompt, chunk, indexMember, truncateOutput, waitUntil } from "../core/utils.js"
 import type { MemberState, Stage } from "../core/types.js"
+import { logSwallowed } from "../core/log.js"
 
 const execFileP = promisify(execFile)
 
@@ -130,7 +131,9 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
         }
         // L3: persist the errored state before throwing so a restart sees it
         // (the tool handler aborts before its Phase 3 saveTeamState).
-        await saveTeamState(team).catch(() => {})
+        await saveTeamState(team).catch((err) =>
+            logSwallowed(ctx, "persist failed before barrier-timeout abort", err, { team: team.teamName })
+        )
         throw new Error("ensureMembersReady: role-setup barrier timed out")
     })
 }

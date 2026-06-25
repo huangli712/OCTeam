@@ -20,6 +20,9 @@ function makeCtx(storageRoot: string, overrides?: {
         scope: "project",
         directory: overrides?.directory ?? "/app",
         client: {
+            app: {
+                log: mock(async () => {}),
+            },
             session: {
                 promptAsync: overrides?.promptAsync ?? mock(async () => {}),
                 messages: mock(async () => ({ data: [] })),
