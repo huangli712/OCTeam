@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
+import type { ToolContext } from "@opencode-ai/plugin"
 
 import {
     getExpectedMember,
@@ -9,10 +11,16 @@ import {
     parseRouteDecision,
 } from "../src/orchestration/handlers.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
-import type { ActiveTask, MemberState } from "../src/core/types.js"
-import type { Team } from "../src/state/store.js"
+import { buildSummary } from "../src/orchestration/summary.js"
+import { checkTermination } from "../src/orchestration/termination.js"
+import { buildRouterPrompt, teamRouteTool } from "../src/tools/workflow.js"
+import { teamResumeTool } from "../src/tools/resume.js"
+import type { ActiveTask, MemberState, RouteBranch } from "../src/core/types.js"
+import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
+import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 // --- fixtures ---
 
@@ -515,5 +523,312 @@ describe("routed event recording", () => {
         // detail encodes the resolved target members (order = branch declaration).
         expect(routed!.detail).toContain("alice")
         expect(routed!.detail).toContain("bob")
+    })
+})
+
+
+// =======================================================================
+// Tool-level fixtures (disk-backed team state + master session indexing).
+// teamRouteTool validation (LOW-1) and team_resume (LOW-4b) both flow
+// through resolveCallerInTeam + loadTeamState, so they need real on-disk
+// state and an indexed master session.
+// =======================================================================
+
+/** Track indexed master sessions so each test cleans up its index entry. */
+const tracked: string[] = []
+afterEach(() => {
+    for (const sid of tracked.splice(0)) unindexSession(sid)
+})
+
+/** Minimal PluginContext exposing only storageRoot (teamRouteTool validation). */
+function makeToolCtx(root: string): PluginContext {
+    return { storageRoot: root, scope: "project" } as unknown as PluginContext
+}
+
+/** Create an active on-disk team and index its master session. */
+async function setupRouteTeam(
+    root: string,
+    sid: string,
+    members: MemberState[] = [makeMember("router"), makeMember("alice"), makeMember("bob")],
+): Promise<void> {
+    await initTeamState(root, makeState("alpha", sid, members, Date.now()), sid)
+    await rebuildSessionIndex(root, `${root}__unused`)
+}
+
+// --- LOW-1: teamRouteTool input validation (5 error branches) ---
+
+describe("teamRouteTool: input validation", () => {
+    test('router = "master" is rejected before any team lookup', async () => {
+        const root = tmpRoot("route-val-master")
+        const sid = "ses_route_val_master"
+        tracked.push(sid)
+        await setupRouteTeam(root, sid)
+        const result = await teamRouteTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                router: "master",
+                input: "x",
+                routes: [{ name: "a", member: "alice" }],
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe('Error: router must be a member name, not "master"')
+    })
+
+    test("duplicate branch names are rejected", async () => {
+        const root = tmpRoot("route-val-dupnames")
+        const sid = "ses_route_val_dupnames"
+        tracked.push(sid)
+        await setupRouteTeam(root, sid)
+        const result = await teamRouteTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                router: "router",
+                input: "x",
+                routes: [
+                    { name: "dup", member: "alice" },
+                    { name: "dup", member: "bob" },
+                ],
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe("Error: route branch names must be unique")
+    })
+
+    test("duplicate branch members are rejected", async () => {
+        const root = tmpRoot("route-val-dupmembers")
+        const sid = "ses_route_val_dupmembers"
+        tracked.push(sid)
+        await setupRouteTeam(root, sid)
+        const result = await teamRouteTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                router: "router",
+                input: "x",
+                routes: [
+                    { name: "a", member: "alice" },
+                    { name: "b", member: "alice" },
+                ],
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe("Error: route branch members must be unique")
+    })
+
+    test("router that is also a branch target is rejected", async () => {
+        const root = tmpRoot("route-val-selftarget")
+        const sid = "ses_route_val_selftarget"
+        tracked.push(sid)
+        await setupRouteTeam(root, sid)
+        const result = await teamRouteTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                router: "router",
+                input: "x",
+                routes: [{ name: "a", member: "router" }],
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe("Error: router must not also be a branch target")
+    })
+
+    test("unknown branch member is rejected", async () => {
+        const root = tmpRoot("route-val-unknown")
+        const sid = "ses_route_val_unknown"
+        tracked.push(sid)
+        await setupRouteTeam(root, sid)
+        const result = await teamRouteTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                router: "router",
+                input: "x",
+                routes: [{ name: "a", member: "ghost" }],
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe('Error: unknown member "ghost" in router/routes')
+    })
+})
+
+// --- LOW-2: buildRouterPrompt format ---
+
+describe("buildRouterPrompt", () => {
+    test("renders branch list, input, decision format, and i18n warning", () => {
+        const branches: RouteBranch[] = [
+            { name: "sales", member: "alice", description: "billing & pricing" },
+            { name: "support", member: "bob" },
+        ]
+        const prompt = buildRouterPrompt("myteam", "I need a refund", branches)
+
+        // Decision tag format instruction (single + multi branch).
+        expect(prompt).toContain('<route>{"branch": "<name>", "rationale": "<why>"}</route>')
+        expect(prompt).toContain('<route>{"branches": ["a","b"], "rationale": "..."}</route>')
+        // Every branch is listed with its target member.
+        expect(prompt).toContain("- sales (-> alice)")
+        expect(prompt).toContain("- support (-> bob)")
+        // Optional branch description is shown.
+        expect(prompt).toContain("billing & pricing")
+        // The routing input is embedded.
+        expect(prompt).toContain("[Input]")
+        expect(prompt).toContain("I need a refund")
+        // The team name is referenced.
+        expect(prompt).toContain("myteam")
+        // The \"do NOT use translated tags\" guard is present.
+        expect(prompt).toContain("do NOT use translated tags")
+    })
+})
+
+// --- LOW-3: Phase B errored target -> checkTermination fail-fast ---
+
+describe("checkTermination: route Phase B errored target", () => {
+    test("an errored target fails the run (route tolerance is 0)", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx(calls)
+        const task = makeRouteTask({
+            routeStage: true,
+            // Fresh start time so the wall-clock branch cannot fire first; this
+            // isolates the member-error path being asserted.
+            startedAt: Date.now(),
+            routeTargets: ["alice", "bob"],
+            routeBranches: [
+                { name: "a", member: "alice" },
+                { name: "b", member: "bob" },
+            ],
+            responses: { alice: "A" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "router", sessionId: "ses_router" },
+                { name: "alice", sessionId: "ses_alice", status: "idle" },
+                // One target reached a terminal error state.
+                { name: "bob", sessionId: "ses_bob", status: "errored" },
+            ],
+        })
+
+        await checkTermination(ctx, team)
+
+        // route is NOT in termination's concurrent set, so tolerance is 0:
+        // a single errored target fails fast BEFORE the Phase B barrier.
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        // Failure went through the member-error path (reason in the summary head).
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")!
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall.text).toContain("member_error")
+        expect(leaderCall.text).toContain("bob")
+    })
+})
+
+// --- LOW-4: summary + resume route branches ---
+
+/** Build a failed team carrying a route lastInterruptedTask, indexed for resume. */
+async function setupFailedRoute(
+    root: string,
+    sid: string,
+    task: ActiveTask,
+    members: MemberState[],
+): Promise<Team> {
+    const state = makeState("alpha", sid, members, Date.now())
+    state.status = "failed"
+    await initTeamState(root, state, sid)
+    const team = await loadTeamState(root, "alpha", sid)
+    await team.mutex.runExclusive(async () => {
+        team.lastInterruptedTask = task
+        await saveTeamState(team)
+    })
+    await rebuildSessionIndex(root, `${root}__unused`)
+    return team
+}
+
+/** PluginContext for resume: storageRoot + a capturing promptAsync. */
+function makeResumeCtx(
+    root: string,
+    promptAsync: (req: { path: { id: string } }) => Promise<void>,
+): PluginContext {
+    return {
+        storageRoot: root,
+        scope: "project",
+        directory: "/app",
+        client: {
+            session: {
+                promptAsync,
+                messages: async () => ({ data: [] }),
+            },
+        },
+    } as unknown as PluginContext
+}
+
+describe("buildSummary: route case", () => {
+    test("excludes router decision JSON, shows target outputs + rationale", async () => {
+        const task = makeRouteTask({
+            routeStage: true,
+            routeTargets: ["alice", "bob"],
+            routeDecisionRationale: "cross-team request",
+            responses: {
+                // Router's <route> decision must NOT leak into the summary.
+                router: '<route>{"branches":["a","b"],"rationale":"cross-team request"}</route>',
+                alice: "Sales answer",
+                bob: "Support answer",
+            },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "router" }, { name: "alice" }, { name: "bob" }],
+        })
+
+        const summary = await buildSummary(team, task, "route_complete")
+
+        // Head reflects mode + reason.
+        expect(summary).toContain("mode=route reason=route_complete")
+        // Only the resolved targets' outputs are shown.
+        expect(summary).toContain("### alice")
+        expect(summary).toContain("Sales answer")
+        expect(summary).toContain("### bob")
+        expect(summary).toContain("Support answer")
+        // Router rationale is appended.
+        expect(summary).toContain("Router rationale: cross-team request")
+        // The router's raw <route> decision JSON is excluded as noise.
+        expect(summary).not.toContain("<route>")
+    })
+})
+
+describe("team_resume: route case", () => {
+    test("Phase A with a captured router response re-runs handleRouteIdle", async () => {
+        const root = tmpRoot("route-resume-a")
+        const sid = "ses_route_resume_a"
+        tracked.push(sid)
+        const task = makeRouteTask({
+            routerMember: "router",
+            routeStage: false,
+            routeBranches: [
+                { name: "sales", member: "alice" },
+                { name: "support", member: "bob" },
+            ],
+            // Router already decided before the crash.
+            responses: { router: '<route>{"branch": "support", "rationale": "billing"}</route>' },
+        })
+        const team = await setupFailedRoute(root, sid, task, [
+            makeMember("router", "ses_router"),
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        const calls: string[] = []
+        const ctx = makeResumeCtx(root, async req => {
+            calls.push(req.path.id)
+        })
+
+        const res = await teamResumeTool(ctx).execute(
+            { team_id: "alpha" },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+
+        expect(res).toContain("Resumed route")
+        // handleRouteIdle Phase A parsed the decision and fanned out to the
+        // selected target only (bob), not the router or the unselected branch.
+        expect(calls).toEqual(["ses_bob"])
+        // Transitioned to Phase B with the resolved target.
+        expect(team.activeTask?.routeStage).toBe(true)
+        expect(team.activeTask?.routeTargets).toEqual(["bob"])
     })
 })

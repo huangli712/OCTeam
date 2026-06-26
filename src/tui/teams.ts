@@ -22,6 +22,7 @@ export type TeamMemberRow = {
     unread?: number
     totalMessages?: number
     turnCount?: number
+    tokens?: number
 }
 
 export type TeamSummary = {
@@ -101,6 +102,7 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
                         unread: mailbox.unread,
                         totalMessages: mailbox.total,
                         turnCount: m.turnCount,
+                        tokens: state.activeTask?.tokensByMember?.[m.name],
                     }
                 })),
                 active: state.activeTask

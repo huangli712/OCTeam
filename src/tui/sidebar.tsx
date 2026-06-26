@@ -232,7 +232,7 @@ export function SessionNavigatorSidebar(props: {
                                     </box>
                                     {isTeamExpanded(team.name) ? (
                                         <box flexDirection="column" width="100%">
-                                            <text fg={textMuted()}>{"   Mode    : " + (team.active?.type ?? "unknown")}</text>
+                                            <text fg={textMuted()}>{"   Mode    : " + (team.active?.type ?? "unknown") + (team.active?.type === "parallel" && team.active?.mode ? " / " + team.active.mode : "")}</text>
                                             <text fg={textMuted()}>{"   Size    : " + team.members.length}</text>
                                             <For each={team.members}>
                                                 {(member) => {
@@ -259,8 +259,9 @@ export function SessionNavigatorSidebar(props: {
                                                                      <text fg={textMuted()}>{"      Agent   : " + (member.agent ?? "unknown")}</text>
                                                                     <text fg={textMuted()}>{"      Model   : " + (member.model ? member.model.split("/").pop() : "unknown")}</text>
                                                                     <text fg={textMuted()}>{"      Mailbox : " + (member.unread ?? 0) + " / " + (member.totalMessages ?? 0)}</text>
-                                                                    <text fg={textMuted()}>{"      Turn    : " + (member.turnCount ?? 0)}</text>
-                                                                    <text fg={textMuted()}>{"      Status  : " + member.status}</text>
+                                                                     <text fg={textMuted()}>{"      Turn    : " + (member.turnCount ?? 0)}</text>
+                                                                     <text fg={textMuted()}>{"      Tokens  : " + (member.tokens ?? 0)}</text>
+                                                                     <text fg={textMuted()}>{"      Status  : " + member.status}</text>
                                                                 </box>
                                                             ) : null}
                                                         </box>
