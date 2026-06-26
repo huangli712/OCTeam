@@ -58,6 +58,10 @@ export function getExpectedMember(task: ActiveTask): string | null {
         // router phase: only the router advances; target phase: any target (like parallel)
         return task.routeStage ? null : (task.routerMember ?? null)
     }
+    if (task.type === "arbitrate") {
+        // debate phase: any debater advances (null); ruling phase: only the arbiter
+        return task.arbitrationStage ? (task.arbiterMember ?? null) : null
+    }
     return task.stages[task.currentStageIndex]?.member ?? null
 }
 
@@ -115,6 +119,32 @@ export function parseRouteDecision(
         }
     } catch {
         return { targets: [], rationale: "", parseFailed: true }
+    }
+}
+
+/**
+ * Parse an arbiter's <ruling>{...}</ruling> (or <裁决>) decision block into the
+ * binding ruling and rationale. Accepts decision/ruling aliases; a non-empty
+ * ruling is required, else parseFailed. Single ruling (no retry counting,
+ * unlike loop's parseDecision).
+ */
+export function parseArbitrationDecision(
+    rawText: string,
+): { ruling: string; rationale: string; parseFailed?: boolean } {
+    const match = rawText?.match(/<(?:ruling|裁决)>\s*(\{[\s\S]*\})\s*<\/(?:ruling|裁决)>/)
+    if (!match) return { ruling: "", rationale: "", parseFailed: true }
+    try {
+        const p = JSON.parse(match[1]) as Record<string, unknown>
+        const ruling = typeof p.decision === "string"
+            ? p.decision
+            : typeof p.ruling === "string" ? p.ruling : ""
+        if (!ruling) return { ruling: "", rationale: "", parseFailed: true }
+        return {
+            ruling,
+            rationale: typeof p.rationale === "string" ? p.rationale : "",
+        }
+    } catch {
+        return { ruling: "", rationale: "", parseFailed: true }
     }
 }
 
@@ -390,6 +420,9 @@ export async function processIdle(
             break
         case "route":
             await handleRouteIdle(ctx, team)
+            break
+        case "arbitrate":
+            await handleArbitrateIdle(ctx, team)
             break
     }
 
@@ -857,6 +890,121 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
         clearActiveTask(team)
         team.status = "idle"
     })
+}
+
+/**
+ * Build a debater's prompt for the current debate round. Round 1 states the
+ * dispute subject; later rounds rebut other debaters' positions (drawn from
+ * the latest captured responses via buildRoundSummary).
+ */
+export function buildDebatePrompt(task: ActiveTask): string {
+    const round = task.currentRound ?? 1
+    if (round <= 1) {
+        return (
+            `[Arbitration debate — Round 1] Subject:\n${task.task ?? ""}\n\n`
+            + `State your position with reasoning. An arbiter will weigh all positions and issue a binding ruling.`
+        )
+    }
+    const positions = buildRoundSummary(task.responses)
+    return (
+        `[Arbitration debate — Round ${round}] Other positions:\n${positions}\n\n`
+        + `Rebut or refine your position.`
+    )
+}
+
+/**
+ * Build the arbiter's ruling prompt: the dispute plus every debater's final
+ * position, requesting exactly one <ruling>{...} decision.
+ */
+export function buildArbiterPrompt(task: ActiveTask): string {
+    const positions = (task.disputants ?? [])
+        .map(name => `### ${name}\n${truncateOutput(task.responses[name] ?? "")}`)
+        .join("\n\n")
+    return (
+        `[Arbitration ruling] Dispute:\n${task.task ?? ""}\n\n`
+        + `Debater positions:\n${positions}\n\n`
+        + `Weigh impartially and issue a BINDING ruling. Emit exactly one:\n`
+        + `<ruling>{"decision":"...","rationale":"..."}</ruling> (Chinese <裁决> also accepted)`
+    )
+}
+
+/**
+ * Arbitrate (authoritative ruling). Two-phase orchestration:
+ *   Phase A (debate): the debaters run in parallel over up to maxRounds rounds,
+ *     each round broadcasting prior positions (consensus skeleton). Any
+ *     debater's idle re-checks the barrier; it advances only when all are idle.
+ *   Phase B (ruling): once rounds are exhausted, the arbiter is dispatched with
+ *     all positions and emits a binding <ruling>; its idle delivers the result
+ *     (loop decider pattern). Only the arbiter advances Phase B.
+ *
+ * max_rounds is the normal debate length (NOT a failure condition, unlike
+ * consensus). Failures: arbiter unavailable, or unparseable ruling.
+ */
+export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promise<void> {
+    const task = team.activeTask
+    if (!task) return
+    const disputants = task.disputants ?? []
+
+    // Phase A: debate (arbitrationStage not yet set).
+    if (!task.arbitrationStage) {
+        await waitForBarrier(team, disputants, async () => {
+            if ((task.currentRound ?? 1) >= (task.maxRounds ?? 1)) {
+                // Debate exhausted -> transition to the ruling phase.
+                task.arbitrationStage = true
+                const arbiter = team.members.find(
+                    m => m.name === task.arbiterMember && !m.isMaster,
+                )
+                if (!arbiter?.sessionId) {
+                    // Arbiter unavailable: cannot rule -> fail.
+                    await deliverSummaryToLeader(ctx, team, "arbitrate_complete:arbiter_unavailable")
+                    clearActiveTask(team)
+                    team.status = "failed"
+                    return
+                }
+                await dispatchToMember(
+                    ctx,
+                    arbiter,
+                    buildArbiterPrompt(task),
+                    arbiter.worktreePath ?? ctx.directory,
+                    team,
+                )
+                await saveTeamState(team)
+                return
+            }
+            // Next debate round: broadcast prior positions, re-dispatch debaters.
+            task.currentRound = (task.currentRound ?? 1) + 1
+            recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
+            for (const name of disputants) {
+                const m = team.members.find(x => x.name === name)
+                if (!m?.sessionId) continue
+                await dispatchToMember(ctx, m, buildDebatePrompt(task), m.worktreePath ?? ctx.directory, team)
+            }
+        })
+        return
+    }
+
+    // Phase B: ruling (only the arbiter's idle reaches here).
+    const r = parseArbitrationDecision(task.responses[task.arbiterMember ?? ""] ?? "")
+    if (r.parseFailed) {
+        await deliverSummaryToLeader(ctx, team, "arbitrate_complete:decision_parse_failure")
+        clearActiveTask(team)
+        team.status = "failed"
+        return
+    }
+    task.arbitrationRuling = r.ruling
+    task.arbitrationRationale = r.rationale
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "arbitrated",
+        member: task.arbiterMember,
+        detail: truncateOutput(r.ruling, 200),
+    })
+    if (await maybeTriggerSignoff(ctx, team)) {
+        return // signoff in progress
+    }
+    await deliverSummaryToLeader(ctx, team, "arbitrate_complete:ruled")
+    clearActiveTask(team)
+    team.status = "idle"
 }
 
 const RETRY_ESCALATION_MS = 60_000

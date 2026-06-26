@@ -126,6 +126,20 @@ export async function buildSummary(
                 : ""
             return `${head}${rationale}\n${outputs}`
         }
+        case "arbitrate": {
+            // Lead with the arbiter's binding ruling; follow with the debaters'
+            // final positions. The arbiter's raw <ruling> JSON is excluded.
+            const positions = (task.disputants ?? [])
+                .map(name => `### ${name}\n${truncateOutput(task.responses[name] ?? "")}`)
+                .join("\n\n")
+            const ruling = task.arbitrationRuling
+                ? `Ruling: ${task.arbitrationRuling}`
+                : "Ruling: (none)"
+            const rationale = task.arbitrationRationale
+                ? `\nRationale: ${task.arbitrationRationale}`
+                : ""
+            return `${head}\n${ruling}${rationale}\n\n${positions}`
+        }
         default: {
             // #4 real reduce: once the reducer member has produced a combined
             // result, deliver it verbatim instead of the [Reduce policy:X] header.

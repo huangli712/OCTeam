@@ -21,7 +21,8 @@ import { loadTeamState, saveTeamState } from "../state/store.js"
 import { ensureMembersReady, advanceToStage, dispatchToMember } from "../orchestration/dispatch.js"
 import { createTask, updateTask } from "../state/tasks.js"
 import { activationError, resolveCallerInTeam } from "../core/utils.js"
-import type { RouteBranch, Stage } from "../core/types.js"
+import type { ActiveTask, RouteBranch, Stage } from "../core/types.js"
+import { buildDebatePrompt } from "../orchestration/handlers.js"
 
 const DEFAULT_TIMEOUT_MS = 600_000
 const DEFAULT_LOOP_TIMEOUT_MS = 900_000
@@ -835,6 +836,139 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
             })
             if (raced) return "Error: team already has an active orchestration"
             return `team_route started on "${args.team_id}" (router: ${args.router}, ${args.routes.length} route(s)).`
+        },
+    })
+}
+
+// --- team_arbitrate ---
+
+export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
+    return tool({
+        description:
+            "Authoritative ruling: debaters argue a dispute over up to max_rounds rounds, then a single arbiter weighs all positions and issues a binding ruling. The arbiter must not be one of the debaters.",
+        args: {
+            team_id: tool.schema.string().min(1),
+            task: tool.schema.string().min(1).max(8192).describe("the dispute / subject under arbitration"),
+            arbiter: tool.schema.string().min(1).describe("member name of the arbiter (NOT \"master\", NOT a debater)"),
+            debaters: tool.schema
+                .array(tool.schema.string().min(1))
+                .min(2)
+                .describe("debater member names (at least 2, unique; none may be the arbiter)"),
+            max_rounds: tool.schema.number().min(1).max(20).optional().describe("debate round limit before the ruling (default 1)"),
+            signoff_policy: tool.schema
+                .enum(["none", "decider", "peer-quorum"])
+                .optional()
+                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
+            signoff_decider: tool.schema
+                .string()
+                .optional()
+                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
+            signoff_quorum: tool.schema
+                .number()
+                .min(0)
+                .max(1)
+                .optional()
+                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+            timeout_ms: tool.schema.number().min(1000).optional(),
+            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+        },
+        async execute(args, context) {
+            if (args.arbiter === "master") {
+                return "Error: arbiter must be a member name, not \"master\""
+            }
+            if (new Set(args.debaters).size !== args.debaters.length) {
+                return "Error: debaters must have unique names"
+            }
+            if (args.debaters.includes(args.arbiter)) {
+                return "Error: arbiter must not also be a debater"
+            }
+
+            // Workflow tools are master-only.
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller?.isMaster) {
+                return "Error: team_arbitrate is master-only"
+            }
+
+            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+
+            // Single-active interaction gate.
+            const gate = activationError(team.teamName, team.activatedAt)
+            if (gate) return gate
+
+            // Validate arbiter + debaters are real members.
+            for (const name of [args.arbiter, ...args.debaters]) {
+                if (!team.members.some(m => m.name === name)) {
+                    return `Error: unknown member "${name}" in arbiter/debaters`
+                }
+            }
+
+            // Validate signoff_decider is a real member.
+            if (args.signoff_policy === "decider") {
+                if (!args.signoff_decider) {
+                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                }
+                if (!team.members.some(m => m.name === args.signoff_decider)) {
+                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
+                }
+            }
+
+            // Phase 1: pre-check under mutex.
+            let busy = false
+            await team.mutex.runExclusive(async () => {
+                if (team.activeTask) busy = true
+            })
+            if (busy) return "Error: team already has an active orchestration"
+            let raced = false
+
+            // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
+            await ensureMembersReady(ctx, team)
+
+            // Phase 3: commit activeTask + dispatch the debaters (UNDER mutex).
+            await team.mutex.runExclusive(async () => {
+                if (team.activeTask) { raced = true; return }
+                team.status = "busy"
+                const activeTask: ActiveTask = {
+                    type: "arbitrate",
+                    runId: crypto.randomUUID(),
+                    startedAt: Date.now(),
+                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
+                    tokenBudget: args.token_budget,
+                    tokensUsed: 0,
+                    tokensByMember: {},
+                    messagesSent: 0,
+                    responses: {},
+                    stages: [],
+                    currentStageIndex: 0,
+                    decisionHistory: [],
+                    decisionParseFailures: 0,
+                    task: args.task,
+                    arbiterMember: args.arbiter,
+                    disputants: args.debaters,
+                    arbitrationStage: false,
+                    maxRounds: args.max_rounds ?? 1,
+                    currentRound: 1,
+                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffDecider: args.signoff_decider,
+                    signoffQuorum: args.signoff_quorum,
+                    maxRetries: args.max_retries,
+                }
+                team.activeTask = activeTask
+                await saveTeamState(team)
+                for (const m of team.members) {
+                    m.declaredDone = false
+                    m.retryCount = 0
+                }
+                // Dispatch ONLY the debaters (round 1); the arbiter waits for
+                // the ruling phase.
+                for (const name of args.debaters) {
+                    const m = team.members.find(x => x.name === name && !x.isMaster)
+                    if (!m) continue
+                    await dispatchToMember(ctx, m, buildDebatePrompt(activeTask), m.worktreePath ?? ctx.directory, team)
+                }
+            })
+            if (raced) return "Error: team already has an active orchestration"
+            return `team_arbitrate started on "${args.team_id}" (arbiter: ${args.arbiter}, ${args.debaters.length} debater(s)).`
         },
     })
 }

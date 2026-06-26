@@ -35,7 +35,7 @@ import {
     dispatchToMember,
     ensureMembersReady,
 } from "../orchestration/dispatch.js"
-import { handleConsensusIdle, handleParallelIdle, handleRouteIdle } from "../orchestration/handlers.js"
+import { buildArbiterPrompt, buildDebatePrompt, handleArbitrateIdle, handleConsensusIdle, handleParallelIdle, handleRouteIdle } from "../orchestration/handlers.js"
 import { buildRouterPrompt } from "./workflow.js"
 import { deliverSummaryToLeader } from "../orchestration/summary.js"
 import { clearActiveTask, loadTeamState, saveTeamState } from "../state/store.js"
@@ -259,6 +259,50 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                                     }
                                 }
                                 if (dispatched === 0) await handleRouteIdle(ctx, team)
+                            }
+                            break
+                        }
+                        case "arbitrate": {
+                            if (!task.arbitrationStage) {
+                                // Phase A: re-dispatch debaters without responses;
+                                // else re-drive the barrier.
+                                for (const name of (task.disputants ?? [])) {
+                                    const m = team.members.find(
+                                        x => x.name === name && !x.isMaster,
+                                    )
+                                    if (!m || m.status === "running") continue
+                                    if (!task.responses[name]) {
+                                        await dispatchToMember(
+                                            ctx,
+                                            m,
+                                            buildDebatePrompt(task),
+                                            m.worktreePath ?? ctx.directory,
+                                            team,
+                                        )
+                                        dispatched++
+                                    }
+                                }
+                                if (dispatched === 0) await handleArbitrateIdle(ctx, team)
+                            } else {
+                                // Phase B: if the arbiter responded, re-run the ruling
+                                // (parse -> deliver); else re-dispatch the arbiter.
+                                if (task.arbiterMember && task.responses[task.arbiterMember]) {
+                                    await handleArbitrateIdle(ctx, team)
+                                } else {
+                                    const arbiter = team.members.find(
+                                        m => m.name === task.arbiterMember && !m.isMaster,
+                                    )
+                                    if (arbiter) {
+                                        await dispatchToMember(
+                                            ctx,
+                                            arbiter,
+                                            buildArbiterPrompt(task),
+                                            arbiter.worktreePath ?? ctx.directory,
+                                            team,
+                                        )
+                                        dispatched++
+                                    }
+                                }
                             }
                             break
                         }

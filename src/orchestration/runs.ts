@@ -41,6 +41,7 @@ const FAILED_REASON_MARKERS = [
     "deadlock",            // delegate_deadlock
     "decision_parse_failure",
     "interrupted",         // crash-reconcile of an interrupted run (hooks.ts)
+    "arbiter_unavailable", // arbitrate: arbiter has no live session at ruling time
 ] as const
 
 /** Derive run status from the verbatim termination reason (heuristic; see set above). */

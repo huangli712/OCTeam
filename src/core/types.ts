@@ -93,7 +93,7 @@ export type Bounds = {
 
 // --- ActiveTask ---
 
-export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route"
+export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate"
 export type ParallelMode = "isolated" | "collaborative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
@@ -156,6 +156,13 @@ export type ActiveTask = {
     routeTargets?: string[]            // resolved target member names after the router's decision
     routeStage?: boolean               // false/undefined = router phase; true = target fan-out phase
     routeDecisionRationale?: string    // router's stated rationale (observability)
+
+    // arbitrate-specific (type === "arbitrate")
+    arbiterMember?: string             // the arbiter member name (NOT master, NOT a debater)
+    disputants?: string[]             // debater member names (Phase A barrier participants)
+    arbitrationStage?: boolean        // false/undefined = debate phase; true = ruling phase
+    arbitrationRuling?: string        // arbiter's binding ruling (set at ruling)
+    arbitrationRationale?: string     // arbiter's stated rationale for the ruling
 
     // require_done_ack (parallel isolated/collaborative only): when true, the
     // barrier waits for every participant's `declaredDone === true` instead of
@@ -228,6 +235,7 @@ export type RunEventKind =
     | "signoff"         // a signoff review stage was triggered
     | "terminated"      // the orchestration ended (any reason)
     | "routed"          // router selected target branch(es) (route mode)
+    | "arbitrated"      // arbiter issued a binding ruling (arbitrate mode)
 
 export type RunEvent = {
     timestamp: number                  // epoch ms (readers sort by this, not file order)
