@@ -97,20 +97,24 @@ describe("bug② buildUpstreamContext (all completed upstream, capped)", () => {
     })
 
     test("total cap: stops adding once over budget and marks truncation", () => {
-        const big = "x".repeat(20000)
-        const responses = { a: big, b: big } // 2×20k truncated to 2×~8k > 32k after a couple
+        const big = "x".repeat(40000)
         const manyStages: Stage[] = [
             { member: "a", task: "", completed: true },
             { member: "b", task: "", completed: true },
             { member: "c", task: "", completed: true },
             { member: "d", task: "", completed: true },
             { member: "e", task: "", completed: true },
+            { member: "f", task: "", completed: true },
+            { member: "g", task: "", completed: true },
+            { member: "h", task: "", completed: true },
+            { member: "i", task: "", completed: true },
+            { member: "j", task: "", completed: true },
         ]
         const r: Record<string, string> = {}
         for (const s of manyStages) r[s.member] = big
-        const ctx = buildUpstreamContext(manyStages, r, 5)
+        const ctx = buildUpstreamContext(manyStages, r, 10)
         expect(ctx).toContain("upstream context truncated at")
-        expect(ctx.length).toBeLessThan(40000) // bounded, not 5×~8k unbounded
+        expect(ctx.length).toBeLessThan(70000) // bounded by 65536 cap, not 10×~8k unbounded
     })
 })
 

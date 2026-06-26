@@ -34,8 +34,8 @@ describe("pickName (random, no reuse)", () => {
         expect(pickName(taken)).toBe(`member-${MEMBER_NAME_POOL.length + 1}`)
     })
 
-    test("pool has 16 unique names exceeding the 8-member cap", () => {
-        expect(MEMBER_NAME_POOL.length).toBe(16)
-        expect(new Set(MEMBER_NAME_POOL).size).toBe(16)
+    test("pool has 32 unique names exceeding the 16-member cap", () => {
+        expect(MEMBER_NAME_POOL.length).toBe(32)
+        expect(new Set(MEMBER_NAME_POOL).size).toBe(32)
     })
 })

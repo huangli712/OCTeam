@@ -27,7 +27,7 @@ const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000
 // Total byte budget for injected upstream context (sum across all prior
 // stages). Without a cap, a long pipeline/loop would grow the prompt linearly
 // with stage count. Each stage is also individually truncated (truncateOutput).
-const UPSTREAM_TOTAL_CAP = 32_768
+const UPSTREAM_TOTAL_CAP = 65_536
 
 // read_only loop stages signal "clean" with this structured tag (i18n-consistent
 // with allReadOnlyStagesReportNoIssues in handlers.ts).

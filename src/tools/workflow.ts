@@ -23,7 +23,7 @@ import { createTask, updateTask } from "../state/tasks.js"
 import { activationError, resolveCallerInTeam } from "../core/utils.js"
 import type { RouteBranch, Stage } from "../core/types.js"
 
-const DEFAULT_TIMEOUT_MS = 300_000
+const DEFAULT_TIMEOUT_MS = 600_000
 const DEFAULT_LOOP_TIMEOUT_MS = 900_000
 
 /**

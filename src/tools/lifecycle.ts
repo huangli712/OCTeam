@@ -87,13 +87,13 @@ export function decideActivate(opts: {
 /** Resource bounds with design defaults, overridden by user input. */
 function defaultBounds(override?: Partial<Bounds>): Bounds {
     return {
-        maxMembers: 8,
+        maxMembers: 16,
         maxParallelMembers: 4,
         maxMessagesPerRun: 100,
         maxWallClockMinutes: 30,
         maxMemberTurns: 50,
         maxTasks: 200,
-        messagePayloadMaxBytes: 32768,
+        messagePayloadMaxBytes: 65536,
         messageUnreadMaxBytes: 1048576,
         ...override,
     }
@@ -101,12 +101,14 @@ function defaultBounds(override?: Partial<Bounds>): Bounds {
 
 /**
  * Candidate name pool for members whose name is omitted at creation. A name is
- * drawn at random and not reused within the same team. The pool (16) exceeds the
- * 8-member team cap, so it never runs out for a single team.
+ * drawn at random and not reused within the same team. The pool (32) exceeds the
+ * 16-member team cap, so it never runs out for a single team.
  */
 export const MEMBER_NAME_POOL = [
     "alice", "bob", "carol", "dave", "erin", "frank", "grace", "henry",
     "iris", "jack", "kate", "leo", "mona", "nina", "omar", "pat",
+    "quinn", "ruby", "sam", "tom", "uma", "victor", "wendy", "xander",
+    "yara", "zane", "ava", "ben", "chloe", "dan", "ella", "finn",
 ] as const
 
 /**

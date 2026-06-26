@@ -14,7 +14,7 @@ export type TeamSpec = {
     name: string                       // /^[a-z0-9-]+$/, unique within scope
     description?: string
     createdAt: number                  // epoch ms
-    members: MemberSpec[]              // 1-8 members
+    members: MemberSpec[]              // 1-16 members
 }
 
 export type MemberSpec = {
@@ -81,7 +81,7 @@ export type TeamState = {
 // --- Bounds (resource limits, Section 8) ---
 
 export type Bounds = {
-    maxMembers: number                 // default 8, hard cap
+    maxMembers: number                 // default 16, hard cap
     maxParallelMembers: number         // default 4, concurrent spawn limit
     maxMessagesPerRun: number          // default 100, total messages per orchestration
     maxWallClockMinutes: number        // default 30, hard wall-clock limit
