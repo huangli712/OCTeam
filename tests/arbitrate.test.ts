@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
+import type { ToolContext } from "@opencode-ai/plugin"
 
 import {
     getExpectedMember,
@@ -9,10 +11,15 @@ import {
     parseArbitrationDecision,
 } from "../src/orchestration/handlers.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
+import { buildSummary } from "../src/orchestration/summary.js"
+import { teamArbitrateTool } from "../src/tools/workflow.js"
+import { teamResumeTool } from "../src/tools/resume.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
-import type { Team } from "../src/state/store.js"
+import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
+import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 // --- fixtures ---
 
@@ -494,5 +501,388 @@ describe("round event recording", () => {
         const roundEvent = events.find(e => e.kind === "round")
         expect(roundEvent).toBeDefined()
         expect(roundEvent!.round).toBe(2)
+    })
+})
+
+
+// =======================================================================
+// Tool-level fixtures (disk-backed team state + master session indexing).
+// teamArbitrateTool validation (LOW-1) and team_resume (LOW-2) both flow
+// through resolveCallerInTeam + loadTeamState, so they need real on-disk
+// state and an indexed master session.
+// =======================================================================
+
+/** Track indexed master sessions so each test cleans up its index entry. */
+const tracked: string[] = []
+afterEach(() => {
+    for (const sid of tracked.splice(0)) unindexSession(sid)
+})
+
+/** Minimal PluginContext exposing only storageRoot (teamArbitrateTool validation). */
+function makeToolCtx(root: string): PluginContext {
+    return { storageRoot: root, scope: "project" } as unknown as PluginContext
+}
+
+/** Create an active on-disk team and index its master session. */
+async function setupArbitrateTeam(
+    root: string,
+    sid: string,
+    members: MemberState[] = [makeMember("arbiter"), makeMember("alice"), makeMember("bob")],
+): Promise<void> {
+    await initTeamState(root, makeState("alpha", sid, members, Date.now()), sid)
+    await rebuildSessionIndex(root, `${root}__unused`)
+}
+
+// --- LOW-1: teamArbitrateTool input validation (error branches) ---
+
+describe("teamArbitrateTool: input validation", () => {
+    test('arbiter = "master" is rejected before any team lookup', async () => {
+        const root = tmpRoot("arb-val-master")
+        const sid = "ses_arb_val_master"
+        tracked.push(sid)
+        await setupArbitrateTeam(root, sid)
+        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                task: "Should we ship on Friday?",
+                arbiter: "master",
+                debaters: ["alice", "bob"],
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe('Error: arbiter must be a member name, not "master"')
+    })
+
+    test("duplicate debater names are rejected", async () => {
+        const root = tmpRoot("arb-val-dupnames")
+        const sid = "ses_arb_val_dupnames"
+        tracked.push(sid)
+        await setupArbitrateTeam(root, sid)
+        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                task: "Should we ship on Friday?",
+                arbiter: "arbiter",
+                debaters: ["alice", "alice"],
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe("Error: debaters must have unique names")
+    })
+
+    test("arbiter that is also a debater is rejected", async () => {
+        const root = tmpRoot("arb-val-selfdebater")
+        const sid = "ses_arb_val_selfdebater"
+        tracked.push(sid)
+        await setupArbitrateTeam(root, sid)
+        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                task: "Should we ship on Friday?",
+                arbiter: "arbiter",
+                debaters: ["arbiter", "bob"],
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe("Error: arbiter must not also be a debater")
+    })
+
+    test("unknown member is rejected", async () => {
+        const root = tmpRoot("arb-val-unknown")
+        const sid = "ses_arb_val_unknown"
+        tracked.push(sid)
+        await setupArbitrateTeam(root, sid)
+        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                task: "Should we ship on Friday?",
+                arbiter: "arbiter",
+                debaters: ["alice", "ghost"],
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe('Error: unknown member "ghost" in arbiter/debaters')
+    })
+
+    test("signoff_policy 'decider' without signoff_decider is rejected", async () => {
+        const root = tmpRoot("arb-val-nodecider")
+        const sid = "ses_arb_val_nodecider"
+        tracked.push(sid)
+        await setupArbitrateTeam(root, sid)
+        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                task: "Should we ship on Friday?",
+                arbiter: "arbiter",
+                debaters: ["alice", "bob"],
+                signoff_policy: "decider",
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe(
+            "Error: signoff_policy 'decider' requires signoff_decider (a member name)",
+        )
+    })
+
+    test("signoff_policy 'decider' with an unknown signoff_decider is rejected", async () => {
+        const root = tmpRoot("arb-val-baddecider")
+        const sid = "ses_arb_val_baddecider"
+        tracked.push(sid)
+        await setupArbitrateTeam(root, sid)
+        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                task: "Should we ship on Friday?",
+                arbiter: "arbiter",
+                debaters: ["alice", "bob"],
+                signoff_policy: "decider",
+                signoff_decider: "ghost",
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe('Error: signoff_decider "ghost" is not a member of team "alpha"')
+    })
+})
+
+// --- LOW-2: team_resume arbitrate branches ---
+
+/** Build a failed team carrying an arbitrate lastInterruptedTask, indexed for resume. */
+async function setupFailedArbitrate(
+    root: string,
+    sid: string,
+    task: ActiveTask,
+    members: MemberState[],
+): Promise<Team> {
+    const state = makeState("alpha", sid, members, Date.now())
+    state.status = "failed"
+    await initTeamState(root, state, sid)
+    const team = await loadTeamState(root, "alpha", sid)
+    await team.mutex.runExclusive(async () => {
+        team.lastInterruptedTask = task
+        await saveTeamState(team)
+    })
+    await rebuildSessionIndex(root, `${root}__unused`)
+    return team
+}
+
+/** PluginContext for resume: storageRoot + a capturing promptAsync. */
+function makeResumeCtx(
+    root: string,
+    promptAsync: (req: { path: { id: string } }) => Promise<void>,
+): PluginContext {
+    return {
+        storageRoot: root,
+        scope: "project",
+        directory: "/app",
+        client: {
+            session: {
+                promptAsync,
+                messages: async () => ({ data: [] }),
+            },
+        },
+    } as unknown as PluginContext
+}
+
+describe("team_resume: arbitrate case", () => {
+    test("Phase A re-dispatches only debaters that have no captured response", async () => {
+        const root = tmpRoot("arb-resume-a-redispatch")
+        const sid = "ses_arb_resume_a_redispatch"
+        tracked.push(sid)
+        const task = makeArbitrateTask({
+            arbiterMember: "arbiter",
+            disputants: ["alice", "bob"],
+            arbitrationStage: false,
+            maxRounds: 1,
+            currentRound: 1,
+            // alice argued before the crash; bob did not.
+            responses: { alice: "ship it" },
+        })
+        const team = await setupFailedArbitrate(root, sid, task, [
+            makeMember("arbiter", "ses_arbiter"),
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        const calls: string[] = []
+        const ctx = makeResumeCtx(root, async req => {
+            calls.push(req.path.id)
+        })
+
+        const res = await teamResumeTool(ctx).execute(
+            { team_id: "alpha" },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+
+        expect(res).toContain("Resumed arbitrate")
+        // Only the debater missing a response (bob) is re-dispatched; not alice,
+        // not the arbiter. The run stays in the debate phase.
+        expect(calls).toEqual(["ses_bob"])
+        expect(team.activeTask?.arbitrationStage).toBe(false)
+    })
+
+    test("Phase A with all debater responses re-drives the barrier into the ruling phase", async () => {
+        const root = tmpRoot("arb-resume-a-barrier")
+        const sid = "ses_arb_resume_a_barrier"
+        tracked.push(sid)
+        const task = makeArbitrateTask({
+            arbiterMember: "arbiter",
+            disputants: ["alice", "bob"],
+            arbitrationStage: false,
+            maxRounds: 1,
+            currentRound: 1,
+            // Both debaters already argued -> nothing to re-dispatch.
+            responses: { alice: "ship it", bob: "wait" },
+        })
+        const team = await setupFailedArbitrate(root, sid, task, [
+            makeMember("arbiter", "ses_arbiter"),
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        const calls: string[] = []
+        const ctx = makeResumeCtx(root, async req => {
+            calls.push(req.path.id)
+        })
+
+        const res = await teamResumeTool(ctx).execute(
+            { team_id: "alpha" },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+
+        expect(res).toContain("Resumed arbitrate")
+        // Zero debaters re-dispatched -> handleArbitrateIdle transitions to the
+        // ruling phase and dispatches the arbiter.
+        expect(team.activeTask?.arbitrationStage).toBe(true)
+        expect(calls).toEqual(["ses_arbiter"])
+    })
+
+    test("Phase B re-dispatches the arbiter when it has no captured ruling", async () => {
+        const root = tmpRoot("arb-resume-b-redispatch")
+        const sid = "ses_arb_resume_b_redispatch"
+        tracked.push(sid)
+        const task = makeArbitrateTask({
+            arbiterMember: "arbiter",
+            disputants: ["alice", "bob"],
+            arbitrationStage: true,
+            // Arbiter was dispatched but crashed before producing a ruling.
+            responses: { alice: "ship it", bob: "wait" },
+        })
+        const team = await setupFailedArbitrate(root, sid, task, [
+            makeMember("arbiter", "ses_arbiter"),
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        const calls: string[] = []
+        const ctx = makeResumeCtx(root, async req => {
+            calls.push(req.path.id)
+        })
+
+        const res = await teamResumeTool(ctx).execute(
+            { team_id: "alpha" },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+
+        expect(res).toContain("Resumed arbitrate")
+        // Arbiter has no response -> re-dispatched; the ruling phase is preserved.
+        expect(calls).toEqual(["ses_arbiter"])
+        expect(team.activeTask?.arbitrationStage).toBe(true)
+    })
+
+    test("Phase B with a captured ruling re-runs handleArbitrateIdle to deliver", async () => {
+        const root = tmpRoot("arb-resume-b-deliver")
+        const sid = "ses_arb_resume_b_deliver"
+        tracked.push(sid)
+        const task = makeArbitrateTask({
+            arbiterMember: "arbiter",
+            disputants: ["alice", "bob"],
+            arbitrationStage: true,
+            // Arbiter already produced a valid ruling before the crash.
+            responses: {
+                alice: "ship it",
+                bob: "wait",
+                arbiter: '<ruling>{"decision": "delay to Monday", "rationale": "risk"}</ruling>',
+            },
+        })
+        const team = await setupFailedArbitrate(root, sid, task, [
+            makeMember("arbiter", "ses_arbiter"),
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        const calls: string[] = []
+        const ctx = makeResumeCtx(root, async req => {
+            calls.push(req.path.id)
+        })
+
+        const res = await teamResumeTool(ctx).execute(
+            { team_id: "alpha" },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+
+        expect(res).toContain("Resumed arbitrate")
+        // Arbiter response present -> handleArbitrateIdle parses the ruling and
+        // delivers to the leader; the run completes (task cleared, team idle).
+        expect(calls).toEqual([sid])
+        expect(team.activeTask).toBeUndefined()
+        expect(team.status).toBe("idle")
+    })
+})
+
+// --- LOW-3: buildSummary arbitrate case ---
+
+describe("buildSummary: arbitrate case", () => {
+    test("leads with the ruling + rationale, shows debater positions, excludes <ruling> JSON", async () => {
+        const task = makeArbitrateTask({
+            arbiterMember: "arbiter",
+            disputants: ["alice", "bob"],
+            arbitrationStage: true,
+            arbitrationRuling: "delay to Monday",
+            arbitrationRationale: "regression risk",
+            responses: {
+                // The arbiter's <ruling> decision must NOT leak into the summary.
+                arbiter: '<ruling>{"decision":"delay to Monday","rationale":"regression risk"}</ruling>',
+                alice: "Ship on Friday",
+                bob: "Wait until Monday",
+            },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "arbiter" }, { name: "alice" }, { name: "bob" }],
+        })
+
+        const summary = await buildSummary(team, task, "arbitrate_complete:ruled")
+
+        // Head reflects mode + reason.
+        expect(summary).toContain("mode=arbitrate reason=arbitrate_complete:ruled")
+        // The binding ruling and its rationale lead the summary.
+        expect(summary).toContain("Ruling: delay to Monday")
+        expect(summary).toContain("Rationale: regression risk")
+        // Each debater's final position is shown.
+        expect(summary).toContain("### alice")
+        expect(summary).toContain("Ship on Friday")
+        expect(summary).toContain("### bob")
+        expect(summary).toContain("Wait until Monday")
+        // The arbiter's raw <ruling> decision JSON is excluded as noise.
+        expect(summary).not.toContain("<ruling>")
+    })
+
+    test("falls back to 'Ruling: (none)' and omits the Rationale line when the ruling is unset", async () => {
+        const task = makeArbitrateTask({
+            arbiterMember: "arbiter",
+            disputants: ["alice", "bob"],
+            arbitrationStage: true,
+            // No ruling captured (e.g. delivered on a failure path).
+            responses: { alice: "Ship on Friday", bob: "Wait until Monday" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "arbiter" }, { name: "alice" }, { name: "bob" }],
+        })
+
+        const summary = await buildSummary(team, task, "arbitrate_complete:arbiter_unavailable")
+
+        // No ruling -> placeholder, and the Rationale line is omitted entirely.
+        expect(summary).toContain("Ruling: (none)")
+        expect(summary).not.toContain("Rationale:")
+        // Debater positions are still included.
+        expect(summary).toContain("### alice")
+        expect(summary).toContain("### bob")
     })
 })
