@@ -9,12 +9,12 @@ import { juniorAgent } from "./junior.js"
 import type { OcteamAgentConfig } from "./types.js"
 
 export const OCTEAM_AGENTS: Record<string, OcteamAgentConfig> = {
-    "oc-oracle": oracleAgent,
-    "oc-librarian": librarianAgent,
-    "oc-explore": exploreAgent,
-    "oc-metis": metisAgent,
-    "oc-momus": momusAgent,
-    "oc-junior": juniorAgent,
+    "oct-oracle": oracleAgent,
+    "oct-librarian": librarianAgent,
+    "oct-explore": exploreAgent,
+    "oct-metis": metisAgent,
+    "oct-momus": momusAgent,
+    "oct-junior": juniorAgent,
 }
 
 /**

@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test"
 import { createConfigHook, OCTEAM_AGENTS } from "../src/agents/index.js"
 import type { OcteamAgentConfig } from "../src/agents/types.js"
 
-const READONLY_AGENTS = ["oc-oracle", "oc-librarian", "oc-explore"] as const
-const ANALYSIS_AGENTS = ["oc-metis", "oc-momus"] as const
-const JUNIOR_AGENT = "oc-junior"
+const READONLY_AGENTS = ["oct-oracle", "oct-librarian", "oct-explore"] as const
+const ANALYSIS_AGENTS = ["oct-metis", "oct-momus"] as const
+const JUNIOR_AGENT = "oct-junior"
 
 const ALL_AGENT_KEYS = [
     ...READONLY_AGENTS,
@@ -91,38 +91,38 @@ describe("analysis agents (metis / momus) — deny edit, NOT deny task", () => {
 })
 
 describe("junior agent — deny task, NOT deny edit", () => {
-    test("oc-junior: permission.task is 'deny'", () => {
-        expect(getAgent("oc-junior").permission?.task).toBe("deny")
+    test("oct-junior: permission.task is 'deny'", () => {
+        expect(getAgent("oct-junior").permission?.task).toBe("deny")
     })
 
-    test("oc-junior: permission.edit is NOT 'deny'", () => {
-        expect(getAgent("oc-junior").permission?.edit).not.toBe("deny")
+    test("oct-junior: permission.edit is NOT 'deny'", () => {
+        expect(getAgent("oct-junior").permission?.edit).not.toBe("deny")
     })
 })
 
 describe("temperature values", () => {
     test("metis has temperature 0.3", () => {
-        expect(getAgent("oc-metis").temperature).toBe(0.3)
+        expect(getAgent("oct-metis").temperature).toBe(0.3)
     })
 
     test("oracle has temperature 0.1", () => {
-        expect(getAgent("oc-oracle").temperature).toBe(0.1)
+        expect(getAgent("oct-oracle").temperature).toBe(0.1)
     })
 
     test("librarian has temperature 0.1", () => {
-        expect(getAgent("oc-librarian").temperature).toBe(0.1)
+        expect(getAgent("oct-librarian").temperature).toBe(0.1)
     })
 
     test("explore has temperature 0.1", () => {
-        expect(getAgent("oc-explore").temperature).toBe(0.1)
+        expect(getAgent("oct-explore").temperature).toBe(0.1)
     })
 
     test("momus has temperature 0.1", () => {
-        expect(getAgent("oc-momus").temperature).toBe(0.1)
+        expect(getAgent("oct-momus").temperature).toBe(0.1)
     })
 
     test("junior has temperature 0.1", () => {
-        expect(getAgent("oc-junior").temperature).toBe(0.1)
+        expect(getAgent("oct-junior").temperature).toBe(0.1)
     })
 })
 
@@ -148,13 +148,13 @@ describe("createConfigHook", () => {
     test("does NOT overwrite a pre-existing agent entry", async () => {
         const preExisting = { mode: "subagent", description: "custom", prompt: "custom prompt" }
         const cfg: { agent?: Record<string, unknown> } = {
-            agent: { "oc-oracle": preExisting, "oc-junior": preExisting },
+            agent: { "oct-oracle": preExisting, "oct-junior": preExisting },
         }
         const hook = createConfigHook()
         await hook(cfg as Parameters<typeof hook>[0])
         // pre-existing entries untouched
-        expect(cfg.agent!["oc-oracle"]).toBe(preExisting)
-        expect(cfg.agent!["oc-junior"]).toBe(preExisting)
+        expect(cfg.agent!["oct-oracle"]).toBe(preExisting)
+        expect(cfg.agent!["oct-junior"]).toBe(preExisting)
         // the other 4 should be injected
         expect(Object.keys(cfg.agent!)).toHaveLength(6)
     })
