@@ -93,10 +93,13 @@ export type Bounds = {
 
 // --- ActiveTask ---
 
-export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse"
+export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse" | "tollgate"
 export type ParallelMode = "isolated" | "collaborative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
+
+// tollgate: three-valued verification verdict emitted by a gate's verifier.
+export type Verdict = "PASS" | "FAIL" | "INVALID"
 
 export type ActiveTask = {
     type: OrchestrationType
@@ -169,6 +172,13 @@ export type ActiveTask = {
     maxDepth?: number                 // recursion depth upper bound (default 3)
     maxSubtasks?: number             // per-decomposition subtask upper bound (default 5)
     rootTaskId?: string              // the root task id; its result is the final deliverable
+
+    // tollgate-specific (type === "tollgate"): a gated pipeline where advancing
+    // depends on a verifier's verdict, not just completion.
+    gatedStages?: GatedStage[]                              // linear stages, each with its own verification gate
+    tollgatePhase?: "produce" | "verify" | "escalate"       // explicit three-phase state (avoids a two-value gate-stage deadlock)
+    escalateTo?: string            // INVALID escalation target member (optional; when unset, INVALID is escalated to the leader)
+    maxGateRetries?: number        // gate FAIL retry cap, DISTINCT from provider-retry maxRetries (default 0: first FAIL fails)
 
     // require_done_ack (parallel isolated/collaborative only): when true, the
     // barrier waits for every participant's `declaredDone === true` instead of
@@ -243,6 +253,7 @@ export type RunEventKind =
     | "routed"          // router selected target branch(es) (route mode)
     | "arbitrated"      // arbiter issued a binding ruling (arbitrate mode)
     | "decomposed"      // a task was split into subtasks (recurse mode)
+    | "verdict"         // a gate produced a PASS/FAIL/INVALID verdict (tollgate mode)
 
 export type RunEvent = {
     timestamp: number                  // epoch ms (readers sort by this, not file order)
@@ -260,6 +271,22 @@ export type Stage = {
     task: string                       // task description
     action?: "modify" | "read_only"    // loop mode only
     completed: boolean
+}
+
+// tollgate: a Stage with an associated verification gate. The gate's verifier
+// (distinct from the producer) emits a <verdict> (or <判定>) block; downstream
+// starts only on PASS. FAIL returns the producer with a diff; INVALID isolates
+// the stage and escalates the verifier side (not the producer). Structurally
+// satisfies Stage so it can be fed to buildUpstreamContext.
+export type GatedStage = {
+    member: string                     // the producer member name
+    task: string                       // the producer's task
+    completed: boolean                 // set true only on PASS
+    verifier: string                   // the verifier member name (NOT the producer)
+    criteria: string                   // verification criteria (tolerance / conservation law / reference description)
+    reference?: string                 // golden reference location (Compare-style numerical verdict)
+    verdict?: Verdict                  // last verdict rendered by this gate
+    attempts: number                   // FAIL retry count against maxGateRetries
 }
 
 export type DecisionRecord = {

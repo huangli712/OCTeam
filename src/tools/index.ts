@@ -36,6 +36,7 @@ import {
     teamRouteTool,
     teamArbitrateTool,
     teamRecurseTool,
+    teamTollgateTool,
 } from "./workflow.js"
 import { teamDoneTool } from "./done.js"
 import { teamResultsTool, teamResultGetTool } from "./results.js"
@@ -72,6 +73,7 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_route: teamRouteTool(ctx),
         team_arbitrate: teamArbitrateTool(ctx),
         team_recurse: teamRecurseTool(ctx),
+        team_tollgate: teamTollgateTool(ctx),
         team_done: teamDoneTool(ctx),
         team_results: teamResultsTool(ctx),
         team_result_get: teamResultGetTool(ctx),

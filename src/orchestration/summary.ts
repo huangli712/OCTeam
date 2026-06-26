@@ -153,6 +153,21 @@ export async function buildSummary(
                 .join("\n")
             return `${head}\nRoot result:\n${truncateOutput(rootResult)}\n\nTask tree:\n${tree}`
         }
+        case "tollgate": {
+            // One line per gate: its verdict (or pending), producer, verifier,
+            // and FAIL-retry count. Follow with each completed gate's output.
+            const stages = task.gatedStages ?? []
+            const rows = stages.map((s, i) =>
+                `${i}. [${s.verdict ?? "pending"}] ${s.member} -> verified by ${s.verifier}`
+                + (s.attempts > 0 ? ` (${s.attempts} retries)` : ""))
+            const outputs = stages
+                .filter(s => s.completed)
+                .map(s => `### ${s.member}\n${truncateOutput(task.responses[s.member] ?? "")}`)
+                .join("\n\n")
+            return outputs
+                ? `${head}\nGates:\n${rows.join("\n")}\n\n${outputs}`
+                : `${head}\nGates:\n${rows.join("\n")}`
+        }
         default: {
             // #4 real reduce: once the reducer member has produced a combined
             // result, deliver it verbatim instead of the [Reduce policy:X] header.

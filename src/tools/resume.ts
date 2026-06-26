@@ -35,7 +35,7 @@ import {
     dispatchToMember,
     ensureMembersReady,
 } from "../orchestration/dispatch.js"
-import { buildArbiterPrompt, buildDebatePrompt, buildRecursePrompt, handleArbitrateIdle, handleConsensusIdle, handleParallelIdle, handleRouteIdle } from "../orchestration/handlers.js"
+import { advanceToGatedStage, buildArbiterPrompt, buildDebatePrompt, buildRecursePrompt, handleArbitrateIdle, handleConsensusIdle, handleParallelIdle, handleRouteIdle, handleTollgateIdle, startVerification } from "../orchestration/handlers.js"
 import { buildRouterPrompt } from "./workflow.js"
 import { deliverSummaryToLeader } from "../orchestration/summary.js"
 import { clearActiveTask, loadTeamState, saveTeamState } from "../state/store.js"
@@ -329,6 +329,43 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                                     team,
                                 )
                                 dispatched++
+                            }
+                            break
+                        }
+                        case "tollgate": {
+                            const stage = task.gatedStages?.[task.currentStageIndex]
+                            if (!stage) break
+                            const phase = task.tollgatePhase ?? "produce"
+                            if (phase === "verify") {
+                                // Verifier output already captured -> re-run the
+                                // verdict parse; else re-dispatch the verifier.
+                                if (task.responses[stage.verifier]) {
+                                    const verifier = team.members.find(
+                                        m => m.name === stage.verifier && !m.isMaster,
+                                    )
+                                    if (verifier) await handleTollgateIdle(ctx, team, verifier)
+                                } else {
+                                    await startVerification(ctx, team, stage)
+                                    dispatched = 1
+                                }
+                            } else if (phase === "escalate" && task.escalateTo) {
+                                const h = team.members.find(
+                                    m => m.name === task.escalateTo && !m.isMaster,
+                                )
+                                if (h) {
+                                    await dispatchToMember(
+                                        ctx,
+                                        h,
+                                        "Resume: fix the verifier/reference, then report done.",
+                                        h.worktreePath ?? ctx.directory,
+                                        team,
+                                    )
+                                    dispatched = 1
+                                }
+                            } else {
+                                // produce phase: re-dispatch the current gate's producer.
+                                await advanceToGatedStage(ctx, team, stage)
+                                dispatched = 1
                             }
                             break
                         }
