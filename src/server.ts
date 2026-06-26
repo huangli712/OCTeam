@@ -13,6 +13,7 @@ import {
 } from "./hooks.js"
 import { rebuildSessionIndex } from "./core/utils.js"
 import { logSwallowed } from "./core/log.js"
+import { createConfigHook } from "./agents/index.js"
 
 const id = "octeam"
 
@@ -55,6 +56,7 @@ const server = async (input: PluginInput): Promise<Hooks> => {
         event: createEventHandler(ctx),
         "experimental.chat.messages.transform": createTransformHook(ctx),
         "experimental.session.compacting": createCompactingHook(),
+        config: createConfigHook(),
     }
 }
 
