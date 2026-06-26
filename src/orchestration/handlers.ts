@@ -925,6 +925,7 @@ async function handleRecurseIdle(ctx: PluginContext, team: Team, member: MemberS
             && depth < maxDepth
             && T.blockedBy.length === 0
             && dec.subtasks.length <= maxSubtasks
+            && tasks.length + dec.subtasks.length <= team.bounds.maxTasks
         if (canDecompose) {
             // Branch: create subtasks (depth+1), re-queue T as their aggregator.
             const ids: string[] = []
@@ -948,8 +949,11 @@ async function handleRecurseIdle(ctx: PluginContext, team: Team, member: MemberS
                 detail: `${T.subject} -> ${ids.length} @d${depth + 1}`,
             })
         } else {
-            // Leaf (or capped/aggregator): finalize with the member's output.
-            await updateTask(team.directory, T.id, { status: "completed", result: output })
+            // Leaf (or capped/aggregator): finalize with the member's output,
+            // or a placeholder when the member produced nothing (so an aggregating
+            // parent reads a recognizable sub-result, not an empty string).
+            const result = output.length > 0 ? output : "(no output provided)"
+            await updateTask(team.directory, T.id, { status: "completed", result })
         }
     }
 

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -7,9 +7,15 @@ import { getExpectedMember, parseDecompose, processIdle } from "../src/orchestra
 import { readRunEvents } from "../src/orchestration/runs.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import type { ActiveTask, MemberState, Task } from "../src/core/types.js"
-import type { Team } from "../src/state/store.js"
+import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
+import type { ToolContext } from "@opencode-ai/plugin"
+import { buildSummary } from "../src/orchestration/summary.js"
+import { teamRecurseTool } from "../src/tools/workflow.js"
+import { teamResumeTool } from "../src/tools/resume.js"
+import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 // --- fixtures ---
 
@@ -465,5 +471,299 @@ describe("recurse tail engine", () => {
         const terminated = events.find(e => e.kind === "terminated")
         expect(terminated).toBeDefined()
         expect(terminated!.reason).toContain("recurse_deadlock")
+    })
+})
+
+// =======================================================================
+// Tool-level fixtures (disk-backed team state + master session indexing).
+// teamRecurseTool validation (LOW-1) and team_resume (LOW-2) flow through
+// resolveCallerInTeam + loadTeamState, so they need real on-disk state and
+// an indexed master session.
+// =======================================================================
+
+const tracked: string[] = []
+afterEach(() => {
+    for (const sid of tracked.splice(0)) unindexSession(sid)
+})
+
+function makeToolCtx(root: string): PluginContext {
+    return { storageRoot: root, scope: "project" } as unknown as PluginContext
+}
+
+async function setupRecurseTeam(
+    root: string,
+    sid: string,
+    members: MemberState[] = [makeMember("alice"), makeMember("bob"), makeMember("carol")],
+): Promise<void> {
+    await initTeamState(root, makeState("alpha", sid, members, Date.now()), sid)
+    await rebuildSessionIndex(root, `${root}__unused`)
+}
+
+async function setupFailedRecurse(
+    root: string,
+    sid: string,
+    task: ActiveTask,
+    members: MemberState[],
+): Promise<Team> {
+    const state = makeState("alpha", sid, members, Date.now())
+    state.status = "failed"
+    await initTeamState(root, state, sid)
+    const team = await loadTeamState(root, "alpha", sid)
+    await team.mutex.runExclusive(async () => {
+        team.lastInterruptedTask = task
+        await saveTeamState(team)
+    })
+    await rebuildSessionIndex(root, `${root}__unused`)
+    return team
+}
+
+function makeResumeCtx(
+    root: string,
+    promptAsync: (req: { path: { id: string } }) => Promise<void>,
+): PluginContext {
+    return {
+        storageRoot: root,
+        scope: "project",
+        directory: "/app",
+        client: {
+            session: {
+                promptAsync,
+                messages: async () => ({ data: [] }),
+            },
+        },
+    } as unknown as PluginContext
+}
+
+// --- MEDIUM-1: maxTasks resource cap ---
+
+describe("MEDIUM-1: maxTasks cap degrades an over-budget decomposition to a leaf", () => {
+    test("tasks + proposed subtasks > maxTasks finalizes as completed (no children)", async () => {
+        const team = makeTeam({
+            activeTask: makeRecurseTask({ maxDepth: 3, maxSubtasks: 5 }),
+            members: [{ name: "alice", sessionId: "ses_alice" }],
+        })
+        // 1 existing task (root) + 2 proposed subtasks = 3 > 2 -> leaf.
+        team.bounds.maxTasks = 2
+        const root = await seedTask(team, { owner: "alice", status: "claimed" })
+
+        await processIdle(makeCtx({ ses_alice: DECOMPOSE_2 }, []), team, team.members[0], "ses_alice")
+
+        const t = await getTask(team.directory, root.id)
+        expect(t!.status).toBe("completed")
+        // No children created despite a valid decompose (resource cap).
+        const all = await listAllTasks(team.directory)
+        expect(all).toHaveLength(1)
+    })
+
+    test("just-under-cap still branches (tasks + subtasks == maxTasks)", async () => {
+        const team = makeTeam({
+            activeTask: makeRecurseTask({ maxDepth: 3, maxSubtasks: 5 }),
+            members: [{ name: "alice", sessionId: "ses_alice" }],
+        })
+        // 1 existing + 2 proposed = 3 == maxTasks(3) -> allowed to branch.
+        team.bounds.maxTasks = 3
+        const root = await seedTask(team, { owner: "alice", status: "claimed" })
+
+        await processIdle(makeCtx({ ses_alice: DECOMPOSE_2 }, []), team, team.members[0], "ses_alice")
+
+        const all = await listAllTasks(team.directory)
+        expect(all.filter(t => t.depth === 1)).toHaveLength(2)
+        const t = await getTask(team.directory, root.id)
+        expect(t!.status).toBe("pending") // re-queued as aggregator
+    })
+})
+
+// --- LOW-4: empty-output leaf placeholder ---
+
+describe("LOW-4: empty member output finalizes with a placeholder result", () => {
+    test("a member that produced nothing leaves a recognizable result, not an empty string", async () => {
+        const team = makeTeam({
+            activeTask: makeRecurseTask(),
+            members: [{ name: "alice", sessionId: "ses_alice" }],
+        })
+        const root = await seedTask(team, { owner: "alice", status: "claimed" })
+
+        // No output entry for ses_alice -> empty assistant turn -> nothing captured.
+        await processIdle(makeCtx({}, []), team, team.members[0], "ses_alice")
+
+        const t = await getTask(team.directory, root.id)
+        expect(t!.status).toBe("completed")
+        expect(t!.result).toBe("(no output provided)")
+    })
+})
+
+// --- LOW-1: teamRecurseTool input validation ---
+
+describe("teamRecurseTool: input validation", () => {
+    test('decomposer = "master" is rejected before any team lookup', async () => {
+        const root = tmpRoot("rec-val-master")
+        const sid = "ses_rec_val_master"
+        tracked.push(sid)
+        await setupRecurseTeam(root, sid)
+        const result = await teamRecurseTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                task: "build the whole app",
+                decomposer: "master",
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe('Error: decomposer must be a member name, not "master"')
+    })
+
+    test("unknown decomposer member is rejected", async () => {
+        const root = tmpRoot("rec-val-unknown")
+        const sid = "ses_rec_val_unknown"
+        tracked.push(sid)
+        await setupRecurseTeam(root, sid)
+        const result = await teamRecurseTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                task: "build the whole app",
+                decomposer: "ghost",
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe('Error: decomposer "ghost" is not a member of team "alpha"')
+    })
+
+    test("signoff_policy 'decider' without signoff_decider is rejected", async () => {
+        const root = tmpRoot("rec-val-nodecider")
+        const sid = "ses_rec_val_nodecider"
+        tracked.push(sid)
+        await setupRecurseTeam(root, sid)
+        const result = await teamRecurseTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                task: "build the whole app",
+                decomposer: "alice",
+                signoff_policy: "decider",
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe(
+            "Error: signoff_policy 'decider' requires signoff_decider (a member name)",
+        )
+    })
+
+    test("signoff_policy 'decider' with an unknown signoff_decider is rejected", async () => {
+        const root = tmpRoot("rec-val-baddecider")
+        const sid = "ses_rec_val_baddecider"
+        tracked.push(sid)
+        await setupRecurseTeam(root, sid)
+        const result = await teamRecurseTool(makeToolCtx(root)).execute(
+            {
+                team_id: "alpha",
+                task: "build the whole app",
+                decomposer: "alice",
+                signoff_policy: "decider",
+                signoff_decider: "ghost",
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        expect(result).toBe('Error: signoff_decider "ghost" is not a member of team "alpha"')
+    })
+})
+
+// --- LOW-2: team_resume recurse branches ---
+
+describe("team_resume: recurse case", () => {
+    test("resets interrupted claims to pending and re-dispatches idle members", async () => {
+        const root = tmpRoot("rec-resume-reset")
+        const sid = "ses_rec_resume_reset"
+        tracked.push(sid)
+        const task = makeRecurseTask({ decomposerMember: "alice", rootTaskId: "root-1" })
+        const team = await setupFailedRecurse(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        // An interrupted in-flight claim on disk.
+        const claimed = await createTask(team.directory, { subject: "wip", description: "x", depth: 0 })
+        await updateTask(team.directory, claimed.id, { status: "claimed", owner: "alice" })
+
+        const calls: string[] = []
+        const ctx = makeResumeCtx(root, async req => { calls.push(req.path.id) })
+
+        const res = await teamResumeTool(ctx).execute(
+            { team_id: "alpha" },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+
+        expect(res).toContain("Resumed recurse")
+        // Interrupted claim reset to pending (re-claimable).
+        const t = await getTask(team.directory, claimed.id)
+        expect(t!.status).toBe("pending")
+        expect(t!.owner).toBeUndefined()
+        // Both idle members re-dispatched with the recursive contract.
+        expect(calls).toEqual(expect.arrayContaining(["ses_alice", "ses_bob"]))
+        expect(calls).toHaveLength(2)
+    })
+
+    test("does not re-dispatch members that are still running", async () => {
+        const root = tmpRoot("rec-resume-running")
+        const sid = "ses_rec_resume_running"
+        tracked.push(sid)
+        const task = makeRecurseTask({ decomposerMember: "alice", rootTaskId: "root-1" })
+        const team = await setupFailedRecurse(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            { ...makeMember("bob", "ses_bob"), status: "running" },
+        ])
+
+        const calls: string[] = []
+        const ctx = makeResumeCtx(root, async req => { calls.push(req.path.id) })
+
+        await teamResumeTool(ctx).execute(
+            { team_id: "alpha" },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+
+        // Only the idle member (alice) is re-dispatched; bob is still running.
+        expect(calls).toEqual(["ses_alice"])
+    })
+})
+
+// --- LOW-3: buildSummary recurse case ---
+
+describe("buildSummary: recurse case", () => {
+    test("leads with the root result and renders a depth-indented task tree", async () => {
+        const task = makeRecurseTask()
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "alice" }, { name: "bob" }],
+        })
+        const root = await seedTask(team, { subject: "build app", description: "x", depth: 0, status: "completed" })
+        await updateTask(team.directory, root.id, { status: "completed", result: "the final deliverable" })
+        task.rootTaskId = root.id
+        await seedTask(team, { subject: "part A", description: "x", depth: 1, status: "completed" })
+        await seedTask(team, { subject: "part B", description: "x", depth: 1, status: "completed" })
+
+        const summary = await buildSummary(team, task, "recurse_complete")
+
+        // Head reflects mode + reason.
+        expect(summary).toContain("mode=recurse reason=recurse_complete")
+        // Root result leads the summary.
+        expect(summary).toContain("Root result:")
+        expect(summary).toContain("the final deliverable")
+        // Depth-indented task tree: root at column 0, children indented.
+        expect(summary).toContain("- [completed] build app")
+        expect(summary).toContain("  - [completed] part A")
+        expect(summary).toContain("  - [completed] part B")
+        // No <decompose> decision JSON leaks into the summary.
+        expect(summary).not.toContain("<decompose>")
+    })
+
+    test("falls back to '(no result)' when the root has no result", async () => {
+        const task = makeRecurseTask()
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "alice" }],
+        })
+        const root = await seedTask(team, { subject: "build app", description: "x", depth: 0 })
+        task.rootTaskId = root.id
+
+        const summary = await buildSummary(team, task, "recurse_complete")
+
+        expect(summary).toContain("Root result:")
+        expect(summary).toContain("(no result)")
     })
 })
