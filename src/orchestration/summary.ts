@@ -140,6 +140,19 @@ export async function buildSummary(
                 : ""
             return `${head}\n${ruling}${rationale}\n\n${positions}`
         }
+        case "recurse": {
+            // Lead with the root task's result (the final deliverable); follow
+            // with the decomposition tree (depth-indented subject/status).
+            const tasks = await listAllTasks(team.directory)
+            const root = tasks.find(t => t.id === task.rootTaskId)
+            const rootResult = root?.result ?? "(no result)"
+            const tree = tasks
+                .slice()
+                .sort((a, b) => (a.depth ?? 0) - (b.depth ?? 0))
+                .map(t => `${"  ".repeat(t.depth ?? 0)}- [${t.status}] ${t.subject}`)
+                .join("\n")
+            return `${head}\nRoot result:\n${truncateOutput(rootResult)}\n\nTask tree:\n${tree}`
+        }
         default: {
             // #4 real reduce: once the reducer member has produced a combined
             // result, deliver it verbatim instead of the [Reduce policy:X] header.

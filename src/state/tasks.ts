@@ -85,7 +85,7 @@ async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task
 
 export async function createTask(
     teamDirectory: string,
-    input: { subject: string; description: string; blockedBy?: string[] },
+    input: { subject: string; description: string; blockedBy?: string[]; depth?: number },
 ): Promise<Task> {
     const now = Date.now()
     const task: Task = {
@@ -99,6 +99,7 @@ export async function createTask(
         blockedBy: input.blockedBy ?? [],
         createdAt: now,
         updatedAt: now,
+        depth: input.depth ?? 0,
     }
     await atomicWrite(taskPath(teamDirectory, task.id), JSON.stringify(task, null, 2))
     return task
@@ -128,14 +129,14 @@ export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
 
 /**
  * Update task fields. When the new status transitions out of the claim window
- * (in_progress / completed / deleted), the persistent claim lock is removed —
+ * (in_progress / completed / deleted / pending), the persistent claim lock is removed —
  * "in_progress" is active work and is not reaped, so the lock is no longer
- * needed.
+ * needed. "pending" also clears it, supporting recursive re-claim aggregation.
  */
 export async function updateTask(
     teamDirectory: string,
     taskId: string,
-    patch: Partial<Pick<Task, "status" | "owner" | "blockedBy" | "blocks" | "claimedAt">>,
+    patch: Partial<Pick<Task, "status" | "owner" | "blockedBy" | "blocks" | "claimedAt" | "result">>,
     opts: { expectedOwner?: string } = {},
 ): Promise<Task> {
     assertValidTaskId(taskId)
@@ -157,6 +158,7 @@ export async function updateTask(
             patch.status === "in_progress"
             || patch.status === "completed"
             || patch.status === "deleted"
+            || patch.status === "pending"
         ) {
             await fs.unlink(claimLockPath(teamDirectory, taskId)).catch(() => {
                 // no lock to clean

@@ -93,7 +93,7 @@ export type Bounds = {
 
 // --- ActiveTask ---
 
-export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate"
+export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse"
 export type ParallelMode = "isolated" | "collaborative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
@@ -163,6 +163,12 @@ export type ActiveTask = {
     arbitrationStage?: boolean        // false/undefined = debate phase; true = ruling phase
     arbitrationRuling?: string        // arbiter's binding ruling (set at ruling)
     arbitrationRationale?: string     // arbiter's stated rationale for the ruling
+
+    // recurse-specific (type === "recurse")
+    decomposerMember?: string          // the member first dispatched with the root task (NOT master)
+    maxDepth?: number                 // recursion depth upper bound (default 3)
+    maxSubtasks?: number             // per-decomposition subtask upper bound (default 5)
+    rootTaskId?: string              // the root task id; its result is the final deliverable
 
     // require_done_ack (parallel isolated/collaborative only): when true, the
     // barrier waits for every participant's `declaredDone === true` instead of
@@ -236,6 +242,7 @@ export type RunEventKind =
     | "terminated"      // the orchestration ended (any reason)
     | "routed"          // router selected target branch(es) (route mode)
     | "arbitrated"      // arbiter issued a binding ruling (arbitrate mode)
+    | "decomposed"      // a task was split into subtasks (recurse mode)
 
 export type RunEvent = {
     timestamp: number                  // epoch ms (readers sort by this, not file order)
@@ -302,6 +309,8 @@ export type Task = {
     createdAt: number
     updatedAt: number
     claimedAt?: number
+    depth?: number                     // recursion level (root = 0; child = parent + 1)
+    result?: string                    // completed-task output (read by aggregating parents)
 }
 
 // --- Storage scope (user-scope ~/.octeam vs project-scope <dir>/.octeam) ---

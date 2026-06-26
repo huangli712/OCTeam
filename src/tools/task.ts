@@ -156,8 +156,10 @@ export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
                 `Task ${task.id}`,
                 `Subject: ${task.subject}`,
                 `Status: ${task.status}${task.owner ? ` (@${task.owner})` : ""}`,
+                task.depth ? `Depth: ${task.depth}` : "",
                 `Description: ${task.description}`,
                 task.blockedBy.length ? `Blocked by: ${task.blockedBy.join(", ")}` : "",
+                task.result ? `Result: ${task.result}` : "",
             ]
                 .filter(Boolean)
                 .join("\n")

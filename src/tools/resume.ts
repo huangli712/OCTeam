@@ -35,7 +35,7 @@ import {
     dispatchToMember,
     ensureMembersReady,
 } from "../orchestration/dispatch.js"
-import { buildArbiterPrompt, buildDebatePrompt, handleArbitrateIdle, handleConsensusIdle, handleParallelIdle, handleRouteIdle } from "../orchestration/handlers.js"
+import { buildArbiterPrompt, buildDebatePrompt, buildRecursePrompt, handleArbitrateIdle, handleConsensusIdle, handleParallelIdle, handleRouteIdle } from "../orchestration/handlers.js"
 import { buildRouterPrompt } from "./workflow.js"
 import { deliverSummaryToLeader } from "../orchestration/summary.js"
 import { clearActiveTask, loadTeamState, saveTeamState } from "../state/store.js"
@@ -303,6 +303,32 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                                         dispatched++
                                     }
                                 }
+                            }
+                            break
+                        }
+                        case "recurse": {
+                            // Same task recovery as delegate: reset interrupted
+                            // claims/in_progress -> pending, then re-dispatch idle
+                            // members with the recursive contract.
+                            await reapStaleClaims(team.directory)
+                            for (const t of await listAllTasks(team.directory)) {
+                                if (t.status === "claimed" || t.status === "in_progress") {
+                                    await updateTask(team.directory, t.id, {
+                                        status: "pending",
+                                        owner: undefined,
+                                    })
+                                }
+                            }
+                            for (const m of team.members) {
+                                if (m.isMaster || m.status === "running") continue
+                                await dispatchToMember(
+                                    ctx,
+                                    m,
+                                    buildRecursePrompt(),
+                                    m.worktreePath ?? ctx.directory,
+                                    team,
+                                )
+                                dispatched++
                             }
                             break
                         }

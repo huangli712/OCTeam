@@ -20,7 +20,7 @@ import type { PluginContext } from "../core/context.js"
 import { logEvent } from "../core/log.js"
 import { type Team, clearActiveTask, loadTeamState, saveTeamState } from '../state/store.js';
 import { countUnreadMessages } from "../messaging/mailbox.js"
-import { listAllTasks } from "../state/tasks.js"
+import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"
 import { extractOutputFromParts, resolveTeamMember, sumMemberTokens, truncateOutput } from "../core/utils.js"
 import { atomicWrite } from "../state/locks.js"
@@ -62,6 +62,7 @@ export function getExpectedMember(task: ActiveTask): string | null {
         // debate phase: any debater advances (null); ruling phase: only the arbiter
         return task.arbitrationStage ? (task.arbiterMember ?? null) : null
     }
+    if (task.type === "recurse") return null   // same as delegate: any member advances
     return task.stages[task.currentStageIndex]?.member ?? null
 }
 
@@ -145,6 +146,37 @@ export function parseArbitrationDecision(
         }
     } catch {
         return { ruling: "", rationale: "", parseFailed: true }
+    }
+}
+
+/**
+ * Parse a member's <decompose>{...}</decompose> (or <分解>) block into the
+ * proposed subtasks. Unlike parseDecision/parseRouteDecision, parseFailed is
+ * NOT a failure signal: an absent tag means "solve directly" (a leaf). Only an
+ * explicit tag with no valid subtasks yields parseFailed.
+ */
+export function parseDecompose(
+    rawText: string,
+): { subtasks: { subject: string; description: string }[]; parseFailed?: boolean } {
+    const match = rawText?.match(/<(?:decompose|分解)>\s*(\{[\s\S]*\})\s*<\/(?:decompose|分解)>/)
+    if (!match) return { subtasks: [] }
+    try {
+        const p = JSON.parse(match[1]) as { subtasks?: unknown }
+        const arr = Array.isArray(p.subtasks) ? p.subtasks : []
+        const subtasks: { subject: string; description: string }[] = []
+        for (const item of arr) {
+            if (
+                typeof item === "object" && item !== null
+                && "subject" in item && typeof item.subject === "string" && item.subject.length > 0
+                && "description" in item && typeof item.description === "string" && item.description.length > 0
+            ) {
+                subtasks.push({ subject: item.subject, description: item.description })
+            }
+        }
+        if (subtasks.length === 0) return { subtasks: [], parseFailed: true }
+        return { subtasks }
+    } catch {
+        return { subtasks: [], parseFailed: true }
     }
 }
 
@@ -423,6 +455,9 @@ export async function processIdle(
             break
         case "arbitrate":
             await handleArbitrateIdle(ctx, team)
+            break
+        case "recurse":
+            await handleRecurseIdle(ctx, team, member)
             break
     }
 
@@ -771,16 +806,27 @@ async function handleLoopIdle(ctx: PluginContext, team: Team, member: MemberStat
     await advanceToStage(ctx, team, stages[0], feedback)
 }
 
-async function handleDelegateIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
+/**
+ * Shared delegate-style termination tail: scan the task list, deliver on
+ * all-complete, fail on deadlock, else rate-limit re-prompt the idling member
+ * toward claimable tasks. Used by both delegate (label "delegate") and recurse
+ * (label "recurse"); the reason prefix and re-prompt text differ by caller.
+ */
+async function runDelegateStyleTail(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+    label: string,
+    buildReprompt: (claimableCount: number) => string,
+): Promise<void> {
     const tasks = await listAllTasks(team.directory)
     const incomplete = tasks.filter(t => t.status !== "completed" && t.status !== "deleted")
 
-    // All done?
     if (incomplete.length === 0) {
         if (await maybeTriggerSignoff(ctx, team)) {
             return  // signoff in progress
         }
-        await deliverSummaryToLeader(ctx, team, "delegate_complete")
+        await deliverSummaryToLeader(ctx, team, `${label}_complete`)
         clearActiveTask(team)
         team.status = "idle"
         return
@@ -800,7 +846,7 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Member
         // survivor reclaims them.
         const allIdle = team.members.every(m => m.status === "idle" || m.status === "errored" || !m.sessionId)
         if (allIdle) {
-            await deliverSummaryToLeader(ctx, team, "delegate_deadlock")
+            await deliverSummaryToLeader(ctx, team, `${label}_deadlock`)
             clearActiveTask(team)
             team.status = "failed"
             return
@@ -819,11 +865,96 @@ async function handleDelegateIdle(ctx: PluginContext, team: Team, member: Member
     }
     if (!member.sessionId) return
     member.lastNotifiedAt = now
-    const reprompt =
-        `[Team Orchestrator] You have completed your task. ${claimable.length} task(s) available. `
+    await dispatchToMember(ctx, member, buildReprompt(claimable.length), member.worktreePath ?? ctx.directory, team)
+}
+
+async function handleDelegateIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
+    await runDelegateStyleTail(ctx, team, member, "delegate", n =>
+        `[Team Orchestrator] You have completed your task. ${n} task(s) available. `
         + `Use team_task_list to check, team_task_update to claim, execute, then team_send_message `
-        + `to report to master. Repeat until no tasks remain.`
-    await dispatchToMember(ctx, member, reprompt, member.worktreePath ?? ctx.directory, team)
+        + `to report to master. Repeat until no tasks remain.`)
+}
+
+/**
+ * Build the recursive-decomposition contract prompt: claim a task, then either
+ * solve it directly or emit a <decompose> block; aggregate completed sub-tasks
+ * instead of re-decomposing. Members must NOT call team_task_update completed —
+ * the orchestrator finalizes their task on idle (eliminates finalize races).
+ */
+export function buildRecursePrompt(): string {
+    return (
+        `[Recursive task] Claim an available task (team_task_update status="claimed"), then read it (team_task_get).\n`
+        + `Then EITHER:\n`
+        + ` • Solve it directly — produce the full result as your final message; OR\n`
+        + ` • If too large to solve in one step, emit exactly one:\n`
+        + `   <decompose>{"subtasks":[{"subject":"...","description":"..."}]}</decompose>  (Chinese <分解> accepted)\n`
+        + `If the task you claimed has completed sub-tasks (shown under "Blocked by"), DO NOT decompose —\n`
+        + `read each sub-task's result via team_task_get and synthesize them into this task's result.\n`
+        + `Do NOT call team_task_update completed — the orchestrator finalizes your task when you go idle.`
+    )
+}
+
+/**
+ * Hierarchical recursive decomposition (recurse mode). When a member idles,
+ * the orchestrator inspects that member's claimed task and either:
+ *   • branch — splits it into subtasks (depth+1) and re-queues the task as a
+ *     pending aggregator blocked by those subtasks (re-claim aggregation); or
+ *   • leaf — finalizes the task as completed with the member's output as result.
+ * Aggregators (blockedBy non-empty), depth/width-capped tasks, and no-tag
+ * responses are always leaves — preventing infinite recursion/oscillation.
+ * The tail reuses delegate's task-pool termination engine.
+ */
+async function handleRecurseIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
+    const task = team.activeTask
+    if (!task) return
+
+    // Inspect the member's claimed/in-progress task and finalize it.
+    const tasks = await listAllTasks(team.directory)
+    const T = tasks.find(
+        t => t.owner === member.name && (t.status === "claimed" || t.status === "in_progress"),
+    )
+    if (T) {
+        const output = task.responses[member.name] ?? ""
+        const depth = T.depth ?? 0
+        const dec = parseDecompose(output)
+        const maxDepth = task.maxDepth ?? 3
+        const maxSubtasks = task.maxSubtasks ?? 5
+        const canDecompose =
+            !dec.parseFailed
+            && dec.subtasks.length > 0
+            && depth < maxDepth
+            && T.blockedBy.length === 0
+            && dec.subtasks.length <= maxSubtasks
+        if (canDecompose) {
+            // Branch: create subtasks (depth+1), re-queue T as their aggregator.
+            const ids: string[] = []
+            for (const s of dec.subtasks) {
+                const child = await createTask(team.directory, {
+                    subject: s.subject,
+                    description: s.description,
+                    depth: depth + 1,
+                })
+                ids.push(child.id)
+            }
+            await updateTask(team.directory, T.id, {
+                status: "pending",
+                owner: undefined,
+                blockedBy: ids,
+            })
+            recordEvent(team, {
+                timestamp: Date.now(),
+                kind: "decomposed",
+                member: member.name,
+                detail: `${T.subject} -> ${ids.length} @d${depth + 1}`,
+            })
+        } else {
+            // Leaf (or capped/aggregator): finalize with the member's output.
+            await updateTask(team.directory, T.id, { status: "completed", result: output })
+        }
+    }
+
+    // Shared delegate-style tail: all-complete / deadlock / re-prompt.
+    await runDelegateStyleTail(ctx, team, member, "recurse", () => buildRecursePrompt())
 }
 
 /**
