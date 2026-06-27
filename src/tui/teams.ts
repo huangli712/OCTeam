@@ -9,6 +9,11 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
+// Reuse the server's path-construction contract so the sidebar never drifts from
+// the on-disk storage layout. src/state/paths.ts is the single source of truth
+// for the teams/<name>/{state.json,config.json,mailbox/...} layout.
+import { configPath, inboxPath, processedPath, statePath, teamDir, teamsDir } from "../state/paths.js"
+
 export type TeamMemberRow = {
     name: string
     role?: string
@@ -43,22 +48,22 @@ export type TeamSummary = {
  * unread (inbox) and total (inbox + processed). Reserved / in-flight messages
  * live in a separate dir and are intentionally not counted.
  */
-export async function countMailbox(teamDir: string, recipient: string): Promise<{ unread: number; total: number }> {
+export async function countMailbox(teamDirectory: string, recipient: string): Promise<{ unread: number; total: number }> {
     const countLines = async (file: string): Promise<number> => {
         try {
-            const raw = await fs.readFile(path.join(teamDir, "mailbox", file), "utf8")
+            const raw = await fs.readFile(file, "utf8")
             return raw.split("\n").filter(l => l.length > 0).length
         } catch {
             return 0
         }
     }
-    const unread = await countLines(`${recipient}.jsonl`)
-    const processed = await countLines(`${recipient}.processed.jsonl`)
+    const unread = await countLines(inboxPath(teamDirectory, recipient))
+    const processed = await countLines(processedPath(teamDirectory, recipient))
     return { unread, total: unread + processed }
 }
 
-async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
-    const teamsPath = path.join(root, "teams")
+async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promise<TeamSummary[]> {
+    const teamsPath = teamsDir(storageRoot, leadSessionId)
     let entries: import("node:fs").Dirent[]
     try {
         entries = await fs.readdir(teamsPath, { withFileTypes: true })
@@ -69,13 +74,13 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
     for (const e of entries) {
         if (!e.isDirectory()) continue
         try {
-            const teamDir = path.join(teamsPath, e.name)
-            const raw = await fs.readFile(path.join(teamDir, "state.json"), "utf8")
+            const dir = teamDir(storageRoot, e.name, leadSessionId)
+            const raw = await fs.readFile(statePath(dir), "utf8")
             const state = JSON.parse(raw)
             // Also read config.json for member roles (role lives in MemberSpec, not MemberState).
             let roleMap: Record<string, string> = {}
             try {
-                const configRaw = await fs.readFile(path.join(teamDir, "config.json"), "utf8")
+                const configRaw = await fs.readFile(configPath(dir), "utf8")
                 const config = JSON.parse(configRaw)
                 for (const m of (config.members ?? [])) {
                     roleMap[m.name] = m.role
@@ -88,7 +93,7 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
                 status: state.status ?? "unknown",
                 activated: state.activatedAt !== undefined,
                 members: await Promise.all((state.members ?? []).map(async (m: any) => {
-                    const mailbox = await countMailbox(teamDir, m.name)
+                    const mailbox = await countMailbox(dir, m.name)
                     return {
                         name: m.name,
                         role: roleMap[m.name],
@@ -131,6 +136,8 @@ async function readTeamsFrom(root: string): Promise<TeamSummary[]> {
  * per-session sidebar view.
  */
 export async function loadTeams(sessionId: string): Promise<TeamSummary[]> {
-    const root = path.join(process.cwd(), ".octeam", sessionId)
-    return readTeamsFrom(root)
+    // <cwd>/.octeam mirrors context.ts's project-scope storageRoot; teamsDir()
+    // then appends the session segment + "teams".
+    const storageRoot = path.join(process.cwd(), ".octeam")
+    return readTeamsFrom(storageRoot, sessionId)
 }

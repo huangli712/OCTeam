@@ -55,9 +55,21 @@ describe("formatMs", () => {
         expect(formatMs(3661000)).toBe("1h1m")
     })
 
-    test("more than 24h", () => {
-        // 25h exactly: 90000000 ms -> 1500 min -> 25h0m
-        expect(formatMs(90000000)).toBe("25h0m")
+    test("just under 24h still shows hours", () => {
+        // 23h exactly: 82800000 ms -> 1380 min -> 23h0m
+        expect(formatMs(82800000)).toBe("23h0m")
+    })
+
+    test("24h boundary shows days", () => {
+        // 24h exactly: 86400000 ms -> 1d0h
+        expect(formatMs(86400000)).toBe("1d0h")
+    })
+
+    test("more than 24h shows days and remaining hours", () => {
+        // 25h: 90000000 ms -> 1d1h
+        expect(formatMs(90000000)).toBe("1d1h")
+        // 2d5h: (2*24 + 5) * 3600000 = 190800000 ms -> 2d5h
+        expect(formatMs(190800000)).toBe("2d5h")
     })
 })
 

@@ -1,10 +1,10 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 
 import fs from "node:fs/promises"
 import path from "node:path"
 
 import { countMailbox } from "../src/tui/teams.js"
-import { tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
 
 /** Write lines into mailbox/<file> under teamDir, creating the dir as needed. */
 async function writeMailbox(teamDir: string, file: string, lines: string[]): Promise<void> {
@@ -12,6 +12,8 @@ async function writeMailbox(teamDir: string, file: string, lines: string[]): Pro
     await fs.mkdir(mailboxDir, { recursive: true })
     await fs.writeFile(path.join(mailboxDir, file), lines.join("\n"))
 }
+
+afterAll(cleanupTmpRoots)
 
 describe("countMailbox", () => {
     test("missing mailbox files -> zero, does not throw", async () => {

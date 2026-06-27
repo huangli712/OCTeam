@@ -506,6 +506,24 @@ export async function processIdle(
         case "tollgate":
             await handleTollgateIdle(ctx, team, member)
             break
+        default: {
+            // Exhaustiveness check: every OrchestrationType above is handled, so
+            // this branch is unreachable and team.activeTask.type narrows to
+            // `never`. If a new OrchestrationType is added in core/types.ts without
+            // a matching case here, this assignment fails to compile — a compile-
+            // time guard against silent fall-through. At runtime it also fails fast:
+            // mark the member errored so the post-switch checkTermination fails the
+            // run instead of letting the member stall until the wall-clock timeout.
+            const _exhaustive: never = team.activeTask.type
+            logEvent(ctx, "error", "processIdle: unhandled task type", {
+                team: team.teamName,
+                member: member.name,
+                type: String(_exhaustive),
+            })
+            member.status = "errored"
+            member.error = `unhandled task type: ${String(_exhaustive)}`
+            break
+        }
     }
 
     // Step 7: Termination checks.

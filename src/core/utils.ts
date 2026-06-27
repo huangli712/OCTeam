@@ -4,6 +4,7 @@
  */
 
 import { listAllTeams, loadTeamState } from "../state/store.js"
+import type { Message, Part, TextPart } from "@opencode-ai/sdk"
 import type { PluginContext } from "./context.js"
 import { rolePreset } from "./role-presets.js"
 import type { MemberState, MemberSpec, TeamSpec } from "./types.js"
@@ -183,6 +184,31 @@ function syntheticMaster(team: {
 }
 
 /**
+ * Resolve the member-path (1:1) of a sessionID into a ResolvedMember. Returns
+ * null when the session is not indexed as a member, or when its on-disk team
+ * no longer lists the member. Shared by resolveTeamMember and
+ * resolveCallerInTeam so the member resolution lives in exactly one place.
+ * Resolves against the scope captured at index time (the LEADER's session
+ * segment), NOT the caller's storageRoot.
+ */
+async function resolveMemberFromIndex(sessionID: string): Promise<ResolvedMember | null> {
+    const m = memberIndex.get(sessionID)
+    if (!m) return null
+    const team = await loadTeamState(m.storageRoot, m.teamName, m.leadSessionId)
+    const member = team.members.find(x => x.name === m.memberName)
+    return member
+        ? {
+              ...member,
+              teamName: team.teamName,
+              teamRunId: team.teamRunId,
+              directory: team.directory,
+              leadSessionId: m.leadSessionId,
+              storageRoot: m.storageRoot,
+          }
+        : null
+}
+
+/**
  * Resolve a sessionID to its team member. Returns null for non-team sessions
  * (the common case — O(1) reject). For a member session, resolves its single
  * team. For a master (leader) session that owns multiple teams, resolves the
@@ -194,24 +220,10 @@ export async function resolveTeamMember(
     storageRoot: string,
     sessionID: string,
 ): Promise<ResolvedMember | null> {
-    // Member path (1:1). Resolve against the scope captured at index time, NOT
-    // the caller's storageRoot — a project-team member is indexed under its
-    // LEADER's session segment.
-    const m = memberIndex.get(sessionID)
-    if (m) {
-        const team = await loadTeamState(m.storageRoot, m.teamName, m.leadSessionId)
-        const member = team.members.find(x => x.name === m.memberName)
-        return member
-            ? {
-                  ...member,
-                  teamName: team.teamName,
-                  teamRunId: team.teamRunId,
-                  directory: team.directory,
-                  leadSessionId: m.leadSessionId,
-                  storageRoot: m.storageRoot,
-              }
-            : null
-    }
+    // Member path (1:1) — resolution lives in the shared helper.
+    const member = await resolveMemberFromIndex(sessionID)
+    if (member) return member
+    if (memberIndex.has(sessionID)) return null
     // Master path (1:many) — resolve the ACTIVE team only.
     const master = masterIndex.get(sessionID)
     if (!master || !master.activeDirectory) return null
@@ -244,18 +256,7 @@ export async function resolveCallerInTeam(
     const m = memberIndex.get(sessionID)
     if (m) {
         if (m.teamName !== teamId) return null
-        const team = await loadTeamState(m.storageRoot, m.teamName, m.leadSessionId)
-        const member = team.members.find(x => x.name === m.memberName)
-        return member
-            ? {
-                  ...member,
-                  teamName: team.teamName,
-                  teamRunId: team.teamRunId,
-                  directory: team.directory,
-                  leadSessionId: m.leadSessionId,
-                  storageRoot: m.storageRoot,
-              }
-            : null
+        return resolveMemberFromIndex(sessionID)
     }
     // Master path (1:many) — find the team by explicit teamId.
     const master = masterIndex.get(sessionID)
@@ -305,12 +306,17 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
 
 // --- text / token helpers ---
 
-/** Extract concatenated text from message parts (filters type === "text"). */
+/**
+ * Extract concatenated text from message parts (filters type === "text").
+ * Skips synthetic parts (injected role prompts / mailbox injections) so they
+ * are never mistaken for member-produced text.
+ */
 export function extractTextFromParts(parts: unknown): string {
     if (!Array.isArray(parts)) return ""
-    return parts
-        .filter((p: any) => p && p.type === "text" && typeof p.text === "string")
-        .map((p: any) => p.text)
+    return (parts as Part[])
+        .filter((p): p is TextPart => !!p && p.type === "text" && typeof p.text === "string")
+        .filter(p => !p.synthetic)
+        .map(p => p.text)
         .join("\n")
 }
 
@@ -330,12 +336,15 @@ const WORK_TOOLS = new Set([
 export function extractOutputFromParts(parts: unknown): string {
     if (!Array.isArray(parts)) return ""
     const segments: string[] = []
-    for (const p of parts as any[]) {
+    for (const p of parts as Part[]) {
         if (!p) continue
         if (p.type === "text" && typeof p.text === "string") {
+            // Skip synthetic parts (injected role prompts / mailbox injections):
+            // they are not member-produced deliverables.
+            if (p.synthetic) continue
             if (p.text.trim()) segments.push(p.text)
         } else if (p.type === "tool" && WORK_TOOLS.has(p.tool)) {
-            const input = p.state?.input ?? {}
+            const input = (p.state?.input ?? {}) as Record<string, unknown>
             if (typeof input.content === "string" && input.content.trim()) {
                 const fp = typeof input.filePath === "string" ? input.filePath : ""
                 segments.push(fp ? `[File: ${fp}]\n${input.content}` : input.content)
@@ -349,10 +358,20 @@ export function extractOutputFromParts(parts: unknown): string {
     return segments.join("\n\n")
 }
 
-/** Truncate output to maxBytes (default 8KB) to prevent context-window blowups. */
+/**
+ * Truncate output to maxBytes (default 8KB) of UTF-8 to prevent context-window
+ * blowups. Counts and cuts on UTF-8 byte length (not UTF-16 code units), and
+ * backs the cut up to a complete-character boundary so a multibyte sequence is
+ * never split (CJK / emoji safe).
+ */
 export function truncateOutput(text: string, maxBytes: number = 8192): string {
-    if (text.length <= maxBytes) return text
-    return text.slice(0, maxBytes) + "\n…[truncated]"
+    if (Buffer.byteLength(text, "utf8") <= maxBytes) return text
+    const buf = Buffer.from(text, "utf8")
+    // Back the cut point up while it sits on a UTF-8 continuation byte
+    // (0b10xxxxxx), so we never slice through the middle of a character.
+    let end = maxBytes
+    while (end > 0 && (buf[end] & 0xc0) === 0x80) end--
+    return buf.toString("utf8", 0, end) + "\n…[truncated]"
 }
 
 /**
@@ -361,7 +380,7 @@ export function truncateOutput(text: string, maxBytes: number = 8192): string {
  * (cached reads are typically discounted by providers). Recompute-per-idle
  * semantics — never incrementally += — to avoid double counting.
  */
-export function sumMemberTokens(messages: Array<{ info?: any }> | undefined): number {
+export function sumMemberTokens(messages: Array<{ info?: Message }> | undefined): number {
     let total = 0
     for (const m of messages ?? []) {
         if (m.info?.role !== "assistant") continue

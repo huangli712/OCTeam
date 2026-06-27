@@ -1,7 +1,4 @@
-import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { afterAll, describe, expect, test } from "bun:test"
 
 import { processIdle } from "../src/orchestration/handlers.js"
 import { createTask, updateTask } from "../src/state/tasks.js"
@@ -9,6 +6,9 @@ import type { ActiveTask, MemberState, Task } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
 import type { PluginContext } from "../src/core/context.js"
+import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
+
+afterAll(cleanupTmpRoots)
 
 // --- fixtures (delegate execution path) ---
 
@@ -88,7 +88,7 @@ function makeTeam(opts: {
         createdAt: 0,
         activeTask: opts.activeTask,
         mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-del-")),
+        directory: tmpRoot("del"),
     } as unknown as Team
 }
 

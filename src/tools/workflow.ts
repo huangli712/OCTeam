@@ -23,15 +23,39 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { loadTeamState, saveTeamState } from "../state/store.js"
+import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { ensureMembersReady, advanceToStage, dispatchToMember } from "../orchestration/dispatch.js"
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import { activationError, resolveCallerInTeam } from "../core/utils.js"
-import type { ActiveTask, GatedStage, RouteBranch, Stage } from "../core/types.js"
+import type { ActiveTask, GatedStage, ReducePolicy, RouteBranch, SignoffPolicy, Stage } from "../core/types.js"
 import { advanceToGatedStage, buildDebatePrompt, buildRecursePrompt } from "../orchestration/handlers.js"
 
 const DEFAULT_TIMEOUT_MS = 600_000
 const DEFAULT_LOOP_TIMEOUT_MS = 900_000
+
+// Named defaults for orchestration parameters (wf-011). Previously these were
+// scattered as inline `?? N` literals across the Phase-3 commit blocks, which
+// made the effective defaults hard to audit and easy to drift between tools.
+const DEFAULT_CONSENSUS_ROUNDS = 3
+const DEFAULT_ARBITRATE_ROUNDS = 1
+const DEFAULT_RECURSE_DEPTH = 3
+const DEFAULT_RECURSE_SUBTASKS = 5
+const DEFAULT_SIGNOFF_POLICY: SignoffPolicy = "none"
+const DEFAULT_REDUCE_POLICY: ReducePolicy = "summarize"
+
+/**
+ * Assert that `name` is a member of `team`. Returns a ready-to-return Error
+ * string when the name does not match any member, or null when it is valid
+ * (wf-008). `label` identifies the offending field in the message (e.g.
+ * "signoff_decider", "decomposer"). The message format is kept identical to the
+ * previous inline checks so existing error-string assertions still hold.
+ */
+function assertMember(team: Team, name: string, label: string): string | null {
+    if (!team.members.some(m => m.name === name)) {
+        return `Error: ${label} "${name}" is not a member of team "${team.teamName}"`
+    }
+    return null
+}
 
 /**
  * Effective wall-clock timeout: the requested timeout (or a mode default)
@@ -60,9 +84,9 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
         args: {
             team_id: tool.schema.string().min(1),
             mode: tool.schema.enum(["isolated", "collaborative"]),
-            task: tool.schema.string().optional().describe("isolated mode: the single task sent to all members"),
+            task: tool.schema.string().max(8192).optional().describe("isolated mode: the single task sent to all members"),
             tasks: tool.schema
-                .record(tool.schema.string(), tool.schema.string())
+                .record(tool.schema.string(), tool.schema.string().max(8192))
                 .optional()
                 .describe("collaborative mode: { memberName: task }"),
             reduce_policy: tool.schema
@@ -71,6 +95,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .describe("how to combine member outputs (default: summarize)."),
             reduce_rubric: tool.schema
                 .string()
+                .max(8192)
                 .optional()
                 .describe("scoring rubric when reduce_policy='rubric'"),
             reducer_member: tool.schema
@@ -87,7 +112,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .describe("member name to act as signoff decider (when signoff_policy='decider')"),
             signoff_quorum: tool.schema
                 .number()
-                .min(0)
+                .gt(0)
                 .max(1)
                 .optional()
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
@@ -101,16 +126,10 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .describe("when true, the all-idle barrier is replaced by an all-acked barrier. Members must call team_done() to signal completion; members that go idle without acking receive an automatic re-prompt. Prevents premature barrier when a member idles waiting for a dependency. Default false (backward compatible)."),
         },
         async execute(args, context) {
-            // Validate mode-specific fields.
-            if (args.mode === "isolated" && !args.task) {
-                return "Error: isolated mode requires `task`"
-            }
-            if (args.mode === "collaborative" && !args.tasks) {
-                return "Error: collaborative mode requires `tasks`"
-            }
-
             // Workflow tools are master-only: only the team's leader session may
-            // start an orchestration.
+            // start an orchestration. Auth-first (wf-009): the master-only gate
+            // runs before any parameter validation so a non-master caller never
+            // learns whether its arguments were well-formed.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_parallel is master-only"
@@ -123,23 +142,48 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
 
+            // Validate mode-specific fields.
+            if (args.mode === "isolated" && !args.task) {
+                return "Error: isolated mode requires `task`"
+            }
+            if (args.mode === "collaborative" && !args.tasks) {
+                return "Error: collaborative mode requires `tasks`"
+            }
+
+            // wf-010: every key in the collaborative `tasks` map must name a real
+            // non-master member. An unknown key is a typo whose task would never
+            // be dispatched, so reject it instead of silently ignoring it.
+            if (args.mode === "collaborative" && args.tasks) {
+                for (const name of Object.keys(args.tasks)) {
+                    if (!team.members.some(m => m.name === name && !m.isMaster)) {
+                        return `Error: unknown member "${name}" in tasks`
+                    }
+                }
+            }
+
+            // wf-007: reduce_policy 'rubric' scores outputs against reduce_rubric,
+            // so the rubric text must be present; otherwise the reduce stage has
+            // no criteria to apply.
+            if (args.reduce_policy === "rubric" && !args.reduce_rubric) {
+                return "Error: reduce_policy 'rubric' requires reduce_rubric (the scoring rubric)"
+            }
+
             // Validate signoff_decider is a real member (prevents a runtime stall
             // in the signoff phase when the named decider doesn't exist).
             if (args.signoff_policy === "decider") {
                 if (!args.signoff_decider) {
                     return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
                 }
-                if (!team.members.some(m => m.name === args.signoff_decider)) {
-                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
-                }
+                const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                if (err) return err
             }
 
             // Validate reducer_member is a real member (a real reduce stage is
             // dispatched to it; an unknown name would silently fall back to legacy
             // delivery, so reject it explicitly).
-            if (args.reduce_policy && args.reduce_policy !== "summarize" && args.reducer_member
-                && !team.members.some(m => m.name === args.reducer_member)) {
-                return `Error: reducer_member "${args.reducer_member}" is not a member of team "${args.team_id}"`
+            if (args.reduce_policy && args.reduce_policy !== "summarize" && args.reducer_member) {
+                const err = assertMember(team, args.reducer_member, "reducer_member")
+                if (err) return err
             }
 
             // Phase 1: pre-check under mutex.
@@ -174,10 +218,10 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     decisionParseFailures: 0,
                     task: args.task,
                     tasks: args.tasks,
-                    reducePolicy: args.reduce_policy ?? "summarize",
+                    reducePolicy: args.reduce_policy ?? DEFAULT_REDUCE_POLICY,
                     reduceRubric: args.reduce_rubric,
                     reducerMember: args.reducer_member,
-                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
                     requireDoneAck: args.require_done_ack === true,
@@ -237,6 +281,14 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
 
+            // wf-016: a consensus needs at least two participants to be
+            // meaningful — a single member trivially "agrees" with itself. Reject
+            // a team with fewer than two non-master members.
+            const consensusParticipants = team.members.filter(m => !m.isMaster)
+            if (consensusParticipants.length < 2) {
+                return "Error: team_consensus requires at least 2 non-master members"
+            }
+
             // Phase 1: pre-check under mutex.
             let busy = false
             await team.mutex.runExclusive(async () => {
@@ -267,11 +319,12 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                     decisionHistory: [],
                     decisionParseFailures: 0,
                     topic: args.topic,
-                    // Needs a round cap; default to 3 when omitted, else
-                    // `currentRound >= (maxRounds ?? 0)` aborts after round 1.
-                    maxRounds: args.max_rounds ?? 3,
+                    // Needs a round cap; default to DEFAULT_CONSENSUS_ROUNDS when
+                    // omitted, else `currentRound >= (maxRounds ?? 0)` aborts after
+                    // round 1.
+                    maxRounds: args.max_rounds ?? DEFAULT_CONSENSUS_ROUNDS,
                     currentRound: 1,
-                    signoffPolicy: "none",
+                    signoffPolicy: DEFAULT_SIGNOFF_POLICY,
                     maxRetries: args.max_retries,
                 }
                 await saveTeamState(team)
@@ -319,7 +372,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 .describe("member name to act as signoff decider (when signoff_policy='decider')"),
             signoff_quorum: tool.schema
                 .number()
-                .min(0)
+                .gt(0)
                 .max(1)
                 .optional()
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
@@ -328,12 +381,8 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            const stageMembers = args.stages.map(s => s.member)
-            if (new Set(stageMembers).size !== stageMembers.length) {
-                return "Error: pipeline stages must have unique member names"
-            }
-
-            // Workflow tools are master-only.
+            // Workflow tools are master-only. Auth-first (wf-009): the
+            // master-only gate runs before any parameter validation.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_pipeline is master-only"
@@ -346,15 +395,19 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
 
+            const stageMembers = args.stages.map(s => s.member)
+            if (new Set(stageMembers).size !== stageMembers.length) {
+                return "Error: pipeline stages must have unique member names"
+            }
+
             // Validate signoff_decider is a real member (prevents a runtime stall
             // in the signoff phase when the named decider doesn't exist).
             if (args.signoff_policy === "decider") {
                 if (!args.signoff_decider) {
                     return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
                 }
-                if (!team.members.some(m => m.name === args.signoff_decider)) {
-                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
-                }
+                const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                if (err) return err
             }
 
             // Validate members exist.
@@ -385,7 +438,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                     type: "pipeline",
                     runId: crypto.randomUUID(),
                     startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, 600_000, team.bounds.maxWallClockMinutes),
+                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
                     tokenBudget: args.token_budget,
                     tokensUsed: 0,
                     tokensByMember: {},
@@ -395,7 +448,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                     currentStageIndex: 0,
                     decisionHistory: [],
                     decisionParseFailures: 0,
-                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
                     maxRetries: args.max_retries,
@@ -440,10 +493,8 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            if (args.decider === "master") {
-                return "Error: decider must be a member name, not \"master\""
-            }
-            // Workflow tools are master-only.
+            // Workflow tools are master-only. Auth-first (wf-009): the
+            // master-only gate runs before any parameter validation.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_loop is master-only"
@@ -456,9 +507,11 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
 
-            if (!team.members.some(m => m.name === args.decider)) {
-                return `Error: decider "${args.decider}" is not a member`
+            if (args.decider === "master") {
+                return "Error: decider must be a member name, not \"master\""
             }
+            const deciderErr = assertMember(team, args.decider, "decider")
+            if (deciderErr) return deciderErr
             const stageMembers = args.stages.map(s => s.member)
             if (new Set(stageMembers).size !== stageMembers.length) {
                 return "Error: loop stages must have unique member names"
@@ -610,7 +663,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 .describe("member name to act as signoff decider (when signoff_policy='decider')"),
             signoff_quorum: tool.schema
                 .number()
-                .min(0)
+                .gt(0)
                 .max(1)
                 .optional()
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
@@ -660,9 +713,8 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 if (!args.signoff_decider) {
                     return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
                 }
-                if (!team.members.some(m => m.name === args.signoff_decider)) {
-                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
-                }
+                const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                if (err) return err
             }
 
             let busy = false
@@ -741,7 +793,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     currentStageIndex: 0,
                     decisionHistory: [],
                     decisionParseFailures: 0,
-                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
                     maxErroredMembers: args.max_errored_members,
@@ -824,7 +876,7 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                 .describe("member name to act as signoff decider (when signoff_policy='decider')"),
             signoff_quorum: tool.schema
                 .number()
-                .min(0)
+                .gt(0)
                 .max(1)
                 .optional()
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
@@ -833,11 +885,8 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            if (args.router === "master") {
-                return "Error: router must be a member name, not \"master\""
-            }
-
-            // Workflow tools are master-only.
+            // Workflow tools are master-only. Auth-first (wf-009): the
+            // master-only gate runs before any parameter validation.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_route is master-only"
@@ -848,6 +897,10 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
             // Single-active interaction gate.
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
+
+            if (args.router === "master") {
+                return "Error: router must be a member name, not \"master\""
+            }
 
             // Validate routes: unique names, unique members, members exist, and
             // the router must not also be a branch target (it is the sole Phase-A
@@ -874,9 +927,8 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                 if (!args.signoff_decider) {
                     return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
                 }
-                if (!team.members.some(m => m.name === args.signoff_decider)) {
-                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
-                }
+                const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                if (err) return err
             }
 
             // Phase 1: pre-check under mutex.
@@ -918,7 +970,7 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                     routerMember: args.router,
                     routeBranches: branches,
                     routeStage: false,
-                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
                     maxRetries: args.max_retries,
@@ -964,7 +1016,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                 .describe("member name to act as signoff decider (when signoff_policy='decider')"),
             signoff_quorum: tool.schema
                 .number()
-                .min(0)
+                .gt(0)
                 .max(1)
                 .optional()
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
@@ -973,17 +1025,8 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            if (args.arbiter === "master") {
-                return "Error: arbiter must be a member name, not \"master\""
-            }
-            if (new Set(args.debaters).size !== args.debaters.length) {
-                return "Error: debaters must have unique names"
-            }
-            if (args.debaters.includes(args.arbiter)) {
-                return "Error: arbiter must not also be a debater"
-            }
-
-            // Workflow tools are master-only.
+            // Workflow tools are master-only. Auth-first (wf-009): the
+            // master-only gate runs before any parameter validation.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_arbitrate is master-only"
@@ -994,6 +1037,16 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
             // Single-active interaction gate.
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
+
+            if (args.arbiter === "master") {
+                return "Error: arbiter must be a member name, not \"master\""
+            }
+            if (new Set(args.debaters).size !== args.debaters.length) {
+                return "Error: debaters must have unique names"
+            }
+            if (args.debaters.includes(args.arbiter)) {
+                return "Error: arbiter must not also be a debater"
+            }
 
             // Validate arbiter + debaters are real members.
             for (const name of [args.arbiter, ...args.debaters]) {
@@ -1007,9 +1060,8 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                 if (!args.signoff_decider) {
                     return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
                 }
-                if (!team.members.some(m => m.name === args.signoff_decider)) {
-                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
-                }
+                const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                if (err) return err
             }
 
             // Phase 1: pre-check under mutex.
@@ -1045,9 +1097,9 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                     arbiterMember: args.arbiter,
                     disputants: args.debaters,
                     arbitrationStage: false,
-                    maxRounds: args.max_rounds ?? 1,
+                    maxRounds: args.max_rounds ?? DEFAULT_ARBITRATE_ROUNDS,
                     currentRound: 1,
-                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
                     maxRetries: args.max_retries,
@@ -1120,7 +1172,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                 .describe("member name to act as signoff decider (when signoff_policy='decider')"),
             signoff_quorum: tool.schema
                 .number()
-                .min(0)
+                .gt(0)
                 .max(1)
                 .optional()
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
@@ -1129,14 +1181,8 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0. Distinct from max_gate_retries."),
         },
         async execute(args, context) {
-            // Each gate's verifier must differ from its producer (no self-verification).
-            for (const s of args.stages) {
-                if (s.verifier === s.member) {
-                    return `Error: stage verifier "${s.verifier}" must not equal its producer "${s.member}"`
-                }
-            }
-
-            // Workflow tools are master-only.
+            // Workflow tools are master-only. Auth-first (wf-009): the
+            // master-only gate runs before any parameter validation.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_tollgate is master-only"
@@ -1147,6 +1193,13 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
             // Single-active interaction gate.
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
+
+            // Each gate's verifier must differ from its producer (no self-verification).
+            for (const s of args.stages) {
+                if (s.verifier === s.member) {
+                    return `Error: stage verifier "${s.verifier}" must not equal its producer "${s.member}"`
+                }
+            }
 
             // Validate members: every stage's producer + verifier, plus the
             // optional escalation target.
@@ -1167,9 +1220,8 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                 if (!args.signoff_decider) {
                     return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
                 }
-                if (!team.members.some(m => m.name === args.signoff_decider)) {
-                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
-                }
+                const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                if (err) return err
             }
 
             // Phase 1: pre-check under mutex.
@@ -1216,7 +1268,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                     escalateTo: args.escalate_to,
                     maxGateRetries: args.max_gate_retries,
                     maxInvalidCycles: args.max_invalid_cycles,
-                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
                     maxRetries: args.max_retries,
@@ -1258,7 +1310,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                 .describe("member name to act as signoff decider (when signoff_policy='decider')"),
             signoff_quorum: tool.schema
                 .number()
-                .min(0)
+                .gt(0)
                 .max(1)
                 .optional()
                 .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
@@ -1267,11 +1319,8 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            if (args.decomposer === "master") {
-                return "Error: decomposer must be a member name, not \"master\""
-            }
-
-            // Workflow tools are master-only.
+            // Workflow tools are master-only. Auth-first (wf-009): the
+            // master-only gate runs before any parameter validation.
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller?.isMaster) {
                 return "Error: team_recurse is master-only"
@@ -1283,18 +1332,19 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
 
-            if (!team.members.some(m => m.name === args.decomposer)) {
-                return `Error: decomposer "${args.decomposer}" is not a member of team "${args.team_id}"`
+            if (args.decomposer === "master") {
+                return "Error: decomposer must be a member name, not \"master\""
             }
+            const decomposerErr = assertMember(team, args.decomposer, "decomposer")
+            if (decomposerErr) return decomposerErr
 
             // Validate signoff_decider is a real member.
             if (args.signoff_policy === "decider") {
                 if (!args.signoff_decider) {
                     return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
                 }
-                if (!team.members.some(m => m.name === args.signoff_decider)) {
-                    return `Error: signoff_decider "${args.signoff_decider}" is not a member of team "${args.team_id}"`
-                }
+                const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                if (err) return err
             }
 
             // Phase 1: pre-check under mutex.
@@ -1337,10 +1387,10 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                     decisionParseFailures: 0,
                     task: args.task,
                     decomposerMember: args.decomposer,
-                    maxDepth: args.max_depth ?? 3,
-                    maxSubtasks: args.max_subtasks ?? 5,
+                    maxDepth: args.max_depth ?? DEFAULT_RECURSE_DEPTH,
+                    maxSubtasks: args.max_subtasks ?? DEFAULT_RECURSE_SUBTASKS,
                     rootTaskId: root.id,
-                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
                     maxRetries: args.max_retries,

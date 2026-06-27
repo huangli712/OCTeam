@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import { teamCreateTool } from "../src/tools/lifecycle.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { resolveTeamMember, unindexSession } from "../src/core/utils.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {
     // team_create's client.* calls are all best-effort (try/catch fallback), so
@@ -16,6 +16,7 @@ const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
+afterAll(cleanupTmpRoots)
 
 describe("team_create constraints", () => {
     test("duplicate team name in same scope → rejected", async () => {

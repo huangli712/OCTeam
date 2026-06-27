@@ -5,7 +5,7 @@ import { createSignal, createEffect, on, onCleanup, For } from "solid-js"
 import { loadChildren, type SessionTreeNode } from "./session-tree.js"
 import { loadTeams, type TeamSummary } from "./teams.js"
 
-// Status colors: green=running, red=finished, purple=error
+// Status colors: green=running, red=idle, purple=errored
 const COLOR_RUNNING = "#22c55e"
 const COLOR_IDLE = "#ef4444"
 const COLOR_ERRORED = "#a855f7"
@@ -35,11 +35,20 @@ export function SessionNavigatorSidebar(props: {
     const textColor = () => t()?.text ?? "#000000"
     const textMuted = () => t()?.textMuted ?? "#6b7280"
 
+    // Request generations guard against the last-write-wins race: concurrent
+    // refreshes can resolve out of order, so a slow earlier call must not
+    // overwrite a newer result. Each async refresh captures its generation and
+    // discards its result if a newer refresh has since started. refresh and
+    // refreshTeams update different signals and run concurrently, so they need
+    // independent counters (a shared one would make them invalidate each other).
+    let refreshGeneration = 0
     const refresh = async () => {
+        const gen = ++refreshGeneration
         try {
             const sid = rootSessionId()
             if (!sid) return
             const children = await loadChildren(props.api, sid)
+            if (gen !== refreshGeneration) return  // newer refresh started; discard stale result
             setSessions(children)
         } catch {
             // Silent fail — sidebar is best-effort
@@ -48,9 +57,13 @@ export function SessionNavigatorSidebar(props: {
         }
     }
 
+    let refreshTeamsGeneration = 0
     const refreshTeams = async () => {
+        const gen = ++refreshTeamsGeneration
         try {
-            setTeams(await loadTeams(props.sessionID()))
+            const result = await loadTeams(props.sessionID())
+            if (gen !== refreshTeamsGeneration) return  // newer refresh started; discard stale result
+            setTeams(result)
         } catch {
             // best-effort
         }
