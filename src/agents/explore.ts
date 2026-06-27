@@ -27,6 +27,6 @@ export const exploreAgent: OcteamAgentConfig = {
     description: "OCTeam codebase search specialist",
     temperature: 0.1,
     color: "#22c55e",
-    permission: { edit: "deny", task: "deny" },
+    permission: { edit: "deny", task: "deny", bash: "deny", webfetch: "deny" },
     prompt: EXPLORE_PROMPT,
 }

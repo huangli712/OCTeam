@@ -71,7 +71,13 @@ export async function writeMailboxMessage(
     recipient: string,
     message: Message,
 ): Promise<void> {
-    await appendJsonl(inboxPath(teamDirectory, recipient), message)
+    // Hold the mailbox lock so this append is mutually exclusive with
+    // pollMailbox's read-reserve-truncate. Without it, an append landing
+    // between pollMailbox's read and truncate is silently destroyed
+    // (read-truncate race). O_APPEND still applies inside the lock.
+    await withLock(mailboxLockPath(teamDirectory, recipient), async () => {
+        await appendJsonl(inboxPath(teamDirectory, recipient), message)
+    })
 }
 
 /**

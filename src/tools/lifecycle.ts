@@ -607,7 +607,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             // single-active interaction gate, so a direct load is needed to clean
             // up any team the session owns (active or not).
             const pathLeadSessionId = ctx.scope === "project" ? context.sessionID : undefined
-            let team
+            let team: Team
             try {
                 team = await loadTeamState(ctx.storageRoot, args.team_id, pathLeadSessionId)
             } catch {
@@ -633,22 +633,58 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     return `Error: member(s) ${dirty.join(", ")} have uncommitted changes in their worktrees. Commit or stash them first, or re-run with force: true.`
                 }
             }
-            // Clean up worktrees, then unindex the team. Worktree teardown must
-            // precede deleteTeamStorage so git can remove the still-present worktree
-            // files. Member sessions are 1:1 (full unindex); the master owns this
-            // team in a 1:many index, so remove ONLY this team from the master's map
-            // (unindexSession on the leader would wipe the session's OTHER teams).
-            for (const m of team.members) {
-                await cleanWorktree(ctx.directory, m.worktreePath)
-                if (m.sessionId) {
-                    unindexSession(m.sessionId)
-                    clearWakeHint(m.sessionId)
+            // Hold the team mutex for the entire teardown so a racing orchestration
+            // event handler cannot rebuild state.json on top of the just-deleted
+            // directory. Under the lock the handler either runs fully before us (its
+            // write completes, then we delete) or fully after us — by which point the
+            // active task is cleared and the team is idle, so the handler winds down
+            // without persisting a zombie state.json.
+            await team.mutex.runExclusive(async () => {
+                // Force-deleting a busy team: abort running members and clear the
+                // active task in memory FIRST (mirrors team_cancel) so any handler
+                // that acquires the mutex after us sees a consistent, finished state
+                // and does not write. This idle state is intentionally NOT persisted —
+                // the storage is removed below instead.
+                if (team.status === "busy") {
+                    for (const m of team.members) {
+                        if (!m.isMaster && m.sessionId && m.status === "running") {
+                            await ctx.client.session
+                                .abort({
+                                    path: { id: m.sessionId },
+                                    query: { directory: m.worktreePath ?? ctx.directory },
+                                })
+                                .catch(() => {
+                                    // best-effort: a failed abort must not block delete
+                                })
+                        }
+                    }
+                    clearActiveTask(team)
+                    team.status = "idle"
+                    for (const m of team.members) {
+                        if (m.isMaster) continue
+                        m.status = "idle"
+                        m.declaredDone = false
+                        m.retryingSince = undefined
+                    }
                 }
-            }
-            unindexMasterTeam(team.leadSessionId, team.directory)
-            clearWakeHint(team.leadSessionId)
-            await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
-            invalidateTeam(team.directory)
+                // Clean up worktrees, then unindex the team. Worktree teardown must
+                // precede deleteTeamStorage so git can remove the still-present
+                // worktree files. Member sessions are 1:1 (full unindex); the master
+                // owns this team in a 1:many index, so remove ONLY this team from the
+                // master's map (unindexSession on the leader would wipe the session's
+                // OTHER teams).
+                for (const m of team.members) {
+                    await cleanWorktree(ctx.directory, m.worktreePath)
+                    if (m.sessionId) {
+                        unindexSession(m.sessionId)
+                        clearWakeHint(m.sessionId)
+                    }
+                }
+                unindexMasterTeam(team.leadSessionId, team.directory)
+                clearWakeHint(team.leadSessionId)
+                await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
+                invalidateTeam(team.directory)
+            })
             return `Team "${args.team_id}" deleted${force ? " (forced)" : ""}.`
         },
     })

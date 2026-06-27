@@ -27,6 +27,6 @@ export const metisAgent: OcteamAgentConfig = {
     description: "OCTeam pre-planning consultant",
     temperature: 0.3,
     color: "#a855f7",
-    permission: { edit: "deny" },
+    permission: { edit: "deny", bash: "deny" },
     prompt: METIS_PROMPT,
 }

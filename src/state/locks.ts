@@ -13,6 +13,13 @@ export const CLAIM_TTL_MS = 30_000
 const LOCK_POLL_MS = 50
 const LOCK_MAX_WAIT_MS = 30_000
 
+/**
+ * Heartbeat interval for refreshing a held lock's mtime. Set to LOCK_TTL_MS / 3
+ * so a long-running critical section is refreshed up to three times per TTL
+ * window and is never misjudged as stale (defect 1 fix). Internal constant.
+ */
+const LOCK_HEARTBEAT_MS = LOCK_TTL_MS / 3
+
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -47,17 +54,29 @@ export class AsyncMutex {
 /**
  * Cross-process exclusive file lock built on exclusive-create (fs.open 'wx')
  * with stale-TTL detection. Acquires <lockPath>; if it already exists and is
- * older than LOCK_TTL_MS, unlinks and retries. Always releases (unlinks) in
- * finally. Used to guard state.json writes and mailbox reservations.
+ * older than LOCK_TTL_MS, unlinks and retries. While the lock is held a
+ * heartbeat refreshes its mtime so a long critical section is not reaped as
+ * stale (defect 1); release verifies pid ownership before unlinking so a slow
+ * holder never deletes another process's lock (defect 2). Used to guard
+ * state.json writes and mailbox reservations.
  */
 export async function withLock<T>(lockPath: string, fn: () => Promise<T>): Promise<T> {
     await acquireLock(lockPath)
+    // Defect 1 fix: refresh the lock's mtime on a heartbeat so a critical
+    // section longer than LOCK_TTL_MS is never misjudged as stale and reaped
+    // by another process while we still hold it.
+    const heartbeat = setInterval(() => {
+        const now = new Date()
+        fs.utimes(lockPath, now, now).catch(() => {
+            // Lock vanished or refresh raced — release handles ownership.
+        })
+    }, LOCK_HEARTBEAT_MS)
+    heartbeat.unref()
     try {
         return await fn()
     } finally {
-        await fs.unlink(lockPath).catch(() => {
-            // already gone — nothing to release
-        })
+        clearInterval(heartbeat)
+        await releaseLock(lockPath)
     }
 }
 
@@ -94,6 +113,30 @@ async function acquireLock(lockPath: string): Promise<void> {
             await sleep(LOCK_POLL_MS)
         }
     }
+}
+
+/**
+ * Release a lock previously acquired by this process. Reads the pid recorded in
+ * the lock file and unlinks ONLY when it matches the current process: this
+ * prevents a slow holder from blindly deleting a lock that another process has
+ * already, legitimately, re-acquired (defect 2 fix). A missing or unreadable
+ * lock file is treated as already released.
+ */
+async function releaseLock(lockPath: string): Promise<void> {
+    let owner: string
+    try {
+        owner = await fs.readFile(lockPath, "utf8")
+    } catch {
+        // Lock file already gone or unreadable — nothing to release.
+        return
+    }
+    if (owner.trim() !== String(process.pid)) {
+        // Lock now belongs to another process — must not delete it.
+        return
+    }
+    await fs.unlink(lockPath).catch(() => {
+        // Raced with a reaper or another release — already gone.
+    })
 }
 
 /**

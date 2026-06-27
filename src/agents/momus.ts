@@ -27,6 +27,6 @@ export const momusAgent: OcteamAgentConfig = {
     description: "OCTeam plan reviewer and critic",
     temperature: 0.1,
     color: "#ef4444",
-    permission: { edit: "deny" },
+    permission: { edit: "deny", bash: "deny" },
     prompt: MOMUS_PROMPT,
 }
