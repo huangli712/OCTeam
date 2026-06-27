@@ -32,11 +32,13 @@ describe("extractOutputFromParts", () => {
         const parts = [
             { type: "text", text: "Writing the solution." },
             {
-                type: "tool_use",
-                name: "write",
-                input: {
-                    filePath: "/tmp/solution.py",
-                    content: "def gcd(a, b):\n    while b:\n        a, b = b, a % b\n    return a",
+                type: "tool",
+                tool: "write",
+                state: {
+                    input: {
+                        filePath: "/tmp/solution.py",
+                        content: "def gcd(a, b):\n    while b:\n        a, b = b, a % b\n    return a",
+                    },
                 },
             },
         ]
@@ -50,7 +52,7 @@ describe("extractOutputFromParts", () => {
     test("bash tool: captures command with $ prefix", () => {
         const parts = [
             { type: "text", text: "Running tests." },
-            { type: "tool_use", name: "bash", input: { command: "python -m pytest tests/" } },
+            { type: "tool", tool: "bash", state: { input: { command: "python -m pytest tests/" } } },
         ]
         const result = extractOutputFromParts(parts)
         expect(result).toContain("Running tests.")
@@ -60,9 +62,9 @@ describe("extractOutputFromParts", () => {
     test("aft_apply_patch: captures patchText", () => {
         const parts = [
             {
-                type: "tool_use",
-                name: "aft_apply_patch",
-                input: { patchText: "*** Begin Patch\n*** End Patch" },
+                type: "tool",
+                tool: "aft_apply_patch",
+                state: { input: { patchText: "*** Begin Patch\n*** End Patch" } },
             },
         ]
         const result = extractOutputFromParts(parts)
@@ -74,9 +76,9 @@ describe("extractOutputFromParts", () => {
         const parts = [
             { type: "text", text: "Done." },
             {
-                type: "tool_use",
-                name: "team_send_message",
-                input: { to: "master", body: "Task completed successfully." },
+                type: "tool",
+                tool: "team_send_message",
+                state: { input: { to: "master", body: "Task completed successfully." } },
             },
         ]
         const result = extractOutputFromParts(parts)
@@ -88,9 +90,9 @@ describe("extractOutputFromParts", () => {
         const parts = [
             { type: "text", text: "Claiming task." },
             {
-                type: "tool_use",
-                name: "team_task_update",
-                input: { task_id: "abc", status: "claimed" },
+                type: "tool",
+                tool: "team_task_update",
+                state: { input: { task_id: "abc", status: "claimed" } },
             },
         ]
         const result = extractOutputFromParts(parts)
@@ -119,19 +121,21 @@ describe("extractOutputFromParts", () => {
         const parts = [
             { type: "text", text: "I'll implement the GCD function." },
             {
-                type: "tool_use",
-                name: "write",
-                input: {
-                    filePath: "/tmp/gcd.py",
-                    content: "def gcd(a, b):\n    while b:\n        a, b = b, a % b\n    return a\n\nassert gcd(48, 18) == 6",
+                type: "tool",
+                tool: "write",
+                state: {
+                    input: {
+                        filePath: "/tmp/gcd.py",
+                        content: "def gcd(a, b):\n    while b:\n        a, b = b, a % b\n    return a\n\nassert gcd(48, 18) == 6",
+                    },
                 },
             },
-            { type: "tool_use", name: "bash", input: { command: "python /tmp/gcd.py" } },
+            { type: "tool", tool: "bash", state: { input: { command: "python /tmp/gcd.py" } } },
             { type: "text", text: "Done. All tests pass." },
             {
-                type: "tool_use",
-                name: "team_send_message",
-                input: { to: "master", body: "GCD implementation complete." },
+                type: "tool",
+                tool: "team_send_message",
+                state: { input: { to: "master", body: "GCD implementation complete." } },
             },
         ]
         const result = extractOutputFromParts(parts)
@@ -149,9 +153,9 @@ describe("extractOutputFromParts", () => {
     test("aft_write and aft_edit recognized as work tools", () => {
         const parts = [
             {
-                type: "tool_use",
-                name: "aft_write",
-                input: { filePath: "src/main.ts", content: "console.log('hello')" },
+                type: "tool",
+                tool: "aft_write",
+                state: { input: { filePath: "src/main.ts", content: "console.log('hello')" } },
             },
         ]
         const result = extractOutputFromParts(parts)

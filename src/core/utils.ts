@@ -334,8 +334,8 @@ export function extractOutputFromParts(parts: unknown): string {
         if (!p) continue
         if (p.type === "text" && typeof p.text === "string") {
             if (p.text.trim()) segments.push(p.text)
-        } else if (p.type === "tool_use" && WORK_TOOLS.has(p.name)) {
-            const input = p.input ?? {}
+        } else if (p.type === "tool" && WORK_TOOLS.has(p.tool)) {
+            const input = p.state?.input ?? {}
             if (typeof input.content === "string" && input.content.trim()) {
                 const fp = typeof input.filePath === "string" ? input.filePath : ""
                 segments.push(fp ? `[File: ${fp}]\n${input.content}` : input.content)

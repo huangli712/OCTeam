@@ -636,18 +636,25 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     maxRetries: args.max_retries,
                 }
 
-                // Create all tasks, building ref -> uuid map, then resolve blockedBy.
+                // Create all tasks, building ref -> uuid and index -> uuid maps,
+                // then resolve blockedBy. The index map keys every task by its
+                // position so blocked_by is applied even to tasks without their
+                // own ref (a ref is only needed to be a dependency *target*, not
+                // to *have* dependencies).
                 const refToUuid = new Map<string, string>()
-                for (const t of args.tasks) {
+                const indexToUuid = new Map<number, string>()
+                for (let i = 0; i < args.tasks.length; i++) {
+                    const t = args.tasks[i]
                     const created = await createTask(team.directory, {
                         subject: t.subject,
                         description: t.description,
                     })
+                    indexToUuid.set(i, created.id)
                     if (t.ref) refToUuid.set(t.ref, created.id)
                 }
-                for (const t of args.tasks) {
-                    if (!t.ref) continue
-                    const uuid = refToUuid.get(t.ref)
+                for (let i = 0; i < args.tasks.length; i++) {
+                    const t = args.tasks[i]
+                    const uuid = indexToUuid.get(i)
                     if (!uuid) continue
                     const blockedBy = (t.blocked_by ?? [])
                         .map(r => refToUuid.get(r)!)
