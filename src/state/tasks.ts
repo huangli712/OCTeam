@@ -95,7 +95,6 @@ export async function createTask(
         description: input.description,
         status: "pending",
         owner: undefined,
-        blocks: [],
         blockedBy: input.blockedBy ?? [],
         createdAt: now,
         updatedAt: now,
@@ -136,7 +135,7 @@ export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
 export async function updateTask(
     teamDirectory: string,
     taskId: string,
-    patch: Partial<Pick<Task, "status" | "owner" | "blockedBy" | "blocks" | "claimedAt" | "result">>,
+    patch: Partial<Pick<Task, "status" | "owner" | "blockedBy" | "claimedAt" | "result">>,
     opts: { expectedOwner?: string } = {},
 ): Promise<Task> {
     assertValidTaskId(taskId)

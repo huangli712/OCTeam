@@ -244,6 +244,12 @@ export async function dispatchToMember(
     team?: Team,   // when provided, emit a 'dispatched' run event (#5 observability)
 ): Promise<void> {
     if (!member.sessionId) return
+    // Errored is terminal: never re-dispatch. A dispatch would flip the member
+    // back to "running", violating the errored-is-terminal invariant and
+    // potentially stalling barriers/quorum that wait on it. Callers that have a
+    // legitimate reason to retry an errored member must clear the status
+    // explicitly first (no such path exists today by design).
+    if (member.status === "errored") return
     await ctx.client.session.promptAsync({
         path: { id: member.sessionId },
         body: {

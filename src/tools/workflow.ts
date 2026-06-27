@@ -1,8 +1,9 @@
 /**
- * Workflow tools: team_parallel, team_pipeline, team_loop, team_delegate
- * (parallel/consesnus/pipeline/loop/delegate).
+ * Workflow tools: team_parallel, team_consensus, team_pipeline, team_loop,
+ * team_delegate, team_route, team_arbitrate, team_recurse, team_tollgate.
  *
- * All four follow the SAME three-phase lock order:
+ * ALL NINE follow the SAME three-phase lock order (team_resume follows the
+ * same Phase 2 contract too — see resume.ts):
  *   1. Pre-checks UNDER team.mutex (reject if already orchestrating; validate)
  *   2. ensureMembersReady OUTSIDE the mutex (the role-setup barrier needs the
  *      event handler to flip member.initialized, which it does inside the mutex
@@ -12,6 +13,11 @@
  * Between phases 1 and 3 there is a brief window, but activeTask is not yet
  * written, so any early member idle is safely handled by processIdle Step 1.5
  * (barrier) / Step 6 (no active task → return).
+ *
+ * INVARIANT: never call ensureMembersReady inside team.mutex.runExclusive — it
+ * will deadlock the role-setup barrier. Every new workflow tool MUST follow
+ * this three-phase order; there is no compiler enforcement, only this comment
+ * and the shared Phase 1/2/3 structure.
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
@@ -1005,6 +1011,12 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                 .min(0)
                 .optional()
                 .describe("gate FAIL retry cap, DISTINCT from provider-retry max_retries. Default 0 (first FAIL fails)."),
+            max_invalid_cycles: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .optional()
+                .describe("cap on INVALID/escalate ping-pong per gate. Default 3; beyond it the run fails with tollgate_invalid:exhausted instead of burning wall-clock/turn budget."),
             signoff_policy: tool.schema
                 .enum(["none", "decider", "peer-quorum"])
                 .optional()
@@ -1090,6 +1102,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                     criteria: s.criteria,
                     reference: s.reference,
                     attempts: 0,
+                    invalidAttempts: 0,
                 }))
                 const activeTask: ActiveTask = {
                     type: "tollgate",
@@ -1109,6 +1122,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                     tollgatePhase: "produce",
                     escalateTo: args.escalate_to,
                     maxGateRetries: args.max_gate_retries,
+                    maxInvalidCycles: args.max_invalid_cycles,
                     signoffPolicy: args.signoff_policy ?? "none",
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,

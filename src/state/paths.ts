@@ -11,6 +11,12 @@ import path from "node:path"
  *   (user scope: flat/global, shared across sessions).
  */
 export function teamsDir(storageRoot: string, leadSessionId?: string): string {
+    // leadSessionId is host-assigned (context.sessionID), not a tool argument,
+    // but validate it as defense-in-depth so a malformed value can never escape
+    // the storage root via path traversal.
+    if (leadSessionId !== undefined && !isSafePathSegment(leadSessionId)) {
+        throw new Error(`teamsDir: unsafe leadSessionId segment: ${JSON.stringify(leadSessionId)}`)
+    }
     return leadSessionId
         ? path.join(storageRoot, leadSessionId, "teams")
         : path.join(storageRoot, "teams")
@@ -18,6 +24,7 @@ export function teamsDir(storageRoot: string, leadSessionId?: string): string {
 
 /** <storageRoot>[/<leadSessionId>]/teams/{teamName} */
 export function teamDir(storageRoot: string, teamName: string, leadSessionId?: string): string {
+    assertSafeSegment(teamName, "teamDir", "teamName")
     return path.join(teamsDir(storageRoot, leadSessionId), teamName)
 }
 
@@ -46,16 +53,19 @@ export function mailboxDir(teamDirectory: string): string {
 
 /** mailbox/{recipient}.jsonl — pending inbox (append-only) */
 export function inboxPath(teamDirectory: string, recipient: string): string {
+    assertSafeSegment(recipient, "inboxPath", "recipient")
     return path.join(mailboxDir(teamDirectory), `${recipient}.jsonl`)
 }
 
 /** mailbox/{recipient}.processed.jsonl — delivered messages (audit) */
 export function processedPath(teamDirectory: string, recipient: string): string {
+    assertSafeSegment(recipient, "processedPath", "recipient")
     return path.join(mailboxDir(teamDirectory), `${recipient}.processed.jsonl`)
 }
 
 /** mailbox/{recipient}.reserved/ — in-flight reservation dir (atomic) */
 export function reservedDir(teamDirectory: string, recipient: string): string {
+    assertSafeSegment(recipient, "reservedDir", "recipient")
     return path.join(mailboxDir(teamDirectory), `${recipient}.reserved`)
 }
 
@@ -65,11 +75,13 @@ export function reservedPath(
     recipient: string,
     messageId: string,
 ): string {
+    assertSafeSegment(messageId, "reservedPath", "messageId")
     return path.join(reservedDir(teamDirectory, recipient), messageId)
 }
 
 /** mailbox/{recipient}.lock — file lock for atomic read-and-reserve */
 export function mailboxLockPath(teamDirectory: string, recipient: string): string {
+    assertSafeSegment(recipient, "mailboxLockPath", "recipient")
     return path.join(mailboxDir(teamDirectory), `${recipient}.lock`)
 }
 
@@ -80,6 +92,7 @@ export function tasksDir(teamDirectory: string): string {
 }
 
 export function taskPath(teamDirectory: string, taskId: string): string {
+    assertSafeSegment(taskId, "taskPath", "taskId")
     return path.join(tasksDir(teamDirectory), `${taskId}.json`)
 }
 
@@ -89,11 +102,13 @@ export function claimsDir(teamDirectory: string): string {
 
 /** tasks/claims/{taskId}.lock — per-task claim lock */
 export function claimLockPath(teamDirectory: string, taskId: string): string {
+    assertSafeSegment(taskId, "claimLockPath", "taskId")
     return path.join(claimsDir(teamDirectory), `${taskId}.lock`)
 }
 
 /** tasks/claims/{taskId}.update.lock — short-lived lock serializing updateTask read-modify-write */
 export function taskUpdateLockPath(teamDirectory: string, taskId: string): string {
+    assertSafeSegment(taskId, "taskUpdateLockPath", "taskId")
     return path.join(claimsDir(teamDirectory), `${taskId}.update.lock`)
 }
 
@@ -111,6 +126,7 @@ export function worktreesDir(teamDirectory: string): string {
 }
 
 export function worktreePath(teamDirectory: string, memberName: string): string {
+    assertSafeSegment(memberName, "worktreePath", "memberName")
     return path.join(worktreesDir(teamDirectory), memberName)
 }
 
@@ -132,12 +148,26 @@ export function isSafePathSegment(s: string): boolean {
         && s !== ".."
 }
 
+/**
+ * Assert a string is a single safe path segment. Centralizes traversal
+ * validation at the path-construction chokepoint so BOTH live tool arguments
+ * AND values re-loaded from disk (state.json/config.json — parsed without
+ * schema re-validation) are guarded uniformly. Throws on an unsafe segment
+ * rather than silently producing an escaped path.
+ */
+export function assertSafeSegment(s: string, fn: string, label: string): void {
+    if (!isSafePathSegment(s)) {
+        throw new Error(`${fn}: unsafe ${label} segment: ${JSON.stringify(s)}`)
+    }
+}
+
 export function runsDir(teamDirectory: string): string {
     return path.join(teamDirectory, "runs")
 }
 
 /** runs/{runId} — one directory per orchestration run */
 export function runDir(teamDirectory: string, runId: string): string {
+    assertSafeSegment(runId, "runDir", "runId")
     return path.join(runsDir(teamDirectory), runId)
 }
 
@@ -148,6 +178,7 @@ export function runRecordPath(teamDirectory: string, runId: string): string {
 
 /** runs/{runId}/{member}.md — a single member's full (untruncated) output */
 export function runMemberOutputPath(teamDirectory: string, runId: string, memberName: string): string {
+    assertSafeSegment(memberName, "runMemberOutputPath", "memberName")
     return path.join(runDir(teamDirectory, runId), `${memberName}.md`)
 }
 

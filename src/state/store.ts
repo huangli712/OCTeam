@@ -101,8 +101,18 @@ export async function loadTeamState(
  * file lock + atomic write. The mutex/directory fields are NOT persisted.
  *
  * The caller is expected to already hold team.mutex.runExclusive for in-process
- * serialization; the file lock here guards against cross-process contention
- * and crash-recovery races.
+ * serialization; the file lock here guards write atomicity and crash-recovery
+ * races ONLY.
+ *
+ * IMPORTANT: this is NOT a read-modify-write primitive. It serializes the
+ * caller's whole in-memory Team snapshot under the lock without re-reading
+ * state.json first. The lock prevents torn writes but NOT lost updates across
+ * processes: two OpenCode processes sharing the same team directory (only
+ * realistically possible for user-scope teams under ~/.octeam/teams/<name>,
+ * since project-scope teams are leadSessionId-segmented) each cache their own
+ * Team and will clobber each other's mutations. Treat user-scope teams as
+ * single-process; if concurrent multi-process drive is ever required, replace
+ * this with a locked read-merge-write.
  */
 export async function saveTeamState(team: Team): Promise<void> {
     const dir = team.directory
@@ -163,8 +173,10 @@ export async function deleteTeamStorage(
     await fs.rm(teamDir(storageRoot, teamName, leadSessionId), {
         recursive: true,
         force: true,
-    }).catch(() => {
-        // best effort
+    }).catch((err: unknown) => {
+        // Best-effort, but observable: an orphaned team dir is easier to
+        // diagnose when the failure surfaces in logs rather than vanishing.
+        console.warn(`[octeam] deleteTeamStorage failed for "${teamName}":`, err)
     })
 }
 

@@ -87,13 +87,13 @@ export function decideActivate(opts: {
 /** Resource bounds with design defaults, overridden by user input. */
 function defaultBounds(override?: Partial<Bounds>): Bounds {
     return {
-        maxMembers: 16,
+        maxMembers: 8,
         maxParallelMembers: 4,
         maxMessagesPerRun: 100,
         maxWallClockMinutes: 30,
         maxMemberTurns: 50,
         maxTasks: 200,
-        messagePayloadMaxBytes: 65536,
+        messagePayloadMaxBytes: 32768,
         messageUnreadMaxBytes: 1048576,
         ...override,
     }
@@ -102,7 +102,7 @@ function defaultBounds(override?: Partial<Bounds>): Bounds {
 /**
  * Candidate name pool for members whose name is omitted at creation. A name is
  * drawn at random and not reused within the same team. The pool (32) exceeds the
- * 16-member team cap, so it never runs out for a single team.
+ * 8-member team cap, so it never runs out for a single team.
  */
 export const MEMBER_NAME_POOL = [
     "alice", "bob", "carol", "dave", "erin", "frank", "grace", "henry",
@@ -890,8 +890,8 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
             if (team.status !== "live") {
                 return `Error: team "${args.team_id}" status is "${team.status}", not "live". Members can only be added before sessions are spawned (workflow calls).`
             }
-            if (team.members.length >= 8) {
-                return "Error: team already has 8 members (maximum)"
+            if (team.members.length >= team.bounds.maxMembers) {
+                return `Error: team already has ${team.bounds.maxMembers} members (maximum)`
             }
 
             // Load spec (must exist for a live team).
@@ -920,7 +920,7 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
             } else {
                 const pool = (MEMBER_NAME_POOL as readonly string[]).filter(n => !existingNames.has(n))
                 if (pool.length === 0) {
-                    return "Error: no available names left in the pool (all 20 taken by existing members)"
+                    return "Error: no available names left in the pool (all taken by existing members)"
                 }
                 memberName = pool[Math.floor(Math.random() * pool.length)]
             }

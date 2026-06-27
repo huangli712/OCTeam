@@ -57,6 +57,7 @@ function gate(opts: Partial<GatedStage> & Pick<GatedStage, "member" | "verifier"
         reference: opts.reference,
         verdict: opts.verdict,
         attempts: opts.attempts ?? 0,
+        invalidAttempts: opts.invalidAttempts ?? 0,
     }
 }
 
@@ -696,6 +697,64 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
         expect(task.tollgatePhase).toBe("escalate")
         expect(calls.some(c => c.sessionId === "ses_alice")).toBe(false)
         expect(calls.some(c => c.sessionId === "ses_carol")).toBe(true)
+    })
+})
+
+// --- INVALID cycle cap (P2 regression) ---
+
+describe("handleTollgateIdle: INVALID cycle cap (P2 regression)", () => {
+    test("maxInvalidCycles=2 -> the 3rd INVALID fails with tollgate_invalid:exhausted", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx(calls)
+        const task = makeTollgateTask({
+            gatedStages: [gate({ member: "alice", verifier: "bob" })],
+            tollgatePhase: "verify",
+            escalateTo: "carol",
+            maxInvalidCycles: 2,
+            // The verifier persistently cannot evaluate: every verify phase yields INVALID.
+            responses: { alice: "artifact", bob: V.invalid("cannot align") },
+        })
+        const runId = task.runId!
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+            ],
+        })
+
+        // INVALID #1: invalidAttempts 1, within cap -> escalate to carol.
+        await handleTollgateIdle(ctx, team, idle(team, "bob"))
+        expect(task.gatedStages![0].invalidAttempts).toBe(1)
+        expect(task.tollgatePhase).toBe("escalate")
+        expect(team.status).toBe("busy")
+        // Escalation handler reports done -> re-verify (verdict cleared).
+        await handleTollgateIdle(ctx, team, idle(team, "carol"))
+        expect(task.tollgatePhase).toBe("verify")
+
+        // INVALID #2: invalidAttempts 2, == cap (still within) -> escalate again.
+        await handleTollgateIdle(ctx, team, idle(team, "bob"))
+        expect(task.gatedStages![0].invalidAttempts).toBe(2)
+        expect(task.tollgatePhase).toBe("escalate")
+        expect(team.status).toBe("busy")
+        await handleTollgateIdle(ctx, team, idle(team, "carol"))
+        expect(task.tollgatePhase).toBe("verify")
+
+        // INVALID #3: invalidAttempts 3 > cap(2) -> the run FAILS (no more looping).
+        await handleTollgateIdle(ctx, team, idle(team, "bob"))
+        expect(task.gatedStages![0].invalidAttempts).toBe(3)
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        // The escalator was NOT re-dispatched on the exhausting cycle.
+        const carolCallsBefore = calls.filter(c => c.sessionId === "ses_carol").length
+        expect(carolCallsBefore).toBe(2) // exactly two escalations, not a third
+
+        // Run record classified as failed with the exhausted marker.
+        const record = await readRunRecord(team.directory, runId)
+        expect(record).not.toBeNull()
+        expect(record!.status).toBe("failed")
+        expect(record!.reason).toContain("tollgate_invalid:exhausted")
     })
 })
 

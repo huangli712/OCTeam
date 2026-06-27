@@ -537,15 +537,20 @@ async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<bool
 
     if (task.signoffPolicy === "decider") {
         const decider = team.members.find(m => m.name === task.signoffDecider && !m.isMaster)
-        if (!decider?.sessionId) {
+        // Require a LIVE, non-errored decider (mirrors maybeTriggerReduce guard):
+        // dispatching to an errored member would flip it back to running, violating
+        // the errored-is-terminal invariant.
+        if (!decider?.sessionId || decider.status === "errored") {
             // decider unavailable, fall back to direct delivery
             task.signoffStage = false
             return false
         }
         await dispatchToMember(ctx, decider, reviewPrompt, decider.worktreePath ?? ctx.directory, team)
     } else if (task.signoffPolicy === "peer-quorum") {
-        // Dispatch to all non-master members with a session.
-        const reviewers = team.members.filter(m => !m.isMaster && m.sessionId)
+        // Dispatch to all non-master members with a session. Exclude errored
+        // members: they are terminal and must not be revived by a signoff
+        // dispatch (mirrors maybeTriggerReduce's errored guard).
+        const reviewers = team.members.filter(m => !m.isMaster && m.sessionId && m.status !== "errored")
         if (reviewers.length === 0) {
             task.signoffStage = false
             return false
@@ -583,8 +588,10 @@ async function handleSignoffIdle(ctx: PluginContext, team: Team, member: MemberS
         clearActiveTask(team)
         team.status = "idle"
     } else if (task.signoffPolicy === "peer-quorum") {
-        // Wait for all reviewers to respond, then check quorum.
-        const reviewers = team.members.filter(m => !m.isMaster && m.sessionId).map(m => m.name)
+        // Wait for all reviewers to respond, then check quorum. Must use the
+        // SAME errored-exclusion as the dispatch site, else the denominator
+        // counts a member who will never respond, stalling to wall-clock.
+        const reviewers = team.members.filter(m => !m.isMaster && m.sessionId && m.status !== "errored").map(m => m.name)
         const { allResponded, reached } = isQuorumReached(
             task.signoffApprovals ?? {},
             reviewers.length,
@@ -1101,6 +1108,7 @@ async function escalateInvalid(
     const task = team.activeTask
     if (!task) return
     stage.verdict = "INVALID"
+    stage.invalidAttempts++
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "verdict",
@@ -1108,6 +1116,16 @@ async function escalateInvalid(
         stage: task.currentStageIndex,
         detail: `INVALID:${reason}`,
     })
+    // Cap INVALID/escalate ping-pong: a persistently-INVALID verifier with an
+    // escalateTo handler would otherwise loop verify→escalate→verify until the
+    // wall-clock/turn budget is spent. Fail with a clear reason past the cap.
+    const maxI = task.maxInvalidCycles ?? 3
+    if (stage.invalidAttempts > maxI) {
+        await deliverSummaryToLeader(ctx, team, `tollgate_invalid:exhausted:${stage.member}`)
+        clearActiveTask(team)
+        team.status = "failed"
+        return
+    }
     const handler = team.members.find(m => m.name === task.escalateTo && !m.isMaster)
     if (handler?.sessionId) {
         task.tollgatePhase = "escalate"

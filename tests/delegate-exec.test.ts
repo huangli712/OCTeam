@@ -1,0 +1,175 @@
+import { describe, expect, test } from "bun:test"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
+import { processIdle } from "../src/orchestration/handlers.js"
+import { createTask, updateTask } from "../src/state/tasks.js"
+import type { ActiveTask, MemberState, Task } from "../src/core/types.js"
+import { AsyncMutex } from "../src/state/locks.js"
+import type { Team } from "../src/state/store.js"
+import type { PluginContext } from "../src/core/context.js"
+
+// --- fixtures (delegate execution path) ---
+
+/** A recorded promptAsync call: which session got which text. */
+type DispatchCall = { sessionId: string; text: string }
+
+/**
+ * Stub PluginContext. delegate does NOT use responses[] (per-task results go to
+ * master via team_send_message), so `messages` only needs to return an empty
+ * turn. `promptAsync` records each dispatch for assertion.
+ */
+function makeCtx(calls: DispatchCall[] = []): PluginContext {
+    return {
+        directory: "/app",
+        client: {
+            session: {
+                messages: async () => ({ data: [] }),
+                promptAsync: async (args: any) => {
+                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
+                    return { data: {} }
+                },
+            },
+        },
+    } as unknown as PluginContext
+}
+
+function makeDelegateTask(opts: Partial<ActiveTask> = {}): ActiveTask {
+    return {
+        type: "delegate",
+        startedAt: Date.now(),
+        wallClockTimeoutMs: 300000,
+        tokensUsed: 0,
+        tokensByMember: {},
+        messagesSent: 0,
+        responses: {},
+        stages: [],
+        currentStageIndex: 0,
+        decisionHistory: [],
+        decisionParseFailures: 0,
+        runId: crypto.randomUUID(),
+        signoffPolicy: "none",
+        ...opts,
+    } as ActiveTask
+}
+
+function makeTeam(opts: {
+    activeTask?: ActiveTask
+    members?: Array<Partial<MemberState> & Pick<MemberState, "name">>
+}): Team {
+    const members: MemberState[] = (opts.members ?? []).map(m => ({
+        name: m.name,
+        status: m.status ?? "idle",
+        initialized: m.initialized ?? true,
+        turnCount: m.turnCount ?? 0,
+        sessionId: m.sessionId,
+        agent: m.agent,
+        isMaster: m.isMaster,
+        lastNotifiedAt: m.lastNotifiedAt,
+    }))
+    return {
+        version: 1,
+        teamRunId: "test-run",
+        teamName: "test-team",
+        status: "busy",
+        leadSessionId: "ses_lead",
+        members,
+        bounds: {
+            maxMembers: 8,
+            maxParallelMembers: 4,
+            maxMessagesPerRun: 100,
+            maxWallClockMinutes: 30,
+            maxMemberTurns: 50,
+            maxTasks: 200,
+            messagePayloadMaxBytes: 32768,
+            messageUnreadMaxBytes: 1048576,
+        },
+        createdAt: 0,
+        activeTask: opts.activeTask,
+        mutex: new AsyncMutex(),
+        directory: mkdtempSync(join(tmpdir(), "octeam-del-")),
+    } as unknown as Team
+}
+
+/** Seed a task into the team store, optionally setting owner/status/blockers. */
+async function seedTask(
+    team: Team,
+    opts: { subject?: string; description?: string; status?: Task["status"]; owner?: string; blockedBy?: string[] },
+): Promise<Task> {
+    const t = await createTask(team.directory, {
+        subject: opts.subject ?? "task",
+        description: opts.description ?? "do it",
+        blockedBy: opts.blockedBy,
+    })
+    if (opts.owner || opts.status) {
+        await updateTask(team.directory, t.id, {
+            owner: opts.owner,
+            status: opts.status ?? "claimed",
+        })
+    }
+    return t
+}
+
+// --- termination tail (runDelegateStyleTail via processIdle) ---
+
+describe("handleDelegateIdle (via processIdle): termination tail", () => {
+    test("all tasks complete -> delivers delegate_complete and idles", async () => {
+        const calls: DispatchCall[] = []
+        const team = makeTeam({
+            activeTask: makeDelegateTask(),
+            members: [{ name: "alice", sessionId: "ses_alice" }],
+        })
+        await seedTask(team, { subject: "done", description: "x", status: "completed" })
+
+        await processIdle(makeCtx(calls), team, team.members[0], "ses_alice")
+
+        expect(team.status).toBe("idle")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("delegate_complete")
+    })
+
+    test("no claimable tasks with all members idle -> delegate_deadlock failure", async () => {
+        const calls: DispatchCall[] = []
+        const team = makeTeam({
+            activeTask: makeDelegateTask(),
+            members: [{ name: "alice", sessionId: "ses_alice" }],
+        })
+        // A pending task blocked by an incomplete (never-completing) dependency.
+        const blocker = await seedTask(team, { subject: "blocker", description: "x", status: "in_progress" })
+        await seedTask(team, {
+            subject: "stuck",
+            description: "x",
+            status: "pending",
+            blockedBy: [blocker.id],
+        })
+
+        await processIdle(makeCtx(calls), team, team.members[0], "ses_alice")
+
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("delegate_deadlock")
+    })
+
+    test("a claimable task with an idle member -> re-prompts that member (run stays live)", async () => {
+        const calls: DispatchCall[] = []
+        const team = makeTeam({
+            activeTask: makeDelegateTask(),
+            members: [{ name: "alice", sessionId: "ses_alice" }],
+        })
+        await seedTask(team, { subject: "available", description: "x", status: "pending" })
+
+        await processIdle(makeCtx(calls), team, team.members[0], "ses_alice")
+
+        expect(team.status).toBe("busy")
+        expect(team.activeTask).toBeDefined()
+        // The idle member is nudged toward the claimable task.
+        const aliceCall = calls.find(c => c.sessionId === "ses_alice")
+        expect(aliceCall).toBeDefined()
+        expect(aliceCall!.text).toContain("task(s) available")
+    })
+})

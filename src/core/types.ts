@@ -81,7 +81,7 @@ export type TeamState = {
 // --- Bounds (resource limits, Section 8) ---
 
 export type Bounds = {
-    maxMembers: number                 // default 16, hard cap
+    maxMembers: number                 // default 8; effective per-team member cap (enforced in add_member)
     maxParallelMembers: number         // default 4, concurrent spawn limit
     maxMessagesPerRun: number          // default 100, total messages per orchestration
     maxWallClockMinutes: number        // default 30, hard wall-clock limit
@@ -179,6 +179,7 @@ export type ActiveTask = {
     tollgatePhase?: "produce" | "verify" | "escalate"       // explicit three-phase state (avoids a two-value gate-stage deadlock)
     escalateTo?: string            // INVALID escalation target member (optional; when unset, INVALID is escalated to the leader)
     maxGateRetries?: number        // gate FAIL retry cap, DISTINCT from provider-retry maxRetries (default 0: first FAIL fails)
+    maxInvalidCycles?: number      // cap on INVALID/escalate ping-pong per gate (default 3); beyond it the run fails with tollgate_invalid:exhausted instead of looping to wall-clock
 
     // require_done_ack (parallel isolated/collaborative only): when true, the
     // barrier waits for every participant's `declaredDone === true` instead of
@@ -287,6 +288,7 @@ export type GatedStage = {
     reference?: string                 // golden reference location (Compare-style numerical verdict)
     verdict?: Verdict                  // last verdict rendered by this gate
     attempts: number                   // FAIL retry count against maxGateRetries
+    invalidAttempts: number            // INVALID/escalate cycle count against maxInvalidCycles
 }
 
 export type DecisionRecord = {
@@ -331,7 +333,6 @@ export type Task = {
     description: string
     status: TaskStatus
     owner?: string                     // member name who claimed
-    blocks: string[]                   // task IDs this blocks
     blockedBy: string[]                // task IDs that must complete first
     createdAt: number
     updatedAt: number

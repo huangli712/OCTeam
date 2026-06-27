@@ -21,6 +21,11 @@ import {
 } from "../state/paths.js"
 import type { Message } from "../core/types.js"
 
+// Max lines retained in mailbox/{recipient}.processed.jsonl (audit log). The
+// log is append-only by nature; without a cap it grows unbounded across a
+// long-lived team. Pruning keeps the most recent entries (see ackMessages).
+const PROCESSED_MAX_LINES = 1000
+
 // --- low-level jsonl helpers ---
 
 async function appendJsonl(filePath: string, obj: unknown): Promise<void> {
@@ -112,6 +117,31 @@ export async function ackMessages(
             // already removed
         })
     }
+    // Retention: cap the audit log so it doesn't grow unbounded.
+    await pruneProcessedLog(teamDirectory, recipient)
+}
+
+/**
+ * Cap mailbox/{recipient}.processed.jsonl at PROCESSED_MAX_LINES entries,
+ * keeping the most recent. Runs under the mailbox lock so concurrent acks and
+ * the stale-reservation reaper can't race the truncate-and-rewrite. Best-effort
+ * on read errors (a malformed/missing log is left untouched).
+ */
+async function pruneProcessedLog(teamDirectory: string, recipient: string): Promise<void> {
+    return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
+        const p = processedPath(teamDirectory, recipient)
+        let raw: string
+        try {
+            raw = await fs.readFile(p, "utf8")
+        } catch (err: unknown) {
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") return
+            throw err
+        }
+        const lines = raw.split("\n").filter(l => l.length > 0)
+        if (lines.length <= PROCESSED_MAX_LINES) return
+        const kept = lines.slice(lines.length - PROCESSED_MAX_LINES)
+        await atomicWrite(p, kept.join("\n") + "\n")
+    })
 }
 
 /**
