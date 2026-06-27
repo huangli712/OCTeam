@@ -25,7 +25,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
 import { ensureMembersReady, advanceToStage, dispatchToMember } from "../orchestration/dispatch.js"
-import { createTask, updateTask } from "../state/tasks.js"
+import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import { activationError, resolveCallerInTeam } from "../core/utils.js"
 import type { ActiveTask, GatedStage, RouteBranch, Stage } from "../core/types.js"
 import { advanceToGatedStage, buildDebatePrompt, buildRecursePrompt } from "../orchestration/handlers.js"
@@ -532,6 +532,57 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
 
 // --- team_delegate ---
 
+/**
+ * Detect a cycle in the blocked_by dependency graph declared by a delegate
+ * call. Nodes are task refs; an edge ref -> dep means the ref'd task is
+ * blocked_by dep. Returns the offending cycle path (e.g. ["A","B","A"]) or null
+ * when the graph is acyclic. Only ref-bearing tasks can be dependency targets,
+ * so a ref-less task is a pure source that cannot close a cycle. Callers must
+ * have already validated that every blocked_by entry is a declared ref.
+ */
+function detectBlockedByCycle(
+    tasks: { ref?: string; blocked_by?: string[] }[],
+): string[] | null {
+    // Adjacency keyed by ref: ref -> refs it is blocked_by. Every blocked_by
+    // entry is a declared ref (caller-validated), hence always a key here.
+    const adjacency = new Map<string, string[]>()
+    for (const t of tasks) {
+        if (t.ref) adjacency.set(t.ref, t.blocked_by ?? [])
+    }
+    const UNVISITED = 0
+    const IN_PATH = 1
+    const DONE = 2
+    const state = new Map<string, number>()
+    const path: string[] = []
+
+    const walk = (node: string): string[] | null => {
+        state.set(node, IN_PATH)
+        path.push(node)
+        for (const dep of adjacency.get(node) ?? []) {
+            const s = state.get(dep) ?? UNVISITED
+            if (s === IN_PATH) {
+                // Back-edge: close the cycle from dep's first occurrence.
+                return [...path.slice(path.indexOf(dep)), dep]
+            }
+            if (s === UNVISITED) {
+                const cycle = walk(dep)
+                if (cycle) return cycle
+            }
+        }
+        path.pop()
+        state.set(node, DONE)
+        return null
+    }
+
+    for (const node of adjacency.keys()) {
+        if ((state.get(node) ?? UNVISITED) === UNVISITED) {
+            const cycle = walk(node)
+            if (cycle) return cycle
+        }
+    }
+    return null
+}
+
 export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
@@ -547,7 +598,8 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                         blocked_by: tool.schema.array(tool.schema.string()).optional(),
                     }),
                 )
-                .min(1),
+                .min(1)
+                .max(200),
             signoff_policy: tool.schema
                 .enum(["none", "decider", "peer-quorum"])
                 .optional()
@@ -593,6 +645,16 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 }
             }
 
+            // wf-006: reject blocked_by cycles. The ref-existence check above only
+            // proves each dependency target exists; a cycle (A blocked_by B, B
+            // blocked_by A) still passes it but leaves every task in the cycle
+            // permanently unclaimable until the wall-clock deadlock backstop fires.
+            // Catch it here with a precise error instead.
+            const cycle = detectBlockedByCycle(args.tasks)
+            if (cycle) {
+                return `Error: blocked_by cycle detected: ${cycle.join(" -> ")}`
+            }
+
             // Validate signoff_decider is a real member.
             if (args.signoff_policy === "decider") {
                 if (!args.signoff_decider) {
@@ -612,30 +674,30 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
 
             await ensureMembersReady(ctx, team)
 
+            let capError: string | undefined
             await team.mutex.runExclusive(async () => {
                 if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
-                team.status = "busy"
-                team.activeTask = {
-                    type: "delegate",
-                    runId: crypto.randomUUID(),
-                    startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                    tokenBudget: args.token_budget,
-                    tokensUsed: 0,
-                    tokensByMember: {},
-                    messagesSent: 0,
-                    responses: {},
-                    stages: [],
-                    currentStageIndex: 0,
-                    decisionHistory: [],
-                    decisionParseFailures: 0,
-                    signoffPolicy: args.signoff_policy ?? "none",
-                    signoffDecider: args.signoff_decider,
-                    signoffQuorum: args.signoff_quorum,
-                    maxErroredMembers: args.max_errored_members,
-                    maxRetries: args.max_retries,
+
+                // wf-002: enforce the team's live-task ceiling BEFORE creating any
+                // task. delegate bypasses team_task_create (which enforces this) and
+                // calls createTask directly, so without this a single call could
+                // flood the shared tasklist past bounds.maxTasks (resource DoS).
+                // Counting + creating both run under the mutex so the count cannot
+                // be raced by a concurrent create.
+                const liveTaskCount = (await listAllTasks(team.directory)).filter(
+                    t => t.status !== "deleted",
+                ).length
+                if (liveTaskCount + args.tasks.length > team.bounds.maxTasks) {
+                    capError = `Error: team task limit reached (${team.bounds.maxTasks}). ${liveTaskCount} live task(s) exist; cannot add ${args.tasks.length} more.`
+                    return
                 }
 
+                // wf-003: create every task BEFORE committing activeTask/status, so
+                // a mid-loop failure (disk full, lock error) leaves the team idle
+                // rather than wedged in "busy" with an unpersisted activeTask. This
+                // restores parity with the other workflow tools, whose only
+                // throwable step after committing activeTask is saveTeamState.
+                //
                 // Create all tasks, building ref -> uuid and index -> uuid maps,
                 // then resolve blockedBy. The index map keys every task by its
                 // position so blocked_by is applied even to tasks without their
@@ -663,6 +725,29 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     }
                 }
 
+                // Commit activeTask only after all tasks are durably created.
+                team.status = "busy"
+                team.activeTask = {
+                    type: "delegate",
+                    runId: crypto.randomUUID(),
+                    startedAt: Date.now(),
+                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
+                    tokenBudget: args.token_budget,
+                    tokensUsed: 0,
+                    tokensByMember: {},
+                    messagesSent: 0,
+                    responses: {},
+                    stages: [],
+                    currentStageIndex: 0,
+                    decisionHistory: [],
+                    decisionParseFailures: 0,
+                    signoffPolicy: args.signoff_policy ?? "none",
+                    signoffDecider: args.signoff_decider,
+                    signoffQuorum: args.signoff_quorum,
+                    maxErroredMembers: args.max_errored_members,
+                    maxRetries: args.max_retries,
+                }
+
                 await saveTeamState(team)
                 for (const m of team.members) {
                     m.declaredDone = false
@@ -679,6 +764,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 }
             })
             if (raced) return "Error: team already has an active orchestration"
+            if (capError) return capError
             return `team_delegate started on "${args.team_id}" with ${args.tasks.length} task(s).`
         },
     })

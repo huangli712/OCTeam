@@ -49,10 +49,40 @@ function stripRuntimeFields(team: Team): TeamState {
     return state
 }
 
-async function readJsonOrNull<T>(filePath: string): Promise<T | null> {
+/**
+ * Minimal top-level schema check for a persisted TeamState. The `as TeamState`
+ * cast is compile-time only; a corrupt, truncated, or hand-edited state.json can
+ * deserialize to an arbitrary shape. Validate just the identity fields every
+ * load path immediately dereferences so bad data is rejected at the boundary
+ * instead of propagating undefined access. Nested optional fields (activeTask,
+ * bounds) are intentionally not checked.
+ */
+function isValidTeamState(value: unknown): value is TeamState {
+    if (typeof value !== "object" || value === null) return false
+    const s = value as Record<string, unknown>
+    return (
+        typeof s.teamName === "string"
+        && Array.isArray(s.members)
+        && typeof s.status === "string"
+        && typeof s.version === "number"
+    )
+}
+
+async function readJsonOrNull<T>(
+    filePath: string,
+    validate?: (value: unknown) => value is T,
+): Promise<T | null> {
     try {
         const raw = await fs.readFile(filePath, "utf8")
-        return JSON.parse(raw) as T
+        const parsed: unknown = JSON.parse(raw)
+        if (validate && !validate(parsed)) {
+            // Structurally valid JSON but wrong shape (corrupt / tampered).
+            // Reject rather than trusting the cast; the caller takes its
+            // not-found path instead of propagating garbage.
+            console.warn(`[octeam] readJsonOrNull: schema validation failed for ${filePath}`)
+            return null
+        }
+        return parsed as T
     } catch (err: unknown) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
         throw err
@@ -81,7 +111,7 @@ export async function loadTeamState(
     const dir = teamDir(storageRoot, teamName, leadSessionId)
     let team = teamRegistry.get(dir)
     if (!team) {
-        const state = await readJsonOrNull<TeamState>(statePath(dir))
+        const state = await readJsonOrNull<TeamState>(statePath(dir), isValidTeamState)
         if (!state) {
             throw new Error(`loadTeamState: no state.json for team "${teamName}"`)
         }

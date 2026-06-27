@@ -1,10 +1,10 @@
 /** @jsxImportSource @opentui/solid */
-// @ts-nocheck
 
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 import { createMemo } from "solid-js"
+// @ts-expect-error JSON import requires resolveJsonModule, set in tsconfig (out of scope); bundler resolves it at build time
 import { version as packageVersion } from "../../package.json"
-import { SessionNavigatorSidebar } from "./sidebar"
+import { SessionNavigatorSidebar } from "./sidebar.jsx"
 
 const tui: TuiPlugin = async (api) => {
     try {
@@ -12,7 +12,7 @@ const tui: TuiPlugin = async (api) => {
             order: 150,
             slots: {
                 sidebar_content: (ctx, value) => {
-                    const theme = createMemo(() => (ctx as any).theme.current)
+                    const theme = createMemo(() => ctx.theme.current)
                     return (
                         <SessionNavigatorSidebar
                             api={api}

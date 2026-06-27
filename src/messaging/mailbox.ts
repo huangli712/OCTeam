@@ -35,17 +35,46 @@ async function appendJsonl(filePath: string, obj: unknown): Promise<void> {
     await fs.appendFile(filePath, JSON.stringify(obj) + "\n", "utf8")
 }
 
+/**
+ * Minimal top-level schema check for a mailbox Message. Each jsonl line is
+ * parsed and cast to Message; a corrupt or tampered line can be valid JSON yet
+ * miss the fields delivery/formatting dereference. Validate just id/from/body so
+ * wrong-shape entries are skipped alongside the already-skipped malformed lines.
+ */
+function isValidMessage(value: unknown): value is Message {
+    if (typeof value !== "object" || value === null) return false
+    const m = value as Record<string, unknown>
+    return (
+        typeof m.id === "string"
+        && typeof m.from === "string"
+        && typeof m.body === "string"
+    )
+}
+
 async function readJsonl(filePath: string): Promise<Message[]> {
     try {
         const raw = await fs.readFile(filePath, "utf8")
         const lines = raw.split("\n").filter(l => l.length > 0)
         const out: Message[] = []
+        let skipped = 0
         for (const line of lines) {
+            let parsed: unknown
             try {
-                out.push(JSON.parse(line) as Message)
+                parsed = JSON.parse(line)
             } catch {
-                // skip malformed line
+                skipped++
+                continue
             }
+            if (!isValidMessage(parsed)) {
+                // Valid JSON but wrong shape (corrupt / tampered): skip it the
+                // same way malformed lines are skipped.
+                skipped++
+                continue
+            }
+            out.push(parsed)
+        }
+        if (skipped > 0) {
+            console.warn(`[octeam] readJsonl: skipped ${skipped} invalid message line(s) in ${filePath}`)
         }
         return out
     } catch (err: unknown) {

@@ -73,10 +73,34 @@ function assertValidTaskId(taskId: string): void {
     }
 }
 
+/**
+ * Minimal top-level schema check for a persisted Task. The `as Task` cast is
+ * compile-time only; a corrupt or hand-edited tasks/{id}.json can deserialize to
+ * an arbitrary shape. Validate just the identity fields the task list and
+ * orchestration immediately depend on; nested/optional fields are not checked.
+ */
+function isValidTask(value: unknown): value is Task {
+    if (typeof value !== "object" || value === null) return false
+    const t = value as Record<string, unknown>
+    return (
+        typeof t.id === "string"
+        && typeof t.subject === "string"
+        && typeof t.status === "string"
+    )
+}
+
 async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task | null> {
     try {
         const raw = await fs.readFile(taskPath(teamDirectory, taskId), "utf8")
-        return JSON.parse(raw) as Task
+        const parsed: unknown = JSON.parse(raw)
+        if (!isValidTask(parsed)) {
+            // Corrupt / tampered task file: reject so callers take the not-found
+            // path (getTask -> null; listAllTasks skips it) instead of trusting
+            // the cast and propagating garbage.
+            console.warn(`[octeam] readTaskFile: schema validation failed for task ${taskId}`)
+            return null
+        }
+        return parsed
     } catch (err: unknown) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
         throw err

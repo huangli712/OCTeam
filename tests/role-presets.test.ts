@@ -20,13 +20,17 @@ describe("ROLES catalogue", () => {
         }
     })
 
-    test("DEFAULT_ROLE is a real role", () => {
-        expect(DEFAULT_ROLE).toBe("almighty")
+    test("DEFAULT_ROLE is a real, read-only role (fail-safe to least privilege)", () => {
+        expect(DEFAULT_ROLE).toBe("reviewer")
+        expect(ROLE_NAMES).toContain("reviewer")
+        // The silent fallback must map to a read-only agent, never "build".
+        expect(roleAgent(DEFAULT_ROLE)).toBe("oracle")
+        // "almighty" remains a valid, explicitly-selectable role.
         expect(ROLE_NAMES).toContain("almighty")
     })
 })
 
-describe("normalizeRole (closed enum, unknown → almighty)", () => {
+describe("normalizeRole (closed enum, unknown → reviewer)", () => {
     test("known roles map to themselves", () => {
         for (const name of ROLE_NAMES) {
             expect(normalizeRole(name)).toBe(name)
@@ -38,15 +42,15 @@ describe("normalizeRole (closed enum, unknown → almighty)", () => {
         expect(normalizeRole("REVIEWER")).toBe("reviewer")
     })
 
-    test("unknown role falls back to almighty", () => {
-        expect(normalizeRole("frobnicator")).toBe("almighty")
-        expect(normalizeRole("")).toBe("almighty")
+    test("unknown role falls back to the read-only reviewer role", () => {
+        expect(normalizeRole("frobnicator")).toBe("reviewer")
+        expect(normalizeRole("")).toBe("reviewer")
     })
 
     test("inherited Object keys do not falsely match", () => {
-        expect(normalizeRole("constructor")).toBe("almighty")
-        expect(normalizeRole("toString")).toBe("almighty")
-        expect(normalizeRole("hasOwnProperty")).toBe("almighty")
+        expect(normalizeRole("constructor")).toBe("reviewer")
+        expect(normalizeRole("toString")).toBe("reviewer")
+        expect(normalizeRole("hasOwnProperty")).toBe("reviewer")
     })
 })
 
@@ -77,9 +81,9 @@ describe("roleAgent (role → fixed agent)", () => {
         expect(roleAgent("fantast")).toBe("oracle")
     })
 
-    test("almighty (fallback) uses build", () => {
+    test("almighty uses build; unknown roles fall back to read-only oracle", () => {
         expect(roleAgent("almighty")).toBe("build")
-        expect(roleAgent("frobnicator")).toBe("build")
+        expect(roleAgent("frobnicator")).toBe("oracle")
     })
 
     test("is case-insensitive", () => {
@@ -94,8 +98,8 @@ describe("rolePreset (always a non-empty instruction)", () => {
         expect(rolePreset("Reviewer")).toBe(ROLES.reviewer.instruction)
     })
 
-    test("unknown role returns the almighty instruction", () => {
-        expect(rolePreset("frobnicator")).toBe(ROLES.almighty.instruction)
+    test("unknown role returns the reviewer instruction", () => {
+        expect(rolePreset("frobnicator")).toBe(ROLES.reviewer.instruction)
         expect(rolePreset("").length).toBeGreaterThan(0)
     })
 })
@@ -124,14 +128,14 @@ describe("buildRolePrompt role-instruction injection", () => {
         expect(out.indexOf("<role-instruction>")).toBeLessThan(out.indexOf("<user-instruction>"))
     })
 
-    test("unknown role still injects the almighty instruction", () => {
+    test("unknown role still injects the reviewer instruction", () => {
         const out = buildRolePrompt(
             { name: "alice", role: "frobnicator", prompt: "do the thing" },
             "t",
             peers,
         )
         expect(out).toContain("<role-instruction>")
-        expect(out).toContain(ROLES.almighty.instruction)
+        expect(out).toContain(ROLES.reviewer.instruction)
         expect(out).toContain("do the thing")
     })
 })

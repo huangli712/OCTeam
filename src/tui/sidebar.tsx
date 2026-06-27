@@ -1,9 +1,9 @@
 /** @jsxImportSource @opentui/solid */
-// @ts-nocheck
 
+import type { TuiPluginApi, TuiThemeCurrent } from "@opencode-ai/plugin/tui"
 import { createSignal, createEffect, on, onCleanup, For } from "solid-js"
-import { loadChildren, type SessionTreeNode } from "./session-tree"
-import { loadTeams, type TeamSummary } from "./teams"
+import { loadChildren, type SessionTreeNode } from "./session-tree.js"
+import { loadTeams, type TeamSummary } from "./teams.js"
 
 // Status colors: green=running, red=finished, purple=error
 const COLOR_RUNNING = "#22c55e"
@@ -13,9 +13,9 @@ const COLOR_ACTIVE = "#22c55e"
 const COLOR_INACTIVE = "#ef4444"
 
 export function SessionNavigatorSidebar(props: {
-    api: any
+    api: TuiPluginApi
     sessionID: () => string
-    theme: any
+    theme: TuiThemeCurrent
     version: string
 }) {
     const [sessions, setSessions] = createSignal<SessionTreeNode[]>([])
@@ -24,10 +24,10 @@ export function SessionNavigatorSidebar(props: {
     // Persist collapsed state in kv — survives component remount when navigating
     // to child sessions and back (sidebar unmounts/remounts)
     const [collapsed, setCollapsed] = createSignal<boolean>(
-        props.api.kv.get("octeam_tasks_collapsed") ?? true
+        props.api.kv.get<boolean>("octeam_tasks_collapsed") ?? true
     )
     const [teamsCollapsed, setTeamsCollapsed] = createSignal<boolean>(
-        props.api.kv.get("octeam_teams_collapsed") ?? false
+        props.api.kv.get<boolean>("octeam_teams_collapsed") ?? false
     )
     const [rootSessionId, setRootSessionId] = createSignal<string | null>(null)
 
@@ -56,6 +56,18 @@ export function SessionNavigatorSidebar(props: {
         }
     }
 
+    // Debounce refresh: session events arrive in bursts (created/status/
+    // updated/deleted). Each refresh runs N+1 HTTP calls plus O(n^2) childCount
+    // work, so coalesce rapid events into a single refresh after a short delay.
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined
+    const scheduleRefresh = () => {
+        clearTimeout(refreshTimer)
+        refreshTimer = setTimeout(() => {
+            refresh()
+            refreshTeams()
+        }, 150)
+    }
+
     createEffect(
         on(props.sessionID, (sid) => {
             if (!sid) return
@@ -67,13 +79,14 @@ export function SessionNavigatorSidebar(props: {
             refreshTeams()
 
             const unsubs = [
-                props.api.event.on("session.created", refresh),
-                props.api.event.on("session.status", () => { refresh(); refreshTeams() }),
-                props.api.event.on("session.updated", refresh),
-                props.api.event.on("session.deleted", refresh),
+                props.api.event.on("session.created", scheduleRefresh),
+                props.api.event.on("session.status", scheduleRefresh),
+                props.api.event.on("session.updated", scheduleRefresh),
+                props.api.event.on("session.deleted", scheduleRefresh),
             ]
 
             onCleanup(() => {
+                clearTimeout(refreshTimer)
                 for (const u of unsubs) {
                     try { u() } catch { /* best effort */ }
                 }

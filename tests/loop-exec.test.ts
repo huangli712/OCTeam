@@ -235,4 +235,38 @@ describe("handleLoopIdle (via processIdle): decider termination", () => {
         expect(leaderCall).toBeDefined()
         expect(leaderCall!.text).toContain("loop_complete:max_rounds")
     })
+
+    test("final round but all read-only stages report no_issues -> succeeds (no_issues wins over max_rounds)", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeLoopTask({
+            stages: [
+                { member: "alice", task: "write code", completed: true },
+                { member: "bob", task: "decide", action: "read_only", completed: false },
+            ],
+            deciderMember: "bob",
+            currentStageIndex: 1,
+            currentRound: 3,
+            maxRounds: 3,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        // The decider is a read-only stage, so for the no_issues path to trigger
+        // every read-only stage (here only the decider) must report <no_issues/>.
+        // The decider still emits a "continue" decision; without the ordering fix
+        // this clean final round would be misreported as a max_rounds failure.
+        const ctx = makeCtx({ ses_bob: `${CONTINUE()}\n<no_issues/>` }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(team.status).toBe("idle")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("loop_complete:no_issues")
+    })
 })

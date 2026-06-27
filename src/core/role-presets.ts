@@ -1,7 +1,7 @@
 /**
  * The team's role catalogue. Each member's `role` is a closed enum: it must be
  * one of the keys below, and any unrecognized value normalizes to DEFAULT_ROLE
- * ("almighty"). Each role fixes two things in code:
+ * ("reviewer", a read-only role). Each role fixes two things in code:
  *   - agent:       which OpenCode agent the member runs as (role → agent is
  *                  hardcoded here; team_create/team_fix_member derive it from the role).
  *   - instruction: the preset role guidance injected into the member's
@@ -207,15 +207,21 @@ export const ROLES: Record<string, RoleDef> = {
     },
 }
 
-/** Role assigned when a member's role does not match any preset. */
-export const DEFAULT_ROLE = "almighty"
+/**
+ * Role assigned when a member's role does not match any preset. This is a
+ * read-only role ("reviewer" -> oracle agent) on purpose: an unrecognized role
+ * (e.g. a typo) must fail safe to least privilege, never silently escalate to a
+ * full write-capable agent ("almighty" -> build). "almighty" stays available as
+ * an explicit opt-in role, but is no longer the silent fallback.
+ */
+export const DEFAULT_ROLE = "reviewer"
 
 /** All preset role names (the closed enum of valid roles). */
 export const ROLE_NAMES: string[] = Object.keys(ROLES)
 
 /**
  * Normalize a role label to a preset role key. Matching is case-insensitive;
- * anything not in ROLES collapses to DEFAULT_ROLE ("almighty"). Uses an own-
+ * anything not in ROLES collapses to DEFAULT_ROLE ("reviewer"). Uses an own-
  * property check so inherited Object keys ("toString", "constructor", …) never
  * falsely match.
  */

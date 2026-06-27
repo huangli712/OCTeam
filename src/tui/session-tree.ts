@@ -5,6 +5,8 @@
  * and maps them to display-friendly nodes.
  */
 
+import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
+
 /** Display status derived from OpenCode SessionStatus. */
 export type DisplayStatus = "running" | "idle" | "errored"
 
@@ -30,16 +32,27 @@ export function mapStatus(raw: { type: string } | undefined | null): DisplayStat
 }
 
 /**
+ * Minimal message shape consumed by the pure helpers below. The real API
+ * returns richer Message objects; we only read these optional fields.
+ */
+type MessageRow = {
+    info?: {
+        agent?: string
+        time?: { created?: number; completed?: number }
+    }
+}
+
+/**
  * Extract agent name from message data.
  * Message API returns { info: { agent: "explore", ... } }.
  * Falls back to title parsing (@agent subagent) if no messages.
  */
-function extractAgentName(messages: any[], title: string): string {
+export function extractAgentName(messages: MessageRow[], title: string): string {
     for (const msg of messages) {
         const agent = msg?.info?.agent
         if (agent) return agent
     }
-    const match = title.match(/@(\w+)\s+subagent/)
+    const match = title.match(/@([\w-]+)\s+subagent/)
     if (match) return match[1]
     return "task"
 }
@@ -60,7 +73,7 @@ function formatTime(created: number | undefined): string {
 /**
  * Format milliseconds as compact duration string.
  */
-function formatMs(ms: number): string {
+export function formatMs(ms: number): string {
     if (ms < 0) return ""
     const seconds = Math.floor(ms / 1000)
     if (seconds < 60) return `${seconds}s`
@@ -77,7 +90,7 @@ function formatMs(ms: number): string {
  * - AssistantMessage.time has created + completed
  * Duration = last message time - first message time.
  */
-function computeDuration(messages: any[]): string {
+export function computeDuration(messages: MessageRow[]): string {
     if (!messages || messages.length === 0) return ""
     const first = messages[0]?.info?.time?.created
     if (!first) return ""
@@ -97,15 +110,7 @@ function computeDuration(messages: any[]): string {
  * has message data for sessions that have been viewed.
  */
 export async function loadChildren(
-    api: {
-        client: {
-            session: {
-                list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: Array<{ id: string; title?: string; parentID?: string; time?: { created?: number } }> }>
-                messages: (params: { sessionID: string; limit?: number }) => Promise<{ data?: any[] }>
-            }
-        }
-        state: { session: { status: (id: string) => { type: string } | undefined } }
-    },
+    api: Pick<TuiPluginApi, "client" | "state">,
     currentSessionId: string,
 ): Promise<SessionTreeNode[]> {
     const result = await api.client.session.list()
@@ -114,7 +119,7 @@ export async function loadChildren(
 
     const nodes = await Promise.all(children.map(async s => {
         let duration = ""
-        let messages: any[] = []
+        let messages: MessageRow[] = []
         try {
             const msgResult = await api.client.session.messages({ sessionID: s.id, limit: 100 })
             messages = msgResult?.data ?? []

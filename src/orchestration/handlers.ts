@@ -830,17 +830,21 @@ async function handleLoopIdle(ctx: PluginContext, team: Team, member: MemberStat
         return
     }
 
-    if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
-        await deliverSummaryToLeader(ctx, team, "loop_complete:max_rounds")
-        clearActiveTask(team)
-        team.status = "failed"
-        return
-    }
-
+    // Check genuine completion before the max_rounds cap: if every read-only
+    // stage reports <no_issues/>, the work is actually done and the run should
+    // succeed — even on the final round. Checking max_rounds first would
+    // misreport a clean final round as a max_rounds failure.
     if (allReadOnlyStagesReportNoIssues(task)) {
         await deliverSummaryToLeader(ctx, team, "loop_complete:no_issues")
         clearActiveTask(team)
         team.status = "idle"
+        return
+    }
+
+    if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
+        await deliverSummaryToLeader(ctx, team, "loop_complete:max_rounds")
+        clearActiveTask(team)
+        team.status = "failed"
         return
     }
 

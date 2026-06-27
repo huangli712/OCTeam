@@ -1,6 +1,3 @@
-/** @jsxImportSource @opentui/solid */
-// @ts-nocheck
-
 /**
  * Phase 2.9: file-based team loader for the sidebar. Team/member/task state is
  * the server module's private TeamState — the TUI reads it
@@ -46,7 +43,7 @@ export type TeamSummary = {
  * unread (inbox) and total (inbox + processed). Reserved / in-flight messages
  * live in a separate dir and are intentionally not counted.
  */
-async function countMailbox(teamDir: string, recipient: string): Promise<{ unread: number; total: number }> {
+export async function countMailbox(teamDir: string, recipient: string): Promise<{ unread: number; total: number }> {
     const countLines = async (file: string): Promise<number> => {
         try {
             const raw = await fs.readFile(path.join(teamDir, "mailbox", file), "utf8")
