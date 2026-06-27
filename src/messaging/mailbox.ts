@@ -211,6 +211,25 @@ export async function countUnreadMessages(
     return (await readJsonl(inboxPath(teamDirectory, recipient))).length
 }
 
+// --- XML escaping (injection hardening) ---
+
+// Escape XML text content (message body). `&` MUST be replaced first so the
+// ampersands introduced for the other entities are not double-escaped.
+function escapeXmlText(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+}
+
+// Escape an XML attribute value (from, correlationId). Builds on text escaping
+// and additionally neutralizes the quotes that could close the attribute.
+function escapeXmlAttr(value: string): string {
+    return escapeXmlText(value)
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+}
+
 /**
  * Format messages for injection as a synthetic user message. Shared by the
  * Transform hook (member delivery) and the master drain path so both routes
@@ -222,8 +241,8 @@ export async function countUnreadMessages(
  */
 export function formatMailboxInjection(msgs: Message[]): string {
     const render = (m: Message, prefix: string): string =>
-        `<team_message from="${m.from}"${m.correlationId ? ` correlationId="${m.correlationId}"` : ""}>\n`
-        + `${prefix}${m.body}\n</team_message>`
+        `<team_message from="${escapeXmlAttr(m.from)}"${m.correlationId ? ` correlationId="${escapeXmlAttr(m.correlationId)}"` : ""}>\n`
+        + `${prefix}${escapeXmlText(m.body)}\n</team_message>`
     // Directives first (with marker), then regular messages in original order.
     const directives = msgs.filter(m => m.kind === "directive")
     const regular = msgs.filter(m => m.kind !== "directive")

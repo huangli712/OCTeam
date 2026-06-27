@@ -40,7 +40,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
             to: tool.schema.string().min(1).describe("member name, or \"*\" for broadcast (master-only)"),
             body: tool.schema.string().min(1).max(32768),
             summary: tool.schema.string().max(200).optional(),
-            correlation_id: tool.schema.string().optional(),
+            correlation_id: tool.schema.string().max(128).regex(/^[A-Za-z0-9_-]+$/, "correlation_id may contain only letters, digits, hyphen and underscore").optional(),
         },
         async execute(args, context) {
             const sender = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
