@@ -511,82 +511,97 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             } catch { /* best-effort */ }
             const specMember = spec?.members.find(m => m.name === args.member_name)
 
-            const changes: string[] = []
-
-            // --- new_name: rename member across state, spec, index, mailbox ---
-            if (args.new_name && args.new_name !== args.member_name) {
-                if (!(MEMBER_NAME_POOL as readonly string[]).includes(args.new_name)) {
+            // Validate new_name BEFORE taking the lock: these checks only read state
+            // and produce error returns, which cannot be issued from inside the
+            // mutex closure.
+            const renaming = !!(args.new_name && args.new_name !== args.member_name)
+            if (renaming) {
+                if (!(MEMBER_NAME_POOL as readonly string[]).includes(args.new_name!)) {
                     return `Error: name "${args.new_name}" is not a preset pool name. Choose one of: ${MEMBER_NAME_POOL.join(", ")}`
                 }
                 if (team.members.some(m => m.name === args.new_name)) {
                     return `Error: name "${args.new_name}" already exists in this team`
                 }
-                const oldName = member.name
-                member.name = args.new_name
-                if (specMember) specMember.name = args.new_name
-                if (member.sessionId) {
-                    unindexSession(member.sessionId)
-                    indexMember(member.sessionId, team.teamName, args.new_name, caller.leadSessionId, ctx.storageRoot)
+            }
+
+            const changes: string[] = []
+
+            // Hold the team mutex for all member-state mutations, the mailbox
+            // rename, spec edits, and persistence so a concurrent event handler
+            // sharing this in-memory Team cannot clobber the write (saveTeamState's
+            // contract requires the caller to already hold team.mutex). The agent
+            // registry lookup below is a read-only client call and is safe inside
+            // the lock (mirrors team_cancel's client.session.abort under its lock).
+            await team.mutex.runExclusive(async () => {
+                // --- new_name: rename member across state, spec, index, mailbox ---
+                if (renaming) {
+                    const oldName = member.name
+                    member.name = args.new_name!
+                    if (specMember) specMember.name = args.new_name!
+                    if (member.sessionId) {
+                        unindexSession(member.sessionId)
+                        indexMember(member.sessionId, team.teamName, args.new_name!, caller.leadSessionId, ctx.storageRoot)
+                    }
+                    try {
+                        await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, args.new_name!))
+                    } catch { /* inbox may not exist yet */ }
+                    if (team.activeTask) {
+                        const at = team.activeTask
+                        if (at.tokensByMember[oldName] !== undefined) {
+                            at.tokensByMember[args.new_name!] = at.tokensByMember[oldName]
+                            delete at.tokensByMember[oldName]
+                        }
+                        if (at.responses[oldName] !== undefined) {
+                            at.responses[args.new_name!] = at.responses[oldName]
+                            delete at.responses[oldName]
+                        }
+                        if (at.deciderMember === oldName) at.deciderMember = args.new_name!
+                        for (const s of at.stages) {
+                            if (s.member === oldName) s.member = args.new_name!
+                        }
+                    }
+                    changes.push(`name: ${oldName} → ${args.new_name}`)
                 }
-                try {
-                    await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, args.new_name))
-                } catch { /* inbox may not exist yet */ }
-                if (team.activeTask) {
-                    const at = team.activeTask
-                    if (at.tokensByMember[oldName] !== undefined) {
-                        at.tokensByMember[args.new_name] = at.tokensByMember[oldName]
-                        delete at.tokensByMember[oldName]
-                    }
-                    if (at.responses[oldName] !== undefined) {
-                        at.responses[args.new_name] = at.responses[oldName]
-                        delete at.responses[oldName]
-                    }
-                    if (at.deciderMember === oldName) at.deciderMember = args.new_name
-                    for (const s of at.stages) {
-                        if (s.member === oldName) s.member = args.new_name
+
+                // --- new_role: normalize to a preset role (unknown → almighty) ---
+                if (args.new_role && specMember) {
+                    specMember.role = normalizeRole(args.new_role)
+                    changes.push(`role: ${specMember.role}`)
+                }
+
+                // --- new_prompt: spec only (prompt is a config field) ---
+                if (args.new_prompt && specMember) {
+                    specMember.prompt = args.new_prompt
+                    changes.push("prompt: updated")
+                }
+
+                // --- agent: explicit new_agent wins; otherwise a changed role
+                // re-derives the agent (role → agent is fixed). Either way the
+                // bound model is re-resolved from the agent registry. ---
+                const targetAgent =
+                    args.new_agent ?? (args.new_role ? roleAgent(normalizeRole(args.new_role)) : undefined)
+                if (targetAgent) {
+                    member.agent = targetAgent
+                    if (specMember) specMember.agent = targetAgent
+                    try {
+                        const agentsRes = await ctx.client.app.agents({ query: { directory: ctx.directory } })
+                        const entry = (agentsRes.data ?? []).find(a => a.name === targetAgent)
+                        if (entry?.model) {
+                            const m = `${entry.model.providerID}/${entry.model.modelID}`
+                            member.model = m
+                            if (specMember) specMember.model = m
+                            changes.push(`agent: ${targetAgent}, model: ${m}`)
+                        } else {
+                            changes.push(`agent: ${targetAgent} (no bound model — model unchanged)`)
+                        }
+                    } catch {
+                        changes.push(`agent: ${targetAgent} (registry unavailable — model unchanged)`)
                     }
                 }
-                changes.push(`name: ${oldName} → ${args.new_name}`)
-            }
 
-            // --- new_role: normalize to a preset role (unknown → almighty) ---
-            if (args.new_role && specMember) {
-                specMember.role = normalizeRole(args.new_role)
-                changes.push(`role: ${specMember.role}`)
-            }
-
-            // --- new_prompt: spec only (prompt is a config field) ---
-            if (args.new_prompt && specMember) {
-                specMember.prompt = args.new_prompt
-                changes.push("prompt: updated")
-            }
-
-            // --- agent: explicit new_agent wins; otherwise a changed role
-            // re-derives the agent (role → agent is fixed). Either way the
-            // bound model is re-resolved from the agent registry. ---
-            const targetAgent =
-                args.new_agent ?? (args.new_role ? roleAgent(normalizeRole(args.new_role)) : undefined)
-            if (targetAgent) {
-                member.agent = targetAgent
-                if (specMember) specMember.agent = targetAgent
-                try {
-                    const agentsRes = await ctx.client.app.agents({ query: { directory: ctx.directory } })
-                    const entry = (agentsRes.data ?? []).find(a => a.name === targetAgent)
-                    if (entry?.model) {
-                        const m = `${entry.model.providerID}/${entry.model.modelID}`
-                        member.model = m
-                        if (specMember) specMember.model = m
-                        changes.push(`agent: ${targetAgent}, model: ${m}`)
-                    } else {
-                        changes.push(`agent: ${targetAgent} (no bound model — model unchanged)`)
-                    }
-                } catch {
-                    changes.push(`agent: ${targetAgent} (registry unavailable — model unchanged)`)
-                }
-            }
-
-            await saveTeamState(team)
-            if (spec) await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
+                await saveTeamState(team)
+                if (spec) await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
+            })
 
             return `Member "${args.member_name}" updated — ${changes.join("; ")}`
         },
@@ -981,11 +996,19 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 agent,
             }
 
-            spec.members.push(newSpec)
-            team.members.push(newState)
+            // Hold the team mutex for the read-modify-write: the in-memory Team
+            // returned by loadTeamState is the process-wide authoritative copy, so
+            // the member-array mutation + persistence must be serialized against a
+            // concurrent event handler (saveTeamState's contract requires the
+            // caller to already hold team.mutex).
+            const specToPersist = spec
+            await team.mutex.runExclusive(async () => {
+                specToPersist.members.push(newSpec)
+                team.members.push(newState)
 
-            await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
-            await saveTeamState(team)
+                await writeTeamSpec(ctx.storageRoot, specToPersist, pathLeadSessionId)
+                await saveTeamState(team)
+            })
 
             return `Member "${memberName}" added to team "${args.team_id}" (${team.members.length} members).`
         },
@@ -1034,12 +1057,19 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 return `Error: cannot read config for team "${args.team_id}"`
             }
             if (!spec) return `Error: cannot read config for team "${args.team_id}"`
-            const specIdx = spec.members.findIndex(m => m.name === args.member_name)
-            if (specIdx !== -1) spec.members.splice(specIdx, 1)
-            team.members.splice(stateIdx, 1)
+            // Hold the team mutex for the read-modify-write: serialize the
+            // member-array splice + persistence against a concurrent event handler
+            // sharing this in-memory Team (saveTeamState's contract requires the
+            // caller to already hold team.mutex).
+            const specToPersist = spec
+            await team.mutex.runExclusive(async () => {
+                const specIdx = specToPersist.members.findIndex(m => m.name === args.member_name)
+                if (specIdx !== -1) specToPersist.members.splice(specIdx, 1)
+                team.members.splice(stateIdx, 1)
 
-            await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
-            await saveTeamState(team)
+                await writeTeamSpec(ctx.storageRoot, specToPersist, pathLeadSessionId)
+                await saveTeamState(team)
+            })
 
             return `Member "${args.member_name}" removed from team "${args.team_id}" (${team.members.length} members remaining).`
         },
@@ -1098,32 +1128,38 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
 
             const wasActive = team.activatedAt !== undefined
 
-            // Rename directory on disk.
-            await fs.rename(oldDir, newDir)
+            // Hold the team mutex for the disk rename, in-memory reference updates,
+            // registry/index re-keying, spec rewrite, and persistence so a
+            // concurrent event handler sharing this in-memory Team cannot clobber
+            // the write (saveTeamState's contract requires holding team.mutex).
+            await team.mutex.runExclusive(async () => {
+                // Rename directory on disk.
+                await fs.rename(oldDir, newDir)
 
-            // Update in-memory state references.
-            team.teamName = args.new_name
-            team.directory = newDir
+                // Update in-memory state references.
+                team.teamName = args.new_name
+                team.directory = newDir
 
-            // Evict the old registry cache entry (keyed by oldDir) so subsequent
-            // loadTeamState calls for the old name compute the new path and miss.
-            invalidateTeam(oldDir)
+                // Evict the old registry cache entry (keyed by oldDir) so subsequent
+                // loadTeamState calls for the old name compute the new path and miss.
+                invalidateTeam(oldDir)
 
-            // Update TeamSpec and write to new directory.
-            if (spec) {
-                spec = { ...spec, name: args.new_name }
-                await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
-            }
+                // Update TeamSpec and write to new directory.
+                if (spec) {
+                    spec = { ...spec, name: args.new_name }
+                    await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
+                }
 
-            // Update master index: remove old entry, insert new entry.
-            unindexMasterTeam(context.sessionID, oldDir)
-            indexMasterTeam(context.sessionID, args.new_name, pathLeadSessionId, ctx.storageRoot, newDir)
-            if (wasActive) {
-                setActiveTeam(context.sessionID, newDir)
-            }
+                // Update master index: remove old entry, insert new entry.
+                unindexMasterTeam(context.sessionID, oldDir)
+                indexMasterTeam(context.sessionID, args.new_name, pathLeadSessionId, ctx.storageRoot, newDir)
+                if (wasActive) {
+                    setActiveTeam(context.sessionID, newDir)
+                }
 
-            // Save state to the new directory.
-            await saveTeamState(team)
+                // Save state to the new directory.
+                await saveTeamState(team)
+            })
 
             return `Team "${args.team_id}" renamed to "${args.new_name}".`
         },
