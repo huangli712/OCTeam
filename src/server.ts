@@ -7,10 +7,9 @@ import {
     createCompactingHook,
     createEventHandler,
     createTransformHook,
-    reconcileActivation,
-    reconcileCrashedTeams,
     startSweepTimer,
 } from "./hooks.js"
+import { reconcileActivation, reconcileCrashedTeams } from "./orchestration/reconcile.js"
 import { rebuildSessionIndex } from "./state/resolve.js"
 import { logSwallowed } from "./core/log.js"
 import { createConfigHook } from "./agents/index.js"
