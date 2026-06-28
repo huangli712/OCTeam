@@ -128,58 +128,8 @@ export async function processIdle(
         }
     }
 
-    // Step 4: Capture output (null-guarded + mode-aware). delegate does NOT use
-    // responses[] (per-task results go to master via team_send_message; capturing
-    // here would overwrite). Exception: signoff stage must capture reviewer
-    // output regardless of task type (to parse <signoff> tags).
-    //
-    // Scans ALL assistant messages in the current turn (not just the last) and
-    // extracts both text and work-tool invocations (write/edit/bash) so that
-    // members who use tools to produce code are properly captured.
-    if (team.activeTask) {
-        const shouldCapture = team.activeTask.type !== "delegate" || !!team.activeTask.signoffStage
-        if (shouldCapture) {
-            // Find the start of the current turn (last user message).
-            let turnStart = 0
-            for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i]?.info?.role === "user") {
-                    turnStart = i + 1
-                    break
-                }
-            }
-            // Collect all assistant messages in the current turn.
-            const outputs: string[] = []
-            for (let i = turnStart; i < messages.length; i++) {
-                if (messages[i]?.info?.role === "assistant") {
-                    const text = extractOutputFromParts(messages[i]?.parts)
-                    if (text) outputs.push(text)
-                }
-            }
-            if (outputs.length > 0) {
-                const full = outputs.join("\n\n")
-                // responses[] stays truncated for context-safety (loaded into state.json
-                // and injected into prompts). The FULL output is persisted separately to
-                // runs/<runId>/<member>.md so #2 retrieval can recover it losslessly.
-                team.activeTask.responses[member.name] = truncateOutput(full)
-                const runId = (team.activeTask.runId ??= crypto.randomUUID())
-                await atomicWrite(
-                    runMemberOutputPath(team.directory, runId, member.name),
-                    full,
-                ).catch(err =>
-                    logSwallowed(ctx, "persist member output failed", err, {
-                        team: team.teamName,
-                        member: member.name,
-                    }),
-                )
-                recordEvent(team, {
-                    timestamp: Date.now(),
-                    kind: "captured",
-                    member: member.name,
-                    bytes: full.length,
-                })
-            }
-        }
-    }
+    // Step 4: Capture output (mode-aware; delegate skips, signoff always captures).
+    await captureMemberOutput(ctx, team, member, messages)
 
     await saveTeamState(team)
 
@@ -293,6 +243,63 @@ export async function processIdle(
 
     // Step 7: Termination checks.
     await checkTermination(ctx, team)
+}
+
+
+/**
+ * Step 4 of processIdle: capture the member's output from the current turn.
+ * Mode-aware (delegate skips — results go via team_send_message; signoff stage
+ * always captures to parse <signoff> tags). Persists the full output to
+ * runs/<runId>/<member>.md and the truncated version to responses[].
+ */
+async function captureMemberOutput(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+    messages: Array<{ info?: any; parts?: any }>,
+): Promise<void> {
+    if (!team.activeTask) return
+    const shouldCapture = team.activeTask.type !== "delegate" || !!team.activeTask.signoffStage
+    if (!shouldCapture) return
+    // Find the start of the current turn (last user message).
+    let turnStart = 0
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i]?.info?.role === "user") {
+            turnStart = i + 1
+            break
+        }
+    }
+    // Collect all assistant messages in the current turn.
+    const outputs: string[] = []
+    for (let i = turnStart; i < messages.length; i++) {
+        if (messages[i]?.info?.role === "assistant") {
+            const text = extractOutputFromParts(messages[i]?.parts)
+            if (text) outputs.push(text)
+        }
+    }
+    if (outputs.length > 0) {
+        const full = outputs.join("\n\n")
+        // responses[] stays truncated for context-safety (loaded into state.json
+        // and injected into prompts). The FULL output is persisted separately to
+        // runs/<runId>/<member>.md so #2 retrieval can recover it losslessly.
+        team.activeTask.responses[member.name] = truncateOutput(full)
+        const runId = (team.activeTask.runId ??= crypto.randomUUID())
+        await atomicWrite(
+            runMemberOutputPath(team.directory, runId, member.name),
+            full,
+        ).catch(err =>
+            logSwallowed(ctx, "persist member output failed", err, {
+                team: team.teamName,
+                member: member.name,
+            }),
+        )
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "captured",
+            member: member.name,
+            bytes: full.length,
+        })
+    }
 }
 
 const RETRY_ESCALATION_MS = 60_000
