@@ -11,6 +11,7 @@
 | 1 | 数学 | 错排数 D_n 三法推导聚合 | 3 | `mathematician` | `max_depth=2, max_subtasks=3` | ~12 min |
 | 2 | 计算物理 | 阻尼摆小角分段模型聚合 | 3 | `simulator` | `max_depth=2, max_subtasks=3` | ~12 min |
 | 3 | 编程 | 单文件 Markdown→HTML 模块化构建 | 3 | `coder` | `max_depth=2, max_subtasks=3` | ~10 min |
+| 4 | 数学（挑战级） | Vandermonde 恒等式多层证明 | 6 | `mathematician` | `max_depth=4, max_subtasks=4` | ~50 min |
 
 ---
 
@@ -284,6 +285,119 @@ T+9m    运行: bun check-coding-md-converter.ts <run_dir>
 
 ---
 
+## 场景 4: Vandermonde 恒等式多层证明（挑战级）
+
+> **挑战级**：本场景刻意突破 `_AUTHORING.md` 的标准预算（30 min 总时长 / ≤4 成员 / `max_depth=2`），用于压测 `team_recurse` 在更深（`max_depth=4`）、更宽（`max_subtasks=4`）、更多成员（6 人）下的多层递归分解与自底向上聚合能力。
+
+### 4.1 场景描述
+
+**背景**：Vandermonde 恒等式 C(m+n, k) = Σ_{i=0}^{k} C(m,i)·C(n, k-i) 是组合数学的核心恒等式之一，拥有三条相互独立的标准证明路径——代数（二项式展开）、组合（双射计数）、母函数（(1+x)^{m+n} 系数提取）。每条路径又可拆为 2-3 个子引理（如代数路径：先证 (1+x)^{m+n}=(1+x)^m·(1+x)^n，再比对 x^k 系数）。这种「根 → 多路径 → 子引理 → 基础等式」的多层结构天然适配 `team_recurse` 的深度递归分解。
+
+**目标**：decomposer（`alice`）把根任务拆为 3 条独立证明路径（代数 / 组合 / 母函数），每条路径再分解为 2-3 个子引理，必要时继续下钻至基础等式（最深至 depth=4）；6 名成员沿路径并行认领叶节点引理并各自证毕；最终由 `alice` 自底向上聚合，确认三路殊途同归，给出 Vandermonde 恒等式的完整证明。
+
+**成功标准（可机器评判）**：
+- decomposer（`alice`）输出含 `<!-- VANDERMONDE_PROVEN: true -->`（三路聚合后判定恒等式成立）
+- 全部成员的叶节点中收集到的 `<!-- APPROACH: <name> -->` 出现 ≥2 个不同路径名（至少含 `algebraic` 与 `combinatorial`）
+- 所有出现的 `<!-- LEMMA_HOLDS: ... -->` 标记均为 `true`（无任何叶引理证伪）
+
+### 4.2 Team 配置
+
+```json
+{
+  "name": "vandermonde-prove",
+  "description": "Prove the Vandermonde identity via 3 independent paths (algebraic / combinatorial / generating-function), each decomposed into sub-lemmas, aggregated bottom-up",
+  "members": [
+    {
+      "name": "alice",
+      "role": "mathematician",
+      "prompt": "ROOT TASK: Prove the Vandermonde identity C(m+n, k) = sum_{i=0}^{k} C(m,i)*C(n, k-i). Decompose into independent proof approaches, then sub-lemmas, down to base identities.\n\nYou are the DECOMPOSER. First decompose the root into 3 independent proof PATHS (use team_task_create with blockedBy wiring in the shared task list): (A) algebraic -- expand (1+x)^{m+n} = (1+x)^m*(1+x)^n and equate coefficients of x^k; (B) combinatorial -- count C(m+n,k) directly and biject to the RHS split by how many elements come from the m-group; (C) generating-function -- extract the x^k coefficient from both sides of (1+x)^{m+n}=(1+x)^m*(1+x)^n. Then decompose each PATH into 2-3 sub-lemmas (depth 2); where useful, decompose a sub-lemma further into a base identity (depth 3), and continue down to depth-4 leaves. You may decompose up to max_depth=4 with max_subtasks=4. Coordinate via team_send_message.\n\nEXPECTED sub-lemma breakdown:\n- Algebraic path: (a) prove (1+x)^{m+n} = (1+x)^m*(1+x)^n by the binomial theorem; (b) equate coefficients of x^k on both sides to get sum_i C(m,i)*C(n,k-i) = C(m+n,k).\n- Combinatorial path: (a) count C(m+n,k) as the number of k-subsets of an (m+n)-set; (b) biject by partitioning on i = how many of the k chosen elements lie in a fixed m-subset, giving sum_i C(m,i)*C(n,k-i).\n- Generating-function path: (a) show [x^k](1+x)^{m+n} = C(m+n,k); (b) show [x^k](1+x)^m*(1+x)^n = sum_i C(m,i)*C(n,k-i) via the Cauchy product of power series.\n\nAssign the algebraic sub-lemma (a) to yourself; let teammates claim the rest.\n\nFor YOUR leaf sub-lemma (algebraic (a)): prove (1+x)^{m+n} = (1+x)^m*(1+x)^n by applying the binomial theorem to each factor on the RHS and combining exponents. Confirm it holds for all non-negative integers m, n. End your leaf writeup with two lines exactly formatted:\n<!-- LEMMA_HOLDS: true -->\n<!-- APPROACH: algebraic -->\n\nAfter all leaf subtasks report back, AGGREGATE bottom-up: collect each path's conclusion, confirm all three paths yield C(m+n,k) = sum_{i=0}^{k} C(m,i)*C(n, k-i), and write the unified proof. Your final aggregated report MUST end with a line exactly formatted: <!-- VANDERMONDE_PROVEN: true -->"
+    },
+    {
+      "name": "bob",
+      "role": "mathematician",
+      "prompt": "ROOT TASK context: recursive team proof of the Vandermonde identity C(m+n,k) = sum_{i=0}^{k} C(m,i)*C(n,k-i). You are a solver member on the ALGEBRAIC path. Watch the shared task list (team_task_list) for the algebraic sub-lemma (b): EQUATE COEFFICIENTS of x^k on both sides of (1+x)^{m+n} = (1+x)^m*(1+x)^n. When it is claimable, claim it (team_task_update) and solve: expand (1+x)^m = sum_i C(m,i)*x^i and (1+x)^n = sum_j C(n,j)*x^j; multiply and collect the coefficient of x^k as sum_{i=0}^{k} C(m,i)*C(n,k-i); equate to C(m+n,k) from the LHS. Coordinate with the decomposer via team_send_message. Your leaf report MUST end with two lines exactly formatted:\n<!-- LEMMA_HOLDS: true -->\n<!-- APPROACH: algebraic -->"
+    },
+    {
+      "name": "carol",
+      "role": "mathematician",
+      "prompt": "ROOT TASK context: recursive team proof of the Vandermonde identity. You are a solver member on the COMBINATORIAL path. Watch the shared task list (team_task_list) for the combinatorial sub-lemma (a): COUNT C(m+n,k) directly as the number of k-element subsets of a fixed set of size m+n. When it is claimable, claim it (team_task_update) and solve: establish the base identity (subset count = n!/(k!*(n-k)!)) and state C(m+n,k) = (m+n)!/(k!*(m+n-k)!). Coordinate with the decomposer via team_send_message. Your leaf report MUST end with two lines exactly formatted:\n<!-- LEMMA_HOLDS: true -->\n<!-- APPROACH: combinatorial -->"
+    },
+    {
+      "name": "dave",
+      "role": "mathematician",
+      "prompt": "ROOT TASK context: recursive team proof of the Vandermonde identity. You are a solver member on the COMBINATORIAL path. Watch the shared task list (team_task_list) for the combinatorial sub-lemma (b): BIJECT by partitioning on i = how many of the k chosen elements lie in a fixed m-subset (the remaining k-i come from the n-subset). When it is claimable, claim it (team_task_update) and solve: show the number of k-subsets with exactly i elements from the m-group is C(m,i)*C(n,k-i); summing over i=0..k counts every k-subset exactly once, giving sum_i C(m,i)*C(n,k-i) = C(m+n,k). Coordinate with the decomposer via team_send_message. Your leaf report MUST end with two lines exactly formatted:\n<!-- LEMMA_HOLDS: true -->\n<!-- APPROACH: combinatorial -->"
+    },
+    {
+      "name": "erin",
+      "role": "mathematician",
+      "prompt": "ROOT TASK context: recursive team proof of the Vandermonde identity. You are a solver member on the GENERATING-FUNCTION path. Watch the shared task list (team_task_list) for the generating-function sub-lemma (a): show [x^k](1+x)^{m+n} = C(m+n,k) (the coefficient of x^k in the binomial expansion). When it is claimable, claim it (team_task_update) and solve: by the binomial theorem (1+x)^{m+n} = sum_t C(m+n,t)*x^t, so the coefficient of x^k is C(m+n,k). Coordinate with the decomposer via team_send_message. Your leaf report MUST end with two lines exactly formatted:\n<!-- LEMMA_HOLDS: true -->\n<!-- APPROACH: generating-function -->"
+    },
+    {
+      "name": "frank",
+      "role": "mathematician",
+      "prompt": "ROOT TASK context: recursive team proof of the Vandermonde identity. You are a solver member on the GENERATING-FUNCTION path. Watch the shared task list (team_task_list) for the generating-function sub-lemma (b): show [x^k](1+x)^m*(1+x)^n = sum_{i=0}^{k} C(m,i)*C(n,k-i) via the Cauchy product of power series. When it is claimable, claim it (team_task_update) and solve: write (1+x)^m = sum_i C(m,i)*x^i and (1+x)^n = sum_j C(n,j)*x^j; the x^k coefficient of their product is sum_{i=0}^{k} C(m,i)*C(n,k-i). Equate to the LHS coefficient C(m+n,k). Coordinate with the decomposer via team_send_message. Your leaf report MUST end with two lines exactly formatted:\n<!-- LEMMA_HOLDS: true -->\n<!-- APPROACH: generating-function -->"
+    }
+  ]
+}
+```
+
+**Role 选择理由**：`mathematician` 用 `build` agent，可独立推导、证引理、写多层证明——完全匹配本场景。6 人均为 `mathematician`；`alice` 兼任 decomposer（既是合法成员，又承担根聚合）。成员分工沿三条路径分布：algebraic（alice + bob）、combinatorial（carol + dave）、generating-function（erin + frank），每路径 2 个叶引理。
+
+### 4.3 Master 启动调用
+
+```json
+{
+  "tool": "team_recurse",
+  "args": {
+    "team_id": "vandermonde-prove",
+    "task": "Prove the Vandermonde identity: C(m+n, k) = Σ_{i=0}^{k} C(m,i)·C(n, k-i). Decompose into independent proof approaches, then sub-lemmas, down to base identities.",
+    "decomposer": "alice",
+    "max_depth": 4,
+    "max_subtasks": 4,
+    "timeout_ms": 3000000,
+    "max_retries": 0
+  }
+}
+```
+
+**参数选择**：
+- `decomposer: alice` — 必须是成员名，不能是 `master`；选 `alice`（兼做代数路径一叶，便于聚合锚定）
+- `max_depth: 4` — 根(0) → 路径(1) → 子引理(2) → 基础等式(3) → 深叶(4)；刻意比标准场景的 depth=2 更深，压测多层逐级聚合
+- `max_subtasks: 4` — 允许每层最多 4 个子任务，容纳 3 路径 × 2-3 子引理的扇出；比标准 `max_subtasks=3` 更宽
+- `timeout_ms: 3000000`（50 min）— 6 成员并行 + 多层逐级聚合的充裕上限（挑战级，超出标准 30 min 预算）
+- `max_retries: 0` — 数学证明确定性高，失败即整体失败
+
+### 4.4 执行流程（时序）
+
+```
+T+0m     master 调用 team_recurse；root task 入共享任务列表（depth=0）
+T+0m     仅 dispatch decomposer (alice)，附带递归契约
+T+0~3m   alice 分解 root → 3 条路径任务（depth=1：algebraic / combinatorial / generating-function）
+T+3~6m   各路径继续分解为 2-3 子引理（depth=2）；部分子引理下钻至基础等式（depth=3），个别达 depth-4 叶
+T+6m     bob / carol / dave / erin / frank 被尾部 re-prompt 唤醒，认领各自叶引理
+T+6~38m  六成员并行证明叶引理（alice 兼做 algebraic 一叶），各自回填 LEMMA_HOLDS + APPROACH
+T+38m    全部叶引理完成 → 触发 depth-3 → depth-2 → depth-1 逐层聚合
+T+38~46m 路径级聚合：三路径各自收敛到 C(m+n,k) = Σ_i C(m,i)·C(n,k-i)
+T+46m    alice 聚合三路殊途同归，写 VANDERMONDE_PROVEN
+T+50m    运行: bun check-math-vandermonde.ts <run_dir>
+```
+
+### 4.5 评判脚本
+
+[`check-math-vandermonde.ts`](./check-math-vandermonde.ts)
+
+- **加载**：读取 `<run_dir>/` 下全部 `*.md`（6 名成员的叶引理报告散落于任务列表 + 各成员输出）
+- **提取**：
+  - 根聚合标记：正则 `<!-- VANDERMONDE_PROVEN:\s*(true|false)\s*-->`
+  - 叶路径标记：全局正则 `<!-- APPROACH:\s*([A-Za-z0-9_-]+)\s*-->`
+  - 叶结论标记：全局正则 `<!-- LEMMA_HOLDS:\s*(true|false)\s*-->`
+- **断言**：
+  1. decomposer（`alice.md`）存在且含 `VANDERMONDE_PROVEN: true`
+  2. 全部成员中收集到的 APPROACH 名称去重后 ≥2 个，且必含 `algebraic` 与 `combinatorial`（证明 ≥2 条独立路径走通）
+  3. 所有出现的 LEMMA_HOLDS 标记均为 `true`（无叶引理证伪）
+
+---
+
 ## 验收清单
 
 - [ ] 3 个 check 脚本 `tsc -p docs/orchestration-scenarios/tsconfig.json` 通过（无类型错误）
@@ -349,4 +463,21 @@ T+9m    运行: bun check-coding-md-converter.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：decomposer 的 CONVERTS = true；且聚合出的 convert() 通过：convert("# Hi") 含 <h1>、convert("**b**") 含 <strong> 或 <b>。
+```
+
+### 场景 4: Vandermonde 恒等式多层证明（数学·挑战级）
+
+```text
+执行 docs/orchestration-scenarios/08-team-recurse/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、max_depth=4，预计 ~50 min）。
+
+步骤：
+1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（6 个 mathematician，decomposer 为 alice）
+2. team_activate 激活
+3. 读 README「4.3 Master 启动调用」，按 team_recurse JSON 启动编排（root = 证明 Vandermonde 恒等式；max_depth=4, max_subtasks=4）
+4. team_results 轮询至 master 收到汇总（alice 拆 3 路径 → 各路径拆子引理 → 成员认领叶引理 → 自底向上逐层聚合回根）
+5. 定位 <run_dir>（含所有 6 名成员 .md）
+6. 运行：bun docs/orchestration-scenarios/08-team-recurse/check-math-vandermonde.ts <run_dir>
+7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+
+成功标准：alice 的 VANDERMONDE_PROVEN = true；叶节点 APPROACH 出现 ≥2 个不同名称（必含 algebraic 与 combinatorial）；所有 LEMMA_HOLDS 均为 true。
 ```

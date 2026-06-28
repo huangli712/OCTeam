@@ -11,6 +11,7 @@
 | 1 | 数学 | 二分法求根边界 bug 修复 | 3 | `coder` / `tester` / `reviewer` | `max_rounds=3` | ~12 min |
 | 2 | 计算物理 | 弹簧-质点能量漂移调试 | 3 | `simulator` / `analyst` / `reviewer` | `max_rounds=3` | ~13 min |
 | 3 | 编程 | 区间合并 off-by-one 修复 | 3 | `coder` / `tester` / `reviewer` | `max_rounds=3` | ~10 min |
+| 4 | 编程 | Lock-free Queue 四类并发 bug 修复（挑战级） | 7 | `coder` ×4 / `tester` ×2 / `reviewer` | `max_rounds=5` | ~60 min |
 
 ---
 
@@ -340,12 +341,217 @@ T+10m    运行: bun check-coding-interval-merge.ts <run_dir>
 
 ---
 
+## 场景 4: Lock-free Queue 四类并发 bug 修复（挑战级）
+
+### 4.1 场景描述
+
+**背景**：Michael-Scott 风格的无锁 MPSC（多生产者单消费者）队列是并发原语的经典考题。下列 TypeScript 教学实现用 `AtomicRef`（含版本 `tag`）模拟真实运行时（`Atomics` over `SharedArrayBuffer`）的原子语义，**同时埋下四类互不相关的 bug**：
+
+- **(A) ABA on head pointer**：`AtomicRef.cas()` 仅比较 `ref` 同一性、忽略版本 `tag`——回收的 sentinel 对象会让 CAS 假性成功，破坏队列。
+- **(B) missing acquire-load on tail->next**：`dequeue()` 读取生产者发布的 `sentinel.next` 时缺少 acquire 屏障，可能看到 `next` 已置位但节点字段为陈旧值（重排/撕裂读）。
+- **(C) empty-queue spin does not yield**：队列为空时 `while (sentinel.next === null)` 忙等不让出，饿死事件循环、阻塞生产者推进。
+- **(D) dequeue returns success on null sentinel**：弹出 `value === null` 的 sentinel 时仍返回 `{ ok: true, value: null }`，把空队列误报为成功。
+
+```typescript
+// Buggy Michael-Scott-style MPSC lock-free queue.
+// FOUR distinct bug classes are present (A/B/C/D); each coder fixes exactly ONE.
+// Pedagogical TS model: the atomic substrate is a hand-rolled AtomicRef.
+
+interface Node<T> {
+    value: T | null;        // null marks the sentinel node
+    next: Node<T> | null;   // producer publishes, consumer observes
+}
+
+class AtomicRef<T> {
+    private ref: T | null;
+    private tag: number;
+    constructor(initial: T | null) {
+        this.ref = initial;
+        this.tag = 0;
+    }
+    load(): T | null {
+        return this.ref;
+    }
+    store(v: T | null): void {
+        this.ref = v;
+        this.tag++;
+    }
+    // BUG (A) ABA on head pointer: CAS compares ONLY ref identity, ignoring the
+    // version tag. A recycled sentinel object makes the CAS spuriously succeed.
+    cas(expected: T | null, desired: T | null): boolean {
+        if (this.ref === expected) {   // <-- ignores this.tag (ABA)
+            this.ref = desired;
+            return true;
+        }
+        return false;
+    }
+}
+
+export class MPSCQueue<T> {
+    private readonly head: AtomicRef<Node<T>>;  // consumer end
+    private tail: Node<T>;                      // producer end
+
+    constructor() {
+        const sentinel: Node<T> = { value: null, next: null };
+        this.head = new AtomicRef(sentinel);
+        this.tail = sentinel;
+    }
+
+    enqueue(value: T): void {
+        const node: Node<T> = { value, next: null };
+        const prev = this.tail;
+        prev.next = node;   // publish
+        this.tail = node;
+    }
+
+    dequeue(): { ok: true; value: T } | { ok: false } {
+        const sentinel = this.head.load();
+        if (sentinel === null) return { ok: false };
+        // BUG (C) empty-queue spin does not yield: busy-waits without yielding,
+        // starving the event loop so producers cannot run.
+        while (sentinel.next === null) {
+            /* spin — should yield to the event loop */
+        }
+        // BUG (B) missing acquire-load on tail->next: reads a producer-published
+        // node without an acquire fence; may observe stale node fields.
+        const next = sentinel.next;   // <-- no acquire fence
+        this.head.cas(sentinel, next);   // (A) ABA-prone CAS
+        // BUG (D) returns success on a null sentinel value, masking empty state.
+        return { ok: true, value: next.value as T };
+    }
+
+    isEmpty(): boolean {
+        const h = this.head.load();
+        return h !== null && h.next === null && this.tail === h;
+    }
+}
+```
+
+**目标**：4 名 `coder` 各自**最小修复一类 bug**（互不重叠），沿 stage 链式叠加——`alice` 修 A、`bob` 在 `alice` 基础上修 B、`carol` 再修 C、`dave` 再修 D；`erin` 写属性测试、`frank` 跑 10^7 压力测试；`grace`（decider）评审后决策是否收敛。
+
+**成功标准（可机器评判）**：
+- 4 名 coder 各自输出以 `<!-- FIX_APPLIED: <bug-class> -->` 结尾（四个 bug-class 互异：`ABA-HEAD` / `ACQUIRE-TAIL-NEXT` / `YIELD-SPIN` / `NULL-SENTINEL`）
+- `erin` 输出以 `<!-- PROP_TEST: <pass|fail> -->` 结尾
+- `frank` 输出含 `<!-- STRESS_OPS: 10000000 -->` 且以 `<!-- STRESS_RESULT: <pass|fail> -->` 结尾
+- `grace` 最终 `<decision>` JSON 含 `"decision": "done"`、`"allFixed": true` 且 `"stressPass": true`
+
+### 4.2 Team 配置
+
+```json
+{
+  "name": "lockfree-queue-loop",
+  "description": "Lock-free MPSC queue: four coders each fix one distinct concurrency bug class (A/B/C/D), two testers write+run a property test and a 10^7 stress, reviewer decides.",
+  "members": [
+    {
+      "name": "alice",
+      "role": "coder",
+      "prompt": "You fix exactly ONE bug in the MPSCQueue: BUG (A) ABA on the head pointer. AtomicRef.cas() compares ONLY ref identity and ignores the version `tag`, so a recycled sentinel object can make the CAS spuriously succeed. Make the MINIMAL change so the CAS also verifies the tag has not changed (tagged-CAS): either accept an expected-tag parameter or snapshot the tag at load time and compare it inside cas(). Touch ONLY the ABA logic; do NOT alter bugs B/C/D. Embed the full corrected TypeScript (AtomicRef + MPSCQueue classes, signature `export class MPSCQueue<T>`) in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- FIX_APPLIED: ABA-HEAD -->"
+    },
+    {
+      "name": "bob",
+      "role": "coder",
+      "prompt": "You fix exactly ONE bug in the MPSCQueue: BUG (B) missing acquire-load on tail->next. In dequeue(), the line `const next = sentinel.next` reads a node the producer published via `prev.next = node` WITHOUT an acquire fence, so the consumer may observe `next` set but read stale node fields. Make the MINIMAL change: insert an acquire fence immediately before reading sentinel.next (model it as an `acquireFence()` function you also define, or annotate the load as acquire). Touch ONLY bug B; do NOT alter A/C/D. Embed the full corrected TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- FIX_APPLIED: ACQUIRE-TAIL-NEXT -->"
+    },
+    {
+      "name": "carol",
+      "role": "coder",
+      "prompt": "You fix exactly ONE bug in the MPSCQueue: BUG (C) the empty-queue spin does not yield. In dequeue(), `while (sentinel.next === null) { /* spin */ }` busy-waits without yielding, starving the event loop so producers cannot run. Make the MINIMAL change so the wait yields control each iteration (convert dequeue to `async` and `await` a microtask/timeout yield inside the loop, keeping the return type compatible). Touch ONLY bug C; do NOT alter A/B/D. Embed the full corrected TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- FIX_APPLIED: YIELD-SPIN -->"
+    },
+    {
+      "name": "dave",
+      "role": "coder",
+      "prompt": "You fix exactly ONE bug in the MPSCQueue: BUG (D) dequeue returns success on a null sentinel value. When `next` is a (recycled) sentinel with value === null, dequeue reports `{ ok: true, value: null }`, masking the empty condition. Make the MINIMAL change: when next.value === null, return `{ ok: false }` instead of `{ ok: true, value: null }`. Touch ONLY bug D; do NOT alter A/B/C. Embed the full corrected TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- FIX_APPLIED: NULL-SENTINEL -->"
+    },
+    {
+      "name": "erin",
+      "role": "tester",
+      "prompt": "You write a PROPERTY TEST for the MPSCQueue. Read dave.md (the fully-fixed queue with all four bugs addressed) — extract the ```typescript block. Write a property test that, over many random enqueue/dequeue sequences, asserts: (a) dequeued values come out in strict FIFO enqueue order, (b) no value is lost or duplicated, (c) a dequeue on an empty queue returns { ok: false } (NOT { ok: true, value: null }). Run it and report pass/fail with a one-line summary. Your output MUST end with a line exactly formatted: <!-- PROP_TEST: <pass|fail> -->"
+    },
+    {
+      "name": "frank",
+      "role": "tester",
+      "prompt": "You run a HIGH-VOLUME STRESS TEST on the MPSCQueue. Read dave.md (the fully-fixed queue) and erin.md (the property test). Execute exactly 10^7 (10000000) mixed operations (random enqueue/dequeue, roughly 50/50, across simulated producers/consumers) and assert strict FIFO ordering with ZERO lost or duplicated items. Report the exact operation count and the pass/fail verdict with a one-line summary. Your output MUST contain a line exactly formatted: <!-- STRESS_OPS: 10000000 --> AND MUST end with a line exactly formatted: <!-- STRESS_RESULT: <pass|fail> -->"
+    },
+    {
+      "name": "grace",
+      "role": "reviewer",
+      "prompt": "You are the loop DECIDER for the lock-free MPSC queue fix. Read alice.md (FIX_APPLIED: ABA-HEAD), bob.md (ACQUIRE-TAIL-NEXT), carol.md (YIELD-SPIN), dave.md (NULL-SENTINEL) — confirm each coder applied exactly ONE distinct fix and the four are disjoint; read erin.md (PROP_TEST: pass|fail) and frank.md (STRESS_OPS + STRESS_RESULT). Decide 'done' ONLY when: (1) all four fix markers are present and distinct, (2) erin's PROP_TEST=pass, AND (3) frank's STRESS_RESULT=pass with STRESS_OPS=10000000; otherwise 'continue' with concrete nextActions naming which coder must redo their fix. In EVERY <decision> block you emit, include the standard fields (decision, rationale, nextActions) PLUS two additional boolean fields: \"allFixed\": true|false (all four distinct fixes applied) and \"stressPass\": true|false (frank's 10^7 stress passed). The literal English tags <decision> and </decision> are required."
+    }
+  ]
+}
+```
+
+**Role 选择理由**：4 名 `coder`（`build` agent，可改代码，`modify`）对应四类 bug 的最小修复；2 名 `tester`（只读，`read_only`）分别承担属性测试与 10^7 压测；`reviewer`（默认只读）担任 decider——`grace` 不在 `stages` 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `workflow-basic.ts` buildTask 分支）。
+
+### 4.3 Master 启动调用
+
+```json
+{
+  "tool": "team_loop",
+  "args": {
+    "team_id": "lockfree-queue-loop",
+    "stages": [
+      { "member": "alice", "task": "Starting from the buggy MPSCQueue in initial_task, apply ONLY the ABA-head fix (bug A). Emit the full corrected code. End with <!-- FIX_APPLIED: ABA-HEAD -->.", "action": "modify" },
+      { "member": "bob",   "task": "Read alice.md (bug A fixed). Apply ONLY the acquire-tail-next fix (bug B) on top of alice's code. Emit the full corrected code. End with <!-- FIX_APPLIED: ACQUIRE-TAIL-NEXT -->.", "action": "modify" },
+      { "member": "carol", "task": "Read bob.md (bugs A+B fixed). Apply ONLY the yield-spin fix (bug C) on top of bob's code. Emit the full corrected code. End with <!-- FIX_APPLIED: YIELD-SPIN -->.", "action": "modify" },
+      { "member": "dave",  "task": "Read carol.md (bugs A+B+C fixed). Apply ONLY the null-sentinel fix (bug D) on top of carol's code. Emit the full corrected code. End with <!-- FIX_APPLIED: NULL-SENTINEL -->.", "action": "modify" },
+      { "member": "erin",  "task": "Read dave.md (fully-fixed queue). Write + run a property test (FIFO order, no loss/dup, empty -> { ok: false }). End with <!-- PROP_TEST: <pass|fail> -->.", "action": "read_only" },
+      { "member": "frank", "task": "Read dave.md and erin.md. Run exactly 10^7 mixed-op stress asserting strict FIFO, zero loss/dup. Emit <!-- STRESS_OPS: 10000000 --> and end with <!-- STRESS_RESULT: <pass|fail> -->.", "action": "read_only" }
+    ],
+    "decider": "grace",
+    "max_rounds": 5,
+    "initial_task": "Here is the BUGGY Michael-Scott-style MPSC lock-free queue with FOUR distinct bug classes. Each coder fixes exactly ONE; the four fixes compose across the four coder stages (alice -> bob -> carol -> dave).\n\n- BUG (A) ABA on head pointer: AtomicRef.cas() ignores the version tag.\n- BUG (B) missing acquire-load on tail->next in dequeue().\n- BUG (C) empty-queue spin does not yield (busy-waits, starving producers).\n- BUG (D) dequeue returns { ok: true, value: null } on a null sentinel.\n\n```typescript\ninterface Node<T> {\n    value: T | null;\n    next: Node<T> | null;\n}\n\nclass AtomicRef<T> {\n    private ref: T | null;\n    private tag: number;\n    constructor(initial: T | null) { this.ref = initial; this.tag = 0; }\n    load(): T | null { return this.ref; }\n    store(v: T | null): void { this.ref = v; this.tag++; }\n    cas(expected: T | null, desired: T | null): boolean {\n        if (this.ref === expected) { this.ref = desired; return true; }\n        return false;\n    }\n}\n\nexport class MPSCQueue<T> {\n    private readonly head: AtomicRef<Node<T>>;\n    private tail: Node<T>;\n    constructor() {\n        const sentinel: Node<T> = { value: null, next: null };\n        this.head = new AtomicRef(sentinel);\n        this.tail = sentinel;\n    }\n    enqueue(value: T): void {\n        const node: Node<T> = { value, next: null };\n        const prev = this.tail;\n        prev.next = node;\n        this.tail = node;\n    }\n    dequeue(): { ok: true; value: T } | { ok: false } {\n        const sentinel = this.head.load();\n        if (sentinel === null) return { ok: false };\n        while (sentinel.next === null) { /* spin */ }\n        const next = sentinel.next;\n        this.head.cas(sentinel, next);\n        return { ok: true, value: next.value as T };\n    }\n    isEmpty(): boolean {\n        const h = this.head.load();\n        return h !== null && h.next === null && this.tail === h;\n    }\n}\n```\n\nalice: fix ONLY bug A. bob: fix ONLY bug B on top of alice's output. carol: fix ONLY bug C on top of bob's. dave: fix ONLY bug D on top of carol's. Each coder ends with <!-- FIX_APPLIED: <bug-class> -->."
+  }
+}
+```
+
+**参数选择**：
+- `stages` 列 6 个 stage（4 coder `modify` + 2 tester `read_only`）；`decider: "grace"` 不在 `stages` 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `workflow-basic.ts` buildTask 分支：`if (!stages.some(s => s.member === args.decider))` push）。
+- stage 成员名唯一（`alice` / `bob` / `carol` / `dave` / `erin` / `frank`），符合 schema 校验；`decider` 与六者互异，符合"非 master、不在 stages 中"约束。
+- `max_rounds: 5` ——挑战级：4 类 bug 的最小修复 + 属性测试 + 10^7 压测通常 2-3 轮收敛；5 轮上限兜底偶发回归（如某 coder 误改相邻 bug、压测抖动）。
+- `initial_task` 内嵌完整 buggy 代码（四类 bug 均在）并点名每人只修一类，约束链式叠加的最小变更。
+- 7 成员（≤ 8 上限），四类 bug 与四个 coder 一一对应，职责无重叠。
+
+### 4.4 执行流程（时序）
+
+```
+T+0m      master 调用 team_loop；round 1 启动
+T+0m      alice  (modify)   收到 initial_task -> 修 bug A (ABA-head)        -> alice.md + FIX_APPLIED: ABA-HEAD
+T+5m      bob    (modify)   读 alice.md -> 在其基础上修 bug B               -> bob.md   + FIX_APPLIED: ACQUIRE-TAIL-NEXT
+T+10m     carol  (modify)   读 bob.md   -> 在其基础上修 bug C               -> carol.md + FIX_APPLIED: YIELD-SPIN
+T+15m     dave   (modify)   读 carol.md -> 在其基础上修 bug D               -> dave.md  + FIX_APPLIED: NULL-SENTINEL
+T+20m     erin   (read_only) 读 dave.md  -> 写属性测试并运行                 -> erin.md  + PROP_TEST
+T+30m     frank  (read_only) 读 dave/erin -> 跑 10^7 压力                    -> frank.md + STRESS_OPS / STRESS_RESULT
+T+45m     grace  (decider, read_only) 读 6 份输出 -> emit <decision>
+                   若 allFixed=true 且 stressPass=true -> decision="done"（典型路径）
+                   否则 -> decision="continue" + nextActions 指名某 coder 重做 -> round 2
+T+45~60m  至多 5 轮；done 或 max_rounds 触发停止
+T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
+```
+
+### 4.5 评判脚本
+
+[`check-coding-lockfree-queue.ts`](./check-coding-lockfree-queue.ts)
+
+- **加载**：`runs/<run_id>/grace.md`（decider）与 `frank.md`（交叉核验），附带 `alice/bob/carol/dave.md`（4 个 FIX_APPLIED 诊断）与 `erin.md`（PROP_TEST 诊断）
+- **提取**：
+  - decider：正则 `<decision>([\s\S]*?)</decision>` 取最后一处（最终轮），`JSON.parse`
+  - frank：正则 `<!--\s*STRESS_OPS:\s*(\d+)\s*-->` 与 `<!--\s*STRESS_RESULT:\s*(pass|fail)\s*-->`
+- **断言**：
+  1. `frank` `STRESS_OPS >= 10^7`（10^7 门槛）
+  2. `frank` `STRESS_RESULT === "pass"`（10^7 压测无 FIFO 违例）
+  3. `decision.decision === "done"`
+  4. `decision.allFixed === true`（四类 bug 均修）
+  5. `decision.stressPass === true` 且与 `frank` 的 `STRESS_RESULT` 一致（交叉核验：decider 与压测者口径吻合）
+
+---
+
 ## 验收清单
 
-- [ ] 3 个 check 脚本 `bunx tsc -p docs/orchestration-scenarios/tsconfig.json` 通过（无类型错误）
+- [ ] 4 个 check 脚本 `bunx tsc -p docs/orchestration-scenarios/tsconfig.json` 通过（无类型错误）
 - [ ] 每个 team 配置 role 合法（`coder` / `tester` / `simulator` / `analyst` / `reviewer` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_loop` schema（`stages` 成员名唯一、`decider` 非 master 且不在 stages 中、`max_rounds` / `initial_task` 齐备）
-- [ ] 每场景总时长 ≤ 15 min（远低于 30 min 上限；`max_rounds=3` 兜底）
+- [ ] 场景 1-3 总时长 ≤ 15 min（远低于 30 min 上限；`max_rounds=3` 兜底）；场景 4（挑战级）≈ 60 min、7 成员、`max_rounds=5`，为有意突破标准控时上限的加难样本
 - [ ] 成员 prompt 中明确输出格式约定（marker），decider prompt 明确模式专属布尔字段，评判脚本与之对齐
 
 
@@ -404,4 +610,21 @@ T+10m    运行: bun check-coding-interval-merge.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：decider decision="done" 且 `"allPass": true`（5 个用例含 [[1,3],[3,5]] 这类 touching 区间正确合并）。
+```
+
+### 场景 4: 修 Lock-free Queue 四类并发 bug（挑战级）
+
+```text
+执行 docs/orchestration-scenarios/04-team-loop/README.md「场景 4」的完整闭环并自动评判。
+
+步骤：
+1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（7 成员：alice/bob/carol/dave 为 coder，erin/frank 为 tester，grace 为 reviewer）
+2. team_activate 激活
+3. 读 README「4.3 Master 启动调用」，按 team_loop JSON 启动编排（注意 initial_task 是含四类 bug 的 MPSCQueue；stages 共 6 个，decider=grace 由 OCTeam 自动追加）
+4. team_results 轮询至 master 收到汇总（最多 max_rounds=5 轮，decider 说 done 即停）
+5. 定位 <run_dir>（含 grace/frank 等 7 个成员的 .md）
+6. 运行：bun docs/orchestration-scenarios/04-team-loop/check-coding-lockfree-queue.ts <run_dir>
+7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+
+成功标准：decider decision="done" 且 `"allFixed": true` 且 `"stressPass": true`；frank 报 STRESS_OPS=10^7 且 STRESS_RESULT=pass（四类并发 bug ABA/acquire/yield/null-sentinel 全修，10^7 FIFO 压测无违例）。
 ```

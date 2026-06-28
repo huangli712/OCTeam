@@ -11,6 +11,7 @@
 | 1 | 数学 | Monte Carlo π 三方法对比 | 3 | `mathematician` | `merge` | ~12 min |
 | 2 | 计算物理 | 谐振子三积分器能量漂移 | 3 | `simulator` | `select` | ~12 min |
 | 3 | 编程 | 两数和多解法复杂度对比 | 3 | `coder` | `rubric` | ~10 min |
+| 4 | 编程（挑战级） | 8 种排序算法 10⁶ 三数据集基准 | 8 | `coder` | `merge` | ~40 min |
 
 ---
 
@@ -292,6 +293,155 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 
 ---
 
+## 场景 4: 8 种排序算法大数据基准（挑战级）
+
+> **挑战级提示**：本场景规模（8 成员 × 10⁶ × 3 数据集）刻意超出第 1–3 场景的常规上限（≤ 4 成员 / ≤ 30 min），用于压测 8 成员满编团队与 60 min 级 timeout 的端到端编排能力。
+
+### 4.1 场景描述
+
+**背景**：排序算法是算法工程的「基准母题」。在 10⁶ 规模 × 三种典型分布（均匀随机 / 近似有序 / 逆序）下横向对比 8 种主流排序，能同时检验算法实现正确性与各算法对输入分布的敏感度。
+
+**目标**：8 个 coder 成员各实现 **一种** 排序算法，各自在 3 个 10⁶ 数据集上运行、计时、并与平台原生排序逐元素比对正确性，最终汇总成一张 8×3 基准对比表。
+
+**成员 ↔ 算法映射**（按 `MEMBER_NAME_POOL` 顺序）
+
+| 成员 | 算法 |
+|------|------|
+| alice | quicksort（三数取中快排 + 小分区插入排序兜底） |
+| bob | mergesort（自顶向下，稳定，O(n) 辅助缓冲） |
+| carol | heapsort（原地二叉堆） |
+| dave | radixsort（LSD base-256，4 趟 for 32-bit 非负整数） |
+| erin | timsort（minrun + 二分插入 + galloping merge） |
+| frank | shellsort（Marcin Ciura 增量序列） |
+| grace | introsort（快排 + 深度上限转 heapsort + 小分区插入） |
+| henry | counting-sort（按 [min,max] 计数；注意随机集跨度 ~10⁹ 的内存压力） |
+
+**数据集**（每个成员都跑，均为确定性的 seed=42）
+
+- **(a) RANDOM**：10⁶ 个 `[0, 10⁹)` 均匀随机整数（seed=42 的确定性 PRNG，如 mulberry32 / LCG）。
+- **(b) NEARLY**：把 RANDOM 升序排序后，执行恰好 10,000 次随机交换（10⁶ 的 1%），PRNG 复位 seed=42。
+- **(c) REVERSE**：RANDOM 降序排序。
+
+**成功标准（可机器评判）**
+
+- 8 个成员每个都输出 `<!-- SORT_OK: true -->`（3 个数据集与原生排序逐元素一致）
+- 8 个成员每个都输出 `<!-- TIME_RANDOM: <ms> -->` / `<!-- TIME_NEARLY: <ms> -->` / `<!-- TIME_REVERSE: <ms> -->` —— 共 8×3 = 24 个 TIME 标记
+- reduce（`merge` 策略）汇总输出包含一张 8 算法 × 3 数据集的对比表（人工目视，非机器断言）
+
+**预计时长：~40 min**（成员并行写实现 + 生成 3×10⁶ 数据集 + 排序 + 比对 + 计时；最慢成员 ~35 min，加 reduce 与 check ≈ 40 min）。
+
+### 4.2 Team 配置
+
+```json
+{
+  "name": "sort-benchmark-challenge",
+  "description": "Challenge: 8 sorting algorithms benchmarked on 3 datasets of 10^6 integers each",
+  "members": [
+    {
+      "name": "alice",
+      "role": "coder",
+      "prompt": "Implement QUICKSORT (in-place, median-of-three pivot, switch to insertion sort for partitions smaller than 16). Datasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending. For EACH dataset: copy it, sort the copy with YOUR quicksort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes. Your output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+    },
+    {
+      "name": "bob",
+      "role": "coder",
+      "prompt": "Implement MERGESORT (top-down, divide-and-conquer, stable, O(n) auxiliary buffer). Datasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending. For EACH dataset: copy it, sort the copy with YOUR mergesort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes. Your output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+    },
+    {
+      "name": "carol",
+      "role": "coder",
+      "prompt": "Implement HEAPSORT (in-place binary heap: build-max-heap then repeatedly extract-max to the end). Datasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending. For EACH dataset: copy it, sort the copy with YOUR heapsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes. Your output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+    },
+    {
+      "name": "dave",
+      "role": "coder",
+      "prompt": "Implement LSD RADIX SORT (base 256, 4 passes over the bytes of 32-bit non-negative integers, stable counting-sort per byte). Datasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending. For EACH dataset: copy it, sort the copy with YOUR radix sort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes. Your output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+    },
+    {
+      "name": "erin",
+      "role": "coder",
+      "prompt": "Implement TIMSORT (compute minrun, identify natural runs, binary-insertion-sort runs shorter than minrun, merge runs with galloping). Datasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending. For EACH dataset: copy it, sort the copy with YOUR timsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes. Your output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+    },
+    {
+      "name": "frank",
+      "role": "coder",
+      "prompt": "Implement SHELLSORT with the Marcin Ciura gap sequence [701, 301, 132, 57, 23, 10, 4, 1] (gapped insertion sort per gap). Datasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending. For EACH dataset: copy it, sort the copy with YOUR shellsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes. Your output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+    },
+    {
+      "name": "grace",
+      "role": "coder",
+      "prompt": "Implement INTROSORT (quicksort with median-of-three, recursion-depth limit 2*floor(log2(n)) that switches to heapsort, and insertion sort for partitions smaller than 16). Datasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending. For EACH dataset: copy it, sort the copy with YOUR introsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes. Your output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+    },
+    {
+      "name": "henry",
+      "role": "coder",
+      "prompt": "Implement COUNTING SORT over the [min, max] value range of each dataset using an offset typed-array of size (max-min+1). NOTE: the RANDOM dataset spans roughly [0, 1e9), so a full counting array may need ~4 GB and could be memory-infeasible; if a dataset is infeasible, still report it honestly (SORT_OK=false with a one-line note) rather than crashing. Datasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending. For EACH dataset that is feasible: copy it, sort the copy with YOUR counting sort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes. Your output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets are feasible and match the reference sort."
+    }
+  ]
+}
+```
+
+**Role 选择理由**：8 名成员全部用 `coder`（`build` agent，能写代码、运行、做正确性验证），完全匹配「实现 + 跑基准 + 自检」的挑战需求。成员名取 `MEMBER_NAME_POOL` 前 8 位（alice..henry），团队满编（上限 8）。
+
+### 4.3 Master 启动调用
+
+```json
+{
+  "tool": "team_parallel",
+  "args": {
+    "team_id": "sort-benchmark-challenge",
+    "mode": "collaborative",
+    "tasks": {
+      "alice": "Implement quicksort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
+      "bob": "Implement mergesort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
+      "carol": "Implement heapsort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
+      "dave": "Implement LSD radix sort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
+      "erin": "Implement timsort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
+      "frank": "Implement shellsort (Ciura gaps) and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
+      "grace": "Implement introsort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
+      "henry": "Implement counting sort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers."
+    },
+    "reduce_policy": "merge",
+    "timeout_ms": 3600000,
+    "max_errored_members": 0
+  }
+}
+```
+
+**参数选择**
+
+- `mode: collaborative` — 8 种算法各不相同，必须每成员独立任务
+- `reduce_policy: merge` — 保留 8 份独立结果以组装对比表（非 select 单选 / rubric 评分）
+- `timeout_ms: 3600000`（60 min）— 挑战级给足余量；正常 ~35 min 完成，含 timsort / counting-sort 等较重实现
+- `max_errored_members: 0` — 8 算法缺一对比表不完整，任一失败即整体失败
+
+### 4.4 执行流程（时序）
+
+```
+T+0m     master 调用 team_parallel (collaborative, 8 members)
+T+0m     OCTeam 并行 dispatch 8 个 coder 成员（满编团队）
+T+0~35m  各成员独立：实现算法 → 生成 3×10^6 数据集 (seed=42) → 排序 + 计时 → 与原生排序逐元素比对 → 写 markdown 报告 + 4 标记
+T+35m    最慢成员 idle → 触发 reduce (merge policy)
+T+38m    合并的 8×3 对比表交付 master
+T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
+```
+
+### 4.5 评判脚本
+
+[`check-coding-sort-benchmark.ts`](./check-coding-sort-benchmark.ts)
+
+- **加载**：`runs/<run_id>/{alice,bob,carol,dave,erin,frank,grace,henry}.md`（共 8 个）
+- **提取**：
+  - 正确性：`<!-- SORT_OK:\s*(true|false)\s*-->`
+  - 计时：`<!-- TIME_RANDOM:\s*([\d.]+)\s*-->`、`<!-- TIME_NEARLY:\s*([\d.]+)\s*-->`、`<!-- TIME_REVERSE:\s*([\d.]+)\s*-->`
+- **断言**：
+  1. 8 个成员 `SORT_OK=true`（8/8 数据集全部与原生排序一致）
+  2. 24 个 TIME 标记全部存在（8 成员 × 3 数据集）且均为非负数值
+  3. 打印 8×3 基准对比表（供 reduce 汇总的人工目视对照）
+- reduce 输出中的对比表为人工目视项，非机器断言
+
+---
+
 ## 验收清单
 
 - [ ] 3 个 check 脚本 `tsc --noEmit` 通过（无类型错误）
@@ -357,4 +507,22 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：3 个测试用例（[2,7,11,15]/9、[3,2,4]/6、[3,3]/6）全通过；复杂度标注正确（alice=O(n²)、bob=O(n)、carol=O(n log n)）。
+```
+
+### 场景 4: 8 种排序算法大数据基准（挑战级）
+
+```text
+执行 docs/orchestration-scenarios/01-team-parallel/README.md「场景 4: 8 种排序算法大数据基准（挑战级）」的完整闭环并自动评判。
+
+步骤：
+1. 读 README「4.2 Team 配置」，按其中的 team_create JSON 创建团队（8 名 coder 成员，alice..henry）
+2. team_activate 激活（team_id = sort-benchmark-challenge）
+3. 读 README「4.3 Master 启动调用」，按其中的 team_parallel JSON 启动编排（timeout_ms=3600000，给足 60 min）
+4. team_results 轮询，等待编排完成、master 收到 merge 汇总（含 8×3 对比表）
+5. 定位本次 run 的输出目录 <run_dir>（含 alice.md ... henry.md，共 8 个）
+6. 运行评判：
+   bun docs/orchestration-scenarios/01-team-parallel/check-coding-sort-benchmark.ts <run_dir>
+7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+
+成功标准：8 个成员各自 SORT_OK=true（3 个 10^6 数据集均与原生排序一致）；且 24 个 TIME 标记（8 成员 × 3 数据集）全部存在。
 ```

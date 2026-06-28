@@ -88,3 +88,20 @@
 每个场景 README 末尾都有「**快速启动 Prompt（复制即用）**」章节，提供该场景 3 个子场景（数学 / 计算物理 / 编程）的一键闭环 prompt。把对应 prompt 粘贴给 master 会话，AI 会自动完成「创建团队 → 激活 → 启动编排 → 等待汇总 → 运行评判脚本」，并按退出码报告 PASS / FAIL——**无需手动拼装 JSON**。
 
 例如启动 `01-team-parallel` 的 Monte Carlo π 场景：打开 [`01-team-parallel/README.md`](./01-team-parallel/README.md) 的「快速启动 Prompt → 场景 1」，复制其中 ```text``` 代码块粘贴给 AI 即可。
+
+
+## 挑战级场景（增补）
+
+每个模式在 3 个基线场景（≤4 成员、≤30 min）之外，另有 **1 个挑战级场景**（6-10 成员、规模放大、时间放宽至 35-90 min），用于压测各原语在大规模/高难度下的扩展性。挑战级场景在每个模式 README 中标注「（挑战级）」，配套 check 脚本与快速启动 prompt 与基线场景一致。
+
+| 模式 | 挑战场景 | 成员 | 规模放大点 | 时长 |
+|------|---------|-----|-----------|------|
+| parallel | 8 种排序 × 10⁶ × 3 数据集基准 | 8 coder | 数据 10³→10⁶、算法 3→8 | ~40min |
+| consensus | 60 位 RSA 模数分解算法选型 | 6 mathematician | 方法 3→6、轮数 3→5 | ~35min |
+| pipeline | Lennard-Jones 分子动力学完整链 | 8 simulator | 3→8 阶段、真实 MD 流程 | ~60min |
+| loop | Lock-free queue 四类并发 bug 修复 | 7 (4coder+2tester+decider) | 单 bug→4 类、10³→10⁷ 压测 | ~60min |
+| delegate | 100 道程序化数论题 | 8 mathematician | **5→100 题** | ~90min |
+| route | 多面性工单九路分流 | 9 (router+8分支) | 单选→多路并发分支 | ~45min |
+| arbitrate | 复杂边界 PDE 五方法之争 | 6 (5debater+arbiter) | 2→5 派、1→3 轮 | ~40min |
+| recurse | Vandermonde 恒等式多层证明 | 6 mathematician | depth 2→4、3 路证法 | ~50min |
+| tollgate | 二维热传导求解器 V&V 认证 | 6 | 1→3 门、含网格收敛+守恒律 | ~60min |

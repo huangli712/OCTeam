@@ -2,7 +2,7 @@
 
 > **模式**：`team_tollgate` — 判定门控流水线。每个 stage 产出后必须经独立 verifier 三值判定（PASS / FAIL / INVALID），PASS 才放行下游；FAIL 把产出连同 diff 退回 producer（最多 `max_gate_retries` 次）；INVALID 隔离问题、升级到 verifier 侧，不惩罚 producer。
 > **源码**：[`src/tools/workflow-advanced.ts:431-549`](../../../src/tools/workflow-advanced.ts)
-> **控时设计**：每场景 1 个 gate、2 成员（producer + verifier），producer 3-5 min、verifier 2-3 min，串行 ≈ 6-8 min（远低于 30 min 上限）。
+> **控时设计**：每场景 1 个 gate、2 成员（producer + verifier），producer 3-5 min、verifier 2-3 min，串行 ≈ 6-8 min（远低于 30 min 上限）。**场景 4 为挑战级**：6 成员、3 门串行 V&V，约 60 min，演示 tollgate 的多门级联能力。
 
 ## 场景一览
 
@@ -11,6 +11,7 @@
 | 1 | 数学 | 快速模幂（二进制平方乘）实现 + 验证 | 2 | `mathematician` / `reviewer` | 1 | ~8 min |
 | 2 | 计算物理 | Velocity Verlet 积分器（能量守恒）实现 + 验证 | 2 | `simulator` / `physicist` | 1 | ~8 min |
 | 3 | 编程 | 字符串反转（Unicode 代理对安全）实现 + 验证 | 2 | `coder` / `tester` | 1 | ~7 min |
+| 4 | 计算物理（挑战） | 二维热传导求解器 V&V 认证（3 门串行） | 6 | `simulator` ×3 / `reviewer` / `physicist` ×2 | 3 | ~60 min |
 
 ---
 
@@ -298,14 +299,161 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 
 ---
 
+## 场景 4: 二维热传导求解器 V&V 认证（挑战级）
+
+> **挑战级说明**：本场景突破场景 1-3 的基线约束（2 成员 / 1 门 / ≤8 min），使用 **6 成员、3 门串行**，完整演示 release 前的 V&V（Verification & Validation）认证流程。三门分别检验求解器的三个独立属性：**正确性 → 收敛阶 → 守恒性**，任一门 FAIL 则不予 release。
+
+### 4.1 场景描述
+
+**背景**：二维热传导方程 `∂u/∂t = α(∂²u/∂x² + ∂²u/∂y²)` 是抛物型 PDE 的标准基准。显式 FTCS（forward-time, centered-space）格式在空间上二阶、时间上一阶：`u^{n+1}_{ij} = u^n_{ij} + dt·α·(δ²x u + δ²y u)/dx²`。release 前须通过三重独立 V&V：
+1. **正确性（manufactured solution）**：取解析解 `u_ex = sin(πx)·sin(πy)·exp(-2πα²t)`，比较数值解与精确解的最大误差。
+2. **网格收敛阶（grid convergence study）**：在 3 套网格（如 21×21、41×41、81×81）上跑同一边值问题，用 Richardson/log-log 回归估收敛阶——空间二阶格式应给出 p ≥ 2。
+3. **守恒性（heat conservation）**：零通量（Neumann）边界下，总热量 `Σu·dx·dy` 应守恒；1000 步后相对漂移须 < 1e-4。
+
+**目标**：6 名成员组成 V&V 认证组，3 个门串行推进——每门由一名 producer 产出证据、一名独立 verifier 裁定 PASS/FAIL，全 PASS 才予 release。
+
+**成功标准（可机器评判）**：
+- G1 producer（alice）输出含 `<!-- GATE1_RESULT: <max_error> -->`；G1 verifier（bob）输出含 `<!-- VERDICT1: PASS -->`
+- G2 producer（carol）输出含 `<!-- GATE2_RESULT: <order> -->`；G2 verifier（dave）输出含 `<!-- VERDICT2: PASS -->`
+- G3 producer（erin）输出含 `<!-- GATE3_RESULT: <drift> -->`；G3 verifier（frank）输出含 `<!-- VERDICT3: PASS -->`
+- 交叉核对：G1 `max_error < 1e-3`、G2 `order ≥ 2`、G3 `drift < 1e-4`
+
+### 4.2 Team 配置
+
+```json
+{
+  "name": "heat2d-vv-gate",
+  "description": "2D heat-equation solver V&V certification: 3 sequential gates (correctness -> convergence order -> conservation) across 6 members"
+}
+```
+
+```json
+{
+  "members": [
+    {
+      "name": "alice",
+      "role": "simulator",
+      "prompt": "You are a simulator. You implement numerical PDE solvers in TypeScript and run them to report measured quantities. Embed runnable code in a ```typescript fenced block when asked. Your output MUST end with a line exactly formatted: <!-- GATE1_RESULT: <numeric_max_error> -->"
+    },
+    {
+      "name": "bob",
+      "role": "reviewer",
+      "prompt": "You are a reviewer. You verify numerical correctness against a manufactured (analytic) solution by comparing the producer's reported max-error to the tolerance. Emit a verdict: PASS if the criterion holds, FAIL otherwise. Your output MUST end with a line exactly formatted: <!-- VERDICT1: PASS --> (or <!-- VERDICT1: FAIL -->)."
+    },
+    {
+      "name": "carol",
+      "role": "simulator",
+      "prompt": "You are a simulator. You run grid-convergence studies (multiple mesh sizes) and estimate convergence order via Richardson or log-log regression. Your output MUST end with a line exactly formatted: <!-- GATE2_RESULT: <numeric_order> -->"
+    },
+    {
+      "name": "dave",
+      "role": "physicist",
+      "prompt": "You are a physicist. You verify that a measured convergence order matches the theoretical expectation for the discretization (>= 2 for centered-space). Emit a verdict: PASS if the criterion holds, FAIL otherwise. Your output MUST end with a line exactly formatted: <!-- VERDICT2: PASS --> (or <!-- VERDICT2: FAIL -->)."
+    },
+    {
+      "name": "erin",
+      "role": "simulator",
+      "prompt": "You are a simulator. You run long-time conservation checks (total heat under Neumann BCs) and report relative drift over many steps. Your output MUST end with a line exactly formatted: <!-- GATE3_RESULT: <numeric_relative_drift> -->"
+    },
+    {
+      "name": "frank",
+      "role": "physicist",
+      "prompt": "You are a physicist. You verify heat conservation: under zero-flux boundaries total heat is invariant up to round-off. Emit a verdict: PASS if the drift criterion holds, FAIL otherwise. Your output MUST end with a line exactly formatted: <!-- VERDICT3: PASS --> (or <!-- VERDICT3: FAIL -->)."
+    }
+  ]
+}
+```
+
+**Role 选择理由**：3 名 `simulator`（alice/carol/erin）各负责一个 V&V 维度的数值产出；1 名 `reviewer`（bob）独立核对正确性；2 名 `physicist`（dave/frank）凭物理知识核对收敛阶与守恒律。每门的 verifier 角色与 producer 不同人，满足 tollgate 硬约束。
+
+### 4.3 Master 启动调用
+
+```json
+{
+  "tool": "team_tollgate",
+  "args": {
+    "team_id": "heat2d-vv-gate",
+    "stages": [
+      {
+        "member": "alice",
+        "task": "Implement solveHeat2D(nx, ny, dt, nSteps) in TypeScript using the explicit FTCS scheme for the 2D heat equation (alpha=1, unit square [0,1]x[0,1], Dirichlet u=0 on the boundary). Manufactured solution: u_ex = sin(pi*x)*sin(pi*y)*exp(-2*pi^2*t). Set IC = u_ex(t=0), run to t_final = 0.1 with a grid fine enough that dt satisfies the CFL stability condition dt <= dx^2/4. Report the max absolute error max|u_num - u_ex| over all grid points at t_final. Embed code in a fenced block.",
+        "verifier": "bob",
+        "criteria": "Verify the producer's reported max-error against the manufactured solution is < 1e-3. If so emit PASS, else FAIL with the measured value."
+      },
+      {
+        "member": "carol",
+        "task": "Run a grid-convergence study for the 2D heat equation FTCS solver on 3 meshes (nx=ny=21, 41, 81). Use the same manufactured solution u_ex = sin(pi*x)*sin(pi*y)*exp(-2*pi^2*t). Scale dt with dx^2 to stay stable and isolate spatial error. Compute the max-error on each mesh, then estimate the observed convergence order p via log2((e_coarse - e_medium)/(e_medium - e_fine)) or a log-log slope of error vs dx. Report the observed order p. Embed code in a fenced block.",
+        "verifier": "dave",
+        "criteria": "Verify the observed spatial convergence order p >= 2 (centered second-difference is 2nd-order). If p >= 2 emit PASS, else FAIL with the measured order."
+      },
+      {
+        "member": "erin",
+        "task": "Implement solveHeat2D with zero-flux (Neumann) boundaries (du/dn=0 on all 4 edges) so total heat is physically conserved. Use alpha=1, nx=ny=41, dt = dx^2/4, IC = a smooth positive field (e.g. 1 + 0.1*sin(pi*x)*sin(pi*y)). Run nSteps=1000 and report the relative drift |sum(u_end) - sum(u_0)| / sum(u_0) of total heat. Embed code in a fenced block.",
+        "verifier": "frank",
+        "criteria": "Verify the relative heat drift over 1000 steps is < 1e-4 (Neumann BC => total heat conserved to round-off). If drift < 1e-4 emit PASS, else FAIL with the measured drift."
+      }
+    ],
+    "max_gate_retries": 1,
+    "timeout_ms": 3600000
+  }
+}
+```
+
+**参数选择**：
+- 3 个门**串行**（correctness → convergence → conservation）——后者依赖前者建立的求解器可信度，tollgate 的级联语义天然表达此依赖
+- 每门 `verifier != member`（bob≠alice、dave≠carol、frank≠erin）——满足「禁止自验证」硬约束
+- `max_gate_retries: 1`——V&V 挑战级，给每门一次 FAIL 后修正机会（FTCS 的 CFL 条件、Neumann 边界实现均易首次出错）
+- `timeout_ms: 3600000`（60 min）——3 门 ×（producer ~10 min + verifier ~7 min）串行 ≈ 50 min，留 10 min 余量
+
+### 4.4 执行流程（时序）
+
+```
+T+0m     master 调用 team_tollgate (3 gates)
+T+0m     dispatch G1 producer (alice, simulator)
+T+0~12m  alice 实现 FTCS 求解器 → 跑 manufactured solution → 报 GATE1_RESULT → idle
+T+12m    G1 gate: dispatch verifier (bob, reviewer)
+T+12~19m bob 核对 max-error < 1e-3 → 输出 VERDICT1
+T+19m    G1 PASS → G2 producer 启动 (carol, simulator)
+T+19~31m carol 跑 3 套网格收敛研究 → 报 GATE2_RESULT → idle
+T+31m    G2 gate: dispatch verifier (dave, physicist)
+T+31~38m dave 核对 order >= 2 → 输出 VERDICT2
+T+38m    G2 PASS → G3 producer 启动 (erin, simulator)
+T+38~50m erin 跑 1000 步守恒检验 → 报 GATE3_RESULT → idle
+T+50m    G3 gate: dispatch verifier (frank, physicist)
+T+50~57m frank 核对 drift < 1e-4 → 输出 VERDICT3
+T+57m    G3 PASS → 流水线结束，结果交付 master
+T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
+```
+
+（任一门 FAIL 且 attempts <= max_gate_retries，producer 连同 diff 退回重做，再走该门 gate；超过 retries 则整条流水线失败。）
+
+### 4.5 评判脚本
+
+[`check-physics-heat-vv.ts`](./check-physics-heat-vv.ts)
+
+- **加载**：`runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md`（6 个文件）
+- **提取**：
+  - G1 误差：alice.md 正则 `<!--\s*GATE1_RESULT:\s*([\d.eE+-]+)\s*-->`
+  - G1 判定：bob.md 正则 `<!--\s*VERDICT1:\s*(PASS|FAIL)\s*-->`
+  - G2 阶：carol.md 正则 `<!--\s*GATE2_RESULT:\s*([\d.eE+-]+)\s*-->`
+  - G2 判定：dave.md 正则 `<!--\s*VERDICT2:\s*(PASS|FAIL)\s*-->`
+  - G3 漂移：erin.md 正则 `<!--\s*GATE3_RESULT:\s*([\d.eE+-]+)\s*-->`
+  - G3 判定：frank.md 正则 `<!--\s*VERDICT3:\s*(PASS|FAIL)\s*-->`
+- **断言**：
+  1. 三个 GATE_RESULT 值均为有限数
+  2. 交叉核对阈值：G1 `max_error < 1e-3`、G2 `order >= 2`、G3 `drift < 1e-4`
+  3. 三个 VERDICT 均为 `PASS`
+
+---
+
 ## 验收清单
 
-- [ ] 3 个 check 脚本 `tsc -p docs/orchestration-scenarios/tsconfig.json` 通过（无类型错误）
+- [ ] 4 个 check 脚本 `tsc -p docs/orchestration-scenarios/tsconfig.json` 通过（无类型错误）
 - [ ] 每个 team 配置 role 合法（`mathematician` / `reviewer` / `simulator` / `physicist` / `coder` / `tester` 均为预设）
 - [ ] 每个 stage 的 `verifier != member`（`bob` ≠ `alice`，满足 tollgate 硬约束）
 - [ ] 每个 master 调用参数符合 `team_tollgate` schema（`stages[].{member,task,verifier,criteria}`）
-- [ ] 每场景总时长 ≤ 8 min（远低于 30 min 上限）
-- [ ] 成员 prompt 与评判脚本标记对齐：producer 发 `IMPL`/`DRIFT`，verifier 发 `VERDICT`
+- [ ] 场景 1-3 总时长 ≤ 8 min（远低于 30 min 上限）；场景 4 为挑战级约 60 min（6 成员、3 门串行）
+- [ ] 成员 prompt 与评判脚本标记对齐：场景 1-3 producer 发 `IMPL`/`DRIFT`、verifier 发 `VERDICT`；场景 4 producer 发 `GATE<n>_RESULT`、verifier 发 `VERDICT<n>`
 
 
 ---
@@ -363,4 +511,21 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：producer 的 reverseStr 通过 3 用例（'abc'→'cba'、''→''、'a🚀b'→'b🚀a' 含 surrogate pair intact）；verifier VERDICT = PASS。
+```
+
+### 场景 4: 二维热传导求解器 V&V 认证（挑战级）
+
+```text
+执行 docs/orchestration-scenarios/09-team-tollgate/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、3 门串行 V&V）。
+
+步骤：
+1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（6 名成员：alice/bob/carol/dave/erin/frank）
+2. team_activate 激活
+3. 读 README「4.3 Master 启动调用」，按 team_tollgate JSON 启动编排（3 门串行：correctness -> convergence -> conservation）
+4. team_results 轮询至 master 收到汇总（每门 verifier PASS 才放行下一门；FAIL 回退 producer 重做，受 max_gate_retries=1 限制）
+5. 定位 <run_dir>（含 6 个成员的 .md：alice/bob/carol/dave/erin/frank）
+6. 运行：bun docs/orchestration-scenarios/09-team-tollgate/check-physics-heat-vv.ts <run_dir>
+7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+
+成功标准：G1 max-error < 1e-3 且 VERDICT1 = PASS；G2 convergence order >= 2 且 VERDICT2 = PASS；G3 heat drift < 1e-4 且 VERDICT3 = PASS。三门全 PASS 才判 PASS。
 ```

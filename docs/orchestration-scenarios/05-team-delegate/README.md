@@ -2,7 +2,7 @@
 
 > **模式**：`team_delegate` — 发布任务到共享列表，空闲成员自行认领（claim）、执行并回报 master；支持 `blocked_by` 依赖构成 DAG。
 > **源码**：[`src/tools/workflow-advanced.ts:82-214`](../../../src/tools/workflow-advanced.ts)
-> **控时设计**：3 成员自领取，每成员子任务 ≤ 6 min；无依赖场景总时长 ≈ ceil(tasks/members) 轮 × 3 min；DAG 场景总时长 ≈ 关键路径 × 3 min。所有场景 ≤ 15 min（远低于 30 min 上限）。
+> **控时设计**：场景 1-3 基线为 3 成员自领取，每成员子任务 ≤ 6 min；无依赖场景总时长 ≈ ceil(tasks/members) 轮 × 3 min；DAG 场景总时长 ≈ 关键路径 × 3 min（场景 1-3 均 ≤ 15 min，远低于 30 min 上限）。**场景 4 为挑战级**：刻意突破基线约束（8 成员 / 100 任务 / ~90 min），压测 delegate 模式在高并发自领取下的稳定性与任务分发公平性。
 
 ## 场景一览
 
@@ -11,6 +11,7 @@
 | 1 | 数学 | 数论五题独立求解 | 3 | `mathematician` | 5, 无依赖 | ~10 min |
 | 2 | 计算物理 | 经典 ODE 三系统仿真 | 3 | `simulator` | 3, 无依赖 | ~8 min |
 | 3 | 编程 | CLI 计算器 blockedBy DAG | 3 | `coder` | 4, DAG | ~12 min |
+| 4 | 数学（挑战级） | 100 道程序化数论题（4 family） | 8 | `mathematician` | 100, 无依赖 | ~90 min |
 
 ---
 
@@ -357,13 +358,171 @@ T+7m    运行: bun check-coding-cli-calc.ts <run_dir>
 
 ---
 
+## 场景 4: 100 道程序化数论题（挑战级）
+
+### 4.1 场景描述
+
+**背景**：前 3 个场景验证了 delegate 模式的基础能力（并行自领取、ODE 仿真、blockedBy DAG）。本**挑战级**场景把规模拉到极限——**100 道程序化可验证的数论题、8 个 mathematician 成员并行自领取**，刻意突破基线约束（≤ 4 成员 / ≤ 30 min）。每题要求一个关于其索引 n 的确定性整数值函数，答案可被独立脚本（Eratosthenes 筛法 / 除数和 / modPow / 欧拉函数筛）严格校验。**规模是本场景的核心**：100 任务 / 8 成员 = 平均 12.5 题/人，考验 delegate 模式在高并发自领取下的稳定性与任务分发公平性——依赖被刻意省略，强调的是吞吐而非拓扑。
+
+**目标**：发布 100 个**完全独立**的数论任务到共享列表，8 个 mathematician 成员各自认领、求解、回报 `<!-- ANSWER_<n>: <value> -->` 标注。
+
+**题目族（4 family × 25 题 = 100，ref scheme `p1`..`p100`）**：
+
+| Family | refs | 问题 | 期望示例 |
+|--------|------|------|---------|
+| A. 素数计数 π | `p1`..`p25` | π(10·k)，k=1..25 → π(10), π(20), …, π(250) | π(10)=4，π(100)=25 |
+| B. 除数和 σ | `p26`..`p50` | σ(n)，n=101..125 | σ(101)=102（素数），σ(125)=156 |
+| C. 模幂 | `p51`..`p75` | 2^n mod (10⁹+7)，n=51..75（base=2，exponent=题号，modulus=1_000_000_007） | 2⁵¹ mod (10⁹+7)=797922655 |
+| D. 欧拉函数 φ | `p76`..`p100` | φ(n)，n=201..225 | φ(201)=132，φ(225)=120 |
+
+**成功标准（可机器评判）**：100 道题中 **≥ 95 道**的 `<!-- ANSWER_<n>: <value> -->` 标注与独立计算的 ground truth 一致（容忍少量 flaky claim / 个别成员掉队）。
+
+### 4.2 Team 配置
+
+```json
+{
+  "name": "num-theory-100",
+  "description": "Challenge-level: 100 programmatically-verifiable number-theory problems self-claimed by 8 mathematicians",
+  "members": [
+    {
+      "name": "alice",
+      "role": "mathematician",
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+    },
+    {
+      "name": "bob",
+      "role": "mathematician",
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+    },
+    {
+      "name": "carol",
+      "role": "mathematician",
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+    },
+    {
+      "name": "dave",
+      "role": "mathematician",
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+    },
+    {
+      "name": "eve",
+      "role": "mathematician",
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+    },
+    {
+      "name": "frank",
+      "role": "mathematician",
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+    },
+    {
+      "name": "grace",
+      "role": "mathematician",
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+    },
+    {
+      "name": "henry",
+      "role": "mathematician",
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+    }
+  ]
+}
+```
+
+**Role 选择理由**：`mathematician` 用 `build` agent，可写代码枚举/验证，完全匹配数论求解需求。八名成员 prompt 相同（delegate 模式下角色对称，差异来自认领的任务）——刻意对称以隔离「并发自领取」这一被测变量。
+
+**成员数 = 8（突破 ≤ 4 基线）的理由**：挑战级场景的核心是规模压测。100 任务需要足够的并行槽位才能在合理时间内完成（100/8 ≈ 13 轮 vs 100/4 = 25 轮），同时 8 路并发足以暴露任务分发竞争（多成员同时 team_task_list / claim 同一任务）。
+
+### 4.3 Master 启动调用
+
+`tasks` 数组含 **100 个条目**（ref `p1`..`p100`，无 `blocked_by`）。下面给出 4 个 family 的模板与每族一个具体样例——完整 100 条按相同模式生成。
+
+```json
+{
+  "tool": "team_delegate",
+  "args": {
+    "team_id": "num-theory-100",
+    "tasks": [
+      {
+        "ref": "p1",
+        "subject": "π(10) — count primes ≤ 10",
+        "description": "Compute π(10), the count of prime numbers ≤ 10 (primes: 2,3,5,7 → expected 4). Use the Sieve of Eratosthenes. End your report to master with a line exactly formatted: <!-- ANSWER_1: <integer_value> -->"
+      },
+
+      {
+        "ref": "p26",
+        "subject": "σ(101) — sum of divisors of 101",
+        "description": "Compute σ(101), the sum of all positive divisors of 101 (including 1 and 101; 101 is prime → expected 102). End your report to master with a line exactly formatted: <!-- ANSWER_26: <integer_value> -->"
+      },
+
+      {
+        "ref": "p51",
+        "subject": "2^51 mod (10^9+7)",
+        "description": "Compute 2^51 mod 1000000007 using fast modular exponentiation (BigInt modPow). Report the integer in [0, 10^9+6]. End your report to master with a line exactly formatted: <!-- ANSWER_51: <integer_value> -->"
+      },
+
+      {
+        "ref": "p76",
+        "subject": "φ(201) — Euler totient of 201",
+        "description": "Compute φ(201), Euler's totient: count of k in {1..201} with gcd(k,201)=1 (201=3·67 → expected 132). End your report to master with a line exactly formatted: <!-- ANSWER_76: <integer_value> -->"
+      }
+    ],
+    "timeout_ms": 5400000,
+    "max_errored_members": 1
+  }
+}
+```
+
+**Ref scheme（完整 100 条的生成规则，master 按 schema 展开即可）**：
+
+| ref | 问题 | description 模板（替换 `<n>` / `<arg>`） |
+|-----|------|------------------------------------------|
+| `p<k>`，k=1..25 | π(10·k) | `Compute π(<10·k>), the count of primes ≤ <10·k>. Use the Sieve of Eratosthenes. End your report to master with a line exactly formatted: <!-- ANSWER_<k>: <integer_value> -->` |
+| `p<k>`，k=26..50 | σ(k+75)，即 σ(101)..σ(125) | `Compute σ(<k+75>), the sum of all positive divisors of <k+75> (including 1 and itself). End your report to master with a line exactly formatted: <!-- ANSWER_<k>: <integer_value> -->` |
+| `p<k>`，k=51..75 | 2^k mod (10⁹+7) | `Compute 2^<k> mod 1000000007 using fast modular exponentiation. Report the integer in [0, 10^9+6]. End your report to master with a line exactly formatted: <!-- ANSWER_<k>: <integer_value> -->` |
+| `p<k>`，k=76..100 | φ(k+125)，即 φ(201)..φ(225) | `Compute φ(<k+125>), Euler's totient of <k+125> (count of k in {1..<k+125>} coprime to it). End your report to master with a line exactly formatted: <!-- ANSWER_<k>: <integer_value> -->` |
+
+**参数选择**：
+- **无 `blocked_by`** — 100 题完全独立，刻意强调规模而非依赖（依赖压测见场景 3）
+- `timeout_ms: 5400000`（90 min）— 100 题 / 8 成员 ≈ 13 轮 × ~6 min/轮
+- `max_errored_members: 1` — 允许 8 中 1 个成员失败（剩余 7 成员仍可覆盖 100 题，平均 ~14.3 题/人），配合 ≥ 95/100 的评判阈值
+- 不设 `signoff_policy` — delegate 默认 `none`，任务完成直接交付
+
+### 4.4 执行流程（时序）
+
+```
+T+0m     master 调用 team_delegate，发布 100 个任务到共享列表（全部无 blocked_by）
+T+0m     OCTeam dispatch 8 个 mathematician 成员
+T+0m     8 成员并发 team_task_list → 各自认领 1 个任务（8 个同时被认领，考验 claim 竞争）
+T+0~6m   第一轮：8 题并行求解（筛法/除数和/modPow/totient）→ 各自回报 ANSWER_n → 释放任务
+T+6m     8 个成员回到 tasklist，继续认领下一批（第二轮）
+...
+T+~75m   100/8 ≈ 13 轮，平均每轮 ~6 min → 约 75-90 min 全部完成（个别成员可能稍慢）
+T+90m    master 收到汇总交付
+T+90m    运行: bun docs/orchestration-scenarios/05-team-delegate/check-math-100-problems.ts <run_dir>
+```
+
+### 4.5 评判脚本
+
+[`check-math-100-problems.ts`](./check-math-100-problems.ts)
+
+- **加载**：`readdir(<run_dir>)` 读取所有 8 个 `*.md` 成员输出（delegate 模式下不确定哪个成员认领了哪题，故扫描全部）
+- **提取**：正则 `<!--\s*ANSWER_(\d+):\s*(\d+)\s*-->` 全局匹配，构建 `Map<题号 1..100, bigint>`（重复题号取首个；超出 1..100 范围的跳过）
+- **ground truth（脚本独立计算，4 个 helper）**：
+  1. `sievePrimes(N)` + `primeCount(N)` — Eratosthenes 筛法 → π(10·k)，k=1..25
+  2. `sumOfDivisors(n)` — O(√n) 试除法 → σ(n)，n=101..125
+  3. `modPow(base, exp, mod)` — BigInt 快速模幂 → 2^k mod (10⁹+7)，k=51..75
+  4. `totientSieve(N)` — 欧拉函数筛（线性遍历每个素数 p，对所有倍数减去 ⌊φ/p⌋）→ φ(n)，n=201..225
+- **断言**：100 题中 `reported[n] === expected[n]` 的题数 **≥ 95**；输出 per-family 命中率（pi/sigma/modpow/phi）与总体，未达标时打印前 8 个 miss
+
+---
+
 ## 验收清单
 
-- [ ] 3 个 check 脚本 `bunx tsc -p docs/orchestration-scenarios/tsconfig.json` 通过（无类型错误）
+- [ ] 4 个 check 脚本 `bunx tsc -p docs/orchestration-scenarios/tsconfig.json` 通过（无类型错误）
 - [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_delegate` schema（`tasks[]` 含 `ref`/`subject`/`description`/`blocked_by`）
 - [ ] `blocked_by` 引用的 `ref` 均在同级 `tasks` 中声明，无循环
-- [ ] 每场景总时长 ≤ 15 min（远低于 30 min 上限）
+- [ ] 场景 1-3 总时长 ≤ 15 min（远低于 30 min 上限）；**场景 4 挑战级 ~90 min、8 成员，刻意压测规模（基线约束的唯一例外）**
 - [ ] 成员 prompt 中明确自领取流程 + 输出格式约定，评判脚本 marker 与任务 description 对齐
 
 
@@ -422,4 +581,21 @@ T+7m    运行: bun check-coding-cli-calc.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：4 个 marker 齐全（SPEC_OK=true、IMPL: calculate、IMPL: format、PASS_COUNT=4/4），且 calculate 通过 4 用例（2+3=5、10-4=6、3*7=21、20/4=5）。
+```
+
+### 场景 4: 100 道程序化数论题（挑战级，8 成员）
+
+```text
+执行 docs/orchestration-scenarios/05-team-delegate/README.md「场景 4」的完整闭环并自动评判。注意：此为挑战级场景，预计 ~90 min、8 成员并发。
+
+步骤：
+1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（8 个 mathematician 成员 alice..henry）
+2. team_activate 激活
+3. 读 README「4.3 Master 启动调用」+ Ref scheme 表，按 team_delegate JSON 启动编排：tasks[] 需展开为 100 条（p1..p100），按 4 个 family 模板生成（π(10·k) / σ(101..125) / 2^k mod 1e9+7 / φ(201..225)），全部无 blocked_by
+4. team_results 轮询至 master 收到汇总（成员自取自报，无任务即停；100 题 / 8 成员 ≈ 13 轮）
+5. 定位 <run_dir>（含 8 个成员 .md，ANSWER_n marker 分布其中）
+6. 运行：bun docs/orchestration-scenarios/05-team-delegate/check-math-100-problems.ts <run_dir>
+7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+
+成功标准：100 题 ≥ 95 答案正确（脚本独立用筛法/除数和/modPow/totient 算 ground truth，容忍少量 flaky claim）。
 ```

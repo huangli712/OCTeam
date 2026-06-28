@@ -11,6 +11,7 @@
 | 1 | 数学 | 4×4 矩阵求逆法之争（直接 vs 迭代） | 3 | `mathematician` / `reviewer` | 2 | ~15 min |
 | 2 | 计算物理 | 刚性 ODE 格式之争（显式 vs 隐式） | 3 | `simulator` / `physicist` | 2 | ~15 min |
 | 3 | 编程 | 缓存淘汰策略之争（LRU vs LFU） | 3 | `coder` / `reviewer` | 2 | ~12 min |
+| 4 | 计算物理 | 复杂边界 PDE 五方法之争（挑战级） | 6 | `physicist` / `reviewer` | 3 | ~40 min |
 
 ---
 
@@ -297,6 +298,122 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 
 ---
 
+## 场景 4: 复杂边界 PDE 五方法之争（挑战级）
+
+> **挑战级**：6 成员（5 辩手 + 1 仲裁）、`max_rounds=3`、预计 ~40 min，刻意突破标准模板（≤4 成员 / ≤30 min）以压力测试 `team_arbitrate` 在五派辩论下的扩展性。
+
+### 4.1 场景描述
+
+**背景**：一类同时具备三个难点的 PDE——**复杂弯曲边界**（需非结构网格贴合）、**对流占优输运**（易产生数值振荡、需稳定化）、**非线性源项**（排除仅适用于线性问题的方法）。五种主流离散化路线（FEM、FDM、FVM、Spectral、BEM）在几何适应性、对流稳定化、非线性处理上各有取舍，是计算物理中开放性最强的数值方法选择争议之一。
+
+**目标**：五名辩手各自捍卫一种离散化路线，仲裁综合「几何适应性 + 对流稳定化 + 非线性处理」三维度下达裁决。
+
+**争议命题**（即 `task`）：*"For a PDE with a complex CURVED boundary, advection-dominated transport, AND a nonlinear source term, which numerical method should you choose: FEM, FDM, FVM, Spectral, or BEM?"*
+
+**成功标准（可机器评判）**：
+- 五名辩手输出各含 `<!-- ARG: <一句话立场> -->` 标注
+- 仲裁输出含 `<!-- RULING: <method> -->`（`method` ∈ {fem, fdm, fvm, spectral, bem}）与 `<!-- REASON: <text> -->`
+- `REASON` 非空且至少提及 `{curved, boundary, advection, nonlinear, flux, mesh}` 中的两项（不区分大小写）
+- **物理预期**：FEM 或 FVM 胜出——两者都能通过非结构网格贴合弯曲边界、通过稳定化 / 通量限制处理对流占优，并自然纳入非线性源项；Spectral 难以适应复杂几何，FDM 在弯曲边界上费力，BEM 仅适用于线性问题（非线性源项直接排除 BEM）。
+
+### 4.2 Team 配置
+
+```json
+{
+  "name": "pde-method-five-way-debate",
+  "description": "Arbitrate among FEM, FDM, FVM, Spectral, and BEM for a PDE with a complex curved boundary, advection-dominated transport, and a nonlinear source term",
+  "members": [
+    {
+      "name": "alice",
+      "role": "physicist",
+      "prompt": "You are the proponent of FEM (Finite Element Method) for a PDE with a COMPLEX CURVED BOUNDARY, ADVECTION-DOMINATED transport, AND a NONLINEAR source term. Argue: FEM handles arbitrary geometries via unstructured (triangular / tetrahedral) meshes that conform to curved boundaries; advection dominance is tamed by SUPG / GLS stabilization or discontinuous Galerkin; the nonlinear source term is incorporated naturally via the weak form and solved by Newton iteration. The variational framework is mathematically rigorous (Lax-Milgram / Galerkin orthogonality). Rebut the other four methods. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
+    },
+    {
+      "name": "bob",
+      "role": "physicist",
+      "prompt": "You are the proponent of FDM (Finite Difference Method) for a PDE with a COMPLEX CURVED BOUNDARY, ADVECTION-DOMINATED transport, AND a NONLINEAR source term. Argue the FDM case as strongly as you can: FDM is conceptually simple and trivially vectorizable, and the nonlinear source term is a local pointwise evaluation (no integration needed). Modern immersed-boundary / cut-cell / overset-grid techniques adapt structured differences to curved geometries without unstructured meshes, and high-order compact schemes rival spectral accuracy on smooth regions. Rebut the other four methods. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
+    },
+    {
+      "name": "carol",
+      "role": "physicist",
+      "prompt": "You are the proponent of FVM (Finite Volume Method) for a PDE with a COMPLEX CURVED BOUNDARY, ADVECTION-DOMINATED transport, AND a NONLINEAR source term. Argue: FVM is exactly locally conservative (integral flux form), which is essential for advection-dominated transport; upwind / flux-limiter / MUSCL / WENO schemes suppress oscillations without excessive numerical diffusion; unstructured FVM meshes conform to curved boundaries just like FEM; the nonlinear source term is a cell-average contribution. FVM is the workhorse of CFD for exactly these reasons. Rebut the other four methods. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
+    },
+    {
+      "name": "dave",
+      "role": "physicist",
+      "prompt": "You are the proponent of SPECTRAL methods for a PDE with a COMPLEX CURVED BOUNDARY, ADVECTION-DOMINATED transport, AND a NONLINEAR source term. Argue the spectral case as strongly as you can: spectral methods achieve exponential convergence for smooth solutions (error ~ exp(-N)), far outperforming algebraic-order FEM / FDM / FVM; spectral-element / nodal-DG variants patch spectral bases onto curved elements to recover geometric flexibility; dealiasing (the 3/2 rule) handles the nonlinear source term; advection is treated with spectral upwinding. Rebut the other four methods. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
+    },
+    {
+      "name": "erin",
+      "role": "physicist",
+      "prompt": "You are the proponent of BEM (Boundary Element Method) for a PDE with a COMPLEX CURVED BOUNDARY, ADVECTION-DOMINATED transport, AND a NONLINEAR source term. Argue the BEM case as strongly as you can: BEM discretizes ONLY the boundary (dimensionality reduction by one — a 3D PDE becomes a 2D surface mesh), so the curved boundary is its natural input; the far-field is exact (no artificial truncation); the resulting system is smaller and dense. Address the advection and nonlinearity concerns via domain-integral formulations or hybrid BEM-FEM coupling. Rebut the other four methods. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
+    },
+    {
+      "name": "frank",
+      "role": "reviewer",
+      "prompt": "You are the ARBITER. Five physicists debated which numerical method — FEM, FDM, FVM, Spectral, or BEM — should solve a PDE with a COMPLEX CURVED BOUNDARY, ADVECTION-DOMINATED transport, AND a NONLINEAR source term. Weigh all five sides objectively across three dimensions — (1) geometry adaptability to the curved boundary, (2) stability under advection dominance, (3) handling the nonlinear source — then deliver a single BINDING ruling. Recall the governing trade-offs: FEM and FVM conform to curved boundaries via unstructured meshes and tame advection via SUPG / flux-limiting respectively, and both admit the nonlinear source term naturally; FDM struggles to conform to curved boundaries; Spectral methods lose their exponential-convergence advantage and geometric flexibility on complex domains; BEM requires a linear PDE with a known fundamental solution, so the nonlinear source term fundamentally disqualifies it. Your output MUST end with two lines exactly formatted: first <!-- RULING: fem --> (or <!-- RULING: fdm --> / <!-- RULING: fvm --> / <!-- RULING: spectral --> / <!-- RULING: bem -->) then <!-- REASON: <one-sentence rationale referencing at least two of: curved boundary, advection, nonlinearity, flux, mesh> -->."
+    }
+  ]
+}
+```
+
+**Role 选择理由**：5 名辩手均用 `physicist`（计算物理数值方法专家，能讲清弱形式 / 通量守恒 / 稳定域 / 谱收敛 / Green 函数等论据）；仲裁用 `reviewer`（只读角色，跨五方客观权衡，不偏袒任一方法）。
+
+### 4.3 Master 启动调用
+
+```json
+{
+  "tool": "team_arbitrate",
+  "args": {
+    "team_id": "pde-method-five-way-debate",
+    "task": "For a PDE with a complex CURVED boundary, advection-dominated transport, AND a nonlinear source term, which numerical method should you choose: FEM, FDM, FVM, Spectral, or BEM?",
+    "arbiter": "frank",
+    "debaters": ["alice", "bob", "carol", "dave", "erin"],
+    "max_rounds": 3,
+    "timeout_ms": 2400000
+  }
+}
+```
+
+**参数选择**：
+- `arbiter: "frank"` — role=`reviewer` 的仲裁，非辩手、非 master；裁决几何 / 对流 / 非线性三维权衡
+- `debaters: ["alice", "bob", "carol", "dave", "erin"]` — 恰好 5 名唯一辩手，分持 FEM / FDM / FVM / Spectral / BEM
+- `max_rounds: 3` — 立论 + 交叉反驳 + 终辩共三轮（五派分歧大，两轮不足以暴露全部取舍）
+- `timeout_ms: 2400000`（40 min）— 5 名辩手 × 3 轮 + 裁决的硬上限，挑战级场景刻意放宽
+- 无 `signoff_*` — 仲裁裁决本身即为终点（等价 `none` 门）
+
+### 4.4 执行流程（时序）
+
+```
+T+0m     master 调用 team_arbitrate (max_rounds=3)
+T+0m     Round 1: 并行 dispatch 5 名 physicist 辩手立论
+T+0~6m   各辩手写方法论据 (弱形式 / 通量守恒 / 稳定化 / 谱收敛 / Green 函数) + ARG 标记
+T+6m     仲裁 (reviewer) 审阅 Round 1 五方输出
+T+7m     Round 2: 并行 dispatch 5 名辩手交叉反驳
+T+7~14m  各辩手反驳其余四派，刷新 ARG 标记
+T+14m    仲裁审阅 Round 2
+T+15m    Round 3: 并行 dispatch 5 名辩手终辩
+T+15~22m 各辩手终辩收束，刷新 ARG 标记
+T+22m    仲裁审阅 Round 3，下达有约束力裁决 (RULING + REASON)
+T+24m    裁决交付 master
+T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
+```
+
+### 4.5 评判脚本
+
+[`check-physics-pde-arbitrate.ts`](./check-physics-pde-arbitrate.ts)
+
+- **加载**：`runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md`
+- **提取**：
+  - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
+  - 仲裁 `<!-- RULING:\s*(\w[\w-]*)\s*-->` 与 `<!-- REASON:\s*(.+?)\s*-->`
+- **断言**：
+  1. 五名辩手均产出 `ARG` 标记
+  2. 仲裁 `RULING` ∈ {fem, fdm, fvm, spectral, bem}
+  3. `REASON` 非空且至少包含 `{curved, boundary, advection, nonlinear, flux, mesh}` 中的两项（不区分大小写）
+
+---
+
 ## 验收清单
 
 - [ ] 3 个 check 脚本 `tsc -p docs/orchestration-scenarios/tsconfig.json` 通过（无类型错误）
@@ -361,4 +478,21 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：arbiter RULING = lru；REASON 含 temporal 或 recency（强时间局部性 workload 偏好 LRU）。
+```
+
+### 场景 4: 复杂边界 PDE 五方法之争（物理 · 挑战级）
+
+```text
+执行 docs/orchestration-scenarios/07-team-arbitrate/README.md「场景 4」的完整闭环并自动评判。
+
+步骤：
+1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（5 debater + 1 arbiter，挑战级）
+2. team_activate 激活
+3. 读 README「4.3 Master 启动调用」，按 team_arbitrate JSON 启动编排（max_rounds=3）
+4. team_results 轮询至 master 收到汇总（五方三轮辩论后 arbiter 出裁决）
+5. 定位 <run_dir>（含 frank 成员 .md）
+6. 运行：bun docs/orchestration-scenarios/07-team-arbitrate/check-physics-pde-arbitrate.ts <run_dir>
+7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+
+成功标准：arbiter RULING ∈ {fem, fdm, fvm, spectral, bem}；REASON 至少含 {curved, boundary, advection, nonlinear, flux, mesh} 中两项（复杂边界 + 对流占优 + 非线性源项，物理预期 FEM/FVM 胜出）。
 ```

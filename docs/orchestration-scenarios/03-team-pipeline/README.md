@@ -11,6 +11,7 @@
 | 1 | 数学 | 高斯定积分三段流水线 | 3 | `mathematician` | alice → bob → carol | ~12 min |
 | 2 | 计算物理 | 小角度单摆仿真链 | 3 | `simulator` | alice → bob → carol | ~14 min |
 | 3 | 编程 | `fib(n)` TDD 流水线 | 3 | `coder` | alice → bob → carol | ~10 min |
+| 4 | 计算物理（挑战级） | Lennard-Jones 分子动力学完整仿真链 | 8 | `simulator` | alice → bob → carol → dave → erin → frank → grace → henry | ~60 min |
 
 > **流水线语义**：stage N+1 的任务前缀自动追加 stage N 的完整 markdown 输出；最终 `leader` 收到的是 stage 3 的输出（经 summarize）。评判脚本读取**末段成员**的 `<member>.md`（末段输出即流水线产物）。
 
@@ -327,12 +328,160 @@ T+10m   运行: bun check-coding-fib-tdd.ts <run_dir>
 
 ---
 
+## 场景 4: Lennard-Jones 分子动力学完整仿真链（挑战级）
+
+> **挑战级说明**：本场景突破常规 30 min / ≤4 成员上限，使用 **8 段串行流水线**完成一次完整的 Lennard-Jones 分子动力学仿真（力场 → 初始化 → 能量极小化 → NVT 平衡 → NVT 采样 → RDF 分析 → 汇总报告）。每段子任务约 5-8 min，总时长约 60 min，timeout 设 90 min 留余量。仅作能力演示，不作为常规基准。
+
+### 4.1 场景描述
+
+**背景**：液氩（Ar）的经典分子动力学仿真是统计物理教学的标杆体系。原子间相互作用用 Lennard-Jones（LJ）势描述 `V(r) = 4ε[(σ/r)¹² − (σ/r)⁶]`，配合周期性边界条件（PBC）与速度 Verlet 积分，可复现液态氩的径向分布函数 g(r) 与能量守恒性。一条完整、可复现的仿真链涵盖：力场定义 → 初始构型 → 能量极小化 → NVT 平衡 → NVE/NVT 采样 → 轨迹采样 → 后处理（g(r)）→ 报告。
+
+**体系参数**：100 个氩原子，立方盒子周期性边界，密度 ρ = 1.38 g/cm³（液态氩典型值），初始温度 T₀ = 120 K。LJ 参数 ε = 0.998 kJ/mol（≈ 119.8 K·k_B），σ = 3.40 Å，截断半径 r_cut = 2.5σ。
+
+**目标**：8 个 `simulator` 成员串行接力——
+- stage-1（`alice`，force-field）：定义 LJ 力场参数（ε=0.998 kJ/mol、σ=3.40 Å、r_cut=2.5σ），给出势能、力的解析表达式，并约定 reduced unit（σ、ε、原子质量 m_Ar）换算。
+- stage-2（`bob`，init）：按 ρ=1.38 g/cm³ 与 100 个原子构建立方盒子（含 PBC），在 **FCC 格子**上排布原子（注意 100 不是 FCC 完整 filling，须说明取舍），按 Maxwell–Boltzmann 分布在 T₀=120 K 初始化速度并去质心速度。
+- stage-3（`carol`，minimize）：对初始构型做**最速下降法**能量极小化，直到最大原子受力 `F < 1e-4`（reduced 或 SI 一致即可），消除格点重叠带来的高能。
+- stage-4（`dave`，equilibrate）：在 **NVT @ 120 K** 下平衡 **10⁴ 步**，步长 h=2 fs（可用 velocity Verlet + Berendsen 或 Langevin 恒温器），使温度、能量进入稳态。
+- stage-5（`erin`，produce）：切换到 **NVE**（微正则）产出 **10⁵ 步**，步长 h=2 fs，velocity Verlet 积分；记录总能量曲线用于评估能量漂移。
+- stage-6（`frank`，sample）：从产出轨迹等距抽取 **1000 帧**构型，按 PBC 最小镜像约定整理，作为 g(r) 计算输入。
+- stage-7（`grace`，rdf）：基于 1000 帧计算**径向分布函数 g(r)**（bin 宽 0.02σ，区间 [0, L/2]），报告 g(r) 第一峰位置 r_peak（Å）。
+- stage-8（`henry`，report）：汇总产出阶段平均温度 `<T>`、平均总能量 `<E>`、g(r) 第一峰位置，并计算产出阶段总能量相对漂移 `ΔE/<E>`，形成最终报告。
+
+**成功标准（可机器评判）**：
+- stage-8（`henry`）输出含 `<!-- TEMP_K: <数值> -->` 标注（产出阶段平均温度，期望 ≈ 120 K ± 20）
+- stage-8 输出含 `<!-- RDF_PEAK_A: <数值> -->` 标注（g(r) 第一峰位置，单位 Å，期望 ≈ 3.40 ± 0.2 Å，即约一个 σ）
+- stage-8 输出含 `<!-- ENERGY_DRIFT: <数值> -->` 标注（产出 NVE 阶段总能量相对漂移 `|ΔE|/|<E>|`，期望 < 0.05）
+- 评判脚本只读末段 `henry.md`（流水线语义：前 7 段输出会被框架自动前缀追加到 `henry` 的任务上，故末段即完整产物）
+
+### 4.2 Team 配置
+
+```json
+{
+  "name": "lj-md-pipeline",
+  "description": "Lennard-Jones MD pipeline (8 stages): force-field -> init -> minimize -> equilibrate -> produce -> sample -> rdf -> report",
+  "members": [
+    {
+      "name": "alice",
+      "role": "simulator",
+      "prompt": "You are stage 1 (force-field) of an 8-stage Lennard-Jones molecular dynamics pipeline simulating 100 argon atoms under periodic boundary conditions. Define the Lennard-Jones potential V(r) = 4*epsilon*[(sigma/r)^12 - (sigma/r)^6] and its force F(r) = -dV/dr. Parameters: epsilon = 0.998 kJ/mol (approx 119.8 K * k_B), sigma = 3.40 Angstrom, cutoff r_cut = 2.5*sigma (shifted to zero at r_cut). Argon atomic mass m_Ar = 39.948 u. State the reduced-unit convention (length in sigma, energy in epsilon, mass in m_Ar, time in sigma*sqrt(m_Ar/epsilon)) and the derived box length from rho = 1.38 g/cm^3 and N = 100. Embed any code in a fenced block. Hand the force-field definition and all constants forward. Your output MUST end with a line exactly formatted: <!-- FORCE_FIELD: LJ_epsilon_0.998_kJ_mol_sigma_3.40A_rcut_2.5sigma -->"
+    },
+    {
+      "name": "bob",
+      "role": "simulator",
+      "prompt": "You are stage 2 (init) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. The previous stage fixed LJ params (epsilon=0.998 kJ/mol, sigma=3.40 Angstrom, r_cut=2.5*sigma) and reduced units. Your job: build the cubic simulation box with periodic boundary conditions from rho = 1.38 g/cm^3 and N = 100 (compute box length L), place atoms on an FCC lattice (explain how you handle N=100 not being a perfect FCC filling), and initialize velocities from a Maxwell-Boltzmann distribution at T0 = 120 K, removing the center-of-mass velocity. Embed the code in a fenced block. Hand the initial configuration (positions, velocities, L) forward. Your output MUST end with a line exactly formatted: <!-- INIT: N_100_rho_1.38_T0_120K -->"
+    },
+    {
+      "name": "carol",
+      "role": "simulator",
+      "prompt": "You are stage 3 (minimize) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. Previous stages fixed the LJ force-field (epsilon=0.998 kJ/mol, sigma=3.40 Angstrom, r_cut=2.5*sigma) and built the initial FCC lattice in a periodic box. Your job: run STEEPEST DESCENT energy minimization on the initial positions (with PBC minimum-image convention) until the maximum per-atom force magnitude drops below 1e-4 (state the unit system used). Embed the code in a fenced block. Hand the minimized positions forward. Your output MUST end with a line exactly formatted: <!-- MINIMIZE: Fmax_below_1e-4 -->"
+    },
+    {
+      "name": "dave",
+      "role": "simulator",
+      "prompt": "You are stage 4 (equilibrate) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. Previous stages defined the LJ force-field, built the FCC initial configuration, and minimized it. Your job: integrate the equations of motion in the NVT ensemble at T = 120 K for 10^4 steps with timestep h = 2 fs using velocity Verlet plus a thermostat of your choice (Berendsen or Langevin, state which). Use PBC minimum-image and the r_cut = 2.5*sigma cutoff. Embed the code in a fenced block. Report the equilibrated mean temperature and potential energy over the second half of the run. Hand the equilibrated state (positions, velocities) forward. Your output MUST end with a line exactly formatted: <!-- EQUIL: NVT_120K_1e4steps_h_2fs -->"
+    },
+    {
+      "name": "erin",
+      "role": "simulator",
+      "prompt": "You are stage 5 (produce) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. Previous stages ran NVT equilibration at 120 K. Your job: switch to the NVE ensemble (microcanonical, NO thermostat) and integrate 10^5 steps with timestep h = 2 fs using velocity Verlet (PBC minimum-image, r_cut = 2.5*sigma). Record the total energy E_total at regular intervals to quantify drift. Embed the code in a fenced block. Report the mean total energy <E> and the relative drift |E_end - E_start| / |<E>| over the production run. Hand the production trajectory forward. Your output MUST end with a line exactly formatted: <!-- PRODUCE: NVE_1e5steps_h_2fs -->"
+    },
+    {
+      "name": "frank",
+      "role": "simulator",
+      "prompt": "You are stage 6 (sample) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. The previous stage produced a 10^5-step NVE trajectory. Your job: down-sample the production trajectory to EXACTLY 1000 equally spaced frames of positions (with PBC wrapping applied). Embed the code in a fenced block. Hand the 1000-frame trajectory forward as the input for radial-distribution-function analysis. Your output MUST end with a line exactly formatted: <!-- SAMPLE: 1000_frames -->"
+    },
+    {
+      "name": "grace",
+      "role": "simulator",
+      "prompt": "You are stage 7 (rdf) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. The previous stage handed a 1000-frame trajectory in the periodic box. Your job: compute the radial distribution function g(r) from the 1000 frames using bin width 0.02*sigma over r in [0, L/2] (L is the box length), with PBC minimum-image. Normalize correctly for a uniform-ideal-gas reference. Embed the code in a fenced block. Report the position of the FIRST peak of g(r) in Angstrom (expect approx sigma = 3.40 A). Hand g(r) and the first-peak position forward. Your output MUST end with a line exactly formatted: <!-- RDF_PEAK: <first_peak_position_in_Angstrom> -->"
+    },
+    {
+      "name": "henry",
+      "role": "simulator",
+      "prompt": "You are stage 8 (report, FINAL) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. All previous stages (force-field -> init -> minimize -> NVT equilibrate at 120 K -> NVE produce 1e5 steps -> 1000-frame sampling -> g(r)) have run and their outputs are prefixed above. Your job: synthesize the FINAL report containing (1) mean temperature <T> over the NVE production in Kelvin, (2) mean total energy <E> over production, (3) the g(r) first peak position in Angstrom (from stage 7), and (4) the relative total-energy drift |E_end - E_start| / |<E>| over the NVE production run. Your output MUST end with EXACTLY THREE lines, each on its own line, formatted as: <!-- TEMP_K: <mean_temperature_Kelvin> --> then <!-- RDF_PEAK_A: <first_peak_Angstrom> --> then <!-- ENERGY_DRIFT: <relative_drift> -->"
+    }
+  ]
+}
+```
+
+**Role 选择理由**：8 段均为数值模拟（力场、初始化、极小化、NVT/NVE 积分、采样、RDF 后处理、报告），`simulator` 专为 PDE/MC/MD/HPC 数值模拟设计，全程一致无需切 role，且 `build` agent 可写码 + 运行 + 数值验证。
+
+### 4.3 Master 启动调用
+
+```json
+{
+  "tool": "team_pipeline",
+  "args": {
+    "team_id": "lj-md-pipeline",
+    "stages": [
+      { "member": "alice",  "task": "Run stage 1 now: define the LJ force-field (epsilon=0.998 kJ/mol, sigma=3.40 A, r_cut=2.5*sigma), reduced units, and box length from rho=1.38 g/cm^3; produce your FORCE_FIELD marker." },
+      { "member": "bob",    "task": "Run stage 2 now: build the cubic PBC box, place 100 atoms on an FCC lattice, Maxwell-Boltzmann velocities at T0=120 K, remove COM velocity; produce your INIT marker." },
+      { "member": "carol",  "task": "Run stage 3 now: steepest-descent minimize the initial configuration to Fmax < 1e-4 (PBC minimum-image); produce your MINIMIZE marker." },
+      { "member": "dave",   "task": "Run stage 4 now: NVT equilibrate at 120 K for 10^4 steps, h=2 fs, velocity Verlet + thermostat; produce your EQUIL marker." },
+      { "member": "erin",   "task": "Run stage 5 now: NVE produce 10^5 steps, h=2 fs, velocity Verlet; record total-energy drift; produce your PRODUCE marker." },
+      { "member": "frank",  "task": "Run stage 6 now: down-sample the production trajectory to exactly 1000 PBC-wrapped frames; produce your SAMPLE marker." },
+      { "member": "grace",  "task": "Run stage 7 now: compute g(r) over the 1000 frames (bin 0.02*sigma, r in [0,L/2]); produce your RDF_PEAK marker (first peak in Angstrom)." },
+      { "member": "henry",  "task": "Run stage 8 now (FINAL): assemble the report with <T>, <E>, g(r) first peak, and relative energy drift; produce your TEMP_K, RDF_PEAK_A, and ENERGY_DRIFT markers." }
+    ],
+    "timeout_ms": 5400000
+  }
+}
+```
+
+**参数选择**：
+- `stages` 八成员**唯一**（流水线硬性要求：`alice` / `bob` / `carol` / `dave` / `erin` / `frank` / `grace` / `henry` 互不重复）
+- `signoff_policy` 默认 `none` — 长链流水线靠末段汇总产物，不加评审门以免进一步拉长
+- `timeout_ms: 5400000`（90 min）— 8 段串行预计 ~60 min（每段 5-8 min 含 dispatch + 运行），留 50% 余量
+- 每个 stage 的 `task` 仅写本 stage 指令；前序 stage 的 markdown 输出由框架自动前缀追加，无需手动拼接
+
+### 4.4 执行流程（时序）
+
+```
+T+0m     master 调用 team_pipeline (8 stages)
+T+0m     dispatch stage-1 (alice)
+T+0~7m   alice：LJ 力场 + reduced unit + 盒长 → FORCE_FIELD 标记 → idle
+T+7m     stage-1 输出前缀追加到 stage-2 → dispatch bob
+T+7~14m  bob：FCC 初始化 + Maxwell 速度 → INIT 标记 → idle
+T+14m    → dispatch carol
+T+14~21m carol：最速下降极小化 → MINIMIZE 标记 → idle
+T+21m    → dispatch dave
+T+21~30m dave：NVT 平衡 10^4 步 → EQUIL 标记 → idle
+T+30m    → dispatch erin
+T+30~40m erin：NVE 产出 10^5 步 + 能量漂移 → PRODUCE 标记 → idle
+T+40m    → dispatch frank
+T+40~46m frank：抽取 1000 帧 → SAMPLE 标记 → idle
+T+46m    → dispatch grace
+T+46~54m grace：g(r) + 第一峰 → RDF_PEAK 标记 → idle
+T+54m    → dispatch henry
+T+54~60m henry：汇总 <T>/<E>/g(r) 峰/能量漂移 → 三标记 → idle
+T+60m    末段输出 summarize 交付 master
+T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
+```
+
+### 4.5 评判脚本
+
+[`check-physics-md-pipeline.ts`](./check-physics-md-pipeline.ts)
+
+- **加载**：`runs/<run_id>/henry.md`（末段成员；流水线语义下前 7 段输出已被框架前缀追加到 henry 任务，故末段输出即完整产物，评判只读这一份）
+- **提取**：三条正则
+  - `<!--\s*TEMP_K:\s*([\d.eE+-]+)\s*-->`
+  - `<!--\s*RDF_PEAK_A:\s*([\d.eE+-]+)\s*-->`
+  - `<!--\s*ENERGY_DRIFT:\s*([\d.eE+-]+)\s*-->`
+- **断言**：
+  1. 三条 marker 均存在且可解析为数值
+  2. `100 <= TEMP_K <= 140`（NVT 锁定 120 K，NVE 产出期间温度浮动 ±20 K 内）
+  3. `3.2 <= RDF_PEAK_A <= 3.6`（液氩 g(r) 第一峰位于约一个 σ ≈ 3.40 Å）
+  4. `ENERGY_DRIFT < 0.05`（velocity Verlet 在 h=2 fs、10⁵ 步内的相对能量漂移）
+
+---
+
 ## 验收清单
 
-- [ ] 3 个 check 脚本 `tsc --noEmit` 通过（无类型错误）
+- [ ] 4 个 check 脚本 `tsc --noEmit` 通过（无类型错误）
 - [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_pipeline` schema（`stages[].member` 唯一）
-- [ ] 每场景总时长 ≤ 15 min（远低于 30 min 上限；每成员子任务 ≤ 8 min）
+- [ ] 场景 1-3 总时长 ≤ 15 min（远低于 30 min 上限；每成员子任务 ≤ 8 min）；场景 4 为挑战级（8 段、~60 min、timeout 90 min），单独标注
 - [ ] 成员 prompt 中明确输出格式约定（marker），评判脚本读取**末段成员**输出并与之对齐
 
 
@@ -391,4 +540,21 @@ T+10m   运行: bun check-coding-fib-tdd.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：末阶段（carol）代码通过 4 用例：fib(0)=0、fib(1)=1、fib(10)=55、fib(20)=6765。
+```
+
+### 场景 4: Lennard-Jones 分子动力学完整仿真链（挑战级，物理）
+
+```text
+执行 docs/orchestration-scenarios/03-team-pipeline/README.md「场景 4」的完整闭环并自动评判（挑战级：8 段串行，约 60 min）。
+
+步骤：
+1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（8 个 simulator 成员 alice..henry）
+2. team_activate 激活
+3. 读 README「4.3 Master 启动调用」，按 team_pipeline JSON 启动编排（8 阶段顺序，timeout_ms=5400000）
+4. team_results 轮询至 master 收到汇总（注意耗时较长，可拉长轮询间隔）
+5. 定位 <run_dir>（末阶段成员 henry.md 即最终输出；前 7 段输出已自动拼到 henry 任务前）
+6. 运行：bun docs/orchestration-scenarios/03-team-pipeline/check-physics-md-pipeline.ts <run_dir>
+7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+
+成功标准：末阶段（henry）报 TEMP_K ∈ [100,140] K、RDF_PEAK_A ∈ [3.2,3.6] Å、ENERGY_DRIFT < 0.05。
 ```

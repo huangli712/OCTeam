@@ -11,6 +11,7 @@
 | 1 | 数学 | 单题分类器（微积分/代数/数论/组合） | 5 | `mathematician` / `mathematician` | `input` 携带题目，routes 无 `task` | ~8 min |
 | 2 | 计算物理 | PDE 类型路由（抛物/椭圆/双曲） | 4 | `physicist` / `simulator` | `input` 携带 PDE，routes 无 `task` | ~8 min |
 | 3 | 编程 | GitHub issue 分流（bug/feature/docs/refactor） | 5 | `analyst` / `coder` | `input` 携带 issue 正文，routes 无 `task` | ~8 min |
+| 4 | 编程（挑战级） | 多面性工单九路分流（bug/refactor/test/docs/perf/security/dependency/question） | 9 | `analyst` / `coder` | `input` 携带 200 字工单，`branches` 多选 | ~45 min |
 
 ---
 
@@ -319,13 +320,150 @@ T+6m    运行: bun check-coding-issue-router.ts <run_dir>
 
 ---
 
+## 场景 4: 多面性工单的九路分流（挑战级）
+
+### 4.1 场景描述
+
+**背景**：现实中的工程工单很少是单一类别。一条 200 字的 ticket 往往同时报告崩溃（bug）、要求拆分长函数（refactor）、暴露测试盲区（test）、点出文档过时（docs）、还附带性能回归（perf）——甚至引出输入信任（security）、依赖升级（dependency）、规格歧义（question）等延伸关注面。简单的「单选一路」路由器会把这种工单塞进一个桶、丢掉其余维度的处置。本场景刻意构造一张同时触及 5+ 关注点的工单，压测 router 能否识别「多面性」并以框架原生的 `{"branches":[...]}` 多选形式（`workflow-advanced.ts:222`）并行触发多条分支；每条命中分支独立给出该维度的一行动作计划。
+
+> **挑战级标注**：本场景 9 成员、最多 8 分支并行触发，刻意突破 AUTHORING.md「≤4 成员、≤30 min」的常规预算，用于压测路由模式在「router 分类 + 多分支并行」下的控时与稳定性。
+
+**目标**：router 成员（alice）读入 200 字工单，识别 ≥4 个关注面并以 `<route>{"branches":[...]}</route>` 并行触发对应分支；每个命中分支成员输出该维度的 `<!-- ACTION: <一行计划> -->`；未命中分支输出 `<!-- DOMAIN_MATCH: false -->`。
+
+**成功标准（可机器评判）**：
+- router 输出含 `<route>{"branches":[...]}</route>`，且 `branches` 数组长度 ≥ 4
+- 选中分支中至少含 `bug`/`refactor`/`test`/`docs`/`perf` 五类中的 4 个
+- 每个被选中分支的成员 `.md` 含 `<!-- ACTION: ... -->`，且不含 `<!-- DOMAIN_MATCH: false -->`
+- `bug` 必在选中分支中，且 `bob`（bug 分支）的 ACTION 文本（小写）含 `guard|throw|empty|null|undefined|check` 之一（空输入崩溃的修复必命名某种防护）
+
+### 4.2 Team 配置
+
+9 成员：1 个 `analyst` router（alice） + 8 个 `coder` 分支（bob..iris）。router 不担任任何分支 target（schema 硬约束，见 `workflow-advanced.ts:273`）。
+
+```json
+{
+  "name": "multi-ticket-router",
+  "description": "Multi-faceted ticket router: routes a 200-word ticket spanning bug/refactor/test/docs/perf/security/dependency/question to 1+ of 8 coder branches",
+  "members": [
+    {
+      "name": "alice",
+      "role": "analyst",
+      "prompt": "You are a software ticket triage analyst. Given an engineering ticket body, identify EVERY concern type it genuinely touches and route to ALL matching branches (not just one). Concern types: bug (broken behavior: crash, wrong result, missing exception), refactor (behavior-preserving structural improvement), test (missing or inadequate tests), docs (documentation wrong/stale/missing), perf (performance regression or optimization), security (input trust / untrusted-data handling / sanitization), dependency (third-party library bump/replace/audit), question (spec ambiguity needing clarification before action). A single ticket often spans several concerns — when in doubt, select ALL that apply rather than picking one. Your output MUST end with the <route> decision line (exact format provided by the system above), listing every matching branch name under branches."
+    },
+    {
+      "name": "bob",
+      "role": "coder",
+      "prompt": "You are a bug-fix coder. Given a ticket, decide if it genuinely reports a bug (broken/incorrect behavior: crash, wrong result, missing exception). If it does, name the file/function to change and the concrete defensive edit in one sentence (e.g. 'add a guard at the top of parseConfig that throws TypeError for null/undefined/empty input and returns the defaults'). If the ticket does NOT report a bug, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ACTION: <one-line fix plan> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
+    },
+    {
+      "name": "carol",
+      "role": "coder",
+      "prompt": "You are a refactoring coder. Given a ticket, decide if it genuinely requests a behavior-preserving structural improvement (split a long function, extract a module, rename for clarity). If it does, name the file/function and the concrete split/extraction in one sentence. If the ticket does NOT request a refactor, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ACTION: <one-line refactor plan> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
+    },
+    {
+      "name": "dave",
+      "role": "coder",
+      "prompt": "You are a test coder. Given a ticket, decide if it genuinely reports missing or inadequate tests (uncovered edge cases, no regression coverage). If it does, name the file/function and the concrete test cases to add in one sentence. If the ticket does NOT concern tests, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ACTION: <one-line test plan> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
+    },
+    {
+      "name": "erin",
+      "role": "coder",
+      "prompt": "You are a documentation coder. Given a ticket, decide if it genuinely reports that documentation is wrong, stale, or missing. If it does, name the doc file/section and the concrete update in one sentence. If the ticket does NOT concern docs, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ACTION: <one-line docs plan> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
+    },
+    {
+      "name": "frank",
+      "role": "coder",
+      "prompt": "You are a performance coder. Given a ticket, decide if it genuinely reports a performance regression or optimization opportunity (slow path, repeated work, allocation churn). If it does, name the file/function and the concrete optimization in one sentence. If the ticket does NOT concern performance, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ACTION: <one-line perf plan> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
+    },
+    {
+      "name": "grace",
+      "role": "coder",
+      "prompt": "You are a security coder focused on input trust. Given a ticket, decide if it genuinely raises an input-trust / untrusted-data / sanitization concern (parsing untrusted user input, missing sanitization, injection surface). If it does, name where input enters and the concrete defensive measure in one sentence. If the ticket does NOT raise an input-trust concern, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ACTION: <one-line security plan> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
+    },
+    {
+      "name": "henry",
+      "role": "coder",
+      "prompt": "You are a dependency-management coder. Given a ticket, decide if it genuinely raises a third-party dependency concern (library needs a bump, replacement, audit, or compatibility check). If it does, name the dependency and the concrete action in one sentence. If the ticket does NOT concern a dependency, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ACTION: <one-line dependency plan> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
+    },
+    {
+      "name": "iris",
+      "role": "coder",
+      "prompt": "You are a spec-clarification coder. Given a ticket, decide if it genuinely contains a spec ambiguity or open question that must be answered before action (behavior undefined, requirements unclear). If it does, state the clarifying question and who must answer it in one sentence. If the ticket does NOT contain an open question, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ACTION: <one-line clarification plan> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
+    }
+  ]
+}
+```
+
+**Role 选择理由**：router 用 `analyst`（读工单、分类判读）；8 个分支统一用 `coder`（定位文件/函数、给动作计划）。8 分支 prompt 结构同构——先判领域归属，再出 `ACTION` / `DOMAIN_MATCH`——保证多分支并行产出标记一致，便于评判脚本统一抽取。router 的 `<route>` 精确格式由框架 `buildRouterPrompt`（`workflow-advanced.ts:210-226`）在 dispatch 时注入，故 alice 的成员 prompt 只需强调「select ALL that apply」而无需重复 JSON 模板。
+
+### 4.3 Master 启动调用
+
+```json
+{
+  "tool": "team_route",
+  "args": {
+    "team_id": "multi-ticket-router",
+    "router": "alice",
+    "input": "The `parseConfig` function (src/config.ts:45) crashes with `TypeError: Cannot read properties of undefined` when called as `parseConfig()` with no arguments or `parseConfig(null)`, instead of returning the defaults — this is a production P0 regression (bug). Its body is a 300-line monolith mixing tokenizing, schema validation, and file loading; it should be split into `parse` / `validate` / `load` modules (refactor). No unit tests exist for empty/null/undefined/unknown-key edge cases, so the crash shipped to prod undetected (test). The `## Configuration` section of `README.md` still documents the v1 boolean flag `--json` which was removed in v2; users are confused (docs). The v2 `parseConfig` benchmarks 5x slower than v1 (420ms vs 85ms per 10k files) due to repeated regex compilation inside the hot loop (perf). It is unclear whether the bundled `yaml` parser dependency needs a bump to support YAML 1.2 merge-key syntax we now want (dependency). Also: should untrusted user-supplied config strings be sanitized before parsing? (question).",
+    "routes": [
+      { "name": "bug", "member": "bob", "description": "broken behavior: crash, wrong result, missing exception" },
+      { "name": "refactor", "member": "carol", "description": "behavior-preserving structural change (split/extract/rename)" },
+      { "name": "test", "member": "dave", "description": "missing or inadequate tests for edge cases" },
+      { "name": "docs", "member": "erin", "description": "documentation is wrong, stale, or missing" },
+      { "name": "perf", "member": "frank", "description": "performance regression or optimization opportunity" },
+      { "name": "security", "member": "grace", "description": "untrusted input trust / sanitization concern" },
+      { "name": "dependency", "member": "henry", "description": "third-party library bump / replace / audit" },
+      { "name": "question", "member": "iris", "description": "spec ambiguity needing clarification before action" }
+    ],
+    "timeout_ms": 2700000
+  }
+}
+```
+
+**参数选择**：
+- `router: "alice"` — 成员名，非 master，不在 routes 中（schema 约束 `workflow-advanced.ts:273`）。
+- `input` 是 ~200 字多面性工单 — 8 个 route 均省略 `task`，故**所有**被选中分支成员直接收到这段完整工单（`b.task ?? task.task` 回退，`workflow-advanced.ts:63`）；分类线索同时写在工单正文每句末尾的括号里与 route `description` 里，双保险帮助 router 识别多面性。
+- 路由形式：框架原生支持多选——router 的 dispatch prompt 内置 `<route>{"branches": ["a","b"], ...}</route>` 指令（`workflow-advanced.ts:222`），命中分支**并行**执行后汇总。
+- 不设 `signoff_policy` — 默认 `none`，各分支求解完即交付，无需额外评审门（避免把 9 人挑战级 run 拖到超时）。
+- `timeout_ms: 2700000`（45 min）— 挑战级预算：router 分类 ~2 min + 命中分支并行求解（壁钟取最慢分支）+ 调度/汇总余量；仍低于 team_route 框架硬上限。
+
+### 4.4 执行流程（时序）
+
+```
+T+0m      master 调用 team_route (input = 200 字多面性工单)
+T+0m      Phase A: 仅 dispatch alice（其余 8 成员等待）
+T+0~2m    router 识别 bug+refactor+test+docs+perf（+延伸）→ <route>{"branches":[...]}</route>
+T+2m      Phase B: dispatch 全部被选中分支（并行）
+T+2~20m   各命中分支读工单 → 判领域 → 写 ACTION（并行壁钟 ≈ 最慢分支）
+          未命中分支不产生 .md（schema：仅 dispatch 选中分支）
+T+~20m    target barrier 收敛 → 汇总交付 master
+T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
+```
+
+### 4.5 评判脚本
+
+[`check-coding-multi-ticket-router.ts`](./check-coding-multi-ticket-router.ts)
+
+- **加载**：`<run_dir>/alice.md` + 每个被选中分支对应的成员 `.md`（分支名→成员名映射见脚本顶部 `BRANCH_TO_MEMBER`）
+- **提取**：
+  - router 决策：正则 `<route>([\s\S]*?)</route>` → `JSON.parse` → 取 `branches` 数组（兼容单选 `branch` 自动包成数组）
+  - 各分支动作：正则 `<!--\s*ACTION:\s*([\s\S]*?)\s*-->`
+- **断言**：
+  1. router 选中分支数 ≥ 4（工单真实覆盖 ≥4 关注面）
+  2. 选中分支中至少含 `bug`/`refactor`/`test`/`docs`/`perf` 中的 4 个
+  3. `bug` 必在选中分支中（空输入崩溃无可争辩）
+  4. 每个被选中分支的成员 `.md` 含 `ACTION` 标记，且不含 `DOMAIN_MATCH: false`
+  5. bug 分支（bob）的 ACTION 文本（小写）匹配 `guard|throw|empty|null|undefined|check` 之一
+
+---
+
 ## 验收清单
 
-- [ ] 3 个 check 脚本通过 `bunx tsc -p docs/orchestration-scenarios/tsconfig.json`（无类型错误）
+- [ ] 4 个 check 脚本通过 `bunx tsc -p docs/orchestration-scenarios/tsconfig.json`（无类型错误）
 - [ ] 每个 team 配置 role 合法（`mathematician` / `physicist` / `simulator` / `analyst` / `coder` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_route` schema：`router` 非 master、非分支 target；routes 的 `name`/`member` 唯一；`input` ≤ 32768 字符
-- [ ] 路由模式实际调度成员 = router + 1 匹配分支（≤ 2 活跃），每场景总时长 ≤ 10 min（远低于 30 min 上限）
-- [ ] router 成员 prompt 以 `<route>` 格式指令结尾；分支成员 prompt 以 `DOMAIN_MATCH`/`ANSWER`/`METHOD`/`FIX_STRATEGY` 标记指令结尾；评判脚本正则与之严格对齐
+- [ ] 路由模式实际调度成员 = router + N 匹配分支：场景 1-3 单选（≤ 2 活跃，≤ 10 min）；场景 4 多选并行（≤ 9 活跃，≤ 30 min 上限）
+- [ ] router 成员 prompt 以 `<route>` 格式指令结尾；分支成员 prompt 以 `DOMAIN_MATCH`/`ANSWER`/`METHOD`/`FIX_STRATEGY`/`ACTION` 标记指令结尾；评判脚本正则与之严格对齐
 
 
 ---
@@ -383,4 +521,21 @@ T+6m    运行: bun check-coding-issue-router.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：router 选 bug 分支；FIX_STRATEGY 含 guard / throw / RangeError 之一（针对负 id 的修复思路）。
+```
+
+### 场景 4: 多面性工单九路分流（挑战级，编程）
+
+```text
+执行 docs/orchestration-scenarios/06-team-route/README.md「场景 4」的完整闭环并自动评判（挑战级，9 成员、8 分支多选）。
+
+步骤：
+1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（1 router + 8 分支成员）
+2. team_activate 激活
+3. 读 README「4.3 Master 启动调用」，按 team_route JSON 启动编排（input 是一段 200 字多面性工单）
+4. team_results 轮询至 master 收到汇总（router 先多选分类，命中分支并行执行）
+5. 定位 <run_dir>（含 router 与各命中分支成员 .md）
+6. 运行：bun docs/orchestration-scenarios/06-team-route/check-coding-multi-ticket-router.ts <run_dir>
+7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+
+成功标准：router 以 {"branches":[...]} 选中 ≥4 分支（至少含 bug/refactor/test/docs/perf 中 4 个）；每个命中分支产 ACTION 计划；bug 分支的 ACTION 含 guard/throw/empty/null/undefined/check 之一。
 ```
