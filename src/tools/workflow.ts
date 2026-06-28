@@ -28,7 +28,7 @@ import { ensureMembersReady, advanceToStage, dispatchToMember } from "../orchest
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import { activationError } from "../core/utils.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
-import type { ActiveTask, GatedStage, ReducePolicy, RouteBranch, SignoffPolicy, Stage } from "../core/types.js"
+import type { ActiveTask, DecisionRecord, GatedStage, ReducePolicy, RouteBranch, SignoffPolicy, Stage } from "../core/types.js"
 import { advanceToGatedStage, buildDebatePrompt, buildRecursePrompt } from "../orchestration/handlers.js"
 
 const DEFAULT_TIMEOUT_MS = 600_000
@@ -168,6 +168,76 @@ async function startOrchestration(
     return successMessage()
 }
 
+/**
+ * Validate the signoff_policy 'decider' field: requires signoff_decider to be
+ * present and name a real team member. Shared by the 7 tools that expose
+ * signoff (all except consensus and loop). Returns an error string or null.
+ */
+function validateSignoff(
+    args: { signoff_policy?: SignoffPolicy; signoff_decider?: string },
+    team: Team,
+): string | null {
+    if (args.signoff_policy !== "decider") return null
+    if (!args.signoff_decider) {
+        return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+    }
+    return assertMember(team, args.signoff_decider, "signoff_decider")
+}
+
+/**
+ * The three signoff fields shared by every ActiveTask variant that supports
+ * post-completion review. Consensus has its own built-in agreement gate, so it
+ * hardcodes DEFAULT_SIGNOFF_POLICY and omits decider/quorum.
+ */
+function signoffTaskFields(
+    args: { signoff_policy?: SignoffPolicy; signoff_decider?: string; signoff_quorum?: number },
+): { signoffPolicy: SignoffPolicy; signoffDecider: string | undefined; signoffQuorum: number | undefined } {
+    return {
+        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
+        signoffDecider: args.signoff_decider,
+        signoffQuorum: args.signoff_quorum,
+    }
+}
+
+/**
+ * The common ActiveTask base fields shared by all 9 orchestration tools.
+ * Tool-specific fields (type discriminant, stages, per-mode fields) are added
+ * by the caller AFTER spreading this.
+ */
+function baseTaskFields(
+    args: { timeout_ms?: number; token_budget?: number; max_retries?: number },
+    team: Team,
+    defaultTimeoutMs: number,
+): {
+    runId: string
+    startedAt: number
+    wallClockTimeoutMs: number
+    tokenBudget: number | undefined
+    tokensUsed: number
+    tokensByMember: Record<string, number>
+    messagesSent: number
+    responses: Record<string, string>
+    currentStageIndex: number
+    decisionHistory: DecisionRecord[]
+    decisionParseFailures: number
+    maxRetries: number | undefined
+} {
+    return {
+        runId: crypto.randomUUID(),
+        startedAt: Date.now(),
+        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, defaultTimeoutMs, team.bounds.maxWallClockMinutes),
+        tokenBudget: args.token_budget,
+        tokensUsed: 0,
+        tokensByMember: {},
+        messagesSent: 0,
+        responses: {},
+        currentStageIndex: 0,
+        decisionHistory: [],
+        decisionParseFailures: 0,
+        maxRetries: args.max_retries,
+    }
+}
+
 
 // --- team_parallel ---
 
@@ -246,14 +316,8 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     if (args.reduce_policy === "rubric" && !args.reduce_rubric) {
                         return "Error: reduce_policy 'rubric' requires reduce_rubric (the scoring rubric)"
                     }
-                    // Validate signoff_decider is a real member.
-                    if (args.signoff_policy === "decider") {
-                        if (!args.signoff_decider) {
-                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                        }
-                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                        if (err) return err
-                    }
+                    const signoffErr = validateSignoff(args, team)
+                    if (signoffErr) return signoffErr
                     // Validate reducer_member is a real member.
                     if (args.reduce_policy && args.reduce_policy !== "summarize" && args.reducer_member) {
                         const err = assertMember(team, args.reducer_member, "reducer_member")
@@ -264,30 +328,17 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 // buildTask
                 async (team) => ({
                     type: "parallel",
-                    runId: crypto.randomUUID(),
+                    ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                     mode: args.mode,
-                    startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                    tokenBudget: args.token_budget,
-                    tokensUsed: 0,
-                    tokensByMember: {},
-                    messagesSent: 0,
-                    responses: {},
                     stages: [],
-                    currentStageIndex: 0,
-                    decisionHistory: [],
-                    decisionParseFailures: 0,
                     task: args.task,
                     tasks: args.tasks,
                     reducePolicy: args.reduce_policy ?? DEFAULT_REDUCE_POLICY,
                     reduceRubric: args.reduce_rubric,
                     reducerMember: args.reducer_member,
-                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                    signoffDecider: args.signoff_decider,
-                    signoffQuorum: args.signoff_quorum,
                     requireDoneAck: args.require_done_ack === true,
                     maxErroredMembers: args.max_errored_members,
-                    maxRetries: args.max_retries,
+                    ...signoffTaskFields(args),
                 }),
                 // dispatch
                 async (team) => {
@@ -337,18 +388,8 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                 // buildTask
                 async (team) => ({
                     type: "consensus",
-                    runId: crypto.randomUUID(),
-                    startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                    tokenBudget: args.token_budget,
-                    tokensUsed: 0,
-                    tokensByMember: {},
-                    messagesSent: 0,
-                    responses: {},
+                    ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                     stages: [],
-                    currentStageIndex: 0,
-                    decisionHistory: [],
-                    decisionParseFailures: 0,
                     topic: args.topic,
                     // Needs a round cap; default to DEFAULT_CONSENSUS_ROUNDS
                     // when omitted, else `currentRound >= (maxRounds ?? 0)`
@@ -363,7 +404,6 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                     // signoff_policy, consensus uses its built-in consensus
                     // gate as the agreement check.
                     signoffPolicy: DEFAULT_SIGNOFF_POLICY,
-                    maxRetries: args.max_retries,
                 }),
                 // dispatch: round 1 to every participant.
                 async (team, task) => {
@@ -423,14 +463,8 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                     if (new Set(stageMembers).size !== stageMembers.length) {
                         return "Error: pipeline stages must have unique member names"
                     }
-                    // Validate signoff_decider is a real member.
-                    if (args.signoff_policy === "decider") {
-                        if (!args.signoff_decider) {
-                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                        }
-                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                        if (err) return err
-                    }
+                    const signoffErr = validateSignoff(args, team)
+                    if (signoffErr) return signoffErr
                     // Validate members exist.
                     for (const name of stageMembers) {
                         if (!team.members.some(m => m.name === name)) {
@@ -448,22 +482,9 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                     }))
                     return {
                         type: "pipeline",
-                        runId: crypto.randomUUID(),
-                        startedAt: Date.now(),
-                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                        tokenBudget: args.token_budget,
-                        tokensUsed: 0,
-                        tokensByMember: {},
-                        messagesSent: 0,
-                        responses: {},
+                        ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                         stages,
-                        currentStageIndex: 0,
-                        decisionHistory: [],
-                        decisionParseFailures: 0,
-                        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                        signoffDecider: args.signoff_decider,
-                        signoffQuorum: args.signoff_quorum,
-                        maxRetries: args.max_retries,
+                        ...signoffTaskFields(args),
                     }
                 },
                 // dispatch: stage 0.
@@ -542,22 +563,11 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                     }
                     return {
                         type: "loop",
-                        runId: crypto.randomUUID(),
-                        startedAt: Date.now(),
-                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_LOOP_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                        tokenBudget: args.token_budget,
-                        tokensUsed: 0,
-                        tokensByMember: {},
-                        messagesSent: 0,
-                        responses: {},
+                        ...baseTaskFields(args, team, DEFAULT_LOOP_TIMEOUT_MS),
                         stages,
-                        currentStageIndex: 0,
                         deciderMember: args.decider,
-                        decisionHistory: [],
-                        decisionParseFailures: 0,
                         currentRound: 1,
                         maxRounds: args.max_rounds,
-                        maxRetries: args.max_retries,
                     }
                 },
                 // dispatch: first stage with the initial task.
@@ -688,14 +698,8 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     if (cycle) {
                         return `Error: blocked_by cycle detected: ${cycle.join(" -> ")}`
                     }
-                    // Validate signoff_decider is a real member.
-                    if (args.signoff_policy === "decider") {
-                        if (!args.signoff_decider) {
-                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                        }
-                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                        if (err) return err
-                    }
+                    const signoffErr = validateSignoff(args, team)
+                    if (signoffErr) return signoffErr
                     return null
                 },
                 // buildTask: enforce the task cap BEFORE creating any task, then
@@ -741,23 +745,10 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
 
                     return {
                         type: "delegate",
-                        runId: crypto.randomUUID(),
-                        startedAt: Date.now(),
-                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                        tokenBudget: args.token_budget,
-                        tokensUsed: 0,
-                        tokensByMember: {},
-                        messagesSent: 0,
-                        responses: {},
+                        ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                         stages: [],
-                        currentStageIndex: 0,
-                        decisionHistory: [],
-                        decisionParseFailures: 0,
-                        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                        signoffDecider: args.signoff_decider,
-                        signoffQuorum: args.signoff_quorum,
                         maxErroredMembers: args.max_errored_members,
-                        maxRetries: args.max_retries,
+                        ...signoffTaskFields(args),
                     }
                 },
                 // dispatch: prompt every member to start pulling from the
@@ -868,14 +859,8 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                             return `Error: unknown member "${name}" in router/routes`
                         }
                     }
-                    // Validate signoff_decider is a real member.
-                    if (args.signoff_policy === "decider") {
-                        if (!args.signoff_decider) {
-                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                        }
-                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                        if (err) return err
-                    }
+                    const signoffErr = validateSignoff(args, team)
+                    if (signoffErr) return signoffErr
                     return null
                 },
                 // buildTask
@@ -888,26 +873,13 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                     }))
                     return {
                         type: "route",
-                        runId: crypto.randomUUID(),
-                        startedAt: Date.now(),
-                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                        tokenBudget: args.token_budget,
-                        tokensUsed: 0,
-                        tokensByMember: {},
-                        messagesSent: 0,
-                        responses: {},
+                        ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                         stages: [],
-                        currentStageIndex: 0,
-                        decisionHistory: [],
-                        decisionParseFailures: 0,
                         task: args.input,
                         routerMember: args.router,
                         routeBranches: branches,
                         routeStage: false,
-                        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                        signoffDecider: args.signoff_decider,
-                        signoffQuorum: args.signoff_quorum,
-                        maxRetries: args.max_retries,
+                        ...signoffTaskFields(args),
                     }
                 },
                 // dispatch: ONLY the router; it decides the targets (Phase A).
@@ -977,41 +949,22 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                             return `Error: unknown member "${name}" in arbiter/debaters`
                         }
                     }
-                    // Validate signoff_decider is a real member.
-                    if (args.signoff_policy === "decider") {
-                        if (!args.signoff_decider) {
-                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                        }
-                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                        if (err) return err
-                    }
+                    const signoffErr = validateSignoff(args, team)
+                    if (signoffErr) return signoffErr
                     return null
                 },
                 // buildTask
                 async (team) => ({
                     type: "arbitrate",
-                    runId: crypto.randomUUID(),
-                    startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                    tokenBudget: args.token_budget,
-                    tokensUsed: 0,
-                    tokensByMember: {},
-                    messagesSent: 0,
-                    responses: {},
+                    ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                     stages: [],
-                    currentStageIndex: 0,
-                    decisionHistory: [],
-                    decisionParseFailures: 0,
                     task: args.task,
                     arbiterMember: args.arbiter,
                     disputants: args.debaters,
                     arbitrationStage: false,
                     maxRounds: args.max_rounds ?? DEFAULT_ARBITRATE_ROUNDS,
                     currentRound: 1,
-                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                    signoffDecider: args.signoff_decider,
-                    signoffQuorum: args.signoff_quorum,
-                    maxRetries: args.max_retries,
+                    ...signoffTaskFields(args),
                 }),
                 // dispatch: ONLY the debaters (round 1); the arbiter waits for
                 // the ruling phase.
@@ -1110,14 +1063,8 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                             return `Error: unknown member "${name}" in stages/escalate_to`
                         }
                     }
-                    // Validate signoff_decider is a real member.
-                    if (args.signoff_policy === "decider") {
-                        if (!args.signoff_decider) {
-                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                        }
-                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                        if (err) return err
-                    }
+                    const signoffErr = validateSignoff(args, team)
+                    if (signoffErr) return signoffErr
                     return null
                 },
                 // buildTask
@@ -1134,27 +1081,14 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                     }))
                     return {
                         type: "tollgate",
-                        runId: crypto.randomUUID(),
-                        startedAt: Date.now(),
-                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                        tokenBudget: args.token_budget,
-                        tokensUsed: 0,
-                        tokensByMember: {},
-                        messagesSent: 0,
-                        responses: {},
+                        ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                         stages: [],
-                        currentStageIndex: 0,
-                        decisionHistory: [],
-                        decisionParseFailures: 0,
                         gatedStages,
                         tollgatePhase: "produce",
                         escalateTo: args.escalate_to,
                         maxGateRetries: args.max_gate_retries,
                         maxInvalidCycles: args.max_invalid_cycles,
-                        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                        signoffDecider: args.signoff_decider,
-                        signoffQuorum: args.signoff_quorum,
-                        maxRetries: args.max_retries,
+                        ...signoffTaskFields(args),
                     }
                 },
                 // dispatch: ONLY the stage-0 producer; verification starts
@@ -1211,14 +1145,8 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                     }
                     const decomposerErr = assertMember(team, args.decomposer, "decomposer")
                     if (decomposerErr) return decomposerErr
-                    // Validate signoff_decider is a real member.
-                    if (args.signoff_policy === "decider") {
-                        if (!args.signoff_decider) {
-                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                        }
-                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                        if (err) return err
-                    }
+                    const signoffErr = validateSignoff(args, team)
+                    if (signoffErr) return signoffErr
                     return null
                 },
                 // buildTask: seed the root task BEFORE committing activeTask
@@ -1233,27 +1161,14 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                     rootTaskId = root.id
                     return {
                         type: "recurse",
-                        runId: crypto.randomUUID(),
-                        startedAt: Date.now(),
-                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                        tokenBudget: args.token_budget,
-                        tokensUsed: 0,
-                        tokensByMember: {},
-                        messagesSent: 0,
-                        responses: {},
+                        ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                         stages: [],
-                        currentStageIndex: 0,
-                        decisionHistory: [],
-                        decisionParseFailures: 0,
                         task: args.task,
                         decomposerMember: args.decomposer,
                         maxDepth: args.max_depth ?? DEFAULT_RECURSE_DEPTH,
                         maxSubtasks: args.max_subtasks ?? DEFAULT_RECURSE_SUBTASKS,
                         rootTaskId: root.id,
-                        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                        signoffDecider: args.signoff_decider,
-                        signoffQuorum: args.signoff_quorum,
-                        maxRetries: args.max_retries,
+                        ...signoffTaskFields(args),
                     }
                 },
                 // dispatch: ONLY the decomposer with the recursive contract;
