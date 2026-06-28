@@ -5,11 +5,9 @@ import { join } from "node:path"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 
-import {
-    getExpectedMember,
-    handleRouteIdle,
-    parseRouteDecision,
-} from "../src/orchestration/handlers.js"
+import { getExpectedMember } from "../src/orchestration/handlers.js"
+import { handleRouteIdle } from "../src/orchestration/route-arbitrate.js"
+import { parseRouteDecision } from "../src/orchestration/decisions.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
 import { runEventsPath } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"

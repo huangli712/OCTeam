@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { buildSummary } from "../src/orchestration/summary.js"
-import { maybeTriggerReduce } from "../src/orchestration/handlers.js"
+import { maybeTriggerReduce } from "../src/orchestration/signoff.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"

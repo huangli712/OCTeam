@@ -29,7 +29,9 @@ import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import { activationError } from "../core/utils.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import type { ActiveTask, DecisionRecord, GatedStage, ReducePolicy, RouteBranch, SignoffPolicy, Stage } from "../core/types.js"
-import { advanceToGatedStage, buildDebatePrompt, buildRecursePrompt } from "../orchestration/handlers.js"
+import { buildRecursePrompt } from "../orchestration/delegate-recurse.js"
+import { advanceToGatedStage } from "../orchestration/tollgate.js"
+import { buildDebatePrompt } from "../orchestration/route-arbitrate.js"
 
 const DEFAULT_TIMEOUT_MS = 600_000
 const DEFAULT_LOOP_TIMEOUT_MS = 900_000

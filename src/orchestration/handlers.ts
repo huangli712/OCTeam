@@ -42,45 +42,6 @@ import { handleDelegateIdle, handleRecurseIdle } from "./delegate-recurse.js"
 import { handleTollgateIdle } from "./tollgate.js"
 import { handleArbitrateIdle, handleRouteIdle } from "./route-arbitrate.js"
 
-// --- public API re-exports (keep historical import paths stable) ---
-// Per-mode handlers and their prompt/gate helpers are implemented in sibling
-// modules; re-export them here so external callers (hooks.ts, tools/) keep
-// importing from "./orchestration/handlers.js" unchanged.
-export {
-    handleParallelIdle,
-    handleConsensusIdle,
-} from "./parallel-consensus.js"
-export {
-    buildRecursePrompt,
-} from "./delegate-recurse.js"
-export {
-    handleTollgateIdle,
-    startVerification,
-    advanceToGatedStage,
-} from "./tollgate.js"
-export {
-    handleRouteIdle,
-    handleArbitrateIdle,
-    buildDebatePrompt,
-    buildArbiterPrompt,
-} from "./route-arbitrate.js"
-export {
-    maybeTriggerReduce,
-} from "./signoff.js"
-export {
-    waitForBarrier,
-} from "./barriers.js"
-export {
-    parseRouteDecision,
-    parseArbitrationDecision,
-    parseVerdict,
-    parseDecompose,
-    allReadOnlyStagesReportNoIssues,
-    allMembersAgree,
-    parseSignoff,
-    isQuorumReached,
-} from "./decisions.js"
-
 // --- helpers ---
 
 /**

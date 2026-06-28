@@ -19,18 +19,10 @@ import type { PluginContext } from "../core/context.js"
 import type { ActiveTask } from "../core/types.js"
 import { type Team, clearActiveTask } from "../state/store.js"
 import { advanceToStage, dispatchToMember } from "../orchestration/dispatch.js"
-import {
-    advanceToGatedStage,
-    buildArbiterPrompt,
-    buildDebatePrompt,
-    buildRecursePrompt,
-    handleArbitrateIdle,
-    handleConsensusIdle,
-    handleParallelIdle,
-    handleRouteIdle,
-    handleTollgateIdle,
-    startVerification,
-} from "../orchestration/handlers.js"
+import { handleParallelIdle, handleConsensusIdle } from "../orchestration/parallel-consensus.js"
+import { buildRecursePrompt } from "../orchestration/delegate-recurse.js"
+import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../orchestration/tollgate.js"
+import { buildArbiterPrompt, buildDebatePrompt, handleArbitrateIdle, handleRouteIdle } from "../orchestration/route-arbitrate.js"
 import { buildRouterPrompt } from "./workflow.js"
 import { deliverSummaryToLeader } from "../orchestration/summary.js"
 import { listAllTasks, reapStaleClaims, updateTask } from "../state/tasks.js"

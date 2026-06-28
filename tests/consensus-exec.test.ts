@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { handleConsensusIdle } from "../src/orchestration/handlers.js"
+import { handleConsensusIdle } from "../src/orchestration/parallel-consensus.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"

@@ -5,13 +5,9 @@ import { join } from "node:path"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 
-import {
-    advanceToGatedStage,
-    getExpectedMember,
-    handleTollgateIdle,
-    parseVerdict,
-    startVerification,
-} from "../src/orchestration/handlers.js"
+import { getExpectedMember } from "../src/orchestration/handlers.js"
+import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../src/orchestration/tollgate.js"
+import { parseVerdict } from "../src/orchestration/decisions.js"
 import { readRunRecord, runStatusFromReason } from "../src/orchestration/runs.js"
 import { buildSummary } from "../src/orchestration/summary.js"
 import { teamTollgateTool } from "../src/tools/workflow.js"
