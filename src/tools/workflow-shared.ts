@@ -17,6 +17,7 @@
  * startOrchestration; the per-tool callbacks cannot violate it.
  */
 
+import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
@@ -28,6 +29,29 @@ import type { ActiveTask, DecisionRecord, ReducePolicy, SignoffPolicy } from "..
 
 export const DEFAULT_TIMEOUT_MS = 600_000
 export const DEFAULT_LOOP_TIMEOUT_MS = 900_000
+
+/**
+ * The three signoff schema fields shared by every workflow tool that supports
+ * post-completion review (7 of 9 tools — all except consensus and loop, which
+ * have their own built-in agreement gates). Spread into a tool's
+ * tool.schema.object({...}) to single-source the descriptions and constraints.
+ */
+export const signoffSchemaFields = {
+    signoff_policy: tool.schema
+        .enum(["none", "decider", "peer-quorum"])
+        .optional()
+        .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
+    signoff_decider: tool.schema
+        .string()
+        .optional()
+        .describe("member name to act as signoff decider (when signoff_policy='decider')"),
+    signoff_quorum: tool.schema
+        .number()
+        .gt(0)
+        .max(1)
+        .optional()
+        .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+}
 
 // Named defaults for orchestration parameters (wf-011). Previously these were
 // scattered as inline `?? N` literals across the Phase-3 commit blocks, which

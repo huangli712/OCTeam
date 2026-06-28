@@ -15,6 +15,8 @@
 
 import fs from "node:fs/promises"
 
+import { z } from "zod"
+
 import type { Team } from "../state/store.js"
 import type { RunRecord, RunStatus } from "../core/types.js"
 import { atomicWrite } from "../state/locks.js"
@@ -49,6 +51,89 @@ const FAILED_REASON_MARKERS = [
 /** Derive run status from the verbatim termination reason (heuristic; see set above). */
 export function runStatusFromReason(reason: string): RunStatus {
     return FAILED_REASON_MARKERS.some(m => reason.includes(m)) ? "failed" : "completed"
+}
+
+/**
+ * Zod schemas mirroring the RunRecord / RunEvent types (src/core/types.ts).
+ * Used to validate JSON read back from disk instead of bare `as` casts: a
+ * structurally-invalid record is treated the same as corrupt JSON (skipped).
+ * Unknown keys are stripped (zod default); required fields match the types.
+ */
+const OrchestrationTypeSchema = z.enum([
+    "parallel", "pipeline", "loop", "delegate", "consensus", "route", "arbitrate", "recurse", "tollgate",
+])
+const ParallelModeSchema = z.enum(["isolated", "collaborative"])
+const RunStatusSchema = z.enum(["completed", "failed"])
+const SignoffPolicySchema = z.enum(["none", "decider", "peer-quorum"])
+
+const DecisionRecordSchema = z.object({
+    round: z.number(),
+    decision: z.enum(["continue", "done"]),
+    rationale: z.string(),
+    nextActions: z.array(z.string()),
+    timestamp: z.number(),
+})
+
+const RunRecordSchema = z.object({
+    version: z.literal(1),
+    runId: z.string(),
+    teamRunId: z.string(),
+    teamName: z.string(),
+    type: OrchestrationTypeSchema,
+    mode: ParallelModeSchema.optional(),
+    reason: z.string(),
+    status: RunStatusSchema,
+    startedAt: z.number(),
+    finishedAt: z.number(),
+    tokensUsed: z.number(),
+    tokensByMember: z.record(z.string(), z.number()),
+    messagesSent: z.number(),
+    currentRound: z.number().optional(),
+    decisionHistory: z.array(DecisionRecordSchema).optional(),
+    consensusReached: z.boolean().optional(),
+    signoffPolicy: SignoffPolicySchema.optional(),
+    signoffApprovals: z.record(z.string(), z.boolean()).optional(),
+    memberOutputs: z.record(z.string(), z.object({ bytes: z.number(), file: z.string() })),
+    tasks: z.array(z.object({
+        id: z.string(),
+        subject: z.string(),
+        status: z.string(),
+        owner: z.string().optional(),
+    })).optional(),
+})
+
+const RunEventSchema = z.object({
+    timestamp: z.number(),
+    kind: z.enum([
+        "dispatched", "captured", "retry", "errored", "stage_advanced", "round",
+        "signoff", "terminated", "routed", "arbitrated", "decomposed", "verdict",
+    ]),
+    member: z.string().optional(),
+    stage: z.number().optional(),
+    round: z.number().optional(),
+    reason: z.string().optional(),
+    bytes: z.number().optional(),
+    detail: z.string().optional(),
+})
+
+/**
+ * Parse + validate a RunRecord. Throws on corrupt JSON OR schema mismatch so the
+ * caller's existing try/catch preserves its skip/null semantics unchanged.
+ */
+function parseRunRecord(raw: string): RunRecord {
+    const result = RunRecordSchema.safeParse(JSON.parse(raw))
+    if (!result.success) throw new Error(`invalid RunRecord: ${result.error.message}`)
+    return result.data
+}
+
+/**
+ * Parse + validate a RunEvent line. Throws on corrupt JSON OR schema mismatch so
+ * the caller's existing try/catch preserves its skip semantics unchanged.
+ */
+function parseRunEvent(line: string): RunEvent {
+    const result = RunEventSchema.safeParse(JSON.parse(line))
+    if (!result.success) throw new Error(`invalid RunEvent: ${result.error.message}`)
+    return result.data
 }
 
 /**
@@ -137,7 +222,7 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     for (const runId of runIds) {
         try {
             const raw = await fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
-            const rec = JSON.parse(raw) as RunRecord
+            const rec = parseRunRecord(raw)
             dated.push({ runId, finishedAt: rec.finishedAt ?? 0 })
         } catch {
             // no/invalid record.json (e.g. a run still mid-capture) — leave it alone
@@ -167,7 +252,7 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
     for (const runId of runIds) {
         try {
             const raw = await fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
-            records.push(JSON.parse(raw) as RunRecord)
+            records.push(parseRunRecord(raw))
         } catch {
             // skip incomplete/corrupt runs
         }
@@ -180,7 +265,7 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
 export async function readRunRecord(teamDirectory: string, runId: string): Promise<RunRecord | null> {
     try {
         const raw = await fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
-        return JSON.parse(raw) as RunRecord
+        return parseRunRecord(raw)
     } catch {
         return null
     }
@@ -202,7 +287,7 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
     for (const line of raw.split("\n")) {
         if (!line.trim()) continue
         try {
-            events.push(JSON.parse(line) as RunEvent)
+            events.push(parseRunEvent(line))
         } catch {
             // skip malformed line
         }

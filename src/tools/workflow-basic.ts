@@ -17,6 +17,7 @@ import {
     assertMember,
     baseTaskFields,
     signoffTaskFields,
+    signoffSchemaFields,
     startOrchestration,
     validateSignoff,
     DEFAULT_CONSENSUS_ROUNDS,
@@ -49,20 +50,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .string()
                 .optional()
                 .describe("member that performs a real reduce when reduce_policy != summarize. If omitted, the reduce guidance is delivered to master (legacy behavior)."),
-            signoff_policy: tool.schema
-                .enum(["none", "decider", "peer-quorum"])
-                .optional()
-                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
-            signoff_decider: tool.schema
-                .string()
-                .optional()
-                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
-            signoff_quorum: tool.schema
-                .number()
-                .gt(0)
-                .max(1)
-                .optional()
-                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+            ...signoffSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_errored_members: tool.schema.number().int().min(0).optional().describe("tolerate up to N terminally-errored members and still deliver survivors' work. Default 0 (any member error fails the run)."),
@@ -216,20 +204,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                     }),
                 )
                 .min(1),
-            signoff_policy: tool.schema
-                .enum(["none", "decider", "peer-quorum"])
-                .optional()
-                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote (Phase D)."),
-            signoff_decider: tool.schema
-                .string()
-                .optional()
-                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
-            signoff_quorum: tool.schema
-                .number()
-                .gt(0)
-                .max(1)
-                .optional()
-                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+            ...signoffSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),

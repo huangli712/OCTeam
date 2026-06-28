@@ -56,7 +56,9 @@ export async function deliverSummaryToLeader(
                 },
             ],
         },
-    })
+    }).catch(err =>
+        logSwallowed(ctx, "deliver summary to leader failed", err, { team: team.teamName, reason }),
+    )
 }
 
 /**
@@ -77,7 +79,9 @@ export async function deliverQueuedResultsToMaster(
         body: {
             parts: [{ type: "text", text: formatMailboxInjection(queued), synthetic: true }],
         },
-    })
+    }).catch(err =>
+        logSwallowed(ctx, "deliver queued results to master failed", err, { team: team.teamName }),
+    )
     await ackMessages(team.directory, "master", queued)
 }
 

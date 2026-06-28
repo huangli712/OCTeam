@@ -136,18 +136,21 @@ export async function loadTeamState(
  * file lock + atomic write. The mutex/directory fields are NOT persisted.
  *
  * The caller is expected to already hold team.mutex.runExclusive for in-process
- * serialization; the file lock here guards write atomicity and crash-recovery
- * races ONLY.
+ * serialization.
  *
- * IMPORTANT: this is NOT a read-modify-write primitive. It serializes the
- * caller's whole in-memory Team snapshot under the lock without re-reading
- * state.json first. The lock prevents torn writes but NOT lost updates across
- * processes: two OpenCode processes sharing the same team directory (only
- * realistically possible for user-scope teams under ~/.octeam/teams/<name>,
- * since project-scope teams are leadSessionId-segmented) each cache their own
- * Team and will clobber each other's mutations. Treat user-scope teams as
- * single-process; if concurrent multi-process drive is ever required, replace
- * this with a locked read-merge-write.
+ * Lock scope (H7 hazard): `withLock(stateLockPath())` provides torn-WRITE
+ * protection only — it guarantees the atomicity of this single write. It does
+ * NOT prevent lost updates across processes. This is a blind write: it
+ * serializes the caller's whole in-memory Team snapshot under the lock WITHOUT
+ * re-reading state.json first, so a stale snapshot silently clobbers any
+ * concurrent mutation.
+ *
+ * Lost updates are only reachable for user-scope teams
+ * (~/.octeam/teams/<name>), which are single-process-by-contract; project-scope
+ * teams are leadSessionId-segmented and thus not shared across processes.
+ *
+ * Deferred fix: replace this blind write with a locked read-merge-write that
+ * re-reads state.json inside the lock and merges before persisting.
  */
 export async function saveTeamState(team: Team): Promise<void> {
     if (team.deleted) return  // tombstone: do not resurrect deleted team

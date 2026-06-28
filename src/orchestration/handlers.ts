@@ -82,6 +82,21 @@ export function getExpectedMember(task: ActiveTask): string | null {
     return task.stages[task.currentStageIndex]?.member ?? null
 }
 
+/**
+ * Build the re-prompt text for a member that went idle without calling
+ * team_done() under require_done_ack. Extracted from processIdle's parallel
+ * case so the prompt copy lives in one named place rather than inline.
+ */
+function buildPrematureIdleReprompt(teamName: string): string {
+    return `[Team Orchestrator] You went idle on team "${teamName}" without calling `
+        + `team_done(team_id="${teamName}"). This run uses require_done_ack: the `
+        + `barrier fires ONLY after every participant calls team_done. `
+        + `If your work is complete (including required messages and self-verification), `
+        + `call team_done now. If you are blocked waiting for a dependency, briefly say `
+        + `what you are waiting for AND do any other independent work you can; do NOT go `
+        + `idle again without either acking or making concrete progress.`
+}
+
 // --- main entry ---
 
 export async function processIdle(
@@ -179,18 +194,10 @@ export async function processIdle(
                 && !member.declaredDone
                 && member.sessionId
             ) {
-                const text =
-                    `[Team Orchestrator] You went idle on team "${team.teamName}" without calling `
-                    + `team_done(team_id="${team.teamName}"). This run uses require_done_ack: the `
-                    + `barrier fires ONLY after every participant calls team_done. `
-                    + `If your work is complete (including required messages and self-verification), `
-                    + `call team_done now. If you are blocked waiting for a dependency, briefly say `
-                    + `what you are waiting for AND do any other independent work you can; do NOT go `
-                    + `idle again without either acking or making concrete progress.`
                 await ctx.client.session.promptAsync({
                     path: { id: member.sessionId },
                     body: {
-                        parts: [{ type: "text", text, synthetic: true }],
+                        parts: [{ type: "text", text: buildPrematureIdleReprompt(team.teamName), synthetic: true }],
                         agent: member.agent ?? "build",
                     },
                     query: { directory: member.worktreePath ?? ctx.directory },

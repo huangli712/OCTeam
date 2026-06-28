@@ -210,13 +210,6 @@ async function _pruneProcessedLogUnlocked(teamDirectory: string, recipient: stri
     await atomicWrite(p, kept.join("\n") + "\n")
 }
 
-/** Lock-taking wrapper for callers not already holding the mailbox lock. */
-async function pruneProcessedLog(teamDirectory: string, recipient: string): Promise<void> {
-    return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
-        await _pruneProcessedLogUnlocked(teamDirectory, recipient)
-    })
-}
-
 /**
  * Reaper: release reserved messages older than RESERVATION_TTL_MS back to the
  * inbox so they get re-delivered. Covers the crash-between-reserve-and-ack

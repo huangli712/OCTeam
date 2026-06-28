@@ -15,9 +15,62 @@ import { countUnreadMessages } from "../messaging/mailbox.js"
 import { teamDir, teamsDir } from "../state/paths.js"
 import { listAllTasks } from "../state/tasks.js"
 import { normalizeRole, roleAgent } from "../core/role-presets.js"
-import type { Bounds, MemberSpec, MemberState, TeamSpec } from "../core/types.js"
+import type { MemberSpec, MemberState, TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL, pickName } from "../state/naming.js"
 import { defaultBounds } from "./lifecycle-shared.js"
+
+/**
+ * Best-effort model resolution for team_create. Resolves, in order:
+ *   1. per-agent models (agents lookup),
+ *   2. the configured default model,
+ *   3. the leader session's most recent assistant model.
+ * Each step swallows errors intentionally — members fall back to no explicit
+ * model when a step is unavailable. The returned triple is merged per member as
+ * `m.model ?? modelByAgent.get(agent) ?? defaultModel ?? sessionModel`.
+ */
+async function resolveCreateModel(
+    ctx: PluginContext,
+    sessionId: string,
+): Promise<{
+    modelByAgent: Map<string, string | undefined>
+    defaultModel: string | undefined
+    sessionModel: string | undefined
+}> {
+    const modelByAgent = new Map<string, string | undefined>()
+    try {
+        const agentsRes = await ctx.client.app.agents({ query: { directory: ctx.directory } })
+        for (const a of agentsRes.data ?? []) {
+            if (a.model) modelByAgent.set(a.name, `${a.model.providerID}/${a.model.modelID}`)
+        }
+    } catch {
+        // best-effort — members fall back to no explicit model
+    }
+    let defaultModel: string | undefined
+    try {
+        defaultModel = (await ctx.client.config.get()).data?.model
+    } catch {
+        // best-effort — build/agents with no model use the provider default
+    }
+    // Final fallback: the leader session's active model.
+    let sessionModel: string | undefined
+    try {
+        const msgsRes = await ctx.client.session.messages({
+            path: { id: sessionId },
+            query: { directory: ctx.directory, limit: 10 },
+        })
+        const msgs = msgsRes.data ?? []
+        for (let i = msgs.length - 1; i >= 0; i--) {
+            const info = msgs[i].info
+            if (info.role === "assistant") {
+                sessionModel = `${info.providerID}/${info.modelID}`
+                break
+            }
+        }
+    } catch {
+        // best-effort
+    }
+    return { modelByAgent, defaultModel, sessionModel }
+}
 
 export function teamCreateTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -110,43 +163,11 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             }
 
             // Auto-assign agent + model for members that omitted them.
-            const modelByAgent = new Map<string, string | undefined>()
-            try {
-                const agentsRes = await ctx.client.app.agents({ query: { directory: ctx.directory } })
-                for (const a of agentsRes.data ?? []) {
-                    if (a.model) modelByAgent.set(a.name, `${a.model.providerID}/${a.model.modelID}`)
-                }
-            } catch {
-                // best-effort — members fall back to no explicit model
-            }
-            let defaultModel: string | undefined
-            try {
-                defaultModel = (await ctx.client.config.get()).data?.model
-            } catch {
-                // best-effort — build/agents with no model use the provider default
-            }
-            // Final fallback: the leader session's active model.
-            let sessionModel: string | undefined
-            try {
-                const msgsRes = await ctx.client.session.messages({
-                    path: { id: context.sessionID },
-                    query: { directory: ctx.directory, limit: 10 },
-                })
-                const msgs = msgsRes.data ?? []
-                for (let i = msgs.length - 1; i >= 0; i--) {
-                    const info = msgs[i].info
-                    if (info.role === "assistant") {
-                        sessionModel = `${info.providerID}/${info.modelID}`
-                        break
-                    }
-                }
-            } catch {
-                // best-effort
-            }
+            const modelInfo = await resolveCreateModel(ctx, context.sessionID)
             const resolved: MemberSpec[] = named.map(m => {
                 const role = normalizeRole(m.role)
                 const agent = m.agent ?? roleAgent(role)
-                const model = m.model ?? modelByAgent.get(agent) ?? defaultModel ?? sessionModel
+                const model = m.model ?? modelInfo.modelByAgent.get(agent) ?? modelInfo.defaultModel ?? modelInfo.sessionModel
                 return { name: m.name, role, prompt: m.prompt, agent, model, worktree: m.worktree }
             })
 

@@ -279,5 +279,13 @@ export async function resumeDispatch(
             }
             break
         }
+        default: {
+            // Exhaustiveness guard: every OrchestrationType is handled above, so
+            // task.type narrows to `never` here. A new type added without a
+            // matching case fails this assignment at compile time; at runtime it
+            // throws instead of letting resumeDispatch return and stall the run.
+            const _exhaustive: never = task
+            throw new Error(`Unhandled task type: ${(task as { type: string }).type}`)
+        }
     }
 }

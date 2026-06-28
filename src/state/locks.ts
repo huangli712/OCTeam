@@ -102,8 +102,9 @@ export async function withLock<T>(lockPath: string, fn: () => Promise<T>): Promi
     // by another process while we still hold it.
     const heartbeat = setInterval(() => {
         const now = new Date()
-        fs.utimes(lockPath, now, now).catch(() => {
-            // Lock vanished or refresh raced — release handles ownership.
+        fs.utimes(lockPath, now, now).catch((err) => {
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") return // lock vanished or refresh raced — release() handles ownership cleanup
+            throw err // non-vanish error: surface via unhandled rejection (no logger available in this unref'd heartbeat interval)
         })
     }, LOCK_HEARTBEAT_MS)
     heartbeat.unref()
@@ -113,6 +114,21 @@ export async function withLock<T>(lockPath: string, fn: () => Promise<T>): Promi
         clearInterval(heartbeat)
         await releaseLock(lockPath)
     }
+}
+
+/**
+ * Pure decision: should a stale lock be reaped? True only when the lock's mtime
+ * exceeds the TTL AND the owner process is confirmed dead (or pid unreadable).
+ * A live holder's lock is never reaped — that would break mutual exclusion.
+ * Extracted from acquireLock so the reap invariant is unit-testable in isolation.
+ */
+export function shouldReapStaleLock(
+    mtimeMs: number,
+    now: number,
+    ttl: number,
+    ownerAlive: boolean,
+): boolean {
+    return now - mtimeMs > ttl && !ownerAlive
 }
 
 async function acquireLock(lockPath: string): Promise<void> {
@@ -133,22 +149,20 @@ async function acquireLock(lockPath: string): Promise<void> {
             try {
                 const stat = await fs.stat(lockPath)
                 if (Date.now() - stat.mtimeMs > LOCK_TTL_MS) {
-                    // mtime is stale, but that alone may mean a heartbeat
-                    // glitch rather than a dead holder. Verify the holder
-                    // process is actually dead before reaping: reaping a LIVE
-                    // holder's lock would let two processes into the critical
-                    // section simultaneously, breaking mutual exclusion. Only
-                    // reap when the holder pid is gone (ESRCH) or unreadable.
-                    let reap = true
+                    // mtime is stale — verify the holder is actually dead before
+                    // reaping (a heartbeat glitch must not let two processes into
+                    // the critical section). The reap DECISION is delegated to
+                    // the pure shouldReapStaleLock (unit-tested in isolation).
+                    let ownerAlive = false
                     try {
                         const owner = parseInt((await fs.readFile(lockPath, "utf8")).trim(), 10)
                         if (Number.isInteger(owner) && isProcessAlive(owner)) {
-                            reap = false // holder alive — wait, do not steal
+                            ownerAlive = true
                         }
                     } catch {
-                        // pid unreadable — best-effort reap
+                        // pid unreadable — treat as dead (best-effort reap)
                     }
-                    if (reap) {
+                    if (shouldReapStaleLock(stat.mtimeMs, Date.now(), LOCK_TTL_MS, ownerAlive)) {
                         await fs.unlink(lockPath).catch(() => {
                             // raced — another process already reaped it
                         })

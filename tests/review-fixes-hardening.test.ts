@@ -15,6 +15,7 @@ import { createTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { handleStatusEvent } from "../src/orchestration/handlers.js"
 import { saveTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember } from "../src/state/resolve.js"
+import { resumeDispatch } from "../src/tools/resume-dispatch.js"
 import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
@@ -209,5 +210,23 @@ describe("P0-1 handleStatusEvent: re-drives delegate within-tolerance error (no 
         const leaderCall = calls.find(c => c.sessionId === leadSessionId)
         expect(leaderCall).toBeDefined()
         expect(leaderCall!.text).toContain("delegate_complete")
+    })
+})
+
+// ---------------------------------------------------------------------------
+// H2: resumeDispatch rejects unknown task.type (no silent fall-through)
+// ---------------------------------------------------------------------------
+
+describe("H2 resumeDispatch: unknown task.type throws (no silent fall-through)", () => {
+    test("a bogus task.type is rejected with an error, not silently ignored", async () => {
+        // With no matching case, the default exhaustiveness guard must throw
+        // instead of letting resumeDispatch return and the run stall.
+        const ctx = { directory: "/app" } as unknown as PluginContext
+        const team = { members: [], teamName: "test-team" } as unknown as Team
+        const task = { type: "bogus" } as unknown as ActiveTask
+
+        await expect(resumeDispatch(ctx, team, task)).rejects.toThrow(
+            /Unhandled task type: bogus/,
+        )
     })
 })

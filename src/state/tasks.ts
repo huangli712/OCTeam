@@ -13,7 +13,6 @@
  */
 
 import fs from "node:fs/promises"
-import path from "node:path"
 import crypto from "node:crypto"
 
 import { CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./locks.js"
@@ -282,6 +281,15 @@ export async function claimTask(
 }
 
 /**
+ * Pure decision: is a claim stale? A claim is stale iff the lock is NOT fresh
+ * AND the claimedAt age strictly exceeds the TTL (age == ttl is NOT stale).
+ * All IO (lockFresh, Date.now) is resolved by the caller and passed in.
+ */
+export function isClaimStale(fresh: boolean, claimedAt: number, now: number, ttl: number): boolean {
+    return !fresh && now - claimedAt > ttl
+}
+
+/**
  * Reconcile stale claims (run by the sweep timer). For every task in "claimed"
  * status whose claim lock is stale AND whose claimedAt exceeds CLAIM_TTL, reset
  * to "pending" so another member can pick it up. Fixes the limbo where a crash
@@ -292,8 +300,7 @@ export async function reapStaleClaims(teamDirectory: string): Promise<void> {
     for (const task of tasks) {
         if (task.status !== "claimed") continue
         const fresh = await lockFresh(claimLockPath(teamDirectory, task.id), CLAIM_TTL_MS)
-        const aged = Date.now() - (task.claimedAt ?? 0) > CLAIM_TTL_MS
-        if (!fresh && aged) {
+        if (isClaimStale(fresh, task.claimedAt ?? 0, Date.now(), CLAIM_TTL_MS)) {
             await updateTask(teamDirectory, task.id, {
                 status: "pending",
                 owner: undefined,

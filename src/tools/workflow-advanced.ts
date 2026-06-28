@@ -10,7 +10,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { dispatchToMember } from "../orchestration/dispatch.js"
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
-import type { GatedStage, RouteBranch, Stage } from "../core/types.js"
+import type { GatedStage, RouteBranch } from "../core/types.js"
 import { buildRecursePrompt } from "../orchestration/delegate-recurse.js"
 import { advanceToGatedStage } from "../orchestration/tollgate.js"
 import { buildDebatePrompt } from "../orchestration/route-arbitrate.js"
@@ -22,6 +22,7 @@ import {
     assertMember,
     baseTaskFields,
     signoffTaskFields,
+    signoffSchemaFields,
     startOrchestration,
     validateSignoff,
 } from "./workflow-shared.js"
@@ -36,7 +37,7 @@ import {
  * so a ref-less task is a pure source that cannot close a cycle. Callers must
  * have already validated that every blocked_by entry is a declared ref.
  */
-function detectBlockedByCycle(
+export function detectBlockedByCycle(
     tasks: { ref?: string; blocked_by?: string[] }[],
 ): string[] | null {
     // Adjacency keyed by ref: ref -> refs it is blocked_by. Every blocked_by
@@ -96,20 +97,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 )
                 .min(1)
                 .max(200),
-            signoff_policy: tool.schema
-                .enum(["none", "decider", "peer-quorum"])
-                .optional()
-                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
-            signoff_decider: tool.schema
-                .string()
-                .optional()
-                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
-            signoff_quorum: tool.schema
-                .number()
-                .gt(0)
-                .max(1)
-                .optional()
-                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+            ...signoffSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_errored_members: tool.schema.number().int().min(0).optional().describe("tolerate up to N terminally-errored members and still deliver survivors' work. Default 0 (any member error fails the run)."),
@@ -257,20 +245,7 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                     }),
                 )
                 .min(1),
-            signoff_policy: tool.schema
-                .enum(["none", "decider", "peer-quorum"])
-                .optional()
-                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
-            signoff_decider: tool.schema
-                .string()
-                .optional()
-                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
-            signoff_quorum: tool.schema
-                .number()
-                .gt(0)
-                .max(1)
-                .optional()
-                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+            ...signoffSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
@@ -355,20 +330,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                 .min(2)
                 .describe("debater member names (at least 2, unique; none may be the arbiter)"),
             max_rounds: tool.schema.number().min(1).max(20).optional().describe("debate round limit before the ruling (default 1)"),
-            signoff_policy: tool.schema
-                .enum(["none", "decider", "peer-quorum"])
-                .optional()
-                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
-            signoff_decider: tool.schema
-                .string()
-                .optional()
-                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
-            signoff_quorum: tool.schema
-                .number()
-                .gt(0)
-                .max(1)
-                .optional()
-                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+            ...signoffSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
@@ -464,20 +426,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                 .min(0)
                 .optional()
                 .describe("cap on INVALID/escalate ping-pong per gate. Default 3; beyond it the run fails with tollgate_invalid:exhausted instead of burning wall-clock/turn budget."),
-            signoff_policy: tool.schema
-                .enum(["none", "decider", "peer-quorum"])
-                .optional()
-                .describe("post-completion review gate (runs after all gates PASS). 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
-            signoff_decider: tool.schema
-                .string()
-                .optional()
-                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
-            signoff_quorum: tool.schema
-                .number()
-                .gt(0)
-                .max(1)
-                .optional()
-                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+            ...signoffSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0. Distinct from max_gate_retries."),
@@ -539,7 +488,13 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                 // when it idles.
                 async (_team, task) => {
                     if (task.type !== "tollgate") return
-                    await advanceToGatedStage(ctx, _team, task.gatedStages![0])
+                    // Guard against an empty stages array defensively — the zod
+                    // schema enforces min(1), but the non-null assertion `!` is
+                    // removed so a future schema regression cannot feed
+                    // `undefined` into advanceToGatedStage.
+                    const first = task.gatedStages?.[0]
+                    if (!first) return
+                    await advanceToGatedStage(ctx, _team, first)
                 },
                 // successMessage
                 () => `team_tollgate started on "${args.team_id}" with ${args.stages.length} gate(s).`,
@@ -560,20 +515,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
             decomposer: tool.schema.string().min(1).describe("member name first dispatched with the root task (NOT \"master\"); decomposition is open to all members"),
             max_depth: tool.schema.number().int().min(1).max(8).optional().describe("recursion depth upper bound (default 3). Tasks at this depth cannot decompose further."),
             max_subtasks: tool.schema.number().int().min(1).max(20).optional().describe("per-decomposition subtask upper bound (default 5)"),
-            signoff_policy: tool.schema
-                .enum(["none", "decider", "peer-quorum"])
-                .optional()
-                .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
-            signoff_decider: tool.schema
-                .string()
-                .optional()
-                .describe("member name to act as signoff decider (when signoff_policy='decider')"),
-            signoff_quorum: tool.schema
-                .number()
-                .gt(0)
-                .max(1)
-                .optional()
-                .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+            ...signoffSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
