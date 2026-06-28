@@ -1,8 +1,10 @@
 /**
  * Check script: Vandermonde identity multi-layer proof (challenge-level, 6 members, depth 4).
  *
- * team_recurse spreads output across the shared task list + per-member reports.
- * This script reads ALL member markdowns in <run_dir>/ and verifies:
+ * team_recurse spreads output across the shared task list, per-member .md
+ * reports, AND member-to-member messages (team_send_message → mailbox/*.jsonl).
+ * This script reads ALL member markdowns in <run_dir>/ PLUS all messages in
+ * <team_dir>/mailbox/ (resolved as ../../ relative to run_dir) and verifies:
  *   1. The decomposer (alice) emitted the root aggregation marker
  *      <!-- VANDERMONDE_PROVEN: true -->.
  *   2. Across all leaf sub-tasks, at least 2 distinct <!-- APPROACH: <name> -->
@@ -14,13 +16,15 @@
  * Usage:  bun check-math-vandermonde.ts <run_dir>
  *   <run_dir>  directory containing the per-member markdown outputs
  *             (expects alice.md as the decomposer, plus bob/carol/dave/erin/
- *              frank.md as solver members distributed across three proof paths)
+ *              frank.md as solver members distributed across three proof paths).
+ *             Also scans <team_dir>/mailbox/*.jsonl for markers sent via
+ *             team_send_message but not present in captured .md turns.
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
 
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 // Decomposer member (set in the team_create config above). The root aggregator.
 const DECOMPOSER = "alice";
@@ -60,6 +64,39 @@ async function loadAllMarkdown(runDir: string): Promise<MemberDoc[]> {
     return docs;
 }
 
+/**
+ * Recurse members often deliver markers via team_send_message rather than in
+ * their captured .md turn output. Each mailbox/*.jsonl line is a JSON message
+ * with `from` (sender) and `body` (content). This aggregates all message
+ * bodies by sender into pseudo MemberDocs so those markers are not missed.
+ */
+async function loadMailboxMessages(teamDir: string): Promise<MemberDoc[]> {
+    const mailboxDir = join(teamDir, "mailbox");
+    let entries: string[];
+    try {
+        entries = await readdir(mailboxDir);
+    } catch {
+        return []; // no mailbox dir (parallel/other modes) — nothing to merge
+    }
+    const bySender = new Map<string, string>();
+    for (const entry of entries.filter(e => e.endsWith(".jsonl"))) {
+        const raw = await readFile(join(mailboxDir, entry), "utf8");
+        for (const line of raw.split("\n")) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+                const msg = JSON.parse(trimmed);
+                if (typeof msg.from === "string" && typeof msg.body === "string") {
+                    bySender.set(msg.from, (bySender.get(msg.from) ?? "") + "\n" + msg.body);
+                }
+            } catch {
+                // skip malformed JSONL lines
+            }
+        }
+    }
+    return Array.from(bySender.entries()).map(([name, raw]) => ({ name, raw }));
+}
+
 /** Extract every capture group 1 from a (possibly global) regex against `raw`. */
 function collectMatches(raw: string, re: RegExp): string[] {
     const out: string[] = [];
@@ -84,6 +121,24 @@ async function main(): Promise<void> {
     } catch (err) {
         console.error(`IO error reading member output: ${(err as Error).message}`);
         process.exit(2);
+    }
+
+    // Merge mailbox messages: recurse members deliver markers via
+    // team_send_message, which land in <team_dir>/mailbox/*.jsonl —
+    // not always in the captured .md turn output.
+    try {
+        const teamDir = resolve(runDir, "../..");
+        const mailboxDocs = await loadMailboxMessages(teamDir);
+        for (const md of mailboxDocs) {
+            const existing = docs.find(d => d.name === md.name);
+            if (existing) {
+                existing.raw += "\n" + md.raw;
+            } else {
+                docs.push(md);
+            }
+        }
+    } catch {
+        // mailbox is best-effort; .md files are the primary source
     }
 
     if (docs.length === 0) {
