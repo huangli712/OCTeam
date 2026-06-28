@@ -17,8 +17,8 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState } from "../state/store.js"
-import { countUnreadMessages, writeMailboxMessage } from "../messaging/mailbox.js"
-import { sendWakeHint } from "../messaging/wake-hint.js"
+import { countUnreadMessages } from "../messaging/mailbox.js"
+import { deliverToRecipients } from "../messaging/deliver.js"
 import type { Message } from "../core/types.js"
 
 export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
@@ -102,16 +102,7 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                 deliveryStatus: "pending",
             }
             // Mailbox write only — no activeTask.messagesSent increment, no mutex.
-            for (const r of recipients) {
-                await writeMailboxMessage(team.directory, r, { ...base, to: r })
-                // Best-effort wake hint if the recipient is idle (Layer 2) so it
-                // is prompted to process the directive on its next turn.
-                const member = team.members.find(m => m.name === r)
-                if (member?.sessionId && member.status === "idle") {
-                    const n = await countUnreadMessages(team.directory, r)
-                    await sendWakeHint(ctx, member.sessionId, n)
-                }
-            }
+            await deliverToRecipients(ctx, team, recipients, base)
             return `Directive delivered to ${recipients.length === 1 ? recipients[0] : `${recipients.length} members`}.`
         },
     })

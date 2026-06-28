@@ -12,8 +12,8 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
-import { countUnreadMessages, writeMailboxMessage } from "../messaging/mailbox.js"
-import { sendWakeHint } from "../messaging/wake-hint.js"
+import { countUnreadMessages } from "../messaging/mailbox.js"
+import { deliverToRecipients } from "../messaging/deliver.js"
 import type { Message, ParallelMode } from "../core/types.js"
 
 /**
@@ -120,15 +120,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 correlationId: args.correlation_id,
                 deliveryStatus: "pending",
             }
-            for (const r of recipients) {
-                await writeMailboxMessage(team.directory, r, { ...base, to: r })
-                // Best-effort wake hint if idle (Layer 2).
-                const member = team.members.find(m => m.name === r)
-                if (member?.sessionId && member.status === "idle") {
-                    const n = await countUnreadMessages(team.directory, r)
-                    await sendWakeHint(ctx, member.sessionId, n)
-                }
-            }
+            await deliverToRecipients(ctx, team, recipients, base)
             return `Message delivered to ${recipients.length === 1 ? recipients[0] : `${recipients.length} members`}.`
         },
     })
