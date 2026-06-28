@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { MEMBER_NAME_POOL, pickName } from "../src/tools/lifecycle.js"
+import { MEMBER_NAME_POOL, pickName } from "../src/state/naming.js"
 
 describe("pickName (random, no reuse)", () => {
     test("returns a pool name when nothing taken", () => {

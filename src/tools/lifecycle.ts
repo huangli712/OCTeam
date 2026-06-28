@@ -4,8 +4,6 @@
  */
 
 import fs from "node:fs/promises"
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
@@ -21,42 +19,8 @@ import { teamDir, teamsDir } from "../state/paths.js"
 import { listAllTasks } from "../state/tasks.js"
 import { normalizeRole, roleAgent } from "../core/role-presets.js"
 import type { Bounds, MemberState, MemberSpec, TeamSpec } from "../core/types.js"
-
-const execFileP = promisify(execFile)
-
-/**
- * Best-effort git worktree teardown. Removes the worktree registration + files
- * for a member that was created with worktree: true. Must run BEFORE the team
- * directory is deleted, while the worktree files still exist on disk.
- */
-async function cleanWorktree(
-    projectDir: string,
-    worktreePath: string | undefined,
-): Promise<void> {
-    if (!worktreePath) return
-    await execFileP("git", ["worktree", "remove", worktreePath, "--force"], {
-        cwd: projectDir,
-    }).catch(() => {
-        // best effort
-    })
-}
-
-/**
- * Best-effort check: does the worktree at `worktreePath` have uncommitted
- * changes (staged, unstaged, or untracked)? Returns false if the path is
- * missing, not a git repo, or git itself fails — never blocks deletion on a
- * git error.
- */
-async function hasUncommittedChanges(worktreePath: string): Promise<boolean> {
-    try {
-        const { stdout } = await execFileP("git", ["status", "--porcelain"], {
-            cwd: worktreePath,
-        })
-        return stdout.trim().length > 0
-    } catch {
-        return false
-    }
-}
+import { MEMBER_NAME_POOL, pickName } from "../state/naming.js"
+import { cleanWorktree, hasUncommittedChanges } from "../state/worktrees.js"
 
 /**
  * Pure decision for team_activate (exported for unit tests). Auto-switching
@@ -97,28 +61,6 @@ function defaultBounds(override?: Partial<Bounds>): Bounds {
         messageUnreadMaxBytes: 1048576,
         ...override,
     }
-}
-
-/**
- * Candidate name pool for members whose name is omitted at creation. A name is
- * drawn at random and not reused within the same team. The pool (32) exceeds the
- * 8-member team cap, so it never runs out for a single team.
- */
-export const MEMBER_NAME_POOL = [
-    "alice", "bob", "carol", "dave", "erin", "frank", "grace", "henry",
-    "iris", "jack", "kate", "leo", "mona", "nina", "omar", "pat",
-    "quinn", "ruby", "sam", "tom", "uma", "victor", "wendy", "xander",
-    "yara", "zane", "ava", "ben", "chloe", "dan", "ella", "finn",
-] as const
-
-/**
- * Pick a random name from MEMBER_NAME_POOL not present in `taken`. Falls back to
- * "member-N" (N = taken.size + 1) if every pool name is already taken.
- */
-export function pickName(taken: Set<string>): string {
-    const available = MEMBER_NAME_POOL.filter(n => !taken.has(n))
-    if (available.length === 0) return `member-${taken.size + 1}`
-    return available[Math.floor(Math.random() * available.length)]
 }
 
 export function teamCreateTool(ctx: PluginContext): ToolDefinition {

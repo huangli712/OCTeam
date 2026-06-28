@@ -35,6 +35,23 @@ import { buildRouterPrompt } from "./workflow.js"
 import { deliverSummaryToLeader } from "../orchestration/summary.js"
 import { listAllTasks, reapStaleClaims, updateTask } from "../state/tasks.js"
 
+/**
+ * Reset interrupted task claims: reap stale locks + reset any claimed/in_progress
+ * tasks back to pending so idle members can re-claim them. Shared by the
+ * delegate and recurse resume paths (O8).
+ */
+async function resetInterruptedClaims(team: Team): Promise<void> {
+    await reapStaleClaims(team.directory)
+    for (const t of await listAllTasks(team.directory)) {
+        if (t.status === "claimed" || t.status === "in_progress") {
+            await updateTask(team.directory, t.id, {
+                status: "pending",
+                owner: undefined,
+            })
+        }
+    }
+}
+
 export async function resumeDispatch(
     ctx: PluginContext,
     team: Team,
@@ -107,15 +124,7 @@ export async function resumeDispatch(
             // O8: reset claimed AND in_progress → pending (claiming member's
             // turn was interrupted). reapStaleClaims handles stale locks;
             // fresh claimed locks linger up to CLAIM_TTL_MS (documented).
-            await reapStaleClaims(team.directory)
-            for (const t of await listAllTasks(team.directory)) {
-                if (t.status === "claimed" || t.status === "in_progress") {
-                    await updateTask(team.directory, t.id, {
-                        status: "pending",
-                        owner: undefined,
-                    })
-                }
-            }
+            await resetInterruptedClaims(team)
             for (const m of team.members) {
                 if (m.isMaster || m.status === "running") continue
                 await dispatchToMember(
@@ -227,15 +236,7 @@ export async function resumeDispatch(
             // Same task recovery as delegate: reset interrupted
             // claims/in_progress -> pending, then re-dispatch idle
             // members with the recursive contract.
-            await reapStaleClaims(team.directory)
-            for (const t of await listAllTasks(team.directory)) {
-                if (t.status === "claimed" || t.status === "in_progress") {
-                    await updateTask(team.directory, t.id, {
-                        status: "pending",
-                        owner: undefined,
-                    })
-                }
-            }
+            await resetInterruptedClaims(team)
             for (const m of team.members) {
                 if (m.isMaster || m.status === "running") continue
                 await dispatchToMember(
