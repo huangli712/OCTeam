@@ -98,7 +98,8 @@ Other sessions call tools like `team_done`, `team_send_message`, and
 `team_task_*`.
 
 **Single-active-per-session.** A session can have at most one team activated at
-a time. Calling `team_activate` on a second team deactivates the first.
+a time. `team_activate` refuses if another team is already active — call
+`team_deactivate` on it first (auto-switching is disabled).
 
 **State.** All team state is JSON-serializable, persisted under
 `<scope>/.octeam/teams/<name>/`. Each team has a `config.json` (immutable

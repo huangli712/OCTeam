@@ -255,7 +255,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // best-effort
             }
             const resolved: MemberSpec[] = named.map(m => {
-                // role is a closed enum: normalize to a preset (unknown → almighty).
+                // role is a closed enum: normalize to a preset (unknown → reviewer, read-only).
                 // The agent is fixed by the role unless explicitly overridden.
                 const role = normalizeRole(m.role)
                 const agent = m.agent ?? roleAgent(role)
@@ -484,7 +484,7 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
 export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Modify a team member's name, role, system prompt, and/or agent. new_role must be a preset role (unknown → \"almighty\") and re-derives the member's agent unless new_agent is also given. new_name must be a preset pool name. Changing the agent re-resolves the model from the agent registry. Only allowed when the team is not busy and the target member is not running.",
+            "Modify a team member's name, role, system prompt, and/or agent. new_role must be a preset role (unknown → \"reviewer\", read-only) and re-derives the member's agent unless new_agent is also given. new_name must be a preset pool name. Changing the agent re-resolves the model from the agent registry. Only allowed when the team is not busy and the target member is not running.",
         args: {
             team_id: tool.schema.string().min(1),
             member_name: tool.schema.string().min(1),
@@ -573,7 +573,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     changes.push(`name: ${oldName} → ${args.new_name}`)
                 }
 
-                // --- new_role: normalize to a preset role (unknown → almighty) ---
+                // --- new_role: normalize to a preset role (unknown → reviewer, read-only) ---
                 if (args.new_role && specMember) {
                     specMember.role = normalizeRole(args.new_role)
                     changes.push(`role: ${specMember.role}`)

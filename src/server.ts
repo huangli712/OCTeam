@@ -20,7 +20,7 @@ const id = "octeam"
 /**
  * Server plugin module entry. Builds the PluginContext closure, rebuilds the
  * session index from disk (crash recovery), starts the sweep timer, and wires
- * all 18 tools + the event/transform hooks.
+ * all 33 tools + the event/transform hooks.
  *
  * Pipeline: tool handlers + event handler + transform hook all
  * share ctx; event handler + sweep timer drive the per-team locked state

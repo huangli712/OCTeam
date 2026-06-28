@@ -16,6 +16,21 @@
  * Agents used: build (writes code/files), oracle (read-only reasoning), explore
  * (codebase search), librarian (external references), sisyphus (the strongest
  * general agent). Matching is case-insensitive (see normalizeRole).
+ *
+ * PERMISSION ENFORCEMENT — accepted limitation. Read-only roles map to the BARE
+ * host agent names ("oracle"/"explore"/"librarian"), not OCTeam's hardened
+ * `oct-*` presets (agents/*.ts). The `oct-*` agents carry mode:"subagent" and
+ * hardened permission maps (edit/task/bash/webfetch: deny) but are registered
+ * for the MASTER's subagent delegation, not for team members — using them for
+ * persistent member sessions has not been verified safe (subagent-mode sessions
+ * may not support the multi-dispatch member lifecycle). Therefore the actual
+ * permissions of a read-only team member depend on the HOST's configuration of
+ * "oracle"/"explore"/"librarian": on a standard OpenCode install these are
+ * read-only by default, but if a user loosens them the role's read-only intent
+ * silently fails. OCTeam cannot close this without either (a) verifying
+ * subagent-mode member sessions work, or (b) host-side enforcement of agent
+ * permissions — both outside a safe, minimal change. Treat the host agent
+ * definitions as part of the trusted configuration surface.
  */
 export type RoleDef = { agent: string; instruction: string }
 

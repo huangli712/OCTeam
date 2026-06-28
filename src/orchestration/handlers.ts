@@ -51,12 +51,6 @@ export {
     handleConsensusIdle,
 } from "./parallel-consensus.js"
 export {
-    handlePipelineIdle,
-    handleLoopIdle,
-} from "./pipeline-loop.js"
-export {
-    handleDelegateIdle,
-    handleRecurseIdle,
     buildRecursePrompt,
 } from "./delegate-recurse.js"
 export {
@@ -400,21 +394,44 @@ export async function handleStatusEvent(
                     reason: live.error,
                 })
                 await checkTermination(ctx, team) // fail-fast if over tolerance / all errored
-                // Re-drive the barrier: if this errored member was the LAST to reach
-                // a terminal state, no further idle event will arrive to fire the
-                // barrier. checkTermination above only fails fast; within tolerance it
-                // is a no-op, so deliver survivors here.
-                if (team.activeTask?.type === "parallel") {
-                    await handleParallelIdle(ctx, team)
+                // Re-drive using the SAME routing as processIdle: if this errored
+                // member was the LAST to reach a terminal state, no further idle
+                // event will arrive. checkTermination above only fail-fasts;
+                // within tolerance it is a no-op, so re-evaluate completion / the
+                // barrier here. Handlers are safe with an errored `live`:
+                // dispatchToMember skips errored members (no revival of a terminal
+                // member), and the completion / quorum / deadlock checks run
+                // regardless of the passed member.
+                if (team.activeTask) {
+                    if (team.activeTask.reduceStage) {
+                        await handleReduceIdle(ctx, team, live)
+                    } else if (team.activeTask.signoffStage) {
+                        await handleSignoffIdle(ctx, team, live)
+                    } else {
+                        switch (team.activeTask.type) {
+                            case "parallel":
+                                await handleParallelIdle(ctx, team)
+                                break
+                            case "delegate":
+                                await handleDelegateIdle(ctx, team, live)
+                                break
+                            case "recurse":
+                                await handleRecurseIdle(ctx, team, live)
+                                break
+                            // Sequential modes (pipeline/loop/consensus/route/
+                            // arbitrate/tollgate) have tolerance 0, so the
+                            // checkTermination above already fail-fast cleared
+                            // activeTask — nothing to re-drive here.
+                            default:
+                                break
+                        }
+                    }
                 }
                 // Persist the terminal transition: checkTermination / the barrier
                 // re-drive may have cleared activeTask and flipped team.status, but
                 // the only save above predates them. Without this, state.json stays
                 // "busy" on disk after the run actually finished here — staling the
                 // sidebar and mis-reconciling a completed run as failed on restart.
-                // NOTE: delegate's tolerant last-errored case is NOT re-driven here
-                // (handleDelegateIdle needs an idle member); it is reconciled by the
-                // sweep timer instead — a known, wall-clock-bounded limitation.
                 await saveTeamState(team)
             }
         } else if (entry?.type === "idle") {

@@ -93,3 +93,39 @@ makes interrupted orchestrations resumable via `team_resume`.
 
 Security issues are handled through the project's security policy on GitHub; see
 the [README Security section](../README.md#security).
+
+### Trust boundaries
+
+- **Master vs member.** Authorization is enforced at a single chokepoint
+  (`resolveCallerInTeam` in `state/resolve.ts`): member sessions can only reach
+  the team they are indexed under (a member of team A passing `team_id="B"` is
+  rejected), and the 9 orchestration tools plus `team_intervene` are master-only.
+  Unknown role names fall back to `reviewer` (read-only), never `almighty`.
+
+- **Path safety.** Every caller-supplied path segment (team/member/task/run ids)
+  is validated by `state/paths.ts` (`assertSafeSegment`) before it reaches the
+  filesystem, with defense-in-depth at the tool schema layer. There is no raw
+  `fs` call that bypasses this chokepoint.
+
+- **Mailbox authenticity — accepted limitation.** The file mailbox lives under
+  `<project>/.octeam/mailbox/`. Messages carry **no cryptographic integrity tag**:
+  the `from` and `kind` fields are stored verbatim and only XML-escaped on
+  injection, never re-authenticated on read. Because member agents (any role
+  mapped to the `build` agent) share the same OpenCode process and can write the
+  project directory, a member with filesystem write access to `.octeam/` CAN
+  append a forged line (e.g. `from:"master", kind:"directive"`) that will be
+  honored as a high-priority directive. OCTeam treats `.octeam/` as a trusted
+  directory and assumes cooperative member agents. The robust defense — excluding
+  `.octeam/` from member write paths — belongs to the host permission layer and is
+  outside this plugin's control. A per-team HMAC was considered and rejected: the
+  key cannot be hidden from a member that can read the key file in the same
+  process, so it would not close the hole while adding real complexity.
+
+- **Member agent permissions — host-config dependency.** Read-only roles
+  (`reviewer`/`architect`/`explorer`/`researcher`) map to the bare host agent
+  names `oracle`/`explore`/`librarian`, not OCTeam's hardened `oct-*` presets
+  (which carry `mode:"subagent"` and are used for the master's subagent
+  delegation). On a standard OpenCode install these bare agents are read-only by
+  default, so least-privilege holds. If a user loosens a host agent's
+  permissions, a read-only role's intent can silently fail. OCTeam treats the
+  host agent definitions as part of the trusted configuration surface.

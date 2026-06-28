@@ -152,8 +152,14 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
                 member.turnCount = 1
             }),
         )
-        // Persist each batch so a crash mid-spawn leaves recoverable state.
-        await saveTeamState(team)
+        // NOTE: no per-batch saveTeamState here. saveTeamState documents that
+        // the caller must already hold team.mutex (store.ts), but this runs
+        // OUTSIDE the mutex — a save here would race the role-setup idle handler
+        // (which saves under the mutex) and could clobber member.initialized.
+        // sessionId/worktreePath set above are persisted by that idle handler
+        // during the barrier below, and finalized by the Phase-3 caller's
+        // saveTeamState. The barrier-timeout path below still persists errored
+        // state before throwing.
     }
 
     // 4. ROLE-SETUP BARRIER: wait until every spawned member has idled once.

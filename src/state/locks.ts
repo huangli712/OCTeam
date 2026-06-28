@@ -26,6 +26,40 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Check whether a process with the given pid is currently alive. Uses signal 0
+ * (existence check): no throw = alive; EPERM = alive (exists, different user);
+ * ESRCH = dead. Used by acquireLock so a stale lock mtime alone never causes a
+ * live holder's lock to be reaped, which would break mutual exclusion.
+ */
+function isProcessAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0)
+        return true
+    } catch (err: unknown) {
+        return (err as NodeJS.ErrnoException).code === "EPERM"
+    }
+}
+
+/**
+ * Best-effort fsync of a directory's entries. Used by atomicWrite after rename
+ * so the directory-entry change is durable across an OS crash (file content is
+ * already fsync'd). Some platforms/filesystems don't support opening a dir for
+ * fsync; errors are swallowed.
+ */
+async function fsyncDir(dir: string): Promise<void> {
+    try {
+        const dirFd = await fs.open(dir, "r")
+        try {
+            await dirFd.sync()
+        } finally {
+            await dirFd.close().catch(() => {})
+        }
+    } catch {
+        // best-effort: dir fsync unsupported or dir missing
+    }
+}
+
+/**
  * Per-team async mutex. Serializes event-handler state mutations within a
  * single process.
  *
@@ -99,10 +133,27 @@ async function acquireLock(lockPath: string): Promise<void> {
             try {
                 const stat = await fs.stat(lockPath)
                 if (Date.now() - stat.mtimeMs > LOCK_TTL_MS) {
-                    await fs.unlink(lockPath).catch(() => {
-                        // raced — another process already reaped it
-                    })
-                    continue // retry immediately
+                    // mtime is stale, but that alone may mean a heartbeat
+                    // glitch rather than a dead holder. Verify the holder
+                    // process is actually dead before reaping: reaping a LIVE
+                    // holder's lock would let two processes into the critical
+                    // section simultaneously, breaking mutual exclusion. Only
+                    // reap when the holder pid is gone (ESRCH) or unreadable.
+                    let reap = true
+                    try {
+                        const owner = parseInt((await fs.readFile(lockPath, "utf8")).trim(), 10)
+                        if (Number.isInteger(owner) && isProcessAlive(owner)) {
+                            reap = false // holder alive — wait, do not steal
+                        }
+                    } catch {
+                        // pid unreadable — best-effort reap
+                    }
+                    if (reap) {
+                        await fs.unlink(lockPath).catch(() => {
+                            // raced — another process already reaped it
+                        })
+                        continue // retry immediately
+                    }
                 }
             } catch {
                 // Lock vanished between open and stat — retry.
@@ -195,6 +246,9 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
 
     try {
         await fs.rename(tmp, filePath)
+        // st-dirfsync: persist the directory-entry change so an OS crash after
+        // rename cannot lose the new file (content is already durable above).
+        await fsyncDir(path.dirname(filePath))
     } catch (err) {
         await fs.unlink(tmp).catch(() => {
             // best-effort cleanup of a leftover tmp file on rename failure

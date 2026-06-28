@@ -6,6 +6,26 @@
  * read-flag — eliminates multi-reader bugs). Delivery uses the atomic
  * read-and-reserve protocol so the two master drainers
  * (event-handler proactive drain + Transform hook) never double-deliver.
+ *
+ * TRUST BOUNDARY — message authenticity. The mailbox lives under
+ * `<project>/.octeam/mailbox/`, i.e. inside the project directory that member
+ * agents (any role mapped to the `build` agent: coder/debugger/optimizer/...)
+ * can read and write via their edit/write/bash tools. Messages carry NO
+ * cryptographic integrity tag (no HMAC/signature): `from` and `kind` are stored
+ * verbatim and only XML-escaped on output, never re-authenticated on read.
+ * Consequently a member with filesystem write access to `.octeam/` CAN append a
+ * forged line (e.g. `{from:"master", kind:"directive", ...}`) that will be
+ * rendered as a high-priority `[DIRECTIVE]` apparently from the master — a
+ * cross-member privilege-escalation / master-impersonation vector.
+ *
+ * This is an accepted, documented limitation of the shared-process,
+ * shared-filesystem architecture: an HMAC key cannot be hidden from a member
+ * that runs in the same OpenCode process and can read the key file. The robust
+ * defense is host-side — exclude `.octeam/` from member write paths via the
+ * OpenCode permission layer — which is outside this plugin's control. Code
+ * here treats `.octeam/` as trusted and assumes cooperative, non-malicious
+ * member agents (the documented threat model). Do NOT add logic that trusts
+ * `from`/`kind` for security decisions without acknowledging this boundary.
  */
 
 import fs from "node:fs/promises"
@@ -40,6 +60,11 @@ async function appendJsonl(filePath: string, obj: unknown): Promise<void> {
  * parsed and cast to Message; a corrupt or tampered line can be valid JSON yet
  * miss the fields delivery/formatting dereference. Validate just id/from/body so
  * wrong-shape entries are skipped alongside the already-skipped malformed lines.
+ *
+ * NOTE: this is a SHAPE check only, NOT an authenticity check — see the file
+ * header "TRUST BOUNDARY" comment. `from`/`kind` are never re-authenticated, so
+ * a tampered line with a valid shape is accepted (and rendered trusting its
+ * stored sender/kind).
  */
 function isValidMessage(value: unknown): value is Message {
     if (typeof value !== "object" || value === null) return false
@@ -267,6 +292,12 @@ function escapeXmlAttr(value: string): string {
  * Directive priority: messages with kind === "directive" are rendered FIRST,
  * each prefixed with a [DIRECTIVE] marker, so they take visual precedence in
  * the injected prompt. Regular messages follow after, preserving their order.
+ *
+ * SECURITY NOTE: `kind` and `from` are taken verbatim from the stored line (no
+ * authenticity check — see the file header "TRUST BOUNDARY" comment). Only the
+ * legitimate write path (writeMailboxMessage, called by team_send_message and
+ * team_intervene) sets these fields; a member with FS write to .octeam/ can
+ * forge a directive that will be honored here.
  */
 export function formatMailboxInjection(msgs: Message[]): string {
     const render = (m: Message, prefix: string): string =>

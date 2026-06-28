@@ -181,7 +181,7 @@ export function buildRolePrompt(
     if (spec.model) lines.push(`Your model: ${spec.model}`)
     if (peers.length > 0) lines.push(`Your teammates: ${peers.join(", ")}`)
     // Preset role guidance (by role label), injected before the user's task
-    // instruction. Every role resolves to an instruction (almighty fallback).
+    // instruction. Every role resolves to an instruction (reviewer fallback).
     lines.push("", "<role-instruction>", rolePreset(spec.role), "</role-instruction>")
     if (spec.prompt) {
         lines.push("", "<user-instruction>", spec.prompt, "</user-instruction>")

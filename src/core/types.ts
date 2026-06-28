@@ -14,7 +14,7 @@ export type TeamSpec = {
     readonly name: string              // /^[a-z0-9-]+$/, unique within scope
     readonly description?: string
     readonly createdAt: number         // epoch ms
-    readonly members: MemberSpec[]     // 1-16 members
+    readonly members: MemberSpec[]     // 1-8 members (maxMembers default)
 }
 
 export type MemberSpec = {

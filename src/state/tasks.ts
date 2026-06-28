@@ -144,8 +144,19 @@ export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
     const tasks: Task[] = []
     for (const e of entries) {
         if (!e.isFile() || !e.name.endsWith(".json")) continue
-        const t = await readTaskFile(teamDirectory, e.name.replace(/\.json$/, ""))
-        if (t) tasks.push(t)
+        const id = e.name.replace(/\.json$/, "")
+        // Skip malformed names so a stray/non-UUID file (left by a crash or an
+        // external tool) cannot abort the whole listing — assertSafeSegment in
+        // taskPath would otherwise throw and break claimTask's "no active task"
+        // scan and reapStaleClaims for the entire team.
+        if (!TASK_ID_PATTERN.test(id)) continue
+        try {
+            const t = await readTaskFile(teamDirectory, id)
+            if (t) tasks.push(t)
+        } catch (err) {
+            // A single corrupt/unreadable task file must not break the listing.
+            console.warn(`[octeam] listAllTasks: skipping unreadable task ${id}:`, err)
+        }
     }
     return tasks
 }
@@ -247,7 +258,8 @@ export async function claimTask(
                 const fh = await fs.open(lockPath, "wx")
                 await fh.writeFile(owner)
                 await fh.close()
-            } catch {
+            } catch (err: unknown) {
+                if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
                 throw new TaskAlreadyClaimedError(taskId)
             }
         }
