@@ -90,6 +90,12 @@ export async function processIdle(
     member: MemberState,
     sessionID: string,
 ): Promise<void> {
+    // Tombstone: the team directory has been deleted (team_delete ran under
+    // the mutex and set team.deleted=true). Bail before any state mutation or
+    // saveTeamState / captureMemberOutput / recordEvent / persistRun call —
+    // those all funnel through atomicWrite, whose mkdir({recursive:true}) would
+    // otherwise recreate the just-removed directory.
+    if (team.deleted) return
     // Step 0: Master special case — synthetic member, never dispatches.
     if (member.isMaster) {
         await deliverQueuedResultsToMaster(ctx, team, sessionID)

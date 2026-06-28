@@ -59,7 +59,11 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
 
         // session.status carries retry/error signals that session.idle does not.
         if (type === "session.status") {
-            await handleStatusEvent(ctx, event as { properties?: Record<string, unknown>; type?: string })
+            try {
+                await handleStatusEvent(ctx, event as { properties?: Record<string, unknown>; type?: string })
+            } catch (err) {
+                logSwallowed(ctx, "session.status handler failed", err, { type })
+            }
             return
         }
 
@@ -100,22 +104,33 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
         }
 
         // Member path — single team (1:1). Unchanged behavior.
-        const member = await resolveTeamMember(ctx.storageRoot, sessionID)
-        if (!member) return // not a team member (the common case)
-        const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
-        await team.mutex.runExclusive(async () => {
-            // operate on the LIVE member object so mutations persist
-            const live = team.members.find(m => m.name === member.name)
-            if (!live) return
-            await processIdle(ctx, team, live, sessionID)
-            // Flush any terminal transition (busy→idle/failed) the handlers made
-            // under the mutex. processIdle's internal save runs before dispatch while
-            // status is still "busy"; without this the idle/failed status never reaches
-            // disk and the sidebar (which reads state.json directly) stays stale.
-            await saveTeamState(team).catch((err) =>
-                logSwallowed(ctx, "persist team state failed (member idle)", err, { team: team.teamName, member: live.name })
-            )
-        })
+        // resolveTeamMember returns null for the common "not a team member"
+        // case (index miss) — `if (!member) return` stays silent. But it can
+        // ALSO throw: when the index hits but the team state is unreadable
+        // (deleted team, corrupt state), resolveMemberFromIndex's internal
+        // loadTeamState propagates the throw. The whole block is wrapped so any
+        // throw is swallowed + logged, mirroring the master path's guarantee
+        // that the host is never poisoned by an unhandled rejection.
+        try {
+            const member = await resolveTeamMember(ctx.storageRoot, sessionID)
+            if (!member) return // not a team member (the common case)
+            const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
+            await team.mutex.runExclusive(async () => {
+                // operate on the LIVE member object so mutations persist
+                const live = team.members.find(m => m.name === member.name)
+                if (!live) return
+                await processIdle(ctx, team, live, sessionID)
+                // Flush any terminal transition (busy→idle/failed) the handlers made
+                // under the mutex. processIdle's internal save runs before dispatch while
+                // status is still "busy"; without this the idle/failed status never reaches
+                // disk and the sidebar (which reads state.json directly) stays stale.
+                await saveTeamState(team).catch((err) =>
+                    logSwallowed(ctx, "persist team state failed (member idle)", err, { team: team.teamName, member: live.name })
+                )
+            })
+        } catch (err) {
+            logSwallowed(ctx, "member-idle handler failed", err, { sessionID })
+        }
     }
 }
 

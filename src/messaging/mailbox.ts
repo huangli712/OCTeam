@@ -168,17 +168,24 @@ export async function ackMessages(
     recipient: string,
     msgs: Message[],
 ): Promise<void> {
-    for (const msg of msgs) {
-        await appendJsonl(processedPath(teamDirectory, recipient), {
-            ...msg,
-            deliveryStatus: "processed",
-        })
-        await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch(() => {
-            // already removed
-        })
-    }
-    // Retention: cap the audit log so it doesn't grow unbounded.
-    await pruneProcessedLog(teamDirectory, recipient)
+    // Hold the mailbox lock for the whole batch so releaseStaleReservations
+    // cannot re-add a message to the inbox between our append-to-processed and
+    // unlink-reservation (exactly-once violation). Matches pollMailbox and
+    // releaseStaleReservations batch semantics. Calls _pruneProcessedLogUnlocked
+    // (not pruneProcessedLog) to avoid re-acquiring the same non-reentrant lock.
+    return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
+        for (const msg of msgs) {
+            await appendJsonl(processedPath(teamDirectory, recipient), {
+                ...msg,
+                deliveryStatus: "processed",
+            })
+            await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch(() => {
+                // already removed
+            })
+        }
+        // Retention: cap the audit log so it doesn't grow unbounded.
+        await _pruneProcessedLogUnlocked(teamDirectory, recipient)
+    })
 }
 
 /**
@@ -187,20 +194,26 @@ export async function ackMessages(
  * the stale-reservation reaper can't race the truncate-and-rewrite. Best-effort
  * on read errors (a malformed/missing log is left untouched).
  */
+/** Unlocked body of pruneProcessedLog. Caller MUST hold the mailbox lock. */
+async function _pruneProcessedLogUnlocked(teamDirectory: string, recipient: string): Promise<void> {
+    const p = processedPath(teamDirectory, recipient)
+    let raw: string
+    try {
+        raw = await fs.readFile(p, "utf8")
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return
+        throw err
+    }
+    const lines = raw.split("\n").filter(l => l.length > 0)
+    if (lines.length <= PROCESSED_MAX_LINES) return
+    const kept = lines.slice(lines.length - PROCESSED_MAX_LINES)
+    await atomicWrite(p, kept.join("\n") + "\n")
+}
+
+/** Lock-taking wrapper for callers not already holding the mailbox lock. */
 async function pruneProcessedLog(teamDirectory: string, recipient: string): Promise<void> {
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
-        const p = processedPath(teamDirectory, recipient)
-        let raw: string
-        try {
-            raw = await fs.readFile(p, "utf8")
-        } catch (err: unknown) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") return
-            throw err
-        }
-        const lines = raw.split("\n").filter(l => l.length > 0)
-        if (lines.length <= PROCESSED_MAX_LINES) return
-        const kept = lines.slice(lines.length - PROCESSED_MAX_LINES)
-        await atomicWrite(p, kept.join("\n") + "\n")
+        await _pruneProcessedLogUnlocked(teamDirectory, recipient)
     })
 }
 

@@ -14,11 +14,16 @@ import {
  *
  * `mutex` is a per-teamName process-level singleton (see teamRegistry) — it
  * serializes event-handler state mutations. `directory` is the resolved team
- * working directory on disk. Neither field is written to state.json.
+ * working directory on disk. `deleted` is the runtime tombstone set by
+ * team_delete inside the mutex: once true, processIdle/saveTeamState skip
+ * persistence so a racing handler holding the same in-memory reference cannot
+ * recreate the just-removed directory via atomicWrite's mkdir({recursive:true}).
+ * None of these fields is written to state.json (see stripRuntimeFields).
  */
 export type Team = TeamState & {
     mutex: AsyncMutex
     directory: string
+    deleted?: boolean
 }
 
 /**
@@ -45,7 +50,7 @@ const teamRegistry = new Map<string, Team>()
 
 /** Strip the non-persisted runtime fields, leaving the pure TeamState. */
 function stripRuntimeFields(team: Team): TeamState {
-    const { mutex: _mutex, directory: _directory, ...state } = team
+    const { mutex: _mutex, directory: _directory, deleted: _deleted, ...state } = team
     return state
 }
 
@@ -145,6 +150,7 @@ export async function loadTeamState(
  * this with a locked read-merge-write.
  */
 export async function saveTeamState(team: Team): Promise<void> {
+    if (team.deleted) return  // tombstone: do not resurrect deleted team
     const dir = team.directory
     const state = stripRuntimeFields(team)
     const payload = JSON.stringify(state, null, 2)
