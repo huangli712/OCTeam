@@ -22,6 +22,30 @@ import type { ActiveTask, DecisionRecord, Verdict } from "../core/types.js"
 const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>/
 
 /**
+ * Extract and JSON.parse a `<tag>{...}</tag>` block from text. Supports an
+ * optional Chinese alias for i18n-robust matching (see file header). Returns:
+ *   - the parsed object on success
+ *   - `null` when the tag is absent (regex does not match)
+ *   - `undefined` when the tag is present but the payload fails to parse
+ * Most parsers conflate both failure modes via `!p`; parseDecompose is the
+ * exception that distinguishes absent (leaf) from malformed (parseFailed).
+ */
+function extractTaggedJSON(
+    text: string,
+    en: string,
+    zh?: string,
+): Record<string, unknown> | null | undefined {
+    const tag = zh ? `(?:${en}|${zh})` : en
+    const match = text?.match(new RegExp(`<${tag}>\\s*(\\{[\\s\\S]*\\})\\s*</${tag}>`))
+    if (!match) return null
+    try {
+        return JSON.parse(match[1]) as Record<string, unknown>
+    } catch {
+        return undefined
+    }
+}
+
+/**
  * Parse a decider's <decision>{...}</decision> block. On missing/invalid JSON,
  * returns parseFailed:true so handleLoopIdle can count consecutive failures
  * (loop aborts at 3). Defaults to "continue" on failure.
@@ -36,19 +60,14 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
         parseFailed: true,
     })
     // Greedy {...} so nested braces (e.g. structured nextActions) parse correctly (L2).
-    const match = rawText?.match(/<(?:decision|决策)>\s*(\{[\s\S]*\})\s*<\/(?:decision|决策)>/)
-    if (!match) return fail()
-    try {
-        const parsed = JSON.parse(match[1])
-        return {
-            round: 0,
-            decision: parsed.decision === "done" || parsed.done === true ? "done" : "continue",
-            rationale: parsed.rationale ?? "No rationale provided",
-            nextActions: Array.isArray(parsed.nextActions) ? parsed.nextActions : [],
-            timestamp: Date.now(),
-        }
-    } catch {
-        return fail()
+    const parsed = extractTaggedJSON(rawText, "decision", "决策")
+    if (!parsed) return fail()
+    return {
+        round: 0,
+        decision: parsed.decision === "done" || parsed.done === true ? "done" : "continue",
+        rationale: typeof parsed.rationale === "string" ? parsed.rationale : "No rationale provided",
+        nextActions: Array.isArray(parsed.nextActions) ? parsed.nextActions : [],
+        timestamp: Date.now(),
     }
 }
 
@@ -61,20 +80,15 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
 export function parseRouteDecision(
     rawText: string,
 ): { targets: string[]; rationale: string; parseFailed?: boolean } {
-    const match = rawText?.match(/<(?:route|路由)>\s*(\{[\s\S]*\})\s*<\/(?:route|路由)>/)
-    if (!match) return { targets: [], rationale: "", parseFailed: true }
-    try {
-        const p = JSON.parse(match[1]) as Record<string, unknown>
-        const raw = p.branches ?? p.targets ?? p.branch ?? p.target
-        const targets = (Array.isArray(raw) ? raw : raw != null ? [raw] : [])
-            .filter((x: unknown): x is string => typeof x === "string" && x.length > 0)
-        if (targets.length === 0) return { targets: [], rationale: "", parseFailed: true }
-        return {
-            targets,
-            rationale: typeof p.rationale === "string" ? p.rationale : "",
-        }
-    } catch {
-        return { targets: [], rationale: "", parseFailed: true }
+    const p = extractTaggedJSON(rawText, "route", "路由")
+    if (!p) return { targets: [], rationale: "", parseFailed: true }
+    const raw = p.branches ?? p.targets ?? p.branch ?? p.target
+    const targets = (Array.isArray(raw) ? raw : raw != null ? [raw] : [])
+        .filter((x: unknown): x is string => typeof x === "string" && x.length > 0)
+    if (targets.length === 0) return { targets: [], rationale: "", parseFailed: true }
+    return {
+        targets,
+        rationale: typeof p.rationale === "string" ? p.rationale : "",
     }
 }
 
@@ -87,20 +101,15 @@ export function parseRouteDecision(
 export function parseArbitrationDecision(
     rawText: string,
 ): { ruling: string; rationale: string; parseFailed?: boolean } {
-    const match = rawText?.match(/<(?:ruling|裁决)>\s*(\{[\s\S]*\})\s*<\/(?:ruling|裁决)>/)
-    if (!match) return { ruling: "", rationale: "", parseFailed: true }
-    try {
-        const p = JSON.parse(match[1]) as Record<string, unknown>
-        const ruling = typeof p.decision === "string"
-            ? p.decision
-            : typeof p.ruling === "string" ? p.ruling : ""
-        if (!ruling) return { ruling: "", rationale: "", parseFailed: true }
-        return {
-            ruling,
-            rationale: typeof p.rationale === "string" ? p.rationale : "",
-        }
-    } catch {
-        return { ruling: "", rationale: "", parseFailed: true }
+    const p = extractTaggedJSON(rawText, "ruling", "裁决")
+    if (!p) return { ruling: "", rationale: "", parseFailed: true }
+    const ruling = typeof p.decision === "string"
+        ? p.decision
+        : typeof p.ruling === "string" ? p.ruling : ""
+    if (!ruling) return { ruling: "", rationale: "", parseFailed: true }
+    return {
+        ruling,
+        rationale: typeof p.rationale === "string" ? p.rationale : "",
     }
 }
 
@@ -116,21 +125,16 @@ export function parseArbitrationDecision(
 export function parseVerdict(
     rawText: string,
 ): { verdict?: Verdict; rationale: string; diff: string; parseFailed?: boolean } {
-    const match = rawText?.match(/<(?:verdict|判定)>\s*(\{[\s\S]*\})\s*<\/(?:verdict|判定)>/)
-    if (!match) return { rationale: "", diff: "", parseFailed: true }
-    try {
-        const p = JSON.parse(match[1]) as Record<string, unknown>
-        const raw = typeof p.result === "string" ? p.result.toUpperCase() : ""
-        if (raw !== "PASS" && raw !== "FAIL" && raw !== "INVALID") {
-            return { rationale: "", diff: "", parseFailed: true }
-        }
-        return {
-            verdict: raw as Verdict,
-            rationale: typeof p.rationale === "string" ? p.rationale : "",
-            diff: typeof p.diff === "string" ? p.diff : "",
-        }
-    } catch {
+    const p = extractTaggedJSON(rawText, "verdict", "判定")
+    if (!p) return { rationale: "", diff: "", parseFailed: true }
+    const raw = typeof p.result === "string" ? p.result.toUpperCase() : ""
+    if (raw !== "PASS" && raw !== "FAIL" && raw !== "INVALID") {
         return { rationale: "", diff: "", parseFailed: true }
+    }
+    return {
+        verdict: raw as Verdict,
+        rationale: typeof p.rationale === "string" ? p.rationale : "",
+        diff: typeof p.diff === "string" ? p.diff : "",
     }
 }
 
@@ -143,26 +147,22 @@ export function parseVerdict(
 export function parseDecompose(
     rawText: string,
 ): { subtasks: { subject: string; description: string }[]; parseFailed?: boolean } {
-    const match = rawText?.match(/<(?:decompose|分解)>\s*(\{[\s\S]*\})\s*<\/(?:decompose|分解)>/)
-    if (!match) return { subtasks: [] }
-    try {
-        const p = JSON.parse(match[1]) as { subtasks?: unknown }
-        const arr = Array.isArray(p.subtasks) ? p.subtasks : []
-        const subtasks: { subject: string; description: string }[] = []
-        for (const item of arr) {
-            if (
-                typeof item === "object" && item !== null
-                && "subject" in item && typeof item.subject === "string" && item.subject.length > 0
-                && "description" in item && typeof item.description === "string" && item.description.length > 0
-            ) {
-                subtasks.push({ subject: item.subject, description: item.description })
-            }
+    const p = extractTaggedJSON(rawText, "decompose", "分解")
+    if (p === null) return { subtasks: [] }
+    if (p === undefined) return { subtasks: [], parseFailed: true }
+    const arr = Array.isArray(p.subtasks) ? p.subtasks : []
+    const subtasks: { subject: string; description: string }[] = []
+    for (const item of arr) {
+        if (
+            typeof item === "object" && item !== null
+            && "subject" in item && typeof item.subject === "string" && item.subject.length > 0
+            && "description" in item && typeof item.description === "string" && item.description.length > 0
+        ) {
+            subtasks.push({ subject: item.subject, description: item.description })
         }
-        if (subtasks.length === 0) return { subtasks: [], parseFailed: true }
-        return { subtasks }
-    } catch {
-        return { subtasks: [], parseFailed: true }
     }
+    if (subtasks.length === 0) return { subtasks: [], parseFailed: true }
+    return { subtasks }
 }
 
 /** Loop exit condition 2: every read_only stage emitted a <no_issues/> tag. */
@@ -179,13 +179,8 @@ export function allMembersAgree(responses: Record<string, string>): boolean {
     return texts.every(t => {
         // Bilingual tag, aligned with parseDecision's <(?:decision|决策)> so a
         // non-English agent emitting <共识> is recognized.
-        const m = t.match(/<(?:consensus|共识)>\s*(\{[\s\S]*\})\s*<\/(?:consensus|共识)>/)
-        if (!m) return false
-        try {
-            return JSON.parse(m[1]).agreed === true
-        } catch {
-            return false
-        }
+        const parsed = extractTaggedJSON(t, "consensus", "共识")
+        return parsed?.agreed === true
     })
 }
 
@@ -194,16 +189,11 @@ export function allMembersAgree(responses: Record<string, string>): boolean {
  * from a reviewer's output. Returns null if no valid signoff tag found.
  */
 export function parseSignoff(text: string): { approved: boolean; rationale: string } | null {
-    const m = text?.match(/<signoff>\s*(\{[\s\S]*\})\s*<\/signoff>/)
-    if (!m) return null
-    try {
-        const parsed = JSON.parse(m[1])
-        return {
-            approved: parsed.approved === true,
-            rationale: typeof parsed.rationale === "string" ? parsed.rationale : "",
-        }
-    } catch {
-        return null
+    const parsed = extractTaggedJSON(text, "signoff")
+    if (!parsed) return null
+    return {
+        approved: parsed.approved === true,
+        rationale: typeof parsed.rationale === "string" ? parsed.rationale : "",
     }
 }
 
