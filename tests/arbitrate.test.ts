@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -11,6 +11,8 @@ import {
     parseArbitrationDecision,
 } from "../src/orchestration/handlers.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
+import { runEventsPath } from "../src/state/paths.js"
+import { waitUntil } from "../src/core/utils.js"
 import { buildSummary } from "../src/orchestration/summary.js"
 import { teamArbitrateTool } from "../src/tools/workflow.js"
 import { teamResumeTool } from "../src/tools/resume.js"
@@ -20,6 +22,17 @@ import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
+
+/** Poll the run events file until an event of `kind` is flushed to disk.
+ *  recordEvent is fire-and-forget, so we wait deterministically for the
+ *  append to land rather than sleeping a fixed duration (misc-003). */
+async function waitForEvent(directory: string, runId: string, kind: string): Promise<void> {
+    const p = runEventsPath(directory, runId)
+    await waitUntil(
+        () => existsSync(p) && readFileSync(p, "utf8").includes(`"kind":"${kind}"`),
+        { timeoutMs: 2000, pollMs: 10 },
+    )
+}
 
 // --- fixtures ---
 
@@ -391,7 +404,7 @@ describe("handleArbitrateIdle Phase B: ruling termination", () => {
         expect(team.activeTask).toBeUndefined()
 
         // The terminated event carries the failure marker.
-        await new Promise(r => setTimeout(r, 50))
+        await waitForEvent(team.directory, runId, "terminated")
         const events = await readRunEvents(team.directory, runId)
         const terminated = events.find(e => e.kind === "terminated")
         expect(terminated).toBeDefined()
@@ -429,7 +442,7 @@ describe("handleArbitrateIdle boundary: arbiter unavailable", () => {
         expect(team.activeTask).toBeUndefined()
 
         // The terminated reason names the arbiter_unavailable marker.
-        await new Promise(r => setTimeout(r, 50))
+        await waitForEvent(team.directory, runId, "terminated")
         const events = await readRunEvents(team.directory, runId)
         const terminated = events.find(e => e.kind === "terminated")
         expect(terminated).toBeDefined()
@@ -459,8 +472,8 @@ describe("arbitrated event recording", () => {
 
         await handleArbitrateIdle(ctx, team)
 
-        // recordEvent is fire-and-forget; give the async appends a tick to flush.
-        await new Promise(r => setTimeout(r, 50))
+        // recordEvent is fire-and-forget; wait for the arbitrated event to flush.
+        await waitForEvent(team.directory, runId, "arbitrated")
         const events = await readRunEvents(team.directory, runId)
 
         const arbitrated = events.find(e => e.kind === "arbitrated")
@@ -496,7 +509,7 @@ describe("round event recording", () => {
 
         await handleArbitrateIdle(ctx, team)
 
-        await new Promise(r => setTimeout(r, 50))
+        await waitForEvent(team.directory, runId, "round")
         const events = await readRunEvents(team.directory, runId)
         const roundEvent = events.find(e => e.kind === "round")
         expect(roundEvent).toBeDefined()

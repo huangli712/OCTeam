@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import fs from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -7,6 +7,7 @@ import { join } from "node:path"
 import { recordEvent } from "../src/orchestration/events.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
 import { runEventsPath } from "../src/state/paths.js"
+import { waitUntil } from "../src/core/utils.js"
 import type { ActiveTask } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
@@ -37,8 +38,13 @@ describe("recordEvent + readRunEvents", () => {
         const team = makeTeam(dir, "run-1")
         recordEvent(team, { timestamp: 1, kind: "dispatched", member: "alice" })
         recordEvent(team, { timestamp: 2, kind: "captured", member: "alice", bytes: 100 })
-        // fire-and-forget: give the async appends a tick to flush
-        await new Promise(r => setTimeout(r, 50))
+        // recordEvent is fire-and-forget; wait for both appends to flush
+        // (presence of the 2nd event guarantees the 1st is also on disk).
+        await waitUntil(
+            () => existsSync(runEventsPath(dir, "run-1"))
+                && readFileSync(runEventsPath(dir, "run-1"), "utf8").includes('"kind":"captured"'),
+            { timeoutMs: 2000, pollMs: 10 },
+        )
         const events = await readRunEvents(dir, "run-1")
         expect(events).toHaveLength(2)
         expect(events[0].kind).toBe("dispatched")
@@ -83,7 +89,10 @@ describe("recordEvent + readRunEvents", () => {
         const dir = tmpTeamDir()
         const team = makeTeam(dir) // no activeTask → no runId
         recordEvent(team, { timestamp: 1, kind: "dispatched", member: "alice" })
-        await new Promise(r => setTimeout(r, 30))
+        // recordEvent is a synchronous no-op without an activeTask (no runId);
+        // yield once to let pending tasks flush, then the runs directory must
+        // not have been created.
+        await new Promise(r => setImmediate(r))
         await expect(fs.readdir(join(dir, "runs"))).rejects.toThrow()
     })
 })

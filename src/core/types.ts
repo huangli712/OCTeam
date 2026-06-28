@@ -10,11 +10,11 @@
 // --- TeamSpec (immutable, declarative) — stored as config.json ---
 
 export type TeamSpec = {
-    version: 1
-    name: string                       // /^[a-z0-9-]+$/, unique within scope
-    description?: string
-    createdAt: number                  // epoch ms
-    members: MemberSpec[]              // 1-16 members
+    readonly version: 1
+    readonly name: string              // /^[a-z0-9-]+$/, unique within scope
+    readonly description?: string
+    readonly createdAt: number         // epoch ms
+    readonly members: MemberSpec[]     // 1-16 members
 }
 
 export type MemberSpec = {
@@ -53,7 +53,11 @@ export type MemberState = {
     lastNotifiedAt?: number            // delegate: rate-limit re-prompts
     retryingSince?: number             // epoch ms when session entered "retry"
     error?: string                     // if status === "errored"
-    isMaster?: boolean                 // ONLY on synthetic master record; never persisted
+    isMaster?: boolean                 // runtime-only: true on the synthetic master record
+                                       // (built by masterPseudoMember / syntheticMaster).
+                                       // Never stored in team.members and never written to
+                                       // state.json; lives on MemberState so the synthetic
+                                       // master can flow through MemberState-typed code paths.
     declaredDone?: boolean             // require_done_ack: member has called team_done() this run
     retryCount?: number                // OCTeam-level grace-extension windows consumed this run (reset to 0 at task commit)
 }

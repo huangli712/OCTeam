@@ -8,6 +8,14 @@ import { momusAgent } from "./momus.js"
 import { juniorAgent } from "./junior.js"
 import type { OcteamAgentConfig } from "./types.js"
 
+/**
+ * OCTeam's built-in subagents. No `model` field is pinned here on purpose:
+ * OCTeam is a provider-agnostic plugin and cannot assume which models the host
+ * environment has installed (hardcoding e.g. "claude-sonnet-4" would break for
+ * OpenAI-only or local-model users). Model selection is delegated to the user,
+ * resolved at team-creation time via MemberSpec.model, then the user's global
+ * default config, then the leader session's model (see lifecycle.ts).
+ */
 export const OCTEAM_AGENTS: Record<string, OcteamAgentConfig> = {
     "oct-oracle": oracleAgent,
     "oct-librarian": librarianAgent,

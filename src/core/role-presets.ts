@@ -184,7 +184,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     fantast: {
-        agent: "oracle",
+        agent: "build",
         instruction: [
             "You are the team's ideator.",
             "Generate novel, unconventional, even contrarian ideas",

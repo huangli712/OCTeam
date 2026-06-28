@@ -78,7 +78,7 @@ describe("roleAgent (role → fixed agent)", () => {
     test("research / writing / ideation", () => {
         expect(roleAgent("researcher")).toBe("librarian")
         expect(roleAgent("author")).toBe("build")
-        expect(roleAgent("fantast")).toBe("oracle")
+        expect(roleAgent("fantast")).toBe("build")
     })
 
     test("almighty uses build; unknown roles fall back to read-only oracle", () => {
@@ -88,7 +88,7 @@ describe("roleAgent (role → fixed agent)", () => {
 
     test("is case-insensitive", () => {
         expect(roleAgent("Reviewer")).toBe("oracle")
-        expect(roleAgent("FANTAST")).toBe("oracle")
+        expect(roleAgent("FANTAST")).toBe("build")
     })
 })
 

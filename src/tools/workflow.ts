@@ -355,6 +355,13 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                     // aborts after round 1.
                     maxRounds: args.max_rounds ?? DEFAULT_CONSENSUS_ROUNDS,
                     currentRound: 1,
+                    // wf-013: consensus intentionally has no signoff gate. The
+                    // run itself is an allMembersAgree mechanism — it only
+                    // succeeds when every participant emits agreed=true — so a
+                    // separate post-completion signoff stage would be redundant.
+                    // Unlike the 8 orchestration tools that expose
+                    // signoff_policy, consensus uses its built-in consensus
+                    // gate as the agreement check.
                     signoffPolicy: DEFAULT_SIGNOFF_POLICY,
                     maxRetries: args.max_retries,
                 }),

@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { getExpectedMember, parseDecompose, processIdle } from "../src/orchestration/handlers.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
+import { runEventsPath } from "../src/state/paths.js"
+import { waitUntil } from "../src/core/utils.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import type { ActiveTask, MemberState, Task } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
@@ -16,6 +18,17 @@ import { teamRecurseTool } from "../src/tools/workflow.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
+
+/** Poll the run events file until an event of `kind` is flushed to disk.
+ *  recordEvent is fire-and-forget, so we wait deterministically for the
+ *  append to land rather than sleeping a fixed duration (misc-003). */
+async function waitForEvent(directory: string, runId: string, kind: string): Promise<void> {
+    const p = runEventsPath(directory, runId)
+    await waitUntil(
+        () => existsSync(p) && readFileSync(p, "utf8").includes(`"kind":"${kind}"`),
+        { timeoutMs: 2000, pollMs: 10 },
+    )
+}
 
 // --- fixtures ---
 
@@ -277,7 +290,7 @@ describe("handleRecurseIdle branching: decompose creates children", () => {
         expect(updated!.blockedBy.every(id => children.some(c => c.id === id))).toBe(true)
 
         // decomposed event recorded.
-        await new Promise(r => setTimeout(r, 50))
+        await waitForEvent(team.directory, runId, "decomposed")
         const events = await readRunEvents(team.directory, runId)
         const decomposed = events.find(e => e.kind === "decomposed")
         expect(decomposed).toBeDefined()
@@ -466,7 +479,7 @@ describe("recurse tail engine", () => {
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
 
-        await new Promise(r => setTimeout(r, 50))
+        await waitForEvent(team.directory, runId, "terminated")
         const events = await readRunEvents(team.directory, runId)
         const terminated = events.find(e => e.kind === "terminated")
         expect(terminated).toBeDefined()

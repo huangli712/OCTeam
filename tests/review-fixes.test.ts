@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import fs from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -10,7 +10,8 @@ import { teamProgressTool } from "../src/tools/progress.js"
 import { maybeTriggerReduce } from "../src/orchestration/handlers.js"
 import { runStatusFromReason, readRunRecord, readRunEvents } from "../src/orchestration/runs.js"
 import { reconcileCrashedTeams } from "../src/hooks.js"
-import { isSafePathSegment, teamDir, runDir, runMemberOutputPath } from "../src/state/paths.js"
+import { isSafePathSegment, teamDir, runDir, runMemberOutputPath, runEventsPath, runRecordPath } from "../src/state/paths.js"
+import { waitUntil } from "../src/core/utils.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
@@ -189,8 +190,16 @@ describe("Fix4: reconcileCrashedTeams persists interrupted run", () => {
         await fs.writeFile(runMemberOutputPath(dir, "run-x", "alice"), "alice full output")
 
         await reconcileCrashedTeams(ctxFor(root))
-        // terminated event is fire-and-forget — let it flush
-        await new Promise(r => setTimeout(r, 60))
+        // terminated event + run record are fire-and-forget — wait for both.
+        await waitUntil(
+            () => {
+                const evPath = runEventsPath(dir, "run-x")
+                return existsSync(runRecordPath(dir, "run-x"))
+                    && existsSync(evPath)
+                    && readFileSync(evPath, "utf8").includes('"kind":"terminated"')
+            },
+            { timeoutMs: 2000, pollMs: 10 },
+        )
 
         const rec = await readRunRecord(dir, "run-x")
         expect(rec).not.toBeNull()
