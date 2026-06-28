@@ -12,8 +12,8 @@
  *
  * Usage:  bun check-physics-damped-pendulum.ts <run_dir>
  *   <run_dir>  directory containing the per-member markdown outputs
- *              (expects sho.md as the decomposer, plus linear-damping.md /
- *               nonlinear-corr.md as solver members)
+ *              (expects alice.md as the decomposer, plus bob.md /
+ *               carol.md as solver members)
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -22,7 +22,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // Decomposer member (set in the team_create config above). The root aggregator.
-const DECOMPOSER = "sho";
+const DECOMPOSER = "alice";
 // Decay constant gamma/2 in the envelope exp(-(gamma/2)*t) for gamma = 0.2.
 const EXPECTED_DECAY = 0.1;
 const DECAY_TOLERANCE = 0.01;

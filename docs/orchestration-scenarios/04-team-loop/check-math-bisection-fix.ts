@@ -1,13 +1,13 @@
 /**
  * Check script: bisection root-finding edge-case bug fix (team_loop).
  *
- * The loop's decider (reviewer) reads the coder's fix and the tester's edge-case
+ * The loop's decider (carol) reads the alice's fix and the bob's edge-case
  * report, then emits a <decision> block each round. This script parses the
  * decider's FINAL decision and verifies the loop converged with all tests
  * passing.
  *
  * Usage:  bun check-math-bisection-fix.ts <run_dir>
- *   <run_dir>  directory containing reviewer.md (decider), coder.md, tester.md
+ *   <run_dir>  directory containing carol.md (decider), alice.md, bob.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -15,7 +15,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const DECIDER = "reviewer";
+const DECIDER = "carol";
 const DECISION_RE = /<decision>([\s\S]*?)<\/decision>/g;
 
 interface Decision {
@@ -66,16 +66,16 @@ async function main(): Promise<void> {
 
     const deciderRaw = await loadRaw(runDir, DECIDER);
 
-    // Best-effort diagnostic: surface the coder/tester markers if present.
-    const coderRaw = await loadRaw(runDir, "coder");
-    const testerRaw = await loadRaw(runDir, "tester");
+    // Best-effort diagnostic: surface the alice/bob markers if present.
+    const coderRaw = await loadRaw(runDir, "alice");
+    const testerRaw = await loadRaw(runDir, "bob");
     const fixesMatch = coderRaw.match(/<!--\s*FIXES:\s*(\d+)\s*-->/);
     const failingMatch = testerRaw.match(/<!--\s*FAILING:\s*(\d+)\s*-->/);
     if (fixesMatch) {
-        console.log(`  coder:    reported ${fixesMatch[1]} fix(es)`);
+        console.log(`  alice:    reported ${fixesMatch[1]} fix(es)`);
     }
     if (failingMatch) {
-        console.log(`  tester:   reported ${failingMatch[1]} failing case(s)`);
+        console.log(`  bob:   reported ${failingMatch[1]} failing case(s)`);
     }
 
     const decision = extractFinalDecision(deciderRaw);

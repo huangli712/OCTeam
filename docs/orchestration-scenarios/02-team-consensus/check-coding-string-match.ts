@@ -8,7 +8,7 @@
  *
  * Usage:  bun check-coding-string-match.ts <run_dir>
  *   <run_dir>  directory containing the per-member markdown outputs
- *              (expects naive-advocate.md, kmp-advocate.md, sunday-advocate.md)
+ *              (expects alice.md, bob.md, carol.md)
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -16,7 +16,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const MEMBERS = ["naive-advocate", "kmp-advocate", "sunday-advocate"] as const;
+const MEMBERS = ["alice", "bob", "carol"] as const;
 const CONSENSUS_RE = /<consensus>([\s\S]*?)<\/consensus>/g;
 // Recognized algorithm names for the short-text matching debate.
 // (boyer-moore is included even though no member advocates it, because the

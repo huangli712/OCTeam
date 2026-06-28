@@ -1,12 +1,12 @@
 /**
  * Check script: interval-merge off-by-one bug fix (team_loop).
  *
- * Verifies the loop's decider (reviewer) converged to "done" with allPass=true,
- * i.e. the coder's fix passes the hidden 5-case suite (including the touching
+ * Verifies the loop's decider (carol) converged to "done" with allPass=true,
+ * i.e. the alice's fix passes the hidden 5-case suite (including the touching
  * interval case that the original off-by-one mishandled).
  *
  * Usage:  bun check-coding-interval-merge.ts <run_dir>
- *   <run_dir>  directory containing reviewer.md (decider), coder.md, tester.md
+ *   <run_dir>  directory containing carol.md (decider), alice.md, bob.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -14,7 +14,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const DECIDER = "reviewer";
+const DECIDER = "carol";
 const DECISION_RE = /<decision>([\s\S]*?)<\/decision>/g;
 
 interface Decision {
@@ -66,15 +66,15 @@ async function main(): Promise<void> {
     const deciderRaw = await loadRaw(runDir, DECIDER);
 
     // Best-effort diagnostics from the stage members.
-    const coderRaw = await loadRaw(runDir, "coder");
-    const testerRaw = await loadRaw(runDir, "tester");
+    const coderRaw = await loadRaw(runDir, "alice");
+    const testerRaw = await loadRaw(runDir, "bob");
     const bugfixMatch = coderRaw.match(/<!--\s*BUGFIX:\s*(.+?)\s*-->/);
     const passCountMatch = testerRaw.match(/<!--\s*PASS_COUNT:\s*(\d+)\/5\s*-->/);
     if (bugfixMatch) {
-        console.log(`  coder:    bugfix = ${bugfixMatch[1].trim()}`);
+        console.log(`  alice:    bugfix = ${bugfixMatch[1].trim()}`);
     }
     if (passCountMatch) {
-        console.log(`  tester:   ${passCountMatch[1]}/5 cases pass`);
+        console.log(`  bob:   ${passCountMatch[1]}/5 cases pass`);
     }
 
     const decision = extractFinalDecision(deciderRaw);

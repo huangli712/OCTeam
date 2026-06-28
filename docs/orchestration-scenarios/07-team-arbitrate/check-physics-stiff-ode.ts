@@ -14,8 +14,8 @@
  *      key term ("stiff" or "stability").
  *
  * Usage:  bun check-physics-stiff-ode.ts <run_dir>
- *   <run_dir>  directory containing explicit-pro.md, implicit-pro.md,
- *              arbiter.md
+ *   <run_dir>  directory containing alice.md, bob.md,
+ *              carol.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -23,8 +23,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const DEBATERS = ["explicit-pro", "implicit-pro"] as const;
-const ARBITER = "arbiter";
+const DEBATERS = ["alice", "bob"] as const;
+const ARBITER = "carol";
 
 const EXPECTED_RULING = "implicit";
 // The arbiter's rationale must reference stiffness or the stability constraint

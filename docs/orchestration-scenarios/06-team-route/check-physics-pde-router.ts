@@ -2,11 +2,11 @@
  * Check script: PDE type router (parabolic classification).
  *
  * Verifies the router member classified the heat/diffusion equation as
- * "parabolic" and the matched branch member (parabolic-sim) proposed a valid
+ * "parabolic" and the matched branch member (bob) proposed a valid
  * parabolic numerical method (crank-nicolson / implicit / ftcs).
  *
  * Usage:  bun check-physics-pde-router.ts <run_dir>
- *   <run_dir>  directory containing pde-router.md and parabolic-sim.md
+ *   <run_dir>  directory containing alice.md and bob.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertion)  |  2 usage / IO error
  */
@@ -14,11 +14,11 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const ROUTER = "pde-router";
+const ROUTER = "alice";
 const BRANCH_TO_MEMBER: Record<string, string> = {
-    parabolic: "parabolic-sim",
-    elliptic: "elliptic-sim",
-    hyperbolic: "hyperbolic-sim",
+    parabolic: "bob",
+    elliptic: "carol",
+    hyperbolic: "dave",
 };
 const EXPECTED_BRANCH = "parabolic";
 

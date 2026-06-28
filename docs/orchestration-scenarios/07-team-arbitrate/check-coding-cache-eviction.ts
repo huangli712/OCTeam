@@ -13,7 +13,7 @@
  *      key term ("temporal" or "recency").
  *
  * Usage:  bun check-coding-cache-eviction.ts <run_dir>
- *   <run_dir>  directory containing lru-pro.md, lfu-pro.md, arbiter.md
+ *   <run_dir>  directory containing alice.md, bob.md, carol.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -21,8 +21,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const DEBATERS = ["lru-pro", "lfu-pro"] as const;
-const ARBITER = "arbiter";
+const DEBATERS = ["alice", "bob"] as const;
+const ARBITER = "carol";
 
 const EXPECTED_RULING = "lru";
 // The arbiter's rationale must reference temporal locality or recency as the

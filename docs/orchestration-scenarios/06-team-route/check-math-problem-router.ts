@@ -2,11 +2,11 @@
  * Check script: math problem router (calculus classification).
  *
  * Verifies the router member classified the derivative problem as "calculus"
- * and the matched branch member (calc-expert) produced the correct product-rule
+ * and the matched branch member (bob) produced the correct product-rule
  * derivative: d/dx[x^3 * sin(x)] = 3x^2*sin(x) + x^3*cos(x).
  *
  * Usage:  bun check-math-problem-router.ts <run_dir>
- *   <run_dir>  directory containing math-router.md and calc-expert.md
+ *   <run_dir>  directory containing alice.md and bob.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertion)  |  2 usage / IO error
  */
@@ -14,12 +14,12 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const ROUTER = "math-router";
+const ROUTER = "alice";
 const BRANCH_TO_MEMBER: Record<string, string> = {
-    calculus: "calc-expert",
-    algebra: "algebra-expert",
-    "number-theory": "nt-expert",
-    combinatorics: "combo-expert",
+    calculus: "bob",
+    algebra: "carol",
+    "number-theory": "dave",
+    combinatorics: "erin",
 };
 const EXPECTED_BRANCH = "calculus";
 
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
         );
     }
 
-    console.log("PASS: router selected calculus; calc-expert derived 3x^2*sin(x) + x^3*cos(x).");
+    console.log("PASS: router selected calculus; bob derived 3x^2*sin(x) + x^3*cos(x).");
 }
 
 main();

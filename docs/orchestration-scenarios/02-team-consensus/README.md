@@ -36,17 +36,17 @@
   "description": "Stable sort selection for n<50 nearly-sorted arrays: 3-way consensus debate",
   "members": [
     {
-      "name": "insertion-advocate",
+      "name": "alice",
       "role": "mathematician",
       "prompt": "You are the advocate for INSERTION SORT in a 3-way debate. Topic: For n<50 nearly-sorted elements that require a STABLE sort, which algorithm is optimal: insertion sort, TimSort, or merge sort? Make the strongest technical case for insertion sort: O(n) best case on nearly-sorted input, O(n+k) where k = inversion count, O(1) auxiliary memory, cache-friendly sequential access, lowest constant factors, no recursion overhead. Across rounds engage honestly with the other advocates (timsort, merge-sort); concede regimes where they win. The group's goal is a consensus naming ONE algorithm plus a decision condition (e.g. 'insertion sort when inversion count < n^2/16, else TimSort'). End your final-round output with a line exactly: <consensus>{\"agreed\": true|false, \"choice\": \"<algorithm-name>\"}</consensus>"
     },
     {
-      "name": "timsort-advocate",
+      "name": "bob",
       "role": "mathematician",
       "prompt": "You are the advocate for TIMSORT in a 3-way debate. Topic: For n<50 nearly-sorted elements that require a STABLE sort, which algorithm is optimal: insertion sort, TimSort, or merge sort? Make the strongest technical case for TimSort: hybrid adaptive mergesort, exploits existing runs (O(n) on sorted data), production-tested (Python/Java/V8 default), stable, degrades gracefully to O(n log n) worst case. Note for n<50 it uses a small insertion-sort 'minrun' then merges, combining the strengths of both. Across rounds engage honestly with the other advocates (insertion, merge-sort); concede regimes where they win. The group's goal is a consensus naming ONE algorithm plus a decision condition. End your final-round output with a line exactly: <consensus>{\"agreed\": true|false, \"choice\": \"<algorithm-name>\"}</consensus>"
     },
     {
-      "name": "merge-advocate",
+      "name": "carol",
       "role": "mathematician",
       "prompt": "You are the advocate for MERGE SORT in a 3-way debate. Topic: For n<50 nearly-sorted elements that require a STABLE sort, which algorithm is optimal: insertion sort, TimSort, or merge sort? Make the strongest technical case for merge sort: strict O(n log n) worst/average/best, stable, predictable performance independent of input distribution, and the foundation on which TimSort is built. Acknowledge the higher constant factor vs insertion sort on tiny n, but argue the predictability and the n log n ceiling matter. Across rounds engage honestly with the other advocates (insertion, timsort); concede regimes where they win. The group's goal is a consensus naming ONE algorithm plus a decision condition. End your final-round output with a line exactly: <consensus>{\"agreed\": true|false, \"choice\": \"<algorithm-name>\"}</consensus>"
     }
@@ -93,7 +93,7 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
 
 [`check-math-sort-stability.ts`](./check-math-sort-stability.ts)
 
-- **加载**：`runs/<run_id>/{insertion-advocate,timsort-advocate,merge-advocate}.md`
+- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：全局正则 `<consensus>([\s\S]*?)</consensus>`，取最后一个 tag 为最终轮
 - **断言**：
   1. 每个成员至少含一个 `<consensus>` tag
@@ -125,17 +125,17 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
   "description": "1D heat equation u_t=u_xx time scheme: 3-way consensus debate (FTCS vs implicit vs Crank-Nicolson)",
   "members": [
     {
-      "name": "explicit-advocate",
+      "name": "alice",
       "role": "simulator",
       "prompt": "You are the advocate for EXPLICIT FTCS (Forward-Time Centered-Space) in a 3-way debate. Topic: For u_t = u_xx on a uniform grid with dt=0.01, dx=0.1, choose a time scheme: explicit FTCS / fully-implicit / Crank-Nicolson. Make the strongest case for explicit FTCS: trivial to implement, no linear solve per step, O(N) per timestep, and second-order in space. CRUCIAL: you MUST compute the diffusion number r = dt/dx^2 = 0.01/(0.1^2) = 1.0 and acknowledge the CFL stability condition r <= 0.5 for explicit schemes. Since r=1.0 > 0.5, be honest that explicit FTCS is UNSTABLE for these parameters — argue only for the regime where it would win (smaller dt). Across rounds engage with implicit-advocate and crank-advocate; concede when r violates CFL. The group's goal is a consensus naming ONE scheme plus the CFL condition. End your final-round output with a line exactly: <consensus>{\"agreed\": true|false, \"choice\": \"<scheme-name>\"}</consensus>"
     },
     {
-      "name": "implicit-advocate",
+      "name": "bob",
       "role": "simulator",
       "prompt": "You are the advocate for FULLY-IMPLICIT (Backward Euler) in a 3-way debate. Topic: For u_t = u_xx on a uniform grid with dt=0.01, dx=0.1, choose a time scheme: explicit FTCS / fully-implicit / Crank-Nicolson. Make the strongest case for fully-implicit (Backward Euler): unconditionally stable for any r (no CFL limit), first-order accurate in time (O(dt)) and second-order in space (O(dx^2)), requires solving a tridiagonal system per step (O(N) via Thomas algorithm). Given r = dt/dx^2 = 1.0 > 0.5, the explicit scheme is unstable, so implicit is the minimum stable upgrade. Across rounds engage with explicit-advocate and crank-advocate; concede the accuracy advantage of Crank-Nicolson. The group's goal is a consensus naming ONE scheme plus the CFL condition. End your final-round output with a line exactly: <consensus>{\"agreed\": true|false, \"choice\": \"<scheme-name>\"}</consensus>"
     },
     {
-      "name": "crank-advocate",
+      "name": "carol",
       "role": "simulator",
       "prompt": "You are the advocate for CRANK-NICOLSON in a 3-way debate. Topic: For u_t = u_xx on a uniform grid with dt=0.01, dx=0.1, choose a time scheme: explicit FTCS / fully-implicit / Crank-Nicolson. Make the strongest case for Crank-Nicolson: unconditionally stable (like fully-implicit), second-order accurate in BOTH time and space (O(dt^2 + dx^2)), the accuracy leader. Same tridiagonal solve cost per step as fully-implicit. Given r = dt/dx^2 = 1.0 > 0.5, explicit is unstable; the real debate is accuracy: Crank-Nicolson beats Backward Euler on temporal accuracy. Across rounds engage with explicit-advocate and implicit-advocate; concede that for very stiff problems Backward Euler's damping can be desirable. The group's goal is a consensus naming ONE scheme plus the CFL condition. End your final-round output with a line exactly: <consensus>{\"agreed\": true|false, \"choice\": \"<scheme-name>\"}</consensus>"
     }
@@ -170,7 +170,7 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
 T+0m    master 调用 team_consensus (topic, max_rounds=3)
 T+0m    OCTeam 并行 dispatch 3 个 simulator，Round 1：各陈立场 + 算 r
 T+0~3m  各成员算 CFL: r=1.0>0.5 → 显式被自我否决
-T+3m    Round 2：explicit-advocate 让步；implicit vs crank 辩精度
+T+3m    Round 2：alice 让步；implicit vs crank 辩精度
 T+3~6m  成员收敛到无条件稳定格式（implicit 或 crank）
 T+6m    Round 3（若需要）：全员 agreed=true
 T+6~9m  共识达成
@@ -181,7 +181,7 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
 
 [`check-physics-heat-diffusion.ts`](./check-physics-heat-diffusion.ts)
 
-- **加载**：`runs/<run_id>/{explicit-advocate,implicit-advocate,crank-advocate}.md`
+- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：全局正则 `<consensus>([\s\S]*?)</consensus>`，取最后一个 tag 为最终轮
 - **断言**：
   1. 每个成员至少含一个 `<consensus>` tag
@@ -214,17 +214,17 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
   "description": "Short-text pattern matching (<1KB, pattern<=32): 3-way consensus debate (naive / KMP / Sunday)",
   "members": [
     {
-      "name": "naive-advocate",
+      "name": "alice",
       "role": "coder",
       "prompt": "You are the advocate for the NAIVE (brute-force) string matcher in a 3-way debate. Topic: For pattern matching on short text (<1KB) with patterns <=32 chars, choose: naive / KMP / Boyer-Moore / Sunday. Make the strongest case for naive: zero preprocessing, O(nm) worst case but O(n) on typical text with early mismatch on first char, lowest constant factor, branch-predictor friendly, no extra memory. For n<1KB the quadratic ceiling never bites in practice. Across rounds engage with kmp-advocate (whose O(n+m) worst case shines on repetitive text) and sunday-advocate (whose average O(n/m) wins on larger n); concede regimes where they win. The group's goal is a consensus decision tree keyed on text/pattern lengths. End your final-round output with a line exactly: <consensus>{\"agreed\": true|false, \"choice\": \"<algorithm-name>\"}</consensus>"
     },
     {
-      "name": "kmp-advocate",
+      "name": "bob",
       "role": "coder",
       "prompt": "You are the advocate for KMP (Knuth-Morris-Pratt) in a 3-way debate. Topic: For pattern matching on short text (<1KB) with patterns <=32 chars, choose: naive / KMP / Boyer-Moore / Sunday. Make the strongest case for KMP: guaranteed O(n+m) worst case (never degrades on repetitive/DNA-like text), O(m) preprocessing for the failure function, deterministic performance independent of alphabet. The worst-case guarantee is the differentiator vs naive (which can hit O(nm) on adversarial input like 'aaaa...aab' in 'aaaa...a'). Across rounds engage with naive-advocate (whose constants are lower for tiny n) and sunday-advocate (whose average case is sublinear); concede that for uniformly random short text naive or Sunday may win on wall-clock. The group's goal is a consensus decision tree keyed on text/pattern lengths. End your final-round output with a line exactly: <consensus>{\"agreed\": true|false, \"choice\": \"<algorithm-name>\"}</consensus>"
     },
     {
-      "name": "sunday-advocate",
+      "name": "carol",
       "role": "coder",
       "prompt": "You are the advocate for SUNDAY (a.k.a. Sunday / Horspool-variant) string matching in a 3-way debate. Topic: For pattern matching on short text (<1KB) with patterns <=32 chars, choose: naive / KMP / Boyer-Moore / Sunday. Make the strongest case for Sunday: average-case O(n/m) sublinear (skips m chars on mismatch using the bad-character table), simple preprocessing (O(alphabet+m)), and the practical winner on typical text for short-to-medium patterns. For short text <1KB with patterns <=32 it consistently beats KMP on wall-clock while being simpler than full Boyer-Moore (no good-suffix rule). Across rounds engage with naive-advocate (whose zero-overhead wins for tiny n) and kmp-advocate (whose worst-case guarantee Sunday lacks); concede regimes where they win. The group's goal is a consensus decision tree keyed on text/pattern lengths. End your final-round output with a line exactly: <consensus>{\"agreed\": true|false, \"choice\": \"<algorithm-name>\"}</consensus>"
     }
@@ -270,7 +270,7 @@ T+8m    运行: bun check-coding-string-match.ts <run_dir>
 
 [`check-coding-string-match.ts`](./check-coding-string-match.ts)
 
-- **加载**：`runs/<run_id>/{naive-advocate,kmp-advocate,sunday-advocate}.md`
+- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：全局正则 `<consensus>([\s\S]*?)</consensus>`，取最后一个 tag 为最终轮
 - **断言**：
   1. 每个成员至少含一个 `<consensus>` tag

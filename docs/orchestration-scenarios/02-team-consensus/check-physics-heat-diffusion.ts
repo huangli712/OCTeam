@@ -10,7 +10,7 @@
  *
  * Usage:  bun check-physics-heat-diffusion.ts <run_dir>
  *   <run_dir>  directory containing the per-member markdown outputs
- *              (expects explicit-advocate.md, implicit-advocate.md, crank-advocate.md)
+ *              (expects alice.md, bob.md, carol.md)
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -18,7 +18,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const MEMBERS = ["explicit-advocate", "implicit-advocate", "crank-advocate"] as const;
+const MEMBERS = ["alice", "bob", "carol"] as const;
 const CONSENSUS_RE = /<consensus>([\s\S]*?)<\/consensus>/g;
 // Recognized scheme names for the heat-diffusion debate.
 const KNOWN_RE = /^(explicit|implicit|crank)/i;

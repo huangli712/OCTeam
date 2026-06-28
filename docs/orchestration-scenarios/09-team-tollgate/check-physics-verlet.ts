@@ -1,12 +1,12 @@
 /**
  * Check script: Velocity Verlet energy drift (implement + gate-verify).
  *
- * Verifies the producer's (coder.md) reported relative energy drift is below
- * the symplectic threshold (1e-3) and that the verifier (auditor.md) emitted a
+ * Verifies the producer's (alice.md) reported relative energy drift is below
+ * the symplectic threshold (1e-3) and that the verifier (bob.md) emitted a
  * PASS verdict.
  *
  * Usage:  bun check-physics-verlet.ts <run_dir>
- *   <run_dir>  directory containing coder.md and auditor.md
+ *   <run_dir>  directory containing alice.md and bob.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -34,18 +34,18 @@ async function main(): Promise<void> {
         process.exit(2);
     }
 
-    // --- Load producer (coder.md) ---
-    let coderRaw: string;
+    // --- Load producer (alice.md) ---
+    let aliceRaw: string;
     try {
-        coderRaw = await readFile(join(runDir, "coder.md"), "utf8");
+        aliceRaw = await readFile(join(runDir, "alice.md"), "utf8");
     } catch (err) {
-        console.error(`IO error reading coder.md: ${(err as Error).message}`);
+        console.error(`IO error reading alice.md: ${(err as Error).message}`);
         process.exit(2);
     }
 
-    const driftMatch = coderRaw.match(DRIFT_RE);
+    const driftMatch = aliceRaw.match(DRIFT_RE);
     if (!driftMatch) {
-        fail(`producer (coder.md) did not emit a <!-- DRIFT: ... --> marker`);
+        fail(`producer (alice.md) did not emit a <!-- DRIFT: ... --> marker`);
     }
 
     const drift = parseFloat(driftMatch[1]);
@@ -65,18 +65,18 @@ async function main(): Promise<void> {
         );
     }
 
-    // --- Load verifier (auditor.md) ---
-    let auditorRaw: string;
+    // --- Load verifier (bob.md) ---
+    let bobRaw: string;
     try {
-        auditorRaw = await readFile(join(runDir, "auditor.md"), "utf8");
+        bobRaw = await readFile(join(runDir, "bob.md"), "utf8");
     } catch (err) {
-        console.error(`IO error reading auditor.md: ${(err as Error).message}`);
+        console.error(`IO error reading bob.md: ${(err as Error).message}`);
         process.exit(2);
     }
 
-    const verdictMatch = auditorRaw.match(VERDICT_RE);
+    const verdictMatch = bobRaw.match(VERDICT_RE);
     if (!verdictMatch) {
-        fail(`verifier (auditor.md) did not emit a <!-- VERDICT: PASS|FAIL --> marker`);
+        fail(`verifier (bob.md) did not emit a <!-- VERDICT: PASS|FAIL --> marker`);
     }
 
     // Assertion 3: verifier verdict is PASS.

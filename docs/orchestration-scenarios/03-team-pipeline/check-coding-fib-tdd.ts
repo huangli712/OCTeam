@@ -1,7 +1,7 @@
 /**
- * Check script: Fibonacci TDD pipeline (tests -> implement -> refactor).
+ * Check script: Fibonacci TDD pipeline (alice -> bob -> carol).
  *
- * Pipeline output is the FINAL stage's markdown (refactor.md). This script
+ * Pipeline output is the FINAL stage's markdown (carol.md). This script
  * extracts the refactored fib code, loads it via `new Function`, and re-runs
  * the 4 canonical cases to confirm the refactor preserved behavior.
  *
@@ -13,7 +13,7 @@
  * strategy while accommodating the typed signature the task requires.
  *
  * Usage:  bun check-coding-fib-tdd.ts <run_dir>
- *   <run_dir>  directory containing refactor.md
+ *   <run_dir>  directory containing carol.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -21,7 +21,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const FINAL_MEMBER = "refactor";
+const FINAL_MEMBER = "carol";
 
 interface FibCase {
     n: number;

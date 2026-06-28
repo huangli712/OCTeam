@@ -24,7 +24,7 @@
 
 **成功标准（可机器评判）**：
 - router 输出含 `<route>{"branch":"calculus",...}</route>`
-- 仅 `calc-expert.md` 存在 `<!-- ANSWER: ... -->` 标注（其余分支未被 dispatch，无输出文件）
+- 仅 `bob.md` 存在 `<!-- ANSWER: ... -->` 标注（其余分支未被 dispatch，无输出文件）
 - `ANSWER` 经归一化后包含两项 `3x^2*sin(x)` 与 `x^3*cos(x)`（顺序无关，容忍 `*`/`**`/空格差异）
 
 ### 1.2 Team 配置
@@ -35,27 +35,27 @@
   "description": "Math problem router: classifies a single problem into calculus/algebra/number-theory/combinatorics",
   "members": [
     {
-      "name": "math-router",
+      "name": "alice",
       "role": "mathematician",
       "prompt": "You are a mathematics problem classifier. Given a concrete math problem, identify which single sub-domain it belongs to and route it to the matching branch. The sub-domains are: calculus (derivatives, integrals, limits, differential calculus), algebra (equations, polynomials, symbolic manipulation, solving for unknowns), number-theory (integers, primes, divisibility, modular arithmetic), combinatorics (counting, permutations, combinations, graphs). A derivative or integral problem is calculus, not algebra. Pick exactly one branch. Your output MUST end with a line exactly formatted: <route>{\"branch\": \"<name>\", \"rationale\": \"<one sentence why>\"}</route>"
     },
     {
-      "name": "calc-expert",
+      "name": "bob",
       "role": "mathematician",
       "prompt": "You are a calculus specialist (derivatives, integrals, limits, series). When given a problem, first decide if it genuinely belongs to calculus. If it does, solve it step by step and put the final simplified closed-form result in the marker. If it does NOT belong to calculus, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ANSWER: <simplified_result> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     },
     {
-      "name": "algebra-expert",
+      "name": "carol",
       "role": "mathematician",
       "prompt": "You are an algebra specialist (equations, polynomials, symbolic manipulation, solving for unknowns). When given a problem, first decide if it genuinely belongs to algebra. If it does, solve it step by step and put the final simplified result in the marker. If it does NOT belong to algebra, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ANSWER: <simplified_result> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     },
     {
-      "name": "nt-expert",
+      "name": "dave",
       "role": "mathematician",
       "prompt": "You are a number-theory specialist (integers, primes, divisibility, modular arithmetic, Diophantine equations). When given a problem, first decide if it genuinely belongs to number theory. If it does, solve it step by step and put the final result in the marker. If it does NOT belong to number theory, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ANSWER: <result> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     },
     {
-      "name": "combo-expert",
+      "name": "erin",
       "role": "mathematician",
       "prompt": "You are a combinatorics specialist (counting, permutations, combinations, graphs, generating functions). When given a problem, first decide if it genuinely belongs to combinatorics. If it does, solve it step by step and put the final result in the marker. If it does NOT belong to combinatorics, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- ANSWER: <result> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     }
@@ -72,13 +72,13 @@
   "tool": "team_route",
   "args": {
     "team_id": "math-classifier",
-    "router": "math-router",
+    "router": "alice",
     "input": "Compute the derivative of f(x) = x^3 · sin(x) and simplify.",
     "routes": [
-      { "name": "calculus", "member": "calc-expert", "description": "derivatives, integrals, limits, differential calculus" },
-      { "name": "algebra", "member": "algebra-expert", "description": "equations, polynomials, symbolic manipulation" },
-      { "name": "number-theory", "member": "nt-expert", "description": "integers, primes, divisibility, modular arithmetic" },
-      { "name": "combinatorics", "member": "combo-expert", "description": "counting, permutations, combinations, graphs" }
+      { "name": "calculus", "member": "bob", "description": "derivatives, integrals, limits, differential calculus" },
+      { "name": "algebra", "member": "carol", "description": "equations, polynomials, symbolic manipulation" },
+      { "name": "number-theory", "member": "dave", "description": "integers, primes, divisibility, modular arithmetic" },
+      { "name": "combinatorics", "member": "erin", "description": "counting, permutations, combinations, graphs" }
     ],
     "timeout_ms": 600000
   }
@@ -86,19 +86,19 @@
 ```
 
 **参数选择**：
-- `router: "math-router"` — router 必须是成员名，非 master，且不能是分支 target（schema 硬约束，见 `workflow-advanced.ts:298-300`）。
+- `router: "alice"` — router 必须是成员名，非 master，且不能是分支 target（schema 硬约束，见 `workflow-advanced.ts:298-300`）。
 - `input` 携带题目正文 — routes 全部省略 `task`，故匹配分支成员**直接收到 `input`**（schema 文档化的惯用模式，见 `workflow-advanced.ts:63` 的 `b.task ?? task.task` 回退）；避免把题目重复塞进每个 route。
 - 不设 `signoff_policy` — 默认 `none`，分支求解完即交付，无需额外评审门。
-- `timeout_ms: 600000`（10 min）— router 分类 ~1 min + calc-expert 求导 ~3 min，余量充足。
+- `timeout_ms: 600000`（10 min）— router 分类 ~1 min + bob 求导 ~3 min，余量充足。
 
 ### 1.4 执行流程（时序）
 
 ```
 T+0m    master 调用 team_route (input = 求导题)
-T+0m    Phase A: 仅 dispatch math-router（其余 4 成员等待）
+T+0m    Phase A: 仅 dispatch alice（其余 4 成员等待）
 T+0~1m  router 读题 → 分类 → 输出 <route>{"branch":"calculus",...}</route>
-T+1m    Phase B: 仅 dispatch calc-expert（algebra/nt/combo 三分支不被触发）
-T+1~6m  calc-expert 应用乘积法则 → 化简 → ANSWER 标记
+T+1m    Phase B: 仅 dispatch bob（algebra/nt/combo 三分支不被触发）
+T+1~6m  bob 应用乘积法则 → 化简 → ANSWER 标记
 T+6m    target barrier 收敛 → 汇总交付 master
 T+6m    运行: bun check-math-problem-router.ts <run_dir>
 ```
@@ -107,14 +107,14 @@ T+6m    运行: bun check-math-problem-router.ts <run_dir>
 
 [`check-math-problem-router.ts`](./check-math-problem-router.ts)
 
-- **加载**：`<run_dir>/math-router.md` 与 `<run_dir>/calc-expert.md`
+- **加载**：`<run_dir>/alice.md` 与 `<run_dir>/bob.md`
 - **提取**：
   - router 决策：正则 `<route>([\s\S]*?)</route>` → `JSON.parse` → 取 `branch`（或 `branches[0]`）
   - 分支答案：正则 `<!--\s*ANSWER:\s*([\s\S]*?)\s*-->`
 - **断言**：
   1. router 选中的 branch === `calculus`
-  2. `calc-expert` 未输出 `DOMAIN_MATCH: false`（即认领了该题）
-  3. `calc-expert` 输出了 `ANSWER` 标记
+  2. `bob` 未输出 `DOMAIN_MATCH: false`（即认领了该题）
+  3. `bob` 输出了 `ANSWER` 标记
   4. 答案归一化（去空白、`**`→`^`、去 `*`、小写）后同时包含 `3x^2sin(x)` 与 `x^3cos(x)`（顺序无关）
 
 ---
@@ -129,8 +129,8 @@ T+6m    运行: bun check-math-problem-router.ts <run_dir>
 
 **成功标准（可机器评判）**：
 - router 输出含 `<route>{"branch":"parabolic",...}</route>`
-- `parabolic-sim.md` 含 `<!-- METHOD: <name> -->`，且 `<name>` ∈ {`crank-nicolson`, `implicit`, `ftcs`}（大小写不敏感）
-- `parabolic-sim` 未输出 `DOMAIN_MATCH: false`
+- `bob.md` 含 `<!-- METHOD: <name> -->`，且 `<name>` ∈ {`crank-nicolson`, `implicit`, `ftcs`}（大小写不敏感）
+- `bob` 未输出 `DOMAIN_MATCH: false`
 
 ### 2.2 Team 配置
 
@@ -140,22 +140,22 @@ T+6m    运行: bun check-math-problem-router.ts <run_dir>
   "description": "PDE type router: classifies a PDE problem as parabolic/elliptic/hyperbolic",
   "members": [
     {
-      "name": "pde-router",
+      "name": "alice",
       "role": "physicist",
       "prompt": "You are a partial differential equation (PDE) classifier. Given a PDE problem with its boundary/initial conditions, classify it by type and route to the matching branch. Types: parabolic (first-order in time, second-order in space, diffusion/heat, e.g. u_t = u_xx or u_t = u_xx + u_yy), elliptic (steady-state, no time derivative, Laplace/Poisson, e.g. u_xx + u_yy = 0 or = f(x,y)), hyperbolic (second-order in time, wave propagation, e.g. u_tt = u_xx). The presence of u_t with second spatial derivatives is the signature of parabolic. Pick exactly one branch. Your output MUST end with a line exactly formatted: <route>{\"branch\": \"<name>\", \"rationale\": \"<one sentence why>\"}</route>"
     },
     {
-      "name": "parabolic-sim",
+      "name": "bob",
       "role": "simulator",
       "prompt": "You are a numerical PDE simulator specializing in parabolic equations (heat/diffusion, u_t = L*u). When given a PDE problem, first decide if it is genuinely parabolic. If it is, name the most appropriate numerical method (e.g. Crank-Nicolson, backward/implicit Euler, FTCS) and state the key stability constraint in one line. If it is NOT parabolic, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- METHOD: <method_name> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     },
     {
-      "name": "elliptic-sim",
+      "name": "carol",
       "role": "simulator",
       "prompt": "You are a numerical PDE simulator specializing in elliptic equations (steady-state, Laplace/Poisson, L*u = f with no time derivative). When given a PDE problem, first decide if it is genuinely elliptic. If it is, name the most appropriate numerical method (e.g. Gauss-Seidel, SOR, multigrid, finite-element) in one line. If it is NOT elliptic, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- METHOD: <method_name> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     },
     {
-      "name": "hyperbolic-sim",
+      "name": "dave",
       "role": "simulator",
       "prompt": "You are a numerical PDE simulator specializing in hyperbolic equations (wave propagation, u_tt = c^2*L*u, advection). When given a PDE problem, first decide if it is genuinely hyperbolic. If it is, name the most appropriate numerical method (e.g. Lax-Wendroff, upwind, leapfrog) and the CFL constraint in one line. If it is NOT hyperbolic, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- METHOD: <method_name> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     }
@@ -172,12 +172,12 @@ T+6m    运行: bun check-math-problem-router.ts <run_dir>
   "tool": "team_route",
   "args": {
     "team_id": "pde-classifier",
-    "router": "pde-router",
+    "router": "alice",
     "input": "Solve u_t = u_xx + u_yy on a square domain with Dirichlet BC u=0 on the boundary, initial condition u(x,y,0)=sin(pi*x)sin(pi*y).",
     "routes": [
-      { "name": "parabolic", "member": "parabolic-sim", "description": "heat/diffusion, first-order in time, e.g. u_t = u_xx + u_yy" },
-      { "name": "elliptic", "member": "elliptic-sim", "description": "steady-state Laplace/Poisson, no time derivative" },
-      { "name": "hyperbolic", "member": "hyperbolic-sim", "description": "wave propagation, second-order in time" }
+      { "name": "parabolic", "member": "bob", "description": "heat/diffusion, first-order in time, e.g. u_t = u_xx + u_yy" },
+      { "name": "elliptic", "member": "carol", "description": "steady-state Laplace/Poisson, no time derivative" },
+      { "name": "hyperbolic", "member": "dave", "description": "wave propagation, second-order in time" }
     ],
     "timeout_ms": 600000
   }
@@ -185,18 +185,18 @@ T+6m    运行: bun check-math-problem-router.ts <run_dir>
 ```
 
 **参数选择**：
-- `router: "pde-router"` — 成员名，非 master，不在 routes 中（schema 约束）。
-- `input` 直接嵌入完整 PDE 初边值问题 — 三个 route 均省略 `task`，匹配分支（`parabolic-sim`）直接收到这段输入；分支成员的系统 prompt 已编码领域判定与 `METHOD` 标记约定。
+- `router: "alice"` — 成员名，非 master，不在 routes 中（schema 约束）。
+- `input` 直接嵌入完整 PDE 初边值问题 — 三个 route 均省略 `task`，匹配分支（`bob`）直接收到这段输入；分支成员的系统 prompt 已编码领域判定与 `METHOD` 标记约定。
 - routes 的 `description` 给 router 提供分类线索（schema 鼓励的可选项）。
 
 ### 2.4 执行流程（时序）
 
 ```
 T+0m    master 调用 team_route (input = 热方程初边值问题)
-T+0m    Phase A: 仅 dispatch pde-router
+T+0m    Phase A: 仅 dispatch alice
 T+0~1m  router 识别 u_t + 二阶空间项 → 抛物型 → <route>{"branch":"parabolic",...}</route>
-T+1m    Phase B: 仅 dispatch parabolic-sim（elliptic/hyperbolic 不触发）
-T+1~7m  parabolic-sim 选 Crank-Nicolson/隐式 → 说明稳定性 → METHOD 标记
+T+1m    Phase B: 仅 dispatch bob（elliptic/hyperbolic 不触发）
+T+1~7m  bob 选 Crank-Nicolson/隐式 → 说明稳定性 → METHOD 标记
 T+7m    target barrier 收敛 → 汇总交付 master
 T+7m    运行: bun check-physics-pde-router.ts <run_dir>
 ```
@@ -205,13 +205,13 @@ T+7m    运行: bun check-physics-pde-router.ts <run_dir>
 
 [`check-physics-pde-router.ts`](./check-physics-pde-router.ts)
 
-- **加载**：`<run_dir>/pde-router.md` 与 `<run_dir>/parabolic-sim.md`
+- **加载**：`<run_dir>/alice.md` 与 `<run_dir>/bob.md`
 - **提取**：
   - router 决策：正则 `<route>([\s\S]*?)</route>` → `JSON.parse` → 取 `branch`
   - 分支方法：正则 `<!--\s*METHOD:\s*(.*?)\s*-->`
 - **断言**：
   1. router 选中的 branch === `parabolic`
-  2. `parabolic-sim` 未输出 `DOMAIN_MATCH: false`
+  2. `bob` 未输出 `DOMAIN_MATCH: false`
   3. `METHOD` 值（小写、去空白）∈ {`crank-nicolson`, `implicit`, `ftcs`}
 
 ---
@@ -226,8 +226,8 @@ T+7m    运行: bun check-physics-pde-router.ts <run_dir>
 
 **成功标准（可机器评判）**：
 - router 输出含 `<route>{"branch":"bug",...}</route>`
-- `bug-fixer.md` 含 `<!-- FIX_STRATEGY: <text> -->`，且 `<text>`（小写）提及 `guard` / `throw` / `rangeerror` 中至少一个
-- `bug-fixer` 未输出 `DOMAIN_MATCH: false`
+- `bob.md` 含 `<!-- FIX_STRATEGY: <text> -->`，且 `<text>`（小写）提及 `guard` / `throw` / `rangeerror` 中至少一个
+- `bob` 未输出 `DOMAIN_MATCH: false`
 
 ### 3.2 Team 配置
 
@@ -237,27 +237,27 @@ T+7m    运行: bun check-physics-pde-router.ts <run_dir>
   "description": "GitHub issue router: classifies an issue as bug/feature/docs/refactor",
   "members": [
     {
-      "name": "issue-router",
+      "name": "alice",
       "role": "analyst",
       "prompt": "You are a GitHub issue triage classifier. Given an issue report body, classify it into exactly one category and route to the matching branch. Categories: bug (the code does something wrong: incorrect result, crash, wrong return value, exception that should be thrown but is not, or vice versa), feature (a request for new functionality that does not yet exist), docs (documentation, examples, or readability improvement with no code-behavior change), refactor (code quality/structure change with no behavior change). A report that the code returns a value when it should throw is a bug. Pick exactly one branch. Your output MUST end with a line exactly formatted: <route>{\"branch\": \"<name>\", \"rationale\": \"<one sentence why>\"}</route>"
     },
     {
-      "name": "bug-fixer",
+      "name": "bob",
       "role": "coder",
       "prompt": "You are a bug-fix coder. When given an issue, first decide if it genuinely reports a bug (broken or incorrect behavior). If it does, propose a minimal fix strategy: name the file/function to change and describe the concrete edit in one or two sentences (e.g. 'add a guard at the top of getUser that throws RangeError for negative ids'). If the issue is NOT a bug, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- FIX_STRATEGY: <file/function + change description> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     },
     {
-      "name": "feature-coder",
+      "name": "carol",
       "role": "coder",
       "prompt": "You are a feature-implementing coder. When given an issue, first decide if it genuinely requests a new feature. If it does, sketch the implementation plan (new function/module, API surface) in one or two sentences. If the issue is NOT a feature request, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- FIX_STRATEGY: <implementation plan> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     },
     {
-      "name": "docs-writer",
+      "name": "dave",
       "role": "coder",
       "prompt": "You are a documentation coder. When given an issue, first decide if it genuinely is a documentation/docs request. If it does, describe the doc change needed in one or two sentences. If the issue is NOT a docs request, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- FIX_STRATEGY: <doc change description> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     },
     {
-      "name": "refactor-coder",
+      "name": "erin",
       "role": "coder",
       "prompt": "You are a refactoring coder. When given an issue, first decide if it genuinely is a refactor request (behavior-preserving structural improvement). If it does, describe the refactor in one or two sentences. If the issue is NOT a refactor request, reply exactly 'NOT MY DOMAIN'. Your output MUST end with a line exactly formatted: <!-- FIX_STRATEGY: <refactor description> --> when it is your domain, or <!-- DOMAIN_MATCH: false --> when it is not."
     }
@@ -274,13 +274,13 @@ T+7m    运行: bun check-physics-pde-router.ts <run_dir>
   "tool": "team_route",
   "args": {
     "team_id": "issue-triage",
-    "router": "issue-router",
+    "router": "alice",
     "input": "When I call getUser(-1) the function returns a user instead of throwing. Expected: throw RangeError for negative ids.",
     "routes": [
-      { "name": "bug", "member": "bug-fixer", "description": "incorrect behavior, crash, wrong result, missing exception" },
-      { "name": "feature", "member": "feature-coder", "description": "request for new functionality" },
-      { "name": "docs", "member": "docs-writer", "description": "documentation or readability improvement" },
-      { "name": "refactor", "member": "refactor-coder", "description": "behavior-preserving structural change" }
+      { "name": "bug", "member": "bob", "description": "incorrect behavior, crash, wrong result, missing exception" },
+      { "name": "feature", "member": "carol", "description": "request for new functionality" },
+      { "name": "docs", "member": "dave", "description": "documentation or readability improvement" },
+      { "name": "refactor", "member": "erin", "description": "behavior-preserving structural change" }
     ],
     "timeout_ms": 600000
   }
@@ -288,18 +288,18 @@ T+7m    运行: bun check-physics-pde-router.ts <run_dir>
 ```
 
 **参数选择**：
-- `router: "issue-router"` — 成员名，非 master，不在 routes 中。
-- `input` 是真实 issue 正文 — 四个 route 均省略 `task`，匹配分支（`bug-fixer`）直接收到正文；分类线索写在 route `description` 里。
+- `router: "alice"` — 成员名，非 master，不在 routes 中。
+- `input` 是真实 issue 正文 — 四个 route 均省略 `task`，匹配分支（`bob`）直接收到正文；分类线索写在 route `description` 里。
 - `description` 明确区分四类（尤其「missing exception」线索帮助 router 把「应抛未抛」判为 bug 而非 feature）。
 
 ### 3.4 执行流程（时序）
 
 ```
 T+0m    master 调用 team_route (input = bug 报告正文)
-T+0m    Phase A: 仅 dispatch issue-router
+T+0m    Phase A: 仅 dispatch alice
 T+0~1m  router 判读「应抛未抛」→ bug → <route>{"branch":"bug",...}</route>
-T+1m    Phase B: 仅 dispatch bug-fixer（feature/docs/refactor 不触发）
-T+1~6m  bug-fixer 定位 getUser → 建议加负数 id 防护抛 RangeError → FIX_STRATEGY 标记
+T+1m    Phase B: 仅 dispatch bob（feature/docs/refactor 不触发）
+T+1~6m  bob 定位 getUser → 建议加负数 id 防护抛 RangeError → FIX_STRATEGY 标记
 T+6m    target barrier 收敛 → 汇总交付 master
 T+6m    运行: bun check-coding-issue-router.ts <run_dir>
 ```
@@ -308,13 +308,13 @@ T+6m    运行: bun check-coding-issue-router.ts <run_dir>
 
 [`check-coding-issue-router.ts`](./check-coding-issue-router.ts)
 
-- **加载**：`<run_dir>/issue-router.md` 与 `<run_dir>/bug-fixer.md`
+- **加载**：`<run_dir>/alice.md` 与 `<run_dir>/bob.md`
 - **提取**：
   - router 决策：正则 `<route>([\s\S]*?)</route>` → `JSON.parse` → 取 `branch`
   - 分支策略：正则 `<!--\s*FIX_STRATEGY:\s*([\s\S]*?)\s*-->`
 - **断言**：
   1. router 选中的 branch === `bug`
-  2. `bug-fixer` 未输出 `DOMAIN_MATCH: false`
+  2. `bob` 未输出 `DOMAIN_MATCH: false`
   3. `FIX_STRATEGY` 文本（小写）匹配 `guard|throw|rangeerror` 中至少一个关键词
 
 ---
@@ -348,7 +348,7 @@ T+6m    运行: bun check-coding-issue-router.ts <run_dir>
 6. 运行：bun docs/orchestration-scenarios/06-team-route/check-math-problem-router.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
-成功标准：router 选 calculus 分支；calc-expert 的 ANSWER 含 3x²·sin(x)+x³·cos(x)（或等价导数表达式）。
+成功标准：router 选 calculus 分支；bob 的 ANSWER 含 3x²·sin(x)+x³·cos(x)（或等价导数表达式）。
 ```
 
 ### 场景 2: PDE 类型路由（物理）

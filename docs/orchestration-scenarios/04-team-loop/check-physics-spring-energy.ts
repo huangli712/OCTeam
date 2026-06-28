@@ -1,12 +1,12 @@
 /**
  * Check script: spring-mass energy drift debug (team_loop).
  *
- * Verifies the loop's decider (reviewer) converged to "done" with
- * driftAcceptable=true, AND cross-checks the analyst's measured post-fix
+ * Verifies the loop's decider (carol) converged to "done" with
+ * driftAcceptable=true, AND cross-checks the bob's measured post-fix
  * energy drift is below the 1e-3 symplectic threshold.
  *
  * Usage:  bun check-physics-spring-energy.ts <run_dir>
- *   <run_dir>  directory containing reviewer.md (decider), simulator.md, analyst.md
+ *   <run_dir>  directory containing carol.md (decider), alice.md, bob.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -14,7 +14,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const DECIDER = "reviewer";
+const DECIDER = "carol";
 const DRIFT_THRESHOLD = 1e-3; // Velocity Verlet on h=0.05, 1000 steps must stay well under this
 const DECISION_RE = /<decision>([\s\S]*?)<\/decision>/g;
 const DRIFT_AFTER_RE = /<!--\s*DRIFT_AFTER:\s*([\d.eE+-]+)\s*-->/;
@@ -79,28 +79,28 @@ async function main(): Promise<void> {
     }
 
     const deciderRaw = await loadRaw(runDir, DECIDER);
-    const analystRaw = await loadRaw(runDir, "analyst");
+    const analystRaw = await loadRaw(runDir, "bob");
 
-    // Best-effort: surface the simulator's integrator choice.
-    const simulatorRaw = await loadRaw(runDir, "simulator");
+    // Best-effort: surface the alice's integrator choice.
+    const simulatorRaw = await loadRaw(runDir, "alice");
     const integratorMatch = simulatorRaw.match(/<!--\s*INTEGRATOR:\s*(.+?)\s*-->/);
     if (integratorMatch) {
-        console.log(`  simulator: integrator = ${integratorMatch[1].trim()}`);
+        console.log(`  alice: integrator = ${integratorMatch[1].trim()}`);
     }
 
-    // Cross-check the analyst's measured drifts.
-    const driftBefore = parseNonNegative(analystRaw, DRIFT_BEFORE_RE, "<!-- DRIFT_BEFORE: ... -->", "analyst");
-    const driftAfter = parseNonNegative(analystRaw, DRIFT_AFTER_RE, "<!-- DRIFT_AFTER: ... -->", "analyst");
-    console.log(`  analyst:  drift_before = ${driftBefore.toExponential(4)}, drift_after = ${driftAfter.toExponential(4)}`);
+    // Cross-check the bob's measured drifts.
+    const driftBefore = parseNonNegative(analystRaw, DRIFT_BEFORE_RE, "<!-- DRIFT_BEFORE: ... -->", "bob");
+    const driftAfter = parseNonNegative(analystRaw, DRIFT_AFTER_RE, "<!-- DRIFT_AFTER: ... -->", "bob");
+    console.log(`  bob:  drift_before = ${driftBefore.toExponential(4)}, drift_after = ${driftAfter.toExponential(4)}`);
 
-    // Assertion 1 (analyst): the fix actually reduced drift (sanity).
+    // Assertion 1 (bob): the fix actually reduced drift (sanity).
     if (driftAfter >= driftBefore) {
-        fail(`analyst drift_after ${driftAfter.toExponential(3)} >= drift_before ${driftBefore.toExponential(3)} (fix did not reduce drift)`);
+        fail(`bob drift_after ${driftAfter.toExponential(3)} >= drift_before ${driftBefore.toExponential(3)} (fix did not reduce drift)`);
     }
 
-    // Assertion 2 (analyst): post-fix drift is below the symplectic threshold.
+    // Assertion 2 (bob): post-fix drift is below the symplectic threshold.
     if (driftAfter >= DRIFT_THRESHOLD) {
-        fail(`analyst drift_after ${driftAfter.toExponential(3)} >= threshold ${DRIFT_THRESHOLD.toExponential(0)} (Velocity Verlet must stay symplectic)`);
+        fail(`bob drift_after ${driftAfter.toExponential(3)} >= threshold ${DRIFT_THRESHOLD.toExponential(0)} (Velocity Verlet must stay symplectic)`);
     }
 
     // Assertions 3-4 (decider): converged to "done" with driftAcceptable=true.
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
         fail(`decider.driftAcceptable = false (energy drift not deemed acceptable)`);
     }
 
-    console.log("PASS: decider \"done\" + driftAcceptable=true; analyst DRIFT_AFTER below 1e-3.");
+    console.log("PASS: decider \"done\" + driftAcceptable=true; bob DRIFT_AFTER below 1e-3.");
 }
 
 main();

@@ -34,17 +34,17 @@
   "description": "Number-theory puzzle suite: 5 independent tasks self-claimed by 3 mathematicians",
   "members": [
     {
-      "name": "math-a",
+      "name": "alice",
       "role": "mathematician",
       "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks, claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies, then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
-      "name": "math-b",
+      "name": "bob",
       "role": "mathematician",
       "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks, claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies, then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
-      "name": "math-c",
+      "name": "carol",
       "role": "mathematician",
       "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks, claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies, then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     }
@@ -146,17 +146,17 @@ T+6m    运行: bun check-math-number-theory.ts <run_dir>
   "description": "Classic ODE simulation suite: 3 independent systems self-claimed by 3 simulators",
   "members": [
     {
-      "name": "sim-a",
+      "name": "alice",
       "role": "simulator",
       "prompt": "You are a numerical simulator specializing in ODE integration. You work in delegate mode: use team_task_list to find available simulation tasks, claim one with team_task_update (status 'claimed'), simulate exactly as the task description specifies (use classical RK4 with the given step size), then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
-      "name": "sim-b",
+      "name": "bob",
       "role": "simulator",
       "prompt": "You are a numerical simulator specializing in ODE integration. You work in delegate mode: use team_task_list to find available simulation tasks, claim one with team_task_update (status 'claimed'), simulate exactly as the task description specifies (use classical RK4 with the given step size), then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
-      "name": "sim-c",
+      "name": "carol",
       "role": "simulator",
       "prompt": "You are a numerical simulator specializing in ODE integration. You work in delegate mode: use team_task_list to find available simulation tasks, claim one with team_task_update (status 'claimed'), simulate exactly as the task description specifies (use classical RK4 with the given step size), then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     }
@@ -260,17 +260,17 @@ T+6m    运行: bun check-physics-ode-suite.ts <run_dir>
   "description": "CLI calculator with blockedBy DAG: spec -> core+output -> tests, self-claimed by 3 coders",
   "members": [
     {
-      "name": "coder-a",
+      "name": "alice",
       "role": "coder",
       "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task. Tasks with unmet blocked_by dependencies are not claimable — wait for them to clear. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
-      "name": "coder-b",
+      "name": "bob",
       "role": "coder",
       "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task. Tasks with unmet blocked_by dependencies are not claimable — wait for them to clear. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
-      "name": "coder-c",
+      "name": "carol",
       "role": "coder",
       "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task. Tasks with unmet blocked_by dependencies are not claimable — wait for them to clear. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     }

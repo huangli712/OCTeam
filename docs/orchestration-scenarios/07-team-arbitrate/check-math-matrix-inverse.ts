@@ -13,8 +13,8 @@
  *      key term ("condition" or "dense").
  *
  * Usage:  bun check-math-matrix-inverse.ts <run_dir>
- *   <run_dir>  directory containing direct-proponent.md,
- *              iterative-proponent.md, arbiter.md
+ *   <run_dir>  directory containing alice.md,
+ *              bob.md, carol.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -22,8 +22,8 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const DEBATERS = ["direct-proponent", "iterative-proponent"] as const;
-const ARBITER = "arbiter";
+const DEBATERS = ["alice", "bob"] as const;
+const ARBITER = "carol";
 
 const EXPECTED_RULING = "direct";
 // The arbiter's rationale must reference the matrix class that makes the

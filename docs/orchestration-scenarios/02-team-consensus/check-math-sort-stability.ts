@@ -8,7 +8,7 @@
  *
  * Usage:  bun check-math-sort-stability.ts <run_dir>
  *   <run_dir>  directory containing the per-member markdown outputs
- *              (expects insertion-advocate.md, timsort-advocate.md, merge-advocate.md)
+ *              (expects alice.md, bob.md, carol.md)
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -16,7 +16,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const MEMBERS = ["insertion-advocate", "timsort-advocate", "merge-advocate"] as const;
+const MEMBERS = ["alice", "bob", "carol"] as const;
 // matchAll requires the global flag; each call clones the regex so reuse is safe.
 const CONSENSUS_RE = /<consensus>([\s\S]*?)<\/consensus>/g;
 // Recognized algorithm names for the stable-sort debate.

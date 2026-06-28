@@ -2,11 +2,11 @@
  * Check script: GitHub issue router (bug classification).
  *
  * Verifies the router member classified the "getUser(-1) should throw" issue as
- * "bug" and the matched branch member (bug-fixer) proposed a fix strategy that
+ * "bug" and the matched branch member (bob) proposed a fix strategy that
  * mentions a guard / throw / RangeError.
  *
  * Usage:  bun check-coding-issue-router.ts <run_dir>
- *   <run_dir>  directory containing issue-router.md and bug-fixer.md
+ *   <run_dir>  directory containing alice.md and bob.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertion)  |  2 usage / IO error
  */
@@ -14,12 +14,12 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const ROUTER = "issue-router";
+const ROUTER = "alice";
 const BRANCH_TO_MEMBER: Record<string, string> = {
-    bug: "bug-fixer",
-    feature: "feature-coder",
-    docs: "docs-writer",
-    refactor: "refactor-coder",
+    bug: "bob",
+    feature: "carol",
+    docs: "dave",
+    refactor: "erin",
 };
 const EXPECTED_BRANCH = "bug";
 

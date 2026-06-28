@@ -37,17 +37,17 @@
   "description": "Arbitrate whether direct Gaussian elimination or an iterative method should invert a dense, well-conditioned 4x4 matrix",
   "members": [
     {
-      "name": "direct-proponent",
+      "name": "alice",
       "role": "mathematician",
       "prompt": "You are the proponent of DIRECT inversion (Gaussian elimination / Gauss-Jordan) for a dense, well-conditioned 4x4 matrix (condition number ~10). Argue precisely: a 4x4 system is tiny (fixed O(n^3)=O(64) flops), direct methods are exact up to round-off (no convergence criterion), need no diagonal dominance / SPD assumption, and iterative methods only shine for large sparse systems. Cite the operation count and the absence of a convergence loop. Rebut the iterative side's points. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
     },
     {
-      "name": "iterative-proponent",
+      "name": "bob",
       "role": "mathematician",
       "prompt": "You are the proponent of ITERATIVE inversion (e.g. Jacobi) for a dense, well-conditioned 4x4 matrix (condition number ~10). Argue the iterative case as strongly as you can: iterative methods reuse matrix-vector products, avoid pivot instabilities, and their cost scales with desired accuracy. Note that for this specific small dense well-conditioned case the iteration converges fast (spectral radius of the Jacobi iteration matrix is well below 1), so few sweeps suffice. Rebut the direct side's points. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
     },
     {
-      "name": "arbiter",
+      "name": "carol",
       "role": "reviewer",
       "prompt": "You are the ARBITER. Two mathematicians debated whether to invert a dense, well-conditioned 4x4 matrix (condition number ~10) via DIRECT Gaussian elimination or an ITERATIVE method (e.g. Jacobi). Weigh both sides objectively, then deliver a single BINDING ruling. Recall the standard numerical-linear-algebra result: for small, dense, well-conditioned systems direct elimination is exact, assumption-free, and asymptotically cheaper in the constant-factor regime, while iterative methods are designed for large sparse systems. Your output MUST end with two lines exactly formatted: first <!-- RULING: direct --> (or <!-- RULING: iterative -->) then <!-- REASON: <one-sentence rationale referencing why, for this specific matrix class, the winner dominates> -->."
     }
@@ -65,8 +65,8 @@
   "args": {
     "team_id": "matrix-inverse-debate",
     "task": "For inverting a dense, well-conditioned 4x4 matrix (condition number ~10), should you use direct Gaussian elimination or an iterative method (e.g. Jacobi)?",
-    "arbiter": "arbiter",
-    "debaters": ["direct-proponent", "iterative-proponent"],
+    "arbiter": "carol",
+    "debaters": ["alice", "bob"],
     "max_rounds": 2,
     "timeout_ms": 1200000
   }
@@ -74,8 +74,8 @@
 ```
 
 **参数选择**：
-- `arbiter: "arbiter"` — 指向名为 `arbiter` 的成员（role=`reviewer`）；仲裁**不得**是辩手或 master
-- `debaters: ["direct-proponent", "iterative-proponent"]` — 恰好 2 名唯一辩手，各持一派
+- `arbiter: "carol"` — 指向名为 `carol` 的成员（role=`reviewer`）；仲裁**不得**是辩手或 master
+- `debaters: ["alice", "bob"]` — 恰好 2 名唯一辩手，各持一派
 - `max_rounds: 2` — 立论 + 反驳共两轮，足够暴露分歧（控时）
 - `timeout_ms: 1200000`（20 min）— 2 轮辩论 + 裁决的硬上限，正常 ~15 min 完成
 - 无 `signoff_*` — 仲裁裁决本身即为终点（等价 `none` 门）
@@ -98,7 +98,7 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
 
 [`check-math-matrix-inverse.ts`](./check-math-matrix-inverse.ts)
 
-- **加载**：`runs/<run_id>/{direct-proponent,iterative-proponent,arbiter}.md`
+- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：
   - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
   - 仲裁 `<!-- RULING:\s*(\w[\w-]*)\s*-->` 与 `<!-- REASON:\s*(.+?)\s*-->`
@@ -132,17 +132,17 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
   "description": "Arbitrate whether explicit RK4 or implicit backward Euler should integrate the stiff ODE dy/dt=-1000y to t=1",
   "members": [
     {
-      "name": "explicit-pro",
+      "name": "alice",
       "role": "simulator",
       "prompt": "You are the proponent of EXPLICIT RK4 for the stiff ODE dy/dt = -1000*y, y(0)=1, integrated to t=1. Argue the explicit case: RK4 is 4th-order accurate (local error O(dt^5)), cheap per step (no linear solve), and trivially parallelizable. Compute the stability limit: RK4's stable for |1 + z + z^2/2 + z^3/6 + z^4/24| <= 1 with z=-1000*dt, requiring dt < ~0.0028 (roughly 2/1000); at dt=0.001 you need ~1000 steps but each is cheap. Rebut the implicit side. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
     },
     {
-      "name": "implicit-pro",
+      "name": "bob",
       "role": "simulator",
       "prompt": "You are the proponent of IMPLICIT backward Euler for the stiff ODE dy/dt = -1000*y, y(0)=1, integrated to t=1. Argue the implicit case: backward Euler is A-stable / unconditionally stable (amplification factor 1/(1+1000*dt) is always < 1), so you can take HUGE steps (e.g. dt=0.1, ~10 steps total) without blow-up; RK4 would need ~1000+ tiny steps (dt<0.0028) just to stay stable, swamping its accuracy advantage. For stiff problems stability dominates accuracy. Rebut the explicit side. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
     },
     {
-      "name": "arbiter",
+      "name": "carol",
       "role": "physicist",
       "prompt": "You are the ARBITER. Two simulators debated whether to integrate the stiff ODE dy/dt = -1000*y (y(0)=1, to t=1) with EXPLICIT RK4 or IMPLICIT backward Euler. Weigh both sides objectively, then deliver a single BINDING ruling. Recall the governing principle: for stiff systems, the step size is dictated by stability (the fast mode -1000), not accuracy. RK4's explicit stability region forces dt < 2/1000 = 0.002 (hundreds-to-thousands of steps); backward Euler is A-stable and advances in a handful of large steps. Stability wins over per-step accuracy for stiff problems. Your output MUST end with two lines exactly formatted: first <!-- RULING: implicit --> (or <!-- RULING: explicit -->) then <!-- REASON: <one-sentence rationale referencing stiffness / CFL-like stability constraint> -->."
     }
@@ -160,8 +160,8 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
   "args": {
     "team_id": "stiff-ode-debate",
     "task": "For the stiff ODE dy/dt = -1000*y, y(0)=1, integrated to t=1, should you use explicit RK4 or implicit backward Euler?",
-    "arbiter": "arbiter",
-    "debaters": ["explicit-pro", "implicit-pro"],
+    "arbiter": "carol",
+    "debaters": ["alice", "bob"],
     "max_rounds": 2,
     "timeout_ms": 1200000
   }
@@ -169,8 +169,8 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
 ```
 
 **参数选择**：
-- `arbiter: "arbiter"` — role=`physicist` 的仲裁，裁决刚性 / 稳定性权衡
-- `debaters: ["explicit-pro", "implicit-pro"]` — 显式派 vs 隐式派，恰好 2 名唯一辩手
+- `arbiter: "carol"` — role=`physicist` 的仲裁，裁决刚性 / 稳定性权衡
+- `debaters: ["alice", "bob"]` — 显式派 vs 隐式派，恰好 2 名唯一辩手
 - `max_rounds: 2` — 立论（稳定域推导）+ 反驳（步数对比）两轮
 - `timeout_ms: 1200000`（20 min）— 硬上限
 
@@ -192,7 +192,7 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
 
 [`check-physics-stiff-ode.ts`](./check-physics-stiff-ode.ts)
 
-- **加载**：`runs/<run_id>/{explicit-pro,implicit-pro,arbiter}.md`
+- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：
   - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
   - 仲裁 `<!-- RULING:\s*(\w[\w-]*)\s*-->` 与 `<!-- REASON:\s*(.+?)\s*-->`
@@ -226,17 +226,17 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
   "description": "Arbitrate LRU vs LFU eviction for a capacity-8 cache under strong temporal locality and uniform frequencies",
   "members": [
     {
-      "name": "lru-pro",
+      "name": "alice",
       "role": "coder",
       "prompt": "You are the proponent of LRU (Least Recently Used) eviction for a single-process cache of capacity 8 under a workload with STRONG TEMPORAL LOCALITY (recently-accessed keys are likely re-accessed soon) and UNIFORM frequencies. Argue: LRU orders by recency, which directly tracks temporal locality; it promotes the just-touched key and evicts the one longest unseen, matching the reuse pattern. It is O(1) per op (hash map + doubly-linked list), simple, and adapts to access-pattern shifts. Cite that with uniform frequencies, LFU's frequency signal carries no discriminating information, so recency is the only useful signal. Rebut the LFU side. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
     },
     {
-      "name": "lfu-pro",
+      "name": "bob",
       "role": "coder",
       "prompt": "You are the proponent of LFU (Least Frequently Used) eviction for a single-process cache of capacity 8 under a workload with STRONG TEMPORAL LOCALITY and UNIFORM frequencies. Argue the LFU case as strongly as you can: LFU retains frequently-used items, giving stable hit rates for repeated popular keys; it is not fooled by a single recent touch; and frequency is a robust long-term signal. Acknowledge the uniform-frequency caveat but argue LFU degrades gracefully and avoids LRU's vulnerability to scan/churn patterns. Rebut the LRU side. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
     },
     {
-      "name": "arbiter",
+      "name": "carol",
       "role": "reviewer",
       "prompt": "You are the ARBITER. Two coders debated whether a single-process capacity-8 cache under STRONG TEMPORAL LOCALITY (recently-accessed keys likely re-accessed soon) and UNIFORM frequencies should use LRU or LFU eviction. Weigh both sides objectively, then deliver a single BINDING ruling. Recall the caching principle: when temporal locality dominates and frequencies are uniform, recency (LRU) is the signal that tracks the access pattern; frequency (LFU) carries little information when frequencies are uniform and can even retain stale popular items. Your output MUST end with two lines exactly formatted: first <!-- RULING: lru --> (or <!-- RULING: lfu -->) then <!-- REASON: <one-sentence rationale referencing temporal locality / recency> -->."
     }
@@ -254,8 +254,8 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
   "args": {
     "team_id": "cache-eviction-debate",
     "task": "For a single-process cache of capacity 8 serving a workload with strong temporal locality (recently-accessed keys likely re-accessed soon) and uniform frequencies, should you use LRU or LFU eviction?",
-    "arbiter": "arbiter",
-    "debaters": ["lru-pro", "lfu-pro"],
+    "arbiter": "carol",
+    "debaters": ["alice", "bob"],
     "max_rounds": 2,
     "timeout_ms": 1080000
   }
@@ -263,8 +263,8 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
 ```
 
 **参数选择**：
-- `arbiter: "arbiter"` — role=`reviewer`，裁决局部性 / recency 权衡
-- `debaters: ["lru-pro", "lfu-pro"]` — LRU 派 vs LFU 派
+- `arbiter: "carol"` — role=`reviewer`，裁决局部性 / recency 权衡
+- `debaters: ["alice", "bob"]` — LRU 派 vs LFU 派
 - `max_rounds: 2` — 立论（实现 + 复杂度）+ 反驳（scan 抗性 / 频率均匀）两轮
 - `timeout_ms: 1080000`（18 min）— 纯文字辩论，略短于数值场景
 
@@ -286,7 +286,7 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 
 [`check-coding-cache-eviction.ts`](./check-coding-cache-eviction.ts)
 
-- **加载**：`runs/<run_id>/{lru-pro,lfu-pro,arbiter}.md`
+- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：
   - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
   - 仲裁 `<!-- RULING:\s*(\w[\w-]*)\s*-->` 与 `<!-- REASON:\s*(.+?)\s*-->`
@@ -310,7 +310,7 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 
 ## 快速启动 Prompt（复制即用）
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成完整闭环。arbitrate 模式评判读 **arbiter** 成员的最终裁决（含 RULING / REASON marker）。
+> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成完整闭环。arbitrate 模式评判读 **carol** 成员的最终裁决（含 RULING / REASON marker）。
 
 ### 场景 1: 4×4 矩阵求逆法之争（数学）
 
@@ -322,7 +322,7 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 2. team_activate 激活
 3. 读 README「1.3 Master 启动调用」，按 team_arbitrate JSON 启动编排
 4. team_results 轮询至 master 收到汇总（辩手辩论后 arbiter 出裁决）
-5. 定位 <run_dir>（含 arbiter 成员 .md）
+5. 定位 <run_dir>（含 carol 成员 .md）
 6. 运行：bun docs/orchestration-scenarios/07-team-arbitrate/check-math-matrix-inverse.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 

@@ -8,8 +8,8 @@
  *
  * Usage:  bun check-math-derangement.ts <run_dir>
  *   <run_dir>  directory containing the per-member markdown outputs
- *              (expects inc-exc.md as the decomposer, plus recurrence.md /
- *               gen-func.md as solver members)
+ *              (expects alice.md as the decomposer, plus bob.md /
+ *               carol.md as solver members)
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -18,7 +18,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // Decomposer member (set in the team_create config above). The root aggregator.
-const DECOMPOSER = "inc-exc";
+const DECOMPOSER = "alice";
 const EXPECTED_D4 = 9;
 
 const D4_FINAL_RE = /<!--\s*D4_FINAL:\s*(\d+)\s*-->/;

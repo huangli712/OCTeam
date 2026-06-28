@@ -41,12 +41,12 @@
 {
   "members": [
     {
-      "name": "coder",
+      "name": "alice",
       "role": "mathematician",
       "prompt": "You are a mathematician. You implement numerical algorithms in TypeScript with rigor, using minimal code. When asked to produce an implementation, embed the full TypeScript in a single ```typescript fenced block and declare it with an IMPL marker. Your output MUST end with a line exactly formatted: <!-- IMPL: modPow -->"
     },
     {
-      "name": "auditor",
+      "name": "bob",
       "role": "reviewer",
       "prompt": "You are a reviewer. You verify mathematical implementations by running them against the gate's criteria. Emit a verdict: PASS if every criterion holds, FAIL otherwise (naming the failing case). Your output MUST end with a line exactly formatted: <!-- VERDICT: PASS --> (or <!-- VERDICT: FAIL -->)."
     }
@@ -65,9 +65,9 @@
     "team_id": "modpow-gate",
     "stages": [
       {
-        "member": "coder",
+        "member": "alice",
         "task": "Implement `modPow(base, exp, mod)` computing base^exp mod mod via binary exponentiation (iterative square-and-multiply). Handle exp=0 (return 1 for any mod>0). Embed TypeScript code in a fenced block.",
-        "verifier": "auditor",
+        "verifier": "bob",
         "criteria": "Verify modPow(2,10,1000)=24, modPow(3,0,7)=1, modPow(7,256,13)=9. Also confirm exp=0 returns 1. If all pass emit PASS, else FAIL with the failing case."
       }
     ],
@@ -79,7 +79,7 @@
 
 **参数选择**：
 - 单 stage（implement → verify）— tollgate 最小有意义单元；门控即终点
-- `verifier != member`（`auditor` ≠ `coder`）— 满足「禁止自验证」硬约束
+- `verifier != member`（`bob` ≠ `alice`）— 满足「禁止自验证」硬约束
 - `max_gate_retries: 1` — 给 producer 一次 FAIL 后修正的机会（首次实现易漏 `exp=0` 边界）
 - `timeout_ms: 900000`（15 min）— 串行两跳，正常 8 min 完成，留余量
 
@@ -87,10 +87,10 @@
 
 ```
 T+0m    master 调用 team_tollgate
-T+0m    OCTeam dispatch stage-0 producer (coder, mathematician)
-T+0~5m  coder 写 modPow → 嵌入 ```typescript 块 + IMPL 标记 → idle
-T+5m    gate 触发：dispatch verifier (auditor, reviewer)，喂入 producer 输出 + criteria
-T+5~8m  auditor 跑三用例 → 输出 VERDICT 标记
+T+0m    OCTeam dispatch stage-0 producer (alice, mathematician)
+T+0~5m  alice 写 modPow → 嵌入 ```typescript 块 + IMPL 标记 → idle
+T+5m    gate 触发：dispatch verifier (bob, reviewer)，喂入 producer 输出 + criteria
+T+5~8m  bob 跑三用例 → 输出 VERDICT 标记
 T+8m    PASS → 流水线结束，结果交付 master
 T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 ```
@@ -101,7 +101,7 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 
 [`check-math-fast-pow.ts`](./check-math-fast-pow.ts)
 
-- **加载**：`runs/<run_id>/{coder,auditor}.md`
+- **加载**：`runs/<run_id>/{alice,bob}.md`
 - **提取**：
   - producer 代码：抓取 ` ```typescript ... ``` ` 代码块
   - verifier 判定：正则 `<!--\s*VERDICT:\s*(PASS|FAIL)\s*-->`
@@ -138,12 +138,12 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 {
   "members": [
     {
-      "name": "coder",
+      "name": "alice",
       "role": "simulator",
       "prompt": "You are a simulator. You implement numerical integrators in TypeScript and run them to report measured quantities. Embed runnable code in a ```typescript fenced block and always end with the requested numeric marker. Your output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
     },
     {
-      "name": "auditor",
+      "name": "bob",
       "role": "physicist",
       "prompt": "You are a physicist. You verify numerical results against physical conservation laws and known tolerances. Emit a verdict: PASS if the criterion holds, FAIL otherwise (with the measured value). Your output MUST end with a line exactly formatted: <!-- VERDICT: PASS --> (or <!-- VERDICT: FAIL -->)."
     }
@@ -162,9 +162,9 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
     "team_id": "verlet-energy-gate",
     "stages": [
       {
-        "member": "coder",
+        "member": "alice",
         "task": "Implement Velocity Verlet for the harmonic oscillator (omega=1, x0=1, v0=0). Run 1000 steps h=0.01. Embed the integrator code. Report the relative energy drift.",
-        "verifier": "auditor",
+        "verifier": "bob",
         "criteria": "Verify |E_end - E0|/E0 < 1e-3 (Verlet is symplectic). Compare the producer's reported drift to a recomputation if possible. If drift < 1e-3 emit PASS, else FAIL."
       }
     ],
@@ -182,10 +182,10 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 
 ```
 T+0m    master 调用 team_tollgate
-T+0m    dispatch producer (coder, simulator)
-T+0~5m  coder 写 Velocity Verlet → 跑 1000 步 → 报告 DRIFT 标记 → idle
-T+5m    gate 触发：dispatch verifier (auditor, physicist)
-T+5~8m  auditor 复算/核对漂移 < 1e-3 → 输出 VERDICT 标记
+T+0m    dispatch producer (alice, simulator)
+T+0~5m  alice 写 Velocity Verlet → 跑 1000 步 → 报告 DRIFT 标记 → idle
+T+5m    gate 触发：dispatch verifier (bob, physicist)
+T+5~8m  bob 复算/核对漂移 < 1e-3 → 输出 VERDICT 标记
 T+8m    PASS → 结果交付 master
 T+8m    运行: bun check-physics-verlet.ts <run_dir>
 ```
@@ -194,7 +194,7 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 
 [`check-physics-verlet.ts`](./check-physics-verlet.ts)
 
-- **加载**：`runs/<run_id>/{coder,auditor}.md`
+- **加载**：`runs/<run_id>/{alice,bob}.md`
 - **提取**：
   - producer 漂移：正则 `<!--\s*DRIFT:\s*([\d.eE+-]+)\s*-->`
   - verifier 判定：正则 `<!--\s*VERDICT:\s*(PASS|FAIL)\s*-->`
@@ -231,12 +231,12 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 {
   "members": [
     {
-      "name": "coder",
+      "name": "alice",
       "role": "coder",
       "prompt": "You are a coder. You implement functions in clean TypeScript with minimal code. Embed the full TypeScript in a single ```typescript fenced block and declare it with an IMPL marker. Your output MUST end with a line exactly formatted: <!-- IMPL: reverseStr -->"
     },
     {
-      "name": "auditor",
+      "name": "bob",
       "role": "tester",
       "prompt": "You are a tester. You verify implementations by running them against the gate's test cases, including edge cases. Emit a verdict: PASS if every case holds, FAIL otherwise (naming the failing case). Your output MUST end with a line exactly formatted: <!-- VERDICT: PASS --> (or <!-- VERDICT: FAIL -->)."
     }
@@ -255,9 +255,9 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
     "team_id": "reverse-str-gate",
     "stages": [
       {
-        "member": "coder",
+        "member": "alice",
         "task": "Implement `reverseStr(s: string): string` that reverses a string AND correctly handles Unicode surrogate pairs (e.g. emoji). Embed TypeScript code in a fenced block.",
-        "verifier": "auditor",
+        "verifier": "bob",
         "criteria": "Verify reverseStr('abc')='cba', reverseStr('')='', reverseStr('a🚀b')='b🚀a' (surrogate pair stays intact). Run these 3 cases. If all pass emit PASS, else FAIL."
       }
     ],
@@ -275,10 +275,10 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 
 ```
 T+0m    master 调用 team_tollgate
-T+0m    dispatch producer (coder)
-T+0~4m  coder 写 reverseStr → 嵌入代码 + IMPL 标记 → idle
-T+4m    gate 触发：dispatch verifier (auditor, tester)
-T+4~7m  auditor 跑三用例（含 emoji） → 输出 VERDICT 标记
+T+0m    dispatch producer (alice)
+T+0~4m  alice 写 reverseStr → 嵌入代码 + IMPL 标记 → idle
+T+4m    gate 触发：dispatch verifier (bob, tester)
+T+4~7m  bob 跑三用例（含 emoji） → 输出 VERDICT 标记
 T+7m    PASS → 结果交付 master
 T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 ```
@@ -287,7 +287,7 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 
 [`check-coding-reverse-str.ts`](./check-coding-reverse-str.ts)
 
-- **加载**：`runs/<run_id>/{coder,auditor}.md`
+- **加载**：`runs/<run_id>/{alice,bob}.md`
 - **提取**：
   - producer 代码：抓取 ` ```typescript ... ``` ` 代码块
   - verifier 判定：正则 `<!--\s*VERDICT:\s*(PASS|FAIL)\s*-->`
@@ -302,7 +302,7 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 
 - [ ] 3 个 check 脚本 `tsc -p docs/orchestration-scenarios/tsconfig.json` 通过（无类型错误）
 - [ ] 每个 team 配置 role 合法（`mathematician` / `reviewer` / `simulator` / `physicist` / `coder` / `tester` 均为预设）
-- [ ] 每个 stage 的 `verifier != member`（`auditor` ≠ `coder`，满足 tollgate 硬约束）
+- [ ] 每个 stage 的 `verifier != member`（`bob` ≠ `alice`，满足 tollgate 硬约束）
 - [ ] 每个 master 调用参数符合 `team_tollgate` schema（`stages[].{member,task,verifier,criteria}`）
 - [ ] 每场景总时长 ≤ 8 min（远低于 30 min 上限）
 - [ ] 成员 prompt 与评判脚本标记对齐：producer 发 `IMPL`/`DRIFT`，verifier 发 `VERDICT`

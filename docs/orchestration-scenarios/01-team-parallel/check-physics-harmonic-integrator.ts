@@ -6,7 +6,7 @@
  * explicit Euler, as theory predicts.
  *
  * Usage:  bun check-physics-harmonic-integrator.ts <run_dir>
- *   <run_dir>  directory containing euler.md, verlet.md, rk4.md
+ *   <run_dir>  directory containing alice.md, bob.md, carol.md
  *
  * Exit codes:  0 PASS  |  1 FAIL  |  2 usage / IO error
  */
@@ -14,7 +14,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const MEMBERS = ["euler", "verlet", "rk4"] as const;
+const MEMBERS = ["alice", "bob", "carol"] as const;
 const DRIFT_RE = /<!--\s*ENERGY_DRIFT:\s*([\d.eE+-]+)\s*-->/;
 
 // Explicit Euler on a harmonic oscillator with h=0.01, 1000 steps: energy
@@ -65,26 +65,26 @@ async function main(): Promise<void> {
     }
 
     const byMember = new Map(drifts.map(d => [d.member, d.value!]));
-    const euler = byMember.get("euler")!;
-    const verlet = byMember.get("verlet")!;
-    const rk4 = byMember.get("rk4")!;
+    const euler = byMember.get("alice")!;
+    const verlet = byMember.get("bob")!;
+    const rk4 = byMember.get("carol")!;
 
     // Assertion 2: explicit Euler shows visible drift.
     if (euler < EULER_MIN_DRIFT) {
-        fail(`euler drift ${euler.toExponential(3)} < expected minimum ${EULER_MIN_DRIFT.toExponential(0)} (would not demonstrate the pathology)`);
+        fail(`alice drift ${euler.toExponential(3)} < expected minimum ${EULER_MIN_DRIFT.toExponential(0)} (would not demonstrate the pathology)`);
     }
 
     // Assertion 3: symplectic Verlet drifts less than Euler.
     if (verlet >= euler) {
-        fail(`verlet drift ${verlet.toExponential(3)} >= euler drift ${euler.toExponential(3)} (symplectic advantage violated)`);
+        fail(`bob drift ${verlet.toExponential(3)} >= alice drift ${euler.toExponential(3)} (symplectic advantage violated)`);
     }
 
     // Assertion 4: RK4 (higher order) drifts less than Euler.
     if (rk4 >= euler) {
-        fail(`rk4 drift ${rk4.toExponential(3)} >= euler drift ${euler.toExponential(3)} (higher-order advantage violated)`);
+        fail(`carol drift ${rk4.toExponential(3)} >= alice drift ${euler.toExponential(3)} (higher-order advantage violated)`);
     }
 
-    console.log("PASS: euler shows drift; verlet & rk4 both beat euler.");
+    console.log("PASS: alice shows drift; bob & carol both beat alice.");
 }
 
 main();

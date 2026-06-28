@@ -1,14 +1,14 @@
 /**
- * Check script: Gaussian integral pipeline (simplify -> numerical -> error-bound).
+ * Check script: Gaussian integral pipeline (alice -> bob -> carol).
  *
- * Pipeline output is the FINAL stage's markdown (error-bound.md). This script
- * parses the absolute-error marker emitted by the error-bound stage and asserts
+ * Pipeline output is the FINAL stage's markdown (carol.md). This script
+ * parses the absolute-error marker emitted by the carol stage and asserts
  * it is below 1e-8. Gauss-Legendre quadrature with n=8 nodes is exact for
  * polynomials up to degree 15; e^(-x^2) on [0,1] is entire and its quadrature
  * error is far below 1e-8.
  *
  * Usage:  bun check-math-gaussian-integral.ts <run_dir>
- *   <run_dir>  directory containing error-bound.md
+ *   <run_dir>  directory containing carol.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -16,7 +16,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const FINAL_MEMBER = "error-bound";
+const FINAL_MEMBER = "carol";
 const ERROR_RE = /<!--\s*ERROR:\s*([\d.eE+-]+)\s*-->/;
 
 // Gauss-Legendre n=8 on [0,1] for e^(-x^2): error is ~1e-12 or smaller, so
@@ -24,7 +24,7 @@ const ERROR_RE = /<!--\s*ERROR:\s*([\d.eE+-]+)\s*-->/;
 // (e.g. wrong node count, wrong interval mapping, arithmetic slips).
 const MAX_ERROR = 1e-8;
 
-// Closed-form reference value supplied to the error-bound stage.
+// Closed-form reference value supplied to the carol stage.
 const REFERENCE = 0.7468241328;
 
 function fail(msg: string): never {

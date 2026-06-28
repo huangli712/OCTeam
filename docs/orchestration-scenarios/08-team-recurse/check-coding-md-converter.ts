@@ -9,8 +9,8 @@
  *
  * Usage:  bun check-coding-md-converter.ts <run_dir>
  *   <run_dir>  directory containing the per-member markdown outputs
- *              (expects block-parser.md as the decomposer, plus inline-parser.md
- *               and test-runner.md)
+ *              (expects alice.md as the decomposer, plus bob.md
+ *               and carol.md)
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -19,9 +19,9 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // Decomposer member (set in the team_create config above). The root aggregator.
-const DECOMPOSER = "block-parser";
+const DECOMPOSER = "alice";
 // Test member that reports the assembled-suite pass count.
-const TESTER = "test-runner";
+const TESTER = "carol";
 // Minimum passing cases: # / ## / ### headings (3) + bold (1) + inline code (1)
 // + unordered list (1) => at least 5 distinct feature cases must pass.
 const MIN_PASS_COUNT = 5;

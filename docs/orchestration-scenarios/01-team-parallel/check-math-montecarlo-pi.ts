@@ -6,7 +6,7 @@
  *
  * Usage:  bun check-math-montecarlo-pi.ts <run_dir>
  *   <run_dir>  directory containing the per-member markdown outputs
- *              (expects naive-mc.md, stratified-mc.md, buffon-needle.md)
+ *              (expects alice.md, bob.md, carol.md)
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -17,7 +17,7 @@ import { join } from "node:path";
 const PI = Math.PI;
 const ABS_TOLERANCE = 0.05; // 1e6 samples: all three methods should be within 0.05
 
-const MEMBERS = ["naive-mc", "stratified-mc", "buffon-needle"] as const;
+const MEMBERS = ["alice", "bob", "carol"] as const;
 const PI_EST_RE = /<!--\s*PI_EST:\s*([\d.]+)\s*-->/;
 
 interface Estimate {
@@ -72,10 +72,10 @@ async function main(): Promise<void> {
         }
     }
 
-    // Assertion 3: stratified sampling is at least as accurate as naive MC.
+    // Assertion 3: bob (stratified sampling) is at least as accurate as alice (naive MC).
     const byMember = new Map(estimates.map(e => [e.member, e.value!]));
-    const naiveErr = Math.abs(byMember.get("naive-mc")! - PI);
-    const stratErr = Math.abs(byMember.get("stratified-mc")! - PI);
+    const naiveErr = Math.abs(byMember.get("alice")! - PI);
+    const stratErr = Math.abs(byMember.get("bob")! - PI);
     if (stratErr > naiveErr) {
         fail(`stratified error ${stratErr.toExponential(3)} > naive error ${naiveErr.toExponential(3)} (variance reduction violated)`);
     }

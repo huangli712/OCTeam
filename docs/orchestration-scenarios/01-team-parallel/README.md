@@ -39,17 +39,17 @@
   "description": "Monte Carlo pi estimation: 3 methods compared at 1e6 samples",
   "members": [
     {
-      "name": "naive-mc",
+      "name": "alice",
       "role": "mathematician",
       "prompt": "Estimate pi via naive Monte Carlo: sample (x,y) uniformly in [0,1]^2, count fraction inside the unit circle (x^2+y^2<=1), pi ~ 4*count/N. Use EXACTLY 1,000,000 samples with fixed seed 42. Run the code, report the estimate, and give a one-line variance analysis. Your output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
     },
     {
-      "name": "stratified-mc",
+      "name": "bob",
       "role": "mathematician",
       "prompt": "Estimate pi via stratified sampling: divide [0,1]^2 into a 100x100 grid (10,000 strata), sample 100 points per stratum (total 1,000,000). For each stratum compute the in-circle fraction then average. Fixed seed 42. Report the estimate and explain in one line why stratification reduces variance. Your output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
     },
     {
-      "name": "buffon-needle",
+      "name": "carol",
       "role": "mathematician",
       "prompt": "Estimate pi via Buffon's needle: needle length L equals line spacing d; the crossing probability is 2/pi, so pi ~ 2*N_total/N_cross. Drop 1,000,000 needles with fixed seed 42. Report the estimate. Your output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
     }
@@ -68,9 +68,9 @@
     "team_id": "mc-pi-bench",
     "mode": "collaborative",
     "tasks": {
-      "naive-mc": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker.",
-      "stratified-mc": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker.",
-      "buffon-needle": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker."
+      "alice": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker.",
+      "bob": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker.",
+      "carol": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker."
     },
     "reduce_policy": "merge",
     "timeout_ms": 900000,
@@ -100,12 +100,12 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
 
 [`check-math-montecarlo-pi.ts`](./check-math-montecarlo-pi.ts)
 
-- **加载**：`runs/<run_id>/{naive-mc,stratified-mc,buffon-needle}.md`
+- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：正则 `<!-- PI_EST:\s*([\d.]+)\s*-->`
 - **断言**：
   1. 三个估算值都存在
   2. 每个值 `|est - π| < 0.05`
-  3. `stratified-mc` 的误差 ≤ `naive-mc` 的误差
+  3. `bob` 的误差 ≤ `alice` 的误差
 
 ---
 
@@ -122,7 +122,7 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
 - 显式 Euler 漂移显著（理论 > 0.01）
 - Velocity Verlet 漂移极小（< 1e-3，辛格式）
 - RK4 漂移 < Euler（高阶）
-- `verlet.drift < euler.drift` 且 `rk4.drift < euler.drift`
+- `bob.drift < alice.drift` 且 `carol.drift < alice.drift`
 
 ### 2.2 Team 配置
 
@@ -132,17 +132,17 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
   "description": "Harmonic oscillator: 3 integrators compared by energy drift over 1000 steps",
   "members": [
     {
-      "name": "euler",
+      "name": "alice",
       "role": "simulator",
       "prompt": "Simulate the harmonic oscillator d^2x/dt^2 = -x (omega=1) using EXPLICIT (forward) Euler for exactly 1000 steps with step h=0.01. Initial conditions x0=1, v0=0. Total energy E = 0.5*(x^2 + v^2) (initial E0 = 0.5). Report the relative energy drift |E_end - E0|/E0. Your output MUST end with a line exactly formatted: <!-- ENERGY_DRIFT: <numeric_drift> -->"
     },
     {
-      "name": "verlet",
+      "name": "bob",
       "role": "simulator",
       "prompt": "Simulate the harmonic oscillator d^2x/dt^2 = -x (omega=1) using VELOCITY VERLET for exactly 1000 steps with step h=0.01. Initial conditions x0=1, v0=0. Total energy E = 0.5*(x^2 + v^2) (initial E0 = 0.5). Report the relative energy drift |E_end - E0|/E0. Your output MUST end with a line exactly formatted: <!-- ENERGY_DRIFT: <numeric_drift> -->"
     },
     {
-      "name": "rk4",
+      "name": "carol",
       "role": "simulator",
       "prompt": "Simulate the harmonic oscillator d^2x/dt^2 = -x (omega=1) using CLASSICAL RK4 (on the first-order system [x,v]) for exactly 1000 steps with step h=0.01. Initial conditions x0=1, v0=0. Total energy E = 0.5*(x^2 + v^2) (initial E0 = 0.5). Report the relative energy drift |E_end - E0|/E0. Your output MUST end with a line exactly formatted: <!-- ENERGY_DRIFT: <numeric_drift> -->"
     }
@@ -161,20 +161,20 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
     "team_id": "oscillator-bench",
     "mode": "collaborative",
     "tasks": {
-      "euler": "Run your explicit Euler simulation now and report the energy drift marker.",
-      "verlet": "Run your Velocity Verlet simulation now and report the energy drift marker.",
-      "rk4": "Run your RK4 simulation now and report the energy drift marker."
+      "alice": "Run your explicit Euler simulation now and report the energy drift marker.",
+      "bob": "Run your Velocity Verlet simulation now and report the energy drift marker.",
+      "carol": "Run your RK4 simulation now and report the energy drift marker."
     },
     "reduce_policy": "select",
-    "reducer_member": "verlet",
+    "reducer_member": "bob",
     "timeout_ms": 900000
   }
 }
 ```
 
 **参数选择**：
-- `reduce_policy: select` — 让一个成员（verlet，辛格式代表）做综合评判，选出能量守恒最优
-- `reducer_member: verlet` — 指定 verlet 汇总（避免默认交给 master）
+- `reduce_policy: select` — 让一个成员（bob，辛格式代表）做综合评判，选出能量守恒最优
+- `reducer_member: bob` — 指定 bob 汇总（避免默认交给 master）
 
 ### 2.4 执行流程（时序）
 
@@ -182,8 +182,8 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
 T+0m    master 调用 team_parallel (collaborative)
 T+0m    3 个 simulator 成员并行 dispatch
 T+0~6m  各成员写积分器代码 → 跑 1000 步 → 报告 ENERGY_DRIFT
-T+6m    三成员 idle → reduce (select policy, reducer=verlet)
-T+7m    verlet 汇总对比，交付 master
+T+6m    三成员 idle → reduce (select policy, reducer=bob)
+T+7m    bob 汇总对比，交付 master
 T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 ```
 
@@ -191,13 +191,13 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 
 [`check-physics-harmonic-integrator.ts`](./check-physics-harmonic-integrator.ts)
 
-- **加载**：`runs/<run_id>/{euler,verlet,rk4}.md`
+- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：正则 `<!-- ENERGY_DRIFT:\s*([\d.eE+-]+)\s*-->`
 - **断言**：
   1. 三个漂移值都存在
-  2. `euler.drift > 1e-3`（显式 Euler 在 h=0.01/1000 步必有可见漂移）
-  3. `verlet.drift < euler.drift`（辛格式守恒优于显式）
-  4. `rk4.drift < euler.drift`（高阶方法优于低阶）
+  2. `alice.drift > 1e-3`（显式 Euler 在 h=0.01/1000 步必有可见漂移）
+  3. `bob.drift < alice.drift`（辛格式守恒优于显式）
+  4. `carol.drift < alice.drift`（高阶方法优于低阶）
 
 ---
 
@@ -212,27 +212,27 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 **成功标准**：
 - 每个成员输出含 `<!-- COMPLEXITY: <BigO> -->` 标注
 - 每个成员的代码通过 3 个预设测试用例
-- 复杂度标注正确（brute=O(n^2)、hash=O(n)、two-pointer=O(n log n)）
+- 复杂度标注正确（alice=O(n^2)、bob=O(n)、carol=O(n log n)）
 
 ### 3.2 Team 配置
 
 ```json
 {
   "name": "two-sum-bench",
-  "description": "Two-sum problem: 3 solutions (brute / hash / two-pointer) with complexity analysis",
+  "description": "Two-sum problem: 3 solutions (alice / bob / carol) with complexity analysis",
   "members": [
     {
-      "name": "brute",
+      "name": "alice",
       "role": "coder",
       "prompt": "Implement the Two Sum problem (return indices of the two numbers adding to target; exactly one solution exists) using the BRUTE-FORCE O(n^2) approach. Function signature: function twoSum(nums: number[], target: number): number[]. Embed the full TypeScript code in a ```typescript fenced block. Then declare the complexity. Your output MUST end with a line exactly formatted: <!-- COMPLEXITY: O(n^2) -->"
     },
     {
-      "name": "hash",
+      "name": "bob",
       "role": "coder",
       "prompt": "Implement the Two Sum problem (return indices of the two numbers adding to target; exactly one solution exists) using the HASH MAP O(n) approach. Function signature: function twoSum(nums: number[], target: number): number[]. Embed the full TypeScript code in a ```typescript fenced block. Then declare the complexity. Your output MUST end with a line exactly formatted: <!-- COMPLEXITY: O(n) -->"
     },
     {
-      "name": "two-pointer",
+      "name": "carol",
       "role": "coder",
       "prompt": "Implement Two Sum using SORT + TWO-POINTER O(n log n). NOTE: sort loses original indices, so you must keep (value, originalIndex) pairs. Function signature: function twoSum(nums: number[], target: number): number[]. Embed the full TypeScript code in a ```typescript fenced block. Then declare the complexity. Your output MUST end with a line exactly formatted: <!-- COMPLEXITY: O(n log n) -->"
     }
@@ -251,9 +251,9 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
     "team_id": "two-sum-bench",
     "mode": "collaborative",
     "tasks": {
-      "brute": "Implement your brute-force Two Sum now. Embed code + complexity marker.",
-      "hash": "Implement your hash-map Two Sum now. Embed code + complexity marker.",
-      "two-pointer": "Implement your sort+two-pointer Two Sum now. Embed code + complexity marker."
+      "alice": "Implement your brute-force Two Sum now. Embed code + complexity marker.",
+      "bob": "Implement your hash-map Two Sum now. Embed code + complexity marker.",
+      "carol": "Implement your sort+two-pointer Two Sum now. Embed code + complexity marker."
     },
     "reduce_policy": "rubric",
     "reduce_rubric": "Score each solution on: (a) correctness on the 3 test cases [nums=[2,7,11,15],target=9 -> [0,1]; nums=[3,2,4],target=6 -> [1,2]; nums=[3,3],target=6 -> [0,1]], (b) stated complexity matching actual complexity, (c) code clarity. Rank the three solutions.",
@@ -281,14 +281,14 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 
 [`check-coding-twosum.ts`](./check-coding-twosum.ts)
 
-- **加载**：`runs/<run_id>/{brute,hash,two-pointer}.md`
+- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：
   - 代码：抓取 ` ```typescript ... ``` ` 代码块
   - 复杂度：正则 `<!-- COMPLEXITY:\s*(O\([^)]+\))\s*-->`
 - **断言**：
   1. 三段代码都能用 `new Function` 加载为 `twoSum` 函数
   2. 每个函数在 3 个测试用例上返回正确下标
-  3. 复杂度标注匹配期望（brute=O(n^2)、hash=O(n)、two-pointer=O(n log n)）
+  3. 复杂度标注匹配期望（alice=O(n^2)、bob=O(n)、carol=O(n log n)）
 
 ---
 
@@ -317,7 +317,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 2. team_activate 激活（team_id = 上一步创建的团队名）
 3. 读 README「1.3 Master 启动调用」，按其中的 team_parallel JSON 启动编排
 4. team_results 轮询，等待编排完成、master 收到汇总
-5. 定位本次 run 的输出目录 <run_dir>（含 naive-mc.md / stratified-mc.md / buffon-needle.md）
+5. 定位本次 run 的输出目录 <run_dir>（含 alice.md / bob.md / carol.md）
 6. 运行评判：
    bun docs/orchestration-scenarios/01-team-parallel/check-math-montecarlo-pi.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
@@ -335,7 +335,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 2. team_activate 激活
 3. 读 README「2.3 Master 启动调用」，按 team_parallel JSON 启动编排
 4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>（含 euler.md / verlet.md / rk4.md）
+5. 定位 <run_dir>（含 alice.md / bob.md / carol.md）
 6. 运行：bun docs/orchestration-scenarios/01-team-parallel/check-physics-harmonic-integrator.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
@@ -352,9 +352,9 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 2. team_activate 激活
 3. 读 README「3.3 Master 启动调用」，按 team_parallel JSON 启动编排
 4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>（含 brute.md / hash.md / two-pointer.md）
+5. 定位 <run_dir>（含 alice.md / bob.md / carol.md）
 6. 运行：bun docs/orchestration-scenarios/01-team-parallel/check-coding-twosum.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
-成功标准：3 个测试用例（[2,7,11,15]/9、[3,2,4]/6、[3,3]/6）全通过；复杂度标注正确（brute=O(n²)、hash=O(n)、two-pointer=O(n log n)）。
+成功标准：3 个测试用例（[2,7,11,15]/9、[3,2,4]/6、[3,3]/6）全通过；复杂度标注正确（alice=O(n²)、bob=O(n)、carol=O(n log n)）。
 ```

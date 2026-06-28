@@ -5,7 +5,7 @@
  * 3 canonical test cases and (b) declares the expected time complexity.
  *
  * Usage:  bun check-coding-twosum.ts <run_dir>
- *   <run_dir>  directory containing brute.md, hash.md, two-pointer.md
+ *   <run_dir>  directory containing alice.md, bob.md, carol.md
  *
  * Exit codes:  0 PASS  |  1 FAIL  |  2 usage / IO error
  */
@@ -26,12 +26,12 @@ const TEST_CASES: TestCase[] = [
 ];
 
 const EXPECTED_COMPLEXITY: Record<string, string> = {
-    brute: "O(n^2)",
-    hash: "O(n)",
-    "two-pointer": "O(n log n)",
+    alice: "O(n^2)",
+    bob: "O(n)",
+    carol: "O(n log n)",
 };
 
-const MEMBERS = ["brute", "hash", "two-pointer"] as const;
+const MEMBERS = ["alice", "bob", "carol"] as const;
 const CODE_RE = /```typescript\s*\n([\s\S]*?)```/;
 const COMPLEXITY_RE = /<!--\s*COMPLEXITY:\s*(O\([^)]+\))\s*-->/;
 

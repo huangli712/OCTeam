@@ -1,13 +1,13 @@
 /**
- * Check script: small-angle pendulum pipeline (model -> integrate -> phase-portrait).
+ * Check script: small-angle pendulum pipeline (alice -> bob -> carol).
  *
- * Pipeline output is the FINAL stage's markdown (phase-portrait.md). This script
- * parses the max-deviation marker emitted by the phase-portrait stage and asserts
+ * Pipeline output is the FINAL stage's markdown (carol.md). This script
+ * parses the max-deviation marker emitted by the carol stage and asserts
  * it is below 1e-4. Classical RK4 with h=0.001 over one period accumulates
  * O(h^4) local error per step; the global max deviation is well under 1e-4.
  *
  * Usage:  bun check-physics-pendulum.ts <run_dir>
- *   <run_dir>  directory containing phase-portrait.md
+ *   <run_dir>  directory containing carol.md
  *
  * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
  */
@@ -15,7 +15,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const FINAL_MEMBER = "phase-portrait";
+const FINAL_MEMBER = "carol";
 const MAX_ERR_RE = /<!--\s*MAX_ERR:\s*([\d.eE+-]+)\s*-->/;
 
 // RK4 (4th order) with h=0.001 over one period (~2.0 s => ~2000 steps):
