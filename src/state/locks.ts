@@ -1,3 +1,4 @@
+import crypto from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 
@@ -140,16 +141,66 @@ async function releaseLock(lockPath: string): Promise<void> {
 }
 
 /**
- * Atomic write: content -> <path>.tmp.<pid> then fs.rename to <path>. Prevents
- * partial reads on crash. Ensures the parent directory exists.
+ * Atomic write: content -> <path>.tmp.<pid>.<rand> then fs.rename to <path>.
+ * Prevents partial reads on crash. Ensures the parent directory exists.
+ *
+ * Hardening:
+ * - st-tmpname: tmp name carries a random suffix so concurrent writes from
+ *   the same process (same pid) cannot collide on the same tmp path.
+ * - st-fsync: tmp data is fsync'd to disk before the rename lands, so an OS
+ *   crash after rename cannot leave a zero-byte or stale state file.
+ * - st-symlink: a symlink at the target path is refused, so a local attacker
+ *   with FS write access cannot silently redirect the write elsewhere.
  */
 export async function atomicWrite(filePath: string, content: string): Promise<void> {
     await fs.mkdir(path.dirname(filePath), { recursive: true }).catch(() => {
         // parent may already exist
     })
-    const tmp = `${filePath}.tmp.${process.pid}`
-    await fs.writeFile(tmp, content, "utf8")
-    await fs.rename(tmp, filePath)
+
+    // st-symlink: refuse to overwrite a symlink so the write cannot be
+    // redirected to an unexpected location. lstat does not follow links, so
+    // a symlink is reported as-is rather than its target.
+    try {
+        const stat = await fs.lstat(filePath)
+        if (stat.isSymbolicLink()) {
+            throw new Error(`atomicWrite: refusing to write through symlink: ${filePath}`)
+        }
+    } catch (err: unknown) {
+        const code = (err as NodeJS.ErrnoException).code
+        if (code !== "ENOENT") throw err
+        // Target does not exist yet — safe to proceed.
+    }
+
+    // st-tmpname: random suffix prevents same-process tmp collisions.
+    const rand = crypto.randomBytes(4).toString("hex")
+    const tmp = `${filePath}.tmp.${process.pid}.${rand}`
+
+    // st-fsync: open the tmp file explicitly so we can fsync its data before
+    // rename, guaranteeing the bytes are on disk when the rename lands. The
+    // tmp file is cleaned up on any write/fsync failure.
+    const fh = await fs.open(tmp, "w")
+    try {
+        await fh.writeFile(content, "utf8")
+        await fh.sync()
+    } catch (err) {
+        await fs.unlink(tmp).catch(() => {
+            // best-effort cleanup of a partial tmp file
+        })
+        throw err
+    } finally {
+        await fh.close().catch(() => {
+            // best-effort close even on failure
+        })
+    }
+
+    try {
+        await fs.rename(tmp, filePath)
+    } catch (err) {
+        await fs.unlink(tmp).catch(() => {
+            // best-effort cleanup of a leftover tmp file on rename failure
+        })
+        throw err
+    }
 }
 
 /**

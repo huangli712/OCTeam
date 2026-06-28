@@ -17,7 +17,7 @@ import { clearActiveTeam, indexMember, indexMasterTeam, isIndexedMember, resolve
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { clearWakeHint } from "../messaging/wake-hint.js"
 import { inboxPath } from "../state/paths.js"
-import { teamDir } from "../state/paths.js"
+import { teamDir, teamsDir } from "../state/paths.js"
 import { listAllTasks } from "../state/tasks.js"
 import { normalizeRole, roleAgent } from "../core/role-presets.js"
 import type { Bounds, MemberState, MemberSpec, TeamSpec } from "../core/types.js"
@@ -197,13 +197,23 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             // for user scope.
             const leadSessionId = ctx.scope === "project" ? context.sessionID : undefined
 
-            // Reject name collisions with any existing team in this scope. A
-            // same-named team shares the on-disk directory and would silently
-            // overwrite the prior team's config.json/state.json.
-            for (const other of await listTeamNames(ctx.storageRoot, leadSessionId)) {
-                if (other === args.name) {
+            // Atomically claim the team directory. mkdir with recursive:false is
+            // the OS-level atomic primitive: exactly one of N concurrent callers
+            // wins, the rest get EEXIST. This closes the TOCTOU window that a
+            // check-then-create sequence (listTeamNames here + writeTeamSpec
+            // below) would leave open — two processes could both observe "not
+            // exists" and then both create, the second silently overwriting the
+            // first's config.json/state.json. The parent teams/ dir is ensured
+            // first (recursive, idempotent); the team dir itself must NOT use
+            // recursive or the atomicity guarantee is lost.
+            await fs.mkdir(teamsDir(ctx.storageRoot, leadSessionId), { recursive: true })
+            try {
+                await fs.mkdir(teamDir(ctx.storageRoot, args.name, leadSessionId), { recursive: false })
+            } catch (err) {
+                if ((err as NodeJS.ErrnoException).code === "EEXIST") {
                     return `Error: team name "${args.name}" already exists in this ${ctx.scope} scope`
                 }
+                throw err
             }
 
             // Auto-assign agent + model for members that omitted them. The agent
