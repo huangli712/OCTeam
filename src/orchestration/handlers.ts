@@ -71,7 +71,6 @@ export {
     waitForBarrier,
 } from "./barriers.js"
 export {
-    parseDecision,
     parseRouteDecision,
     parseArbitrationDecision,
     parseVerdict,
@@ -182,7 +181,7 @@ export async function processIdle(
             // Find the start of the current turn (last user message).
             let turnStart = 0
             for (let i = messages.length - 1; i >= 0; i--) {
-                if ((messages[i] as any)?.info?.role === "user") {
+                if (messages[i]?.info?.role === "user") {
                     turnStart = i + 1
                     break
                 }
@@ -190,8 +189,8 @@ export async function processIdle(
             // Collect all assistant messages in the current turn.
             const outputs: string[] = []
             for (let i = turnStart; i < messages.length; i++) {
-                if ((messages[i] as any)?.info?.role === "assistant") {
-                    const text = extractOutputFromParts((messages[i] as any).parts)
+                if (messages[i]?.info?.role === "assistant") {
+                    const text = extractOutputFromParts(messages[i]?.parts)
                     if (text) outputs.push(text)
                 }
             }
