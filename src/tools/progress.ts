@@ -12,7 +12,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { resolveCallerInTeam } from "../core/utils.js"
+import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState } from "../state/store.js"
 import { listRunRecords, readRunEvents } from "../orchestration/runs.js"
 import { isSafePathSegment } from "../state/paths.js"

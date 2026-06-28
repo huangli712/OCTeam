@@ -13,7 +13,7 @@ import { logSwallowed } from "../core/log.js"
 import type { PluginContext } from "../core/context.js"
 import { clearActiveTask, deleteTeamStorage, initTeamState, invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec, type Team } from "../state/store.js"
 import { deliverSummaryToLeader } from "../orchestration/summary.js"
-import { clearActiveTeam, indexMember, indexMasterTeam, isIndexedMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../core/utils.js"
+import { clearActiveTeam, indexMember, indexMasterTeam, isIndexedMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../state/resolve.js"
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { clearWakeHint } from "../messaging/wake-hint.js"
 import { inboxPath } from "../state/paths.js"
@@ -555,7 +555,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             at.responses[args.new_name!] = at.responses[oldName]
                             delete at.responses[oldName]
                         }
-                        if (at.deciderMember === oldName) at.deciderMember = args.new_name!
+                        if (at.type === "loop" && at.deciderMember === oldName) at.deciderMember = args.new_name!
                         for (const s of at.stages) {
                             if (s.member === oldName) s.member = args.new_name!
                         }

@@ -2,12 +2,12 @@
  * Workflow tools: team_parallel, team_consensus, team_pipeline, team_loop,
  * team_delegate, team_route, team_arbitrate, team_recurse, team_tollgate.
  *
- * ALL NINE follow the SAME three-phase lock order (team_resume follows the
- * same Phase 2 contract too — see resume.ts):
+ * ALL NINE share the same three-phase lock order via startOrchestration
+ * (team_resume follows the same Phase 2 contract too — see resume.ts):
  *   1. Pre-checks UNDER team.mutex (reject if already orchestrating; validate)
  *   2. ensureMembersReady OUTSIDE the mutex (the role-setup barrier needs the
- *      event handler to flip member.initialized, which it does inside the mutex
- *      — holding it here would deadlock)
+ *      event handler to flip member.initialized, which it does inside the
+ *      mutex — holding it here would deadlock)
  *   3. Commit activeTask + dispatch the first stage UNDER the mutex
  *
  * Between phases 1 and 3 there is a brief window, but activeTask is not yet
@@ -15,18 +15,19 @@
  * (barrier) / Step 6 (no active task → return).
  *
  * INVARIANT: never call ensureMembersReady inside team.mutex.runExclusive — it
- * will deadlock the role-setup barrier. Every new workflow tool MUST follow
- * this three-phase order; there is no compiler enforcement, only this comment
- * and the shared Phase 1/2/3 structure.
+ * will deadlock the role-setup barrier. This is enforced structurally by
+ * startOrchestration; the per-tool callbacks (validate/buildTask/dispatch)
+ * cannot violate it.
  */
 
-import { tool, type ToolDefinition } from "@opencode-ai/plugin"
+import { tool, type ToolContext, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { ensureMembersReady, advanceToStage, dispatchToMember } from "../orchestration/dispatch.js"
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
-import { activationError, resolveCallerInTeam } from "../core/utils.js"
+import { activationError } from "../core/utils.js"
+import { resolveCallerInTeam } from "../state/resolve.js"
 import type { ActiveTask, GatedStage, ReducePolicy, RouteBranch, SignoffPolicy, Stage } from "../core/types.js"
 import { advanceToGatedStage, buildDebatePrompt, buildRecursePrompt } from "../orchestration/handlers.js"
 
@@ -72,6 +73,99 @@ function effectiveTimeoutMs(
     const requested = requestedMs ?? defaultMs
     const cap = maxWallClockMinutes > 0 ? maxWallClockMinutes * 60_000 : Infinity
     return Math.min(requested, cap)
+}
+
+/**
+ * Shared three-phase orchestration startup (wf-004). All nine workflow tools
+ * follow the same spine — the per-tool boilerplate has been collapsed into
+ * this helper. Phases:
+ *   1. master-only auth (resolveCallerInTeam + isMaster), auth-first (wf-009)
+ *   2. loadTeamState + activationError gate
+ *   3. tool-specific validation (validate callback)
+ *   4. Phase 1: busy pre-check under mutex
+ *   5. Phase 2: ensureMembersReady OUTSIDE mutex (the role-setup barrier needs
+ *      the event handler to flip member.initialized, which runs inside the
+ *      mutex — holding it here would deadlock)
+ *   6. Phase 3: commit activeTask + initial dispatch UNDER mutex
+ *   7. success message
+ *
+ * Tool-specific concerns are supplied via callbacks:
+ *   - validate(team): input checks needing team state (member existence,
+ *     mode/task consistency, etc.). Return an error string to bail, or null.
+ *   - buildTask(team): construct the type-specific ActiveTask. May perform
+ *     pre-commit side effects (delegate creates tasks, recurse creates the
+ *     root task). Return { error } to bail before any commit (delegate's
+ *     task-cap check), or the ActiveTask to commit.
+ *   - dispatch(team, task): initial member dispatch(es) after activeTask is
+ *     committed and per-member flags reset.
+ *   - successMessage(): success string (may close over variables set inside
+ *     buildTask, e.g. recurse's rootTaskId).
+ */
+async function startOrchestration(
+    teamId: string,
+    context: ToolContext,
+    ctx: PluginContext,
+    toolName: string,
+    validate: (team: Team) => string | null,
+    buildTask: (team: Team) => Promise<ActiveTask | { error: string }>,
+    dispatch: (team: Team, task: ActiveTask) => Promise<void>,
+    successMessage: () => string,
+): Promise<string> {
+    // Step 1: master-only auth. Auth-first (wf-009): runs before any parameter
+    // validation so a non-master caller never learns whether its arguments
+    // were well-formed.
+    const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, teamId)
+    if (!caller?.isMaster) {
+        return `Error: ${toolName} is master-only`
+    }
+
+    // Step 2: load + activation gate. The master may only orchestrate the
+    // active team.
+    const team = await loadTeamState(ctx.storageRoot, teamId, caller.leadSessionId)
+    const gate = activationError(team.teamName, team.activatedAt)
+    if (gate) return gate
+
+    // Step 3: tool-specific validation.
+    const validationError = validate(team)
+    if (validationError) return validationError
+
+    // Step 4: Phase 1 — busy pre-check under mutex.
+    let busy = false
+    await team.mutex.runExclusive(async () => {
+        if (team.activeTask) busy = true
+    })
+    if (busy) return "Error: team already has an active orchestration"
+    let raced = false
+    let buildError: string | undefined
+
+    // Step 5: Phase 2 — spawn + role-setup barrier (OUTSIDE mutex).
+    await ensureMembersReady(ctx, team)
+
+    // Step 6: Phase 3 — commit activeTask + initial dispatch (UNDER mutex).
+    await team.mutex.runExclusive(async () => {
+        if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
+        const built = await buildTask(team)
+        if ("error" in built) {
+            buildError = built.error
+            return
+        }
+        team.status = "busy"
+        team.activeTask = built
+        await saveTeamState(team)
+        // Reset per-member done/retry flags for the new run so a previous
+        // run's acks don't bleed in. declaredDone only matters when
+        // requireDoneAck is true, but cheap to always reset.
+        for (const m of team.members) {
+            m.declaredDone = false
+            m.retryCount = 0
+        }
+        await dispatch(team, built)
+    })
+    if (raced) return "Error: team already has an active orchestration"
+    if (buildError) return buildError
+
+    // Step 7: success.
+    return successMessage()
 }
 
 
@@ -126,82 +220,49 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .describe("when true, the all-idle barrier is replaced by an all-acked barrier. Members must call team_done() to signal completion; members that go idle without acking receive an automatic re-prompt. Prevents premature barrier when a member idles waiting for a dependency. Default false (backward compatible)."),
         },
         async execute(args, context) {
-            // Workflow tools are master-only: only the team's leader session may
-            // start an orchestration. Auth-first (wf-009): the master-only gate
-            // runs before any parameter validation so a non-master caller never
-            // learns whether its arguments were well-formed.
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-            if (!caller?.isMaster) {
-                return "Error: team_parallel is master-only"
-            }
-
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
-
-            // Single-active interaction gate: the master may only orchestrate the
-            // active team.
-            const gate = activationError(team.teamName, team.activatedAt)
-            if (gate) return gate
-
-            // Validate mode-specific fields.
-            if (args.mode === "isolated" && !args.task) {
-                return "Error: isolated mode requires `task`"
-            }
-            if (args.mode === "collaborative" && !args.tasks) {
-                return "Error: collaborative mode requires `tasks`"
-            }
-
-            // wf-010: every key in the collaborative `tasks` map must name a real
-            // non-master member. An unknown key is a typo whose task would never
-            // be dispatched, so reject it instead of silently ignoring it.
-            if (args.mode === "collaborative" && args.tasks) {
-                for (const name of Object.keys(args.tasks)) {
-                    if (!team.members.some(m => m.name === name && !m.isMaster)) {
-                        return `Error: unknown member "${name}" in tasks`
+            return startOrchestration(
+                args.team_id, context, ctx, "team_parallel",
+                // validate
+                (team) => {
+                    if (args.mode === "isolated" && !args.task) {
+                        return "Error: isolated mode requires `task`"
                     }
-                }
-            }
-
-            // wf-007: reduce_policy 'rubric' scores outputs against reduce_rubric,
-            // so the rubric text must be present; otherwise the reduce stage has
-            // no criteria to apply.
-            if (args.reduce_policy === "rubric" && !args.reduce_rubric) {
-                return "Error: reduce_policy 'rubric' requires reduce_rubric (the scoring rubric)"
-            }
-
-            // Validate signoff_decider is a real member (prevents a runtime stall
-            // in the signoff phase when the named decider doesn't exist).
-            if (args.signoff_policy === "decider") {
-                if (!args.signoff_decider) {
-                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                }
-                const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                if (err) return err
-            }
-
-            // Validate reducer_member is a real member (a real reduce stage is
-            // dispatched to it; an unknown name would silently fall back to legacy
-            // delivery, so reject it explicitly).
-            if (args.reduce_policy && args.reduce_policy !== "summarize" && args.reducer_member) {
-                const err = assertMember(team, args.reducer_member, "reducer_member")
-                if (err) return err
-            }
-
-            // Phase 1: pre-check under mutex.
-            let busy = false
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) busy = true
-            })
-            if (busy) return "Error: team already has an active orchestration"
-            let raced = false
-
-            // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
-            await ensureMembersReady(ctx, team)
-
-            // Phase 3: commit activeTask + initial dispatch (UNDER mutex).
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
-                team.status = "busy"
-                team.activeTask = {
+                    if (args.mode === "collaborative" && !args.tasks) {
+                        return "Error: collaborative mode requires `tasks`"
+                    }
+                    // wf-010: every key in the collaborative `tasks` map must
+                    // name a real non-master member. An unknown key is a typo
+                    // whose task would never be dispatched, so reject it
+                    // instead of silently ignoring it.
+                    if (args.mode === "collaborative" && args.tasks) {
+                        for (const name of Object.keys(args.tasks)) {
+                            if (!team.members.some(m => m.name === name && !m.isMaster)) {
+                                return `Error: unknown member "${name}" in tasks`
+                            }
+                        }
+                    }
+                    // wf-007: reduce_policy 'rubric' scores outputs against
+                    // reduce_rubric, so the rubric text must be present.
+                    if (args.reduce_policy === "rubric" && !args.reduce_rubric) {
+                        return "Error: reduce_policy 'rubric' requires reduce_rubric (the scoring rubric)"
+                    }
+                    // Validate signoff_decider is a real member.
+                    if (args.signoff_policy === "decider") {
+                        if (!args.signoff_decider) {
+                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                        }
+                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                        if (err) return err
+                    }
+                    // Validate reducer_member is a real member.
+                    if (args.reduce_policy && args.reduce_policy !== "summarize" && args.reducer_member) {
+                        const err = assertMember(team, args.reducer_member, "reducer_member")
+                        if (err) return err
+                    }
+                    return null
+                },
+                // buildTask
+                async (team) => ({
                     type: "parallel",
                     runId: crypto.randomUUID(),
                     mode: args.mode,
@@ -227,27 +288,20 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     requireDoneAck: args.require_done_ack === true,
                     maxErroredMembers: args.max_errored_members,
                     maxRetries: args.max_retries,
-                }
-                // Reset per-member done flag for the new run so a previous run's
-                // acks don't bleed in. Only relevant when requireDoneAck is true,
-                // but cheap to always reset.
-                for (const m of team.members) {
-                    m.declaredDone = false
-                    m.retryCount = 0
-                }
-                await saveTeamState(team)
-
-                // Initial dispatch.
-                const participants = team.members.filter(m => !m.isMaster)
-                for (const m of participants) {
-                    const text = args.mode === "isolated"
-                        ? args.task!
-                        : (args.tasks![m.name] ?? `No task assigned for ${m.name}.`)
-                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
-                }
-            })
-            if (raced) return "Error: team already has an active orchestration"
-            return `team_parallel (${args.mode}) started on "${args.team_id}".`
+                }),
+                // dispatch
+                async (team) => {
+                    const participants = team.members.filter(m => !m.isMaster)
+                    for (const m of participants) {
+                        const text = args.mode === "isolated"
+                            ? args.task!
+                            : (args.tasks![m.name] ?? `No task assigned for ${m.name}.`)
+                        await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
+                    }
+                },
+                // successMessage
+                () => `team_parallel (${args.mode}) started on "${args.team_id}".`,
+            )
         },
     })
 }
@@ -267,44 +321,21 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            // Workflow tools are master-only: only the team's leader session may
-            // start an orchestration.
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-            if (!caller?.isMaster) {
-                return "Error: team_consensus is master-only"
-            }
-
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
-
-            // Single-active interaction gate: the master may only orchestrate the
-            // active team.
-            const gate = activationError(team.teamName, team.activatedAt)
-            if (gate) return gate
-
-            // wf-016: a consensus needs at least two participants to be
-            // meaningful — a single member trivially "agrees" with itself. Reject
-            // a team with fewer than two non-master members.
-            const consensusParticipants = team.members.filter(m => !m.isMaster)
-            if (consensusParticipants.length < 2) {
-                return "Error: team_consensus requires at least 2 non-master members"
-            }
-
-            // Phase 1: pre-check under mutex.
-            let busy = false
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) busy = true
-            })
-            if (busy) return "Error: team already has an active orchestration"
-            let raced = false
-
-            // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
-            await ensureMembersReady(ctx, team)
-
-            // Phase 3: commit activeTask + initial dispatch (UNDER mutex).
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
-                team.status = "busy"
-                team.activeTask = {
+            return startOrchestration(
+                args.team_id, context, ctx, "team_consensus",
+                // validate
+                (team) => {
+                    // wf-016: a consensus needs at least two participants to be
+                    // meaningful — a single member trivially "agrees" with
+                    // itself.
+                    const consensusParticipants = team.members.filter(m => !m.isMaster)
+                    if (consensusParticipants.length < 2) {
+                        return "Error: team_consensus requires at least 2 non-master members"
+                    }
+                    return null
+                },
+                // buildTask
+                async (team) => ({
                     type: "consensus",
                     runId: crypto.randomUUID(),
                     startedAt: Date.now(),
@@ -319,29 +350,25 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                     decisionHistory: [],
                     decisionParseFailures: 0,
                     topic: args.topic,
-                    // Needs a round cap; default to DEFAULT_CONSENSUS_ROUNDS when
-                    // omitted, else `currentRound >= (maxRounds ?? 0)` aborts after
-                    // round 1.
+                    // Needs a round cap; default to DEFAULT_CONSENSUS_ROUNDS
+                    // when omitted, else `currentRound >= (maxRounds ?? 0)`
+                    // aborts after round 1.
                     maxRounds: args.max_rounds ?? DEFAULT_CONSENSUS_ROUNDS,
                     currentRound: 1,
                     signoffPolicy: DEFAULT_SIGNOFF_POLICY,
                     maxRetries: args.max_retries,
-                }
-                await saveTeamState(team)
-                for (const m of team.members) {
-                    m.declaredDone = false
-                    m.retryCount = 0
-                }
-
-                // Initial dispatch: round 1 to every participant.
-                const participants = team.members.filter(m => !m.isMaster)
-                for (const m of participants) {
-                    const text = `[Consensus topic] ${args.topic}\n\nRound ${team.activeTask.currentRound}. State your position. End with <consensus>{"agreed": true|false}</consensus> (or the Chinese <共识>{"agreed": ...}</共识>).`
-                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
-                }
-            })
-            if (raced) return "Error: team already has an active orchestration"
-            return `team_consensus started on "${args.team_id}".`
+                }),
+                // dispatch: round 1 to every participant.
+                async (team, task) => {
+                    const participants = team.members.filter(m => !m.isMaster)
+                    for (const m of participants) {
+                        const text = `[Consensus topic] ${args.topic}\n\nRound ${task.currentRound}. State your position. End with <consensus>{"agreed": true|false}</consensus> (or the Chinese <共识>{"agreed": ...}</共识>).`
+                        await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
+                    }
+                },
+                // successMessage
+                () => `team_consensus started on "${args.team_id}".`,
+            )
         },
     })
 }
@@ -381,89 +408,65 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            // Workflow tools are master-only. Auth-first (wf-009): the
-            // master-only gate runs before any parameter validation.
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-            if (!caller?.isMaster) {
-                return "Error: team_pipeline is master-only"
-            }
-
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
-
-            // Single-active interaction gate: the master may only orchestrate the
-            // active team.
-            const gate = activationError(team.teamName, team.activatedAt)
-            if (gate) return gate
-
-            const stageMembers = args.stages.map(s => s.member)
-            if (new Set(stageMembers).size !== stageMembers.length) {
-                return "Error: pipeline stages must have unique member names"
-            }
-
-            // Validate signoff_decider is a real member (prevents a runtime stall
-            // in the signoff phase when the named decider doesn't exist).
-            if (args.signoff_policy === "decider") {
-                if (!args.signoff_decider) {
-                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                }
-                const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                if (err) return err
-            }
-
-            // Validate members exist.
-            for (const name of stageMembers) {
-                if (!team.members.some(m => m.name === name)) {
-                    return `Error: unknown member "${name}" in stages`
-                }
-            }
-
-            let busy = false
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) busy = true
-            })
-            if (busy) return "Error: team already has an active orchestration"
-            let raced = false
-
-            await ensureMembersReady(ctx, team)
-
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
-                team.status = "busy"
-                const stages: Stage[] = args.stages.map(s => ({
-                    member: s.member,
-                    task: s.task,
-                    completed: false,
-                }))
-                team.activeTask = {
-                    type: "pipeline",
-                    runId: crypto.randomUUID(),
-                    startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                    tokenBudget: args.token_budget,
-                    tokensUsed: 0,
-                    tokensByMember: {},
-                    messagesSent: 0,
-                    responses: {},
-                    stages,
-                    currentStageIndex: 0,
-                    decisionHistory: [],
-                    decisionParseFailures: 0,
-                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                    signoffDecider: args.signoff_decider,
-                    signoffQuorum: args.signoff_quorum,
-                    maxRetries: args.max_retries,
-                }
-                await saveTeamState(team)
-                for (const m of team.members) {
-                    m.declaredDone = false
-                    m.retryCount = 0
-                }
-                // Dispatch stage 0.
-                const first = team.members.find(m => m.name === stages[0].member)!
-                await dispatchToMember(ctx, first, stages[0].task, first.worktreePath ?? ctx.directory, team)
-            })
-            if (raced) return "Error: team already has an active orchestration"
-            return `team_pipeline started on "${args.team_id}" with ${args.stages.length} stage(s).`
+            return startOrchestration(
+                args.team_id, context, ctx, "team_pipeline",
+                // validate
+                (team) => {
+                    const stageMembers = args.stages.map(s => s.member)
+                    if (new Set(stageMembers).size !== stageMembers.length) {
+                        return "Error: pipeline stages must have unique member names"
+                    }
+                    // Validate signoff_decider is a real member.
+                    if (args.signoff_policy === "decider") {
+                        if (!args.signoff_decider) {
+                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                        }
+                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                        if (err) return err
+                    }
+                    // Validate members exist.
+                    for (const name of stageMembers) {
+                        if (!team.members.some(m => m.name === name)) {
+                            return `Error: unknown member "${name}" in stages`
+                        }
+                    }
+                    return null
+                },
+                // buildTask
+                async (team) => {
+                    const stages: Stage[] = args.stages.map(s => ({
+                        member: s.member,
+                        task: s.task,
+                        completed: false,
+                    }))
+                    return {
+                        type: "pipeline",
+                        runId: crypto.randomUUID(),
+                        startedAt: Date.now(),
+                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
+                        tokenBudget: args.token_budget,
+                        tokensUsed: 0,
+                        tokensByMember: {},
+                        messagesSent: 0,
+                        responses: {},
+                        stages,
+                        currentStageIndex: 0,
+                        decisionHistory: [],
+                        decisionParseFailures: 0,
+                        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
+                        signoffDecider: args.signoff_decider,
+                        signoffQuorum: args.signoff_quorum,
+                        maxRetries: args.max_retries,
+                    }
+                },
+                // dispatch: stage 0.
+                async (team, task) => {
+                    const first = team.members.find(m => m.name === task.stages[0].member)!
+                    await dispatchToMember(ctx, first, task.stages[0].task, first.worktreePath ?? ctx.directory, team)
+                },
+                // successMessage
+                () => `team_pipeline started on "${args.team_id}" with ${args.stages.length} stage(s).`,
+            )
         },
     })
 }
@@ -493,92 +496,71 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            // Workflow tools are master-only. Auth-first (wf-009): the
-            // master-only gate runs before any parameter validation.
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-            if (!caller?.isMaster) {
-                return "Error: team_loop is master-only"
-            }
-
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
-
-            // Single-active interaction gate: the master may only orchestrate the
-            // active team.
-            const gate = activationError(team.teamName, team.activatedAt)
-            if (gate) return gate
-
-            if (args.decider === "master") {
-                return "Error: decider must be a member name, not \"master\""
-            }
-            const deciderErr = assertMember(team, args.decider, "decider")
-            if (deciderErr) return deciderErr
-            const stageMembers = args.stages.map(s => s.member)
-            if (new Set(stageMembers).size !== stageMembers.length) {
-                return "Error: loop stages must have unique member names"
-            }
-            for (const name of stageMembers) {
-                if (!team.members.some(m => m.name === name)) {
-                    return `Error: unknown member "${name}" in stages`
-                }
-            }
-
-            let busy = false
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) busy = true
-            })
-            if (busy) return "Error: team already has an active orchestration"
-            let raced = false
-
-            await ensureMembersReady(ctx, team)
-
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
-                team.status = "busy"
-                // Append decider as a final read-only stage if not already present.
-                let stages: Stage[] = args.stages.map(s => ({
-                    member: s.member,
-                    task: s.task,
-                    action: s.action,
-                    completed: false,
-                }))
-                if (!stages.some(s => s.member === args.decider)) {
-                    stages.push({
-                        member: args.decider,
-                        task: 'Review all outputs, then emit a <decision> block with JSON body. The tags must be the literal English <decision> and </decision> — do NOT use translated tags such as <决策>. Required JSON fields: "decision" (string, literally "done" or "continue" — not boolean), "rationale" (string), "nextActions" (string[]). Example: <decision>{"decision":"done","rationale":"checks passed","nextActions":[]}</decision>',
-                        action: "read_only",
+            return startOrchestration(
+                args.team_id, context, ctx, "team_loop",
+                // validate
+                (team) => {
+                    if (args.decider === "master") {
+                        return "Error: decider must be a member name, not \"master\""
+                    }
+                    const deciderErr = assertMember(team, args.decider, "decider")
+                    if (deciderErr) return deciderErr
+                    const stageMembers = args.stages.map(s => s.member)
+                    if (new Set(stageMembers).size !== stageMembers.length) {
+                        return "Error: loop stages must have unique member names"
+                    }
+                    for (const name of stageMembers) {
+                        if (!team.members.some(m => m.name === name)) {
+                            return `Error: unknown member "${name}" in stages`
+                        }
+                    }
+                    return null
+                },
+                // buildTask (append decider as a final read-only stage if not
+                // already present).
+                async (team) => {
+                    const stages: Stage[] = args.stages.map(s => ({
+                        member: s.member,
+                        task: s.task,
+                        action: s.action,
                         completed: false,
-                    })
-                }
-                team.activeTask = {
-                    type: "loop",
-                    runId: crypto.randomUUID(),
-                    startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_LOOP_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                    tokenBudget: args.token_budget,
-                    tokensUsed: 0,
-                    tokensByMember: {},
-                    messagesSent: 0,
-                    responses: {},
-                    stages,
-                    currentStageIndex: 0,
-                    deciderMember: args.decider,
-                    decisionHistory: [],
-                    decisionParseFailures: 0,
-                    currentRound: 1,
-                    maxRounds: args.max_rounds,
-                    maxRetries: args.max_retries,
-                }
-                await saveTeamState(team)
-                for (const m of team.members) {
-                    m.declaredDone = false
-                    m.retryCount = 0
-                }
-                // Dispatch first stage with the initial task.
-                const first = team.members.find(m => m.name === stages[0].member)!
-                await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? ctx.directory, team)
-            })
-            if (raced) return "Error: team already has an active orchestration"
-            return `team_loop started on "${args.team_id}" (decider: ${args.decider}, max ${args.max_rounds} rounds).`
+                    }))
+                    if (!stages.some(s => s.member === args.decider)) {
+                        stages.push({
+                            member: args.decider,
+                            task: 'Review all outputs, then emit a <decision> block with JSON body. The tags must be the literal English <decision> and </decision> — do NOT use translated tags such as <决策>. Required JSON fields: "decision" (string, literally "done" or "continue" — not boolean), "rationale" (string), "nextActions" (string[]). Example: <decision>{"decision":"done","rationale":"checks passed","nextActions":[]}</decision>',
+                            action: "read_only",
+                            completed: false,
+                        })
+                    }
+                    return {
+                        type: "loop",
+                        runId: crypto.randomUUID(),
+                        startedAt: Date.now(),
+                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_LOOP_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
+                        tokenBudget: args.token_budget,
+                        tokensUsed: 0,
+                        tokensByMember: {},
+                        messagesSent: 0,
+                        responses: {},
+                        stages,
+                        currentStageIndex: 0,
+                        deciderMember: args.decider,
+                        decisionHistory: [],
+                        decisionParseFailures: 0,
+                        currentRound: 1,
+                        maxRounds: args.max_rounds,
+                        maxRetries: args.max_retries,
+                    }
+                },
+                // dispatch: first stage with the initial task.
+                async (team, task) => {
+                    const first = team.members.find(m => m.name === task.stages[0].member)!
+                    await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? ctx.directory, team)
+                },
+                // successMessage
+                () => `team_loop started on "${args.team_id}" (decider: ${args.decider}, max ${args.max_rounds} rounds).`,
+            )
         },
     })
 }
@@ -673,151 +655,118 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            // Workflow tools are master-only.
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-            if (!caller?.isMaster) {
-                return "Error: team_delegate is master-only"
-            }
-
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
-
-            // Single-active interaction gate: the master may only orchestrate the
-            // active team.
-            const gate = activationError(team.teamName, team.activatedAt)
-            if (gate) return gate
-
-            // Pre-validate blockedBy refs against declared refs (before activeTask
-            // is set) so an invalid ref cannot leave the team in a dirty state.
-            const declaredRefs = new Set(args.tasks.filter(t => t.ref).map(t => t.ref!))
-            for (const t of args.tasks) {
-                if (!t.blocked_by) continue
-                for (const dep of t.blocked_by) {
-                    if (!declaredRefs.has(dep)) {
-                        return `Error: unknown blockedBy ref "${dep}"`
+            return startOrchestration(
+                args.team_id, context, ctx, "team_delegate",
+                // validate
+                (team) => {
+                    // Pre-validate blockedBy refs against declared refs (before
+                    // activeTask is set) so an invalid ref cannot leave the
+                    // team in a dirty state.
+                    const declaredRefs = new Set(args.tasks.filter(t => t.ref).map(t => t.ref!))
+                    for (const t of args.tasks) {
+                        if (!t.blocked_by) continue
+                        for (const dep of t.blocked_by) {
+                            if (!declaredRefs.has(dep)) {
+                                return `Error: unknown blockedBy ref "${dep}"`
+                            }
+                        }
                     }
-                }
-            }
-
-            // wf-006: reject blocked_by cycles. The ref-existence check above only
-            // proves each dependency target exists; a cycle (A blocked_by B, B
-            // blocked_by A) still passes it but leaves every task in the cycle
-            // permanently unclaimable until the wall-clock deadlock backstop fires.
-            // Catch it here with a precise error instead.
-            const cycle = detectBlockedByCycle(args.tasks)
-            if (cycle) {
-                return `Error: blocked_by cycle detected: ${cycle.join(" -> ")}`
-            }
-
-            // Validate signoff_decider is a real member.
-            if (args.signoff_policy === "decider") {
-                if (!args.signoff_decider) {
-                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                }
-                const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                if (err) return err
-            }
-
-            let busy = false
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) busy = true
-            })
-            if (busy) return "Error: team already has an active orchestration"
-            let raced = false
-
-            await ensureMembersReady(ctx, team)
-
-            let capError: string | undefined
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
-
-                // wf-002: enforce the team's live-task ceiling BEFORE creating any
-                // task. delegate bypasses team_task_create (which enforces this) and
-                // calls createTask directly, so without this a single call could
-                // flood the shared tasklist past bounds.maxTasks (resource DoS).
-                // Counting + creating both run under the mutex so the count cannot
-                // be raced by a concurrent create.
-                const liveTaskCount = (await listAllTasks(team.directory)).filter(
-                    t => t.status !== "deleted",
-                ).length
-                if (liveTaskCount + args.tasks.length > team.bounds.maxTasks) {
-                    capError = `Error: team task limit reached (${team.bounds.maxTasks}). ${liveTaskCount} live task(s) exist; cannot add ${args.tasks.length} more.`
-                    return
-                }
-
-                // wf-003: create every task BEFORE committing activeTask/status, so
-                // a mid-loop failure (disk full, lock error) leaves the team idle
-                // rather than wedged in "busy" with an unpersisted activeTask. This
-                // restores parity with the other workflow tools, whose only
-                // throwable step after committing activeTask is saveTeamState.
-                //
-                // Create all tasks, building ref -> uuid and index -> uuid maps,
-                // then resolve blockedBy. The index map keys every task by its
-                // position so blocked_by is applied even to tasks without their
-                // own ref (a ref is only needed to be a dependency *target*, not
-                // to *have* dependencies).
-                const refToUuid = new Map<string, string>()
-                const indexToUuid = new Map<number, string>()
-                for (let i = 0; i < args.tasks.length; i++) {
-                    const t = args.tasks[i]
-                    const created = await createTask(team.directory, {
-                        subject: t.subject,
-                        description: t.description,
-                    })
-                    indexToUuid.set(i, created.id)
-                    if (t.ref) refToUuid.set(t.ref, created.id)
-                }
-                for (let i = 0; i < args.tasks.length; i++) {
-                    const t = args.tasks[i]
-                    const uuid = indexToUuid.get(i)
-                    if (!uuid) continue
-                    const blockedBy = (t.blocked_by ?? [])
-                        .map(r => refToUuid.get(r)!)
-                    if (blockedBy.length > 0) {
-                        await updateTask(team.directory, uuid, { blockedBy })
+                    // wf-006: reject blocked_by cycles. The ref-existence
+                    // check above only proves each dependency target exists; a
+                    // cycle (A blocked_by B, B blocked_by A) still passes it
+                    // but leaves every task in the cycle permanently
+                    // unclaimable until the wall-clock deadlock backstop
+                    // fires. Catch it here with a precise error instead.
+                    const cycle = detectBlockedByCycle(args.tasks)
+                    if (cycle) {
+                        return `Error: blocked_by cycle detected: ${cycle.join(" -> ")}`
                     }
-                }
+                    // Validate signoff_decider is a real member.
+                    if (args.signoff_policy === "decider") {
+                        if (!args.signoff_decider) {
+                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                        }
+                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                        if (err) return err
+                    }
+                    return null
+                },
+                // buildTask: enforce the task cap BEFORE creating any task, then
+                // create all tasks BEFORE committing activeTask/status (wf-002,
+                // wf-003 — a mid-loop failure leaves the team idle rather than
+                // wedged in "busy" with an unpersisted activeTask). Counting +
+                // creating both run under the mutex so the count cannot be
+                // raced by a concurrent create.
+                async (team) => {
+                    const liveTaskCount = (await listAllTasks(team.directory)).filter(
+                        t => t.status !== "deleted",
+                    ).length
+                    if (liveTaskCount + args.tasks.length > team.bounds.maxTasks) {
+                        return { error: `Error: team task limit reached (${team.bounds.maxTasks}). ${liveTaskCount} live task(s) exist; cannot add ${args.tasks.length} more.` }
+                    }
 
-                // Commit activeTask only after all tasks are durably created.
-                team.status = "busy"
-                team.activeTask = {
-                    type: "delegate",
-                    runId: crypto.randomUUID(),
-                    startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                    tokenBudget: args.token_budget,
-                    tokensUsed: 0,
-                    tokensByMember: {},
-                    messagesSent: 0,
-                    responses: {},
-                    stages: [],
-                    currentStageIndex: 0,
-                    decisionHistory: [],
-                    decisionParseFailures: 0,
-                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                    signoffDecider: args.signoff_decider,
-                    signoffQuorum: args.signoff_quorum,
-                    maxErroredMembers: args.max_errored_members,
-                    maxRetries: args.max_retries,
-                }
+                    // Create all tasks, building ref -> uuid and index -> uuid
+                    // maps, then resolve blockedBy. The index map keys every
+                    // task by its position so blocked_by is applied even to
+                    // tasks without their own ref (a ref is only needed to be
+                    // a dependency *target*, not to *have* dependencies).
+                    const refToUuid = new Map<string, string>()
+                    const indexToUuid = new Map<number, string>()
+                    for (let i = 0; i < args.tasks.length; i++) {
+                        const t = args.tasks[i]
+                        const created = await createTask(team.directory, {
+                            subject: t.subject,
+                            description: t.description,
+                        })
+                        indexToUuid.set(i, created.id)
+                        if (t.ref) refToUuid.set(t.ref, created.id)
+                    }
+                    for (let i = 0; i < args.tasks.length; i++) {
+                        const t = args.tasks[i]
+                        const uuid = indexToUuid.get(i)
+                        if (!uuid) continue
+                        const blockedBy = (t.blocked_by ?? [])
+                            .map(r => refToUuid.get(r)!)
+                        if (blockedBy.length > 0) {
+                            await updateTask(team.directory, uuid, { blockedBy })
+                        }
+                    }
 
-                await saveTeamState(team)
-                for (const m of team.members) {
-                    m.declaredDone = false
-                    m.retryCount = 0
-                }
-
-                // Prompt every member to start pulling from the tasklist.
-                for (const m of team.members.filter(x => !x.isMaster)) {
-                    const text =
-                        `[Team Orchestrator] You are on team "${team.teamName}" in delegate mode. ` +
-                        `${args.tasks.length} task(s) published. Use team_task_list to view, team_task_update (status "claimed") to claim, ` +
-                        `execute, then team_send_message to report results to master. Repeat until no tasks remain.`
-                    await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
-                }
-            })
-            if (raced) return "Error: team already has an active orchestration"
-            if (capError) return capError
-            return `team_delegate started on "${args.team_id}" with ${args.tasks.length} task(s).`
+                    return {
+                        type: "delegate",
+                        runId: crypto.randomUUID(),
+                        startedAt: Date.now(),
+                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
+                        tokenBudget: args.token_budget,
+                        tokensUsed: 0,
+                        tokensByMember: {},
+                        messagesSent: 0,
+                        responses: {},
+                        stages: [],
+                        currentStageIndex: 0,
+                        decisionHistory: [],
+                        decisionParseFailures: 0,
+                        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
+                        signoffDecider: args.signoff_decider,
+                        signoffQuorum: args.signoff_quorum,
+                        maxErroredMembers: args.max_errored_members,
+                        maxRetries: args.max_retries,
+                    }
+                },
+                // dispatch: prompt every member to start pulling from the
+                // tasklist.
+                async (team) => {
+                    for (const m of team.members.filter(x => !x.isMaster)) {
+                        const text =
+                            `[Team Orchestrator] You are on team "${team.teamName}" in delegate mode. ` +
+                            `${args.tasks.length} task(s) published. Use team_task_list to view, team_task_update (status "claimed") to claim, ` +
+                            `execute, then team_send_message to report results to master. Repeat until no tasks remain.`
+                        await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
+                    }
+                },
+                // successMessage
+                () => `team_delegate started on "${args.team_id}" with ${args.tasks.length} task(s).`,
+            )
         },
     })
 }
@@ -885,108 +834,85 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            // Workflow tools are master-only. Auth-first (wf-009): the
-            // master-only gate runs before any parameter validation.
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-            if (!caller?.isMaster) {
-                return "Error: team_route is master-only"
-            }
-
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
-
-            // Single-active interaction gate.
-            const gate = activationError(team.teamName, team.activatedAt)
-            if (gate) return gate
-
-            if (args.router === "master") {
-                return "Error: router must be a member name, not \"master\""
-            }
-
-            // Validate routes: unique names, unique members, members exist, and
-            // the router must not also be a branch target (it is the sole Phase-A
-            // advancer — routing to itself would deadlock).
-            const branchNames = args.routes.map(r => r.name)
-            if (new Set(branchNames).size !== branchNames.length) {
-                return "Error: route branch names must be unique"
-            }
-            const branchMembers = args.routes.map(r => r.member)
-            if (new Set(branchMembers).size !== branchMembers.length) {
-                return "Error: route branch members must be unique"
-            }
-            if (branchMembers.includes(args.router)) {
-                return "Error: router must not also be a branch target"
-            }
-            for (const name of [args.router, ...branchMembers]) {
-                if (!team.members.some(m => m.name === name)) {
-                    return `Error: unknown member "${name}" in router/routes`
-                }
-            }
-
-            // Validate signoff_decider is a real member.
-            if (args.signoff_policy === "decider") {
-                if (!args.signoff_decider) {
-                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                }
-                const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                if (err) return err
-            }
-
-            // Phase 1: pre-check under mutex.
-            let busy = false
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) busy = true
-            })
-            if (busy) return "Error: team already has an active orchestration"
-            let raced = false
-
-            // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
-            await ensureMembersReady(ctx, team)
-
-            // Phase 3: commit activeTask + dispatch ONLY the router (UNDER mutex).
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return }
-                team.status = "busy"
-                const branches: RouteBranch[] = args.routes.map(r => ({
-                    name: r.name,
-                    member: r.member,
-                    task: r.task,
-                    description: r.description,
-                }))
-                team.activeTask = {
-                    type: "route",
-                    runId: crypto.randomUUID(),
-                    startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                    tokenBudget: args.token_budget,
-                    tokensUsed: 0,
-                    tokensByMember: {},
-                    messagesSent: 0,
-                    responses: {},
-                    stages: [],
-                    currentStageIndex: 0,
-                    decisionHistory: [],
-                    decisionParseFailures: 0,
-                    task: args.input,
-                    routerMember: args.router,
-                    routeBranches: branches,
-                    routeStage: false,
-                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                    signoffDecider: args.signoff_decider,
-                    signoffQuorum: args.signoff_quorum,
-                    maxRetries: args.max_retries,
-                }
-                await saveTeamState(team)
-                for (const m of team.members) {
-                    m.declaredDone = false
-                    m.retryCount = 0
-                }
-                // Dispatch ONLY the router; it decides the targets (Phase A).
-                const routerMember = team.members.find(m => m.name === args.router)!
-                const prompt = buildRouterPrompt(team.teamName, args.input, branches)
-                await dispatchToMember(ctx, routerMember, prompt, routerMember.worktreePath ?? ctx.directory, team)
-            })
-            if (raced) return "Error: team already has an active orchestration"
-            return `team_route started on "${args.team_id}" (router: ${args.router}, ${args.routes.length} route(s)).`
+            return startOrchestration(
+                args.team_id, context, ctx, "team_route",
+                // validate
+                (team) => {
+                    if (args.router === "master") {
+                        return "Error: router must be a member name, not \"master\""
+                    }
+                    // Validate routes: unique names, unique members, members
+                    // exist, and the router must not also be a branch target
+                    // (it is the sole Phase-A advancer — routing to itself
+                    // would deadlock).
+                    const branchNames = args.routes.map(r => r.name)
+                    if (new Set(branchNames).size !== branchNames.length) {
+                        return "Error: route branch names must be unique"
+                    }
+                    const branchMembers = args.routes.map(r => r.member)
+                    if (new Set(branchMembers).size !== branchMembers.length) {
+                        return "Error: route branch members must be unique"
+                    }
+                    if (branchMembers.includes(args.router)) {
+                        return "Error: router must not also be a branch target"
+                    }
+                    for (const name of [args.router, ...branchMembers]) {
+                        if (!team.members.some(m => m.name === name)) {
+                            return `Error: unknown member "${name}" in router/routes`
+                        }
+                    }
+                    // Validate signoff_decider is a real member.
+                    if (args.signoff_policy === "decider") {
+                        if (!args.signoff_decider) {
+                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                        }
+                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                        if (err) return err
+                    }
+                    return null
+                },
+                // buildTask
+                async (team) => {
+                    const branches: RouteBranch[] = args.routes.map(r => ({
+                        name: r.name,
+                        member: r.member,
+                        task: r.task,
+                        description: r.description,
+                    }))
+                    return {
+                        type: "route",
+                        runId: crypto.randomUUID(),
+                        startedAt: Date.now(),
+                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
+                        tokenBudget: args.token_budget,
+                        tokensUsed: 0,
+                        tokensByMember: {},
+                        messagesSent: 0,
+                        responses: {},
+                        stages: [],
+                        currentStageIndex: 0,
+                        decisionHistory: [],
+                        decisionParseFailures: 0,
+                        task: args.input,
+                        routerMember: args.router,
+                        routeBranches: branches,
+                        routeStage: false,
+                        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
+                        signoffDecider: args.signoff_decider,
+                        signoffQuorum: args.signoff_quorum,
+                        maxRetries: args.max_retries,
+                    }
+                },
+                // dispatch: ONLY the router; it decides the targets (Phase A).
+                async (team, task) => {
+                    if (task.type !== "route") return
+                    const routerMember = team.members.find(m => m.name === args.router)!
+                    const prompt = buildRouterPrompt(team.teamName, args.input, task.routeBranches ?? [])
+                    await dispatchToMember(ctx, routerMember, prompt, routerMember.worktreePath ?? ctx.directory, team)
+                },
+                // successMessage
+                () => `team_route started on "${args.team_id}" (router: ${args.router}, ${args.routes.length} route(s)).`,
+            )
         },
     })
 }
@@ -1025,61 +951,37 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            // Workflow tools are master-only. Auth-first (wf-009): the
-            // master-only gate runs before any parameter validation.
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-            if (!caller?.isMaster) {
-                return "Error: team_arbitrate is master-only"
-            }
-
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
-
-            // Single-active interaction gate.
-            const gate = activationError(team.teamName, team.activatedAt)
-            if (gate) return gate
-
-            if (args.arbiter === "master") {
-                return "Error: arbiter must be a member name, not \"master\""
-            }
-            if (new Set(args.debaters).size !== args.debaters.length) {
-                return "Error: debaters must have unique names"
-            }
-            if (args.debaters.includes(args.arbiter)) {
-                return "Error: arbiter must not also be a debater"
-            }
-
-            // Validate arbiter + debaters are real members.
-            for (const name of [args.arbiter, ...args.debaters]) {
-                if (!team.members.some(m => m.name === name)) {
-                    return `Error: unknown member "${name}" in arbiter/debaters`
-                }
-            }
-
-            // Validate signoff_decider is a real member.
-            if (args.signoff_policy === "decider") {
-                if (!args.signoff_decider) {
-                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                }
-                const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                if (err) return err
-            }
-
-            // Phase 1: pre-check under mutex.
-            let busy = false
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) busy = true
-            })
-            if (busy) return "Error: team already has an active orchestration"
-            let raced = false
-
-            // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
-            await ensureMembersReady(ctx, team)
-
-            // Phase 3: commit activeTask + dispatch the debaters (UNDER mutex).
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return }
-                team.status = "busy"
-                const activeTask: ActiveTask = {
+            return startOrchestration(
+                args.team_id, context, ctx, "team_arbitrate",
+                // validate
+                (team) => {
+                    if (args.arbiter === "master") {
+                        return "Error: arbiter must be a member name, not \"master\""
+                    }
+                    if (new Set(args.debaters).size !== args.debaters.length) {
+                        return "Error: debaters must have unique names"
+                    }
+                    if (args.debaters.includes(args.arbiter)) {
+                        return "Error: arbiter must not also be a debater"
+                    }
+                    // Validate arbiter + debaters are real members.
+                    for (const name of [args.arbiter, ...args.debaters]) {
+                        if (!team.members.some(m => m.name === name)) {
+                            return `Error: unknown member "${name}" in arbiter/debaters`
+                        }
+                    }
+                    // Validate signoff_decider is a real member.
+                    if (args.signoff_policy === "decider") {
+                        if (!args.signoff_decider) {
+                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                        }
+                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                        if (err) return err
+                    }
+                    return null
+                },
+                // buildTask
+                async (team) => ({
                     type: "arbitrate",
                     runId: crypto.randomUUID(),
                     startedAt: Date.now(),
@@ -1103,23 +1005,19 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                     signoffDecider: args.signoff_decider,
                     signoffQuorum: args.signoff_quorum,
                     maxRetries: args.max_retries,
-                }
-                team.activeTask = activeTask
-                await saveTeamState(team)
-                for (const m of team.members) {
-                    m.declaredDone = false
-                    m.retryCount = 0
-                }
-                // Dispatch ONLY the debaters (round 1); the arbiter waits for
+                }),
+                // dispatch: ONLY the debaters (round 1); the arbiter waits for
                 // the ruling phase.
-                for (const name of args.debaters) {
-                    const m = team.members.find(x => x.name === name && !x.isMaster)
-                    if (!m) continue
-                    await dispatchToMember(ctx, m, buildDebatePrompt(activeTask), m.worktreePath ?? ctx.directory, team)
-                }
-            })
-            if (raced) return "Error: team already has an active orchestration"
-            return `team_arbitrate started on "${args.team_id}" (arbiter: ${args.arbiter}, ${args.debaters.length} debater(s)).`
+                async (team, task) => {
+                    for (const name of args.debaters) {
+                        const m = team.members.find(x => x.name === name && !x.isMaster)
+                        if (!m) continue
+                        await dispatchToMember(ctx, m, buildDebatePrompt(task), m.worktreePath ?? ctx.directory, team)
+                    }
+                },
+                // successMessage
+                () => `team_arbitrate started on "${args.team_id}" (arbiter: ${args.arbiter}, ${args.debaters.length} debater(s)).`,
+            )
         },
     })
 }
@@ -1181,109 +1079,86 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0. Distinct from max_gate_retries."),
         },
         async execute(args, context) {
-            // Workflow tools are master-only. Auth-first (wf-009): the
-            // master-only gate runs before any parameter validation.
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-            if (!caller?.isMaster) {
-                return "Error: team_tollgate is master-only"
-            }
-
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
-
-            // Single-active interaction gate.
-            const gate = activationError(team.teamName, team.activatedAt)
-            if (gate) return gate
-
-            // Each gate's verifier must differ from its producer (no self-verification).
-            for (const s of args.stages) {
-                if (s.verifier === s.member) {
-                    return `Error: stage verifier "${s.verifier}" must not equal its producer "${s.member}"`
-                }
-            }
-
-            // Validate members: every stage's producer + verifier, plus the
-            // optional escalation target.
-            const namedMembers = new Set<string>()
-            for (const s of args.stages) {
-                namedMembers.add(s.member)
-                namedMembers.add(s.verifier)
-            }
-            if (args.escalate_to) namedMembers.add(args.escalate_to)
-            for (const name of namedMembers) {
-                if (!team.members.some(m => m.name === name)) {
-                    return `Error: unknown member "${name}" in stages/escalate_to`
-                }
-            }
-
-            // Validate signoff_decider is a real member.
-            if (args.signoff_policy === "decider") {
-                if (!args.signoff_decider) {
-                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                }
-                const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                if (err) return err
-            }
-
-            // Phase 1: pre-check under mutex.
-            let busy = false
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) busy = true
-            })
-            if (busy) return "Error: team already has an active orchestration"
-            let raced = false
-
-            // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
-            await ensureMembersReady(ctx, team)
-
-            // Phase 3: commit activeTask + dispatch the stage-0 producer (UNDER mutex).
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return }
-                team.status = "busy"
-                const gatedStages: GatedStage[] = args.stages.map(s => ({
-                    member: s.member,
-                    task: s.task,
-                    completed: false,
-                    verifier: s.verifier,
-                    criteria: s.criteria,
-                    reference: s.reference,
-                    attempts: 0,
-                    invalidAttempts: 0,
-                }))
-                const activeTask: ActiveTask = {
-                    type: "tollgate",
-                    runId: crypto.randomUUID(),
-                    startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                    tokenBudget: args.token_budget,
-                    tokensUsed: 0,
-                    tokensByMember: {},
-                    messagesSent: 0,
-                    responses: {},
-                    stages: [],
-                    currentStageIndex: 0,
-                    decisionHistory: [],
-                    decisionParseFailures: 0,
-                    gatedStages,
-                    tollgatePhase: "produce",
-                    escalateTo: args.escalate_to,
-                    maxGateRetries: args.max_gate_retries,
-                    maxInvalidCycles: args.max_invalid_cycles,
-                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                    signoffDecider: args.signoff_decider,
-                    signoffQuorum: args.signoff_quorum,
-                    maxRetries: args.max_retries,
-                }
-                team.activeTask = activeTask
-                await saveTeamState(team)
-                for (const m of team.members) {
-                    m.declaredDone = false
-                    m.retryCount = 0
-                }
-                // Dispatch ONLY the stage-0 producer; verification starts when it idles.
-                await advanceToGatedStage(ctx, team, gatedStages[0])
-            })
-            if (raced) return "Error: team already has an active orchestration"
-            return `team_tollgate started on "${args.team_id}" with ${args.stages.length} gate(s).`
+            return startOrchestration(
+                args.team_id, context, ctx, "team_tollgate",
+                // validate
+                (team) => {
+                    // Each gate's verifier must differ from its producer (no
+                    // self-verification).
+                    for (const s of args.stages) {
+                        if (s.verifier === s.member) {
+                            return `Error: stage verifier "${s.verifier}" must not equal its producer "${s.member}"`
+                        }
+                    }
+                    // Validate members: every stage's producer + verifier,
+                    // plus the optional escalation target.
+                    const namedMembers = new Set<string>()
+                    for (const s of args.stages) {
+                        namedMembers.add(s.member)
+                        namedMembers.add(s.verifier)
+                    }
+                    if (args.escalate_to) namedMembers.add(args.escalate_to)
+                    for (const name of namedMembers) {
+                        if (!team.members.some(m => m.name === name)) {
+                            return `Error: unknown member "${name}" in stages/escalate_to`
+                        }
+                    }
+                    // Validate signoff_decider is a real member.
+                    if (args.signoff_policy === "decider") {
+                        if (!args.signoff_decider) {
+                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                        }
+                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                        if (err) return err
+                    }
+                    return null
+                },
+                // buildTask
+                async (team) => {
+                    const gatedStages: GatedStage[] = args.stages.map(s => ({
+                        member: s.member,
+                        task: s.task,
+                        completed: false,
+                        verifier: s.verifier,
+                        criteria: s.criteria,
+                        reference: s.reference,
+                        attempts: 0,
+                        invalidAttempts: 0,
+                    }))
+                    return {
+                        type: "tollgate",
+                        runId: crypto.randomUUID(),
+                        startedAt: Date.now(),
+                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
+                        tokenBudget: args.token_budget,
+                        tokensUsed: 0,
+                        tokensByMember: {},
+                        messagesSent: 0,
+                        responses: {},
+                        stages: [],
+                        currentStageIndex: 0,
+                        decisionHistory: [],
+                        decisionParseFailures: 0,
+                        gatedStages,
+                        tollgatePhase: "produce",
+                        escalateTo: args.escalate_to,
+                        maxGateRetries: args.max_gate_retries,
+                        maxInvalidCycles: args.max_invalid_cycles,
+                        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
+                        signoffDecider: args.signoff_decider,
+                        signoffQuorum: args.signoff_quorum,
+                        maxRetries: args.max_retries,
+                    }
+                },
+                // dispatch: ONLY the stage-0 producer; verification starts
+                // when it idles.
+                async (_team, task) => {
+                    if (task.type !== "tollgate") return
+                    await advanceToGatedStage(ctx, _team, task.gatedStages![0])
+                },
+                // successMessage
+                () => `team_tollgate started on "${args.team_id}" with ${args.stages.length} gate(s).`,
+            )
         },
     })
 }
@@ -1319,97 +1194,72 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
-            // Workflow tools are master-only. Auth-first (wf-009): the
-            // master-only gate runs before any parameter validation.
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-            if (!caller?.isMaster) {
-                return "Error: team_recurse is master-only"
-            }
-
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
-
-            // Single-active interaction gate.
-            const gate = activationError(team.teamName, team.activatedAt)
-            if (gate) return gate
-
-            if (args.decomposer === "master") {
-                return "Error: decomposer must be a member name, not \"master\""
-            }
-            const decomposerErr = assertMember(team, args.decomposer, "decomposer")
-            if (decomposerErr) return decomposerErr
-
-            // Validate signoff_decider is a real member.
-            if (args.signoff_policy === "decider") {
-                if (!args.signoff_decider) {
-                    return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
-                }
-                const err = assertMember(team, args.signoff_decider, "signoff_decider")
-                if (err) return err
-            }
-
-            // Phase 1: pre-check under mutex.
-            let busy = false
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) busy = true
-            })
-            if (busy) return "Error: team already has an active orchestration"
-            let raced = false
             let rootTaskId = ""
-
-            // Phase 2: spawn + role-setup barrier (OUTSIDE mutex).
-            await ensureMembersReady(ctx, team)
-
-            // Phase 3: commit activeTask + seed the root task + dispatch the
-            // decomposer (UNDER mutex).
-            await team.mutex.runExclusive(async () => {
-                if (team.activeTask) { raced = true; return }
-                team.status = "busy"
-                const subject = args.task.length <= 480 ? args.task : args.task.slice(0, 477) + "..."
-                const root = await createTask(team.directory, {
-                    subject,
-                    description: args.task,
-                    depth: 0,
-                })
-                rootTaskId = root.id
-                const activeTask: ActiveTask = {
-                    type: "recurse",
-                    runId: crypto.randomUUID(),
-                    startedAt: Date.now(),
-                    wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
-                    tokenBudget: args.token_budget,
-                    tokensUsed: 0,
-                    tokensByMember: {},
-                    messagesSent: 0,
-                    responses: {},
-                    stages: [],
-                    currentStageIndex: 0,
-                    decisionHistory: [],
-                    decisionParseFailures: 0,
-                    task: args.task,
-                    decomposerMember: args.decomposer,
-                    maxDepth: args.max_depth ?? DEFAULT_RECURSE_DEPTH,
-                    maxSubtasks: args.max_subtasks ?? DEFAULT_RECURSE_SUBTASKS,
-                    rootTaskId: root.id,
-                    signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
-                    signoffDecider: args.signoff_decider,
-                    signoffQuorum: args.signoff_quorum,
-                    maxRetries: args.max_retries,
-                }
-                team.activeTask = activeTask
-                await saveTeamState(team)
-                for (const m of team.members) {
-                    m.declaredDone = false
-                    m.retryCount = 0
-                }
-                // Dispatch ONLY the decomposer with the recursive contract;
+            return startOrchestration(
+                args.team_id, context, ctx, "team_recurse",
+                // validate
+                (team) => {
+                    if (args.decomposer === "master") {
+                        return "Error: decomposer must be a member name, not \"master\""
+                    }
+                    const decomposerErr = assertMember(team, args.decomposer, "decomposer")
+                    if (decomposerErr) return decomposerErr
+                    // Validate signoff_decider is a real member.
+                    if (args.signoff_policy === "decider") {
+                        if (!args.signoff_decider) {
+                            return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
+                        }
+                        const err = assertMember(team, args.signoff_decider, "signoff_decider")
+                        if (err) return err
+                    }
+                    return null
+                },
+                // buildTask: seed the root task BEFORE committing activeTask
+                // so a mid-create failure leaves the team idle.
+                async (team) => {
+                    const subject = args.task.length <= 480 ? args.task : args.task.slice(0, 477) + "..."
+                    const root = await createTask(team.directory, {
+                        subject,
+                        description: args.task,
+                        depth: 0,
+                    })
+                    rootTaskId = root.id
+                    return {
+                        type: "recurse",
+                        runId: crypto.randomUUID(),
+                        startedAt: Date.now(),
+                        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, DEFAULT_TIMEOUT_MS, team.bounds.maxWallClockMinutes),
+                        tokenBudget: args.token_budget,
+                        tokensUsed: 0,
+                        tokensByMember: {},
+                        messagesSent: 0,
+                        responses: {},
+                        stages: [],
+                        currentStageIndex: 0,
+                        decisionHistory: [],
+                        decisionParseFailures: 0,
+                        task: args.task,
+                        decomposerMember: args.decomposer,
+                        maxDepth: args.max_depth ?? DEFAULT_RECURSE_DEPTH,
+                        maxSubtasks: args.max_subtasks ?? DEFAULT_RECURSE_SUBTASKS,
+                        rootTaskId: root.id,
+                        signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
+                        signoffDecider: args.signoff_decider,
+                        signoffQuorum: args.signoff_quorum,
+                        maxRetries: args.max_retries,
+                    }
+                },
+                // dispatch: ONLY the decomposer with the recursive contract;
                 // other members pull claimable tasks via the tail's re-prompt.
-                const decomposer = team.members.find(m => m.name === args.decomposer && !m.isMaster)
-                if (decomposer) {
-                    await dispatchToMember(ctx, decomposer, buildRecursePrompt(), decomposer.worktreePath ?? ctx.directory, team)
-                }
-            })
-            if (raced) return "Error: team already has an active orchestration"
-            return `team_recurse started on "${args.team_id}" (decomposer: ${args.decomposer}, root task: ${rootTaskId}).`
+                async (team) => {
+                    const decomposer = team.members.find(m => m.name === args.decomposer && !m.isMaster)
+                    if (decomposer) {
+                        await dispatchToMember(ctx, decomposer, buildRecursePrompt(), decomposer.worktreePath ?? ctx.directory, team)
+                    }
+                },
+                // successMessage
+                () => `team_recurse started on "${args.team_id}" (decomposer: ${args.decomposer}, root task: ${rootTaskId}).`,
+            )
         },
     })
 }

@@ -14,7 +14,7 @@ import type { ToolContext } from "@opencode-ai/plugin"
 import { buildSummary } from "../src/orchestration/summary.js"
 import { teamRecurseTool } from "../src/tools/workflow.js"
 import { teamResumeTool } from "../src/tools/resume.js"
-import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 // --- fixtures ---

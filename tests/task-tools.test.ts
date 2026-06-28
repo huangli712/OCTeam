@@ -9,7 +9,7 @@ import {
 } from "../src/tools/task.js"
 import { createTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
-import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {

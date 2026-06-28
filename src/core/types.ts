@@ -101,106 +101,166 @@ export type SignoffPolicy = "none" | "decider" | "peer-quorum"
 // tollgate: three-valued verification verdict emitted by a gate's verifier.
 export type Verdict = "PASS" | "FAIL" | "INVALID"
 
-export type ActiveTask = {
-    type: OrchestrationType
-    mode?: ParallelMode                // parallel only
+/**
+ * ActiveTask is a discriminated union: a shared ActiveTaskBase plus one
+ * variant per OrchestrationType. TS narrows to the variant inside `switch`
+ * / `if` on the `type` discriminant, so type-specific fields (deciderMember,
+ * routerMember, gatedStages, ...) are only reachable after narrowing.
+ *
+ * Field placement rules:
+ *   - used by 2+ types, OR accessed on an un-narrowed ActiveTask somewhere
+ *     in the codebase -> ActiveTaskBase (conservative; keeps call sites
+ *     compiling without per-site narrowing).
+ *   - used by exactly 1 type AND only ever read inside a narrowed context
+ *     -> the variant.
+ *
+ * No field was removed relative to the prior single-record shape; fields were
+ * only reorganized between Base and variants.
+ */
+export interface ActiveTaskBase {
+    type: OrchestrationType                  // discriminant (narrowed to a literal per variant)
     startedAt: number
-    wallClockTimeoutMs: number         // hard timeout, default 300000 (5 min)
-    tokenBudget?: number               // optional cost cap
-    tokensUsed: number                 // running total = sum of tokensByMember (recomputed)
-    tokensByMember: Record<string, number>  // memberName -> sum(input+output+reasoning)
-    messagesSent: number               // total team_send_message writes this run (maxMessagesPerRun)
+    wallClockTimeoutMs: number               // hard timeout, default 300000 (5 min)
+    tokenBudget?: number                     // optional cost cap
+    tokensUsed: number                       // running total = sum of tokensByMember (recomputed)
+    tokensByMember: Record<string, number>   // memberName -> sum(input+output+reasoning)
+    messagesSent: number                     // total team_send_message writes this run (maxMessagesPerRun)
 
     // result collection (serializable — NOT a Map)
-    responses: Record<string, string>  // memberName -> last assistant text output
+    responses: Record<string, string>        // memberName -> last assistant text output
 
-    // parallel mode
-    task?: string                      // isolated: uniform task
-    tasks?: Record<string, string>     // collaborative: per-member tasks
-    topic?: string                     // consensus: debate topic
-    maxRounds?: number                 // consensus / loop: round limit
+    // cross-type string payload. `task` is the uniform input for parallel
+    // isolated, the routing input for route, the dispute subject for
+    // arbitrate, and the root goal for recurse. `mode` is parallel-only but
+    // is read un-narrowed by store/tui/messaging, so it stays in Base.
+    task?: string                            // parallel isolated / route input / arbitrate subject / recurse root
+    mode?: ParallelMode                      // parallel only
+
+    // round-bearing types (loop / arbitrate / consensus)
+    maxRounds?: number                       // round limit
     currentRound?: number
 
-    // reduce policy (parallel isolated/collaborative only)
+    // ordered stages (parallel holds []; pipeline / loop / tollgate use it).
+    // Constructed by every variant, so it lives in Base.
+    stages: Stage[]
+    currentStageIndex: number
+
+    // loop decision log. Constructed by ALL variants (kept in Base to avoid
+    // excess-property churn across the 9 construction literals), but only
+    // loop reads it at runtime.
+    decisionHistory: DecisionRecord[]        // structured decisions per round (loop)
+    decisionParseFailures: number            // consecutive <decision> parse failures; abort at 3 (loop)
+
+    // reduce policy (parallel isolated/collaborative only; read un-narrowed)
     reducePolicy?: ReducePolicy
-    reduceRubric?: string              // when reducePolicy === "rubric"
+    reduceRubric?: string                    // when reducePolicy === "rubric"
     // #4 real map-reduce: when reducePolicy != summarize AND reducerMember names
     // a live member AND there are >1 candidates, a dedicated reducer member is
     // dispatched post-barrier to combine outputs into one. Otherwise (undefined
     // reducerMember) the reduce guidance is delivered to master (legacy behavior).
     reducerMember?: string
-    reduceStage?: boolean              // true while the reducer stage is in flight
-    reducedResult?: string             // reducer's combined output; delivered verbatim once set
+    reduceStage?: boolean                    // true while the reducer stage is in flight
+    reducedResult?: string                   // reducer's combined output; delivered verbatim once set
 
-    // signoff policy (parallel isolated/collaborative, pipeline, delegate; NOT loop)
+    // signoff policy (parallel isolated/collaborative, pipeline, delegate; NOT loop).
+    // Read un-narrowed by maybeTriggerSignoff/handleSignoffIdle, so Base.
     signoffPolicy?: SignoffPolicy
-    signoffDecider?: string            // member name (decider mode)
-    signoffQuorum?: number             // 0-1, default 0.5 (peer-quorum mode, Phase D)
+    signoffDecider?: string                  // member name (decider mode)
+    signoffQuorum?: number                   // 0-1, default 0.5 (peer-quorum mode, Phase D)
     signoffApprovals?: Record<string, boolean>  // collected approvals
-    signoffStage?: boolean             // true when in signoff phase
+    signoffStage?: boolean                   // true when in signoff phase
 
     // delegate mode: uses shared tasklist (team_task_*), no extra fields
 
-    // pipeline / loop: ordered stages
-    stages: Stage[]
-    currentStageIndex: number
-
-    // loop-specific
-    deciderMember?: string             // member name of decider (NOT "master")
-    decisionHistory: DecisionRecord[]  // structured decisions per round
-    decisionParseFailures: number      // consecutive <decision> parse failures; abort at 3
-
-    // consensus-specific (type === "consensus")
-    consensusReached?: boolean         // set when all members emit agreed consensus
-
-    // route-specific (type === "route")
-    routerMember?: string              // the router member name (NOT master, NOT a branch member)
-    routeBranches?: RouteBranch[]      // caller-declared branches the router selects from
-    routeTargets?: string[]            // resolved target member names after the router's decision
-    routeStage?: boolean               // false/undefined = router phase; true = target fan-out phase
-    routeDecisionRationale?: string    // router's stated rationale (observability)
-
-    // arbitrate-specific (type === "arbitrate")
-    arbiterMember?: string             // the arbiter member name (NOT master, NOT a debater)
-    disputants?: string[]             // debater member names (Phase A barrier participants)
-    arbitrationStage?: boolean        // false/undefined = debate phase; true = ruling phase
-    arbitrationRuling?: string        // arbiter's binding ruling (set at ruling)
-    arbitrationRationale?: string     // arbiter's stated rationale for the ruling
-
-    // recurse-specific (type === "recurse")
-    decomposerMember?: string          // the member first dispatched with the root task (NOT master)
-    maxDepth?: number                 // recursion depth upper bound (default 3)
-    maxSubtasks?: number             // per-decomposition subtask upper bound (default 5)
-    rootTaskId?: string              // the root task id; its result is the final deliverable
-
-    // tollgate-specific (type === "tollgate"): a gated pipeline where advancing
-    // depends on a verifier's verdict, not just completion.
-    gatedStages?: GatedStage[]                              // linear stages, each with its own verification gate
-    tollgatePhase?: "produce" | "verify" | "escalate"       // explicit three-phase state (avoids a two-value gate-stage deadlock)
-    escalateTo?: string            // INVALID escalation target member (optional; when unset, INVALID is escalated to the leader)
-    maxGateRetries?: number        // gate FAIL retry cap, DISTINCT from provider-retry maxRetries (default 0: first FAIL fails)
-    maxInvalidCycles?: number      // cap on INVALID/escalate ping-pong per gate (default 3); beyond it the run fails with tollgate_invalid:exhausted instead of looping to wall-clock
-
-    // require_done_ack (parallel isolated/collaborative only): when true, the
-    // barrier waits for every participant's `declaredDone === true` instead of
-    // `status === "idle"`. Members must call team_done() to ack — premature
-    // idle is recovered by an automatic re-prompt (processIdle Step 6).
-    requireDoneAck?: boolean
-
-    // failure isolation (parallel/delegate only): tolerate up to N terminally-
-    // errored members and deliver survivors' work. undefined ⇒ 0 (any member
-    // error fails the whole run — backward-compatible default).
-    maxErroredMembers?: number
-
-    // bounded retry (all modes): re-dispatch a member up to N times before
-    // marking it terminally errored. undefined ⇒ 0 (no retry — current behavior).
-    maxRetries?: number
+    requireDoneAck?: boolean                 // parallel: all-acked barrier (read un-narrowed in waitForBarrier)
+    maxErroredMembers?: number               // parallel/delegate: failure isolation (read un-narrowed)
+    maxRetries?: number                      // all modes: bounded retry (read un-narrowed)
 
     // per-orchestration run id (lazily generated at first output capture). Used to
     // key runs/<runId>/ for persistent result records. NOT teamRunId (which is
     // team-constant); each orchestration gets a fresh runId.
     runId?: string
 }
+
+// parallel: fan-out then converge. `tasks` is collaborative per-member work.
+export interface ParallelTask extends ActiveTaskBase {
+    type: "parallel"
+    tasks?: Record<string, string>           // collaborative: { memberName: task }
+}
+
+// pipeline: ordered stages, output prefixed forward.
+export interface PipelineTask extends ActiveTaskBase {
+    type: "pipeline"
+}
+
+// loop: corrective code -> review -> decide cycle.
+export interface LoopTask extends ActiveTaskBase {
+    type: "loop"
+    deciderMember?: string                   // member name of decider (NOT "master")
+}
+
+// delegate: shared tasklist, members self-claim.
+export interface DelegateTask extends ActiveTaskBase {
+    type: "delegate"
+}
+
+// consensus: multi-round debate to agreement.
+export interface ConsensusTask extends ActiveTaskBase {
+    type: "consensus"
+    topic?: string                           // the debate topic
+    consensusReached?: boolean               // set when all members emit agreed consensus
+}
+
+// route: content-based routing to selected branches.
+export interface RouteTask extends ActiveTaskBase {
+    type: "route"
+    routerMember?: string                    // the router member name (NOT master, NOT a branch member)
+    routeBranches?: RouteBranch[]            // caller-declared branches the router selects from
+    routeTargets?: string[]                  // resolved target member names after the router's decision
+    routeStage?: boolean                     // false/undefined = router phase; true = target fan-out phase
+    routeDecisionRationale?: string          // router's stated rationale (observability)
+}
+
+// arbitrate: debate then authoritative ruling.
+export interface ArbitrateTask extends ActiveTaskBase {
+    type: "arbitrate"
+    arbiterMember?: string                   // the arbiter member name (NOT master, NOT a debater)
+    disputants?: string[]                    // debater member names (Phase A barrier participants)
+    arbitrationStage?: boolean               // false/undefined = debate phase; true = ruling phase
+    arbitrationRuling?: string               // arbiter's binding ruling (set at ruling)
+    arbitrationRationale?: string            // arbiter's stated rationale for the ruling
+}
+
+// recurse: hierarchical recursive decomposition.
+export interface RecurseTask extends ActiveTaskBase {
+    type: "recurse"
+    decomposerMember?: string                // the member first dispatched with the root task (NOT master)
+    maxDepth?: number                        // recursion depth upper bound (default 3)
+    maxSubtasks?: number                     // per-decomposition subtask upper bound (default 5)
+    rootTaskId?: string                      // the root task id; its result is the final deliverable
+}
+
+// tollgate: verdict-gated pipeline (produce -> verify -> escalate). A gated
+// pipeline where advancing depends on a verifier's verdict, not just completion.
+export interface TollgateTask extends ActiveTaskBase {
+    type: "tollgate"
+    gatedStages?: GatedStage[]               // linear stages, each with its own verification gate
+    tollgatePhase?: "produce" | "verify" | "escalate"  // explicit three-phase state (avoids a two-value gate-stage deadlock)
+    escalateTo?: string                      // INVALID escalation target member (optional; when unset, INVALID is escalated to the leader)
+    maxGateRetries?: number                  // gate FAIL retry cap, DISTINCT from provider-retry maxRetries (default 0: first FAIL fails)
+    maxInvalidCycles?: number                // cap on INVALID/escalate ping-pong per gate (default 3); beyond it the run fails with tollgate_invalid:exhausted instead of looping to wall-clock
+}
+
+export type ActiveTask =
+    | ParallelTask
+    | PipelineTask
+    | LoopTask
+    | DelegateTask
+    | ConsensusTask
+    | RouteTask
+    | ArbitrateTask
+    | RecurseTask
+    | TollgateTask
 
 // --- LastModeRecord (persists after activeTask cleanup, for sidebar display) ---
 

@@ -10,7 +10,7 @@ import {
     resolveMasterTeams,
     setActiveTeam,
     unindexSession,
-} from "../src/core/utils.js"
+} from "../src/state/resolve.js"
 import { makeState, tmpRoot } from "./helpers.js"
 
 /** Minimal PluginContext stub: teamDeactivateTool only reads storageRoot + scope. */

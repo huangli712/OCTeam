@@ -8,7 +8,7 @@ import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailb
 import { processedPath, reservedDir, teamDir } from "../src/state/paths.js"
 import { initTeamState } from "../src/state/store.js"
 import type { Message } from "../src/core/types.js"
-import { indexMasterTeam, indexMember, setActiveTeam, unindexSession } from "../src/core/utils.js"
+import { indexMasterTeam, indexMember, setActiveTeam, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const LEAD = "ses_lead"

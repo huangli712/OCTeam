@@ -10,7 +10,7 @@ import {
     teamPipelineTool,
 } from "../src/tools/workflow.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
-import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {

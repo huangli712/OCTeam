@@ -5,7 +5,7 @@ import { createEventHandler, reconcileCrashedTeams } from "../src/hooks.js"
 import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import type { ActiveTask, Message, TeamState } from "../src/core/types.js"
-import { indexMasterTeam, setActiveTeam, unindexSession } from "../src/core/utils.js"
+import { indexMasterTeam, setActiveTeam, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const LEAD = "ses_lead_drain"

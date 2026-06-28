@@ -8,7 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { PluginContext } from "../src/core/context.js"
 import { teamDeleteTool } from "../src/tools/lifecycle.js"
 import { initTeamState } from "../src/state/store.js"
-import { unindexSession } from "../src/core/utils.js"
+import { unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const execFileP = promisify(execFile)

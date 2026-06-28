@@ -13,7 +13,7 @@ import type { Hooks } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "./core/context.js"
 import { activeTeams, clearActiveTask, invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from './state/store.js';
-import { resolveMasterTeams, resolveTeamMember, isMasterSession, unindexSession } from "./core/utils.js"
+import { resolveMasterTeams, resolveTeamMember, isMasterSession, unindexSession } from "./state/resolve.js"
 import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
 import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent, processIdle } from "./orchestration/handlers.js"

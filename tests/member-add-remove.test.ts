@@ -5,7 +5,7 @@ import type { TeamSpec } from "../src/core/types.js"
 import { normalizeRole } from "../src/core/role-presets.js"
 import { teamAddMemberTool, teamRemoveMemberTool, teamRenameTool } from "../src/tools/lifecycle.js"
 import { initTeamState, invalidateTeam, loadTeamState, readTeamSpec, writeTeamSpec } from "../src/state/store.js"
-import { unindexSession } from "../src/core/utils.js"
+import { unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {

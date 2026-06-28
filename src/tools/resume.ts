@@ -29,7 +29,8 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type { ActiveTask } from "../core/types.js"
-import { activationError, resolveCallerInTeam } from "../core/utils.js"
+import { activationError } from "../core/utils.js"
+import { resolveCallerInTeam } from "../state/resolve.js"
 import {
     advanceToStage,
     dispatchToMember,

@@ -10,7 +10,7 @@ import { countUnreadMessages, formatMailboxInjection, writeMailboxMessage } from
 import { processedPath, reservedDir, teamDir } from "../src/state/paths.js"
 import * as store from "../src/state/store.js"
 import type { ActiveTask, Message, TeamState } from "../src/core/types.js"
-import { indexMember, unindexSession } from "../src/core/utils.js"
+import { indexMember, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 describe("isForbiddenLateralMessage (isolated comms gate)", () => {

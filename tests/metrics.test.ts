@@ -5,7 +5,7 @@ import type { PluginContext } from "../src/core/context.js"
 import type { RunRecord } from "../src/core/types.js"
 import { teamMetricsTool } from "../src/tools/metrics.js"
 import { initTeamState } from "../src/state/store.js"
-import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { teamDir, runDir, runRecordPath } from "../src/state/paths.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 

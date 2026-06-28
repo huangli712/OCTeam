@@ -12,7 +12,7 @@ import { runStatusFromReason, readRunRecord, readRunEvents } from "../src/orches
 import { reconcileCrashedTeams } from "../src/hooks.js"
 import { isSafePathSegment, teamDir, runDir, runMemberOutputPath } from "../src/state/paths.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
-import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"

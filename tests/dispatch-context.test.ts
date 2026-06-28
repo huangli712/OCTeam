@@ -6,7 +6,7 @@ import { dispatchToMember } from "../src/orchestration/dispatch.js"
 import { processIdle } from "../src/orchestration/handlers.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { createTask } from "../src/state/tasks.js"
-import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 // --- helpers ---

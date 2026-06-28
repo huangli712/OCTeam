@@ -8,7 +8,7 @@ import { initTeamState } from "../src/state/store.js"
 import { writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { inboxPath, teamDir } from "../src/state/paths.js"
 import { loadTeamState } from "../src/state/store.js"
-import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { ActiveTask, Message, MemberState, TeamState } from "../src/core/types.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 

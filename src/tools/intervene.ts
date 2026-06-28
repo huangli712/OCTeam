@@ -15,7 +15,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { resolveCallerInTeam } from "../core/utils.js"
+import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState } from "../state/store.js"
 import { countUnreadMessages, writeMailboxMessage } from "../messaging/mailbox.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"

@@ -19,7 +19,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { resolveCallerInTeam } from "../core/utils.js"
+import { resolveCallerInTeam } from "../state/resolve.js"
 import { listRunRecords } from "../orchestration/runs.js"
 import type { RunRecord } from "../core/types.js"
 

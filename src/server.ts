@@ -11,7 +11,7 @@ import {
     reconcileCrashedTeams,
     startSweepTimer,
 } from "./hooks.js"
-import { rebuildSessionIndex } from "./core/utils.js"
+import { rebuildSessionIndex } from "./state/resolve.js"
 import { logSwallowed } from "./core/log.js"
 import { createConfigHook } from "./agents/index.js"
 

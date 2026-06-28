@@ -20,7 +20,7 @@ import type { ActiveTask, GatedStage, MemberState } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
-import { rebuildSessionIndex, unindexSession } from "../src/core/utils.js"
+import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 // --- fixtures ---
