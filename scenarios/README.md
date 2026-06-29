@@ -18,7 +18,7 @@
 | 08 | `team_recurse` | 递归分解 | 复杂任务分层拆解 | [`08-team-recurse/`](./08-team-recurse/) |
 | 09 | `team_tollgate` | 验证门流水线 | 逐关质量把关 | [`09-team-tollgate/`](./09-team-tollgate/) |
 
-## 场景矩阵（模式 × 方向）
+## 场景矩阵
 
 | 模式 | 数学 | 计算物理 | 编程 | 挑战级场景 |
 |------|------|---------|------|-----------|
@@ -32,7 +32,7 @@
 | recurse | 错排数 D_n 推导 | 阻尼摆建模 | Markdown→HTML 转换器 | Vandermonde 恒等式多层证明（6 人, ~50min）|
 | tollgate | 快速幂实现+验证 | Verlet 求解器+验证 | 字符串反转+验证 | 二维热传导求解器 V&V 认证（6 人, ~60min）|
 
-## 每个场景包含
+## 场景目录结构
 
 每个模式目录下有 4 个文件：
 
@@ -79,16 +79,15 @@
 
 详见 [`_AUTHORING.md`](./_AUTHORING.md)（内部编写规范）。
 
+## 快捷启动
+
+每个场景 README 末尾都有「**快速启动 Prompt（复制即用）**」章节，提供该场景 3 个基线 + 1 个挑战级子场景的一键闭环 prompt。把对应 prompt 粘贴给 master 会话，AI 会自动完成「创建团队 → 激活 → 启动编排 → 等待汇总 → 运行评判脚本」，并按退出码报告 PASS / FAIL——**无需手动拼装 JSON**。挑战级场景的 check 脚本与快速启动 prompt 与基线场景一致。
+
+例如启动 `01-team-parallel` 的 Monte Carlo π 场景：打开 [`01-team-parallel/README.md`](./01-team-parallel/README.md) 的「快速启动 Prompt → 场景 1」，复制其中 ```text``` 代码块粘贴给 AI 即可。
+
 ## 相关文档
 
 - [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) — 9 种编排原语的官方定义与状态持久化模型
 - [`src/tools/workflow-basic.ts`](../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 工具源码
 - [`src/tools/workflow-advanced.ts`](../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 工具源码
 - [`src/core/role-presets.ts`](../src/core/role-presets.ts) — 18 种角色预设及其 agent 映射
-
-
-## 快捷启动：复制即用的 Prompt
-
-每个场景 README 末尾都有「**快速启动 Prompt（复制即用）**」章节，提供该场景 3 个基线 + 1 个挑战级子场景的一键闭环 prompt。把对应 prompt 粘贴给 master 会话，AI 会自动完成「创建团队 → 激活 → 启动编排 → 等待汇总 → 运行评判脚本」，并按退出码报告 PASS / FAIL——**无需手动拼装 JSON**。挑战级场景的 check 脚本与快速启动 prompt 与基线场景一致。
-
-例如启动 `01-team-parallel` 的 Monte Carlo π 场景：打开 [`01-team-parallel/README.md`](./01-team-parallel/README.md) 的「快速启动 Prompt → 场景 1」，复制其中 ```text``` 代码块粘贴给 AI 即可。
