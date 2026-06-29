@@ -408,7 +408,7 @@ T+~55  你读取全部输出，裁定结果
 > 把 `<TARGET>` 替换为你要评审的代码路径，整段粘贴给 master 会话。master 会依次跑 4 个团队，每步按 README 的 JSON 配置执行，团队间数据由 master 手递手。
 
 ```text
-按 scenarios/composite/01-code-review/README.md 跑一次多团队代码评审，目标代码 = <TARGET>。
+按 scenarios/composite/code-review/README.md 跑一次多团队代码评审，目标代码 = <TARGET>。
 
 执行 4 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
 

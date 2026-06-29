@@ -38,7 +38,7 @@
 
 | 场景 | 工作流 | 编排原语 | 目录 |
 |------|--------|---------|------|
-| 多团队代码评审 | 审计 → 确认 → 方案 → 修复 → 复审 | parallel / consensus / delegate / loop | [`composite/01-code-review/`](./composite/01-code-review/) |
+| 多团队代码评审 | 审计 → 确认 → 方案 → 修复 → 复审 | parallel / consensus / delegate / loop | [`composite/code-review/`](./composite/code-review/) |
 
 ## 场景目录结构
 
