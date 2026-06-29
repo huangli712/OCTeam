@@ -1,7 +1,7 @@
 # team_recurse 编排场景设计
 
 > **模式**：`team_recurse` — 层次化递归分解：根任务被分解为子任务（子任务可继续分解至 `max_depth`），子任务结果自底向上聚合，最终解出根任务。使用共享任务列表 + blockedBy DAG 实现分层聚合。
-> **源码**：[`src/tools/workflow-advanced.ts:551-630`](../../../src/tools/workflow-advanced.ts)
+> **源码**：[`src/tools/workflow-advanced.ts:551-630`](../../src/tools/workflow-advanced.ts)
 > **控时设计**：`max_depth=2`、`max_subtasks=3`，根 → 3 个叶节点（成员并行认领），每叶 ≤ 8 min；decomposer 汇总 ≈ 最慢叶 + 聚合 ≈ 10-12 min（远低于 30 min 上限）。
 
 ## 场景一览

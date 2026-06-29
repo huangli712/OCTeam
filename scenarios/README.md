@@ -77,10 +77,10 @@
 
 ## 相关文档
 
-- [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) — 9 种编排原语的官方定义与状态持久化模型
-- [`src/tools/workflow-basic.ts`](../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 工具源码
-- [`src/tools/workflow-advanced.ts`](../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 工具源码
-- [`src/core/role-presets.ts`](../../src/core/role-presets.ts) — 18 种角色预设及其 agent 映射
+- [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) — 9 种编排原语的官方定义与状态持久化模型
+- [`src/tools/workflow-basic.ts`](../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 工具源码
+- [`src/tools/workflow-advanced.ts`](../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 工具源码
+- [`src/core/role-presets.ts`](../src/core/role-presets.ts) — 18 种角色预设及其 agent 映射
 
 
 ## 快捷启动：复制即用的 Prompt

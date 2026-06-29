@@ -1,7 +1,7 @@
 # team_route 编排场景设计
 
 > **模式**：`team_route` — 内容路由：router 成员分析输入，选择匹配的分支成员处理；选中分支并行执行后汇总。无默认路由，未匹配输入直接失败整个 run。
-> **源码**：[`src/tools/workflow-advanced.ts:240-341`](../../../src/tools/workflow-advanced.ts)
+> **源码**：[`src/tools/workflow-advanced.ts:240-341`](../../src/tools/workflow-advanced.ts)
 > **控时设计**：路由模式天然节能 —— 每个 run 实际只有 **router + 1 个匹配分支** 被调度执行（其余分支仅作为分类候选项存在，不会被 dispatch）。因此即便 team 配置 4-5 个成员，活跃成员 ≤ 2，总时长 ≈ router 分类（~1 min）+ 匹配分支求解（~5-8 min）≈ 10 min（远低于 30 min 上限）。
 
 ## 场景一览

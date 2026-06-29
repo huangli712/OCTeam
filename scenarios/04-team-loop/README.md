@@ -1,7 +1,7 @@
 # team_loop 编排场景设计
 
 > **模式**：`team_loop` — 运行修正闭环 `代码 → 评审 → 决策 → 重复`。每轮由各 stage 成员依次产出，`decider`（一名成员，非 master）emit `<decision>{"decision":"done"|"continue",...}</decision>`；`decider` 说 `done`、达到 `max_rounds`、超时或连续 3 次解析失败时停止。
-> **源码**：[`src/tools/workflow-basic.ts:284-363`](../../../src/tools/workflow-basic.ts)（`teamLoopTool`）
+> **源码**：[`src/tools/workflow-basic.ts:284-363`](../../src/tools/workflow-basic.ts)（`teamLoopTool`）
 > **控时设计**：3 成员（2 stage + 1 decider），`max_rounds=3`；典型 1-2 轮收敛，每轮各 stage ≤ 5 min，总时长 ≈ 10-15 min（远低于 30 min 上限）。
 
 ## 场景一览
