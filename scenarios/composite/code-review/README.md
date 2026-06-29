@@ -426,7 +426,7 @@ T+~55  你读取全部输出，裁定结果
 注意：
 - 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby...），角色必须用 reviewer/architect/coder/tester 等预设值。
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
-- 如果audit-team 没有发现P0, P1, P2级的问题，应中断流程。
+- 如果audit-team 没有发现high或medium级的问题，应中断流程。
 ```
 
 ---
