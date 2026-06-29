@@ -1,8 +1,8 @@
 # 综合场景：大规模矩阵本征值求解器开发
 
-> 用 Rust 开发一个 1000×1000 稠密矩阵本征值求解器的端到端工作流：**方法调研 → 方案比选 → 计划+评审 → 实现 → 优化重构 → 代码评审**，6 个独立团队 × 5 种编排原语串联。master 作集成枢纽，团队间彼此隔离、数据手递手。
->
-> **自用模板**：不含评判脚本，最终求解器是否正确、性能是否达标**由你自行判断**。
+用 Rust 开发一个 1000×1000 稠密矩阵本征值求解器的端到端工作流：**方法调研 → 方案比选 → 计划+评审 → 实现 → 优化重构 → 代码评审**，6 个独立团队 × 5 种编排原语串联。master 作集成枢纽，团队间彼此隔离、数据手递手。
+
+**自用模板**：不含评判脚本，最终求解器是否正确、性能是否达标**由你自行判断**。
 
 ## 核心约束
 
@@ -32,25 +32,25 @@
         ▼
 research-team (parallel)    ──≥8 methods──► master
                                                 │
-selection-team (consensus)  ◄──methods─────────┘
+selection-team (consensus)  ◄──methods──────────┘
         │
-        └──3 shortlisted──► master
-                               │
-plan-team (tollgate)        ◄──3 shortlisted───┘
+        └──3 shortlisted──────────────────► master
+                                                │
+plan-team (tollgate)        ◄──3 shortlisted────┘
         │  编写→审1→改→审2→改→审3（全部通过）
-        └──PLAN-APPROVED──► master
-                               │
-implement-team (pipeline)   ◄──plan────────────┘
+        └──PLAN-APPROVED──────────────────► master
+                                                │
+implement-team (pipeline)   ◄──plan─────────────┘
         │  coder→tester
-        └──code+tests──► master
-                               │
-optimize-team (loop)        ◄──code────────────┘
+        └──code+tests─────────────────────► master
+                                                │
+optimize-team (loop)        ◄──code─────────────┘
         │  优化→测试→裁决（基线保证）
-        └──OPTIMIZED──► master
-                               │
-review-team (parallel)      ◄──optimized code──┘
+        └──OPTIMIZED──────────────────────► master
+                                                │
+review-team (parallel)      ◄──optimized code───┘
         │
-        └──review verdicts──► master ──► 你判断
+        └──review verdicts────────────────► master ──► 你判断
 ```
 
 ## 如何使用
