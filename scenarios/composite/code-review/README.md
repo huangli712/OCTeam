@@ -1,8 +1,8 @@
 # 综合场景：OCTeam 多团队代码评审
 
-> 5 阶段代码评审链（**审计 → 确认缺陷 → 制定修复方案 → 修复 → 修复部分复审**），由 4 个独立团队 × 4 种编排原语串联完成。master 作集成枢纽，团队间彼此隔离、数据手递手。
->
-> **自用模板**：不绑定特定靶子，不含评判脚本。把 `<TARGET>` 替换为你要评审的代码（文件 / 模块 / 目录），按文末 quick-start prompt 跑通；发现的真假与修复的正确性**由你自行判断**。
+5 阶段代码评审链（**审计 → 确认缺陷 → 制定修复方案 → 修复 → 修复部分复审**），由 4 个独立团队 × 4 种编排原语串联完成。master 作集成枢纽，团队间彼此隔离、数据手递手。
+
+**自用模板**：不绑定特定靶子，不含评判脚本。把 `<TARGET>` 替换为你要评审的代码（文件 / 模块 / 目录），按文末 quick-start prompt 跑通；发现的真假与修复的正确性**由你自行判断**。
 
 ## 工作流总览
 
@@ -40,7 +40,7 @@
 
 ## team 切换铁律
 
-> 同一时刻**仅一个团队** active。`team_activate` 在已有 active 团队时会拒绝——**必须先 `team_deactivate` 再 `team_activate` 下一个**。每个团队段的 master 步骤都已显式写出 deactivate。
+同一时刻**仅一个团队** active。`team_activate` 在已有 active 团队时会拒绝——**必须先 `team_deactivate` 再 `team_activate` 下一个**。每个团队段的 master 步骤都已显式写出 deactivate。
 
 ---
 
@@ -130,6 +130,7 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 
 - master 从 7 份成员输出抓取所有 `<!-- FINDING: <id>:<dim>:<severity> -->`，**汇总成一张 findings 清单**（id + dim + severity + 描述）。
 - 这张清单作为 §2 `team_consensus` 的 `topic` 喂给 plan-team。
+- 如果没有发现问题，那么 master 应该如实汇报，并中断流程。
 
 ---
 
@@ -180,7 +181,7 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
   "args": {
     "team_id": "cr-plan",
     "topic": "<把 §1.5 的 findings 清单原文粘进来：每条 FINDING id/dim/severity/描述>",
-    "max_rounds": 5,
+    "max_rounds": 6,
     "timeout_ms": 1800000
   }
 }
@@ -188,7 +189,7 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 
 **参数选择**：
 - `topic` = audit findings 清单（master 手递手填入）。
-- `max_rounds: 5`——给足辩论空间，应对大量 findings 时有回旋余量。
+- `max_rounds: 6`——给足辩论空间，应对大量 findings 时有回旋余量。
 - 不设 `signoff_policy`——consensus 的「全同意」机制本身就是门。
 
 ### 2.4 生命周期步骤（master）
@@ -290,9 +291,9 @@ team_deactivate(cr-fix)
 
 ### 4.1 阶段说明
 
-修复有没有真解决问题、有没有引入新问题、有没有回归？用纠正循环，每轮按 **测试（tester）→ 修复（coder）→ 审计（reviewer）** 三阶段串行，decider 裁决「全通过 / 继续循环」。最多 3 轮。**不设硬性回归门，最终由你判断。**
+修复有没有真解决问题、有没有引入新问题、有没有回归？用纠正循环，每轮按 **测试（tester，写+跑回归测试）→ 修复（coder）→ 审计（reviewer）** 三阶段串行，decider 裁决「全通过 / 继续循环」。最多 3 轮。**不设硬性回归门，最终由你判断。**
 
-> ⚠️ **decider 不能兼任 stage 成员**（team_loop 规则：decider 是 auto-appended 只读，不能出现在 stages 里）。所以「审计」stage 用独立 reviewer 成员 ruby，mona 留作 decider。
+**decider 不能兼任 stage 成员**（team_loop 规则：decider 是 auto-appended 只读，不能出现在 stages 里）。所以「审计」stage 用独立 reviewer 成员 ruby，mona 留作 decider。
 
 ### 4.2 Team 配置
 
@@ -304,7 +305,7 @@ team_deactivate(cr-fix)
     {
       "name": "leo",
       "role": "tester",
-      "prompt": "You are the TESTER (stage 1) in the verify loop. Each round, run <TARGET>'s test suite and report results. Emit <!-- TESTS: <passed>/<total> --> (or <!-- TESTS: skip:no-suite --> if <TARGET> has no tests). Call out which confirmed findings' fixes are covered by tests and whether they pass. Do not modify code."
+      "prompt": "You are the TESTER (stage 1) in the verify loop. Each round, for each confirmed finding's fix, WRITE a focused regression test (in <TARGET>'s test directory) if one does not already cover it, then run the full test suite. Emit <!-- TESTS: <passed>/<total> --> (or <!-- TESTS: skip:no-suite --> if <TARGET> has no runnable test suite). Call out which findings' fixes are covered and whether they pass. You MAY add test files — do NOT modify the production fix code itself (that is Kate's job)."
     },
     {
       "name": "kate",
@@ -325,7 +326,7 @@ team_deactivate(cr-fix)
 }
 ```
 
-**Role 选择**：leo `tester`（跑测试，stage1 只读）、kate `coder`（返工，stage2 修改）、ruby `reviewer`（复审，stage3 只读）、mona `reviewer`（decider，auto-appended 只读裁决）。
+**Role 选择**：leo `tester`（写回归测试 + 跑测试，stage1 modify 测试文件）、kate `coder`（返工修复，stage2 modify 生产代码）、ruby `reviewer`（复审，stage3 只读）、mona `reviewer`（decider，auto-appended 只读裁决）。
 
 ### 4.3 Master 启动调用
 
@@ -334,12 +335,12 @@ team_deactivate(cr-fix)
   "tool": "team_loop",
   "args": {
     "team_id": "cr-verify",
-    "initial_task": "Verify the fixes applied to <TARGET> for these confirmed findings: <把 §2.5 的 CONFIRMED id 列表粘进来>. Each round runs Leo (tests) -> Kate (rework failures) -> Ruby (re-audit each fix, VERDICT). Mona decides whether ALL fixes are verified.",
+    "initial_task": "Verify the fixes applied to <TARGET> for these confirmed findings: <把 §2.5 的 CONFIRMED id 列表粘进来>. Each round runs Leo (write+run regression tests) -> Kate (rework failures) -> Ruby (re-audit each fix, VERDICT). Mona decides whether ALL fixes are verified.",
     "stages": [
       {
         "member": "leo",
-        "task": "Run <TARGET>'s test suite. Emit <!-- TESTS: <passed>/<total> --> (or <!-- TESTS: skip:no-suite -->). Flag any confirmed finding whose fix a test covers and whether it passes.",
-        "action": "read_only"
+        "task": "For each confirmed finding's fix, write a regression test (in <TARGET>'s test dir) if not already covered, then run the full suite. Emit <!-- TESTS: <passed>/<total> --> (or <!-- TESTS: skip:no-suite -->). Flag which findings' fixes are covered and pass. Add tests only — do not touch the fix code.",
+        "action": "modify"
       },
       {
         "member": "kate",
@@ -360,8 +361,8 @@ team_deactivate(cr-fix)
 ```
 
 **参数选择**：
-- `stages` 顺序：leo(read_only) → kate(modify) → ruby(read_only)，每轮跑一遍；decider mona 每轮裁决。
-- 测试先行：每轮先跑测试暴露回归/失败，coder 再修，reviewer 最后审计正确性。
+- `stages` 顺序：leo(modify，写+跑测试) → kate(modify，返工) → ruby(read_only，复审)，每轮跑一遍；decider mona 每轮裁决。
+- 测试先行：每轮 tester 先写回归测试 + 跑全套暴露回归/失败，coder 再修，reviewer 最后审计正确性。
 - `max_rounds: 3`——3 轮内修不干净就交回你处理（避免死循环）。
 
 ### 4.4 生命周期步骤（master）
@@ -394,7 +395,7 @@ T+~25  team_create(cr-fix) → team_activate → team_delegate(tasks=per-confirm
         3 coder 自取自修 <TARGET>
 T+~40  收 fixed+patches → team_deactivate(cr-fix)
 T+~40  team_create(cr-verify) → team_activate → team_loop
-        每轮 leo 测试 → kate 修复 → ruby 审计，mona 裁决
+        每轮 leo 写+跑测试 → kate 修复 → ruby 审计，mona 裁决
 T+~55  收 verdicts → team_deactivate(cr-verify)
 T+~55  你读取全部输出，裁定结果
 ```
@@ -418,7 +419,7 @@ T+~55  你读取全部输出，裁定结果
 
 3. fix-team (team_delegate，§3)：按 §3.2 team_create，§3.3 team_delegate（tasks = 把确认缺陷表每条展开成一个 fix task，含 strategy）。3 名 coder 自取自修。完成后 deactivate。汇总所有 <!-- FIXED: <id> --> + 补丁。
 
-4. verify-team (team_loop，§4)：按 §4.2 team_create，§4.3 team_loop（initial_task 含 CONFIRMED id 列表）。每轮 leo 测试 → kate 修复 → ruby 审计，mona 裁决。完成后 deactivate。汇总 leo 的 <!-- TESTS: ... --> 与 ruby 的所有 <!-- VERDICT: <id>: pass|fail -->。
+4. verify-team (team_loop，§4)：按 §4.2 team_create，§4.3 team_loop（initial_task 含 CONFIRMED id 列表）。每轮 leo 写+跑测试 → kate 修复 → ruby 审计，mona 裁决。完成后 deactivate。汇总 leo 的 <!-- TESTS: ... --> 与 ruby 的所有 <!-- VERDICT: <id>: pass|fail -->。
 
 全部完成后，把每个团队的产出（findings / confirmed / fixed+patches / tests+verdicts）整理给我，由我裁定结果。不跑评判脚本、不设回归门。
 
