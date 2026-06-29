@@ -39,6 +39,7 @@
 | 场景 | 工作流 | 编排原语 | 目录 |
 |------|--------|---------|------|
 | 多团队代码评审 | 审计 → 确认 → 方案 → 修复 → 复审 | parallel / consensus / delegate / loop | [`composite/code-review/`](./composite/code-review/) |
+| OCTeam 功能增强 | 调研 → 讨论 → 计划 → 实现 → 审计 | parallel / consensus / loop / pipeline | [`composite/feature-dev/`](./composite/feature-dev/) |
 
 ## 场景目录结构
 
