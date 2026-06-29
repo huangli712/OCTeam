@@ -48,7 +48,7 @@
 
 > **挑战级场景**：每个模式在 3 个基线场景（≤4 成员、≤30 min）之外，另有 1 个挑战级场景（6-10 成员、规模放大、时长放宽至 35-90 min），用于压测各原语在大规模/高难度下的扩展性。在模式 README 中标注「（挑战级）」，各模式的挑战主题见上方「场景矩阵」第 4 列。
 
-## 如何运行一个场景
+## 场景测试流程
 
 1. **创建团队**：按场景 README 中的 `team_create` JSON 调用 `team_create` 工具
 2. **激活团队**：调用 `team_activate`（默认不自动激活）
@@ -62,6 +62,12 @@
 
    - `<run_dir>` 是该次 run 的输出目录（含各成员的 `<member>.md` 输出）
    - 退出码：`0` = PASS，`1` = FAIL（断言失败），`2` = 用法/IO 错误
+
+## 场景启动提示词
+
+每个场景 README 末尾都有「**快速启动 Prompt（复制即用）**」章节，提供该场景 3 个基线 + 1 个挑战级子场景的一键闭环 prompt。把对应 prompt 粘贴给 master 会话，AI 会自动完成「创建团队 → 激活 → 启动编排 → 等待汇总 → 运行评判脚本」，并按退出码报告 PASS / FAIL——**无需手动拼装 JSON**。挑战级场景的 check 脚本与快速启动 prompt 与基线场景一致。
+
+例如启动 `01-team-parallel` 的 Monte Carlo π 场景：打开 [`01-team-parallel/README.md`](./01-team-parallel/README.md) 的「快速启动 Prompt → 场景 1」，复制其中 ```text``` 代码块粘贴给 AI 即可。
 
 ## 统一控时设计
 
@@ -78,12 +84,6 @@
 **挑战级场景**放宽至：6-10 成员、端到端 35-90 min；阶段/轮数/深度按模式而定（见各模式 README）。
 
 详见 [`_AUTHORING.md`](./_AUTHORING.md)（内部编写规范）。
-
-## 快捷启动
-
-每个场景 README 末尾都有「**快速启动 Prompt（复制即用）**」章节，提供该场景 3 个基线 + 1 个挑战级子场景的一键闭环 prompt。把对应 prompt 粘贴给 master 会话，AI 会自动完成「创建团队 → 激活 → 启动编排 → 等待汇总 → 运行评判脚本」，并按退出码报告 PASS / FAIL——**无需手动拼装 JSON**。挑战级场景的 check 脚本与快速启动 prompt 与基线场景一致。
-
-例如启动 `01-team-parallel` 的 Monte Carlo π 场景：打开 [`01-team-parallel/README.md`](./01-team-parallel/README.md) 的「快速启动 Prompt → 场景 1」，复制其中 ```text``` 代码块粘贴给 AI 即可。
 
 ## 相关文档
 
