@@ -416,7 +416,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 
 ## 验收清单
 
-- [ ] 3 个 check 脚本 `tsc -p docs/orchestration-scenarios/tsconfig.json` 通过（无类型错误）
+- [ ] 3 个 check 脚本 `tsc -p scenarios/tsconfig.json` 通过（无类型错误）
 - [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` / `reviewer` / `physicist` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_arbitrate` schema（`arbiter` 非 master、非辩手；`debaters` ≥2 且唯一）
 - [ ] 每场景总时长 ≤ 18 min（远低于 30 min 上限）
@@ -432,7 +432,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 ### 场景 1: 4×4 矩阵求逆法之争（数学）
 
 ```text
-执行 docs/orchestration-scenarios/07-team-arbitrate/README.md「场景 1」的完整闭环并自动评判。
+执行 scenarios/07-team-arbitrate/README.md「场景 1」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（2 debater + 1 arbiter）
@@ -440,7 +440,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 3. 读 README「1.3 Master 启动调用」，按 team_arbitrate JSON 启动编排
 4. team_results 轮询至 master 收到汇总（辩手辩论后 arbiter 出裁决）
 5. 定位 <run_dir>（含 carol 成员 .md）
-6. 运行：bun docs/orchestration-scenarios/07-team-arbitrate/check-math-matrix-inverse.ts <run_dir>
+6. 运行：bun scenarios/07-team-arbitrate/check-math-matrix-inverse.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：arbiter RULING = direct；REASON 含 condition 或 dense（4×4 稠密良态矩阵直接法胜出）。
@@ -449,7 +449,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 ### 场景 2: 刚性 ODE 格式之争（物理）
 
 ```text
-执行 docs/orchestration-scenarios/07-team-arbitrate/README.md「场景 2」的完整闭环并自动评判。
+执行 scenarios/07-team-arbitrate/README.md「场景 2」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
@@ -457,7 +457,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 3. 读 README「2.3 Master 启动调用」，按 team_arbitrate JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun docs/orchestration-scenarios/07-team-arbitrate/check-physics-stiff-ode.ts <run_dir>
+6. 运行：bun scenarios/07-team-arbitrate/check-physics-stiff-ode.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：arbiter RULING = implicit；REASON 含 stiff 或 stability（dy/dt=-1000y 显式受 dt<0.002 限制）。
@@ -466,7 +466,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 ### 场景 3: 缓存淘汰策略之争（编程）
 
 ```text
-执行 docs/orchestration-scenarios/07-team-arbitrate/README.md「场景 3」的完整闭环并自动评判。
+执行 scenarios/07-team-arbitrate/README.md「场景 3」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
@@ -474,7 +474,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 3. 读 README「3.3 Master 启动调用」，按 team_arbitrate JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun docs/orchestration-scenarios/07-team-arbitrate/check-coding-cache-eviction.ts <run_dir>
+6. 运行：bun scenarios/07-team-arbitrate/check-coding-cache-eviction.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：arbiter RULING = lru；REASON 含 temporal 或 recency（强时间局部性 workload 偏好 LRU）。
@@ -483,7 +483,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 ### 场景 4: 复杂边界 PDE 五方法之争（物理 · 挑战级）
 
 ```text
-执行 docs/orchestration-scenarios/07-team-arbitrate/README.md「场景 4」的完整闭环并自动评判。
+执行 scenarios/07-team-arbitrate/README.md「场景 4」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（5 debater + 1 arbiter，挑战级）
@@ -491,7 +491,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 3. 读 README「4.3 Master 启动调用」，按 team_arbitrate JSON 启动编排（max_rounds=3）
 4. team_results 轮询至 master 收到汇总（五方三轮辩论后 arbiter 出裁决）
 5. 定位 <run_dir>（含 frank 成员 .md）
-6. 运行：bun docs/orchestration-scenarios/07-team-arbitrate/check-physics-pde-arbitrate.ts <run_dir>
+6. 运行：bun scenarios/07-team-arbitrate/check-physics-pde-arbitrate.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：arbiter RULING ∈ {fem, fdm, fvm, spectral, bem}；REASON 至少含 {curved, boundary, advection, nonlinear, flux, mesh} 中两项（复杂边界 + 对流占优 + 非线性源项，物理预期 FEM/FVM 胜出）。

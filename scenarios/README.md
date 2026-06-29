@@ -67,7 +67,7 @@
 5. **评判结果**：
 
    ```bash
-   bun docs/orchestration-scenarios/0N-team-<mode>/check-<theme>-<topic>.ts <run_dir>
+   bun scenarios/0N-team-<mode>/check-<theme>-<topic>.ts <run_dir>
    ```
 
    - `<run_dir>` 是该次 run 的输出目录（含各成员的 `<member>.md` 输出）
