@@ -11,24 +11,24 @@
 | ① 审计 + ② 发现缺陷 | **audit-team** | `team_parallel` | `<TARGET>` 源码 | `<!-- FINDING: <id>:<dim>:<severity> -->` |
 | ③ 制定修复方案（含确认） | **plan-team** | `team_consensus` | audit 汇总的 findings | `<!-- CONFIRMED: <id>:<strategy> -->` |
 | ④ 修复 | **fix-team** | `team_delegate` | 每个 CONFIRMED 发现一条 task | `<!-- FIXED: <id> -->` + 补丁 |
-| ⑤ 修复部分复审（审计 + 可选测试） | **verify-team** | `team_loop` | 补丁后的工作副本 | `<!-- VERDICT: <id>: pass\|fail -->` |
+| ⑤ 修复部分复审（测试 + 审计） | **verify-team** | `team_loop` | 补丁后的工作副本 | tester `<!-- TESTS: ... -->`；reviewer `<!-- VERDICT: <id>: pass\|fail -->` |
 
-用到 4 种编排：**parallel / consensus / delegate / loop**。loop 的 decider 是成员（非 master），裁决「通过 / 继续修」。
+用到 4 种编排：**parallel / consensus / delegate / loop**。loop 的 decider 是成员（非 master），裁决「通过 / 继续循环」。
 
 ```
 <TARGET> ──► audit-team (parallel)  ──findings──► master
-                                                    │
-            plan-team  (consensus) ◄──findings──────┘
-                 │
-                 └──confirmed──► master
-                                    │
-            fix-team   (delegate) ◄──confirmed──────┘
-                 │
-                 └──fixed+patches──► master
-                                       │
-            verify-team (loop)      ◄──patched──────┘
-                 │
-                 └──verdicts──► master ──► 你判断
+                                                     │
+             plan-team  (consensus) ◄──findings──────┘
+                  │
+                  └──confirmed──► master
+                                     │
+             fix-team   (delegate) ◄──confirmed──────┘
+                  │
+                  └──fixed+patches──► master
+                                        │
+             verify-team (loop)       ◄──patched──────┘
+                  │
+                  └──verdicts──► master ──► 你判断
 ```
 
 ## 如何使用
@@ -48,14 +48,14 @@
 
 ### 1.1 阶段说明
 
-4 个 reviewer **并行**审计 `<TARGET>`，每人一个专属维度（维度烤进成员 prompt，parallel 跑 isolated）。覆盖：正确性/逻辑、并发/竞态、安全/输入校验、错误处理/资源清理。
+7 个 reviewer **并行**审计 `<TARGET>`，每人一个专属维度（维度烤进成员 prompt，parallel 跑 isolated）。覆盖：正确性/逻辑、并发/竞态、安全/输入校验、错误处理/资源清理、性能/效率、API 契约/类型安全、可维护性/代码异味。
 
 ### 1.2 Team 配置
 
 ```json
 {
   "name": "cr-audit",
-  "description": "Code review audit team: 4 reviewers scan <TARGET> in parallel, each a dedicated dimension",
+  "description": "Code review audit team: 7 reviewers scan <TARGET> in parallel, each a dedicated dimension",
   "members": [
     {
       "name": "alice",
@@ -76,12 +76,27 @@
       "name": "dave",
       "role": "reviewer",
       "prompt": "You are a code reviewer specializing in ERROR HANDLING & RESOURCE CLEANUP. Audit the code at the given <TARGET> for: swallowed errors, empty/over-broad catch blocks, resource leaks (unclosed handles), partial-failure cleanup gaps, unhandled promise rejections. For EACH issue found, emit a line exactly formatted: <!-- FINDING: <stable-kebab-id>:errorhandling:<severity> --> followed by a short description (file:line, what is wrong, impact). severity is one of high|medium|low. Use a stable kebab-case id. Report every issue — do not self-censor."
+    },
+    {
+      "name": "nina",
+      "role": "reviewer",
+      "prompt": "You are a code reviewer specializing in PERFORMANCE & EFFICIENCY. Audit the code at the given <TARGET> for: hot-path inefficiencies, unnecessary allocations, O(n^2) or worse complexity where O(n) suffices, redundant work, sync I/O on hot paths, missing caching where beneficial. For EACH issue found, emit a line exactly formatted: <!-- FINDING: <stable-kebab-id>:performance:<severity> --> followed by a short description (file:line, what is wrong, impact). severity is one of high|medium|low. Use a stable kebab-case id. Report every issue — do not self-censor."
+    },
+    {
+      "name": "omar",
+      "role": "reviewer",
+      "prompt": "You are a code reviewer specializing in API CONTRACTS & TYPE SAFETY. Audit the code at the given <TARGET> for: unsafe type assertions (as any / @ts-ignore), missing input validation at trust boundaries, broken invariants/contracts, schema validation gaps, public API misuse. For EACH issue found, emit a line exactly formatted: <!-- FINDING: <stable-kebab-id>:apicontracts:<severity> --> followed by a short description (file:line, what is wrong, impact). severity is one of high|medium|low. Use a stable kebab-case id. Report every issue — do not self-censor."
+    },
+    {
+      "name": "pat",
+      "role": "reviewer",
+      "prompt": "You are a code reviewer specializing in MAINTAINABILITY & CODE SMELL. Audit the code at the given <TARGET> for: duplicated logic, excessive cyclomatic complexity, magic numbers, dead code, unclear naming, overly long functions. For EACH issue found, emit a line exactly formatted: <!-- FINDING: <stable-kebab-id>:maintainability:<severity> --> followed by a short description (file:line, what is wrong, impact). severity is one of high|medium|low. Use a stable kebab-case id. Report every issue — do not self-censor."
     }
   ]
 }
 ```
 
-**Role 选择**：`reviewer` 为只读角色（审计不应改码），4 人对称，差异来自维度 prompt。
+**Role 选择**：`reviewer` 为只读角色（审计不应改码），7 人对称，差异来自维度 prompt。
 
 ### 1.3 Master 启动调用
 
@@ -98,7 +113,7 @@
 ```
 
 **参数选择**：
-- `mode: isolated` + 维度烤进成员 prompt——4 路并行各自扫一个维度，互不重叠。
+- `mode: isolated` + 维度烤进成员 prompt——7 路并行各自扫一个维度，互不重叠。
 - 不设 `signoff_policy`——parallel 默认无 signoff，跑完即汇总。
 
 ### 1.4 生命周期步骤（master）
@@ -107,13 +122,13 @@
 team_create(cr-audit)         # 用 §1.2 JSON
 team_activate(cr-audit)       # 激活（确认当前无其它 active 团队）
 team_parallel(...)            # 用 §1.3 JSON
-# 等待 4 名 reviewer 产出 → team_results 取汇总
+# 等待 7 名 reviewer 产出 → team_results 取汇总
 team_deactivate(cr-audit)     # 释放，为下一个团队让路
 ```
 
 ### 1.5 产出与交接
 
-- master 从 4 份成员输出抓取所有 `<!-- FINDING: <id>:<dim>:<severity> -->`，**汇总成一张 findings 清单**（id + dim + severity + 描述）。
+- master 从 7 份成员输出抓取所有 `<!-- FINDING: <id>:<dim>:<severity> -->`，**汇总成一张 findings 清单**（id + dim + severity + 描述）。
 - 这张清单作为 §2 `team_consensus` 的 `topic` 喂给 plan-team。
 
 ---
@@ -122,14 +137,14 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 
 ### 2.1 阶段说明
 
-3 名 debater 多轮辩论 audit 的 findings：哪些是真问题、严重度如何、用什么修复策略。达成共识后，输出被确认的缺陷表 + 每条的修复策略。
+4 名 debater（2 reviewer + 2 architect）多轮辩论 audit 的 findings：哪些是真问题、严重度如何、用什么修复策略。达成共识后，输出被确认的缺陷表 + 每条的修复策略。
 
 ### 2.2 Team 配置
 
 ```json
 {
   "name": "cr-plan",
-  "description": "Code review plan team: 3 debaters triage audit findings, agree on real issues + fix strategies",
+  "description": "Code review plan team: 4 debaters (2 reviewers + 2 architects) triage audit findings, agree on real issues + fix strategies",
   "members": [
     {
       "name": "erin",
@@ -145,12 +160,17 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
       "name": "grace",
       "role": "architect",
       "prompt": "You are an architect debating which audit findings are REAL and how to fix them cleanly. Weigh design impact and invariant preservation when proposing fix strategies. Reach agreement with your teammates. In your FINAL message, emit one line per confirmed issue exactly formatted: <!-- CONFIRMED: <finding-id>:<fix-strategy-slug> -->. Findings you collectively reject are simply omitted."
+    },
+    {
+      "name": "quinn",
+      "role": "architect",
+      "prompt": "You are an architect debating which audit findings are REAL and how to fix them cleanly. Weigh design impact, invariant preservation, and long-term maintainability when proposing fix strategies. Reach agreement with your teammates. In your FINAL message, emit one line per confirmed issue exactly formatted: <!-- CONFIRMED: <finding-id>:<fix-strategy-slug> -->. Findings you collectively reject are simply omitted."
     }
   ]
 }
 ```
 
-**Role 选择**：erin/frank 用 `reviewer`（只读深审），grace 用 `architect`（带设计视角权衡修复策略）。
+**Role 选择**：erin/frank 用 `reviewer`（只读深审），grace/quinn 用 `architect`（双架构视角权衡修复策略的设计影响）。
 
 ### 2.3 Master 启动调用
 
@@ -160,15 +180,15 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
   "args": {
     "team_id": "cr-plan",
     "topic": "<把 §1.5 的 findings 清单原文粘进来：每条 FINDING id/dim/severity/描述>",
-    "max_rounds": 3,
-    "timeout_ms": 1200000
+    "max_rounds": 5,
+    "timeout_ms": 1800000
   }
 }
 ```
 
 **参数选择**：
 - `topic` = audit findings 清单（master 手递手填入）。
-- `max_rounds: 3`——给足辩论空间，3 轮内一般能收敛。
+- `max_rounds: 5`——给足辩论空间，应对大量 findings 时有回旋余量。
 - 不设 `signoff_policy`——consensus 的「全同意」机制本身就是门。
 
 ### 2.4 生命周期步骤（master）
@@ -266,39 +286,46 @@ team_deactivate(cr-fix)
 
 ---
 
-## §4 verify-team（`team_loop`）— 修复部分复审（审计 + 可选测试）
+## §4 verify-team（`team_loop`）— 修复部分复审（测试 + 审计）
 
 ### 4.1 阶段说明
 
-修复有没有真解决问题、有没有引入新问题？用纠正循环：coder 兜底返工 ↔ reviewer 复审每条修复，decider 裁决「全通过 / 继续修」。最多 3 轮。测试可选——若 `<TARGET>` 自带测试套件，复审时顺手跑；否则纯复审。**不设回归门，最终由你判断。**
+修复有没有真解决问题、有没有引入新问题、有没有回归？用纠正循环，每轮按 **测试（tester）→ 修复（coder）→ 审计（reviewer）** 三阶段串行，decider 裁决「全通过 / 继续循环」。最多 3 轮。**不设硬性回归门，最终由你判断。**
+
+> ⚠️ **decider 不能兼任 stage 成员**（team_loop 规则：decider 是 auto-appended 只读，不能出现在 stages 里）。所以「审计」stage 用独立 reviewer 成员 ruby，mona 留作 decider。
 
 ### 4.2 Team 配置
 
 ```json
 {
   "name": "cr-verify",
-  "description": "Code review verify team: coder/reviewer loop re-auditing the fixes; decider judges done",
+  "description": "Code review verify team: test->fix->audit loop each round; decider judges done",
   "members": [
-    {
-      "name": "kate",
-      "role": "coder",
-      "prompt": "You are a coder in the verify loop. Each round, ensure every confirmed finding's fix is actually applied to <TARGET>. If the previous round flagged any fix as incomplete or regression-causing, REWORK that fix minimally now. For any finding you re-touched this round, emit <!-- REWORKED: <finding-id> -->. Otherwise confirm the fix is in place."
-    },
     {
       "name": "leo",
       "role": "tester",
-      "prompt": "You are a tester/re-reviewer in the verify loop. Each round, re-audit EACH confirmed finding's fix in <TARGET>: is the original issue actually resolved? did the fix introduce a new issue? For each finding emit exactly one line: <!-- VERDICT: <finding-id>: pass --> if resolved with no new issue, or <!-- VERDICT: <finding-id>: fail --> with a one-line reason if not. OPTIONALLY, if <TARGET> has a runnable test suite, run it and emit <!-- TESTS: <passed>/<total> --> for extra confidence — this is NOT a gate."
+      "prompt": "You are the TESTER (stage 1) in the verify loop. Each round, run <TARGET>'s test suite and report results. Emit <!-- TESTS: <passed>/<total> --> (or <!-- TESTS: skip:no-suite --> if <TARGET> has no tests). Call out which confirmed findings' fixes are covered by tests and whether they pass. Do not modify code."
+    },
+    {
+      "name": "kate",
+      "role": "coder",
+      "prompt": "You are the CODER (stage 2) in the verify loop. Each round, if Leo's tests or Ruby's previous-round audit flagged any fix as failing or incomplete, apply the MINIMAL rework to <TARGET> to resolve it. Emit <!-- REWORKED: <finding-id> --> for each finding you re-touched this round. If nothing needs rework, confirm the fixes stand."
+    },
+    {
+      "name": "ruby",
+      "role": "reviewer",
+      "prompt": "You are the AUDITOR (stage 3) in the verify loop. Each round, re-audit EACH confirmed finding's fix in <TARGET>: is the original issue actually resolved? did the fix introduce a new issue or regression? Emit exactly one line per finding: <!-- VERDICT: <finding-id>: pass --> if resolved with no new issue, or <!-- VERDICT: <finding-id>: fail --> with a one-line reason if not."
     },
     {
       "name": "mona",
       "role": "reviewer",
-      "prompt": "You are the DECIDER in the verify loop. After each round (kate's rework + leo's re-audit), decide: are ALL confirmed findings' fixes verified (leo's VERDICT all pass, no regressions)? Emit <decision>{\"done\": true}</decision> when all pass, or <decision>{\"done\": false, \"reason\": \"...\"}</decision> naming the failing finding ids to send kate back. Preserve invariants; do not lower the bar."
+      "prompt": "You are the DECIDER in the verify loop. After each round (Leo's tests -> Kate's rework -> Ruby's audit), decide whether ALL confirmed findings' fixes are verified: Ruby's VERDICT all pass AND Leo's tests green (or skipped). Emit <decision>{\"done\": true}</decision> when all pass, or <decision>{\"done\": false, \"reason\": \"...\"}</decision> naming the failing finding ids to loop back. Preserve invariants; do not lower the bar."
     }
   ]
 }
 ```
 
-**Role 选择**：kate `coder`（返工）、leo `tester`（复审 + 可选测试）、mona `reviewer`（decider，只读裁决）。
+**Role 选择**：leo `tester`（跑测试，stage1 只读）、kate `coder`（返工，stage2 修改）、ruby `reviewer`（复审，stage3 只读）、mona `reviewer`（decider，auto-appended 只读裁决）。
 
 ### 4.3 Master 启动调用
 
@@ -307,16 +334,21 @@ team_deactivate(cr-fix)
   "tool": "team_loop",
   "args": {
     "team_id": "cr-verify",
-    "initial_task": "Verify the fixes applied to <TARGET> for these confirmed findings: <把 §2.5 的 CONFIRMED id 列表粘进来>. Kate ensures each fix is applied (rework any flagged incomplete); Leo re-audits each fix and emits a VERDICT (optionally runs <TARGET>'s tests if present). Mona decides whether ALL fixes are verified.",
+    "initial_task": "Verify the fixes applied to <TARGET> for these confirmed findings: <把 §2.5 的 CONFIRMED id 列表粘进来>. Each round runs Leo (tests) -> Kate (rework failures) -> Ruby (re-audit each fix, VERDICT). Mona decides whether ALL fixes are verified.",
     "stages": [
       {
+        "member": "leo",
+        "task": "Run <TARGET>'s test suite. Emit <!-- TESTS: <passed>/<total> --> (or <!-- TESTS: skip:no-suite -->). Flag any confirmed finding whose fix a test covers and whether it passes.",
+        "action": "read_only"
+      },
+      {
         "member": "kate",
-        "task": "Ensure every confirmed finding's fix is applied to <TARGET>. If Leo's previous round flagged any fix incomplete or regression-causing, refine that fix minimally now. Emit <!-- REWORKED: <id> --> for anything re-touched.",
+        "task": "If Leo's tests or Ruby's previous-round audit flagged any fix as failing or incomplete, apply the MINIMAL rework to <TARGET>. Emit <!-- REWORKED: <id> --> for each re-touched finding.",
         "action": "modify"
       },
       {
-        "member": "leo",
-        "task": "Re-audit each confirmed finding's fix in <TARGET>. Emit one <!-- VERDICT: <id>: pass --> (resolved, no new issue) or <!-- VERDICT: <id>: fail --> (with one-line reason) per finding. Optionally run <TARGET>'s test suite and emit <!-- TESTS: <passed>/<total> --> if present.",
+        "member": "ruby",
+        "task": "Re-audit each confirmed finding's fix in <TARGET>. Emit one <!-- VERDICT: <id>: pass --> (resolved, no new issue) or <!-- VERDICT: <id>: fail --> (with one-line reason) per finding.",
         "action": "read_only"
       }
     ],
@@ -328,9 +360,9 @@ team_deactivate(cr-fix)
 ```
 
 **参数选择**：
-- `stages`：kate(modify) → leo(read_only)，每轮跑一遍；decider mona 每轮裁决。
+- `stages` 顺序：leo(read_only) → kate(modify) → ruby(read_only)，每轮跑一遍；decider mona 每轮裁决。
+- 测试先行：每轮先跑测试暴露回归/失败，coder 再修，reviewer 最后审计正确性。
 - `max_rounds: 3`——3 轮内修不干净就交回你处理（避免死循环）。
-- 测试可选（leo prompt 已说明「NOT a gate」）——呼应「不设回归门、由你判断」。
 
 ### 4.4 生命周期步骤（master）
 
@@ -344,8 +376,8 @@ team_deactivate(cr-verify)
 
 ### 4.5 产出与交接
 
-- master 抓取所有 `<!-- VERDICT: <id>: pass|fail -->`（+ 可选 `<!-- TESTS: n/total -->`）。
-- **你读取这些 verdict 与各团队输出，自行裁定整次评审的成败。** 场景到此结束。
+- master 抓取 leo 的 `<!-- TESTS: ... -->` 与 ruby 的所有 `<!-- VERDICT: <id>: pass|fail -->`（+ kate 的 `<!-- REWORKED: <id> -->` 痕迹）。
+- **你读取这些测试结果与 verdict，自行裁定整次评审的成败。** 场景到此结束。
 
 ---
 
@@ -353,18 +385,18 @@ team_deactivate(cr-verify)
 
 ```
 T+0   team_create(cr-audit) → team_activate → team_parallel
-        4 reviewer 并行审计 <TARGET>
-T+~10  收 findings → team_deactivate(cr-audit)
-T+~10  team_create(cr-plan) → team_activate → team_consensus(topic=findings)
-        3 debater 辩论确认 + 定策略
-T+~20  收 confirmed → team_deactivate(cr-plan)
-T+~20  team_create(cr-fix) → team_activate → team_delegate(tasks=per-confirmed)
+        7 reviewer 并行审计 <TARGET>
+T+~12  收 findings → team_deactivate(cr-audit)
+T+~12  team_create(cr-plan) → team_activate → team_consensus(topic=findings)
+        4 debater（2 reviewer + 2 architect）辩论确认 + 定策略（≤5 轮）
+T+~25  收 confirmed → team_deactivate(cr-plan)
+T+~25  team_create(cr-fix) → team_activate → team_delegate(tasks=per-confirmed)
         3 coder 自取自修 <TARGET>
-T+~35  收 fixed+patches → team_deactivate(cr-fix)
-T+~35  team_create(cr-verify) → team_activate → team_loop
-        kate↔leo 循环，mona 裁决
-T+~50  收 verdicts → team_deactivate(cr-verify)
-T+~50  你读取全部输出，裁定结果
+T+~40  收 fixed+patches → team_deactivate(cr-fix)
+T+~40  team_create(cr-verify) → team_activate → team_loop
+        每轮 leo 测试 → kate 修复 → ruby 审计，mona 裁决
+T+~55  收 verdicts → team_deactivate(cr-verify)
+T+~55  你读取全部输出，裁定结果
 ```
 
 （时长仅为量级估计；`<TARGET>` 越大越久。本场景不设硬性 timeout 上限。）
@@ -380,29 +412,29 @@ T+~50  你读取全部输出，裁定结果
 
 执行 4 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
 
-1. audit-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。4 名 reviewer 并行审计 <TARGET>。完成后 deactivate。汇总所有 <!-- FINDING: ... --> marker 成 findings 清单。
+1. audit-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。7 名 reviewer 并行审计 <TARGET>。完成后 deactivate。汇总所有 <!-- FINDING: ... --> marker 成 findings 清单。
 
-2. plan-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步 findings 清单）。3 名 debater 辩论确认。完成后 deactivate。汇总所有 <!-- CONFIRMED: <id>:<strategy> --> marker 成确认缺陷表。
+2. plan-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步 findings 清单，max_rounds=5）。4 名 debater（2 reviewer + 2 architect）辩论确认。完成后 deactivate。汇总所有 <!-- CONFIRMED: <id>:<strategy> --> marker 成确认缺陷表。
 
 3. fix-team (team_delegate，§3)：按 §3.2 team_create，§3.3 team_delegate（tasks = 把确认缺陷表每条展开成一个 fix task，含 strategy）。3 名 coder 自取自修。完成后 deactivate。汇总所有 <!-- FIXED: <id> --> + 补丁。
 
-4. verify-team (team_loop，§4)：按 §4.2 team_create，§4.3 team_loop（initial_task 含 CONFIRMED id 列表）。kate↔leo 循环，mona 裁决。完成后 deactivate。汇总所有 <!-- VERDICT: <id>: pass|fail -->。
+4. verify-team (team_loop，§4)：按 §4.2 team_create，§4.3 team_loop（initial_task 含 CONFIRMED id 列表）。每轮 leo 测试 → kate 修复 → ruby 审计，mona 裁决。完成后 deactivate。汇总 leo 的 <!-- TESTS: ... --> 与 ruby 的所有 <!-- VERDICT: <id>: pass|fail -->。
 
-全部完成后，把每个团队的产出（findings / confirmed / fixed+patches / verdicts）整理给我，由我裁定结果。不跑评判脚本、不设回归门。
+全部完成后，把每个团队的产出（findings / confirmed / fixed+patches / tests+verdicts）整理给我，由我裁定结果。不跑评判脚本、不设回归门。
 
 注意：
-- 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona...），角色必须用 reviewer/architect/coder/tester 等预设值。
+- 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby...），角色必须用 reviewer/architect/coder/tester 等预设值。
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
-- fix-team 的 coder 会改 <TARGET> 源码——我已自行处理好 worktree/分支，你直接改即可。
+- verify-team 的 decider（mona）不能出现在 stages 里，审计 stage 用独立成员 ruby。
 ```
 
 ---
 
 ## 相关文档
 
-- [`../../README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
-- [`../../_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
-- [`../../01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
-- [`../../05-team-delegate/README.md`](../../05-team-delegate/README.md) — delegate 原语参考（自取流程）
-- [`../../../src/tools/workflow-basic.ts`](../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
-- [`../../../src/tools/workflow-advanced.ts`](../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码
+- [`scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
+- [`scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
+- [`scenarios/01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
+- [`scenarios/05-team-delegate/README.md`](../../05-team-delegate/README.md) — delegate 原语参考（自取流程）
+- [`src/tools/workflow-basic.ts`](../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
+- [`src/tools/workflow-advanced.ts`](../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码
