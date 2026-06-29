@@ -20,15 +20,15 @@
                                                      │
              plan-team  (consensus) ◄──findings──────┘
                   │
-                  └──confirmed──► master
-                                     │
+                  └──confirmed──────────────────► master
+                                                     │
              fix-team   (delegate) ◄──confirmed──────┘
                   │
-                  └──fixed+patches──► master
-                                        │
-             verify-team (loop)       ◄──patched──────┘
+                  └──fixed+patches──────────────► master
+                                                     │
+             verify-team (loop) ◄───────patched──────┘
                   │
-                  └──verdicts──► master ──► 你判断
+                  └──verdicts───────────────────► master ──► 你判断
 ```
 
 ## 如何使用
