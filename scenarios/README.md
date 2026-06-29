@@ -20,23 +20,23 @@
 
 ## 场景矩阵（模式 × 方向）
 
-| 模式 | 数学 | 计算物理 | 编程 |
-|------|------|---------|------|
-| parallel | Monte Carlo π 三方法 | 谐振子积分器能量漂移 | 两数和多解法 |
-| consensus | 小规模排序选型 | 热传导时间格式 | 字符串匹配算法 |
-| pipeline | 高斯定积分全流程 | 单摆小角度仿真 | Fibonacci TDD 线 |
-| loop | 二分法边界 bug | 弹簧能量漂移 | 区间合并 off-by-one |
-| delegate | 数论题集（5 道） | ODE 套件（3 个） | CLI 计算器（DAG） |
-| route | 数学题分类 | PDE 类型路由 | GitHub issue 分流 |
-| arbitrate | 矩阵求逆法之争 | 刚性 ODE 格式之争 | 缓存淘汰策略之争 |
-| recurse | 错排数 D_n 推导 | 阻尼摆建模 | Markdown→HTML 转换器 |
-| tollgate | 快速幂实现+验证 | Verlet 求解器+验证 | 字符串反转+验证 |
+| 模式 | 数学 | 计算物理 | 编程 | 挑战级场景 |
+|------|------|---------|------|-----------|
+| parallel | Monte Carlo π 三方法 | 谐振子积分器能量漂移 | 两数和多解法 | 8 种排序 × 10⁶ × 3 数据集基准（8 人, ~40min）|
+| consensus | 小规模排序选型 | 热传导时间格式 | 字符串匹配算法 | 60 位 RSA 模数分解算法选型（6 人, ~35min）|
+| pipeline | 高斯定积分全流程 | 单摆小角度仿真 | Fibonacci TDD 线 | Lennard-Jones 分子动力学完整链（8 人, ~60min）|
+| loop | 二分法边界 bug | 弹簧能量漂移 | 区间合并 off-by-one | Lock-free queue 四类并发 bug 修复（7 人, ~60min）|
+| delegate | 数论题集（5 道） | ODE 套件（3 个） | CLI 计算器（DAG） | 100 道程序化数论题（8 人, ~90min）|
+| route | 数学题分类 | PDE 类型路由 | GitHub issue 分流 | 多面性工单九路分流（9 人, ~45min）|
+| arbitrate | 矩阵求逆法之争 | 刚性 ODE 格式之争 | 缓存淘汰策略之争 | 复杂边界 PDE 五方法之争（6 人, ~40min）|
+| recurse | 错排数 D_n 推导 | 阻尼摆建模 | Markdown→HTML 转换器 | Vandermonde 恒等式多层证明（6 人, ~50min）|
+| tollgate | 快速幂实现+验证 | Verlet 求解器+验证 | 字符串反转+验证 | 二维热传导求解器 V&V 认证（6 人, ~60min）|
 
 ## 每个场景包含
 
 每个模式目录下有 4 个文件：
 
-- **`README.md`** — 完整设计（3 个子场景：数学 / 计算物理 / 编程），每个子场景含：
+- **`README.md`** — 完整设计（3 个基线子场景：数学 / 计算物理 / 编程 + 1 个挑战级场景），每个子场景含：
   - 场景描述（背景、目标、可机器评判的成功标准）
   - `team_create` 完整 JSON 配置
   - master 的 `team_*` 启动调用 JSON + 参数选择说明
@@ -45,6 +45,8 @@
 - **`check-math-*.ts`** — 数学场景评判脚本（`bun` 可运行）
 - **`check-physics-*.ts`** — 计算物理场景评判脚本
 - **`check-coding-*.ts`** — 编程场景评判脚本
+
+> **挑战级场景**：每个模式在 3 个基线场景（≤4 成员、≤30 min）之外，另有 1 个挑战级场景（6-10 成员、规模放大、时长放宽至 35-90 min），用于压测各原语在大规模/高难度下的扩展性。在模式 README 中标注「（挑战级）」，各模式的挑战主题见上方「场景矩阵」第 4 列。
 
 ## 如何运行一个场景
 
@@ -63,7 +65,7 @@
 
 ## 统一控时设计
 
-所有场景遵循：
+基线场景遵循：
 
 | 维度 | 上限 |
 |------|------|
@@ -72,6 +74,8 @@
 | 成员数 | ≤ 4 |
 | 顺序阶段/轮数 | ≤ 3 |
 | 递归深度 | ≤ 2 |
+
+**挑战级场景**放宽至：6-10 成员、端到端 35-90 min；阶段/轮数/深度按模式而定（见各模式 README）。
 
 详见 [`_AUTHORING.md`](./_AUTHORING.md)（内部编写规范）。
 
@@ -85,23 +89,6 @@
 
 ## 快捷启动：复制即用的 Prompt
 
-每个场景 README 末尾都有「**快速启动 Prompt（复制即用）**」章节，提供该场景 3 个子场景（数学 / 计算物理 / 编程）的一键闭环 prompt。把对应 prompt 粘贴给 master 会话，AI 会自动完成「创建团队 → 激活 → 启动编排 → 等待汇总 → 运行评判脚本」，并按退出码报告 PASS / FAIL——**无需手动拼装 JSON**。
+每个场景 README 末尾都有「**快速启动 Prompt（复制即用）**」章节，提供该场景 3 个基线 + 1 个挑战级子场景的一键闭环 prompt。把对应 prompt 粘贴给 master 会话，AI 会自动完成「创建团队 → 激活 → 启动编排 → 等待汇总 → 运行评判脚本」，并按退出码报告 PASS / FAIL——**无需手动拼装 JSON**。挑战级场景的 check 脚本与快速启动 prompt 与基线场景一致。
 
 例如启动 `01-team-parallel` 的 Monte Carlo π 场景：打开 [`01-team-parallel/README.md`](./01-team-parallel/README.md) 的「快速启动 Prompt → 场景 1」，复制其中 ```text``` 代码块粘贴给 AI 即可。
-
-
-## 挑战级场景（增补）
-
-每个模式在 3 个基线场景（≤4 成员、≤30 min）之外，另有 **1 个挑战级场景**（6-10 成员、规模放大、时间放宽至 35-90 min），用于压测各原语在大规模/高难度下的扩展性。挑战级场景在每个模式 README 中标注「（挑战级）」，配套 check 脚本与快速启动 prompt 与基线场景一致。
-
-| 模式 | 挑战场景 | 成员 | 规模放大点 | 时长 |
-|------|---------|-----|-----------|------|
-| parallel | 8 种排序 × 10⁶ × 3 数据集基准 | 8 coder | 数据 10³→10⁶、算法 3→8 | ~40min |
-| consensus | 60 位 RSA 模数分解算法选型 | 6 mathematician | 方法 3→6、轮数 3→5 | ~35min |
-| pipeline | Lennard-Jones 分子动力学完整链 | 8 simulator | 3→8 阶段、真实 MD 流程 | ~60min |
-| loop | Lock-free queue 四类并发 bug 修复 | 7 (4coder+2tester+decider) | 单 bug→4 类、10³→10⁷ 压测 | ~60min |
-| delegate | 100 道程序化数论题 | 8 mathematician | **5→100 题** | ~90min |
-| route | 多面性工单九路分流 | 9 (router+8分支) | 单选→多路并发分支 | ~45min |
-| arbitrate | 复杂边界 PDE 五方法之争 | 6 (5debater+arbiter) | 2→5 派、1→3 轮 | ~40min |
-| recurse | Vandermonde 恒等式多层证明 | 6 mathematician | depth 2→4、3 路证法 | ~50min |
-| tollgate | 二维热传导求解器 V&V 认证 | 6 | 1→3 门、含网格收敛+守恒律 | ~60min |
