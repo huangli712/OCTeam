@@ -62,7 +62,7 @@ review-team (parallel)      ◄──optimized code───┘
 
 ## team 切换铁律
 
-> 同一时刻**仅一个团队** active。`team_activate` 在已有 active 团队时会拒绝——**必须先 `team_deactivate` 再 `team_activate` 下一个**。每个团队段的 master 步骤都已显式写出 deactivate。
+同一时刻**仅一个团队** active。`team_activate` 在已有 active 团队时会拒绝——**必须先 `team_deactivate` 再 `team_activate` 下一个**。每个团队段的 master 步骤都已显式写出 deactivate。
 
 ---
 
@@ -70,7 +70,7 @@ review-team (parallel)      ◄──optimized code───┘
 
 ### 1.1 阶段说明
 
-5 名研究员**并行**调研，每人一个维度（维度烤进成员 prompt，parallel 跑 isolated）。覆盖：经典算法（QR、分治、二分法、Jacobi）、竞品库（LAPACK、ARPACK、SLEPc、Eigen）、Rust 生态（nalgebra、faer、lax、gemm）、数值稳定性考量、问题特定优化。每人至少提 2 个候选方法 → 合计 ≥8。
+5 名研究员**并行**调研，每人一个维度（维度烤进成员 prompt，parallel 跑 isolated）。覆盖：经典算法（QR、分治、二分法、Jacobi）、竞品库（LAPACK、ARPACK、SLEPc、Eigen）、Rust 生态（nalgebra、faer、lax、gemm）、数值稳定性考量、问题特定优化。每人至少提 3 个候选方法 → 合计 ≥8 （剔除重复项之后）。
 
 ### 1.2 Team 配置
 
