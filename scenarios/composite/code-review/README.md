@@ -136,6 +136,7 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 ### 1.5 产出与交接
 
 - master 从 8 份成员输出抓取所有 `<!-- FINDING: <id>:<dim>:<severity> -->`，**汇总成一张 findings 清单**（id + dim + severity + 描述）。
+- **裁减规则**：若汇总后 findings 总数 **> 20**，master 先剔除所有 severity 为 `low` 的发现（只保留 high + medium），再把剩余清单交给 plan-team；若剔除后仍 > 20，不再进一步裁减。
 - 这张清单作为 §2 `team_consensus` 的 `topic` 喂给 plan-team。
 - 如果没有发现问题，那么 master 应该如实汇报，并中断流程。
 
@@ -434,6 +435,7 @@ T+~55  你读取全部输出，裁定结果
 - 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby/sam...），角色必须用 reviewer/architect/coder/tester 等预设值。
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
 - 如果audit-team 没有发现high或medium级的问题，应中断流程。
+- 如果audit-team 汇总后的 findings 总数 > 20，先剔除所有 severity=low 的发现，再把剩余清单交给 plan-team。
 ```
 
 ---
