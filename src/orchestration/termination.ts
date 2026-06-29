@@ -53,7 +53,7 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
     // (pipeline/loop/consensus) get tolerance 0 — one active member, no survivors.
     const erroredMembers = team.members.filter(m => !m.isMaster && m.status === "errored")
     if (erroredMembers.length > 0) {
-        const concurrent = task.type === "parallel" || task.type === "delegate"
+        const concurrent = task.type === "parallel" || task.type === "delegate" || task.type === "recurse"
         const tolerance = concurrent ? (task.maxErroredMembers ?? 0) : 0
         const survivors = team.members.filter(m => !m.isMaster).length - erroredMembers.length
         if (erroredMembers.length > tolerance || survivors === 0) {

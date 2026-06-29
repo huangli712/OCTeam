@@ -334,6 +334,12 @@ export async function handleStatusEvent(
 
     const team = await loadTeamState(ctx.storageRoot, member.teamName, member.leadSessionId)
     await team.mutex.runExclusive(async () => {
+        // Tombstone: team was deleted under the mutex; bail before any state
+        // mutation or saveTeamState — mirrors processIdle's guard (line 113).
+        // Without this, a late session.status event after team_delete would
+        // saveTeamState and recreate the just-removed directory via
+        // atomicWrite's mkdir({recursive:true}).
+        if (team.deleted) return
         const live = team.members.find(m => m.name === member.name)
         if (!live) return
         // Omit the directory filter so sessions in member worktrees (a different

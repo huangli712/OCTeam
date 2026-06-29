@@ -74,15 +74,22 @@ export async function deliverQueuedResultsToMaster(
 ): Promise<void> {
     const queued = await pollMailbox(team.directory, "master")
     if (queued.length === 0) return
+    let delivered = true
     await ctx.client.session.promptAsync({
         path: { id: masterSessionId },
         body: {
             parts: [{ type: "text", text: formatMailboxInjection(queued), synthetic: true }],
         },
-    }).catch(err =>
-        logSwallowed(ctx, "deliver queued results to master failed", err, { team: team.teamName }),
-    )
-    await ackMessages(team.directory, "master", queued)
+    }).catch(err => {
+        delivered = false
+        logSwallowed(ctx, "deliver queued results to master failed", err, { team: team.teamName })
+    })
+    // ACK only on successful delivery. On failure, leave messages reserved so
+    // releaseStaleReservations re-delivers them after the TTL — otherwise a
+    // transient master-session error silently drops team results.
+    if (delivered) {
+        await ackMessages(team.directory, "master", queued)
+    }
 }
 
 /**
@@ -191,7 +198,8 @@ export async function buildSummary(
             }
 
             // parallel: switch on reducePolicy
-            switch (task.reducePolicy ?? "summarize") {
+            const policy = task.reducePolicy ?? "summarize"
+            switch (policy) {
                 case "summarize":
                     return `${head}\n${candidates}`
                 case "select":
@@ -220,6 +228,16 @@ export async function buildSummary(
                         + `Score each candidate on the rubric, then select the top-scoring one.\n\n`
                         + candidates
                     )
+                }
+                default: {
+                    // Exhaustiveness guard: if ReducePolicy gains a new variant,
+                    // this assignment fails to compile, forcing a case here.
+                    // Runtime fallback (defensive — an unknown value should not
+                    // reach here) mirrors summarize so the summary text is never
+                    // the literal string "undefined".
+                    const _exhaustive: never = policy
+                    void _exhaustive
+                    return `${head}\n${candidates}`
                 }
             }
         }

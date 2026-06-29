@@ -46,6 +46,8 @@ const FAILED_REASON_MARKERS = [
     "arbiter_unavailable", // arbitrate: arbiter has no live session at ruling time
     "tollgate_failed",     // tollgate: a gate's FAIL retries (maxGateRetries) exhausted
     "tollgate_invalid",    // tollgate: verifier/oracle unevaluable, no escalation handler
+    "signoff_rejected",           // signoff: decider/reviewer rejected the work
+    "signoff_quorum_not_reached", // signoff: peer-quorum did not get enough approvals
 ] as const
 
 /** Derive run status from the verbatim termination reason (heuristic; see set above). */

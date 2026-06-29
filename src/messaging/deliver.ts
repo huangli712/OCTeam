@@ -22,14 +22,31 @@ export async function deliverToRecipients(
     recipients: string[],
     base: Omit<Message, "to">,
 ): Promise<void> {
+    const failures: string[] = []
     for (const r of recipients) {
-        await writeMailboxMessage(team.directory, r, { ...base, to: r })
-        // Best-effort wake hint if the recipient is idle (Layer 2) so it
-        // is prompted to process the message on its next turn.
-        const member = team.members.find(m => m.name === r)
-        if (member?.sessionId && member.status === "idle") {
-            const n = await countUnreadMessages(team.directory, r)
-            await sendWakeHint(ctx, member.sessionId, n)
+        try {
+            await writeMailboxMessage(team.directory, r, { ...base, to: r })
+        } catch {
+            // Isolate per-recipient failures: one bad write must NOT abort the
+            // remaining recipients (partial broadcast). Record and continue.
+            failures.push(r)
+            continue
         }
+        // Best-effort wake hint if the recipient is idle (Layer 2) so it
+        // is prompted to process the message on its next turn. Wake-hint
+        // failure does NOT count as a delivery failure — the message is
+        // already in the mailbox and will be polled on the next turn.
+        try {
+            const member = team.members.find(m => m.name === r)
+            if (member?.sessionId && member.status === "idle") {
+                const n = await countUnreadMessages(team.directory, r)
+                await sendWakeHint(ctx, member.sessionId, n)
+            }
+        } catch {
+            // wake-hint is best-effort
+        }
+    }
+    if (failures.length > 0) {
+        throw new Error(`delivery failed for: ${failures.join(", ")}`)
     }
 }

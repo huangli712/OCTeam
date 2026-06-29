@@ -204,12 +204,14 @@ export function createTransformHook(
         )
         if (hasScopedDirective) {
             let activeRunId: string | undefined
+            let injectAllScoped = false
             try {
                 const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
                 activeRunId = team.activeTask?.runId
             } catch {
                 // Team state unreadable — fall back to injecting all. The
                 // ack-full-set below still prevents a reservation loop.
+                injectAllScoped = true
             }
             toInject = unread.filter(m => {
                 // Non-directives, and directives without a runId, always pass
@@ -217,6 +219,9 @@ export function createTransformHook(
                 if (m.kind !== "directive" || m.runId === undefined) return true
                 // Scoped directive: inject only when it matches the active run;
                 // a mismatch is a stale directive from an ended run → skip.
+                // On unreadable team state, honor the "fall back to injecting
+                // all" contract above instead of silently dropping them.
+                if (injectAllScoped) return true
                 return m.runId === activeRunId
             })
         }

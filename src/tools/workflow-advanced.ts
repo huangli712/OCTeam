@@ -519,6 +519,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            max_errored_members: tool.schema.number().int().min(0).optional().describe("tolerate up to N terminally-errored members and still deliver survivors' work. Default 0 (any member error fails the run). Recurse uses a shared task pool like delegate, so failure isolation applies to independent subtask execution."),
         },
         async execute(args, context) {
             let rootTaskId = ""
@@ -554,6 +555,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                         maxDepth: args.max_depth ?? DEFAULT_RECURSE_DEPTH,
                         maxSubtasks: args.max_subtasks ?? DEFAULT_RECURSE_SUBTASKS,
                         rootTaskId: root.id,
+                        maxErroredMembers: args.max_errored_members,
                         ...signoffTaskFields(args),
                     }
                 },

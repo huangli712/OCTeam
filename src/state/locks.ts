@@ -272,12 +272,32 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
 }
 
 /**
+ * Refuse to write through a symlink (defense-in-depth against symlink
+ * redirection on a hostile .octeam/). A no-op when the path does not exist yet
+ * or is a regular file. Mirrors the lstat guard inside atomicWrite so that
+ * appendJsonl / truncateFile callers are not exploitable as symlink-following
+ * sinks (atomicWrite already refuses symlinks, but fs.appendFile/writeFile
+ * follow them by default).
+ */
+export async function refuseSymlink(filePath: string): Promise<void> {
+    try {
+        const stat = await fs.lstat(filePath)
+        if (stat.isSymbolicLink()) {
+            throw new Error(`refuseSymlink: refusing to write through symlink: ${filePath}`)
+        }
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+    }
+}
+
+/**
  * Append a line to a file (creating it + parent dir if needed). Used for the
  * append-only run event log (events.jsonl). fs.appendFile opens with O_APPEND,
  * so concurrent appends do not corrupt a line; readers sort by timestamp rather
  * than trusting file order.
  */
 export async function appendJsonl(filePath: string, line: string): Promise<void> {
+    await refuseSymlink(filePath)
     await fs.mkdir(path.dirname(filePath), { recursive: true }).catch(() => {
         // parent may already exist
     })

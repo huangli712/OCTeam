@@ -31,7 +31,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import { RESERVATION_TTL_MS, atomicWrite, withLock } from "../state/locks.js"
+import { RESERVATION_TTL_MS, atomicWrite, refuseSymlink, withLock } from "../state/locks.js"
 import {
     inboxPath,
     mailboxLockPath,
@@ -49,6 +49,7 @@ const PROCESSED_MAX_LINES = 1000
 // --- low-level jsonl helpers ---
 
 async function appendJsonl(filePath: string, obj: unknown): Promise<void> {
+    await refuseSymlink(filePath)
     await fs.mkdir(path.dirname(filePath), { recursive: true }).catch(() => {
         // parent may already exist
     })
@@ -109,6 +110,7 @@ async function readJsonl(filePath: string): Promise<Message[]> {
 }
 
 async function truncateFile(filePath: string): Promise<void> {
+    await refuseSymlink(filePath)
     await fs.writeFile(filePath, "", "utf8").catch(err => {
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
     })

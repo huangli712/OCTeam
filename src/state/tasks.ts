@@ -52,6 +52,19 @@ export class TaskOwnershipError extends Error {
 }
 
 /**
+ * Raised by updateTask when opts.expectedStatus is set and the task's current
+ * status does not match — a TOCTOU-safe status check inside the update lock.
+ * Used by claimTask to close the window between its optimistic pending-check
+ * (outside taskUpdateLock) and the claimed flip.
+ */
+export class TaskStatusError extends Error {
+    constructor(taskId: string, expected: string, actual: string) {
+        super(`Task ${taskId} expected status "${expected}" but is "${actual}"`)
+        this.name = "TaskStatusError"
+    }
+}
+
+/**
  * Canonical task-id shape. Task IDs are always crypto.randomUUID() (see
  * createTask). Exported so the tool layer (task.ts) validates the same shape at
  * the schema boundary — a single source of truth for both layers.
@@ -170,7 +183,7 @@ export async function updateTask(
     teamDirectory: string,
     taskId: string,
     patch: Partial<Pick<Task, "status" | "owner" | "blockedBy" | "claimedAt" | "result">>,
-    opts: { expectedOwner?: string } = {},
+    opts: { expectedOwner?: string; expectedStatus?: TaskStatus } = {},
 ): Promise<Task> {
     assertValidTaskId(taskId)
     // Serialize the read-modify-write against concurrent updateTask calls (e.g.
@@ -183,6 +196,13 @@ export async function updateTask(
         // so a racing owner change cannot let a non-owner slip through.
         if (opts.expectedOwner !== undefined && task.owner !== opts.expectedOwner) {
             throw new TaskOwnershipError(taskId, task.owner ?? "unassigned")
+        }
+        // TOCTOU-safe status check: expectedStatus is verified inside the lock
+        // so a racing team_task_update (delete/complete) between claimTask's
+        // optimistic status check (outside this lock) and here cannot resurrect
+        // a terminal task as "claimed".
+        if (opts.expectedStatus !== undefined && task.status !== opts.expectedStatus) {
+            throw new TaskStatusError(taskId, opts.expectedStatus, task.status)
         }
         Object.assign(task, patch, { updatedAt: Date.now() })
         await atomicWrite(taskPath(teamDirectory, taskId), JSON.stringify(task, null, 2))
@@ -263,7 +283,8 @@ export async function claimTask(
             }
         }
 
-        // 2. Double-check status under the lock; flip to "claimed".
+        // 2. Optimistic pending-check under claimMutex (clear error for the
+        // common "already claimed / not pending" case + handles !task).
         const task = await readTaskFile(teamDirectory, taskId)
         if (!task || task.status !== "pending") {
             await fs.unlink(lockPath).catch(() => {
@@ -271,12 +292,27 @@ export async function claimTask(
             })
             throw new TaskAlreadyClaimedError(taskId)
         }
-        const updated = await updateTask(teamDirectory, taskId, {
-            status: "claimed",
-            owner,
-            claimedAt: Date.now(),
-        })
-        return updated
+        // 3. Flip to "claimed" under taskUpdateLock with a TOCTOU-safe
+        // expectedStatus check. The optimistic check above is NOT under
+        // taskUpdateLock; this closes the narrow window where a concurrent
+        // team_task_update (delete/complete) flips the status between the check
+        // above and this write (resurrecting a terminal task as "claimed").
+        try {
+            const updated = await updateTask(teamDirectory, taskId, {
+                status: "claimed",
+                owner,
+                claimedAt: Date.now(),
+            }, { expectedStatus: "pending" })
+            return updated
+        } catch (err) {
+            if (err instanceof TaskStatusError) {
+                await fs.unlink(lockPath).catch(() => {
+                    // release our lock since we are not claiming
+                })
+                throw new TaskAlreadyClaimedError(taskId)
+            }
+            throw err
+        }
     })
 }
 
