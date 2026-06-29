@@ -48,19 +48,24 @@
 
 ### 1.1 阶段说明
 
-7 个 reviewer **并行**审计 `<TARGET>`，每人一个专属维度（维度烤进成员 prompt，parallel 跑 isolated）。覆盖：正确性/逻辑、并发/竞态、安全/输入校验、错误处理/资源清理、性能/效率、API 契约/类型安全、可维护性/代码异味。
+8 个 reviewer **并行**审计 `<TARGET>`，每人一个专属维度（维度烤进成员 prompt，parallel 跑 isolated）。覆盖：正确性/边界、逻辑/算法、并发/竞态、安全/输入校验、错误处理/资源清理、性能/效率、API 契约/类型安全、可维护性/代码异味。
 
 ### 1.2 Team 配置
 
 ```json
 {
   "name": "cr-audit",
-  "description": "Code review audit team: 7 reviewers scan <TARGET> in parallel, each a dedicated dimension",
+  "description": "Code review audit team: 8 reviewers scan <TARGET> in parallel, each a dedicated dimension",
   "members": [
     {
       "name": "alice",
       "role": "reviewer",
-      "prompt": "You are a code reviewer specializing in CORRECTNESS & LOGIC. Audit the code at the given <TARGET> for: off-by-one errors, wrong operators, incorrect algorithms, missed edge cases, boundary-condition bugs. For EACH issue found, emit a line exactly formatted: <!-- FINDING: <stable-kebab-id>:correctness:<severity> --> followed by a short description (file:line, what is wrong, impact). severity is one of high|medium|low. Use a stable kebab-case id (e.g. tasks-off-by-one-capacity). Report every issue — do not self-censor."
+      "prompt": "You are a code reviewer specializing in CORRECTNESS & BOUNDARIES. Audit the code at the given <TARGET> for: off-by-one errors, wrong operators (e.g. < vs <=, == vs ===), boundary-condition bugs, numeric/comparison errors, capacity/limit checks gone wrong. For EACH issue found, emit a line exactly formatted: <!-- FINDING: <stable-kebab-id>:correctness:<severity> --> followed by a short description (file:line, what is wrong, impact). severity is one of high|medium|low. Use a stable kebab-case id (e.g. tasks-off-by-one-capacity). Report every issue — do not self-censor."
+    },
+    {
+      "name": "sam",
+      "role": "reviewer",
+      "prompt": "You are a code reviewer specializing in LOGIC & ALGORITHMS. Audit the code at the given <TARGET> for: incorrect algorithms, wrong control flow, logic that does not match intent, missed edge cases (null/empty/extreme input), state-machine errors. For EACH issue found, emit a line exactly formatted: <!-- FINDING: <stable-kebab-id>:logic:<severity> --> followed by a short description (file:line, what is wrong, impact). severity is one of high|medium|low. Use a stable kebab-case id. Report every issue — do not self-censor."
     },
     {
       "name": "bob",
@@ -96,7 +101,7 @@
 }
 ```
 
-**Role 选择**：`reviewer` 为只读角色（审计不应改码），7 人对称，差异来自维度 prompt。
+**Role 选择**：`reviewer` 为只读角色（审计不应改码），8 人对称，差异来自维度 prompt。
 
 ### 1.3 Master 启动调用
 
@@ -113,7 +118,7 @@
 ```
 
 **参数选择**：
-- `mode: isolated` + 维度烤进成员 prompt——7 路并行各自扫一个维度，互不重叠。
+- `mode: isolated` + 维度烤进成员 prompt——8 路并行各自扫一个维度，互不重叠。
 - 不设 `signoff_policy`——parallel 默认无 signoff，跑完即汇总。
 
 ### 1.4 生命周期步骤（master）
@@ -122,13 +127,13 @@
 team_create(cr-audit)         # 用 §1.2 JSON
 team_activate(cr-audit)       # 激活（确认当前无其它 active 团队）
 team_parallel(...)            # 用 §1.3 JSON
-# 等待 7 名 reviewer 产出 → team_results 取汇总
+# 等待 8 名 reviewer 产出 → team_results 取汇总
 team_deactivate(cr-audit)     # 释放，为下一个团队让路
 ```
 
 ### 1.5 产出与交接
 
-- master 从 7 份成员输出抓取所有 `<!-- FINDING: <id>:<dim>:<severity> -->`，**汇总成一张 findings 清单**（id + dim + severity + 描述）。
+- master 从 8 份成员输出抓取所有 `<!-- FINDING: <id>:<dim>:<severity> -->`，**汇总成一张 findings 清单**（id + dim + severity + 描述）。
 - 这张清单作为 §2 `team_consensus` 的 `topic` 喂给 plan-team。
 - 如果没有发现问题，那么 master 应该如实汇报，并中断流程。
 
@@ -386,7 +391,7 @@ team_deactivate(cr-verify)
 
 ```
 T+0   team_create(cr-audit) → team_activate → team_parallel
-        7 reviewer 并行审计 <TARGET>
+        8 reviewer 并行审计 <TARGET>
 T+~12  收 findings → team_deactivate(cr-audit)
 T+~12  team_create(cr-plan) → team_activate → team_consensus(topic=findings)
         4 debater（2 reviewer + 2 architect）辩论确认 + 定策略（≤5 轮）
@@ -413,7 +418,7 @@ T+~55  你读取全部输出，裁定结果
 
 执行 4 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
 
-1. audit-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。7 名 reviewer 并行审计 <TARGET>。完成后 deactivate。汇总所有 <!-- FINDING: ... --> marker 成 findings 清单。
+1. audit-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。8 名 reviewer 并行审计 <TARGET>。完成后 deactivate。汇总所有 <!-- FINDING: ... --> marker 成 findings 清单。
 
 2. plan-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步 findings 清单，max_rounds=5）。4 名 debater（2 reviewer + 2 architect）辩论确认。完成后 deactivate。汇总所有 <!-- CONFIRMED: <id>:<strategy> --> marker 成确认缺陷表。
 
@@ -424,7 +429,7 @@ T+~55  你读取全部输出，裁定结果
 全部完成后，把每个团队的产出（findings / confirmed / fixed+patches / tests+verdicts）整理给我，由我裁定结果。不跑评判脚本、不设回归门。
 
 注意：
-- 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby...），角色必须用 reviewer/architect/coder/tester 等预设值。
+- 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby/sam...），角色必须用 reviewer/architect/coder/tester 等预设值。
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
 - 如果audit-team 没有发现high或medium级的问题，应中断流程。
 ```
