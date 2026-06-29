@@ -434,7 +434,7 @@ T+~55  你读取全部输出，裁定结果
 注意：
 - 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby/sam...），角色必须用 reviewer/architect/coder/tester 等预设值。
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
-- 如果audit-team 没有发现high或medium级的问题，应中断流程。
+- 如果audit-team 没有发现high或medium级的问题，并且low级的问题小于3项，应中断流程。
 - 如果audit-team 汇总后的 findings 总数 > 10，先剔除所有 severity=low 发现，如果仍 > 10 继续剔除 severity=medium，直到总数 = 10。high 级别的发现必须全部保留。
 - 当 team 在运行中时不要频繁轮询 team_progress/team_results，等待 OCTeam 通知完成即可。
 ```
