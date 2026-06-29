@@ -436,6 +436,7 @@ T+~55  你读取全部输出，裁定结果
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
 - 如果audit-team 没有发现high或medium级的问题，应中断流程。
 - 如果audit-team 汇总后的 findings 总数 > 20，先剔除所有 severity=low 的发现，再把剩余清单交给 plan-team。
+- 当 team 在运行中时不要频繁轮询 team_progress/team_results，等待 OCTeam 通知完成即可。
 ```
 
 ---

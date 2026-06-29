@@ -622,6 +622,7 @@ T+~120 你读取全部输出，裁定结果
 - pipeline 模式无 action 字段；各 stage 顺序加工，前 stage 产出自动拼进下 stage task。
 - 如果 selection-team 无法收敛到精确 3 条，可增加 max_rounds。
 - 如果 plan-team 某评审人耗尽 max_gate_retries，需要手动介入调整计划。
+- 当 team 在运行中时不要频繁轮询 team_progress/team_results，等待 OCTeam 通知完成即可。
 ```
 
 ---

@@ -506,6 +506,7 @@ T+~85  你读取全部输出，裁定结果
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
 - plan-team 的 decider（jack）不能出现在 stages 里。
 - pipeline 模式无 action 字段；各 stage 顺序加工，前 stage 产出自动拼进下 stage task。
+- 当 team 在运行中时不要频繁轮询 team_progress/team_results，等待 OCTeam 通知完成即可。
 ```
 
 ---
