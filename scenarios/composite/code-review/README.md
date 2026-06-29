@@ -190,7 +190,7 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
     "team_id": "cr-plan",
     "topic": "<把 §1.5 的 findings 清单原文粘进来：每条 FINDING id/dim/severity/描述>",
     "max_rounds": 6,
-    "timeout_ms": 1800000
+    "timeout_ms": 2400000
   }
 }
 ```
