@@ -27,17 +27,15 @@ import {
     teamTaskListTool,
     teamTaskUpdateTool,
 } from "./task.js"
-import {
-    teamConsensusTool,
-    teamDelegateTool,
-    teamLoopTool,
-    teamParallelTool,
-    teamPipelineTool,
-    teamRouteTool,
-    teamArbitrateTool,
-    teamRecurseTool,
-    teamTollgateTool,
-} from "./workflow.js"
+import { teamConsensusTool } from "./consensus.js"
+import { teamDelegateTool } from "./delegate.js"
+import { teamLoopTool } from "./loop.js"
+import { teamParallelTool } from "./parallel.js"
+import { teamPipelineTool } from "./pipeline.js"
+import { teamRouteTool } from "./router.js"
+import { teamArbitrateTool } from "./arbitrate.js"
+import { teamRecurseTool } from "./recurse.js"
+import { teamTollgateTool } from "./tollgate.js"
 import { teamDoneTool } from "./done.js"
 import { teamResultsTool, teamResultGetTool } from "./results.js"
 import { teamProgressTool } from "./progress.js"

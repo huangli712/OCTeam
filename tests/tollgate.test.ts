@@ -10,7 +10,7 @@ import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../s
 import { parseVerdict } from "../src/orchestration/decisions.js"
 import { readRunRecord, runStatusFromReason } from "../src/orchestration/runs.js"
 import { buildSummary } from "../src/orchestration/summary.js"
-import { teamTollgateTool } from "../src/tools/workflow.js"
+import { teamTollgateTool } from "../src/tools/tollgate.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import type { ActiveTask, GatedStage, MemberState } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"

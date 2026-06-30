@@ -2,13 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask } from "../src/core/types.js"
-import {
-    teamConsensusTool,
-    teamDelegateTool,
-    teamLoopTool,
-    teamParallelTool,
-    teamPipelineTool,
-} from "../src/tools/workflow.js"
+import { teamConsensusTool } from "../src/tools/consensus.js"
+import { teamDelegateTool } from "../src/tools/delegate.js"
+import { teamLoopTool } from "../src/tools/loop.js"
+import { teamParallelTool } from "../src/tools/parallel.js"
+import { teamPipelineTool } from "../src/tools/pipeline.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"

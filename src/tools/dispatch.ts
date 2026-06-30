@@ -25,7 +25,7 @@ import { buildRecursePrompt } from "../orchestration/recurse.js"
 import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../orchestration/tollgate.js"
 import { handleRouteIdle } from "../orchestration/route.js"
 import { buildArbiterPrompt, buildDebatePrompt, handleArbitrateIdle } from "../orchestration/arbitrate.js"
-import { buildRouterPrompt } from "./workflow.js"
+import { buildRouterPrompt } from "./router.js"
 import { deliverSummaryToLeader } from "../orchestration/summary.js"
 import { listAllTasks, reapStaleClaims, updateTask } from "../state/tasks.js"
 
