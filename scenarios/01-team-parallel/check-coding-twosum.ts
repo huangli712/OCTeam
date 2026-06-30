@@ -41,11 +41,15 @@ function fail(msg: string): never {
 }
 
 function loadFunction(code: string): (nums: number[], target: number) => number[] {
-    // Wrap the member code and return the declared `twoSum`. Member prompt
-    // fixes the signature `function twoSum(nums, target)`, so this works for
-    // both function declarations and `const twoSum = ...` forms.
+    // Member prompt asks for TypeScript (with type annotations) in a
+    // ```typescript block. `new Function` is a JS-only evaluator, so transpile
+    // the snippet to JS via bun's TS transpiler first. Also strip any leading
+    // `export` / `export default` -- valid ESM but illegal inside a function body.
+    const js = new Bun.Transpiler({ loader: "ts" }).transformSync(
+        code.replace(/\bexport\s+(?:default\s+)?/g, ""),
+    );
     // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
-    const factory = new Function(`${code}; return typeof twoSum === "function" ? twoSum : null;`) as
+    const factory = new Function(`${js}; return typeof twoSum === "function" ? twoSum : null;`) as
         () => ((nums: number[], target: number) => number[]) | null;
     const fn = factory();
     if (typeof fn !== "function") {
