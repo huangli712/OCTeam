@@ -15,8 +15,9 @@
  *
  * Agents used: oct-junior (focused task executor, writes code/files), oct-oracle
  * (read-only strategic advisor), oct-explore (codebase search), oct-librarian
- * (external references). All are OCTeam-defined agents (agents/*.ts). Matching
- * is case-insensitive (see normalizeRole).
+ * (external references), oct-metis (planning), oct-momus (plan audit),
+ * oct-multimodal-looker (media analysis). All 7 oct-* agents back at least one
+ * role. Matching is case-insensitive (see normalizeRole).
  *
  * PERMISSION ENFORCEMENT. All roles map to OCTeam's hardened `oct-*` agents
  * (agents/*.ts), not bare host agent names. The `oct-*` agents carry
