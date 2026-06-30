@@ -43,8 +43,6 @@ async function setActiveTask(root: string, sid: string, task: Partial<ActiveTask
     const team = await loadTeamState(root, "alpha", sid)
     await team.mutex.runExclusive(async () => {
         team.activeTask = {
-            ...task,
-            type: task.type as ActiveTask["type"],
             startedAt: Date.now(),
             wallClockTimeoutMs: 300_000,
             tokensUsed: 0,

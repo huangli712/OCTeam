@@ -614,7 +614,7 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
         // Verifier emits INVALID -> isolate + escalate to carol.
         await handleTollgateIdle(ctx, team, idle(team, "bob"))
         expect(task.gatedStages![0].verdict).toBe("INVALID")
-        expect(task.tollgatePhase).toBe("escalate")
+        expect(task.tollgatePhase as string).toBe("escalate")
         expect(getExpectedMember(task)).toBe("carol")
         // Escalator dispatched; producer and verifier NOT re-dispatched yet.
         expect(calls.some(c => c.sessionId === "ses_carol")).toBe(true)
