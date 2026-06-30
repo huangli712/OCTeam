@@ -6,7 +6,7 @@
 
 import type { Message, Part, TextPart } from "@opencode-ai/sdk"
 import type { MemberSpec } from "./types.js"
-import { rolePreset } from "./role-presets.js"
+import { rolePreset } from "./role.js"
 
 /**
  * Master-only activation gate (pure predicate). Members always pass — a member's

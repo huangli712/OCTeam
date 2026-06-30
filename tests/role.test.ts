@@ -7,7 +7,7 @@ import {
     normalizeRole,
     roleAgent,
     rolePreset,
-} from "../src/core/role-presets.js"
+} from "../src/core/role.js"
 import { buildRolePrompt } from "../src/core/utils.js"
 
 describe("ROLES catalogue", () => {

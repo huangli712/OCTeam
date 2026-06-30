@@ -12,7 +12,7 @@ import type { PluginContext } from "../core/context.js"
 import { invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../state/store.js"
 import { indexMasterTeam, indexMember, resolveCallerInTeam, setActiveTeam, unindexMasterTeam, unindexSession } from "../state/resolve.js"
 import { inboxPath, teamDir } from "../state/paths.js"
-import { normalizeRole, roleAgent } from "../core/role-presets.js"
+import { normalizeRole, roleAgent } from "../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
 
