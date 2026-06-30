@@ -2,7 +2,7 @@
 
 import type { TuiPluginApi, TuiThemeCurrent } from "@opencode-ai/plugin/tui"
 import { createSignal, createEffect, on, onCleanup, For } from "solid-js"
-import { loadChildren, type SessionTreeNode } from "./session-tree.js"
+import { loadChildren, type SessionTreeNode } from "./tree.js"
 import { loadTeams, type TeamSummary } from "./teams.js"
 
 // Status colors: green=running, red=idle, purple=errored

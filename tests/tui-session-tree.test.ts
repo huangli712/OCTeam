@@ -5,7 +5,7 @@ import {
     extractAgentName,
     formatMs,
     mapStatus,
-} from "../src/tui/session-tree.js"
+} from "../src/tui/tree.js"
 
 describe("mapStatus", () => {
     test("null/undefined -> idle", () => {
