@@ -15,7 +15,7 @@ import { teamDir, teamsDir } from "../state/paths.js"
 import { normalizeRole, roleAgent } from "../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL, pickName } from "../state/naming.js"
-import { defaultBounds } from "./lifecycle-shared.js"
+import { defaultBounds } from "./shared.js"
 
 /**
  * Best-effort model resolution for team_create. Resolves, in order:

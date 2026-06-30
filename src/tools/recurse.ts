@@ -20,7 +20,7 @@ import {
     signoffTaskFields,
     startOrchestration,
     validateSignoff,
-} from "./workflow-shared.js"
+} from "./shared.js"
 
 export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
     return tool({

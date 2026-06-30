@@ -16,7 +16,7 @@ import {
     signoffTaskFields,
     startOrchestration,
     validateSignoff,
-} from "./workflow-shared.js"
+} from "./shared.js"
 
 export function teamParallelTool(ctx: PluginContext): ToolDefinition {
     return tool({

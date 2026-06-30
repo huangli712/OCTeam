@@ -15,7 +15,7 @@ import {
     signoffTaskFields,
     startOrchestration,
     validateSignoff,
-} from "./workflow-shared.js"
+} from "./shared.js"
 
 export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
     return tool({

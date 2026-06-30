@@ -14,7 +14,7 @@ import {
     signoffTaskFields,
     startOrchestration,
     validateSignoff,
-} from "./workflow-shared.js"
+} from "./shared.js"
 
 export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
     return tool({

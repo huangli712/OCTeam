@@ -12,7 +12,7 @@ import {
     assertMember,
     baseTaskFields,
     startOrchestration,
-} from "./workflow-shared.js"
+} from "./shared.js"
 
 export function teamLoopTool(ctx: PluginContext): ToolDefinition {
     return tool({

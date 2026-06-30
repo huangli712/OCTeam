@@ -1,11 +1,19 @@
 /**
- * Shared helpers for the nine workflow tools (team_parallel, team_consensus,
- * team_pipeline, team_loop, team_delegate, team_route, team_arbitrate,
- * team_tollgate, team_recurse). Extracted from workflow.ts so each tool group
- * (basic / advanced) can import them without pulling in sibling tools.
+ * Shared helpers for all team tools (lifecycle + workflow). Merged from the
+ * former lifecycle-shared.ts and workflow-shared.ts — the two had no symbol
+ * overlap and every tool file imported exactly one of them, so a single
+ * shared module removes a split that no longer reflects a real boundary.
  *
- * ALL NINE tools share the same three-phase lock order via startOrchestration
- * (team_resume follows the same Phase 2 contract too — see resume.ts):
+ * Lifecycle helpers: ActivateDecision, decideActivate, defaultBounds,
+ * withOrderedLocks.
+ *
+ * Workflow helpers: startOrchestration (shared three-phase lock order — see
+ * the Phase 1/2/3 contract below), baseTaskFields, validateSignoff,
+ * signoffTaskFields, assertMember, effectiveTimeoutMs, DEFAULT_*.
+ *
+ * ALL NINE workflow tools share the same three-phase lock order via
+ * startOrchestration (team_resume follows the same Phase 2 contract too — see
+ * resume.ts):
  *   1. Pre-checks UNDER team.mutex (reject if already orchestrating; validate)
  *   2. ensureMembersReady OUTSIDE the mutex (the role-setup barrier needs the
  *      event handler to flip member.initialized, which it does inside the
@@ -25,7 +33,67 @@ import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { ensureMembersReady } from "../orchestration/dispatch.js"
 import { activationError } from "../core/utils.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
-import type { ActiveTask, DecisionRecord, ReducePolicy, SignoffPolicy } from "../core/types.js"
+import type { ActiveTask, Bounds, DecisionRecord, ReducePolicy, SignoffPolicy } from "../core/types.js"
+
+// ============================================================
+// Lifecycle helpers (former lifecycle-shared.ts)
+// ============================================================
+
+/**
+ * Pure decision for team_activate (exported for unit tests). Auto-switching
+ * is disabled: the decision refuses when another team is already active (the
+ * user must team_deactivate it first). Activating an already-active team is a
+ * no-op.
+ */
+export type ActivateDecision =
+    | { kind: "noop" }
+    | { kind: "ok" }
+    | { kind: "error"; message: string }
+
+export function decideActivate(opts: {
+    targetIsAlreadyActive: boolean
+    outgoingExists: boolean
+    outgoingName?: string
+}): ActivateDecision {
+    if (opts.targetIsAlreadyActive) return { kind: "noop" }
+    if (opts.outgoingExists) {
+        return {
+            kind: "error",
+            message: `Cannot activate: team "${opts.outgoingName}" is currently active. Call team_deactivate("${opts.outgoingName}") first — auto-switching is disabled.`,
+        }
+    }
+    return { kind: "ok" }
+}
+
+/** Resource bounds with design defaults, overridden by user input. */
+export function defaultBounds(override?: Partial<Bounds>): Bounds {
+    return {
+        maxMembers: 8,
+        maxParallelMembers: 4,
+        maxMessagesPerRun: 100,
+        maxWallClockMinutes: 30,
+        maxMemberTurns: 50,
+        maxTasks: 200,
+        messagePayloadMaxBytes: 32768,
+        messageUnreadMaxBytes: 1048576,
+        ...override,
+    }
+}
+
+/** Run fn while holding every team's mutex, acquired in a deterministic order
+ * (by directory string) to prevent deadlock between racing switches. */
+export async function withOrderedLocks(teams: Team[], fn: () => Promise<void>): Promise<void> {
+    const ordered = [...teams].sort((a, b) => a.directory.localeCompare(b.directory))
+    const run = async (i: number): Promise<void> => {
+        if (i >= ordered.length) return fn()
+        await ordered[i].mutex.runExclusive(() => run(i + 1))
+    }
+    await run(0)
+}
+
+// ============================================================
+// Workflow helpers (former workflow-shared.ts)
+// ============================================================
 
 export const DEFAULT_TIMEOUT_MS = 600_000
 export const DEFAULT_LOOP_TIMEOUT_MS = 900_000

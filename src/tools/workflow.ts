@@ -7,7 +7,7 @@
  * They are now split across three focused modules to keep each file
  * navigable:
  *
- *   - workflow-shared.ts: shared helpers + constants (startOrchestration,
+ *   - shared.ts: shared helpers + constants (startOrchestration,
  *     baseTaskFields, validateSignoff, signoffTaskFields, assertMember,
  *     effectiveTimeoutMs, DEFAULT_*).
  *   - parallel.ts / consensus.ts / pipeline.ts / loop.ts: single-track tools
@@ -29,7 +29,7 @@ export {
     startOrchestration,
     validateSignoff,
     signoffTaskFields,
-} from "./workflow-shared.js"
+} from "./shared.js"
 
 export { teamConsensusTool } from "./consensus.js"
 export { teamLoopTool } from "./loop.js"

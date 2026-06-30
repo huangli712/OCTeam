@@ -12,7 +12,7 @@ import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     startOrchestration,
-} from "./workflow-shared.js"
+} from "./shared.js"
 
 export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
     return tool({

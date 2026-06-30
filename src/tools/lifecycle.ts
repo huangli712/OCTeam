@@ -8,7 +8,7 @@
  * were originally defined inline here. They are now split across four focused
  * modules to keep each file navigable:
  *
- *   - lifecycle-shared.ts: ActivateDecision, decideActivate, defaultBounds,
+ *   - shared.ts: ActivateDecision, decideActivate, defaultBounds,
  *     withOrderedLocks.
  *   - create.ts / list.ts / details.ts / query.ts: creation + read-only
  *     inspection (one tool per file).
@@ -21,7 +21,7 @@
  * There is intentionally no logic here.
  */
 
-export { decideActivate, defaultBounds, withOrderedLocks, type ActivateDecision } from "./lifecycle-shared.js"
+export { decideActivate, defaultBounds, withOrderedLocks, type ActivateDecision } from "./shared.js"
 export { teamCreateTool } from "./create.js"
 export { teamListTool } from "./list.js"
 export { teamDetailsTool } from "./details.js"

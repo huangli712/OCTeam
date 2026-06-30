@@ -15,7 +15,7 @@ import {
     signoffTaskFields,
     startOrchestration,
     validateSignoff,
-} from "./workflow-shared.js"
+} from "./shared.js"
 
 /**
  * Build the router member's dispatch prompt: the input to route, the available
