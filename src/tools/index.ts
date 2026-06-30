@@ -6,20 +6,18 @@
 
 import type { PluginContext } from "../core/context.js"
 import type { ToolDefinition } from "@opencode-ai/plugin"
-import {
-    teamActivateTool,
-    teamAddMemberTool,
-    teamCancelTool,
-    teamCreateTool,
-    teamDeactivateTool,
-    teamDeleteTool,
-    teamDetailsTool,
-    teamFixMemberTool,
-    teamListTool,
-    teamQueryTool,
-    teamRemoveMemberTool,
-    teamRenameTool,
-} from "./lifecycle.js"
+import { teamActivateTool } from "./activate.js"
+import { teamAddMemberTool } from "./add.js"
+import { teamCancelTool } from "./cancel.js"
+import { teamCreateTool } from "./create.js"
+import { teamDeactivateTool } from "./deactivate.js"
+import { teamDeleteTool } from "./delete.js"
+import { teamDetailsTool } from "./details.js"
+import { teamFixMemberTool } from "./fix.js"
+import { teamListTool } from "./list.js"
+import { teamQueryTool } from "./query.js"
+import { teamRemoveMemberTool } from "./remove.js"
+import { teamRenameTool } from "./rename.js"
 import { teamSendMessageTool } from "./messaging.js"
 import {
     teamTaskCreateTool,

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { TeamSpec } from "../src/core/types.js"
-import { teamQueryTool } from "../src/tools/lifecycle.js"
+import { teamQueryTool } from "../src/tools/query.js"
 import { initTeamState, writeTeamSpec } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"

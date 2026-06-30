@@ -29,7 +29,7 @@ import { processIdle } from "../src/orchestration/handlers.js"
 import { runEventsPath, runsDir, runDir, runMemberOutputPath, statePath } from "../src/state/paths.js"
 import { initTeamState, invalidateTeam, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamDir } from "../src/state/paths.js"
-import { teamDeleteTool } from "../src/tools/lifecycle.js"
+import { teamDeleteTool } from "../src/tools/delete.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 // --- helpers ---

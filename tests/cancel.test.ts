@@ -3,7 +3,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
-import { teamCancelTool } from "../src/tools/lifecycle.js"
+import { teamCancelTool } from "../src/tools/cancel.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 // --- helpers ---
