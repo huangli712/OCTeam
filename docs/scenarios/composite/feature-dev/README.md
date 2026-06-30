@@ -516,6 +516,6 @@ T+~85  你读取全部输出，裁定结果
 - [`docs/scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
 - [`docs/scenarios/composite/code-review/README.md`](../code-review/README.md) — 姊妹综合场景：多团队代码评审（同样 4 编排，可对照）
 - [`docs/scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
-- [`src/tools/workflow-basic.ts`](../../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
-- [`src/tools/workflow-advanced.ts`](../../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码
+- parallel / consensus / pipeline / loop 源码：[`src/tools/parallel.ts`](../../../../src/tools/parallel.ts) / [`consensus.ts`](../../../../src/tools/consensus.ts) / [`pipeline.ts`](../../../../src/tools/pipeline.ts) / [`loop.ts`](../../../../src/tools/loop.ts)
+- delegate / route / arbitrate / tollgate / recurse 源码：[`src/tools/delegate.ts`](../../../../src/tools/delegate.ts) / [`router.ts`](../../../../src/tools/router.ts) / [`arbitrate.ts`](../../../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../../../src/tools/tollgate.ts) / [`recurse.ts`](../../../../src/tools/recurse.ts)
 - [`docs/ARCHITECTURE.md`](../../../../docs/ARCHITECTURE.md) — OCTeam 架构与模块边界（plan/audit 团队需参照）

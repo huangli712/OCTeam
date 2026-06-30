@@ -1,7 +1,7 @@
 # team_delegate 编排场景设计
 
 > **模式**：`team_delegate` — 发布任务到共享列表，空闲成员自行认领（claim）、执行并回报 master；支持 `blocked_by` 依赖构成 DAG。
-> **源码**：[`src/tools/workflow-advanced.ts:82-214`](../../../src/tools/workflow-advanced.ts)
+> **源码**：[`src/tools/delegate.ts`](../../../src/tools/delegate.ts)
 > **控时设计**：场景 1-3 基线为 3 成员自领取，每成员子任务 ≤ 6 min；无依赖场景总时长 ≈ ceil(tasks/members) 轮 × 3 min；DAG 场景总时长 ≈ 关键路径 × 3 min（场景 1-3 均 ≤ 15 min，远低于 30 min 上限）。**场景 4 为挑战级**：刻意突破基线约束（8 成员 / 100 任务 / ~90 min），压测 delegate 模式在高并发自领取下的稳定性与任务分发公平性。
 
 ## 场景一览

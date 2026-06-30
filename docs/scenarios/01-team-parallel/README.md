@@ -1,7 +1,7 @@
 # team_parallel 编排场景设计
 
 > **模式**：`team_parallel` — 在所有成员上并行运行任务（`isolated` 同任务 / `collaborative` 各自任务），可选 reduce 策略汇总输出。
-> **源码**：[`src/tools/workflow-basic.ts:27-141`](../../../src/tools/workflow-basic.ts)
+> **源码**：[`src/tools/parallel.ts`](../../../src/tools/parallel.ts)（`teamParallelTool`）
 > **控时设计**：3 成员并行，每成员子任务 5-8 min；总时长 ≈ 最慢成员 + reduce ≈ 10-15 min（远低于 30 min 上限）。
 
 ## 场景一览

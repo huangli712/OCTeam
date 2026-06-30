@@ -17,6 +17,7 @@ import { readTeamSpec, saveTeamState } from "../state/store.js"
 import { worktreePath } from "../state/paths.js"
 import { buildRolePrompt, chunk, truncateOutput, waitUntil } from "../core/utils.js"
 import { indexMember } from "../state/resolve.js"
+import { safeMemberAgent } from "../core/role.js"
 import type { MemberState, Stage } from "../core/types.js"
 import { logSwallowed } from "../core/log.js"
 import { recordEvent } from "./events.js"
@@ -146,7 +147,7 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
                     path: { id: sessionId },
                     body: {
                         parts: [{ type: "text", text: rolePrompt, synthetic: true }],
-                        agent: member.agent ?? "build",
+                        agent: safeMemberAgent(member.agent),
                     },
                 })
                 member.turnCount = 1
@@ -218,7 +219,7 @@ export async function advanceToStage(
         path: { id: member.sessionId },
         body: {
             parts: [{ type: "text", text, synthetic: true }],
-            agent: member.agent ?? "build",
+            agent: safeMemberAgent(member.agent),
         },
         // Members work in the PROJECT dir (or their worktree), never the
         // .octeam state dir. session.create already used ctx.directory.
@@ -261,7 +262,7 @@ export async function dispatchToMember(
         path: { id: member.sessionId },
         body: {
             parts: [{ type: "text", text, synthetic: true }],
-            agent: member.agent ?? "build",
+            agent: safeMemberAgent(member.agent),
         },
         query: { directory },
     })

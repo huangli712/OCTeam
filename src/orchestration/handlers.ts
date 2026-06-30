@@ -28,6 +28,7 @@ import { countUnreadMessages } from "../messaging/mailbox.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"
 import { extractOutputFromParts, sumMemberTokens, truncateOutput } from "../core/utils.js"
 import { resolveTeamMember } from "../state/resolve.js"
+import { safeMemberAgent } from "../core/role.js"
 import { atomicWrite } from "../state/locks.js"
 import { runMemberOutputPath } from "../state/paths.js"
 import { logSwallowed } from "../core/log.js"
@@ -202,7 +203,7 @@ export async function processIdle(
                     path: { id: member.sessionId },
                     body: {
                         parts: [{ type: "text", text: buildPrematureIdleReprompt(team.teamName), synthetic: true }],
-                        agent: member.agent ?? "build",
+                        agent: safeMemberAgent(member.agent),
                     },
                     query: { directory: member.worktreePath ?? ctx.directory },
                 })

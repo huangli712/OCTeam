@@ -7,6 +7,7 @@ import type { PluginContext } from "../core/context.js"
 import { type Team, clearActiveTask } from "../state/store.js"
 import type { MemberState } from "../core/types.js"
 import { buildUpstreamContext } from "./dispatch.js"
+import { safeMemberAgent } from "../core/role.js"
 import { deliverSummaryToLeader } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { maybeTriggerSignoff } from "./signoff.js"
@@ -47,7 +48,7 @@ export async function handlePipelineIdle(ctx: PluginContext, team: Team, member:
         path: { id: nextMember.sessionId },
         body: {
             parts: [{ type: "text", text: fullTask, synthetic: true }],
-            agent: nextMember.agent ?? "build",
+            agent: safeMemberAgent(nextMember.agent),
         },
         query: { directory: nextMember.worktreePath ?? ctx.directory },
     })

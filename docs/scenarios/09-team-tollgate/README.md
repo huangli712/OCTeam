@@ -1,7 +1,7 @@
 # team_tollgate 编排场景设计
 
 > **模式**：`team_tollgate` — 判定门控流水线。每个 stage 产出后必须经独立 verifier 三值判定（PASS / FAIL / INVALID），PASS 才放行下游；FAIL 把产出连同 diff 退回 producer（最多 `max_gate_retries` 次）；INVALID 隔离问题、升级到 verifier 侧，不惩罚 producer。
-> **源码**：[`src/tools/workflow-advanced.ts:431-549`](../../../src/tools/workflow-advanced.ts)
+> **源码**：[`src/tools/tollgate.ts`](../../../src/tools/tollgate.ts)
 > **控时设计**：每场景 1 个 gate、2 成员（producer + verifier），producer 3-5 min、verifier 2-3 min，串行 ≈ 6-8 min（远低于 30 min 上限）。**场景 4 为挑战级**：6 成员、3 门串行 V&V，约 60 min，演示 tollgate 的多门级联能力。
 
 ## 场景一览

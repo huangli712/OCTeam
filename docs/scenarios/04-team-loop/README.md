@@ -1,7 +1,7 @@
 # team_loop 编排场景设计
 
 > **模式**：`team_loop` — 运行修正闭环 `代码 → 评审 → 决策 → 重复`。每轮由各 stage 成员依次产出，`decider`（一名成员，非 master）emit `<decision>{"decision":"done"|"continue",...}</decision>`；`decider` 说 `done`、达到 `max_rounds`、超时或连续 3 次解析失败时停止。
-> **源码**：[`src/tools/workflow-basic.ts:284-363`](../../../src/tools/workflow-basic.ts)（`teamLoopTool`）
+> **源码**：[`src/tools/loop.ts`](../../../src/tools/loop.ts)（`teamLoopTool`）
 > **控时设计**：3 成员（2 stage + 1 decider），`max_rounds=3`；典型 1-2 轮收敛，每轮各 stage ≤ 5 min，总时长 ≈ 10-15 min（远低于 30 min 上限）。
 
 ## 场景一览
@@ -92,7 +92,7 @@ function bisect(f: (x: number) => number, a: number, b: number, tol: number, max
 ```
 
 **参数选择**：
-- `stages` 只列 `alice`（`modify`）与 `bob`（`read_only`）——`decider` 不在 stages 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `workflow-basic.ts` buildTask 分支）。
+- `stages` 只列 `alice`（`modify`）与 `bob`（`read_only`）——`decider` 不在 stages 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `loop.ts` buildTask 分支）。
 - `decider: "carol"` ——成员名，非 master（schema 强制）。
 - `max_rounds: 3` ——典型 1 轮即收敛；3 轮上限兜底偶发回归。
 - `initial_task` ——包含完整 buggy 代码，round 1 派发给 stages[0]（alice）。
@@ -481,7 +481,7 @@ export class MPSCQueue<T> {
 }
 ```
 
-**Role 选择理由**：4 名 `coder`（`build` agent，可改代码，`modify`）对应四类 bug 的最小修复；2 名 `tester`（只读，`read_only`）分别承担属性测试与 10^7 压测；`reviewer`（默认只读）担任 decider——`grace` 不在 `stages` 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `workflow-basic.ts` buildTask 分支）。
+**Role 选择理由**：4 名 `coder`（`build` agent，可改代码，`modify`）对应四类 bug 的最小修复；2 名 `tester`（只读，`read_only`）分别承担属性测试与 10^7 压测；`reviewer`（默认只读）担任 decider——`grace` 不在 `stages` 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `loop.ts` buildTask 分支）。
 
 ### 4.3 Master 启动调用
 
@@ -506,7 +506,7 @@ export class MPSCQueue<T> {
 ```
 
 **参数选择**：
-- `stages` 列 6 个 stage（4 coder `modify` + 2 tester `read_only`）；`decider: "grace"` 不在 `stages` 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `workflow-basic.ts` buildTask 分支：`if (!stages.some(s => s.member === args.decider))` push）。
+- `stages` 列 6 个 stage（4 coder `modify` + 2 tester `read_only`）；`decider: "grace"` 不在 `stages` 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `loop.ts` buildTask 分支：`if (!stages.some(s => s.member === args.decider))` push）。
 - stage 成员名唯一（`alice` / `bob` / `carol` / `dave` / `erin` / `frank`），符合 schema 校验；`decider` 与六者互异，符合"非 master、不在 stages 中"约束。
 - `max_rounds: 5` ——挑战级：4 类 bug 的最小修复 + 属性测试 + 10^7 压测通常 2-3 轮收敛；5 轮上限兜底偶发回归（如某 coder 误改相邻 bug、压测抖动）。
 - `initial_task` 内嵌完整 buggy 代码（四类 bug 均在）并点名每人只修一类，约束链式叠加的最小变更。

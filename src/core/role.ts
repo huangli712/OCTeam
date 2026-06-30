@@ -284,3 +284,47 @@ export function roleAgent(role: string): string {
 export function rolePreset(role: string): string {
     return roleDef(role).instruction
 }
+
+/**
+ * All hardened oct-* agent names used by OCTeam roles. Derived from ROLES so
+ * the allowlist stays in sync as new roles/agents are added. This is the single
+ * source of truth for "which agent values may a member legitimately carry" —
+ * used by the tool schemas (create/add/fix), dispatch sanitization, and disk
+ * reload validation to ensure a member's `agent` field can never name a bare
+ * host agent (e.g. "build") that bypasses the hardened oct-* permission maps.
+ */
+export const OCTEAM_AGENTS: readonly string[] = Object.freeze(
+    Array.from(new Set(Object.values(ROLES).map(r => r.agent))).sort(),
+)
+
+/**
+ * True iff `agent` is one of OCTeam's hardened oct-* agents. Used at every
+ * trust boundary (tool input, disk reload, dispatch) to gate the
+ * permission-determining `agent` field.
+ */
+export function isOCTeamAgent(agent: string): boolean {
+    return (OCTEAM_AGENTS as readonly string[]).includes(agent)
+}
+
+/**
+ * The read-only fallback agent used when a member's `agent` is missing or not
+ * in the hardened oct-* allowlist. Equals roleAgent(DEFAULT_ROLE) = "oct-oracle".
+ * Fail-safe: an unrecognized or tampered agent degrades to least privilege,
+ * never escalates to a full-capability host agent.
+ */
+export const SAFE_FALLBACK_AGENT: string = roleAgent(DEFAULT_ROLE)
+
+/**
+ * Return `agent` when it is a hardened oct-* agent, else the read-only
+ * fallback. This is the fail-safe replacement for the old `member.agent ?? "build"`
+ * pattern at every dispatch site: a tampered, stale, or hand-edited `agent`
+ * value (e.g. "build" written into state.json) can never escalate a member to
+ * a privileged host agent. When `agent` is undefined (a member created without
+ * an explicit agent override, then loaded from old state), the role-derived
+ * agent was already set at create time and stored — so this fallback only
+ * fires for corrupted/legacy state, where oct-oracle (read-only) is the safe
+ * default.
+ */
+export function safeMemberAgent(agent: string | undefined): string {
+    return agent !== undefined && isOCTeamAgent(agent) ? agent : SAFE_FALLBACK_AGENT
+}

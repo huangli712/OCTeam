@@ -179,23 +179,33 @@ export async function buildSummary(
                 ? `${head}\nGates:\n${rows.join("\n")}\n\n${outputs}`
                 : `${head}\nGates:\n${rows.join("\n")}`
         }
-        default: {
+        case "pipeline": {
+            // Concatenate stage outputs in order.
+            const candidates = Object.entries(task.responses)
+                .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+                .join("\n\n")
+            return `${head}\n${candidates}`
+        }
+        case "consensus": {
+            // Consensus has no reducePolicy; concatenate member outputs
+            // (the same summarize behavior the old default branch produced).
+            const candidates = Object.entries(task.responses)
+                .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+                .join("\n\n")
+            return `${head}\n${candidates}`
+        }
+        case "parallel": {
             // #4 real reduce: once the reducer member has produced a combined
             // result, deliver it verbatim instead of the [Reduce policy:X] header.
             // (Gated on reducedResult presence, NOT the reason, so reduce_policy
             // tests that exercise the header path stay green.)
-            if (task.type === "parallel" && task.reducedResult !== undefined) {
+            if (task.reducedResult !== undefined) {
                 return `${head}\n${task.reducedResult}`
             }
             const outputs = Object.entries(task.responses)
             const candidates = outputs
                 .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
                 .join("\n\n")
-
-            // pipeline: keep existing behavior (concatenate stage outputs)
-            if (task.type === "pipeline") {
-                return `${head}\n${candidates}`
-            }
 
             // parallel: switch on reducePolicy
             const policy = task.reducePolicy ?? "summarize"
@@ -240,6 +250,20 @@ export async function buildSummary(
                     return `${head}\n${candidates}`
                 }
             }
+        }
+        default: {
+            // Exhaustiveness guard for the outer OrchestrationType switch.
+            // Every variant has an explicit case above (delegate/loop/route/
+            // arbitrate/recurse/tollgate/pipeline/parallel; consensus also has
+            // its own case), so task.type narrows to `never` here. Adding a new
+            // OrchestrationType without a matching case fails this assignment at
+            // compile time — the same guard pattern used in handlers.ts:249 and
+            // tools/dispatch.ts:289. At runtime this is unreachable; the
+            // defensive throw prevents silent fall-through if the invariant ever
+            // regresses.
+            const _exhaustive: never = task
+            void _exhaustive
+            throw new Error(`buildSummary: unhandled OrchestrationType: ${String((task as { type: string }).type)}`)
         }
     }
 }

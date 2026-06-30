@@ -70,7 +70,7 @@ describe("dispatchToMember unit", () => {
         const member: MemberState = {
             name: "alice",
             sessionId: "ses_123",
-            agent: "oracle",
+            agent: "oct-oracle",
             status: "idle",
             initialized: true,
             turnCount: 0,
@@ -79,13 +79,13 @@ describe("dispatchToMember unit", () => {
 
         expect(promptAsync).toHaveBeenCalledTimes(1)
         const req = (promptAsync.mock.calls[0] as unknown[])[0] as Record<string, unknown>
-        expect((req as any).body.agent).toBe("oracle")
+        expect((req as any).body.agent).toBe("oct-oracle")
         expect((req as any).query.directory).toBe("/worktrees/alice")
         expect(member.status).toBe("running")
         expect(member.turnCount).toBe(1)
     })
 
-    test("falls back to 'build' when member.agent is undefined", async () => {
+    test("falls back to oct-oracle (read-only) when member.agent is undefined (fail-safe)", async () => {
         const promptAsync = mock(async (_req: unknown) => {})
         const ctx = makeCtx("/tmp", { promptAsync })
         const member: MemberState = {
@@ -99,7 +99,28 @@ describe("dispatchToMember unit", () => {
         await dispatchToMember(ctx, member, "task", "/app")
 
         const req = (promptAsync.mock.calls[0] as unknown[])[0] as Record<string, unknown>
-        expect((req as any).body.agent).toBe("build")
+        // safeMemberAgent clamps undefined to SAFE_FALLBACK_AGENT ("oct-oracle"),
+        // NOT "build" — fail-safe to read-only, never fail-open to full privilege.
+        expect((req as any).body.agent).toBe("oct-oracle")
+    })
+
+    test("clamps a non-oct-* agent (e.g. tampered 'build') to oct-oracle (fail-safe)", async () => {
+        const promptAsync = mock(async (_req: unknown) => {})
+        const ctx = makeCtx("/tmp", { promptAsync })
+        const member: MemberState = {
+            name: "eve",
+            sessionId: "ses_789",
+            // A tampered state.json could write "build" here; safeMemberAgent
+            // must refuse to escalate and clamp to the read-only fallback.
+            agent: "build",
+            status: "idle",
+            initialized: true,
+            turnCount: 0,
+        }
+        await dispatchToMember(ctx, member, "task", "/app")
+
+        const req = (promptAsync.mock.calls[0] as unknown[])[0] as Record<string, unknown>
+        expect((req as any).body.agent).toBe("oct-oracle")
     })
 
     test("no-ops when member.sessionId is absent — no request, no mutation", async () => {
@@ -108,7 +129,7 @@ describe("dispatchToMember unit", () => {
         const member: MemberState = {
             name: "carol",
             sessionId: undefined,
-            agent: "oracle",
+            agent: "oct-oracle",
             status: "idle",
             initialized: true,
             turnCount: 0,
@@ -126,7 +147,7 @@ describe("dispatchToMember unit", () => {
         const member: MemberState = {
             name: "dave",
             sessionId: "ses_789",
-            agent: "explore",
+            agent: "oct-explore",
             status: "idle",
             initialized: true,
             turnCount: 0,
@@ -152,7 +173,7 @@ describe("processIdle consensus round 2 broadcast", () => {
         const tracked = [leadSid, memberSid]
 
         const alice = makeMember("alice", memberSid)
-        alice.agent = "oracle"
+        alice.agent = "oct-oracle"
 
         const captured: Array<{ id: string; agent: unknown; directory: unknown }> = []
         const promptAsync = mock(async (req: any) => {
@@ -194,7 +215,7 @@ describe("processIdle consensus round 2 broadcast", () => {
         // Should have dispatched the next consensus round
         const consensusDispatch = captured.find(c => c.id === memberSid)
         expect(consensusDispatch).toBeDefined()
-        expect(consensusDispatch!.agent).toBe("oracle")
+        expect(consensusDispatch!.agent).toBe("oct-oracle")
         expect(consensusDispatch!.directory).toBe("/app")
 
         // Cleanup
@@ -213,7 +234,7 @@ describe("processIdle signoff dispatch", () => {
         const tracked = [leadSid, aliceSid, bobSid]
 
         const alice = makeMember("alice", aliceSid)
-        alice.agent = "oracle"
+        alice.agent = "oct-oracle"
         const bob = makeMember("bob", bobSid)
 
         const captured: Array<{ id: string; agent: unknown; directory: unknown }> = []
@@ -250,10 +271,10 @@ describe("processIdle signoff dispatch", () => {
             await processIdle(ctx, team, bobMember, bobSid)
         })
 
-        // The decider dispatch should have agent="oracle" (from alice's state)
+        // The decider dispatch should have agent="oct-oracle" (from alice's state)
         const deciderDispatch = captured.find(c => c.id === aliceSid)
         expect(deciderDispatch).toBeDefined()
-        expect(deciderDispatch!.agent).toBe("oracle")
+        expect(deciderDispatch!.agent).toBe("oct-oracle")
         expect(deciderDispatch!.directory).toBe("/app")
 
         for (const sid of tracked) {
@@ -269,9 +290,9 @@ describe("processIdle signoff dispatch", () => {
         const tracked = [leadSid, aliceSid, bobSid]
 
         const alice = makeMember("alice", aliceSid)
-        alice.agent = "oracle"
+        alice.agent = "oct-oracle"
         const bob = makeMember("bob", bobSid)
-        bob.agent = "explore"
+        bob.agent = "oct-explore"
 
         const captured: Array<{ id: string; agent: unknown; directory: unknown }> = []
         const promptAsync = mock(async (req: any) => {
@@ -308,10 +329,10 @@ describe("processIdle signoff dispatch", () => {
         const aliceDispatch = captured.find(c => c.id === aliceSid)
         const bobDispatch = captured.find(c => c.id === bobSid)
         expect(aliceDispatch).toBeDefined()
-        expect(aliceDispatch!.agent).toBe("oracle")
+        expect(aliceDispatch!.agent).toBe("oct-oracle")
         expect(aliceDispatch!.directory).toBe("/app")
         expect(bobDispatch).toBeDefined()
-        expect(bobDispatch!.agent).toBe("explore")
+        expect(bobDispatch!.agent).toBe("oct-explore")
         expect(bobDispatch!.directory).toBe("/app")
 
         for (const sid of tracked) {
@@ -328,7 +349,7 @@ describe("processIdle delegate re-prompt", () => {
         const tracked = [leadSid, aliceSid]
 
         const alice = makeMember("alice", aliceSid)
-        alice.agent = "explore"
+        alice.agent = "oct-explore"
 
         const captured: Array<{ id: string; agent: unknown; directory: unknown }> = []
         const promptAsync = mock(async (req: any) => {
@@ -375,7 +396,7 @@ describe("processIdle delegate re-prompt", () => {
         // Should have dispatched the re-prompt
         const dispatch = captured.find(c => c.id === aliceSid)
         expect(dispatch).toBeDefined()
-        expect(dispatch!.agent).toBe("explore")
+        expect(dispatch!.agent).toBe("oct-explore")
         expect(dispatch!.directory).toBe("/app")
 
         for (const sid of tracked) {

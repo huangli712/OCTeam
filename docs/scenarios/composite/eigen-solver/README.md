@@ -636,5 +636,5 @@ T+~120 你读取全部输出，裁定结果
 - [`docs/scenarios/01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
 - [`docs/scenarios/04-team-loop/README.md`](../../04-team-loop/README.md) — loop 原语参考
 - [`docs/scenarios/09-team-tollgate/README.md`](../../09-team-tollgate/README.md) — tollgate 原语参考（验证门流水线）
-- [`src/tools/workflow-basic.ts`](../../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
-- [`src/tools/workflow-advanced.ts`](../../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码
+- parallel / consensus / pipeline / loop 源码：[`src/tools/parallel.ts`](../../../../src/tools/parallel.ts) / [`consensus.ts`](../../../../src/tools/consensus.ts) / [`pipeline.ts`](../../../../src/tools/pipeline.ts) / [`loop.ts`](../../../../src/tools/loop.ts)
+- delegate / route / arbitrate / tollgate / recurse 源码：[`src/tools/delegate.ts`](../../../../src/tools/delegate.ts) / [`router.ts`](../../../../src/tools/router.ts) / [`arbitrate.ts`](../../../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../../../src/tools/tollgate.ts) / [`recurse.ts`](../../../../src/tools/recurse.ts)

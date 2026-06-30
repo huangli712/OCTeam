@@ -6,7 +6,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../state/store.js"
-import { normalizeRole, roleAgent } from "../core/role.js"
+import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
 
@@ -72,6 +72,13 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                     return "Error: no available names left in the pool (all taken by existing members)"
                 }
                 memberName = pool[Math.floor(Math.random() * pool.length)]
+            }
+
+            // Agent override (optional): must be one of OCTeam's hardened oct-*
+            // agents. A bare host agent (e.g. "build") would bypass the
+            // role->agent permission-hardening chokepoint (role.ts).
+            if (args.agent !== undefined && !isOCTeamAgent(args.agent)) {
+                return `Error: agent "${args.agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'agent' to derive it from the role.`
             }
 
             const role = normalizeRole(args.role)

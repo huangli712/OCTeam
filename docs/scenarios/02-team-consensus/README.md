@@ -1,7 +1,7 @@
 # team_consensus 编排场景设计
 
 > **模式**：`team_consensus` — 多轮结构化辩论，所有成员就 `topic` 发表立场并逐轮逼近共识；每轮每成员 emits `<consensus>{"agreed": true|false}</consensus>`，全部 `agreed=true` 即共识达成。无 signoff 闸（全员同意机制本身就是闸）。
-> **源码**：[`src/tools/workflow-basic.ts:143-201`](../../../src/tools/workflow-basic.ts)
+> **源码**：[`src/tools/consensus.ts`](../../../src/tools/consensus.ts)
 > **控时设计**：3 成员 × `max_rounds=3`；每轮每成员 2-3 min；总时长 ≈ 3 轮 × 3 min + 调度 ≈ 9-12 min（远低于 30 min 上限）。
 
 ## 场景一览

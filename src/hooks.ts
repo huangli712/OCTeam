@@ -259,7 +259,7 @@ export function createTransformHook(
 }
 
 export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
-    return setInterval(async () => {
+    const handle = setInterval(async () => {
         try {
             // No directory filter — include sessions in member worktrees too.
             const statusResult = await ctx.client.session.status({})
@@ -267,6 +267,16 @@ export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
 
             for (const team of activeTeams()) {
                 await team.mutex.runExclusive(async () => {
+                    // Tombstone guard: a team_delete may have completed (set
+                    // team.deleted + removed the on-disk directory) between
+                    // activeTeams() snapshotted this reference and us acquiring
+                    // its mutex. Bail before any state mutation or release*()
+                    // call — those funnel through withLock -> acquireLock ->
+                    // fs.mkdir({recursive:true}), which would otherwise
+                    // recreate the just-removed <teamDir>/mailbox/ directory.
+                    // Mirrors processIdle (handlers.ts:117) and
+                    // handleStatusEvent (handlers.ts:346) guards.
+                    if (team.deleted) return
                     // 1. Reclaim stale resources.
                     await releaseStaleReservations(team.directory, "master")
                     for (const m of team.members) {
@@ -294,4 +304,10 @@ export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
             logEvent(ctx, "error", "sweep iteration failed", { error: err instanceof Error ? err.message : String(err) })
         }
     }, SWEEP_INTERVAL_MS)
+    // .unref() so the sweep timer does not keep the host event loop alive on
+    // graceful shutdown — mirrors the lock heartbeat (locks.ts:110). Retained
+    // via `handle` so a future teardown could clearInterval(handle) if the
+    // plugin lifecycle ever grows a reload path.
+    handle.unref()
+    return handle
 }

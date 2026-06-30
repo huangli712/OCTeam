@@ -12,7 +12,7 @@ import type { PluginContext } from "../core/context.js"
 import { initTeamState, writeTeamSpec } from "../state/store.js"
 import { indexMasterTeam, isIndexedMember } from "../state/resolve.js"
 import { teamDir, teamsDir } from "../state/paths.js"
-import { normalizeRole, roleAgent } from "../core/role.js"
+import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL, pickName } from "../state/naming.js"
 import { defaultBounds } from "./shared.js"
@@ -130,6 +130,12 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 }
                 if (taken.has(m.name)) return `Error: duplicate member name "${m.name}"`
                 taken.add(m.name)
+                // Agent override (optional): must be one of OCTeam's hardened
+                // oct-* agents. A bare host agent (e.g. "build") would bypass
+                // the role->agent permission-hardening chokepoint (role.ts).
+                if (m.agent !== undefined && !isOCTeamAgent(m.agent)) {
+                    return `Error: agent "${m.agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'agent' to derive it from the role.`
+                }
             }
 
             // Resolve names: explicit names are kept; omitted names are drawn from

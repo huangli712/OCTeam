@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 
 import type { TeamState, TeamSpec } from "../core/types.js"
+import { isOCTeamAgent } from "../core/role.js"
 import { atomicWrite, AsyncMutex, withLock } from "./locks.js"
 import {
     configPath,
@@ -61,16 +62,37 @@ function stripRuntimeFields(team: Team): TeamState {
  * load path immediately dereferences so bad data is rejected at the boundary
  * instead of propagating undefined access. Nested optional fields (activeTask,
  * bounds) are intentionally not checked.
+ *
+ * Agent hardening: each member's `agent` field MUST name one of OCTeam's
+ * hardened oct-* agents (role.ts). A tampered state.json that wrote a bare
+ * host agent (e.g. "build") into a member would otherwise let that member run
+ * with unhardened host permissions on the next dispatch — a privilege
+ * escalation across the .octeam/ trust boundary. An unknown agent fails the
+ * check, the load is rejected, and safeMemberAgent() would have clamped it to
+ * the read-only fallback (oct-oracle) anyway at dispatch time.
  */
 function isValidTeamState(value: unknown): value is TeamState {
     if (typeof value !== "object" || value === null) return false
     const s = value as Record<string, unknown>
-    return (
-        typeof s.teamName === "string"
-        && Array.isArray(s.members)
-        && typeof s.status === "string"
-        && typeof s.version === "number"
-    )
+    if (
+        typeof s.teamName !== "string"
+        || !Array.isArray(s.members)
+        || typeof s.status !== "string"
+        || typeof s.version !== "number"
+    ) {
+        return false
+    }
+    // Reject any member whose agent is present but not in the oct-* allowlist.
+    // A missing agent is allowed here (legacy/old state) — safeMemberAgent at
+    // dispatch falls back to oct-oracle (read-only) in that case.
+    for (const m of s.members) {
+        if (typeof m !== "object" || m === null) return false
+        const agent = (m as { agent?: unknown }).agent
+        if (agent !== undefined && (typeof agent !== "string" || !isOCTeamAgent(agent))) {
+            return false
+        }
+    }
+    return true
 }
 
 async function readJsonOrNull<T>(

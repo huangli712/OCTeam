@@ -11,7 +11,7 @@ import type { PluginContext } from "../core/context.js"
 import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../state/store.js"
 import { indexMember, resolveCallerInTeam, unindexSession } from "../state/resolve.js"
 import { inboxPath } from "../state/paths.js"
-import { normalizeRole, roleAgent } from "../core/role.js"
+import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../core/role.js"
 import type { TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
 
@@ -54,6 +54,13 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 spec = await readTeamSpec(ctx.storageRoot, caller.teamName, caller.leadSessionId)
             } catch { /* best-effort */ }
             const specMember = spec?.members.find(m => m.name === args.member_name)
+
+            // Agent override (optional): must be one of OCTeam's hardened oct-*
+            // agents. A bare host agent (e.g. "build") would bypass the
+            // role->agent permission-hardening chokepoint (role.ts).
+            if (args.new_agent !== undefined && !isOCTeamAgent(args.new_agent)) {
+                return `Error: agent "${args.new_agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'new_agent' to derive it from the role.`
+            }
 
             // Validate new_name BEFORE taking the lock.
             const renaming = !!(args.new_name && args.new_name !== args.member_name)

@@ -1,7 +1,7 @@
 # team_route 编排场景设计
 
 > **模式**：`team_route` — 内容路由：router 成员分析输入，选择匹配的分支成员处理；选中分支并行执行后汇总。无默认路由，未匹配输入直接失败整个 run。
-> **源码**：[`src/tools/workflow-advanced.ts:240-341`](../../../src/tools/workflow-advanced.ts)
+> **源码**：[`src/tools/router.ts`](../../../src/tools/router.ts)
 > **控时设计**：路由模式天然节能 —— 每个 run 实际只有 **router + 1 个匹配分支** 被调度执行（其余分支仅作为分类候选项存在，不会被 dispatch）。因此即便 team 配置 4-5 个成员，活跃成员 ≤ 2，总时长 ≈ router 分类（~1 min）+ 匹配分支求解（~5-8 min）≈ 10 min（远低于 30 min 上限）。
 
 ## 场景一览
@@ -87,8 +87,8 @@
 ```
 
 **参数选择**：
-- `router: "alice"` — router 必须是成员名，非 master，且不能是分支 target（schema 硬约束，见 `workflow-advanced.ts:298-300`）。
-- `input` 携带题目正文 — routes 全部省略 `task`，故匹配分支成员**直接收到 `input`**（schema 文档化的惯用模式，见 `workflow-advanced.ts:63` 的 `b.task ?? task.task` 回退）；避免把题目重复塞进每个 route。
+- `router: "alice"` — router 必须是成员名，非 master，且不能是分支 target（schema 硬约束，见 `router.ts:298-300`）。
+- `input` 携带题目正文 — routes 全部省略 `task`，故匹配分支成员**直接收到 `input`**（schema 文档化的惯用模式，见 `router.ts:63` 的 `b.task ?? task.task` 回退）；避免把题目重复塞进每个 route。
 - 不设 `signoff_policy` — 默认 `none`，分支求解完即交付，无需额外评审门。
 - `timeout_ms: 600000`（10 min）— router 分类 ~1 min + bob 求导 ~3 min，余量充足。
 
@@ -324,7 +324,7 @@ T+6m    运行: bun check-coding-issue-router.ts <run_dir>
 
 ### 4.1 场景描述
 
-**背景**：现实中的工程工单很少是单一类别。一条 200 字的 ticket 往往同时报告崩溃（bug）、要求拆分长函数（refactor）、暴露测试盲区（test）、点出文档过时（docs）、还附带性能回归（perf）——甚至引出输入信任（security）、依赖升级（dependency）、规格歧义（question）等延伸关注面。简单的「单选一路」路由器会把这种工单塞进一个桶、丢掉其余维度的处置。本场景刻意构造一张同时触及 5+ 关注点的工单，压测 router 能否识别「多面性」并以框架原生的 `{"branches":[...]}` 多选形式（`workflow-advanced.ts:222`）并行触发多条分支；每条命中分支独立给出该维度的一行动作计划。
+**背景**：现实中的工程工单很少是单一类别。一条 200 字的 ticket 往往同时报告崩溃（bug）、要求拆分长函数（refactor）、暴露测试盲区（test）、点出文档过时（docs）、还附带性能回归（perf）——甚至引出输入信任（security）、依赖升级（dependency）、规格歧义（question）等延伸关注面。简单的「单选一路」路由器会把这种工单塞进一个桶、丢掉其余维度的处置。本场景刻意构造一张同时触及 5+ 关注点的工单，压测 router 能否识别「多面性」并以框架原生的 `{"branches":[...]}` 多选形式（`router.ts:222`）并行触发多条分支；每条命中分支独立给出该维度的一行动作计划。
 
 > **挑战级标注**：本场景 9 成员、最多 8 分支并行触发，刻意突破 AUTHORING.md「≤4 成员、≤30 min」的常规预算，用于压测路由模式在「router 分类 + 多分支并行」下的控时与稳定性。
 
@@ -338,7 +338,7 @@ T+6m    运行: bun check-coding-issue-router.ts <run_dir>
 
 ### 4.2 Team 配置
 
-9 成员：1 个 `analyst` router（alice） + 8 个 `coder` 分支（bob..iris）。router 不担任任何分支 target（schema 硬约束，见 `workflow-advanced.ts:273`）。
+9 成员：1 个 `analyst` router（alice） + 8 个 `coder` 分支（bob..iris）。router 不担任任何分支 target（schema 硬约束，见 `router.ts:273`）。
 
 ```json
 {
@@ -394,7 +394,7 @@ T+6m    运行: bun check-coding-issue-router.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：router 用 `analyst`（读工单、分类判读）；8 个分支统一用 `coder`（定位文件/函数、给动作计划）。8 分支 prompt 结构同构——先判领域归属，再出 `ACTION` / `DOMAIN_MATCH`——保证多分支并行产出标记一致，便于评判脚本统一抽取。router 的 `<route>` 精确格式由框架 `buildRouterPrompt`（`workflow-advanced.ts:210-226`）在 dispatch 时注入，故 alice 的成员 prompt 只需强调「select ALL that apply」而无需重复 JSON 模板。
+**Role 选择理由**：router 用 `analyst`（读工单、分类判读）；8 个分支统一用 `coder`（定位文件/函数、给动作计划）。8 分支 prompt 结构同构——先判领域归属，再出 `ACTION` / `DOMAIN_MATCH`——保证多分支并行产出标记一致，便于评判脚本统一抽取。router 的 `<route>` 精确格式由框架 `buildRouterPrompt`（`router.ts:210-226`）在 dispatch 时注入，故 alice 的成员 prompt 只需强调「select ALL that apply」而无需重复 JSON 模板。
 
 ### 4.3 Master 启动调用
 
@@ -421,9 +421,9 @@ T+6m    运行: bun check-coding-issue-router.ts <run_dir>
 ```
 
 **参数选择**：
-- `router: "alice"` — 成员名，非 master，不在 routes 中（schema 约束 `workflow-advanced.ts:273`）。
-- `input` 是 ~200 字多面性工单 — 8 个 route 均省略 `task`，故**所有**被选中分支成员直接收到这段完整工单（`b.task ?? task.task` 回退，`workflow-advanced.ts:63`）；分类线索同时写在工单正文每句末尾的括号里与 route `description` 里，双保险帮助 router 识别多面性。
-- 路由形式：框架原生支持多选——router 的 dispatch prompt 内置 `<route>{"branches": ["a","b"], ...}</route>` 指令（`workflow-advanced.ts:222`），命中分支**并行**执行后汇总。
+- `router: "alice"` — 成员名，非 master，不在 routes 中（schema 约束 `router.ts:273`）。
+- `input` 是 ~200 字多面性工单 — 8 个 route 均省略 `task`，故**所有**被选中分支成员直接收到这段完整工单（`b.task ?? task.task` 回退，`router.ts:63`）；分类线索同时写在工单正文每句末尾的括号里与 route `description` 里，双保险帮助 router 识别多面性。
+- 路由形式：框架原生支持多选——router 的 dispatch prompt 内置 `<route>{"branches": ["a","b"], ...}</route>` 指令（`router.ts:222`），命中分支**并行**执行后汇总。
 - 不设 `signoff_policy` — 默认 `none`，各分支求解完即交付，无需额外评审门（避免把 9 人挑战级 run 拖到超时）。
 - `timeout_ms: 2700000`（45 min）— 挑战级预算：router 分类 ~2 min + 命中分支并行求解（壁钟取最慢分支）+ 调度/汇总余量；仍低于 team_route 框架硬上限。
 

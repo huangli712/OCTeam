@@ -26,7 +26,8 @@ import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../o
 import { handleRouteIdle } from "../orchestration/route.js"
 import { buildArbiterPrompt, buildDebatePrompt, handleArbitrateIdle } from "../orchestration/arbitrate.js"
 import { buildRouterPrompt } from "./router.js"
-import { deliverSummaryToLeader } from "../orchestration/summary.js"
+import { buildSummary, deliverSummaryToLeader } from "../orchestration/summary.js"
+import { handleReduceIdle, handleSignoffIdle } from "../orchestration/signoff.js"
 import { listAllTasks, reapStaleClaims, updateTask } from "../state/tasks.js"
 
 /**
@@ -52,6 +53,55 @@ export async function resumeDispatch(
     task: ActiveTask,
 ): Promise<void> {
     let dispatched = 0
+
+    // Signoff/reduce sub-stage recovery (mirrors processIdle priority ordering
+    // in handlers.ts:176-186). A crash can occur while these special stages
+    // are in flight (signoffStage/reduceStage flags set on the active task).
+    // On resume, restore the reviewers/reducer by re-triggering the same
+    // maybeTrigger* idempotent entry points the live path uses, then bail —
+    // the type switch below is for the per-mode MAP work, not these sub-stages.
+    // Without this, a crash during signoff leaves reviewers idle and
+    // handleSignoffIdle never re-fires (no fresh idle event arrives), so the
+    // run stalls to the wall-clock timeout instead of completing.
+    if (task.reduceStage) {
+        // Reduce stage: re-dispatch the reducer if it hasn't produced output,
+        // else re-drive handleReduceIdle to capture and continue.
+        const reducer = team.members.find(m => m.name === task.reducerMember && !m.isMaster)
+        if (reducer && !task.responses[reducer.name]) {
+            const body = await buildSummary(team, task, "pending_reduce")
+            const prompt =
+                `[Reduce task] You are the reducer for a parallel run. Combine the candidate `
+                + `outputs below into ONE final result per the policy. Output ONLY the final `
+                + `result, with no preamble.\n\n${body}`
+            await dispatchToMember(ctx, reducer, prompt, reducer.worktreePath ?? ctx.directory, team)
+            dispatched = 1
+        } else if (reducer) {
+            await handleReduceIdle(ctx, team, reducer)
+        }
+        return
+    }
+    if (task.signoffStage) {
+        // Signoff stage: re-dispatch reviewers who haven't responded yet. We
+        // synthesize the review prompt (same as maybeTriggerSignoff) and
+        // dispatch to each non-master, non-errored member with a session and
+        // no recorded approval yet. If none are incomplete, the caller's
+        // sweep/checkTermination will eventually re-drive handleSignoffIdle
+        // via the missed-idle path.
+        const summary = await buildSummary(team, task, "pending_signoff")
+        const reviewPrompt =
+            `[Signoff review] Review the following workflow output. `
+            + `If it meets quality standards, emit <signoff>{"approved": true, "rationale": "..."}</signoff>. `
+            + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
+        for (const m of team.members) {
+            if (m.isMaster || m.status === "errored" || !m.sessionId) continue
+            // Skip reviewers who already recorded an approval.
+            if (task.signoffApprovals?.[m.name] !== undefined) continue
+            await dispatchToMember(ctx, m, reviewPrompt, m.worktreePath ?? ctx.directory, team)
+            dispatched++
+        }
+        return
+    }
+
     switch (task.type) {
         case "parallel": {
             for (const m of team.members) {

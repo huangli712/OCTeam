@@ -1,7 +1,7 @@
 # team_arbitrate 编排场景设计
 
 > **模式**：`team_arbitrate` — 两名辩手就一项争议辩论至多 `max_rounds` 轮，随后由一名仲裁（非辩手、非 master）权衡各方立场并下达**有约束力的裁决**。
-> **源码**：[`src/tools/workflow-advanced.ts:343-397`](../../../src/tools/workflow-advanced.ts)
+> **源码**：[`src/tools/arbitrate.ts`](../../../src/tools/arbitrate.ts)
 > **控时设计**：每场景 3 成员（2 辩手 + 1 仲裁），`max_rounds=2`；每成员子任务 ≤ 8 min，总时长 ≈ 2 轮辩论 + 最终裁决 ≈ 12-18 min（远低于 30 min 上限）。
 
 ## 场景一览

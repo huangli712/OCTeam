@@ -98,6 +98,6 @@
 ## 相关文档
 
 - [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) — 9 种编排原语的官方定义与状态持久化模型
-- [`src/tools/workflow-basic.ts`](../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 工具源码
-- [`src/tools/workflow-advanced.ts`](../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 工具源码
-- [`src/core/role-presets.ts`](../../src/core/role-presets.ts) — 18 种角色预设及其 agent 映射
+- parallel / consensus / pipeline / loop 工具源码：[`src/tools/parallel.ts`](../../src/tools/parallel.ts) / [`consensus.ts`](../../src/tools/consensus.ts) / [`pipeline.ts`](../../src/tools/pipeline.ts) / [`loop.ts`](../../src/tools/loop.ts)
+- delegate / route / arbitrate / tollgate / recurse 工具源码：[`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`recurse.ts`](../../src/tools/recurse.ts)
+- [`src/core/role.ts`](../../src/core/role.ts) — 18 种角色预设及其 agent 映射

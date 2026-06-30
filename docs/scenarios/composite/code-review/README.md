@@ -447,5 +447,5 @@ T+~55  你读取全部输出，裁定结果
 - [`docs/scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
 - [`docs/scenarios/01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
 - [`docs/scenarios/05-team-delegate/README.md`](../../05-team-delegate/README.md) — delegate 原语参考（自取流程）
-- [`src/tools/workflow-basic.ts`](../../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
-- [`src/tools/workflow-advanced.ts`](../../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码
+- parallel / consensus / pipeline / loop 源码：[`src/tools/parallel.ts`](../../../../src/tools/parallel.ts) / [`consensus.ts`](../../../../src/tools/consensus.ts) / [`pipeline.ts`](../../../../src/tools/pipeline.ts) / [`loop.ts`](../../../../src/tools/loop.ts)
+- delegate / route / arbitrate / tollgate / recurse 源码：[`src/tools/delegate.ts`](../../../../src/tools/delegate.ts) / [`router.ts`](../../../../src/tools/router.ts) / [`arbitrate.ts`](../../../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../../../src/tools/tollgate.ts) / [`recurse.ts`](../../../../src/tools/recurse.ts)

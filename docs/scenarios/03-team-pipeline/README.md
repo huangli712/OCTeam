@@ -1,7 +1,7 @@
 # team_pipeline 编排场景设计
 
 > **模式**：`team_pipeline` — 线性流水线：stage N 的输出被前缀追加到 stage N+1 的任务上，逐级串行；最终 stage 的输出汇总交付 leader。
-> **源码**：[`src/tools/workflow-basic.ts:203-280`](../../../src/tools/workflow-basic.ts)
+> **源码**：[`src/tools/pipeline.ts`](../../../src/tools/pipeline.ts)
 > **控时设计**：3 stage 串行执行，每 stage 子任务 3-5 min；总时长 ≈ Σ(stage) + summarize ≈ 12-15 min（远低于 30 min 上限，每成员子任务 ≤ 8 min）。
 
 ## 场景一览

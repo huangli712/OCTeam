@@ -7,6 +7,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { loadTeamState, readTeamSpec } from "../state/store.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
+import { safeMemberAgent } from "../core/role.js"
 
 export function teamQueryTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -42,7 +43,7 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
                 `Name: ${member.name}`,
                 `Role: ${role ?? "unknown"}`,
                 `Prompt: ${prompt ?? "unknown"}`,
-                `Agent: ${member.agent ?? "build"}`,
+                `Agent: ${safeMemberAgent(member.agent)}`,
                 `Model: ${member.model ?? "unknown"}`,
                 `Status: ${member.status}`,
                 `Initialized: ${member.initialized}`,
