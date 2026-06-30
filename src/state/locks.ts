@@ -104,7 +104,15 @@ export async function withLock<T>(lockPath: string, fn: () => Promise<T>): Promi
         const now = new Date()
         fs.utimes(lockPath, now, now).catch((err) => {
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return // lock vanished or refresh raced — release() handles ownership cleanup
-            throw err // non-vanish error: surface via unhandled rejection (no logger available in this unref'd heartbeat interval)
+            // Non-vanish error (ENOSPC/EIO/EROFS/EPERM): swallow rather than
+            // throw. The heartbeat is best-effort — a transient utimes failure
+            // does not affect lock correctness: the next heartbeat (every
+            // LOCK_HEARTBEAT_MS) retries, and if failures persist past
+            // LOCK_TTL_MS the stale-reap invariant (shouldReapStaleLock
+            // requires owner-process-dead) keeps mutual exclusion sound. A
+            // PluginContext is not available in this unref'd interval, and
+            // re-throwing would surface as an unhandled promise rejection —
+            // fatal under Node ≥15. We deliberately choose silence over crash.
         })
     }, LOCK_HEARTBEAT_MS)
     heartbeat.unref()

@@ -15,7 +15,8 @@ import type { OcteamAgentConfig } from "./types.js"
  * environment has installed (hardcoding e.g. "claude-sonnet-4" would break for
  * OpenAI-only or local-model users). Model selection is delegated to the user,
  * resolved at team-creation time via MemberSpec.model, then the user's global
- * default config, then the leader session's model (see lifecycle.ts).
+ * default config, then the leader session's model (see resolveCreateModel in
+ * tools/create.ts).
  */
 export const OCTEAM_AGENTS: Record<string, OcteamAgentConfig> = {
     "oct-oracle": oracleAgent,

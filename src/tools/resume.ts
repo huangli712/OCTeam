@@ -4,7 +4,8 @@
  * reconcileOne on host restart). Master-only. Requires explicit prior
  * team_activate.
  *
- * 3-phase lock order (mirrors workflow.ts, NOT team_cancel which is single-phase):
+ * 3-phase lock order (mirrors startOrchestration in tools/shared.ts, NOT
+ * team_cancel which is single-phase):
  *   Phase 1 (mutex): snapshot lastInterruptedTask → local, reset errored→idle,
  *                    save. DO NOT commit activeTask (O1: Phase 2 window safety —
  *                    a stray session.idle during Phase 2 must hit processIdle's

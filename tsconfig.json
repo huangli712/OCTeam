@@ -12,6 +12,7 @@
         "emitDeclarationOnly": true,
         "strict": true,
         "esModuleInterop": true,
+        "resolveJsonModule": true,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
         "jsx": "preserve",

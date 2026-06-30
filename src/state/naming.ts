@@ -1,6 +1,6 @@
 /**
  * Member name allocation. A name is drawn at random from a fixed pool and not
- * reused within the same team. Extracted from tools/lifecycle.ts so the naming
+ * reused within the same team. Co-located with the state layer so the naming
  * policy is reusable independent of the tool definitions.
  */
 

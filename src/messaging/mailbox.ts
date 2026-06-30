@@ -9,14 +9,16 @@
  *
  * TRUST BOUNDARY — message authenticity. The mailbox lives under
  * `<project>/.octeam/mailbox/`, i.e. inside the project directory that member
- * agents (any role mapped to the `build` agent: coder/debugger/optimizer/...)
+ * agents (any role mapped to the `oct-junior` agent: coder/debugger/optimizer/...)
  * can read and write via their edit/write/bash tools. Messages carry NO
  * cryptographic integrity tag (no HMAC/signature): `from` and `kind` are stored
  * verbatim and only XML-escaped on output, never re-authenticated on read.
  * Consequently a member with filesystem write access to `.octeam/` CAN append a
  * forged line (e.g. `{from:"master", kind:"directive", ...}`) that will be
  * rendered as a high-priority `[DIRECTIVE]` apparently from the master — a
- * cross-member privilege-escalation / master-impersonation vector.
+ * cross-member privilege-escalation vector. The master's own drain path
+ * (`deliverQueuedResultsToMaster`) filters such self-directed forgeries as a
+ * partial mitigation; see ARCHITECTURE.md "Mailbox authenticity".
  *
  * This is an accepted, documented limitation of the shared-process,
  * shared-filesystem architecture: an HMAC key cannot be hidden from a member

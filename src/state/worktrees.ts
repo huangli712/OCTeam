@@ -1,7 +1,7 @@
 /**
- * Git worktree lifecycle helpers. Extracted from tools/lifecycle.ts so git
- * operations are reusable and co-located (creation lives in
- * orchestration/dispatch.ts; teardown + dirty-check live here).
+ * Git worktree lifecycle helpers. Co-located with the state layer so git
+ * operations are reusable (creation lives in orchestration/dispatch.ts;
+ * teardown + dirty-check live here).
  *
  * All operations are best-effort: a git failure never blocks team lifecycle.
  */

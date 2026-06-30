@@ -2,8 +2,7 @@
 
 import type { TuiPlugin } from "@opencode-ai/plugin/tui"
 import { createMemo } from "solid-js"
-// @ts-expect-error JSON import requires resolveJsonModule, set in tsconfig (out of scope); bundler resolves it at build time
-import { version as packageVersion } from "../../package.json"
+import pkg from "../../package.json" with { type: "json" }
 import { SessionNavigatorSidebar } from "./sidebar.jsx"
 
 const tui: TuiPlugin = async (api) => {
@@ -18,7 +17,7 @@ const tui: TuiPlugin = async (api) => {
                             api={api}
                             sessionID={() => value.session_id}
                             theme={theme()}
-                            version={packageVersion}
+                            version={pkg.version}
                         />
                     )
                 },

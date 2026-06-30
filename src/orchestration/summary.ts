@@ -74,19 +74,35 @@ export async function deliverQueuedResultsToMaster(
 ): Promise<void> {
     const queued = await pollMailbox(team.directory, "master")
     if (queued.length === 0) return
+
+    // Security: filter forged master self-impersonation directives. The master
+    // mailbox is writable by any member agent with .octeam/ FS access (see
+    // mailbox.ts TRUST BOUNDARY header). Without this filter, a forged line
+    // {from:"master", kind:"directive", ...} would be rendered as [DIRECTIVE]
+    // into the master's own session, weaponizing the master LLM via forged
+    // self-directives. The master never legitimately sends directives to
+    // itself, so strip both kind=directive and from=master entries on this
+    // drain path. (Forge into other members' mailboxes remains a documented
+    // accepted limitation — see mailbox.ts header.)
+    const safe = queued.filter(m => m.kind !== "directive" && m.from !== "master")
+
     let delivered = true
-    await ctx.client.session.promptAsync({
-        path: { id: masterSessionId },
-        body: {
-            parts: [{ type: "text", text: formatMailboxInjection(queued), synthetic: true }],
-        },
-    }).catch(err => {
-        delivered = false
-        logSwallowed(ctx, "deliver queued results to master failed", err, { team: team.teamName })
-    })
-    // ACK only on successful delivery. On failure, leave messages reserved so
-    // releaseStaleReservations re-delivers them after the TTL — otherwise a
-    // transient master-session error silently drops team results.
+    if (safe.length > 0) {
+        await ctx.client.session.promptAsync({
+            path: { id: masterSessionId },
+            body: {
+                parts: [{ type: "text", text: formatMailboxInjection(safe), synthetic: true }],
+            },
+        }).catch(err => {
+            delivered = false
+            logSwallowed(ctx, "deliver queued results to master failed", err, { team: team.teamName })
+        })
+    }
+    // ACK all queued (including filtered forged entries) on successful delivery
+    // so forged messages are permanently dropped rather than re-delivered by
+    // releaseStaleReservations in a 30s TTL loop. On failure, leave all reserved
+    // so releaseStaleReservations re-delivers legitimate team results after TTL
+    // — otherwise a transient master-session error silently drops them.
     if (delivered) {
         await ackMessages(team.directory, "master", queued)
     }

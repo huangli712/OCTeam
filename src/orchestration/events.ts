@@ -20,6 +20,16 @@ import { appendJsonl } from "../state/locks.js"
 import { runEventsPath } from "../state/paths.js"
 
 export function recordEvent(team: Team, event: RunEvent): void {
+    // Tombstone guard: skip the fire-and-forget appendJsonl when the team has
+    // been deleted. appendJsonl's mkdir({recursive:true}) would otherwise
+    // recreate runs/<runId>/ as an orphan directory after handleSessionDeleted
+    // / team_delete's recursive fs.rm — the same C1 resurrection class, but
+    // via the one write path here that is NOT awaited and does NOT re-check
+    // team.deleted. The tombstone flag is set under the team mutex before
+    // fs.rm runs (delete.ts:60 / handleSessionDeleted), so this read is
+    // consistent with the deletion when recordEvent is called from a path
+    // that holds the mutex (every call site in handlers.ts/summary.ts does).
+    if (team.deleted) return
     const runId = team.activeTask?.runId
     if (!runId) return
     void appendJsonl(runEventsPath(team.directory, runId), JSON.stringify(event) + "\n").catch(() => {
