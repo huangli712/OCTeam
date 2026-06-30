@@ -13,7 +13,7 @@ import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import type { GatedStage, RouteBranch } from "../core/types.js"
 import { buildRecursePrompt } from "../orchestration/recurse.js"
 import { advanceToGatedStage } from "../orchestration/tollgate.js"
-import { buildDebatePrompt } from "../orchestration/route-arbitrate.js"
+import { buildDebatePrompt } from "../orchestration/arbitrate.js"
 import {
     DEFAULT_ARBITRATE_ROUNDS,
     DEFAULT_RECURSE_DEPTH,

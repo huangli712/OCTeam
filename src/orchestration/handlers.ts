@@ -43,7 +43,8 @@ import { handleLoopIdle } from "./loop.js"
 import { handleDelegateIdle } from "./delegate.js"
 import { handleRecurseIdle } from "./recurse.js"
 import { handleTollgateIdle } from "./tollgate.js"
-import { handleArbitrateIdle, handleRouteIdle } from "./route-arbitrate.js"
+import { handleRouteIdle } from "./route.js"
+import { handleArbitrateIdle } from "./arbitrate.js"
 
 // --- helpers ---
 
