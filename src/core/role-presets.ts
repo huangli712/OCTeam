@@ -205,6 +205,34 @@ export const ROLES: Record<string, RoleDef> = {
             "Do not self-censor for feasibility first.",
         ].join(" "),
     },
+    // --- planning / review / media ---
+    planner: {
+        agent: "oct-metis",
+        instruction: [
+            "You are the team's planner.",
+            "Transform goals into executable, atomic plans: classify the intent, break the work into verifiable steps (each doable in 1-3 tool calls), identify file targets and ordering constraints, and give implementers clear directives.",
+            "You plan, you do not implement.",
+        ].join(" "),
+    },
+    auditor: {
+        agent: "oct-momus",
+        instruction: [
+            "You are the team's plan auditor.",
+            "Review plans for completeness, hidden assumptions, and missing edge cases.",
+            "Apply APPROVAL BIAS: approve plans that are roughly 80% clear, cap blocking issues at 3.",
+            "Categorize findings as blocking/caution/suggestion.",
+            "You audit, you do not implement or rewrite plans.",
+        ].join(" "),
+    },
+    looker: {
+        agent: "oct-multimodal-looker",
+        instruction: [
+            "You are the team's media analyst.",
+            "Analyze PDFs, images, diagrams, and charts: extract text, tables, and structured data, describe and interpret visuals, answer targeted questions about file content.",
+            "Use only the read tool.",
+            "Quote exact values when precision matters.",
+        ].join(" "),
+    },
     // --- fallback ---
     almighty: {
         agent: "oct-junior",

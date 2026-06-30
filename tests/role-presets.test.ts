@@ -11,8 +11,8 @@ import {
 import { buildRolePrompt } from "../src/core/utils.js"
 
 describe("ROLES catalogue", () => {
-    test("has 18 roles, each with a non-empty agent and instruction", () => {
-        expect(ROLE_NAMES.length).toBe(18)
+    test("has 21 roles, each with a non-empty agent and instruction", () => {
+        expect(ROLE_NAMES.length).toBe(21)
         for (const name of ROLE_NAMES) {
             const def = ROLES[name]
             expect(def.agent.length).toBeGreaterThan(0)
@@ -79,6 +79,12 @@ describe("roleAgent (role → fixed agent)", () => {
         expect(roleAgent("researcher")).toBe("oct-librarian")
         expect(roleAgent("author")).toBe("oct-junior")
         expect(roleAgent("fantast")).toBe("oct-junior")
+    })
+
+    test("planning / review / media roles", () => {
+        expect(roleAgent("planner")).toBe("oct-metis")
+        expect(roleAgent("auditor")).toBe("oct-momus")
+        expect(roleAgent("looker")).toBe("oct-multimodal-looker")
     })
 
     test("almighty uses oct-junior; unknown roles fall back to read-only oct-oracle", () => {
