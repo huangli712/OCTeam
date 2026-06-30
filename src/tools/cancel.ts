@@ -9,6 +9,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { clearActiveTask, loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { deliverSummaryToLeader } from "../orchestration/summary.js"
+import { abortAndResetMembers } from "./shared.js"
 
 export function teamCancelTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -42,30 +43,13 @@ export function teamCancelTool(ctx: PluginContext): ToolDefinition {
                     result = `Team "${args.team_id}" has no active orchestration to cancel.`
                     return
                 }
-                // a. Abort running member turns (best-effort).
-                for (const m of team.members) {
-                    if (!m.isMaster && m.sessionId && m.status === "running") {
-                        await ctx.client.session
-                            .abort({
-                                path: { id: m.sessionId },
-                                query: { directory: m.worktreePath ?? ctx.directory },
-                            })
-                            .catch(() => {
-                                // best-effort: a failed abort must not block cancel
-                            })
-                    }
-                }
+                // a. Abort running member turns + reset to idle (shared helper).
+                await abortAndResetMembers(ctx, team)
                 // b. Notify master BEFORE clearing (summary reads activeTask).
                 await deliverSummaryToLeader(ctx, team, "cancelled")
                 // c. Clear + transition to idle (NOT failed).
                 clearActiveTask(team)
                 team.status = "idle"
-                for (const m of team.members) {
-                    if (m.isMaster) continue
-                    m.status = "idle"
-                    m.declaredDone = false
-                    m.retryingSince = undefined
-                }
                 // d. Persist.
                 await saveTeamState(team)
                 result = `Team "${args.team_id}" orchestration cancelled. Team is idle and reusable.`

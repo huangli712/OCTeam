@@ -17,7 +17,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState } from "../state/store.js"
-import { countUnreadMessages } from "../messaging/mailbox.js"
+import { unreadInboxBytes } from "../messaging/mailbox.js"
 import { deliverToRecipients } from "../messaging/deliver.js"
 import type { Message } from "../core/types.js"
 
@@ -72,12 +72,13 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                 }
             }
 
-            // Backpressure: enforce the unread mailbox cap per recipient. This is
-            // the ONLY rate bound on directives — there is NO separate quota and
-            // NO maxMessagesPerRun check (directives are master control traffic).
+            // Backpressure: enforce the unread mailbox cap per recipient using
+            // the ACTUAL inbox byte size. This is the ONLY rate bound on
+            // directives — there is NO separate quota and NO maxMessagesPerRun
+            // check (directives are master control traffic).
             for (const r of recipients) {
-                const unread = await countUnreadMessages(team.directory, r)
-                if (unread > 0 && unread * 1024 > team.bounds.messageUnreadMaxBytes) {
+                const bytes = await unreadInboxBytes(team.directory, r)
+                if (bytes > team.bounds.messageUnreadMaxBytes) {
                     return `Error: recipient "${r}" mailbox is full (backpressure). Try later.`
                 }
             }

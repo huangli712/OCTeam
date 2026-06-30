@@ -18,14 +18,6 @@ export function tmpRoot(label: string): string {
 }
 
 /**
- * Remove a single tmp root created by tmpRoot(). Idempotent (force: true makes a
- * missing path a no-op), so it is safe to call more than once.
- */
-export function cleanupTmpRoot(root: string): void {
-    rmSync(root, { recursive: true, force: true })
-}
-
-/**
  * Remove every tmp root created via tmpRoot() so far and reset the tracking
  * list. Recommended usage — keep /tmp clean without per-test bookkeeping:
  *

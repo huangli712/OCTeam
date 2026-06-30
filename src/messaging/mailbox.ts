@@ -273,6 +273,26 @@ export async function countUnreadMessages(
     return (await readJsonl(inboxPath(teamDirectory, recipient))).length
 }
 
+/**
+ * Total on-disk byte size of a recipient's unread inbox (NOT reserved).
+ * Used for backpressure checks (messageUnreadMaxBytes) — measures ACTUAL bytes
+ * rather than the old `count * 1024` line-proxy, which under-counted by up to
+ * 32x for max-size (32KB) message bodies. Returns 0 when the inbox is absent.
+ * Cheaper than countUnreadMessages (one stat, no JSON parse).
+ */
+export async function unreadInboxBytes(
+    teamDirectory: string,
+    recipient: string,
+): Promise<number> {
+    try {
+        const stat = await fs.stat(inboxPath(teamDirectory, recipient))
+        return stat.size
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0
+        throw err
+    }
+}
+
 // --- XML escaping (injection hardening) ---
 
 // Escape XML text content (message body). `&` MUST be replaced first so the

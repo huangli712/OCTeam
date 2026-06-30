@@ -81,19 +81,26 @@ export async function resumeDispatch(
         return
     }
     if (task.signoffStage) {
-        // Signoff stage: re-dispatch reviewers who haven't responded yet. We
-        // synthesize the review prompt (same as maybeTriggerSignoff) and
-        // dispatch to each non-master, non-errored member with a session and
-        // no recorded approval yet. If none are incomplete, the caller's
-        // sweep/checkTermination will eventually re-drive handleSignoffIdle
-        // via the missed-idle path.
+        // Signoff stage: re-dispatch reviewers who haven't responded yet,
+        // branching on policy exactly like maybeTriggerSignoff (signoff.ts):
+        //   - decider:     only the named decider
+        //   - peer-quorum: all non-master, non-errored members with a session
+        // Reviewers with a recorded approval are skipped. If none are incomplete,
+        // the caller's sweep/checkTermination eventually re-drives
+        // handleSignoffIdle via the missed-idle path.
         const summary = await buildSummary(team, task, "pending_signoff")
         const reviewPrompt =
             `[Signoff review] Review the following workflow output. `
             + `If it meets quality standards, emit <signoff>{"approved": true, "rationale": "..."}</signoff>. `
             + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
-        for (const m of team.members) {
-            if (m.isMaster || m.status === "errored" || !m.sessionId) continue
+        let reviewers: typeof team.members = []
+        if (task.signoffPolicy === "decider") {
+            const decider = team.members.find(m => m.name === task.signoffDecider && !m.isMaster)
+            reviewers = decider ? [decider] : []
+        } else if (task.signoffPolicy === "peer-quorum") {
+            reviewers = team.members.filter(m => !m.isMaster && m.status !== "errored" && m.sessionId)
+        }
+        for (const m of reviewers) {
             // Skip reviewers who already recorded an approval.
             if (task.signoffApprovals?.[m.name] !== undefined) continue
             await dispatchToMember(ctx, m, reviewPrompt, m.worktreePath ?? ctx.directory, team)

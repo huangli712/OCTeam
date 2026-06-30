@@ -23,27 +23,27 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
         },
         async execute(args, context) {
             const leadSessionId = ctx.scope === "project" ? context.sessionID : undefined
-            let X: Team
+            let target: Team
             try {
-                X = await loadTeamState(ctx.storageRoot, args.team_id, leadSessionId)
+                target = await loadTeamState(ctx.storageRoot, args.team_id, leadSessionId)
             } catch {
                 return `Error: team "${args.team_id}" not found`
             }
-            if (X.leadSessionId !== context.sessionID) {
+            if (target.leadSessionId !== context.sessionID) {
                 return "Error: team_activate is master-only (only the team's leader session can activate it)"
             }
 
-            // Find the currently-active sibling Y (if any).
-            let Y: Team | undefined
+            // Find the currently-active sibling (if any).
+            let activeSibling: Team | undefined
             for (const other of await listTeamNames(ctx.storageRoot, leadSessionId)) {
                 try {
                     const t = await loadTeamState(ctx.storageRoot, other, leadSessionId)
                     if (
                         t.leadSessionId === context.sessionID
                         && t.activatedAt !== undefined
-                        && t.directory !== X.directory
+                        && t.directory !== target.directory
                     ) {
-                        Y = t
+                        activeSibling = t
                         break
                     }
                 } catch {
@@ -52,11 +52,11 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
             }
 
             let result = ""
-            await withOrderedLocks([X, Y].filter((t): t is Team => t !== undefined), async () => {
+            await withOrderedLocks([target, activeSibling].filter((t): t is Team => t !== undefined), async () => {
                 const decision = decideActivate({
-                    targetIsAlreadyActive: X.activatedAt !== undefined && Y === undefined,
-                    outgoingExists: Y !== undefined,
-                    outgoingName: Y?.teamName,
+                    targetIsAlreadyActive: target.activatedAt !== undefined && activeSibling === undefined,
+                    outgoingExists: activeSibling !== undefined,
+                    outgoingName: activeSibling?.teamName,
                 })
                 if (decision.kind === "noop") {
                     result = `Team "${args.team_id}" is already the active team.`
@@ -67,10 +67,10 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 const now = Date.now()
-                X.activatedAt = now
-                setActiveTeam(context.sessionID, X.directory)
-                await saveTeamState(X).catch((err) =>
-                    logSwallowed(ctx, "persist team state failed (activate)", err, { team: X.teamName })
+                target.activatedAt = now
+                setActiveTeam(context.sessionID, target.directory)
+                await saveTeamState(target).catch((err) =>
+                    logSwallowed(ctx, "persist team state failed (activate)", err, { team: target.teamName })
                 )
                 result = `Team "${args.team_id}" activated.`
             })

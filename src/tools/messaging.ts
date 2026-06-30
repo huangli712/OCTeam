@@ -12,7 +12,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
-import { countUnreadMessages } from "../messaging/mailbox.js"
+import { unreadInboxBytes } from "../messaging/mailbox.js"
 import { deliverToRecipients } from "../messaging/deliver.js"
 import type { Message, ParallelMode } from "../core/types.js"
 
@@ -82,10 +82,12 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 return `Error: isolated mode forbids member-to-member messaging. You may message "master" only.`
             }
 
-            // Backpressure: enforce unread mailbox cap per recipient.
+            // Backpressure: enforce unread mailbox cap per recipient using the
+            // ACTUAL inbox byte size (not a line-count proxy that under-counts
+            // max-size bodies by up to 32x).
             for (const r of recipients) {
-                const unread = await countUnreadMessages(team.directory, r)
-                if (unread > 0 && unread * 1024 > team.bounds.messageUnreadMaxBytes) {
+                const bytes = await unreadInboxBytes(team.directory, r)
+                if (bytes > team.bounds.messageUnreadMaxBytes) {
                     return `Error: recipient "${r}" mailbox is full (backpressure). Try later.`
                 }
             }

@@ -10,6 +10,7 @@ import type { PluginContext } from "../core/context.js"
 import { clearActiveTask, deleteTeamStorage, invalidateTeam, loadTeamState, type Team } from "../state/store.js"
 import { unindexMasterTeam, unindexSession } from "../state/resolve.js"
 import { clearWakeHint } from "../messaging/wake-hint.js"
+import { abortAndResetMembers } from "./shared.js"
 import { cleanWorktree, hasUncommittedChanges } from "../state/worktrees.js"
 
 export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
@@ -63,26 +64,12 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 // and does not write. This idle state is intentionally NOT persisted --
                 // the storage is removed below instead.
                 if (team.status === "busy") {
-                    for (const m of team.members) {
-                        if (!m.isMaster && m.sessionId && m.status === "running") {
-                            await ctx.client.session
-                                .abort({
-                                    path: { id: m.sessionId },
-                                    query: { directory: m.worktreePath ?? ctx.directory },
-                                })
-                                .catch(() => {
-                                    // best-effort: a failed abort must not block delete
-                                })
-                        }
-                    }
+                    // Abort running members + reset to idle (shared helper,
+                    // mirrors team_cancel). This idle state is intentionally
+                    // NOT persisted — the storage is removed below instead.
+                    await abortAndResetMembers(ctx, team)
                     clearActiveTask(team)
                     team.status = "idle"
-                    for (const m of team.members) {
-                        if (m.isMaster) continue
-                        m.status = "idle"
-                        m.declaredDone = false
-                        m.retryingSince = undefined
-                    }
                 }
                 // Clean up worktrees, then unindex the team. Worktree teardown must
                 // precede deleteTeamStorage so git can remove the still-present

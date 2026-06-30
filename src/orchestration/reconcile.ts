@@ -28,6 +28,7 @@ import path from "node:path"
 import type { PluginContext } from "../core/context.js"
 import { clearActiveTask, invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from "../state/store.js"
 import { unindexSession } from "../state/resolve.js"
+import { assertSafeSegment } from "../state/paths.js"
 import { releaseStaleReservations } from "../messaging/mailbox.js"
 import { persistRun } from "./runs.js"
 import { recordEvent } from "./events.js"
@@ -130,6 +131,12 @@ export async function reconcileActivation(ctx: PluginContext): Promise<void> {
  */
 export async function handleSessionDeleted(ctx: PluginContext, sessionID: string): Promise<void> {
     try {
+        // Defense-in-depth: validate sessionID as a safe path segment before
+        // the recursive fs.rm below. sessionID is host-assigned (trusted within
+        // the threat model), but teamsDir applies the same check to
+        // leadSessionId "so a malformed value can never escape the storage root
+        // via path traversal" — this mirrors that posture for consistency.
+        assertSafeSegment(sessionID, "handleSessionDeleted", "sessionID")
         const teams = await listAllTeams(ctx.projectStorageRoot, true)
         for (const { leadSessionId, teamName } of teams) {
             if (leadSessionId !== sessionID) continue

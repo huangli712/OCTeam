@@ -258,47 +258,66 @@ export function createTransformHook(
     }
 }
 
+/**
+ * Per-team sweep body. Extracted from startSweepTimer so the tombstone guard
+ * and per-team reclaim/termination/reconcile logic are unit-testable without
+ * waiting on a real setInterval tick. Called once per active team per sweep.
+ *
+ * Runs the callback under team.mutex. The caller (startSweepTimer) snapshots
+ * activeTeams() BEFORE acquiring each team's mutex — a team_delete can complete
+ * between the snapshot and us acquiring the lock, so the tombstone guard at
+ * the top is load-bearing (see processIdle handlers.ts:117 for the same
+ * pattern). `statusMap` is the already-fetched session.status snapshot shared
+ * across all teams in this sweep tick.
+ */
+export async function sweepTeamOnce(
+    ctx: PluginContext,
+    team: { directory: string; members: MemberState[]; deleted?: boolean; mutex: { runExclusive<T>(fn: () => Promise<T>): Promise<T> } },
+    statusMap: Record<string, { type: string }>,
+): Promise<void> {
+    await team.mutex.runExclusive(async () => {
+        // Tombstone guard: a team_delete may have completed (set
+        // team.deleted + removed the on-disk directory) between
+        // activeTeams() snapshotted this reference and us acquiring
+        // its mutex. Bail before any state mutation or release*()
+        // call — those funnel through withLock -> acquireLock ->
+        // fs.mkdir({recursive:true}), which would otherwise
+        // recreate the just-removed <teamDir>/mailbox/ directory.
+        // Mirrors processIdle (handlers.ts:117) and
+        // handleStatusEvent (handlers.ts:346) guards.
+        if (team.deleted) return
+        // 1. Reclaim stale resources.
+        await releaseStaleReservations(team.directory, "master")
+        for (const m of team.members) {
+            await releaseStaleReservations(team.directory, m.name)
+        }
+        if ((team as { activeTask?: { type?: string } }).activeTask?.type === "delegate") {
+            await reapStaleClaims(team.directory)
+        }
+        // 2. Termination checks run even if no idle arrives.
+        await checkTermination(ctx, team as Parameters<typeof checkTermination>[1])
+        if (!(team as { activeTask?: unknown }).activeTask) return
+        // 3. Missed-idle reconciliation.
+        for (const member of team.members) {
+            if (!member.sessionId || member.status !== "running") continue
+            if (statusMap[member.sessionId]?.type === "idle") {
+                await processIdle(ctx, team as Parameters<typeof processIdle>[1], member, member.sessionId)
+            }
+        }
+        await saveTeamState(team as Parameters<typeof saveTeamState>[0]).catch((err) =>
+            logSwallowed(ctx, "persist team state failed (sweep)", err, { team: (team as { teamName?: string }).teamName ?? "(unknown)" })
+        )
+    })
+}
+
 export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
     const handle = setInterval(async () => {
         try {
             // No directory filter — include sessions in member worktrees too.
             const statusResult = await ctx.client.session.status({})
             const statusMap = (statusResult.data ?? {}) as Record<string, { type: string }>
-
             for (const team of activeTeams()) {
-                await team.mutex.runExclusive(async () => {
-                    // Tombstone guard: a team_delete may have completed (set
-                    // team.deleted + removed the on-disk directory) between
-                    // activeTeams() snapshotted this reference and us acquiring
-                    // its mutex. Bail before any state mutation or release*()
-                    // call — those funnel through withLock -> acquireLock ->
-                    // fs.mkdir({recursive:true}), which would otherwise
-                    // recreate the just-removed <teamDir>/mailbox/ directory.
-                    // Mirrors processIdle (handlers.ts:117) and
-                    // handleStatusEvent (handlers.ts:346) guards.
-                    if (team.deleted) return
-                    // 1. Reclaim stale resources.
-                    await releaseStaleReservations(team.directory, "master")
-                    for (const m of team.members) {
-                        await releaseStaleReservations(team.directory, m.name)
-                    }
-                    if (team.activeTask?.type === "delegate") {
-                        await reapStaleClaims(team.directory)
-                    }
-                    // 2. Termination checks run even if no idle arrives.
-                    await checkTermination(ctx, team)
-                    if (!team.activeTask) return
-                    // 3. Missed-idle reconciliation.
-                    for (const member of team.members) {
-                        if (!member.sessionId || member.status !== "running") continue
-                        if (statusMap[member.sessionId]?.type === "idle") {
-                            await processIdle(ctx, team, member, member.sessionId)
-                        }
-                    }
-                    await saveTeamState(team).catch((err) =>
-                        logSwallowed(ctx, "persist team state failed (sweep)", err, { team: team.teamName })
-                    )
-                })
+                await sweepTeamOnce(ctx, team, statusMap)
             }
         } catch (err) {
             logEvent(ctx, "error", "sweep iteration failed", { error: err instanceof Error ? err.message : String(err) })

@@ -113,6 +113,17 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 return "Error: a team member session cannot create a team"
             }
 
+            // Agent override (optional): must be one of OCTeam's hardened oct-*
+            // agents. A bare host agent (e.g. "build") would bypass the
+            // role->agent permission-hardening chokepoint (role.ts). Validated
+            // in its own early loop so it runs for EVERY member (named or not),
+            // not just members that pass the name-reserved/pool checks below.
+            for (const m of args.members) {
+                if (m.agent !== undefined && !isOCTeamAgent(m.agent)) {
+                    return `Error: agent "${m.agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'agent' to derive it from the role.`
+                }
+            }
+
             // Validate explicitly-provided names; collect them so the pool picker
             // avoids collisions. Members may omit `name` — those are assigned a
             // random pool name below.
@@ -130,12 +141,6 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 }
                 if (taken.has(m.name)) return `Error: duplicate member name "${m.name}"`
                 taken.add(m.name)
-                // Agent override (optional): must be one of OCTeam's hardened
-                // oct-* agents. A bare host agent (e.g. "build") would bypass
-                // the role->agent permission-hardening chokepoint (role.ts).
-                if (m.agent !== undefined && !isOCTeamAgent(m.agent)) {
-                    return `Error: agent "${m.agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'agent' to derive it from the role.`
-                }
             }
 
             // Resolve names: explicit names are kept; omitted names are drawn from
