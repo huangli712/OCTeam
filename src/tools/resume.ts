@@ -33,7 +33,7 @@ import { activationError } from "../core/utils.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { ensureMembersReady } from "../orchestration/dispatch.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
-import { resumeDispatch } from "./resume-dispatch.js"
+import { resumeDispatch } from "./dispatch.js"
 
 export function teamResumeTool(ctx: PluginContext): ToolDefinition {
     return tool({
