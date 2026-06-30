@@ -10,8 +10,8 @@
  *   - workflow-shared.ts: shared helpers + constants (startOrchestration,
  *     baseTaskFields, validateSignoff, signoffTaskFields, assertMember,
  *     effectiveTimeoutMs, DEFAULT_*).
- *   - workflow-basic.ts:   single-track tools (parallel, consensus, pipeline,
- *     loop).
+ *   - parallel.ts / consensus.ts / pipeline.ts / loop.ts: single-track tools
+ *     (one tool definition per file).
  *   - workflow-advanced.ts: multi-track tools (delegate, route, arbitrate,
  *     tollgate, recurse) + buildRouterPrompt.
  *
@@ -31,12 +31,10 @@ export {
     signoffTaskFields,
 } from "./workflow-shared.js"
 
-export {
-    teamConsensusTool,
-    teamLoopTool,
-    teamParallelTool,
-    teamPipelineTool,
-} from "./workflow-basic.js"
+export { teamConsensusTool } from "./consensus.js"
+export { teamLoopTool } from "./loop.js"
+export { teamParallelTool } from "./parallel.js"
+export { teamPipelineTool } from "./pipeline.js"
 
 export {
     buildRouterPrompt,
