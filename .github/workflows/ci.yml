@@ -24,7 +24,6 @@ jobs:
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run typecheck:tests
-        continue-on-error: true
       - run: bun test
       - run: bun run test:coverage
       - run: bun run build
