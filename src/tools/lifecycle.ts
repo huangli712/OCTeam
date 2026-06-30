@@ -13,8 +13,8 @@
  *   - lifecycle-query.ts:   creation + read-only inspection (create, list,
  *     details, query).
  *   - lifecycle-members.ts: member management (add, remove, rename, fix).
- *   - lifecycle-state.ts:   state transitions + teardown (activate,
- *     deactivate, cancel, delete).
+ *   - activate.ts / deactivate.ts / cancel.ts / delete.ts: state transitions
+ *     + teardown (one tool per file).
  *
  * This file re-exports every symbol the tool registry (index.ts) and the test
  * suite import, so consumers keep importing from "./lifecycle.js" unchanged.
@@ -24,4 +24,7 @@
 export { decideActivate, defaultBounds, withOrderedLocks, type ActivateDecision } from "./lifecycle-shared.js"
 export { teamCreateTool, teamDetailsTool, teamListTool, teamQueryTool } from "./lifecycle-query.js"
 export { teamAddMemberTool, teamFixMemberTool, teamRemoveMemberTool, teamRenameTool } from "./lifecycle-members.js"
-export { teamActivateTool, teamCancelTool, teamDeactivateTool, teamDeleteTool } from "./lifecycle-state.js"
+export { teamActivateTool } from "./activate.js"
+export { teamCancelTool } from "./cancel.js"
+export { teamDeactivateTool } from "./deactivate.js"
+export { teamDeleteTool } from "./delete.js"
