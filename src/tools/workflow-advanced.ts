@@ -11,7 +11,7 @@ import type { PluginContext } from "../core/context.js"
 import { dispatchToMember } from "../orchestration/dispatch.js"
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import type { GatedStage, RouteBranch } from "../core/types.js"
-import { buildRecursePrompt } from "../orchestration/delegate-recurse.js"
+import { buildRecursePrompt } from "../orchestration/recurse.js"
 import { advanceToGatedStage } from "../orchestration/tollgate.js"
 import { buildDebatePrompt } from "../orchestration/route-arbitrate.js"
 import {

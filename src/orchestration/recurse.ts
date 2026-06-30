@@ -1,97 +1,23 @@
 /**
- * Delegate and recurse handlers. Both modes drive a shared task pool: members
- * claim tasks, work them, and idle. runDelegateStyleTail owns the termination
- * engine shared by both — all-complete delivers, all-idle-with-claimable fails
- * as deadlock, otherwise the just-idled member is RATE-LIMITED re-prompted
- * toward remaining claimable tasks. Recorse adds a decomposition branch on top
- * (parse <decompose>, spawn subtasks, re-queue the parent as their aggregator).
+ * Recurse handler -- hierarchical recursive decomposition. Builds on delegate's
+ * task-pool termination engine (runDelegateStyleTail, imported from delegate.ts).
+ * When a member idles, the orchestrator inspects that member's claimed task and
+ * either branches (splits into subtasks, re-queues parent as aggregator) or
+ * finalizes it as a leaf.
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team, clearActiveTask } from "../state/store.js"
+import { type Team } from "../state/store.js"
 import type { MemberState } from "../core/types.js"
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
-import { dispatchToMember } from "./dispatch.js"
-import { deliverSummaryToLeader } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { parseDecompose } from "./decisions.js"
-import { maybeTriggerSignoff } from "./signoff.js"
-
-const NOTIFY_COOLDOWN_MS = 10_000
-
-/**
- * Shared delegate-style termination tail: scan the task list, deliver on
- * all-complete, fail on deadlock, else rate-limit re-prompt the idling member
- * toward claimable tasks. Used by both delegate (label "delegate") and recurse
- * (label "recurse"); the reason prefix and re-prompt text differ by caller.
- */
-async function runDelegateStyleTail(
-    ctx: PluginContext,
-    team: Team,
-    member: MemberState,
-    label: string,
-    buildReprompt: (claimableCount: number) => string,
-): Promise<void> {
-    const tasks = await listAllTasks(team.directory)
-    const incomplete = tasks.filter(t => t.status !== "completed" && t.status !== "deleted")
-
-    if (incomplete.length === 0) {
-        if (await maybeTriggerSignoff(ctx, team)) {
-            return  // signoff in progress
-        }
-        await deliverSummaryToLeader(ctx, team, `${label}_complete`)
-        clearActiveTask(team)
-        team.status = "idle"
-        return
-    }
-
-    // Claimable tasks: pending AND all blockers completed.
-    const claimable = incomplete.filter(
-        t =>
-            t.status === "pending"
-            && t.blockedBy.every(id => tasks.find(x => x.id === id)?.status === "completed"),
-    )
-
-    // Deadlock: no claimable tasks and all members idle.
-    if (claimable.length === 0) {
-        // errored counts as terminal (like idle) so an errored member cannot wedge
-        // the deadlock check — its claimed tasks are reaped by the sweep and a
-        // survivor reclaims them.
-        const allIdle = team.members.every(m => m.status === "idle" || m.status === "errored" || !m.sessionId)
-        if (allIdle) {
-            await deliverSummaryToLeader(ctx, team, `${label}_deadlock`)
-            clearActiveTask(team)
-            team.status = "failed"
-            return
-        }
-        return // some members still running, wait
-    }
-
-    // Re-prompt this member — RATE-LIMITED to avoid claim-race busy-loop.
-    const now = Date.now()
-    if (member.lastNotifiedAt && now - member.lastNotifiedAt < NOTIFY_COOLDOWN_MS) {
-        return
-    }
-    const running = team.members.filter(m => m.status === "running" && !m.isMaster).length
-    if (claimable.length <= running) {
-        return // enough members already heading for the available tasks
-    }
-    if (!member.sessionId) return
-    member.lastNotifiedAt = now
-    await dispatchToMember(ctx, member, buildReprompt(claimable.length), member.worktreePath ?? ctx.directory, team)
-}
-
-export async function handleDelegateIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
-    await runDelegateStyleTail(ctx, team, member, "delegate", n =>
-        `[Team Orchestrator] You have completed your task. ${n} task(s) available. `
-        + `Use team_task_list to check, team_task_update to claim, execute, then team_send_message `
-        + `to report to master. Repeat until no tasks remain.`)
-}
+import { runDelegateStyleTail } from "./delegate.js"
 
 /**
  * Build the recursive-decomposition contract prompt: claim a task, then either
  * solve it directly or emit a <decompose> block; aggregate completed sub-tasks
- * instead of re-decomposing. Members must NOT call team_task_update completed —
+ * instead of re-decomposing. Members must NOT call team_task_update completed --
  * the orchestrator finalizes their task on idle (eliminates finalize races).
  */
 export function buildRecursePrompt(): string {
@@ -110,11 +36,11 @@ export function buildRecursePrompt(): string {
 /**
  * Hierarchical recursive decomposition (recurse mode). When a member idles,
  * the orchestrator inspects that member's claimed task and either:
- *   • branch — splits it into subtasks (depth+1) and re-queues the task as a
+ *   • branch -- splits it into subtasks (depth+1) and re-queues the task as a
  *     pending aggregator blocked by those subtasks (re-claim aggregation); or
- *   • leaf — finalizes the task as completed with the member's output as result.
+ *   • leaf -- finalizes the task as completed with the member's output as result.
  * Aggregators (blockedBy non-empty), depth/width-capped tasks, and no-tag
- * responses are always leaves — preventing infinite recursion/oscillation.
+ * responses are always leaves -- preventing infinite recursion/oscillation.
  * The tail reuses delegate's task-pool termination engine.
  */
 export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
