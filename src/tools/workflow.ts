@@ -19,18 +19,6 @@
  * suite import, so consumers keep importing from "./workflow.js" unchanged.
  * There is intentionally no logic here.
  */
-
-export {
-    DEFAULT_LOOP_TIMEOUT_MS,
-    DEFAULT_TIMEOUT_MS,
-    assertMember,
-    baseTaskFields,
-    effectiveTimeoutMs,
-    startOrchestration,
-    validateSignoff,
-    signoffTaskFields,
-} from "./shared.js"
-
 export { teamConsensusTool } from "./consensus.js"
 export { teamLoopTool } from "./loop.js"
 export { teamParallelTool } from "./parallel.js"
