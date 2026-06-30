@@ -12,7 +12,7 @@
  *     withOrderedLocks.
  *   - create.ts / list.ts / details.ts / query.ts: creation + read-only
  *     inspection (one tool per file).
- *   - lifecycle-members.ts: member management (add, remove, rename, fix).
+ *   - add.ts / remove.ts / rename.ts / fix.ts: member management (one per file).
  *   - activate.ts / deactivate.ts / cancel.ts / delete.ts: state transitions
  *     + teardown (one tool per file).
  *
@@ -26,7 +26,10 @@ export { teamCreateTool } from "./create.js"
 export { teamListTool } from "./list.js"
 export { teamDetailsTool } from "./details.js"
 export { teamQueryTool } from "./query.js"
-export { teamAddMemberTool, teamFixMemberTool, teamRemoveMemberTool, teamRenameTool } from "./lifecycle-members.js"
+export { teamAddMemberTool } from "./add.js"
+export { teamFixMemberTool } from "./fix.js"
+export { teamRemoveMemberTool } from "./remove.js"
+export { teamRenameTool } from "./rename.js"
 export { teamActivateTool } from "./activate.js"
 export { teamCancelTool } from "./cancel.js"
 export { teamDeactivateTool } from "./deactivate.js"
