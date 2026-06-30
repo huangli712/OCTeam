@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { createConfigHook, OCTEAM_AGENTS } from "../src/agents/index.js"
 import type { OcteamAgentConfig } from "../src/agents/types.js"
 
-const READONLY_AGENTS = ["oct-oracle", "oct-librarian", "oct-explore"] as const
+const READONLY_AGENTS = ["oct-oracle", "oct-librarian", "oct-explore", "oct-multimodal-looker"] as const
 const ANALYSIS_AGENTS = ["oct-metis", "oct-momus"] as const
 const JUNIOR_AGENT = "oct-junior"
 
@@ -20,9 +20,9 @@ function getAgent(key: string): OcteamAgentConfig {
 }
 
 describe("OCTEAM_AGENTS registry", () => {
-    test("exports exactly 6 agents", () => {
+    test("exports exactly 7 agents", () => {
         const keys = Object.keys(OCTEAM_AGENTS)
-        expect(keys).toHaveLength(6)
+        expect(keys).toHaveLength(7)
     })
 
     test("has the exact 6 expected agent keys (no extras, no missing)", () => {
@@ -134,12 +134,12 @@ describe("createConfigHook", () => {
         expect(hook.constructor.name).toBe("AsyncFunction")
     })
 
-    test("injects all 6 agents into an empty config", async () => {
+    test("injects all 7 agents into an empty config", async () => {
         const cfg: { agent?: Record<string, unknown> } = {}
         const hook = createConfigHook()
         await hook(cfg as Parameters<typeof hook>[0])
         expect(cfg.agent).toBeDefined()
-        expect(Object.keys(cfg.agent!)).toHaveLength(6)
+        expect(Object.keys(cfg.agent!)).toHaveLength(7)
         for (const key of ALL_AGENT_KEYS) {
             expect(cfg.agent![key]).toBe(OCTEAM_AGENTS[key])
         }
@@ -156,7 +156,7 @@ describe("createConfigHook", () => {
         expect(cfg.agent!["oct-oracle"]).toBe(preExisting)
         expect(cfg.agent!["oct-junior"]).toBe(preExisting)
         // the other 4 should be injected
-        expect(Object.keys(cfg.agent!)).toHaveLength(6)
+        expect(Object.keys(cfg.agent!)).toHaveLength(7)
     })
 
     test("does NOT overwrite a completely pre-populated config", async () => {
