@@ -56,7 +56,7 @@ describe("normalizeRole (closed enum, unknown → reviewer)", () => {
 
 describe("roleAgent (role → fixed agent)", () => {
     test("software roles", () => {
-        expect(roleAgent("coder")).toBe("build")
+        expect(roleAgent("coder")).toBe("oct-junior")
         expect(roleAgent("debugger")).toBe("build")
         expect(roleAgent("optimizer")).toBe("build")
         expect(roleAgent("tester")).toBe("build")

@@ -37,7 +37,7 @@ export type RoleDef = { agent: string; instruction: string }
 export const ROLES: Record<string, RoleDef> = {
     // --- software ---
     coder: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's implementation engineer.",
             "Write clean, working code that follows the existing conventions of the codebase.",
