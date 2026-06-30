@@ -1,7 +1,7 @@
 # team_loop 编排场景设计
 
 > **模式**：`team_loop` — 运行修正闭环 `代码 → 评审 → 决策 → 重复`。每轮由各 stage 成员依次产出，`decider`（一名成员，非 master）emit `<decision>{"decision":"done"|"continue",...}</decision>`；`decider` 说 `done`、达到 `max_rounds`、超时或连续 3 次解析失败时停止。
-> **源码**：[`src/tools/workflow-basic.ts:284-363`](../../src/tools/workflow-basic.ts)（`teamLoopTool`）
+> **源码**：[`src/tools/workflow-basic.ts:284-363`](../../../src/tools/workflow-basic.ts)（`teamLoopTool`）
 > **控时设计**：3 成员（2 stage + 1 decider），`max_rounds=3`；典型 1-2 轮收敛，每轮各 stage ≤ 5 min，总时长 ≈ 10-15 min（远低于 30 min 上限）。
 
 ## 场景一览
@@ -548,7 +548,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 
 ## 验收清单
 
-- [ ] 4 个 check 脚本 `bunx tsc -p scenarios/tsconfig.json` 通过（无类型错误）
+- [ ] 4 个 check 脚本 `bunx tsc -p docs/scenarios/tsconfig.json` 通过（无类型错误）
 - [ ] 每个 team 配置 role 合法（`coder` / `tester` / `simulator` / `analyst` / `reviewer` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_loop` schema（`stages` 成员名唯一、`decider` 非 master 且不在 stages 中、`max_rounds` / `initial_task` 齐备）
 - [ ] 场景 1-3 总时长 ≤ 15 min（远低于 30 min 上限；`max_rounds=3` 兜底）；场景 4（挑战级）≈ 60 min、7 成员、`max_rounds=5`，为有意突破标准控时上限的加难样本
@@ -564,7 +564,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 ### 场景 1: 修正二分求根边界 bug（数学）
 
 ```text
-执行 scenarios/04-team-loop/README.md「场景 1」的完整闭环并自动评判。
+执行 docs/scenarios/04-team-loop/README.md「场景 1」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队
@@ -572,7 +572,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 3. 读 README「1.3 Master 启动调用」，按 team_loop JSON 启动编排（注意 initial_task 是待修的 buggy 代码）
 4. team_results 轮询至 master 收到汇总（最多 max_rounds 轮，decider 说 done 即停）
 5. 定位 <run_dir>（含 decider 成员的 .md）
-6. 运行：bun scenarios/04-team-loop/check-math-bisection-fix.ts <run_dir>
+6. 运行：bun docs/scenarios/04-team-loop/check-math-bisection-fix.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：decider 最终轮 `"decision": "done"` 且 `"testsPass": true`（NaN / 单侧区间 / 收敛阈值三类边界 bug 全修）。
@@ -589,7 +589,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 3. 读 README「2.3 Master 启动调用」，按 team_loop JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>（含 decider 与 analyst 成员的 .md）
-6. 运行：bun scenarios/04-team-loop/check-physics-spring-energy.ts <run_dir>
+6. 运行：bun docs/scenarios/04-team-loop/check-physics-spring-energy.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：decider decision="done" 且 `"driftAcceptable": true`；analyst 报 DRIFT_AFTER < 1e-3（Verlet 替换 Euler 后）。
@@ -598,7 +598,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 ### 场景 3: 修 off-by-one 区间合并 bug（编程）
 
 ```text
-执行 scenarios/04-team-loop/README.md「场景 3」的完整闭环并自动评判。
+执行 docs/scenarios/04-team-loop/README.md「场景 3」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
@@ -606,7 +606,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 3. 读 README「3.3 Master 启动调用」，按 team_loop JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun scenarios/04-team-loop/check-coding-interval-merge.ts <run_dir>
+6. 运行：bun docs/scenarios/04-team-loop/check-coding-interval-merge.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：decider decision="done" 且 `"allPass": true`（5 个用例含 [[1,3],[3,5]] 这类 touching 区间正确合并）。
@@ -615,7 +615,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 ### 场景 4: 修 Lock-free Queue 四类并发 bug（挑战级）
 
 ```text
-执行 scenarios/04-team-loop/README.md「场景 4」的完整闭环并自动评判。
+执行 docs/scenarios/04-team-loop/README.md「场景 4」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（7 成员：alice/bob/carol/dave 为 coder，erin/frank 为 tester，grace 为 reviewer）
@@ -623,7 +623,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 3. 读 README「4.3 Master 启动调用」，按 team_loop JSON 启动编排（注意 initial_task 是含四类 bug 的 MPSCQueue；stages 共 6 个，decider=grace 由 OCTeam 自动追加）
 4. team_results 轮询至 master 收到汇总（最多 max_rounds=5 轮，decider 说 done 即停）
 5. 定位 <run_dir>（含 grace/frank 等 7 个成员的 .md）
-6. 运行：bun scenarios/04-team-loop/check-coding-lockfree-queue.ts <run_dir>
+6. 运行：bun docs/scenarios/04-team-loop/check-coding-lockfree-queue.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：decider decision="done" 且 `"allFixed": true` 且 `"stressPass": true`；frank 报 STRESS_OPS=10^7 且 STRESS_RESULT=pass（四类并发 bug ABA/acquire/yield/null-sentinel 全修，10^7 FIFO 压测无违例）。

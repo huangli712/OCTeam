@@ -417,7 +417,7 @@ T+~55  你读取全部输出，裁定结果
 > 把 `<TARGET>` 替换为你要评审的代码路径，整段粘贴给 master 会话。master 会依次跑 4 个团队，每步按 README 的 JSON 配置执行，团队间数据由 master 手递手。
 
 ```text
-按 scenarios/composite/code-review/README.md 跑一次多团队代码评审，目标代码 = <TARGET>。
+按 docs/scenarios/composite/code-review/README.md 跑一次多团队代码评审，目标代码 = <TARGET>。
 
 执行 4 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
 
@@ -443,9 +443,9 @@ T+~55  你读取全部输出，裁定结果
 
 ## 相关文档
 
-- [`scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
-- [`scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
-- [`scenarios/01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
-- [`scenarios/05-team-delegate/README.md`](../../05-team-delegate/README.md) — delegate 原语参考（自取流程）
-- [`src/tools/workflow-basic.ts`](../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
-- [`src/tools/workflow-advanced.ts`](../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码
+- [`docs/scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
+- [`docs/scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
+- [`docs/scenarios/01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
+- [`docs/scenarios/05-team-delegate/README.md`](../../05-team-delegate/README.md) — delegate 原语参考（自取流程）
+- [`src/tools/workflow-basic.ts`](../../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
+- [`src/tools/workflow-advanced.ts`](../../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码

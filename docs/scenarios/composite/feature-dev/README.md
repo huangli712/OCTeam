@@ -485,7 +485,7 @@ T+~85  你读取全部输出，裁定结果
 > 整段粘贴给 master 会话。master 会依次跑 5 个团队，每步按 README 的 JSON 配置执行，团队间数据由 master 手递手。
 
 ```text
-按 scenarios/composite/feature-dev/README.md 跑一次 OCTeam 功能增强工作流。
+按 docs/scenarios/composite/feature-dev/README.md 跑一次 OCTeam 功能增强工作流。
 
 执行 5 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
 
@@ -513,9 +513,9 @@ T+~85  你读取全部输出，裁定结果
 
 ## 相关文档
 
-- [`scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
-- [`scenarios/composite/code-review/README.md`](../code-review/README.md) — 姊妹综合场景：多团队代码评审（同样 4 编排，可对照）
-- [`scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
-- [`src/tools/workflow-basic.ts`](../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
-- [`src/tools/workflow-advanced.ts`](../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码
-- [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) — OCTeam 架构与模块边界（plan/audit 团队需参照）
+- [`docs/scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
+- [`docs/scenarios/composite/code-review/README.md`](../code-review/README.md) — 姊妹综合场景：多团队代码评审（同样 4 编排，可对照）
+- [`docs/scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
+- [`src/tools/workflow-basic.ts`](../../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
+- [`src/tools/workflow-advanced.ts`](../../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码
+- [`docs/ARCHITECTURE.md`](../../../../docs/ARCHITECTURE.md) — OCTeam 架构与模块边界（plan/audit 团队需参照）

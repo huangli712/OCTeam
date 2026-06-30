@@ -594,7 +594,7 @@ T+~120 你读取全部输出，裁定结果
 > 整段粘贴给 master 会话。master 会依次跑 6 个团队，每步按 README 的 JSON 配置执行，团队间数据由 master 手递手。
 
 ```text
-按 scenarios/composite/eigen-solver/README.md 跑一次大规模矩阵本征值求解器开发工作流。
+按 docs/scenarios/composite/eigen-solver/README.md 跑一次大规模矩阵本征值求解器开发工作流。
 
 执行 6 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
 
@@ -629,12 +629,12 @@ T+~120 你读取全部输出，裁定结果
 
 ## 相关文档
 
-- [`scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 综合场景三类）
-- [`scenarios/composite/code-review/README.md`](../code-review/README.md) — 姊妹综合场景：多团队代码评审
-- [`scenarios/composite/feature-dev/README.md`](../feature-dev/README.md) — 姊妹综合场景：OCTeam 功能增强
-- [`scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
-- [`scenarios/01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
-- [`scenarios/04-team-loop/README.md`](../../04-team-loop/README.md) — loop 原语参考
-- [`scenarios/09-team-tollgate/README.md`](../../09-team-tollgate/README.md) — tollgate 原语参考（验证门流水线）
-- [`src/tools/workflow-basic.ts`](../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
-- [`src/tools/workflow-advanced.ts`](../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码
+- [`docs/scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 综合场景三类）
+- [`docs/scenarios/composite/code-review/README.md`](../code-review/README.md) — 姊妹综合场景：多团队代码评审
+- [`docs/scenarios/composite/feature-dev/README.md`](../feature-dev/README.md) — 姊妹综合场景：OCTeam 功能增强
+- [`docs/scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
+- [`docs/scenarios/01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
+- [`docs/scenarios/04-team-loop/README.md`](../../04-team-loop/README.md) — loop 原语参考
+- [`docs/scenarios/09-team-tollgate/README.md`](../../09-team-tollgate/README.md) — tollgate 原语参考（验证门流水线）
+- [`src/tools/workflow-basic.ts`](../../../../src/tools/workflow-basic.ts) — parallel / consensus / pipeline / loop 源码
+- [`src/tools/workflow-advanced.ts`](../../../../src/tools/workflow-advanced.ts) — delegate / route / arbitrate / tollgate / recurse 源码

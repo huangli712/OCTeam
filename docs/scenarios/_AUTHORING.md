@@ -5,7 +5,7 @@
 
 ## Context
 
-OCTeam ships 9 orchestration primitives (`team_parallel`, `team_consensus`, `team_pipeline`, `team_loop`, `team_delegate`, `team_route`, `team_arbitrate`, `team_recurse`, `team_tollgate`). We are building a scenario catalog under `scenarios/`: each mode gets one directory containing a README (3 sub-scenarios: math / computational-physics / coding) plus 3 TypeScript check scripts.
+OCTeam ships 9 orchestration primitives (`team_parallel`, `team_consensus`, `team_pipeline`, `team_loop`, `team_delegate`, `team_route`, `team_arbitrate`, `team_recurse`, `team_tollgate`). We are building a scenario catalog under `docs/scenarios/`: each mode gets one directory containing a README (3 sub-scenarios: math / computational-physics / coding) plus 3 TypeScript check scripts.
 
 All scenarios must be **completable within 30 minutes** end-to-end (per-member subtask ≤ 8 min, ≤ 4 members).
 
@@ -13,15 +13,15 @@ All scenarios must be **completable within 30 minutes** end-to-end (per-member s
 
 Read these 4 files and mirror their structure, depth, and formatting exactly:
 
-- `scenarios/01-team-parallel/README.md`
-- `scenarios/01-team-parallel/check-math-montecarlo-pi.ts`
-- `scenarios/01-team-parallel/check-physics-harmonic-integrator.ts`
-- `scenarios/01-team-parallel/check-coding-twosum.ts`
+- `docs/scenarios/01-team-parallel/README.md`
+- `docs/scenarios/01-team-parallel/check-math-montecarlo-pi.ts`
+- `docs/scenarios/01-team-parallel/check-physics-harmonic-integrator.ts`
+- `docs/scenarios/01-team-parallel/check-coding-twosum.ts`
 
 ## Deliverables per mode (4 files)
 
 ```
-scenarios/0N-team-<mode>/
+docs/scenarios/0N-team-<mode>/
 ├── README.md
 ├── check-math-<topic>.ts
 ├── check-physics-<topic>.ts
@@ -72,8 +72,8 @@ scenarios/0N-team-<mode>/
 
 ## Verify before reporting done
 
-1. `cd /home/yun/Working/devel/OCTeam && bunx tsc -p scenarios/tsconfig.json` — MUST exit 0 with no output.
-2. All 4 files created at the correct paths under `scenarios/0N-team-<mode>/`.
+1. `cd /home/yun/Working/devel/OCTeam && bunx tsc -p docs/scenarios/tsconfig.json` — MUST exit 0 with no output.
+2. All 4 files created at the correct paths under `docs/scenarios/0N-team-<mode>/`.
 3. Every `role` in every `team_create` JSON is in the allowed set above.
 4. Every `team_<mode>` call's args match the schema given in your task prompt.
 5. Each member prompt ends with the exact marker instruction the check script parses.
