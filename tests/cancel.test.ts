@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
+import type { ToolContext } from "@opencode-ai/plugin"
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamCancelTool } from "../src/tools/cancel.js"
@@ -97,7 +98,7 @@ describe("teamCancelTool", () => {
         const tool = teamCancelTool(ctx)
         const result = await tool.execute(
             { team_id: "alpha" },
-            { sessionID: "ses_master" },
+            { sessionID: "ses_master" } as unknown as ToolContext,
         )
 
         // abort called once per running member with correct shape
@@ -149,7 +150,7 @@ describe("teamCancelTool", () => {
         const tool = teamCancelTool(ctx)
         const result = await tool.execute(
             { team_id: "alpha" },
-            { sessionID: "ses_master" },
+            { sessionID: "ses_master" } as unknown as ToolContext,
         )
 
         expect(result).toContain("no active orchestration")
@@ -202,7 +203,7 @@ describe("teamCancelTool", () => {
         const tool = teamCancelTool(ctx)
         const result = await tool.execute(
             { team_id: "alpha" },
-            { sessionID: "ses_intruder" },
+            { sessionID: "ses_intruder" } as unknown as ToolContext,
         )
 
         expect(result).toContain("master-only")
@@ -233,7 +234,7 @@ describe("teamCancelTool", () => {
         const tool = teamCancelTool(ctx)
         const result = await tool.execute(
             { team_id: "alpha" },
-            { sessionID: "ses_master" },
+            { sessionID: "ses_master" } as unknown as ToolContext,
         )
 
         // Both aborts were attempted (first succeeds, second throws caught)
@@ -262,7 +263,7 @@ describe("teamCancelTool", () => {
         const tool = teamCancelTool(ctx)
         await tool.execute(
             { team_id: "alpha" },
-            { sessionID: "ses_master" },
+            { sessionID: "ses_master" } as unknown as ToolContext,
         )
 
         // After cancel, activeTask is undefined — an idle member event

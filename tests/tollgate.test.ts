@@ -12,7 +12,7 @@ import { readRunRecord, runStatusFromReason } from "../src/orchestration/runs.js
 import { buildSummary } from "../src/orchestration/summary.js"
 import { teamTollgateTool } from "../src/tools/tollgate.js"
 import { teamResumeTool } from "../src/tools/resume.js"
-import type { ActiveTask, GatedStage, MemberState } from "../src/core/types.js"
+import type { ActiveTask, GatedStage, MemberState, TollgateTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
@@ -58,7 +58,7 @@ function gate(opts: Partial<GatedStage> & Pick<GatedStage, "member" | "verifier"
 }
 
 /** Minimal valid tollgate ActiveTask with sensible defaults. */
-function makeTollgateTask(opts: Partial<ActiveTask> = {}): ActiveTask {
+function makeTollgateTask(opts: Partial<TollgateTask> = {}): TollgateTask {
     return {
         type: "tollgate",
         startedAt: 0,
@@ -75,7 +75,7 @@ function makeTollgateTask(opts: Partial<ActiveTask> = {}): ActiveTask {
         signoffPolicy: "none",
         tollgatePhase: "produce",
         ...opts,
-    } as ActiveTask
+    } as TollgateTask
 }
 
 /** Minimal busy Team wrapper with a real tmp directory for file IO. */
@@ -1058,10 +1058,11 @@ describe("teamTollgateTool: happy-path start", () => {
 
         const team = await loadTeamState(root, "alpha", sid)
         expect(team.activeTask?.type).toBe("tollgate")
-        expect(team.activeTask?.tollgatePhase).toBe("produce")
-        expect(team.activeTask?.escalateTo).toBe("carol")
-        expect(team.activeTask?.maxGateRetries).toBe(1)
-        expect(team.activeTask?.gatedStages).toHaveLength(1)
+        const tgTask = team.activeTask as TollgateTask | undefined
+        expect(tgTask?.tollgatePhase).toBe("produce")
+        expect(tgTask?.escalateTo).toBe("carol")
+        expect(tgTask?.maxGateRetries).toBe(1)
+        expect(tgTask?.gatedStages).toHaveLength(1)
     })
 })
 
@@ -1158,7 +1159,7 @@ describe("team_resume: tollgate case", () => {
         )
 
         expect(res).toContain("Resumed tollgate")
-        expect(team.activeTask?.tollgatePhase).toBe("verify")
+        expect((team.activeTask as TollgateTask | undefined)?.tollgatePhase).toBe("verify")
         expect(calls.some(c => c.sessionId === "ses_bob")).toBe(true)
     })
 
@@ -1187,7 +1188,7 @@ describe("team_resume: tollgate case", () => {
 
         expect(res).toContain("Resumed tollgate")
         expect(calls.some(c => c.sessionId === "ses_carol")).toBe(true)
-        expect(team.activeTask?.tollgatePhase).toBe("escalate")
+        expect(team.activeTask ? (team.activeTask as TollgateTask).tollgatePhase : undefined).toBe("escalate")
     })
 
     test("produce phase re-dispatches the current gate's producer", async () => {

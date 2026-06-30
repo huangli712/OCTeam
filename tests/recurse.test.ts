@@ -9,7 +9,7 @@ import { readRunEvents } from "../src/orchestration/runs.js"
 import { runEventsPath } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
-import type { ActiveTask, MemberState, Task } from "../src/core/types.js"
+import type { ActiveTask, MemberState, RecurseTask, Task } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
@@ -71,7 +71,7 @@ function makeCtx(
     } as unknown as PluginContext
 }
 
-function makeRecurseTask(opts: Partial<ActiveTask> = {}): ActiveTask {
+function makeRecurseTask(opts: Partial<RecurseTask> = {}): RecurseTask {
     return {
         type: "recurse",
         startedAt: 0,
@@ -91,7 +91,7 @@ function makeRecurseTask(opts: Partial<ActiveTask> = {}): ActiveTask {
         task: "build the app",
         signoffPolicy: "none",
         ...opts,
-    } as ActiveTask
+    } as RecurseTask
 }
 
 function makeTeam(opts: {

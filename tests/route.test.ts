@@ -15,7 +15,7 @@ import { buildSummary } from "../src/orchestration/summary.js"
 import { checkTermination } from "../src/orchestration/termination.js"
 import { buildRouterPrompt, teamRouteTool } from "../src/tools/router.js"
 import { teamResumeTool } from "../src/tools/resume.js"
-import type { ActiveTask, MemberState, RouteBranch } from "../src/core/types.js"
+import type { ActiveTask, MemberState, RouteBranch, RouteTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
@@ -60,7 +60,7 @@ function makeCtx(calls: DispatchCall[] = []): PluginContext {
 }
 
 /** Minimal valid route ActiveTask with sensible defaults. */
-function makeRouteTask(opts: Partial<ActiveTask> = {}): ActiveTask {
+function makeRouteTask(opts: Partial<RouteTask> = {}): RouteTask {
     return {
         type: "route",
         startedAt: 0,
@@ -79,7 +79,7 @@ function makeRouteTask(opts: Partial<ActiveTask> = {}): ActiveTask {
         signoffPolicy: "none",
         task: "route-input",
         ...opts,
-    } as ActiveTask
+    } as RouteTask
 }
 
 /** Minimal busy Team wrapper with a real tmp directory for file IO. */
@@ -839,7 +839,8 @@ describe("team_resume: route case", () => {
         // selected target only (bob), not the router or the unselected branch.
         expect(calls).toEqual(["ses_bob"])
         // Transitioned to Phase B with the resolved target.
-        expect(team.activeTask?.routeStage).toBe(true)
-        expect(team.activeTask?.routeTargets).toEqual(["bob"])
+        const rtTask = team.activeTask as RouteTask | undefined
+        expect(rtTask?.routeStage).toBe(true)
+        expect(rtTask?.routeTargets).toEqual(["bob"])
     })
 })

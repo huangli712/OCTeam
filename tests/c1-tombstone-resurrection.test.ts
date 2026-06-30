@@ -135,7 +135,7 @@ describe("C1 T1: processIdle does not resurrect a just-deleted team dir", () => 
         // load). Run delete to completion: tombstone set, dir rm -rf'd, registry
         // invalidated. The `team` local still holds the (now deleted=true) ref.
         const deleteTool = teamDeleteTool(ctx)
-        const result = await deleteTool.execute({ team_id: "alpha" }, { sessionID: sid })
+        const result = await deleteTool.execute({ team_id: "alpha" }, { sessionID: sid } as any)
         expect(result).toContain("deleted")
         expect(team.deleted).toBe(true)
 
@@ -232,7 +232,7 @@ describe("C1 T4: force-delete of a busy team → subsequent handler processIdle 
         // (the force-delete mid-orchestration scenario). The delete tool's busy
         // branch aborts the session, clears activeTask, and flips status — all
         // in memory, intentionally NOT persisted.
-        const alice = { ...makeMember("alice", memberSession), initialized: true, status: "running" }
+        const alice = { ...makeMember("alice", memberSession), initialized: true, status: "running" as const }
         const state = makeState("alpha", sid, [alice], Date.now())
         state.status = "busy"
         const team = await initTeamState(root, state, sid)
@@ -242,7 +242,7 @@ describe("C1 T4: force-delete of a busy team → subsequent handler processIdle 
         })
 
         const deleteTool = teamDeleteTool(ctx)
-        const result = await deleteTool.execute({ team_id: "alpha", force: true }, { sessionID: sid })
+        const result = await deleteTool.execute({ team_id: "alpha", force: true }, { sessionID: sid } as any)
         expect(result).toContain("deleted")
         expect(result).toContain("forced")
         expect(team.deleted).toBe(true)

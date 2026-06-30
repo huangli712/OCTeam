@@ -14,7 +14,7 @@ import { waitUntil } from "../src/core/utils.js"
 import { buildSummary } from "../src/orchestration/summary.js"
 import { teamArbitrateTool } from "../src/tools/arbitrate.js"
 import { teamResumeTool } from "../src/tools/resume.js"
-import type { ActiveTask, MemberState } from "../src/core/types.js"
+import type { ActiveTask, ArbitrateTask, MemberState } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
@@ -60,7 +60,7 @@ function makeCtx(calls: DispatchCall[] = []): PluginContext {
 }
 
 /** Minimal valid arbitrate ActiveTask with sensible defaults. */
-function makeArbitrateTask(opts: Partial<ActiveTask> = {}): ActiveTask {
+function makeArbitrateTask(opts: Partial<ArbitrateTask> = {}): ArbitrateTask {
     return {
         type: "arbitrate",
         startedAt: 0,
@@ -82,7 +82,7 @@ function makeArbitrateTask(opts: Partial<ActiveTask> = {}): ActiveTask {
         signoffPolicy: "none",
         task: "Should we ship on Friday?",
         ...opts,
-    } as ActiveTask
+    } as ArbitrateTask
 }
 
 /** Minimal busy Team wrapper with a real tmp directory for file IO. */
@@ -727,7 +727,7 @@ describe("team_resume: arbitrate case", () => {
         // Only the debater missing a response (bob) is re-dispatched; not alice,
         // not the arbiter. The run stays in the debate phase.
         expect(calls).toEqual(["ses_bob"])
-        expect(team.activeTask?.arbitrationStage).toBe(false)
+        expect((team.activeTask as ArbitrateTask | undefined)?.arbitrationStage).toBe(false)
     })
 
     test("Phase A with all debater responses re-drives the barrier into the ruling phase", async () => {
@@ -761,7 +761,7 @@ describe("team_resume: arbitrate case", () => {
         expect(res).toContain("Resumed arbitrate")
         // Zero debaters re-dispatched -> handleArbitrateIdle transitions to the
         // ruling phase and dispatches the arbiter.
-        expect(team.activeTask?.arbitrationStage).toBe(true)
+        expect((team.activeTask as ArbitrateTask | undefined)?.arbitrationStage).toBe(true)
         expect(calls).toEqual(["ses_arbiter"])
     })
 
@@ -794,7 +794,7 @@ describe("team_resume: arbitrate case", () => {
         expect(res).toContain("Resumed arbitrate")
         // Arbiter has no response -> re-dispatched; the ruling phase is preserved.
         expect(calls).toEqual(["ses_arbiter"])
-        expect(team.activeTask?.arbitrationStage).toBe(true)
+        expect((team.activeTask as ArbitrateTask | undefined)?.arbitrationStage).toBe(true)
     })
 
     test("Phase B with a captured ruling re-runs handleArbitrateIdle to deliver", async () => {

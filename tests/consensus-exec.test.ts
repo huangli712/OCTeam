@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { handleConsensusIdle } from "../src/orchestration/consensus.js"
-import type { ActiveTask, MemberState } from "../src/core/types.js"
+import type { ActiveTask, ConsensusTask, MemberState } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
 import type { PluginContext } from "../src/core/context.js"
@@ -32,7 +32,7 @@ function makeCtx(calls: DispatchCall[] = []): PluginContext {
     } as unknown as PluginContext
 }
 
-function makeConsensusTask(opts: Partial<ActiveTask> = {}): ActiveTask {
+function makeConsensusTask(opts: Partial<ConsensusTask> = {}): ConsensusTask {
     return {
         type: "consensus",
         startedAt: Date.now(),
@@ -51,7 +51,7 @@ function makeConsensusTask(opts: Partial<ActiveTask> = {}): ActiveTask {
         maxRounds: 3,
         signoffPolicy: "none",
         ...opts,
-    } as ActiveTask
+    } as ConsensusTask
 }
 
 function makeTeam(opts: {

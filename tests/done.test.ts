@@ -58,7 +58,7 @@ function makeTeam(opts: {
         activeTask: task,
         mutex: new AsyncMutex(),
         directory: opts.directory ?? "/tmp/test-team",
-    } as TeamState & { mutex: AsyncMutex; directory: string }
+    } as unknown as TeamState & { mutex: AsyncMutex; directory: string }
 }
 
 describe("waitForBarrier: default mode (no require_done_ack)", () => {

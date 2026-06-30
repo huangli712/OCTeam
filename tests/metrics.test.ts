@@ -28,7 +28,6 @@ async function writeRun(
 ): Promise<void> {
     const full: RunRecord = {
         version: 1,
-        runId: rec.runId,
         teamRunId: "team-run-id",
         teamName: "alpha",
         type: "parallel",

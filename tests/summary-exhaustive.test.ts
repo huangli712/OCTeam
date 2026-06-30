@@ -21,14 +21,14 @@
 import { describe, expect, test } from "bun:test"
 
 import { buildSummary } from "../src/orchestration/summary.js"
-import type { ActiveTask } from "../src/core/types.js"
+import type { ActiveTask, ConsensusTask } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 
 // buildSummary's consensus case does not access team.directory (only delegate
 // and recurse do, via listAllTasks). A minimal cast is sufficient here.
 const mockTeam = {} as Team
 
-function makeConsensusTask(opts: Partial<ActiveTask> = {}): ActiveTask {
+function makeConsensusTask(opts: Partial<ConsensusTask> = {}): ConsensusTask {
     return {
         type: "consensus",
         startedAt: 0,
@@ -42,7 +42,7 @@ function makeConsensusTask(opts: Partial<ActiveTask> = {}): ActiveTask {
         decisionHistory: [],
         decisionParseFailures: 0,
         ...opts,
-    } as ActiveTask
+    } as ConsensusTask
 }
 
 describe("buildSummary: consensus explicit case (P2-1)", () => {
