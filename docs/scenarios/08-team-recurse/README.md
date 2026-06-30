@@ -53,7 +53,7 @@
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `build` agent，可推导、算数值、写证明——完全匹配本场景。`alice` 兼任 decomposer（既是合法成员，又承担聚合）。
+**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可推导、算数值、写证明——完全匹配本场景。`alice` 兼任 decomposer（既是合法成员，又承担聚合）。
 
 ### 1.3 Master 启动调用
 
@@ -231,7 +231,7 @@ T+9m    运行: bun check-physics-damped-pendulum.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`coder` 用 `build` agent，专注实现、最小变更——贴合模块化构建。`alice` 兼任 decomposer（它拥有顶层 `convert` 的组装职责）。
+**Role 选择理由**：`coder` 用 `oct-junior` agent，专注实现、最小变更——贴合模块化构建。`alice` 兼任 decomposer（它拥有顶层 `convert` 的组装职责）。
 
 ### 3.3 Master 启动调用
 
@@ -341,7 +341,7 @@ T+9m    运行: bun check-coding-md-converter.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `build` agent，可独立推导、证引理、写多层证明——完全匹配本场景。6 人均为 `mathematician`；`alice` 兼任 decomposer（既是合法成员，又承担根聚合）。成员分工沿三条路径分布：algebraic（alice + bob）、combinatorial（carol + dave）、generating-function（erin + frank），每路径 2 个叶引理。
+**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可独立推导、证引理、写多层证明——完全匹配本场景。6 人均为 `mathematician`；`alice` 兼任 decomposer（既是合法成员，又承担根聚合）。成员分工沿三条路径分布：algebraic（alice + bob）、combinatorial（carol + dave）、generating-function（erin + frank），每路径 2 个叶引理。
 
 ### 4.3 Master 启动调用
 

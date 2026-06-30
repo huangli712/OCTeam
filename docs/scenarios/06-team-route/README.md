@@ -64,7 +64,7 @@
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `build` agent，能读题、推导、必要时写符号计算代码验证——router 与四个分支都用它，保证分类与求解质量。
+**Role 选择理由**：`mathematician` 用 `oct-junior` agent，能读题、推导、必要时写符号计算代码验证——router 与四个分支都用它，保证分类与求解质量。
 
 ### 1.3 Master 启动调用
 

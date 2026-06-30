@@ -56,7 +56,7 @@
 }
 ```
 
-**Role 选择理由**：辩手用 `mathematician`（`build` agent，能算 flop 数 / 谱半径佐证论点）；仲裁用 `reviewer`（只读角色，专司权衡证据、下达裁决，不偏袒任一方）。
+**Role 选择理由**：辩手用 `mathematician`（`oct-junior` agent，能算 flop 数 / 谱半径佐证论点）；仲裁用 `reviewer`（只读角色，专司权衡证据、下达裁决，不偏袒任一方）。
 
 ### 1.3 Master 启动调用
 

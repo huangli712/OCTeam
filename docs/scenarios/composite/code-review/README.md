@@ -249,7 +249,7 @@ team_deactivate(cr-plan)
 }
 ```
 
-**Role 选择**：`coder` 用 build agent，最小变更、专注实现。3 人对称（delegate 模式角色对称，差异来自认领的任务）。
+**Role 选择**：`coder` 用 oct-junior agent，最小变更、专注实现。3 人对称（delegate 模式角色对称，差异来自认领的任务）。
 
 ### 3.3 Master 启动调用
 

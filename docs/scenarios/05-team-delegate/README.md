@@ -53,7 +53,7 @@
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `build` agent，可写代码枚举/验证，完全匹配数论求解需求。三名成员 prompt 相同（delegate 模式下角色对称，差异来自认领的任务）。
+**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可写代码枚举/验证，完全匹配数论求解需求。三名成员 prompt 相同（delegate 模式下角色对称，差异来自认领的任务）。
 
 ### 1.3 Master 启动调用
 
@@ -279,7 +279,7 @@ T+6m    运行: bun check-physics-ode-suite.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`coder` 用 `build` agent，专注实现、最小变更，贴合分步构建需求。成员 prompt 中额外强调 blocked_by 语义——依赖未满足时任务不可认领。
+**Role 选择理由**：`coder` 用 `oct-junior` agent，专注实现、最小变更，贴合分步构建需求。成员 prompt 中额外强调 blocked_by 语义——依赖未满足时任务不可认领。
 
 ### 3.3 Master 启动调用
 
@@ -428,7 +428,7 @@ T+7m    运行: bun check-coding-cli-calc.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `build` agent，可写代码枚举/验证，完全匹配数论求解需求。八名成员 prompt 相同（delegate 模式下角色对称，差异来自认领的任务）——刻意对称以隔离「并发自领取」这一被测变量。
+**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可写代码枚举/验证，完全匹配数论求解需求。八名成员 prompt 相同（delegate 模式下角色对称，差异来自认领的任务）——刻意对称以隔离「并发自领取」这一被测变量。
 
 **成员数 = 8（突破 ≤ 4 基线）的理由**：挑战级场景的核心是规模压测。100 任务需要足够的并行槽位才能在合理时间内完成（100/8 ≈ 13 轮 vs 100/4 = 25 轮），同时 8 路并发足以暴露任务分发竞争（多成员同时 team_task_list / claim 同一任务）。
 

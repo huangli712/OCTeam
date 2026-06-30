@@ -59,7 +59,7 @@
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `build` agent，可写代码、运行、做数值验证——完全匹配符号推导 + 数值求积 + 误差分析的需求。
+**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可写代码、运行、做数值验证——完全匹配符号推导 + 数值求积 + 误差分析的需求。
 
 ### 1.3 Master 启动调用
 
@@ -265,7 +265,7 @@ T+14m   运行: bun check-physics-pendulum.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`coder` 用 `build` agent，专注实现、最小变更——贴合 TDD 三段式需求。
+**Role 选择理由**：`coder` 用 `oct-junior` agent，专注实现、最小变更——贴合 TDD 三段式需求。
 
 ### 3.3 Master 启动调用
 
@@ -405,7 +405,7 @@ T+10m   运行: bun check-coding-fib-tdd.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：8 段均为数值模拟（力场、初始化、极小化、NVT/NVE 积分、采样、RDF 后处理、报告），`simulator` 专为 PDE/MC/MD/HPC 数值模拟设计，全程一致无需切 role，且 `build` agent 可写码 + 运行 + 数值验证。
+**Role 选择理由**：8 段均为数值模拟（力场、初始化、极小化、NVT/NVE 积分、采样、RDF 后处理、报告），`simulator` 专为 PDE/MC/MD/HPC 数值模拟设计，全程一致无需切 role，且 `oct-junior` agent 可写码 + 运行 + 数值验证。
 
 ### 4.3 Master 启动调用
 

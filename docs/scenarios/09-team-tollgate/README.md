@@ -55,7 +55,7 @@
 }
 ```
 
-**Role 选择理由**：producer 用 `mathematician`（`build` agent，可写码+做数值验证）；verifier 用 `reviewer`（只读 agent，独立裁判，避免与 producer 同 agent 的偏见）。
+**Role 选择理由**：producer 用 `mathematician`（`oct-junior` agent，可写码+做数值验证）；verifier 用 `reviewer`（只读 agent，独立裁判，避免与 producer 同 agent 的偏见）。
 
 ### 1.3 Master 启动调用
 

@@ -55,7 +55,7 @@
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `build` agent，可做复杂度分析、反例构造、数值验证——完全匹配算法选型辩论需求。
+**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可做复杂度分析、反例构造、数值验证——完全匹配算法选型辩论需求。
 
 ### 1.3 Master 启动调用
 
@@ -233,7 +233,7 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`coder` 用 `build` agent，可写基准代码、实测短文本匹配耗时来支撑论点——贴合算法实现辩论。
+**Role 选择理由**：`coder` 用 `oct-junior` agent，可写基准代码、实测短文本匹配耗时来支撑论点——贴合算法实现辩论。
 
 ### 3.3 Master 启动调用
 
@@ -351,7 +351,7 @@ T+8m    运行: bun check-coding-string-match.ts <run_dir>
 
 **成员→方法映射**：alice→试除法、bob→Pollard rho、carol→二次筛 QS、dave→数域筛 NFS、erin→Lenstra ECM、frank→Shor 量子算法。
 
-**Role 选择理由**：6 成员均用 `mathematician`（`build` agent），可做复杂度阶层分析（`O` / 次指数 `L[]`）、对数计算、反例构造——完全匹配密码学算法选型的深度辩论需求。
+**Role 选择理由**：6 成员均用 `mathematician`（`oct-junior` agent），可做复杂度阶层分析（`O` / 次指数 `L[]`）、对数计算、反例构造——完全匹配密码学算法选型的深度辩论需求。
 
 ### 4.3 Master 启动调用
 

@@ -58,7 +58,7 @@
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `build` agent，可写代码、运行、做数值验证——完全匹配本场景需求。
+**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可写代码、运行、做数值验证——完全匹配本场景需求。
 
 ### 1.3 Master 启动调用
 
@@ -241,7 +241,7 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`coder` 用 `build` agent，专注实现，最小变更——贴合算法题实现需求。
+**Role 选择理由**：`coder` 用 `oct-junior` agent，专注实现，最小变更——贴合算法题实现需求。
 
 ### 3.3 Master 启动调用
 
@@ -381,7 +381,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：8 名成员全部用 `coder`（`build` agent，能写代码、运行、做正确性验证），完全匹配「实现 + 跑基准 + 自检」的挑战需求。成员名取 `MEMBER_NAME_POOL` 前 8 位（alice..henry），团队满编（上限 8）。
+**Role 选择理由**：8 名成员全部用 `coder`（`oct-junior` agent，能写代码、运行、做正确性验证），完全匹配「实现 + 跑基准 + 自检」的挑战需求。成员名取 `MEMBER_NAME_POOL` 前 8 位（alice..henry），团队满编（上限 8）。
 
 ### 4.3 Master 启动调用
 

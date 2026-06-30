@@ -71,7 +71,7 @@ function bisect(f: (x: number) => number, a: number, b: number, tol: number, max
 }
 ```
 
-**Role 选择理由**：`coder`（`build` agent，可改代码）、`tester`（只读评审/运行）、`reviewer`（默认只读，适合做决策者）——三者职责与 `team_loop` 的 `modify` / `read_only` / `read_only` 三段天然对齐。
+**Role 选择理由**：`coder`（`oct-junior` agent，可改代码）、`tester`（只读评审/运行）、`reviewer`（默认只读，适合做决策者）——三者职责与 `team_loop` 的 `modify` / `read_only` / `read_only` 三段天然对齐。
 
 ### 1.3 Master 启动调用
 
@@ -481,7 +481,7 @@ export class MPSCQueue<T> {
 }
 ```
 
-**Role 选择理由**：4 名 `coder`（`build` agent，可改代码，`modify`）对应四类 bug 的最小修复；2 名 `tester`（只读，`read_only`）分别承担属性测试与 10^7 压测；`reviewer`（默认只读）担任 decider——`grace` 不在 `stages` 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `loop.ts` buildTask 分支）。
+**Role 选择理由**：4 名 `coder`（`oct-junior` agent，可改代码，`modify`）对应四类 bug 的最小修复；2 名 `tester`（只读，`read_only`）分别承担属性测试与 10^7 压测；`reviewer`（默认只读）担任 decider——`grace` 不在 `stages` 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `loop.ts` buildTask 分支）。
 
 ### 4.3 Master 启动调用
 
