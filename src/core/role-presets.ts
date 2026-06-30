@@ -13,24 +13,20 @@
  * message, NOT the OpenCode agent's built-in system prompt (the platform
  * injects that as the LLM system role and OCTeam does not control it).
  *
- * Agents used: build (writes code/files), oracle (read-only reasoning), explore
- * (codebase search), librarian (external references), sisyphus (the strongest
- * general agent). Matching is case-insensitive (see normalizeRole).
+ * Agents used: oct-junior (focused task executor, writes code/files), oct-oracle
+ * (read-only strategic advisor), oct-explore (codebase search), oct-librarian
+ * (external references). All are OCTeam-defined agents (agents/*.ts). Matching
+ * is case-insensitive (see normalizeRole).
  *
- * PERMISSION ENFORCEMENT — accepted limitation. Read-only roles map to the BARE
- * host agent names ("oracle"/"explore"/"librarian"), not OCTeam's hardened
- * `oct-*` presets (agents/*.ts). The `oct-*` agents carry mode:"subagent" and
- * hardened permission maps (edit/task/bash/webfetch: deny) but are registered
- * for the MASTER's subagent delegation, not for team members — using them for
- * persistent member sessions has not been verified safe (subagent-mode sessions
- * may not support the multi-dispatch member lifecycle). Therefore the actual
- * permissions of a read-only team member depend on the HOST's configuration of
- * "oracle"/"explore"/"librarian": on a standard OpenCode install these are
- * read-only by default, but if a user loosens them the role's read-only intent
- * silently fails. OCTeam cannot close this without either (a) verifying
- * subagent-mode member sessions work, or (b) host-side enforcement of agent
- * permissions — both outside a safe, minimal change. Treat the host agent
- * definitions as part of the trusted configuration surface.
+ * PERMISSION ENFORCEMENT. All roles map to OCTeam's hardened `oct-*` agents
+ * (agents/*.ts), not bare host agent names. The `oct-*` agents carry
+ * mode:"subagent" and hardened permission maps: oct-junior permits edit (it is
+ * the executor for write-capable roles), while oct-oracle/oct-explore/
+ * oct-librarian deny edit/task/bash/webfetch (read-only). Subagent-mode
+ * sessions have been verified to support the persistent, multi-dispatch member
+ * lifecycle (OCTeam dispatches via session.create + promptAsync, which does
+ * not consult agent mode -- see dispatch.ts). Permissions are therefore fixed
+ * by the oct-* definitions in this repo, not by host configuration.
  */
 export type RoleDef = { agent: string; instruction: string }
 
@@ -46,7 +42,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     debugger: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's debugger.",
             "Reproduce the issue first, then find the root cause before changing anything",
@@ -56,7 +52,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     optimizer: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's performance engineer.",
             "Measure before you optimize: profile to find real hotspots,",
@@ -66,7 +62,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     tester: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's test engineer.",
             "Design the test strategy — decide what to test and how,",
@@ -77,7 +73,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     reviewer: {
-        agent: "oracle",
+        agent: "oct-oracle",
         instruction: [
             "You are the team's code reviewer.",
             "Review changes for correctness, security, and convention adherence.",
@@ -87,7 +83,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     architect: {
-        agent: "oracle",
+        agent: "oct-oracle",
         instruction: [
             "You are the team's architect.",
             "Design the structure and approach before implementation:",
@@ -98,7 +94,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     explorer: {
-        agent: "explore",
+        agent: "oct-explore",
         instruction: [
             "You are the team's explorer.",
             "Map unfamiliar parts of the codebase and report how they are wired",
@@ -107,7 +103,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     writer: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's technical writer.",
             "Produce clear software documentation — API references, READMEs,",
@@ -118,7 +114,7 @@ export const ROLES: Record<string, RoleDef> = {
     },
     // --- math / physics / chemistry / computation ---
     mathematician: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's mathematician.",
             "Produce rigorous derivations and proofs:",
@@ -129,7 +125,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     physicist: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's physicist.",
             "Build and analyze physical models: check dimensions and limiting cases,",
@@ -138,7 +134,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     simulator: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's computational scientist.",
             "Implement and run numerical simulations and scientific computing",
@@ -148,7 +144,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     chemist: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's chemist.",
             "Work on chemistry and materials problems — reaction mechanisms, synthesis,",
@@ -158,7 +154,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     analyst: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's data analyst.",
             "Process and analyze data (experimental or computational) using sound statistics.",
@@ -167,7 +163,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     visualizer: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's data visualizer.",
             "Turn data and results into clear, accurate figures and plots",
@@ -179,7 +175,7 @@ export const ROLES: Record<string, RoleDef> = {
     },
     // --- research / writing / ideation ---
     researcher: {
-        agent: "librarian",
+        agent: "oct-librarian",
         instruction: [
             "You are the team's researcher.",
             "Survey the literature and external references",
@@ -189,7 +185,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     author: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's academic author.",
             "Write and structure scholarly manuscripts — abstract, introduction,",
@@ -199,7 +195,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     fantast: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are the team's ideator.",
             "Generate novel, unconventional, even contrarian ideas",
@@ -211,7 +207,7 @@ export const ROLES: Record<string, RoleDef> = {
     },
     // --- fallback ---
     almighty: {
-        agent: "build",
+        agent: "oct-junior",
         instruction: [
             "You are an all-round team member.",
             "Take on whatever the task requires — implementation, analysis,",

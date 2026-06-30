@@ -24,7 +24,7 @@ describe("ROLES catalogue", () => {
         expect(DEFAULT_ROLE).toBe("reviewer")
         expect(ROLE_NAMES).toContain("reviewer")
         // The silent fallback must map to a read-only agent, never "build".
-        expect(roleAgent(DEFAULT_ROLE)).toBe("oracle")
+        expect(roleAgent(DEFAULT_ROLE)).toBe("oct-oracle")
         // "almighty" remains a valid, explicitly-selectable role.
         expect(ROLE_NAMES).toContain("almighty")
     })
@@ -57,38 +57,38 @@ describe("normalizeRole (closed enum, unknown → reviewer)", () => {
 describe("roleAgent (role → fixed agent)", () => {
     test("software roles", () => {
         expect(roleAgent("coder")).toBe("oct-junior")
-        expect(roleAgent("debugger")).toBe("build")
-        expect(roleAgent("optimizer")).toBe("build")
-        expect(roleAgent("tester")).toBe("build")
-        expect(roleAgent("writer")).toBe("build")
-        expect(roleAgent("reviewer")).toBe("oracle")
-        expect(roleAgent("architect")).toBe("oracle")
-        expect(roleAgent("explorer")).toBe("explore")
+        expect(roleAgent("debugger")).toBe("oct-junior")
+        expect(roleAgent("optimizer")).toBe("oct-junior")
+        expect(roleAgent("tester")).toBe("oct-junior")
+        expect(roleAgent("writer")).toBe("oct-junior")
+        expect(roleAgent("reviewer")).toBe("oct-oracle")
+        expect(roleAgent("architect")).toBe("oct-oracle")
+        expect(roleAgent("explorer")).toBe("oct-explore")
     })
 
     test("science roles", () => {
-        expect(roleAgent("mathematician")).toBe("build")
-        expect(roleAgent("physicist")).toBe("build")
-        expect(roleAgent("simulator")).toBe("build")
-        expect(roleAgent("chemist")).toBe("build")
-        expect(roleAgent("analyst")).toBe("build")
-        expect(roleAgent("visualizer")).toBe("build")
+        expect(roleAgent("mathematician")).toBe("oct-junior")
+        expect(roleAgent("physicist")).toBe("oct-junior")
+        expect(roleAgent("simulator")).toBe("oct-junior")
+        expect(roleAgent("chemist")).toBe("oct-junior")
+        expect(roleAgent("analyst")).toBe("oct-junior")
+        expect(roleAgent("visualizer")).toBe("oct-junior")
     })
 
     test("research / writing / ideation", () => {
-        expect(roleAgent("researcher")).toBe("librarian")
-        expect(roleAgent("author")).toBe("build")
-        expect(roleAgent("fantast")).toBe("build")
+        expect(roleAgent("researcher")).toBe("oct-librarian")
+        expect(roleAgent("author")).toBe("oct-junior")
+        expect(roleAgent("fantast")).toBe("oct-junior")
     })
 
-    test("almighty uses build; unknown roles fall back to read-only oracle", () => {
-        expect(roleAgent("almighty")).toBe("build")
-        expect(roleAgent("frobnicator")).toBe("oracle")
+    test("almighty uses oct-junior; unknown roles fall back to read-only oct-oracle", () => {
+        expect(roleAgent("almighty")).toBe("oct-junior")
+        expect(roleAgent("frobnicator")).toBe("oct-oracle")
     })
 
     test("is case-insensitive", () => {
-        expect(roleAgent("Reviewer")).toBe("oracle")
-        expect(roleAgent("FANTAST")).toBe("build")
+        expect(roleAgent("Reviewer")).toBe("oct-oracle")
+        expect(roleAgent("FANTAST")).toBe("oct-junior")
     })
 })
 
