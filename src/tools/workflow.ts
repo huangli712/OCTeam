@@ -12,8 +12,8 @@
  *     effectiveTimeoutMs, DEFAULT_*).
  *   - parallel.ts / consensus.ts / pipeline.ts / loop.ts: single-track tools
  *     (one tool definition per file).
- *   - workflow-advanced.ts: multi-track tools (delegate, route, arbitrate,
- *     tollgate, recurse) + buildRouterPrompt.
+ *   - delegate.ts / router.ts / arbitrate.ts / tollgate.ts / recurse.ts:
+ *     multi-track tools (one tool definition per file).
  *
  * This file re-exports every symbol the tool registry (index.ts) and the test
  * suite import, so consumers keep importing from "./workflow.js" unchanged.
@@ -36,11 +36,8 @@ export { teamLoopTool } from "./loop.js"
 export { teamParallelTool } from "./parallel.js"
 export { teamPipelineTool } from "./pipeline.js"
 
-export {
-    buildRouterPrompt,
-    teamArbitrateTool,
-    teamDelegateTool,
-    teamRecurseTool,
-    teamRouteTool,
-    teamTollgateTool,
-} from "./workflow-advanced.js"
+export { buildRouterPrompt, teamRouteTool } from "./router.js"
+export { teamArbitrateTool } from "./arbitrate.js"
+export { teamDelegateTool } from "./delegate.js"
+export { teamRecurseTool } from "./recurse.js"
+export { teamTollgateTool } from "./tollgate.js"
