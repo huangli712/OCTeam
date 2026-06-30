@@ -10,8 +10,8 @@
  *
  *   - lifecycle-shared.ts: ActivateDecision, decideActivate, defaultBounds,
  *     withOrderedLocks.
- *   - lifecycle-query.ts:   creation + read-only inspection (create, list,
- *     details, query).
+ *   - create.ts / list.ts / details.ts / query.ts: creation + read-only
+ *     inspection (one tool per file).
  *   - lifecycle-members.ts: member management (add, remove, rename, fix).
  *   - activate.ts / deactivate.ts / cancel.ts / delete.ts: state transitions
  *     + teardown (one tool per file).
@@ -22,7 +22,10 @@
  */
 
 export { decideActivate, defaultBounds, withOrderedLocks, type ActivateDecision } from "./lifecycle-shared.js"
-export { teamCreateTool, teamDetailsTool, teamListTool, teamQueryTool } from "./lifecycle-query.js"
+export { teamCreateTool } from "./create.js"
+export { teamListTool } from "./list.js"
+export { teamDetailsTool } from "./details.js"
+export { teamQueryTool } from "./query.js"
 export { teamAddMemberTool, teamFixMemberTool, teamRemoveMemberTool, teamRenameTool } from "./lifecycle-members.js"
 export { teamActivateTool } from "./activate.js"
 export { teamCancelTool } from "./cancel.js"

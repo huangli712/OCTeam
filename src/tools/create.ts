@@ -1,7 +1,7 @@
 /**
- * Team lifecycle tools: creation + read-only inspection.
- * team_create, team_list, team_details, team_query.
- * Extracted from the original lifecycle.ts.
+ * team_create tool -- define an agent team. Writes config.json + initial
+ * state.json; does NOT spawn member sessions (lazy on first workflow call).
+ * Includes resolveCreateModel (best-effort model resolution).
  */
 
 import fs from "node:fs/promises"
@@ -9,11 +9,9 @@ import fs from "node:fs/promises"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { initTeamState, listTeamNames, loadTeamState, readTeamSpec, writeTeamSpec } from "../state/store.js"
-import { indexMasterTeam, isIndexedMember, resolveCallerInTeam } from "../state/resolve.js"
-import { countUnreadMessages } from "../messaging/mailbox.js"
+import { initTeamState, writeTeamSpec } from "../state/store.js"
+import { indexMasterTeam, isIndexedMember } from "../state/resolve.js"
 import { teamDir, teamsDir } from "../state/paths.js"
-import { listAllTasks } from "../state/tasks.js"
 import { normalizeRole, roleAgent } from "../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL, pickName } from "../state/naming.js"
@@ -206,175 +204,6 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             indexMasterTeam(context.sessionID, args.name, leadSessionId, ctx.storageRoot, createdTeam.directory)
 
             return `Team "${args.name}" created with ${members.length} member(s): ${members.map(m => m.name).join(", ")}. Status: live (inactive — call team_activate to activate it). Sessions will spawn on first workflow call.`
-        },
-    })
-}
-
-export function teamListTool(ctx: PluginContext): ToolDefinition {
-    return tool({
-        description: "List all teams in the current scope with their status and member count.",
-        args: {},
-        async execute(_args, context) {
-            const leadSessionId = ctx.scope === "project" ? context.sessionID : undefined
-            const names = await listTeamNames(ctx.storageRoot, leadSessionId)
-            if (names.length === 0) return "No teams found."
-            const rows = await Promise.all(
-                names.map(async name => {
-                    const spec = await readTeamSpec(ctx.storageRoot, name, leadSessionId)
-                    let status = "unknown"
-                    let count = spec?.members.length ?? 0
-                    let createdAt = 0
-                    let active = false
-                    try {
-                        const team = await loadTeamState(ctx.storageRoot, name, leadSessionId)
-                        status = team.status
-                        count = team.members.length
-                        createdAt = team.createdAt
-                        active = team.activatedAt !== undefined
-                    } catch {
-                        // state unreadable
-                    }
-                    const desc = (spec?.description ?? "").trim() || "-"
-                    const created = createdAt
-                        ? new Date(createdAt).toISOString().replace("T", " ").slice(0, 16)
-                        : "-"
-                    return { name, desc, created, count, status, active }
-                }),
-            )
-            const lines = [
-                "| Name | Description | Created | Members | Status | Active |",
-                "|------|-------------|---------|---------|--------|--------|",
-            ]
-            for (const r of rows) {
-                const desc = r.desc.length > 50 ? r.desc.slice(0, 47) + "…" : r.desc
-                lines.push(`| ${r.name} | ${desc} | ${r.created} | ${r.count} | ${r.status} | ${r.active ? "yes" : "no" } |`)
-            }
-            return lines.join("\n")
-        },
-    })
-}
-
-export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
-    return tool({
-        description: "Show a team's current status: orchestration progress, member states, and token usage.",
-        args: {
-            team_id: tool.schema.string().min(1),
-        },
-        async execute(args, context) {
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false })
-            if (!caller) return "Error: caller is not a member of this team"
-            let team
-            try {
-                team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
-            } catch {
-                return `Error: team "${args.team_id}" not found`
-            }
-            const active = team.activatedAt !== undefined
-            const lines: string[] = [`Team: ${team.teamName}  status: ${team.status}  active: ${active ? "yes" : "no"}`]
-            if (team.activeTask) {
-                const t = team.activeTask
-                lines.push(
-                    `Active: ${t.type}${t.mode ? `/${t.mode}` : ""}  round ${t.currentRound ?? "-"}/${t.maxRounds ?? "-"}  tokens ${t.tokensUsed}`,
-                )
-                // parallel: reduce + signoff policy
-                if (t.type === "parallel") {
-                    const pol: string[] = []
-                    if (t.reducePolicy) pol.push(`reduce: ${t.reducePolicy}${t.reduceRubric ? ` (${t.reduceRubric})` : ""}`)
-                    if (t.signoffPolicy) {
-                        let s = `signoff: ${t.signoffPolicy}`
-                        if (t.signoffDecider) s += ` (decider: ${t.signoffDecider})`
-                        if (t.signoffQuorum !== undefined) s += ` (quorum: ${t.signoffQuorum})`
-                        if (t.signoffStage) s += " [in signoff]"
-                        pol.push(s)
-                    }
-                    if (pol.length > 0) lines.push(pol.join("  "))
-                }
-                // delegate: shared tasklist summary
-                if (t.type === "delegate") {
-                    try {
-                        const tasks = await listAllTasks(team.directory)
-                        const by = (s: string) => tasks.filter(x => x.status === s).length
-                        lines.push(`Tasks: ${by("completed")} done, ${by("in_progress")} in progress, ${by("claimed")} claimed, ${by("pending")} pending (of ${tasks.length})`)
-                    } catch {
-                        // tasklist unreadable — skip
-                    }
-                }
-                // loop: decider + last decision
-                if (t.type === "loop") {
-                    const p: string[] = []
-                    if (t.deciderMember) p.push(`decider: ${t.deciderMember}`)
-                    const last = t.decisionHistory[t.decisionHistory.length - 1]
-                    if (last) p.push(`last: ${last.decision} (round ${last.round})`)
-                    if (t.decisionParseFailures > 0) p.push(`parse failures: ${t.decisionParseFailures}`)
-                    if (p.length > 0) lines.push(p.join("  "))
-                }
-                // consensus: reached flag
-                if (t.type === "consensus") {
-                    lines.push(`Consensus: ${t.consensusReached ? "reached" : "not reached"}`)
-                }
-            } else {
-                lines.push("Active: none")
-            }
-            lines.push("Members:")
-            for (const m of team.members) {
-                const unread = await countUnreadMessages(team.directory, m.name)
-                const modelStr = m.model ? ` (${m.model})` : ""
-                lines.push(
-                    `  - ${m.name}: ${m.status}${modelStr}${unread ? ` ${unread} unread` : ""}${m.turnCount ? ` ${m.turnCount} turns` : ""}`,
-                )
-            }
-            return lines.join("\n")
-        },
-    })
-}
-
-export function teamQueryTool(ctx: PluginContext): ToolDefinition {
-    return tool({
-        description: "Query detailed information about a specific team member by name.",
-        args: {
-            team_id: tool.schema.string().min(1),
-            member_name: tool.schema.string().min(1),
-        },
-        async execute(args, context) {
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false })
-            if (!caller) return "Error: caller is not a member of this team"
-            let team
-            try {
-                team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
-            } catch {
-                return `Error: team "${args.team_id}" not found`
-            }
-            const member = team.members.find(m => m.name === args.member_name)
-            if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
-
-            let role: string | undefined
-            let prompt: string | undefined
-            try {
-                const spec = await readTeamSpec(ctx.storageRoot, caller.teamName, caller.leadSessionId)
-                const sm = spec?.members.find(m => m.name === args.member_name)
-                role = sm?.role
-                prompt = sm?.prompt
-            } catch {
-                // spec unreadable
-            }
-
-            const lines: string[] = [
-                `Name: ${member.name}`,
-                `Role: ${role ?? "unknown"}`,
-                `Prompt: ${prompt ?? "unknown"}`,
-                `Agent: ${member.agent ?? "build"}`,
-                `Model: ${member.model ?? "unknown"}`,
-                `Status: ${member.status}`,
-                `Initialized: ${member.initialized}`,
-                `Turn count: ${member.turnCount}`,
-            ]
-            if (member.sessionId) lines.push(`Session ID: ${member.sessionId}`)
-            if (member.worktreePath) lines.push(`Worktree: ${member.worktreePath}`)
-            if (member.error) lines.push(`Error: ${member.error}`)
-            if (team.activeTask?.tokensByMember?.[member.name]) {
-                lines.push(`Tokens used: ${team.activeTask.tokensByMember[member.name]}`)
-            }
-            return lines.join("\n")
         },
     })
 }
