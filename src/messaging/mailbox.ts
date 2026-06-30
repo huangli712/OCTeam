@@ -158,7 +158,24 @@ export async function pollMailbox(
                 JSON.stringify({ ...msg, deliveryStatus: "delivered", reservedAt: Date.now() }),
             )
         }
-        await truncateFile(inboxPath(teamDirectory, recipient))
+        try {
+            await truncateFile(inboxPath(teamDirectory, recipient))
+        } catch (err) {
+            // Rollback: truncate failed after reserves succeeded. Without this
+            // cleanup the messages would exist in BOTH reserved/ and inbox/,
+            // and releaseStaleReservations (TTL 30s) would re-append the
+            // reserved copy → duplicate injection (at-least-once degradation
+            // from the module's exactly-once contract). Unlink the reserved
+            // copies so the original inbox entries remain authoritative for
+            // the next poll attempt. Best-effort: an unlink failure leaves a
+            // stranded reserved file that the stale-reaper eventually clears.
+            for (const msg of inbox) {
+                await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch(() => {
+                    // already removed or never written
+                })
+            }
+            throw err
+        }
         return inbox
     })
 }

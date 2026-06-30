@@ -42,6 +42,10 @@ export function activationError(
  * Extract concatenated text from message parts (filters type === "text").
  * Skips synthetic parts (injected role prompts / mailbox injections) so they
  * are never mistaken for member-produced text.
+ *
+ * @internal Exported only for use by tests/output_capture.test.ts (baseline
+ * regression for the text-only extraction contract). Production callers use
+ * `extractOutputFromParts` (which composes this with output-shape handling).
  */
 export function extractTextFromParts(parts: unknown): string {
     if (!Array.isArray(parts)) return ""

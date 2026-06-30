@@ -13,6 +13,7 @@
  * needed — each runId directory has a single writer.
  */
 
+import crypto from "node:crypto"
 import fs from "node:fs/promises"
 
 import { z } from "zod"

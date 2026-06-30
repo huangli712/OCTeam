@@ -21,6 +21,7 @@
  * tools/) keep working unchanged.
  */
 
+import crypto from "node:crypto"
 import type { PluginContext } from "../core/context.js"
 import { logEvent } from "../core/log.js"
 import { type Team, loadTeamState, saveTeamState } from '../state/store.js';

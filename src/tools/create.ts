@@ -4,6 +4,7 @@
  * Includes resolveCreateModel (best-effort model resolution).
  */
 
+import crypto from "node:crypto"
 import fs from "node:fs/promises"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"

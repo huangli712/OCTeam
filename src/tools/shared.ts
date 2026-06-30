@@ -25,6 +25,7 @@
  * startOrchestration; the per-tool callbacks cannot violate it.
  */
 
+import crypto from "node:crypto"
 import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "@opencode-ai/plugin"
 

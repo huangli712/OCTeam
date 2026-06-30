@@ -1,0 +1,203 @@
+/**
+ * Coverage-gap regression tests for teamProgressTool.execute
+ * (src/tools/progress.ts). Audit 2026-06-30 finding #6: 29.07% line coverage
+ * on the execute body. formatSnapshot / formatTimeline have implicit coverage
+ * via team_details and result-get, but the tool's execute() — auth, path-
+ * traversal check, runId resolution, since/limit pagination — had none.
+ */
+import { afterAll, afterEach, describe, expect, test } from "bun:test"
+
+import type { PluginContext } from "../src/core/context.js"
+import type { ActiveTask, MemberState, RunEvent, TeamState } from "../src/core/types.js"
+import { teamProgressTool } from "../src/tools/progress.js"
+import { initTeamState, loadTeamState } from "../src/state/store.js"
+import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
+import { appendJsonl } from "../src/state/locks.js"
+import { runEventsPath } from "../src/state/paths.js"
+import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+
+const TEAM = "progress-team"
+
+afterAll(cleanupTmpRoots)
+const tracked: string[] = []
+afterEach(() => {
+    for (const sid of tracked.splice(0)) unindexSession(sid)
+})
+
+function makeCtx(root: string): PluginContext {
+    return {
+        storageRoot: root,
+        scope: "project",
+        client: {
+            session: { promptAsync: async () => ({}) },
+            app: { log: async () => ({}) },
+        },
+    } as unknown as PluginContext
+}
+
+function makeActiveTask(): ActiveTask {
+    return {
+        type: "parallel",
+        mode: "isolated",
+        startedAt: Date.now(),
+        wallClockTimeoutMs: 300000,
+        tokensUsed: 0,
+        tokensByMember: {},
+        messagesSent: 0,
+        responses: {},
+        stages: [],
+        currentStageIndex: 0,
+        decisionHistory: [],
+        decisionParseFailures: 0,
+        runId: "run-active-1",
+    } as ActiveTask
+}
+
+async function setup(opts: {
+    root: string
+    masterSid: string
+    members: MemberState[]
+    activeTask?: ActiveTask
+}): Promise<string> {
+    const base = makeState(TEAM, opts.masterSid, opts.members, Date.now())
+    const state: TeamState = {
+        ...base,
+        status: opts.activeTask ? "busy" : base.status,
+        activeTask: opts.activeTask,
+    }
+    await initTeamState(opts.root, state, opts.masterSid)
+    await rebuildSessionIndex(opts.root, `${opts.root}__unused`)
+    const team = await loadTeamState(opts.root, TEAM, opts.masterSid)
+    return team.directory
+}
+
+async function seedEvents(directory: string, runId: string, events: RunEvent[]): Promise<void> {
+    for (const e of events) {
+        await appendJsonl(runEventsPath(directory, runId), JSON.stringify(e) + "\n")
+    }
+}
+
+describe("teamProgressTool.execute", () => {
+    test("non-member → error", async () => {
+        const root = tmpRoot("prog-non-member")
+        const masterSid = "ses_prog_master_1"
+        tracked.push(masterSid)
+        await setup({ root, masterSid, members: [] })
+
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM },
+            { sessionID: "ses_stranger_prog" } as never,
+        )
+        expect(result).toContain("not a member")
+    })
+
+    test("invalid run_id (path traversal) → rejected", async () => {
+        const root = tmpRoot("prog-traversal")
+        const masterSid = "ses_prog_master_2"
+        tracked.push(masterSid)
+        await setup({ root, masterSid, members: [] })
+
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM, run_id: "../escape" },
+            { sessionID: masterSid } as never,
+        )
+        expect(result).toContain("invalid run_id")
+    })
+
+    test("no active task and no run records → 'no runs yet'", async () => {
+        const root = tmpRoot("prog-empty")
+        const masterSid = "ses_prog_master_3"
+        tracked.push(masterSid)
+        await setup({ root, masterSid, members: [] })
+
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM },
+            { sessionID: masterSid } as never,
+        )
+        expect(result).toContain("Team: progress-team")
+        expect(result).toContain("Active: none")
+        expect(result).toContain("no runs yet")
+    })
+
+    test("happy path with active task → snapshot + timeline from active runId", async () => {
+        const root = tmpRoot("prog-active")
+        const masterSid = "ses_prog_master_4"
+        tracked.push(masterSid)
+        const dir = await setup({
+            root,
+            masterSid,
+            members: [makeMember("alice", "ses_prog_alice_4")],
+            activeTask: makeActiveTask(),
+        })
+        await seedEvents(dir, "run-active-1", [
+            { timestamp: Date.now() - 1000, kind: "dispatched", member: "alice" },
+            { timestamp: Date.now(), kind: "captured", member: "alice", bytes: 42 },
+        ])
+
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM },
+            { sessionID: masterSid } as never,
+        )
+        expect(result).toContain("Active: parallel/isolated")
+        expect(result).toContain("Members:")
+        expect(result).toContain("alice")
+        expect(result).toContain("dispatched")
+        expect(result).toContain("captured")
+    })
+
+    test("since filter excludes events at or before the timestamp", async () => {
+        const root = tmpRoot("prog-since")
+        const masterSid = "ses_prog_master_5"
+        tracked.push(masterSid)
+        const t0 = Date.now()
+        const dir = await setup({
+            root,
+            masterSid,
+            members: [],
+            activeTask: makeActiveTask(),
+        })
+        await seedEvents(dir, "run-active-1", [
+            { timestamp: t0, kind: "dispatched", member: "alice" },
+            { timestamp: t0 + 500, kind: "captured", member: "alice" },
+            { timestamp: t0 + 1000, kind: "errored", member: "alice" },
+        ])
+
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM, since: t0 + 500 },
+            { sessionID: masterSid } as never,
+        )
+        // Only the errored event is strictly after t0+500.
+        expect(result).toContain("errored")
+        expect(result).not.toContain("dispatched")
+    })
+
+    test("limit slices to the most-recent N events", async () => {
+        const root = tmpRoot("prog-limit")
+        const masterSid = "ses_prog_master_6"
+        tracked.push(masterSid)
+        const dir = await setup({
+            root,
+            masterSid,
+            members: [],
+            activeTask: makeActiveTask(),
+        })
+        // Seed 10 events.
+        const events: RunEvent[] = []
+        for (let i = 0; i < 10; i++) {
+            events.push({ timestamp: Date.now() + i, kind: "captured", member: `m${i}` })
+        }
+        await seedEvents(dir, "run-active-1", events)
+
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM, limit: 3 },
+            { sessionID: masterSid } as never,
+        )
+        // The header should mention "last 3 of 10".
+        expect(result).toContain("last 3 of 10")
+        // Only the last 3 members appear (m7, m8, m9).
+        expect(result).toContain("m7")
+        expect(result).toContain("m9")
+        expect(result).not.toContain("m0")
+        expect(result).not.toContain("m5")
+    })
+})

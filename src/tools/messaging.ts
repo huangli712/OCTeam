@@ -7,6 +7,7 @@
  * Broadcast (to: "*") is master-only. Members may send point-to-point only.
  */
 
+import crypto from "node:crypto"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
