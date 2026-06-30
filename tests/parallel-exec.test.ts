@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { processIdle } from "../src/orchestration/handlers.js"
-import { handleParallelIdle } from "../src/orchestration/parallel-consensus.js"
+import { handleParallelIdle } from "../src/orchestration/parallel.js"
 import { runMemberOutputPath } from "../src/state/paths.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
