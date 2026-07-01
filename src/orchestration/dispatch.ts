@@ -132,6 +132,11 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
                 const sessionId = result.data?.id
                 if (!sessionId) throw new Error(`session.create returned no id for ${member.name}`)
                 member.sessionId = sessionId
+                // Copy the member's standing instruction onto the runtime state so the
+                // first task dispatch can prepend it as <standing-instruction> (see
+                // prependStandingInstruction). Role-setup no longer embeds it.
+                member.prompt = memberSpec?.prompt
+                member.promptDelivered = false
                 // S1: index the freshly spawned session so its role-setup idle
                 // resolves to this member. Without this, resolveTeamMember returns
                 // null in the event handler, member.initialized never flips, and the
@@ -214,7 +219,8 @@ export async function advanceToStage(
         : `${stage.task}${roContract}`
     // contextPrefix carries cross-round feedback (e.g. the decider's decision in a
     // loop) so the next round is actually corrective rather than re-asking verbatim.
-    const text = contextPrefix ? `${contextPrefix}\n\n${base}` : base
+    const rawText = contextPrefix ? `${contextPrefix}\n\n${base}` : base
+    const text = prependStandingInstruction(member, rawText)
     await ctx.client.session.promptAsync({
         path: { id: member.sessionId },
         body: {
@@ -225,6 +231,7 @@ export async function advanceToStage(
         // .octeam state dir. session.create already used ctx.directory.
         query: { directory: member.worktreePath ?? ctx.directory },
     })
+    member.promptDelivered = true
     member.status = "running"
     member.turnCount++
     recordEvent(team, {
@@ -234,6 +241,19 @@ export async function advanceToStage(
         stage: task.currentStageIndex,
         round: task.currentRound,
     })
+}
+
+/**
+ * Prepend the member's standing instruction (MemberSpec.prompt, copied onto
+ * MemberState.prompt at spawn) as a <standing-instruction> block in front of
+ * the task text, ONCE per member. Returns text unchanged once delivered.
+ *
+ * Pure text transform — callers set member.promptDelivered = true after the
+ * promptAsync succeeds, so a failed/retried dispatch re-delivers it.
+ */
+export function prependStandingInstruction(member: MemberState, text: string): string {
+    if (member.promptDelivered || !member.prompt) return text
+    return `<standing-instruction>\n${member.prompt}\n</standing-instruction>\n\n${text}`
 }
 
 /**
@@ -258,14 +278,16 @@ export async function dispatchToMember(
     // legitimate reason to retry an errored member must clear the status
     // explicitly first (no such path exists today by design).
     if (member.status === "errored") return
+    const dispatchedText = prependStandingInstruction(member, text)
     await ctx.client.session.promptAsync({
         path: { id: member.sessionId },
         body: {
-            parts: [{ type: "text", text, synthetic: true }],
+            parts: [{ type: "text", text: dispatchedText, synthetic: true }],
             agent: safeMemberAgent(member.agent),
         },
         query: { directory },
     })
+    member.promptDelivered = true
     member.status = "running"
     member.turnCount++
     if (team) {

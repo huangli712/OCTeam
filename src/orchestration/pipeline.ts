@@ -6,7 +6,7 @@
 import type { PluginContext } from "../core/context.js"
 import { type Team, clearActiveTask } from "../state/store.js"
 import type { MemberState } from "../core/types.js"
-import { buildUpstreamContext } from "./dispatch.js"
+import { buildUpstreamContext, prependStandingInstruction } from "./dispatch.js"
 import { safeMemberAgent } from "../core/role.js"
 import { deliverSummaryToLeader } from "./summary.js"
 import { recordEvent } from "./events.js"
@@ -40,9 +40,10 @@ export async function handlePipelineIdle(ctx: PluginContext, team: Team, member:
     if (!nextMember || !nextMember.sessionId) return
 
     const upstream = buildUpstreamContext(stages, task.responses, nextIndex)
-    const fullTask = upstream
+    const stageTask = upstream
         ? `${upstream}\n\n[Your task]\n${nextStage.task}`
         : nextStage.task
+    const fullTask = prependStandingInstruction(nextMember, stageTask)
 
     await ctx.client.session.promptAsync({
         path: { id: nextMember.sessionId },
@@ -52,6 +53,7 @@ export async function handlePipelineIdle(ctx: PluginContext, team: Team, member:
         },
         query: { directory: nextMember.worktreePath ?? ctx.directory },
     })
+    nextMember.promptDelivered = true
     nextMember.status = "running"
     nextMember.turnCount++
     recordEvent(team, {

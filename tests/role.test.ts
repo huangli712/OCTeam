@@ -9,6 +9,8 @@ import {
     rolePreset,
 } from "../src/core/role.js"
 import { buildRolePrompt } from "../src/core/utils.js"
+import { prependStandingInstruction } from "../src/orchestration/dispatch.js"
+import type { MemberState } from "../src/core/types.js"
 
 describe("ROLES catalogue", () => {
     test("has 21 roles, each with a non-empty agent and instruction", () => {
@@ -113,7 +115,7 @@ describe("rolePreset (always a non-empty instruction)", () => {
 describe("buildRolePrompt role-instruction injection", () => {
     const peers = ["alice", "bob"]
 
-    test("injects <role-instruction> with the role's preset", () => {
+    test("injects <role-instruction> with the role's preset, NOT the member task", () => {
         const out = buildRolePrompt(
             { name: "alice", role: "coder", prompt: "Implement the login endpoint." },
             "auth-team",
@@ -121,17 +123,22 @@ describe("buildRolePrompt role-instruction injection", () => {
         )
         expect(out).toContain("<role-instruction>")
         expect(out).toContain(ROLES.coder.instruction)
-        expect(out).toContain("<user-instruction>")
-        expect(out).toContain("Implement the login endpoint.")
+        // Role-setup is identity-only: the member's task (spec.prompt) is delivered
+        // later as <standing-instruction> on first dispatch, NOT during role-setup.
+        // Embedding it here caused members to execute the full task during the
+        // role-setup barrier window (120s), blowing the barrier for heavy tasks.
+        expect(out).not.toContain("<user-instruction>")
+        expect(out).not.toContain("Implement the login endpoint.")
     })
 
-    test("role-instruction precedes user-instruction (role guidance first, task second)", () => {
+    test("role-instruction is present even when prompt is omitted", () => {
         const out = buildRolePrompt(
-            { name: "alice", role: "coder", prompt: "task" },
+            { name: "alice", role: "coder", prompt: "" },
             "t",
             peers,
         )
-        expect(out.indexOf("<role-instruction>")).toBeLessThan(out.indexOf("<user-instruction>"))
+        expect(out).toContain("<role-instruction>")
+        expect(out).not.toContain("<user-instruction>")
     })
 
     test("unknown role still injects the reviewer instruction", () => {
@@ -142,6 +149,35 @@ describe("buildRolePrompt role-instruction injection", () => {
         )
         expect(out).toContain("<role-instruction>")
         expect(out).toContain(ROLES.reviewer.instruction)
-        expect(out).toContain("do the thing")
+        // prompt must NOT leak into role-setup
+        expect(out).not.toContain("do the thing")
+    })
+})
+
+describe("prependStandingInstruction", () => {
+    const baseText = "[Your task]\nRun the benchmark."
+
+    function mkMember(overrides: Partial<MemberState> = {}): MemberState {
+        return { name: "alice", status: "idle", initialized: true, turnCount: 0, ...overrides }
+    }
+
+    test("prepends <standing-instruction> on first dispatch (promptDelivered falsy)", () => {
+        const member = mkMember({ prompt: "You are the sort engineer." })
+        const out = prependStandingInstruction(member, baseText)
+        expect(out).toContain("<standing-instruction>")
+        expect(out).toContain("You are the sort engineer.")
+        expect(out.endsWith(baseText)).toBe(true)
+        // pure transform: does not flip the flag itself (callers do, after promptAsync)
+        expect(member.promptDelivered).toBeFalsy()
+    })
+
+    test("no-ops once promptDelivered is true (delivered exactly once)", () => {
+        const member = mkMember({ prompt: "You are the sort engineer.", promptDelivered: true })
+        expect(prependStandingInstruction(member, baseText)).toBe(baseText)
+    })
+
+    test("no-ops when member has no prompt", () => {
+        const member = mkMember({})
+        expect(prependStandingInstruction(member, baseText)).toBe(baseText)
     })
 })

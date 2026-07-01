@@ -187,9 +187,14 @@ export function buildRolePrompt(
     // Preset role guidance (by role label), injected before the user's task
     // instruction. Every role resolves to an instruction (reviewer fallback).
     lines.push("", "<role-instruction>", rolePreset(spec.role), "</role-instruction>")
-    if (spec.prompt) {
-        lines.push("", "<user-instruction>", spec.prompt, "</user-instruction>")
-    }
+    // NOTE: spec.prompt (the member's standing task) is intentionally NOT embedded
+    // here. It is delivered as <standing-instruction> on the member's FIRST real
+    // task dispatch (see prependStandingInstruction in dispatch.ts). Embedding it
+    // in role-setup caused members to execute the full task during the role-setup
+    // barrier window, blowing the 120s timeout for any task heavier than ~2 min
+    // (and producing the memory-378 capture-gotcha where the deliverable lands in
+    // the role-setup turn and the later redundant task turn overwrites it with an
+    // ack). Role-setup is now identity-only: members ack and idle in seconds.
     lines.push(
         "",
         "You collaborate via the team tools available to you:",
