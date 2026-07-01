@@ -228,14 +228,24 @@ export async function buildSummary(
             switch (policy) {
                 case "summarize":
                     return `${head}\n${candidates}`
-                case "select":
+                case "select": {
+                    // reduceCriteria (method-neutral) makes "best" explicit so the
+                    // reducer does not default to its own prior task assignment as
+                    // the judging standard. The anti-bias line is always present
+                    // because the reducer is often also a contestant.
+                    const criteria = task.reduceCriteria ?? "the best overall answer"
                     return (
                         `${head}\n`
                         + `[Reduce policy: SELECT]\n`
+                        + `Selection criteria: ${criteria}\n`
                         + `The following ${outputs.length} candidates were produced. `
-                        + `Select the single best answer. State your choice and reasoning.\n\n`
+                        + `Select the single best candidate per the criteria above. `
+                        + `Judge ONLY against the stated criteria — do NOT favor a `
+                        + `candidate because it matches your own method or assignment. `
+                        + `State your choice and reasoning.\n\n`
                         + candidates
                     )
+                }
                 case "merge":
                     return (
                         `${head}\n`

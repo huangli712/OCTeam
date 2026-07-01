@@ -39,6 +39,11 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .max(8192)
                 .optional()
                 .describe("scoring rubric when reduce_policy='rubric'"),
+            reduce_criteria: tool.schema
+                .string()
+                .max(8192)
+                .optional()
+                .describe("selection criteria when reduce_policy='select' — what 'best' means. Should be method-neutral; otherwise the reducer defaults to its own prior task assignment as the standard."),
             reducer_member: tool.schema
                 .string()
                 .optional()
@@ -99,6 +104,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     tasks: args.tasks,
                     reducePolicy: args.reduce_policy ?? DEFAULT_REDUCE_POLICY,
                     reduceRubric: args.reduce_rubric,
+                    reduceCriteria: args.reduce_criteria,
                     reducerMember: args.reducer_member,
                     requireDoneAck: args.require_done_ack === true,
                     maxErroredMembers: args.max_errored_members,

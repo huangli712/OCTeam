@@ -63,8 +63,31 @@ describe("buildSummary reduce_policy (parallel)", () => {
         })
         const summary = await buildSummary(mockTeam, task, "test")
         expect(summary).toContain("[Reduce policy: SELECT]")
+        expect(summary).toContain("Selection criteria:")
         expect(summary).toContain("Select the single best")
         expect(summary).toContain("2 candidates")
+    })
+
+    test("select with reduceCriteria: injects method-neutral criteria + anti-bias", async () => {
+        const task = makeParallelTask({
+            responses: { alice: "drift 0.1", bob: "drift 1e-6", carol: "drift 1e-11" },
+            reducePolicy: "select",
+            reduceCriteria: "smallest absolute ENERGY_DRIFT value",
+        })
+        const summary = await buildSummary(mockTeam, task, "test")
+        expect(summary).toContain("Selection criteria: smallest absolute ENERGY_DRIFT value")
+        // anti-bias instruction always present (reducer is often a contestant)
+        expect(summary).toContain("do NOT favor a candidate because it matches your own")
+    })
+
+    test("select without reduceCriteria: falls back to default criteria + still anti-bias", async () => {
+        const task = makeParallelTask({
+            responses: { alice: "answer A" },
+            reducePolicy: "select",
+        })
+        const summary = await buildSummary(mockTeam, task, "test")
+        expect(summary).toContain("Selection criteria: the best overall answer")
+        expect(summary).toContain("do NOT favor a candidate because it matches your own")
     })
 
     test("merge: includes merge guidance", async () => {

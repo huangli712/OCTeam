@@ -167,6 +167,7 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
       "carol": "Run your RK4 simulation now and report the energy drift marker."
     },
     "reduce_policy": "select",
+    "reduce_criteria": "Select the integrator with the SMALLEST absolute energy drift |E_end - E0|/E0, as reported in each candidate's ENERGY_DRIFT marker. Judge purely by the reported drift magnitude — do NOT favor any particular integration method.",
     "reducer_member": "bob",
     "timeout_ms": 900000
   }
@@ -174,7 +175,8 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
 ```
 
 **参数选择**：
-- `reduce_policy: select` — 让一个成员（bob，辛格式代表）做综合评判，选出能量守恒最优
+- `reduce_policy: select` — 让一个成员（bob）做综合评判，选出能量守恒最优
+- `reduce_criteria`（方法中立）— 明确「最优 = ENERGY_DRIFT 绝对值最小」，防止 reducer 把自己收到的任务（实现 Velocity Verlet）当成评判标准而永远选自己。这是 select 策略的关键参数：没有它，reducer 会退化为「谁的解符合我自己的方法就选谁」
 - `reducer_member: bob` — 指定 bob 汇总（避免默认交给 master）
 
 ### 2.4 执行流程（时序）
