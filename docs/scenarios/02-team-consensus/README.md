@@ -8,9 +8,9 @@
 
 | # | 方向 | 场景 | 成员数 | Role | max_rounds | 预计总时长 |
 |---|------|------|--------|------|------------|-----------|
-| 1 | 数学 | 小数组稳定排序算法选型 | 3 | `mathematician` | 6 | ~12 min |
-| 2 | 计算物理 | 一维热扩散时间格式选择 | 3 | `simulator` | 6 | ~10 min |
-| 3 | 编程 | 短文本串匹配算法选型 | 3 | `coder` | 6 | ~10 min |
+| 1 | 数学 | 小数组稳定排序算法选型 | 3 | `mathematician` | 6 | ~24 min |
+| 2 | 计算物理 | 一维热扩散时间格式选择 | 3 | `simulator` | 6 | ~20 min |
+| 3 | 编程 | 短文本串匹配算法选型 | 3 | `coder` | 6 | ~20 min |
 | 4 | 数学 | 60 位 RSA 模数分解算法选型（挑战级） | 6 | `mathematician` | 5 | ~35 min |
 
 ---
@@ -66,14 +66,14 @@
     "team_id": "sort-debate",
     "topic": "For n<50 nearly-sorted elements that require stable sort, which algorithm is optimal: insertion sort, TimSort, or merge sort?",
     "max_rounds": 6,
-    "timeout_ms": 900000
+    "timeout_ms": 1800000
   }
 }
 ```
 
 **参数选择**：
 - `max_rounds: 6` — 算法选型是开放问题，核心论点通常 3 轮内「亮明立场 → 互相反驳 → 收敛」即清，6 轮为收敛余量
-- `timeout_ms: 900000`（15 min）— 给足余量，正常 ~10 min 收敛
+- `timeout_ms: 1800000`（30 min）— 给足余量，正常 ~10 min 收敛
 - 不设 `token_budget` — 论题小，token 自然受限；先求收敛质量
 - 无 `signoff_*` 参数 — `team_consensus` 设计上无 signoff 闸，全员 `agreed=true` 即通过（见源码 wf-013 注释）
 
@@ -155,14 +155,14 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
     "team_id": "heat-debate",
     "topic": "For u_t = u_xx on a uniform grid with dt=0.01, dx=0.1, choose: explicit FTCS / fully-implicit / Crank-Nicolson.",
     "max_rounds": 6,
-    "timeout_ms": 900000
+    "timeout_ms": 1800000
   }
 }
 ```
 
 **参数选择**：
 - `max_rounds: 6` — CFL 判据是硬约束（r=1.0>0.5 直接淘汰显式），剩余 implicit vs Crank-Nicolson 一轮可定，6 轮为收敛余量
-- `timeout_ms: 900000`（15 min）— 给足余量
+- `timeout_ms: 1800000`（30 min）— 给足余量
 - 无 `signoff_*` 参数 — 共识机制即闸
 
 ### 2.4 执行流程（时序）
@@ -244,14 +244,14 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
     "team_id": "string-debate",
     "topic": "For pattern matching on short text (<1KB) with patterns <=32 chars, choose: naive / KMP / Boyer-Moore / Sunday.",
     "max_rounds": 6,
-    "timeout_ms": 900000
+    "timeout_ms": 1800000
   }
 }
 ```
 
 **参数选择**：
 - `max_rounds: 6` — 短文本场景边界清晰（n<1KB），核心对比通常 3 轮内「亮立场 → 实测对比 → 收敛决策树」即成，6 轮为收敛余量
-- `timeout_ms: 900000`（15 min）— 给足余量，正常 ~8 min 收敛
+- `timeout_ms: 1800000`（30 min）— 给足余量，正常 ~8 min 收敛
 - 无 `signoff_*` 参数 — 共识机制即闸
 
 ### 3.4 执行流程（时序）
@@ -408,7 +408,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 - [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_consensus` schema（`team_id` / `topic` / `max_rounds` / `timeout_ms`）
 - [ ] 每个调用**无** `signoff_*` 参数（共识机制即闸，源码 wf-013）
-- [ ] 易级场景（1-3）总时长 ≤ 12 min；挑战级场景 4 ≈ 35 min（6 成员 × `max_rounds=5`，刻意突破标准 30 min 上限作为规模扩展）
+- [ ] 易级场景（1-3）总时长 ≤ 24 min；挑战级场景 4 ≈ 35 min（6 成员 × `max_rounds=5`，刻意突破标准 30 min 上限作为规模扩展）
 - [ ] 成员 prompt 中明确 `<consensus>` 输出格式约定，评判脚本与之对齐
 
 
