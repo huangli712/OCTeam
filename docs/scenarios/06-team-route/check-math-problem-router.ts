@@ -64,6 +64,76 @@ function normalizeExpr(s: string): string {
         .toLowerCase();
 }
 
+/**
+ * Convert a normalized math expression (digits, x, ^, known functions, with
+ * implicit multiplication by juxtaposition) into an evaluatable JavaScript
+ * expression body. Used for numerical equivalence checking when the literal
+ * expanded-term matcher fails — e.g. the member submitted a factored form
+ * like `x^2(3sin(x)+xcos(x))` which is mathematically identical to the
+ * expanded `3x^2sin(x)+x^3cos(x)` but contains neither term as a literal.
+ *
+ * Returns null if the expression contains characters outside the safe set.
+ */
+function toEvaluable(expr: string): string | null {
+    // Only allow a safe character set; reject anything unexpected.
+    if (!/^[\dx+\-*/^(). a-z]+$/.test(expr)) return null;
+    let s = expr;
+    // 1. implicit multiplication by juxtaposition FIRST, so that e.g. `3sin`
+    //    becomes `3*sin` and the subsequent function-name regex (`\bsin\b`)
+    //    can match — otherwise `3sin` has no left word boundary before `sin`.
+    //    a) digit before a letter or '('  (3x, 3sin, 2()
+    s = s.replace(/(\d)(?=[a-z(])/g, "$1*");
+    //    b) ')' before a letter, digit, or '('
+    s = s.replace(/(\))(?=[a-z0-9(])/g, "$1*");
+    //    c) standalone variable x before a letter or '(' — but NOT an `x`
+    //       that is part of an identifier (preceded by a letter/digit/dot).
+    //       Bun supports the negative lookbehind.
+    s = s.replace(/(?<![a-z0-9.])x(?=[a-z(])/g, "x*");
+    // 2. power operator
+    s = s.replace(/\^/g, "**");
+    // 3. known functions -> Math.* (ln has no Math alias; map to Math.log).
+    //    `log2`/`log10` are deliberately omitted — their embedded digits would
+    //    be split by the implicit-multiplication step above.
+    s = s.replace(
+        /\b(sin|cos|tan|sec|csc|cot|asin|acos|atan|sinh|cosh|tanh|ln|log|exp|sqrt|abs|cbrt)\b/g,
+        "Math.$1",
+    );
+    s = s.replace(/\bMath\.ln\b/g, "Math.log");
+    return s;
+}
+
+/**
+ * Numerically test whether the member's answer is equivalent to the true
+ * product-rule derivative f'(x) = 3x^2 sin(x) + x^3 cos(x), by sampling at
+ * several points and comparing. Tolerant of floating-point noise. Returns
+ * false if the expression cannot be parsed/evaluated.
+ */
+function numericallyEqualToDerivative(normalized: string): boolean {
+    const body = toEvaluable(normalized);
+    if (body === null) return false;
+    let fn: (x: number) => number;
+    try {
+        // eslint-disable-next-line no-new-func, @typescript-eslint/no-implied-eval
+        fn = new Function("x", `return (${body});`) as (x: number) => number;
+    } catch {
+        return false;
+    }
+    const trueDeriv = (x: number): number =>
+        3 * x * x * Math.sin(x) + x * x * x * Math.cos(x);
+    const samplePoints = [-5.3, -2.9, -1.4, -0.6, 0.3, 1.7, 2.8, 4.5, 6.1];
+    for (const x of samplePoints) {
+        let memberVal: number;
+        try {
+            memberVal = fn(x);
+        } catch {
+            return false;
+        }
+        if (!Number.isFinite(memberVal)) return false;
+        if (Math.abs(memberVal - trueDeriv(x)) > 1e-9) return false;
+    }
+    return true;
+}
+
 async function main(): Promise<void> {
     const runDir = process.argv[2];
     if (!runDir) {
@@ -121,11 +191,20 @@ async function main(): Promise<void> {
     console.log(`  ${member} ANSWER: ${answer.trim()}`);
 
     // Assertion 4: answer matches the product-rule derivative
-    // 3x^2*sin(x) + x^3*cos(x) — term order independent, notation tolerant.
+    //   d/dx[x^3 sin(x)] = 3x^2 sin(x) + x^3 cos(x).
+    // Primary (fast path): literal expanded terms — order independent,
+    // tolerant of `*` / `**` / whitespace.
+    // Fallback: numerical equivalence at sample points — accepts factored or
+    // other mathematically equivalent closed forms (e.g. x^2(3sin(x)+xcos(x))).
     const norm = normalizeExpr(answer);
     const hasFirstTerm = /3x\^2sin\(x\)/.test(norm);
     const hasSecondTerm = /x\^3cos\(x\)/.test(norm);
-    if (!hasFirstTerm || !hasSecondTerm) {
+    const literalMatch = hasFirstTerm && hasSecondTerm;
+    const numericalMatch = literalMatch ? true : numericallyEqualToDerivative(norm);
+    if (!literalMatch && numericalMatch) {
+        console.log("  (literal expanded-term match failed; numerical equivalence PASSED)");
+    }
+    if (!numericalMatch) {
         fail(
             `answer does not match product-rule derivative 3x^2*sin(x) + x^3*cos(x) ` +
                 `(normalized: ${norm})`,
