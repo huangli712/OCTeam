@@ -85,6 +85,16 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     if (args.reduce_policy === "rubric" && !args.reduce_rubric) {
                         return "Error: reduce_policy 'rubric' requires reduce_rubric (the scoring rubric)"
                     }
+                    // Non-summarize reduce policies REQUIRE a reducer_member.
+                    // Without one, buildSummary produces scoring/selection/merge
+                    // guidance text delivered to master as a tool result — but a
+                    // tool result is data, not an enforceable task, so master may
+                    // skip the scoring entirely while the run still marks complete.
+                    // Force the caller to either name a reducer (autonomous,
+                    // verifiable reduce) or use summarize (honest concatenation).
+                    if (args.reduce_policy && args.reduce_policy !== "summarize" && !args.reducer_member) {
+                        return `Error: reduce_policy '${args.reduce_policy}' requires reducer_member. Either specify a reducer member, or use reduce_policy 'summarize'.`
+                    }
                     const signoffErr = validateSignoff(args, team)
                     if (signoffErr) return signoffErr
                     // Validate reducer_member is a real member.

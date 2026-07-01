@@ -128,6 +128,42 @@ describe("team_parallel startup validation", () => {
         )
         expect(result).toContain("not a member")
     })
+
+    test("reduce_policy 'select' without reducer_member → rejected", async () => {
+        const root = tmpRoot("par-sel-nored")
+        const sid = "ses_par_sel_nr"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamParallelTool(makeCtx(root)).execute(
+            { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "select" },
+            { sessionID: sid } as any,
+        )
+        expect(result).toContain("requires reducer_member")
+    })
+
+    test("reduce_policy 'merge' without reducer_member → rejected", async () => {
+        const root = tmpRoot("par-merge-nored")
+        const sid = "ses_par_merge_nr"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamParallelTool(makeCtx(root)).execute(
+            { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "merge" },
+            { sessionID: sid } as any,
+        )
+        expect(result).toContain("requires reducer_member")
+    })
+
+    test("reduce_policy 'rubric' with reduce_rubric but no reducer_member → rejected", async () => {
+        const root = tmpRoot("par-rub-nored")
+        const sid = "ses_par_rub_nr"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamParallelTool(makeCtx(root)).execute(
+            { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "rubric", reduce_rubric: "correctness" },
+            { sessionID: sid } as any,
+        )
+        expect(result).toContain("requires reducer_member")
+    })
 })
 
 // -----------------------------------------------------------------------

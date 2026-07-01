@@ -260,6 +260,7 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
     },
     "reduce_policy": "rubric",
     "reduce_rubric": "Score each solution on: (a) correctness on the 3 test cases [nums=[2,7,11,15],target=9 -> [0,1]; nums=[3,2,4],target=6 -> [1,2]; nums=[3,3],target=6 -> [0,1]], (b) stated complexity matching actual complexity, (c) code clarity. Rank the three solutions.",
+    "reducer_member": "bob",
     "timeout_ms": 600000
   }
 }
@@ -268,6 +269,7 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 **参数选择**：
 - `reduce_policy: rubric` — 按明确评分表对比（非简单合并）
 - `reduce_rubric` 直接嵌入测试用例 — 让 reducer 用同一标准评判
+- `reducer_member: bob` — 指定 bob 做评分排名。非 summarize 策略**必须**指定 reducer_member，否则评分指引无人执行（工具会报错拒绝）
 
 ### 3.4 执行流程（时序）
 
@@ -275,8 +277,8 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 T+0m    master 调用 team_parallel (collaborative)
 T+0m    3 个 coder 成员并行 dispatch
 T+0~5m  各成员写 Two Sum 实现 + 嵌入代码 + 复杂度标注
-T+5m    三成员 idle → reduce (rubric policy, 默认交 master)
-T+6m    master 按评分表汇总排序
+T+5m    三成员 idle → reduce (rubric policy, reducer=bob)
+T+6m    bob 按评分表打分排名，产出 reducedResult
 T+6m    运行: bun check-coding-twosum.ts <run_dir>
 ```
 
