@@ -57,9 +57,16 @@ function loadCalculate(
     // Wrap the member code and return the declared `calculate`. The member
     // prompt fixes the signature `function calculate(op, a, b)`, so this
     // works for both function declarations and `const calculate = ...` forms.
+    // Members write real TypeScript (type aliases, annotations, `export`).
+    // `new Function` evaluates a function body, not a module, so (1) type
+    // aliases/annotations must be transpiled away and (2) the module-level
+    // `export` keyword must be stripped. Bun.Transpiler handles (1); a regex
+    // handles (2).
+    const transpiled = new Bun.Transpiler({ loader: "ts" }).transformSync(code);
+    const codeLoadable = transpiled.replace(/\bexport\s+/g, "");
     // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
     const factory = new Function(
-        `${code}; return typeof calculate === "function" ? calculate : null;`,
+        `${codeLoadable}; return typeof calculate === "function" ? calculate : null;`,
     ) as () => ((op: string, a: number, b: number) => number) | null;
     const fn = factory();
     if (typeof fn !== "function") {
