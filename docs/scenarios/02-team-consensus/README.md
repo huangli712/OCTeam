@@ -8,9 +8,9 @@
 
 | # | 方向 | 场景 | 成员数 | Role | max_rounds | 预计总时长 |
 |---|------|------|--------|------|------------|-----------|
-| 1 | 数学 | 小数组稳定排序算法选型 | 3 | `mathematician` | 3 | ~12 min |
-| 2 | 计算物理 | 一维热扩散时间格式选择 | 3 | `simulator` | 3 | ~10 min |
-| 3 | 编程 | 短文本串匹配算法选型 | 3 | `coder` | 3 | ~10 min |
+| 1 | 数学 | 小数组稳定排序算法选型 | 3 | `mathematician` | 6 | ~12 min |
+| 2 | 计算物理 | 一维热扩散时间格式选择 | 3 | `simulator` | 6 | ~10 min |
+| 3 | 编程 | 短文本串匹配算法选型 | 3 | `coder` | 6 | ~10 min |
 | 4 | 数学 | 60 位 RSA 模数分解算法选型（挑战级） | 6 | `mathematician` | 5 | ~35 min |
 
 ---
@@ -65,14 +65,14 @@
   "args": {
     "team_id": "sort-debate",
     "topic": "For n<50 nearly-sorted elements that require stable sort, which algorithm is optimal: insertion sort, TimSort, or merge sort?",
-    "max_rounds": 3,
+    "max_rounds": 6,
     "timeout_ms": 900000
   }
 }
 ```
 
 **参数选择**：
-- `max_rounds: 3` — 算法选型是开放问题，3 轮足够「亮明立场 → 互相反驳 → 收敛」；超过 3 轮通常无新论点
+- `max_rounds: 6` — 算法选型是开放问题，3 轮足够「亮明立场 → 互相反驳 → 收敛」；超过 3 轮通常无新论点
 - `timeout_ms: 900000`（15 min）— 给足余量，正常 ~10 min 收敛
 - 不设 `token_budget` — 论题小，token 自然受限；先求收敛质量
 - 无 `signoff_*` 参数 — `team_consensus` 设计上无 signoff 闸，全员 `agreed=true` 即通过（见源码 wf-013 注释）
@@ -154,14 +154,14 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
   "args": {
     "team_id": "heat-debate",
     "topic": "For u_t = u_xx on a uniform grid with dt=0.01, dx=0.1, choose: explicit FTCS / fully-implicit / Crank-Nicolson.",
-    "max_rounds": 3,
+    "max_rounds": 6,
     "timeout_ms": 900000
   }
 }
 ```
 
 **参数选择**：
-- `max_rounds: 3` — CFL 判据是硬约束（r=1.0>0.5 直接淘汰显式），剩余 implicit vs Crank-Nicolson 一轮可定，3 轮足够
+- `max_rounds: 6` — CFL 判据是硬约束（r=1.0>0.5 直接淘汰显式），剩余 implicit vs Crank-Nicolson 一轮可定，3 轮足够
 - `timeout_ms: 900000`（15 min）— 给足余量
 - 无 `signoff_*` 参数 — 共识机制即闸
 
@@ -243,14 +243,14 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
   "args": {
     "team_id": "string-debate",
     "topic": "For pattern matching on short text (<1KB) with patterns <=32 chars, choose: naive / KMP / Boyer-Moore / Sunday.",
-    "max_rounds": 3,
+    "max_rounds": 6,
     "timeout_ms": 900000
   }
 }
 ```
 
 **参数选择**：
-- `max_rounds: 3` — 短文本场景边界清晰（n<1KB），3 轮足够从「亮立场 → 实测对比 → 收敛决策树」
+- `max_rounds: 6` — 短文本场景边界清晰（n<1KB），3 轮足够从「亮立场 → 实测对比 → 收敛决策树」
 - `timeout_ms: 900000`（15 min）— 给足余量，正常 ~8 min 收敛
 - 无 `signoff_*` 参数 — 共识机制即闸
 
