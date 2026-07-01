@@ -74,7 +74,7 @@
       "carol": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker."
     },
     "reduce_policy": "merge",
-    "reducer_member": "bob",
+    "reducer_member": "alice",
     "timeout_ms": 900000,
     "max_errored_members": 0
   }
@@ -84,7 +84,7 @@
 **参数选择**：
 - `mode: cooperative` — 三方法不同，必须各自任务
 - `reduce_policy: merge` — 保留三方法独立结果做对比（非 select 单选）
-- `reducer_member: bob` — 非 summarize 策略必须指定 reducer_member（否则工具拒绝执行）；指定 bob 做合并汇总
+- `reducer_member: alice` — 非 summarize 策略必须指定 reducer_member（否则工具拒绝执行）；指定 alice 做合并汇总
 - `timeout_ms: 900000`（15 min）— 给足余量，正常 8 min 完成
 - `max_errored_members: 0` — 任一成员失败即整体失败（三方法缺一不完整）
 
@@ -170,16 +170,16 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
     },
     "reduce_policy": "select",
     "reduce_select": "Select the integrator with the SMALLEST absolute energy drift |E_end - E0|/E0, as reported in each candidate's ENERGY_DRIFT marker. Judge purely by the reported drift magnitude — do NOT favor any particular integration method.",
-    "reducer_member": "bob",
+    "reducer_member": "alice",
     "timeout_ms": 900000
   }
 }
 ```
 
 **参数选择**：
-- `reduce_policy: select` — 让一个成员（bob）做综合评判，选出能量守恒最优
-- `reduce_select`（方法中立）— 明确「最优 = ENERGY_DRIFT 绝对值最小」，防止 reducer 把自己收到的任务（实现 Velocity Verlet）当成评判标准而永远选自己。这是 select 策略的关键参数：没有它，reducer 会退化为「谁的解符合我自己的方法就选谁」
-- `reducer_member: bob` — 指定 bob 汇总（避免默认交给 master）
+- `reduce_policy: select` — 让一个成员（alice）做综合评判，选出能量守恒最优
+- `reduce_select`（方法中立）— 明确「最优 = ENERGY_DRIFT 绝对值最小」，防止 reducer 把自己收到的任务（实现 显式 Euler）当成评判标准而永远选自己。这是 select 策略的关键参数：没有它，reducer 会退化为「谁的解符合我自己的方法就选谁」
+- `reducer_member: alice` — 指定 alice 汇总（避免默认交给 master）
 
 ### 2.4 执行流程（时序）
 
@@ -187,8 +187,8 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
 T+0m    master 调用 team_parallel (cooperative)
 T+0m    3 个 simulator 成员并行 dispatch
 T+0~6m  各成员写积分器代码 → 跑 1000 步 → 报告 ENERGY_DRIFT
-T+6m    三成员 idle → reduce (select policy, reducer=bob)
-T+7m    bob 汇总对比，交付 master
+T+6m    三成员 idle → reduce (select policy, reducer=alice)
+T+7m    alice 汇总对比，交付 master
 T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 ```
 
@@ -408,6 +408,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
       "henry": "Implement counting sort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers."
     },
     "reduce_policy": "merge",
+    "reducer_member": "alice",
     "timeout_ms": 3600000,
     "max_errored_members": 0
   }
@@ -418,6 +419,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 
 - `mode: cooperative` — 8 种算法各不相同，必须每成员独立任务
 - `reduce_policy: merge` — 保留 8 份独立结果以组装对比表（非 select 单选 / rubric 评分）
+- `reducer_member: alice` — 非 summarize 策略必须指定 reducer_member（否则工具拒绝执行）；指定 alice 做合并汇总
 - `timeout_ms: 3600000`（60 min）— 挑战级给足余量；正常 ~35 min 完成，含 timsort / counting-sort 等较重实现
 - `max_errored_members: 0` — 8 算法缺一对比表不完整，任一失败即整体失败
 
@@ -427,7 +429,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 T+0m     master 调用 team_parallel (cooperative, 8 members)
 T+0m     OCTeam 并行 dispatch 8 个 coder 成员（满编团队）
 T+0~35m  各成员独立：实现算法 → 生成 3×10^6 数据集 (seed=42) → 排序 + 计时 → 与原生排序逐元素比对 → 写 markdown 报告 + 4 标记
-T+35m    最慢成员 idle → 触发 reduce (merge policy)
+T+35m    最慢成员 idle → 触发 reduce (merge policy, reducer=alice)
 T+38m    合并的 8×3 对比表交付 master
 T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 ```
