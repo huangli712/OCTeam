@@ -229,11 +229,11 @@ export async function buildSummary(
                 case "summarize":
                     return `${head}\n${candidates}`
                 case "select": {
-                    // reduceCriteria (method-neutral) makes "best" explicit so the
+                    // reduceSelect (method-neutral) makes "best" explicit so the
                     // reducer does not default to its own prior task assignment as
                     // the judging standard. The anti-bias line is always present
                     // because the reducer is often also a contestant.
-                    const criteria = task.reduceCriteria ?? "the best overall answer"
+                    const criteria = task.reduceSelect ?? "the best overall answer"
                     return (
                         `${head}\n`
                         + `[Reduce policy: SELECT]\n`

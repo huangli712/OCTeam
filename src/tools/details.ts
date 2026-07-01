@@ -36,7 +36,7 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
                 // parallel: reduce + signoff policy
                 if (t.type === "parallel") {
                     const pol: string[] = []
-                    if (t.reducePolicy) pol.push(`reduce: ${t.reducePolicy}${t.reduceRubric ? ` (${t.reduceRubric})` : ""}${t.reduceCriteria ? ` (${t.reduceCriteria})` : ""}`)
+                    if (t.reducePolicy) pol.push(`reduce: ${t.reducePolicy}${t.reduceRubric ? ` (${t.reduceRubric})` : ""}${t.reduceSelect ? ` (${t.reduceSelect})` : ""}`)
                     if (t.signoffPolicy) {
                         let s = `signoff: ${t.signoffPolicy}`
                         if (t.signoffDecider) s += ` (decider: ${t.signoffDecider})`

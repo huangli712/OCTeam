@@ -68,11 +68,11 @@ describe("buildSummary reduce_policy (parallel)", () => {
         expect(summary).toContain("2 candidates")
     })
 
-    test("select with reduceCriteria: injects method-neutral criteria + anti-bias", async () => {
+    test("select with reduceSelect: injects method-neutral criteria + anti-bias", async () => {
         const task = makeParallelTask({
             responses: { alice: "drift 0.1", bob: "drift 1e-6", carol: "drift 1e-11" },
             reducePolicy: "select",
-            reduceCriteria: "smallest absolute ENERGY_DRIFT value",
+            reduceSelect: "smallest absolute ENERGY_DRIFT value",
         })
         const summary = await buildSummary(mockTeam, task, "test")
         expect(summary).toContain("Selection criteria: smallest absolute ENERGY_DRIFT value")
@@ -80,7 +80,7 @@ describe("buildSummary reduce_policy (parallel)", () => {
         expect(summary).toContain("do NOT favor a candidate because it matches your own")
     })
 
-    test("select without reduceCriteria: falls back to default criteria + still anti-bias", async () => {
+    test("select without reduceSelect: falls back to default criteria + still anti-bias", async () => {
         const task = makeParallelTask({
             responses: { alice: "answer A" },
             reducePolicy: "select",

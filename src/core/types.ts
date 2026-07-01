@@ -162,7 +162,7 @@ export interface ActiveTaskBase {
     // reduce policy (parallel isolated/collaborative only; read un-narrowed)
     reducePolicy?: ReducePolicy
     reduceRubric?: string                    // when reducePolicy === "rubric"
-    reduceCriteria?: string                  // when reducePolicy === "select": what "best" means (method-neutral)
+    reduceSelect?: string                   // when reducePolicy === "select": what "best" means (method-neutral)
     // #4 real map-reduce: when reducePolicy != summarize AND reducerMember names
     // a live member AND there are >1 candidates, a dedicated reducer member is
     // dispatched post-barrier to combine outputs into one. Otherwise (undefined
