@@ -176,10 +176,25 @@ export function runRecordPath(teamDirectory: string, runId: string): string {
     return path.join(runDir(teamDirectory, runId), "record.json")
 }
 
-/** runs/{runId}/{member}.md — a single member's full (untruncated) output */
+/**
+ * runs/{runId}/{member}.md — a single member's ACCUMULATED output across all
+ * its turns in this run (appended per idle; NOT just the last turn). Excludes
+ * reduce-stage output, which goes to runReduceOutputPath.
+ */
 export function runMemberOutputPath(teamDirectory: string, runId: string, memberName: string): string {
     assertSafeSegment(memberName, "runMemberOutputPath", "memberName")
     return path.join(runDir(teamDirectory, runId), `${memberName}.md`)
+}
+
+/**
+ * runs/{runId}/reduce.md — the run-level reduced artifact produced by the
+ * reducer member during the reduce stage. Kept separate from the reducer's own
+ * {member}.md (which holds that member's primary deliverable) so neither
+ * overwrites the other. Picked up automatically by persistRun's .md readdir
+ * scan, so team_result_get(member="reduce") returns it with no extra plumbing.
+ */
+export function runReduceOutputPath(teamDirectory: string, runId: string): string {
+    return path.join(runDir(teamDirectory, runId), "reduce.md")
 }
 
 /** runs/{runId}/events.jsonl — append-only run timeline (one RunEvent per line) */

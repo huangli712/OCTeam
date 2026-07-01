@@ -22,6 +22,7 @@
  */
 
 import crypto from "node:crypto"
+import { readFile } from "node:fs/promises"
 import type { PluginContext } from "../core/context.js"
 import { logEvent } from "../core/log.js"
 import { type Team, loadTeamState, saveTeamState } from '../state/store.js';
@@ -31,7 +32,7 @@ import { extractOutputFromParts, sumMemberTokens, truncateOutput } from "../core
 import { resolveTeamMember } from "../state/resolve.js"
 import { safeMemberAgent } from "../core/role.js"
 import { atomicWrite } from "../state/locks.js"
-import { runMemberOutputPath } from "../state/paths.js"
+import { runMemberOutputPath, runReduceOutputPath } from "../state/paths.js"
 import { logSwallowed } from "../core/log.js"
 import type { ActiveTask, MemberState } from "../core/types.js"
 import { deliverQueuedResultsToMaster } from "./summary.js"
@@ -266,19 +267,49 @@ export async function processIdle(
 
 
 /**
+ * Build the accumulated run-member output by appending the current turn's
+ * output to whatever was captured previously. The first turn writes verbatim;
+ * each subsequent turn is prefixed with a separator carrying the capture
+ * timestamp and turn byte-length, so the file reads as a complete transcript
+ * of the member's deliveries across the run (NOT just the last turn).
+ *
+ * Extracted from captureMemberOutput so the accumulation logic is unit-testable
+ * independent of ctx/team plumbing. Pure: no IO, no side effects.
+ */
+export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: string): string {
+    if (prev === "") return turnOutput
+    return `${prev}\n\n--- captured ${capturedIso} (${turnOutput.length} bytes) ---\n\n${turnOutput}`
+}
+
+/**
  * Step 4 of processIdle: capture the member's output from the current turn.
  * Mode-aware (delegate skips — results go via team_send_message; signoff stage
- * always captures to parse <signoff> tags). Persists the full output to
- * runs/<runId>/<member>.md and the truncated version to responses[].
+ * always captures to parse <signoff> tags).
+ *
+ * Persistence is ACCUMULATIVE across turns (not last-turn overwrite): a member
+ * may idle multiple times in one run (reducer role, re-prompt, multi-turn
+ * incremental delivery). Overwriting would silently drop earlier turns'
+ * deliverables. The file is read, the new turn is appended via appendTurnBlock,
+ * and the result is written back atomically.
+ *
+ * Reduce-stage routing: when the parallel task is in its reduce stage and this
+ * member is the reducer, the output is the run-level reduced artifact (a
+ * synthesis of ALL members' outputs), not this member's own deliverable. It is
+ * persisted to runs/<runId>/reduce.md (run-scoped) so it never overwrites the
+ * reducer's own <member>.md. Both files accumulate.
+ *
+ * responses[] still receives the truncated CURRENT turn (loaded into state.json
+ * and injected into prompts; also the source of reducedResult in handleReduceIdle).
  */
-async function captureMemberOutput(
+export async function captureMemberOutput(
     ctx: PluginContext,
     team: Team,
     member: MemberState,
     messages: Array<{ info?: any; parts?: any }>,
 ): Promise<void> {
-    if (!team.activeTask) return
-    const shouldCapture = team.activeTask.type !== "delegate" || !!team.activeTask.signoffStage
+    const task = team.activeTask
+    if (!task) return
+    const shouldCapture = task.type !== "delegate" || !!task.signoffStage
     if (!shouldCapture) return
     // Find the start of the current turn (last user message).
     let turnStart = 0
@@ -296,29 +327,48 @@ async function captureMemberOutput(
             if (text) outputs.push(text)
         }
     }
-    if (outputs.length > 0) {
-        const full = outputs.join("\n\n")
-        // responses[] stays truncated for context-safety (loaded into state.json
-        // and injected into prompts). The FULL output is persisted separately to
-        // runs/<runId>/<member>.md so #2 retrieval can recover it losslessly.
-        team.activeTask.responses[member.name] = truncateOutput(full)
-        const runId = (team.activeTask.runId ??= crypto.randomUUID())
-        await atomicWrite(
-            runMemberOutputPath(team.directory, runId, member.name),
-            full,
-        ).catch(err =>
-            logSwallowed(ctx, "persist member output failed", err, {
-                team: team.teamName,
-                member: member.name,
-            }),
-        )
-        recordEvent(team, {
-            timestamp: Date.now(),
-            kind: "captured",
-            member: member.name,
-            bytes: full.length,
-        })
+    if (outputs.length === 0) return
+    const full = outputs.join("\n\n")
+    // responses[] stays truncated for context-safety (loaded into state.json
+    // and injected into prompts; handleReduceIdle reads reducedResult from here).
+    // The FULL accumulated output is persisted separately to runs/<runId>/*.md
+    // so #2 retrieval can recover it losslessly across ALL turns.
+    task.responses[member.name] = truncateOutput(full)
+    const runId = (task.runId ??= crypto.randomUUID())
+
+    // Reduce-stage reducer output is a run-level artifact, not the reducer's own
+    // deliverable. Route it to runs/<runId>/reduce.md so it never overwrites the
+    // reducer's <member>.md (which holds that member's primary task output).
+    const isReduceTurn =
+        task.type === "parallel" && !!task.reduceStage && member.name === task.reducerMember
+    const outPath = isReduceTurn
+        ? runReduceOutputPath(team.directory, runId)
+        : runMemberOutputPath(team.directory, runId, member.name)
+
+    // Accumulate: read whatever was previously captured for this target, append
+    // the current turn with a separator, and write back atomically. A member
+    // (or the reducer slot) can idle more than once in a run — without this,
+    // each idle would overwrite prior turns' deliverables.
+    let prev = ""
+    try {
+        prev = await readFile(outPath, "utf8")
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
     }
+    const accumulated = appendTurnBlock(prev, full, new Date().toISOString())
+
+    await atomicWrite(outPath, accumulated).catch(err =>
+        logSwallowed(ctx, "persist member output failed", err, {
+            team: team.teamName,
+            member: member.name,
+        }),
+    )
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "captured",
+        member: member.name,
+        bytes: full.length,
+    })
 }
 
 const RETRY_ESCALATION_MS = 60_000

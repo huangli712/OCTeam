@@ -1,6 +1,13 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, mock, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 
 import { extractOutputFromParts, extractTextFromParts } from "../src/core/utils.js"
+import type { PluginContext } from "../src/core/context.js"
+import type { ActiveTask } from "../src/core/types.js"
+import { appendTurnBlock, captureMemberOutput } from "../src/orchestration/handlers.js"
+import { runMemberOutputPath, runReduceOutputPath } from "../src/state/paths.js"
+import { initTeamState } from "../src/state/store.js"
+import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 describe("extractTextFromParts (baseline regression)", () => {
     test("extracts text from text-only parts", () => {
@@ -161,5 +168,200 @@ describe("extractOutputFromParts", () => {
         const result = extractOutputFromParts(parts)
         expect(result).toContain("[File: src/main.ts]")
         expect(result).toContain("console.log('hello')")
+    })
+})
+
+// --- captureMemberOutput: turn accumulation + reduce-stage routing ---
+//
+// Regression coverage for the two bugs fixed in captureMemberOutput:
+//   1. LAST-TURN OVERWRITE: a member idling more than once in a run (reducer
+//      role, re-prompt, multi-turn incremental delivery) silently lost earlier
+//      turns' deliverables, because atomicWrite overwrote <member>.md each
+//      idle. Now turns accumulate (appendTurnBlock).
+//   2. REDUCE-STAGE COLLISION: the reducer's reduce-stage output (a synthesis
+//      of ALL members' work) overwrote the reducer's own <member>.md
+//      deliverable. Now it is routed to runs/<runId>/reduce.md so neither file
+//      clobbers the other.
+
+const capRoots: string[] = []
+afterEach(() => {
+    for (const r of capRoots.splice(0)) {
+        try {
+            const { rmSync } = require("node:fs")
+            rmSync(r, { recursive: true, force: true })
+        } catch {
+            // best-effort cleanup
+        }
+    }
+})
+
+function makeCaptureCtx(storageRoot: string): PluginContext {
+    return {
+        storageRoot,
+        scope: "project",
+        directory: "/app",
+        client: {
+            app: { log: mock(async () => {}) },
+            session: {
+                abort: mock(async () => {}),
+                promptAsync: mock(async () => {}),
+                messages: mock(async () => ({ data: [] })),
+            },
+        },
+    } as unknown as PluginContext
+}
+
+/** Minimal active parallel task; opts flip it into a reduce-stage task. */
+function parallelCaptureTask(opts?: {
+    runId?: string
+    reduceStage?: boolean
+    reducerMember?: string
+}): ActiveTask {
+    return {
+        type: "parallel",
+        mode: "isolated",
+        startedAt: Date.now(),
+        wallClockTimeoutMs: 300_000,
+        tokensUsed: 0,
+        tokensByMember: {},
+        messagesSent: 0,
+        responses: {},
+        stages: [],
+        currentStageIndex: 0,
+        decisionHistory: [],
+        decisionParseFailures: 0,
+        runId: opts?.runId ?? "run-cap",
+        reduceStage: opts?.reduceStage ?? false,
+        reducerMember: opts?.reducerMember,
+        reducePolicy: opts?.reducerMember ? "merge" : undefined,
+    } as ActiveTask
+}
+
+/** A one-turn message history: one user prompt followed by one assistant reply. */
+function oneTurn(assistantText: string): Array<{ info?: { role: string }; parts?: unknown[] }> {
+    return [
+        { info: { role: "user" }, parts: [{ type: "text", text: "prompt" }] },
+        { info: { role: "assistant" }, parts: [{ type: "text", text: assistantText }] },
+    ]
+}
+
+describe("appendTurnBlock (pure accumulation helper)", () => {
+    test("first turn (prev='') writes verbatim with no separator", () => {
+        expect(appendTurnBlock("", "hello", "2026-07-01T00:00:00Z")).toBe("hello")
+    })
+
+    test("subsequent turn prepends a separator carrying iso + byte count", () => {
+        const out = appendTurnBlock("first", "second", "2026-07-01T00:00:01Z")
+        expect(out).toBe("first\n\n--- captured 2026-07-01T00:00:01Z (6 bytes) ---\n\nsecond")
+    })
+
+    test("byte count reflects the NEW turn's length, not the accumulated prev", () => {
+        const longPrev = "x".repeat(1000)
+        const out = appendTurnBlock(longPrev, "ab", "iso")
+        expect(out).toContain("(2 bytes)")
+        expect(out).not.toContain("1002 bytes")
+    })
+
+    test("both prev and new content survive in the accumulated result", () => {
+        const out = appendTurnBlock("DELIVERABLE_A", "DELIVERABLE_B", "iso")
+        expect(out).toContain("DELIVERABLE_A")
+        expect(out).toContain("DELIVERABLE_B")
+    })
+})
+
+describe("captureMemberOutput: turn accumulation (last-turn-overwrite regression)", () => {
+    test("two exec idles -> <member>.md accumulates BOTH turns with a separator", async () => {
+        const root = tmpRoot("cap-acc")
+        capRoots.push(root)
+        const ctx = makeCaptureCtx(root)
+        const alice = makeMember("alice", "ses_alice")
+        const team = await initTeamState(
+            root,
+            makeState("acc-team", "ses_master", [alice], Date.now()),
+            "ses_master",
+        )
+        const dir = team.directory
+
+        await team.mutex.runExclusive(async () => {
+            team.activeTask = parallelCaptureTask({ runId: "run-acc" })
+            await captureMemberOutput(ctx, team, alice, oneTurn("TURN_ONE_DELIVERABLE"))
+            await captureMemberOutput(ctx, team, alice, oneTurn("TURN_TWO_ACK"))
+        })
+
+        const md = await readFile(runMemberOutputPath(dir, "run-acc", "alice"), "utf8")
+        // BOTH turns present (the bug: only TURN_TWO_ACK survived).
+        expect(md).toContain("TURN_ONE_DELIVERABLE")
+        expect(md).toContain("TURN_TWO_ACK")
+        // Separator inserted between turns.
+        expect(md).toMatch(/--- captured .+ \(\d+ bytes\) ---/)
+        // Order preserved: first turn precedes second.
+        expect(md.indexOf("TURN_ONE_DELIVERABLE")).toBeLessThan(md.indexOf("TURN_TWO_ACK"))
+    })
+})
+
+describe("captureMemberOutput: reduce-stage routing (reducer.md overwrite regression)", () => {
+    test("reduce-stage reducer idle -> reduce.md written; reducer's own .md untouched", async () => {
+        const root = tmpRoot("cap-red")
+        capRoots.push(root)
+        const ctx = makeCaptureCtx(root)
+        const bob = makeMember("bob", "ses_bob")
+        const team = await initTeamState(
+            root,
+            makeState("red-team", "ses_master", [bob], Date.now()),
+            "ses_master",
+        )
+        const dir = team.directory
+
+        await team.mutex.runExclusive(async () => {
+            team.activeTask = parallelCaptureTask({
+                runId: "run-red",
+                reduceStage: true,
+                reducerMember: "bob",
+            })
+            await captureMemberOutput(ctx, team, bob, oneTurn("REDUCED_ARTIFACT"))
+        })
+
+        // Reduce-stage output lands in the run-level reduce.md.
+        const reduceMd = await readFile(runReduceOutputPath(dir, "run-red"), "utf8")
+        expect(reduceMd).toContain("REDUCED_ARTIFACT")
+
+        // The reducer's own <member>.md is NOT touched by the reduce turn
+        // (the bug: bob.md was overwritten with the reduce summary, losing bob's
+        // own stratified-sampling deliverable).
+        await expect(readFile(runMemberOutputPath(dir, "run-red", "bob"), "utf8")).rejects.toThrow()
+    })
+
+    test("reducer exec turn -> <member>.md; then reduce turn -> reduce.md (both preserved)", async () => {
+        const root = tmpRoot("cap-both")
+        capRoots.push(root)
+        const ctx = makeCaptureCtx(root)
+        const bob = makeMember("bob", "ses_bob")
+        const team = await initTeamState(
+            root,
+            makeState("both-team", "ses_master", [bob], Date.now()),
+            "ses_master",
+        )
+        const dir = team.directory
+
+        await team.mutex.runExclusive(async () => {
+            // Turn 1: bob's own exec deliverable (reduceStage = false).
+            team.activeTask = parallelCaptureTask({ runId: "run-both", reducerMember: "bob" })
+            await captureMemberOutput(ctx, team, bob, oneTurn("BOB_OWN_DELIVERABLE"))
+            // Turn 2: bob becomes the reducer (reduceStage = true, same reducer).
+            team.activeTask.reduceStage = true
+            await captureMemberOutput(ctx, team, bob, oneTurn("REDUCED_SYNTHESIS"))
+        })
+
+        const bobMd = await readFile(runMemberOutputPath(dir, "run-both", "bob"), "utf8")
+        const reduceMd = await readFile(runReduceOutputPath(dir, "run-both"), "utf8")
+
+        // bob's own deliverable survives in bob.md (the bug: it was overwritten).
+        expect(bobMd).toContain("BOB_OWN_DELIVERABLE")
+        // The reduce turn is NOT misrouted into bob.md.
+        expect(bobMd).not.toContain("REDUCED_SYNTHESIS")
+        // The reduce synthesis lands in reduce.md.
+        expect(reduceMd).toContain("REDUCED_SYNTHESIS")
+        // bob's exec deliverable is NOT misrouted into reduce.md.
+        expect(reduceMd).not.toContain("BOB_OWN_DELIVERABLE")
     })
 })
