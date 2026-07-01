@@ -31,7 +31,7 @@ async function writeRun(
         teamRunId: "team-run-id",
         teamName: "alpha",
         type: "parallel",
-        reason: "parallel_collaborative_complete",
+        reason: "parallel_cooperative_complete",
         status: "completed",
         startedAt: 0,
         finishedAt: 0,

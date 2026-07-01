@@ -72,7 +72,7 @@ per team at a time. The nine workflow primitives are:
 
 | Primitive | Shape |
 |-----------|-------|
-| `team_parallel` | Run a task across all members in parallel (isolated or collaborative) |
+| `team_parallel` | Run a task across all members in parallel (isolated or cooperative) |
 | `team_consensus` | Multi-round structured debate until all members agree |
 | `team_pipeline` | Linear pipeline where stage N's output feeds stage N+1 |
 | `team_loop` | Corrective loop: code, review, decide, repeat |

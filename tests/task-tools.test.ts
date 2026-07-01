@@ -49,7 +49,7 @@ describe("team_task_create (tool layer)", () => {
         expect(result).toContain("fix bug")
     })
 
-    test("member can also create tasks (collaborative access)", async () => {
+    test("member can also create tasks (cooperative access)", async () => {
         const root = tmpRoot("ttc-member")
         const masterSid = "ses_ttc_master"
         const memberSid = "ses_ttc_member"
@@ -59,7 +59,7 @@ describe("team_task_create (tool layer)", () => {
             { team_id: "alpha", subject: "fix bug", description: "desc" },
             { sessionID: memberSid } as any,
         )
-        // Members can create tasks — it's collaborative.
+        // Members can create tasks — it's cooperative.
         expect(result).toContain("Task created")
     })
 })

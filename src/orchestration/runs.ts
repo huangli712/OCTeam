@@ -65,7 +65,7 @@ export function runStatusFromReason(reason: string): RunStatus {
 const OrchestrationTypeSchema = z.enum([
     "parallel", "pipeline", "loop", "delegate", "consensus", "route", "arbitrate", "recurse", "tollgate",
 ])
-const ParallelModeSchema = z.enum(["isolated", "collaborative"])
+const ParallelModeSchema = z.enum(["isolated", "cooperative"])
 const RunStatusSchema = z.enum(["completed", "failed"])
 const SignoffPolicySchema = z.enum(["none", "decider", "peer-quorum"])
 

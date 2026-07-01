@@ -38,8 +38,8 @@ describe("isForbiddenLateralMessage (isolated comms gate)", () => {
         expect(isForbiddenLateralMessage("isolated", false, ["master", "bob"])).toBe(true)
     })
 
-    test("collaborative + member sender + member recipient → allowed", () => {
-        expect(isForbiddenLateralMessage("collaborative", false, ["bob"])).toBe(false)
+    test("cooperative + member sender + member recipient → allowed", () => {
+        expect(isForbiddenLateralMessage("cooperative", false, ["bob"])).toBe(false)
     })
 
     test("undefined mode (no parallel run / pipeline / loop / delegate / consensus) → allowed", () => {
@@ -103,7 +103,7 @@ function directiveMsg(id: string, body: string, runId: string | undefined): Mess
 function makeActiveTask(runId: string): ActiveTask {
     return {
         type: "parallel",
-        mode: "collaborative",
+        mode: "cooperative",
         startedAt: 1000,
         wallClockTimeoutMs: 300000,
         tokensUsed: 0,

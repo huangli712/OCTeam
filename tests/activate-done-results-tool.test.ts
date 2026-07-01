@@ -44,7 +44,7 @@ function makeCtx(root: string): PluginContext {
     } as unknown as PluginContext
 }
 
-function makeActiveParallelTask(opts: { requireDoneAck?: boolean; mode?: "isolated" | "collaborative" } = {}): ActiveTask {
+function makeActiveParallelTask(opts: { requireDoneAck?: boolean; mode?: "isolated" | "cooperative" } = {}): ActiveTask {
     return {
         type: "parallel",
         mode: opts.mode ?? "isolated",

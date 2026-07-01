@@ -40,7 +40,7 @@ function makeTeam(opts: {
     }))
     const task: ActiveTask = {
         type: opts.type ?? "parallel",
-        mode: "collaborative",
+        mode: "cooperative",
         startedAt: Date.now(),
         wallClockTimeoutMs: 300000,
         tokensUsed: 0,

@@ -102,7 +102,7 @@ export type Bounds = {
 // --- ActiveTask ---
 
 export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse" | "tollgate"
-export type ParallelMode = "isolated" | "collaborative"
+export type ParallelMode = "isolated" | "cooperative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
 
@@ -159,7 +159,7 @@ export interface ActiveTaskBase {
     decisionHistory: DecisionRecord[]        // structured decisions per round (loop)
     decisionParseFailures: number            // consecutive <decision> parse failures; abort at 3 (loop)
 
-    // reduce policy (parallel isolated/collaborative only; read un-narrowed)
+    // reduce policy (parallel isolated/cooperative only; read un-narrowed)
     reducePolicy?: ReducePolicy
     reduceRubric?: string                    // when reducePolicy === "rubric"
     reduceSelect?: string                   // when reducePolicy === "select": what "best" means (method-neutral)
@@ -171,7 +171,7 @@ export interface ActiveTaskBase {
     reduceStage?: boolean                    // true while the reducer stage is in flight
     reducedResult?: string                   // reducer's combined output; delivered verbatim once set
 
-    // signoff policy (parallel isolated/collaborative, pipeline, delegate; NOT loop).
+    // signoff policy (parallel isolated/cooperative, pipeline, delegate; NOT loop).
     // Read un-narrowed by maybeTriggerSignoff/handleSignoffIdle, so Base.
     signoffPolicy?: SignoffPolicy
     signoffDecider?: string                  // member name (decider mode)
@@ -191,10 +191,10 @@ export interface ActiveTaskBase {
     runId?: string
 }
 
-// parallel: fan-out then converge. `tasks` is collaborative per-member work.
+// parallel: fan-out then converge. `tasks` is cooperative per-member work.
 export interface ParallelTask extends ActiveTaskBase {
     type: "parallel"
-    tasks?: Record<string, string>           // collaborative: { memberName: task }
+    tasks?: Record<string, string>           // cooperative: { memberName: task }
 }
 
 // pipeline: ordered stages, output prefixed forward.
@@ -391,7 +391,7 @@ export type Message = {
     deliveryStatus: "pending" | "delivered" | "processed"
 }
 
-// --- Task (shared task list, for collaborative modes) ---
+// --- Task (shared task list, for cooperative modes) ---
 
 export type TaskStatus = "pending" | "claimed" | "in_progress" | "completed" | "deleted"
 

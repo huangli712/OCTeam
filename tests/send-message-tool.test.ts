@@ -29,7 +29,7 @@ function makeCtx(root: string): PluginContext {
     } as unknown as PluginContext
 }
 
-function makeActiveTask(mode: "isolated" | "collaborative"): ActiveTask {
+function makeActiveTask(mode: "isolated" | "cooperative"): ActiveTask {
     return {
         type: "parallel",
         mode,
@@ -183,7 +183,7 @@ describe("teamSendMessageTool.execute: isolated-mode lateral gate", () => {
         expect(result).toContain("isolated mode forbids member-to-member messaging")
     })
 
-    test("member→member in collaborative mode → allowed", async () => {
+    test("member→member in cooperative mode → allowed", async () => {
         const root = tmpRoot("sm-collab")
         const masterSid = "ses_sm_col_master"
         const aliceSid = "ses_sm_col_alice"
@@ -192,7 +192,7 @@ describe("teamSendMessageTool.execute: isolated-mode lateral gate", () => {
             root,
             masterSid,
             members: [makeMember("alice", aliceSid), makeMember("bob", "ses_sm_col_bob")],
-            activeTask: makeActiveTask("collaborative"),
+            activeTask: makeActiveTask("cooperative"),
         })
 
         const result = await teamSendMessageTool(makeCtx(root)).execute(
@@ -229,7 +229,7 @@ describe("teamSendMessageTool.execute: payload cap + per-run cap", () => {
         const masterSid = "ses_sm_rc_master"
         const aliceSid = "ses_sm_rc_alice"
         tracked.push(masterSid, aliceSid)
-        const task = makeActiveTask("collaborative")
+        const task = makeActiveTask("cooperative")
         task.messagesSent = 100 // already at the maxMessagesPerRun bound
         await setup({
             root,

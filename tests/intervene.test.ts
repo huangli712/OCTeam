@@ -26,7 +26,7 @@ function makeCtx(root: string): PluginContext {
 function makeActiveTask(runId: string | undefined, overrides: Partial<ActiveTask> = {}): ActiveTask {
     return {
         type: "parallel",
-        mode: "collaborative",
+        mode: "cooperative",
         startedAt: 1000,
         wallClockTimeoutMs: 300000,
         tokensUsed: 0,

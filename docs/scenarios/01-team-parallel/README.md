@@ -1,6 +1,6 @@
 # team_parallel 编排场景设计
 
-> **模式**：`team_parallel` — 在所有成员上并行运行任务（`isolated` 同任务 / `collaborative` 各自任务），可选 reduce 策略汇总输出。
+> **模式**：`team_parallel` — 在所有成员上并行运行任务（`isolated` 同任务 / `cooperative` 各自任务），可选 reduce 策略汇总输出。
 > **源码**：[`src/tools/parallel.ts`](../../../src/tools/parallel.ts)（`teamParallelTool`）
 > **控时设计**：3 成员并行，每成员子任务 5-8 min；总时长 ≈ 最慢成员 + reduce ≈ 10-15 min（远低于 30 min 上限）。
 
@@ -67,7 +67,7 @@
   "tool": "team_parallel",
   "args": {
     "team_id": "pi-bench",
-    "mode": "collaborative",
+    "mode": "cooperative",
     "tasks": {
       "alice": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker.",
       "bob": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker.",
@@ -81,7 +81,7 @@
 ```
 
 **参数选择**：
-- `mode: collaborative` — 三方法不同，必须各自任务
+- `mode: cooperative` — 三方法不同，必须各自任务
 - `reduce_policy: merge` — 保留三方法独立结果做对比（非 select 单选）
 - `timeout_ms: 900000`（15 min）— 给足余量，正常 8 min 完成
 - `max_errored_members: 0` — 任一成员失败即整体失败（三方法缺一不完整）
@@ -89,7 +89,7 @@
 ### 1.4 执行流程（时序）
 
 ```
-T+0m    master 调用 team_parallel (collaborative)
+T+0m    master 调用 team_parallel (cooperative)
 T+0m    OCTeam 并行 dispatch 3 个 mathematician 成员
 T+0~8m  各成员独立：写代码 → 运行 10^6 采样 → 写 markdown 报告 + PI_EST 标记
 T+8m    最慢成员 idle → 触发 reduce (merge policy)
@@ -160,7 +160,7 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
   "tool": "team_parallel",
   "args": {
     "team_id": "oscillator-bench",
-    "mode": "collaborative",
+    "mode": "cooperative",
     "tasks": {
       "alice": "Run your explicit Euler simulation now and report the energy drift marker.",
       "bob": "Run your Velocity Verlet simulation now and report the energy drift marker.",
@@ -182,7 +182,7 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
 ### 2.4 执行流程（时序）
 
 ```
-T+0m    master 调用 team_parallel (collaborative)
+T+0m    master 调用 team_parallel (cooperative)
 T+0m    3 个 simulator 成员并行 dispatch
 T+0~6m  各成员写积分器代码 → 跑 1000 步 → 报告 ENERGY_DRIFT
 T+6m    三成员 idle → reduce (select policy, reducer=bob)
@@ -252,7 +252,7 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
   "tool": "team_parallel",
   "args": {
     "team_id": "sum-bench",
-    "mode": "collaborative",
+    "mode": "cooperative",
     "tasks": {
       "alice": "Implement your brute-force Two Sum now. Embed code + complexity marker.",
       "bob": "Implement your hash-map Two Sum now. Embed code + complexity marker.",
@@ -274,7 +274,7 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 ### 3.4 执行流程（时序）
 
 ```
-T+0m    master 调用 team_parallel (collaborative)
+T+0m    master 调用 team_parallel (cooperative)
 T+0m    3 个 coder 成员并行 dispatch
 T+0~5m  各成员写 Two Sum 实现 + 嵌入代码 + 复杂度标注
 T+5m    三成员 idle → reduce (rubric policy, reducer=bob)
@@ -394,7 +394,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
   "tool": "team_parallel",
   "args": {
     "team_id": "sort-bench",
-    "mode": "collaborative",
+    "mode": "cooperative",
     "tasks": {
       "alice": "Implement quicksort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
       "bob": "Implement mergesort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
@@ -414,7 +414,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 
 **参数选择**
 
-- `mode: collaborative` — 8 种算法各不相同，必须每成员独立任务
+- `mode: cooperative` — 8 种算法各不相同，必须每成员独立任务
 - `reduce_policy: merge` — 保留 8 份独立结果以组装对比表（非 select 单选 / rubric 评分）
 - `timeout_ms: 3600000`（60 min）— 挑战级给足余量；正常 ~35 min 完成，含 timsort / counting-sort 等较重实现
 - `max_errored_members: 0` — 8 算法缺一对比表不完整，任一失败即整体失败
@@ -422,7 +422,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 ### 4.4 执行流程（时序）
 
 ```
-T+0m     master 调用 team_parallel (collaborative, 8 members)
+T+0m     master 调用 team_parallel (cooperative, 8 members)
 T+0m     OCTeam 并行 dispatch 8 个 coder 成员（满编团队）
 T+0~35m  各成员独立：实现算法 → 生成 3×10^6 数据集 (seed=42) → 排序 + 计时 → 与原生排序逐元素比对 → 写 markdown 报告 + 4 标记
 T+35m    最慢成员 idle → 触发 reduce (merge policy)

@@ -23,7 +23,7 @@ function makeTeam(opts: {
     const task: ActiveTask | undefined = opts.activeTask
         ? {
               type: "parallel",
-              mode: "collaborative",
+              mode: "cooperative",
               startedAt: 0,
               wallClockTimeoutMs: 300000,
               tokensUsed: 0,

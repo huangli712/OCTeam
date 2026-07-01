@@ -105,13 +105,13 @@ describe("team_parallel startup validation", () => {
         expect(result).toContain("requires `task`")
     })
 
-    test("collaborative without tasks → rejected", async () => {
+    test("cooperative without tasks → rejected", async () => {
         const root = tmpRoot("par-notasks")
         const sid = "ses_par_notasks"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
         const result = await teamParallelTool(makeCtx(root)).execute(
-            { team_id: "alpha", mode: "collaborative" },
+            { team_id: "alpha", mode: "cooperative" },
             { sessionID: sid } as any,
         )
         expect(result).toContain("requires `tasks`")

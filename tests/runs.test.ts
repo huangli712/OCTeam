@@ -41,7 +41,7 @@ function makeTeam(opts: {
     const task: ActiveTask | undefined = opts.activeTask
         ? {
               type: "parallel",
-              mode: "collaborative",
+              mode: "cooperative",
               startedAt: 1000,
               wallClockTimeoutMs: 300000,
               tokensUsed: 0,
@@ -91,7 +91,7 @@ describe("run path helpers", () => {
 
 describe("runStatusFromReason", () => {
     test("completion reasons → completed", () => {
-        expect(runStatusFromReason("parallel_collaborative_complete")).toBe("completed")
+        expect(runStatusFromReason("parallel_cooperative_complete")).toBe("completed")
         expect(runStatusFromReason("consensus_reached")).toBe("completed")
         expect(runStatusFromReason("pipeline_complete")).toBe("completed")
         expect(runStatusFromReason("loop_complete:decider_done")).toBe("completed")
@@ -149,7 +149,7 @@ describe("persistRun", () => {
     test("lazy runId: generated when task has none", async () => {
         const dir = tmpTeamDir()
         const team = makeTeam({ directory: dir, activeTask: { type: "parallel" } })
-        await persistRun(team, "parallel_collaborative_complete")
+        await persistRun(team, "parallel_cooperative_complete")
         expect(team.activeTask!.runId).toBeDefined()
         const rec = await readRunRecord(dir, team.activeTask!.runId!)
         expect(rec).not.toBeNull()
@@ -233,7 +233,7 @@ describe("retention (pruneRuns)", () => {
                 directory: dir,
                 activeTask: { runId: `run-${String(i).padStart(3, "0")}`, type: "parallel" },
             })
-            await persistRun(team, "parallel_collaborative_complete")
+            await persistRun(team, "parallel_cooperative_complete")
         }
         const remaining = await fs.readdir(runsDir(dir))
         expect(remaining.length).toBe(DEFAULT_MAX_RUNS)
@@ -245,7 +245,7 @@ describe("listRunRecords / readRunRecord", () => {
         const dir = tmpTeamDir()
         for (const [runId, finishedAt] of [["a", 100], ["b", 300], ["c", 200]] as const) {
             const team = makeTeam({ directory: dir, activeTask: { runId, type: "parallel" } })
-            await persistRun(team, "parallel_collaborative_complete")
+            await persistRun(team, "parallel_cooperative_complete")
             // backfill finishedAt deterministically
             const rec = await readRunRecord(dir, runId)
             rec!.finishedAt = finishedAt

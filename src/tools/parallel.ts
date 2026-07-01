@@ -21,15 +21,15 @@ import {
 export function teamParallelTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Run a task across all members in parallel. Modes: isolated (same task, no comms), collaborative (per-member tasks, free comms). For multi-round debate to consensus, use team_consensus.",
+            "Run a task across all members in parallel. Modes: isolated (same task, no comms), cooperative (per-member tasks, free comms). For multi-round debate to consensus, use team_consensus.",
         args: {
             team_id: tool.schema.string().min(1),
-            mode: tool.schema.enum(["isolated", "collaborative"]),
+            mode: tool.schema.enum(["isolated", "cooperative"]),
             task: tool.schema.string().max(8192).optional().describe("isolated mode: the single task sent to all members"),
             tasks: tool.schema
                 .record(tool.schema.string(), tool.schema.string().max(8192))
                 .optional()
-                .describe("collaborative mode: { memberName: task }"),
+                .describe("cooperative mode: { memberName: task }"),
             reduce_policy: tool.schema
                 .enum(["summarize", "select", "merge", "rubric"])
                 .optional()
@@ -66,14 +66,14 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     if (args.mode === "isolated" && !args.task) {
                         return "Error: isolated mode requires `task`"
                     }
-                    if (args.mode === "collaborative" && !args.tasks) {
-                        return "Error: collaborative mode requires `tasks`"
+                    if (args.mode === "cooperative" && !args.tasks) {
+                        return "Error: cooperative mode requires `tasks`"
                     }
-                    // wf-010: every key in the collaborative `tasks` map must
+                    // wf-010: every key in the cooperative `tasks` map must
                     // name a real non-master member. An unknown key is a typo
                     // whose task would never be dispatched, so reject it
                     // instead of silently ignoring it.
-                    if (args.mode === "collaborative" && args.tasks) {
+                    if (args.mode === "cooperative" && args.tasks) {
                         for (const name of Object.keys(args.tasks)) {
                             if (!team.members.some(m => m.name === name && !m.isMaster)) {
                                 return `Error: unknown member "${name}" in tasks`

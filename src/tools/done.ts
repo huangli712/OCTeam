@@ -11,7 +11,7 @@
  *   - caller is not a team member
  *   - the team has no active task
  *   - the active task did not enable `require_done_ack`
- *   - the active task is not parallel isolated/collaborative
+ *   - the active task is not parallel isolated/cooperative
  *
  * Idempotent: calling team_done twice in one run returns the same ack.
  */
@@ -50,8 +50,8 @@ export function teamDoneTool(ctx: PluginContext): ToolDefinition {
             if (task.type !== "parallel") {
                 return `Error: team_done does not apply to ${task.type} orchestrations (parallel only)`
             }
-            if (task.mode !== "isolated" && task.mode !== "collaborative") {
-                return `Error: team_done does not apply to parallel/${task.mode} (isolated/collaborative only)`
+            if (task.mode !== "isolated" && task.mode !== "cooperative") {
+                return `Error: team_done does not apply to parallel/${task.mode} (isolated/cooperative only)`
             }
             if (!task.requireDoneAck) {
                 return "Error: this run did not enable require_done_ack; just stop producing tool calls and the barrier will fire normally on idle"

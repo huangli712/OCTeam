@@ -196,7 +196,7 @@ export async function processIdle(
             // maxMemberTurns / wall-clock timeout (checkTermination) cap retries.
             if (
                 team.activeTask.requireDoneAck
-                && (team.activeTask.mode === "isolated" || team.activeTask.mode === "collaborative")
+                && (team.activeTask.mode === "isolated" || team.activeTask.mode === "cooperative")
                 && !member.declaredDone
                 && member.sessionId
             ) {

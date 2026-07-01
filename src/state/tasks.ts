@@ -1,5 +1,5 @@
 /**
- * Shared task list for collaborative coordination.
+ * Shared task list for cooperative coordination.
  *
  * Tasks are independent JSON files under `tasks/{taskId}.json`. Claiming uses a
  * persistent `tasks/claims/{taskId}.lock` file (fs.open 'wx') plus a

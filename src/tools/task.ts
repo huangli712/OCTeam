@@ -1,6 +1,6 @@
 /**
  * Shared task-list tools: team_task_create/list/update/get.
- * Used by collaborative modes (parallel-collaborative, delegate) for
+ * Used by cooperative modes (parallel-cooperative, delegate) for
  * pull-based coordination. team_task_update with status "claimed" acquires the
  * persistent claim lock atomically (claimTask).
  *

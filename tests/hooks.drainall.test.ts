@@ -97,7 +97,7 @@ describe("event handler master drain-all", () => {
 function makeActiveTask(overrides?: Partial<ActiveTask>): ActiveTask {
     return {
         type: "parallel",
-        mode: "collaborative",
+        mode: "cooperative",
         startedAt: 1000,
         wallClockTimeoutMs: 300000,
         tokensUsed: 0,
