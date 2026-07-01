@@ -74,6 +74,7 @@
       "carol": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker."
     },
     "reduce_policy": "merge",
+    "reducer_member": "bob",
     "timeout_ms": 900000,
     "max_errored_members": 0
   }
@@ -83,6 +84,7 @@
 **参数选择**：
 - `mode: cooperative` — 三方法不同，必须各自任务
 - `reduce_policy: merge` — 保留三方法独立结果做对比（非 select 单选）
+- `reducer_member: bob` — 非 summarize 策略必须指定 reducer_member（否则工具拒绝执行）；指定 bob 做合并汇总
 - `timeout_ms: 900000`（15 min）— 给足余量，正常 8 min 完成
 - `max_errored_members: 0` — 任一成员失败即整体失败（三方法缺一不完整）
 
