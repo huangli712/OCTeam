@@ -31,7 +31,7 @@
 
 ```json
 {
-  "name": "num-theory-suite",
+  "name": "num-suite",
   "description": "Number-theory puzzle suite: 5 independent tasks self-claimed by 3 mathematicians",
   "members": [
     {
@@ -61,7 +61,7 @@
 {
   "tool": "team_delegate",
   "args": {
-    "team_id": "num-theory-suite",
+    "team_id": "num-suite",
     "tasks": [
       {
         "ref": "p1",
@@ -143,7 +143,7 @@ T+6m    运行: bun check-math-number-theory.ts <run_dir>
 
 ```json
 {
-  "name": "ode-sim-suite",
+  "name": "ode-suite",
   "description": "Classic ODE simulation suite: 3 independent systems self-claimed by 3 simulators",
   "members": [
     {
@@ -173,7 +173,7 @@ T+6m    运行: bun check-math-number-theory.ts <run_dir>
 {
   "tool": "team_delegate",
   "args": {
-    "team_id": "ode-sim-suite",
+    "team_id": "ode-suite",
     "tasks": [
       {
         "ref": "lv",
@@ -257,7 +257,7 @@ T+6m    运行: bun check-physics-ode-suite.ts <run_dir>
 
 ```json
 {
-  "name": "cli-calc-dag",
+  "name": "cli-dag",
   "description": "CLI calculator with blockedBy DAG: spec -> core+output -> tests, self-claimed by 3 coders",
   "members": [
     {
@@ -287,7 +287,7 @@ T+6m    运行: bun check-physics-ode-suite.ts <run_dir>
 {
   "tool": "team_delegate",
   "args": {
-    "team_id": "cli-calc-dag",
+    "team_id": "cli-dag",
     "tasks": [
       {
         "ref": "api",

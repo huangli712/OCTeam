@@ -34,7 +34,7 @@
 
 ```json
 {
-  "name": "matrix-inverse-debate",
+  "name": "matrix-debate",
   "description": "Arbitrate whether direct Gaussian elimination or an iterative method should invert a dense, well-conditioned 4x4 matrix",
   "members": [
     {
@@ -64,7 +64,7 @@
 {
   "tool": "team_arbitrate",
   "args": {
-    "team_id": "matrix-inverse-debate",
+    "team_id": "matrix-debate",
     "task": "For inverting a dense, well-conditioned 4x4 matrix (condition number ~10), should you use direct Gaussian elimination or an iterative method (e.g. Jacobi)?",
     "arbiter": "carol",
     "debaters": ["alice", "bob"],
@@ -129,7 +129,7 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
 
 ```json
 {
-  "name": "stiff-ode-debate",
+  "name": "ode-debate",
   "description": "Arbitrate whether explicit RK4 or implicit backward Euler should integrate the stiff ODE dy/dt=-1000y to t=1",
   "members": [
     {
@@ -159,7 +159,7 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
 {
   "tool": "team_arbitrate",
   "args": {
-    "team_id": "stiff-ode-debate",
+    "team_id": "ode-debate",
     "task": "For the stiff ODE dy/dt = -1000*y, y(0)=1, integrated to t=1, should you use explicit RK4 or implicit backward Euler?",
     "arbiter": "carol",
     "debaters": ["alice", "bob"],
@@ -223,7 +223,7 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
 
 ```json
 {
-  "name": "cache-eviction-debate",
+  "name": "cache-debate",
   "description": "Arbitrate LRU vs LFU eviction for a capacity-8 cache under strong temporal locality and uniform frequencies",
   "members": [
     {
@@ -253,7 +253,7 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
 {
   "tool": "team_arbitrate",
   "args": {
-    "team_id": "cache-eviction-debate",
+    "team_id": "cache-debate",
     "task": "For a single-process cache of capacity 8 serving a workload with strong temporal locality (recently-accessed keys likely re-accessed soon) and uniform frequencies, should you use LRU or LFU eviction?",
     "arbiter": "carol",
     "debaters": ["alice", "bob"],
@@ -320,7 +320,7 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 
 ```json
 {
-  "name": "pde-method-five-way-debate",
+  "name": "pde-debate",
   "description": "Arbitrate among FEM, FDM, FVM, Spectral, and BEM for a PDE with a complex curved boundary, advection-dominated transport, and a nonlinear source term",
   "members": [
     {
@@ -365,7 +365,7 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 {
   "tool": "team_arbitrate",
   "args": {
-    "team_id": "pde-method-five-way-debate",
+    "team_id": "pde-debate",
     "task": "For a PDE with a complex CURVED boundary, advection-dominated transport, AND a nonlinear source term, which numerical method should you choose: FEM, FDM, FVM, Spectral, or BEM?",
     "arbiter": "frank",
     "debaters": ["alice", "bob", "carol", "dave", "erin"],

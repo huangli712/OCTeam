@@ -36,7 +36,7 @@
 
 ```json
 {
-  "name": "mc-pi-bench",
+  "name": "pi-bench",
   "description": "Monte Carlo pi estimation: 3 methods compared at 1e6 samples",
   "members": [
     {
@@ -66,7 +66,7 @@
 {
   "tool": "team_parallel",
   "args": {
-    "team_id": "mc-pi-bench",
+    "team_id": "pi-bench",
     "mode": "collaborative",
     "tasks": {
       "alice": "Run your pi estimation now. Produce the numeric result and end with the PI_EST marker.",
@@ -219,7 +219,7 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 
 ```json
 {
-  "name": "two-sum-bench",
+  "name": "sum-bench",
   "description": "Two-sum problem: 3 solutions (alice / bob / carol) with complexity analysis",
   "members": [
     {
@@ -249,7 +249,7 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 {
   "tool": "team_parallel",
   "args": {
-    "team_id": "two-sum-bench",
+    "team_id": "sum-bench",
     "mode": "collaborative",
     "tasks": {
       "alice": "Implement your brute-force Two Sum now. Embed code + complexity marker.",
@@ -334,7 +334,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 
 ```json
 {
-  "name": "sort-benchmark-challenge",
+  "name": "sort-bench",
   "description": "Challenge: 8 sorting algorithms benchmarked on 3 datasets of 10^6 integers each",
   "members": [
     {
@@ -389,7 +389,7 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 {
   "tool": "team_parallel",
   "args": {
-    "team_id": "sort-benchmark-challenge",
+    "team_id": "sort-bench",
     "mode": "collaborative",
     "tasks": {
       "alice": "Implement quicksort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
@@ -516,7 +516,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 
 步骤：
 1. 读 README「4.2 Team 配置」，按其中的 team_create JSON 创建团队（8 名 coder 成员，alice..henry）
-2. team_activate 激活（team_id = sort-benchmark-challenge）
+2. team_activate 激活（team_id = sort-bench）
 3. 读 README「4.3 Master 启动调用」，按其中的 team_parallel JSON 启动编排（timeout_ms=3600000，给足 60 min）
 4. team_results 轮询，等待编排完成、master 收到 merge 汇总（含 8×3 对比表）
 5. 定位本次 run 的输出目录 <run_dir>（含 alice.md ... henry.md，共 8 个）

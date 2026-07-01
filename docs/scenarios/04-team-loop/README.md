@@ -49,7 +49,7 @@ function bisect(f: (x: number) => number, a: number, b: number, tol: number, max
 
 ```json
 {
-  "name": "bisection-fix-loop",
+  "name": "bisection-loop",
   "description": "Bisection root-finder: coder fixes 3 edge-case bugs, tester runs the edge suite, reviewer decides convergence.",
   "members": [
     {
@@ -79,7 +79,7 @@ function bisect(f: (x: number) => number, a: number, b: number, tol: number, max
 {
   "tool": "team_loop",
   "args": {
-    "team_id": "bisection-fix-loop",
+    "team_id": "bisection-loop",
     "stages": [
       { "member": "alice", "task": "Fix the three bisection defects minimally. Emit the corrected function and the FIXES marker.", "action": "modify" },
       { "member": "bob", "task": "Run the three edge cases against the coder's current bisect() and report the FAILING count.", "action": "read_only" }
@@ -157,7 +157,7 @@ function simulate(h: number, steps: number): { x: number; v: number } {
 
 ```json
 {
-  "name": "spring-energy-loop",
+  "name": "spring-loop",
   "description": "Spring-mass (k=m=1) energy drift: simulator swaps explicit Euler for Velocity Verlet, analyst measures drift before/after, reviewer decides.",
   "members": [
     {
@@ -187,7 +187,7 @@ function simulate(h: number, steps: number): { x: number; v: number } {
 {
   "tool": "team_loop",
   "args": {
-    "team_id": "spring-energy-loop",
+    "team_id": "spring-loop",
     "stages": [
       { "member": "alice", "task": "Replace explicit Euler with Velocity Verlet. Emit the corrected simulate() and the INTEGRATOR marker.", "action": "modify" },
       { "member": "bob", "task": "Measure relative energy drift before (Euler) and after (Verlet) at h=0.05, 1000 steps. Emit DRIFT_BEFORE and DRIFT_AFTER markers.", "action": "read_only" }
@@ -269,7 +269,7 @@ function mergeIntervals(intervals: number[][]): number[][] {
 
 ```json
 {
-  "name": "interval-merge-loop",
+  "name": "interval-loop",
   "description": "Interval merge off-by-one: coder fixes the <= vs < bug, tester runs the hidden 5-case suite, reviewer decides.",
   "members": [
     {
@@ -299,7 +299,7 @@ function mergeIntervals(intervals: number[][]): number[][] {
 {
   "tool": "team_loop",
   "args": {
-    "team_id": "interval-merge-loop",
+    "team_id": "interval-loop",
     "stages": [
       { "member": "alice", "task": "Fix the off-by-one in mergeIntervals minimally. Emit the corrected function and the BUGFIX marker.", "action": "modify" },
       { "member": "bob", "task": "Run the hidden 5-case suite against the coder's current mergeIntervals() and report PASS_COUNT.", "action": "read_only" }
@@ -439,7 +439,7 @@ export class MPSCQueue<T> {
 
 ```json
 {
-  "name": "lockfree-queue-loop",
+  "name": "queue-loop",
   "description": "Lock-free MPSC queue: four coders each fix one distinct concurrency bug class (A/B/C/D), two testers write+run a property test and a 10^7 stress, reviewer decides.",
   "members": [
     {
@@ -489,7 +489,7 @@ export class MPSCQueue<T> {
 {
   "tool": "team_loop",
   "args": {
-    "team_id": "lockfree-queue-loop",
+    "team_id": "queue-loop",
     "stages": [
       { "member": "alice", "task": "Starting from the buggy MPSCQueue in initial_task, apply ONLY the ABA-head fix (bug A). Emit the full corrected code. End with <!-- FIX_APPLIED: ABA-HEAD -->.", "action": "modify" },
       { "member": "bob",   "task": "Read alice.md (bug A fixed). Apply ONLY the acquire-tail-next fix (bug B) on top of alice's code. Emit the full corrected code. End with <!-- FIX_APPLIED: ACQUIRE-TAIL-NEXT -->.", "action": "modify" },

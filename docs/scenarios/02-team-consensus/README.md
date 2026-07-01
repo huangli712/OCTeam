@@ -33,7 +33,7 @@
 
 ```json
 {
-  "name": "small-sort-debate",
+  "name": "sort-debate",
   "description": "Stable sort selection for n<50 nearly-sorted arrays: 3-way consensus debate",
   "members": [
     {
@@ -63,7 +63,7 @@
 {
   "tool": "team_consensus",
   "args": {
-    "team_id": "small-sort-debate",
+    "team_id": "sort-debate",
     "topic": "For n<50 nearly-sorted elements that require stable sort, which algorithm is optimal: insertion sort, TimSort, or merge sort?",
     "max_rounds": 3,
     "timeout_ms": 900000
@@ -122,7 +122,7 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
 
 ```json
 {
-  "name": "heat-diffusion-debate",
+  "name": "heat-debate",
   "description": "1D heat equation u_t=u_xx time scheme: 3-way consensus debate (FTCS vs implicit vs Crank-Nicolson)",
   "members": [
     {
@@ -152,7 +152,7 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
 {
   "tool": "team_consensus",
   "args": {
-    "team_id": "heat-diffusion-debate",
+    "team_id": "heat-debate",
     "topic": "For u_t = u_xx on a uniform grid with dt=0.01, dx=0.1, choose: explicit FTCS / fully-implicit / Crank-Nicolson.",
     "max_rounds": 3,
     "timeout_ms": 900000
@@ -211,7 +211,7 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
 
 ```json
 {
-  "name": "string-match-debate",
+  "name": "string-debate",
   "description": "Short-text pattern matching (<1KB, pattern<=32): 3-way consensus debate (naive / KMP / Sunday)",
   "members": [
     {
@@ -241,7 +241,7 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
 {
   "tool": "team_consensus",
   "args": {
-    "team_id": "string-match-debate",
+    "team_id": "string-debate",
     "topic": "For pattern matching on short text (<1KB) with patterns <=32 chars, choose: naive / KMP / Boyer-Moore / Sunday.",
     "max_rounds": 3,
     "timeout_ms": 900000
@@ -312,7 +312,7 @@ T+8m    运行: bun check-coding-string-match.ts <run_dir>
 
 ```json
 {
-  "name": "rsa-factoring-debate",
+  "name": "rsa-debate",
   "description": "60-digit (~200-bit) RSA modulus factoring: 6-way challenge consensus debate (trial division / Pollard rho / QS / NFS / Lenstra ECM / Shor)",
   "members": [
     {
@@ -359,7 +359,7 @@ T+8m    运行: bun check-coding-string-match.ts <run_dir>
 {
   "tool": "team_consensus",
   "args": {
-    "team_id": "rsa-factoring-debate",
+    "team_id": "rsa-debate",
     "topic": "For factoring a ~60-digit (~200-bit) RSA modulus in practice, which algorithm should be used? Consider: trial division, Pollard rho, quadratic sieve (QS), number field sieve (NFS), Lenstra ECM, and Shor's quantum algorithm.",
     "max_rounds": 5,
     "timeout_ms": 2400000

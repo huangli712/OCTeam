@@ -130,7 +130,7 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 
 ```json
 {
-  "name": "verlet-energy-gate",
+  "name": "verlet-gate",
   "description": "Velocity Verlet on harmonic oscillator: implement (simulator) then gate-verify (physicist) energy conservation"
 }
 ```
@@ -160,7 +160,7 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 {
   "tool": "team_tollgate",
   "args": {
-    "team_id": "verlet-energy-gate",
+    "team_id": "verlet-gate",
     "stages": [
       {
         "member": "alice",
@@ -223,7 +223,7 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 
 ```json
 {
-  "name": "reverse-str-gate",
+  "name": "string-gate",
   "description": "Unicode-safe string reverse: implement (coder) then gate-verify (tester) including a surrogate-pair case"
 }
 ```
@@ -253,7 +253,7 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 {
   "tool": "team_tollgate",
   "args": {
-    "team_id": "reverse-str-gate",
+    "team_id": "string-gate",
     "stages": [
       {
         "member": "alice",

@@ -37,7 +37,7 @@
 
 ```json
 {
-  "name": "gaussian-integral-pipeline",
+  "name": "gaussian-pipeline",
   "description": "Gaussian integral pipeline: alice -> bob (Gauss-Legendre n=8) -> error bound",
   "members": [
     {
@@ -67,7 +67,7 @@
 {
   "tool": "team_pipeline",
   "args": {
-    "team_id": "gaussian-integral-pipeline",
+    "team_id": "gaussian-pipeline",
     "stages": [
       {
         "member": "alice",
@@ -243,7 +243,7 @@ T+14m   运行: bun check-physics-pendulum.ts <run_dir>
 
 ```json
 {
-  "name": "fib-tdd-pipeline",
+  "name": "fib-pipeline",
   "description": "Fibonacci TDD pipeline: alice -> minimal bob -> carol + re-verify",
   "members": [
     {
@@ -273,7 +273,7 @@ T+14m   运行: bun check-physics-pendulum.ts <run_dir>
 {
   "tool": "team_pipeline",
   "args": {
-    "team_id": "fib-tdd-pipeline",
+    "team_id": "fib-pipeline",
     "stages": [
       {
         "member": "alice",
@@ -358,7 +358,7 @@ T+10m   运行: bun check-coding-fib-tdd.ts <run_dir>
 
 ```json
 {
-  "name": "lj-md-pipeline",
+  "name": "lj-pipeline",
   "description": "Lennard-Jones MD pipeline (8 stages): force-field -> init -> minimize -> equilibrate -> produce -> sample -> rdf -> report",
   "members": [
     {
@@ -413,7 +413,7 @@ T+10m   运行: bun check-coding-fib-tdd.ts <run_dir>
 {
   "tool": "team_pipeline",
   "args": {
-    "team_id": "lj-md-pipeline",
+    "team_id": "lj-pipeline",
     "stages": [
       { "member": "alice",  "task": "Run stage 1 now: define the LJ force-field (epsilon=0.998 kJ/mol, sigma=3.40 A, r_cut=2.5*sigma), reduced units, and box length from rho=1.38 g/cm^3; produce your FORCE_FIELD marker." },
       { "member": "bob",    "task": "Run stage 2 now: build the cubic PBC box, place 100 atoms on an FCC lattice, Maxwell-Boltzmann velocities at T0=120 K, remove COM velocity; produce your INIT marker." },
