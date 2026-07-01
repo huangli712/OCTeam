@@ -2,7 +2,7 @@
 
 > **模式**：`team_consensus` — 多轮结构化辩论，所有成员就 `topic` 发表立场并逐轮逼近共识；每轮每成员 emits `<consensus>{"agreed": true|false}</consensus>`，全部 `agreed=true` 即共识达成。无 signoff 闸（全员同意机制本身就是闸）。
 > **源码**：[`src/tools/consensus.ts`](../../../src/tools/consensus.ts)
-> **控时设计**：3 成员 × `max_rounds=3`；每轮每成员 2-3 min；总时长 ≈ 3 轮 × 3 min + 调度 ≈ 9-12 min（远低于 30 min 上限）。
+> **控时设计**：3 成员 × `max_rounds=6`；每轮每成员 2-3 min；总时长 ≈ 6 轮 × 3 min + 调度 ≈ 18-24 min（低于 30 min 上限）。
 
 ## 场景一览
 
@@ -21,7 +21,7 @@
 
 **背景**：当数据量小（n<50）且几乎已排好序，但稳定性是硬性约束时，insertion sort / TimSort / merge sort 三者各有优势。insertion sort 在低逆序对数下接近 O(n)；TimSort 是 hybrid 算法，对小数组有专门优化（minrun + galloping）；merge sort 严格 O(n log n) 但常数大。哪一个是「最优」取决于逆序对密度——这正是适合多轮辩论收敛的开放性问题。
 
-**目标**：3 个成员各辩护一种算法，通过 ≤3 轮辩论收敛到一个共识结论：「命名一个算法 + 一个判据条件」（例：逆序对计数 < n²/16 时 insertion sort，否则 TimSort）。
+**目标**：3 个成员各辩护一种算法，通过 ≤6 轮辩论收敛到一个共识结论：「命名一个算法 + 一个判据条件」（例：逆序对计数 < n²/16 时 insertion sort，否则 TimSort）。
 
 **成功标准（可机器评判）**：
 - 每个成员最终轮输出含 `<consensus>{"agreed": ..., "choice": "..."}</consensus>` 标记
@@ -72,7 +72,7 @@
 ```
 
 **参数选择**：
-- `max_rounds: 6` — 算法选型是开放问题，3 轮足够「亮明立场 → 互相反驳 → 收敛」；超过 3 轮通常无新论点
+- `max_rounds: 6` — 算法选型是开放问题，核心论点通常 3 轮内「亮明立场 → 互相反驳 → 收敛」即清，6 轮为收敛余量
 - `timeout_ms: 900000`（15 min）— 给足余量，正常 ~10 min 收敛
 - 不设 `token_budget` — 论题小，token 自然受限；先求收敛质量
 - 无 `signoff_*` 参数 — `team_consensus` 设计上无 signoff 闸，全员 `agreed=true` 即通过（见源码 wf-013 注释）
@@ -80,7 +80,7 @@
 ### 1.4 执行流程（时序）
 
 ```
-T+0m    master 调用 team_consensus (topic, max_rounds=3)
+T+0m    master 调用 team_consensus (topic, max_rounds=6)
 T+0m    OCTeam 并行 dispatch 3 个 mathematician，Round 1：各陈立场
 T+0~3m  各成员读题 → 给出算法辩护 + 复杂度论据 + <consensus agreed=false>
 T+3m    Round 2：成员互相读取他方论点 → 反驳 / 让步
@@ -110,7 +110,7 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
 
 **背景**：一维热传导方程 `u_t = u_xx` 在均匀网格上的有限差分离散，时间积分格式决定稳定性与精度。给定 `dt=0.01`、`dx=0.1`，扩散数 `r = dt/dx² = 0.01/0.01 = 1.0`。显式 FTCS 的 CFL 条件 `r ≤ 0.5` 在此被违反——显式格式数值不稳定，必须换隐式类格式。但隐式（1 阶时间）与 Crank-Nicolson（2 阶时间）在精度与计算成本上仍有取舍。
 
-**目标**：3 个成员各辩护一种格式（显式 FTCS / 全隐式 / Crank-Nicolson），通过 ≤3 轮辩论收敛到一个共识结论：「选定一个格式 + 引用 CFL 稳定性条件（显式 `r = dt/dx² ≤ 0.5`）」。
+**目标**：3 个成员各辩护一种格式（显式 FTCS / 全隐式 / Crank-Nicolson），通过 ≤6 轮辩论收敛到一个共识结论：「选定一个格式 + 引用 CFL 稳定性条件（显式 `r = dt/dx² ≤ 0.5`）」。
 
 **成功标准（可机器评判）**：
 - 每个成员最终轮输出含 `<consensus>{"agreed": ..., "choice": "..."}</consensus>` 标记
@@ -161,14 +161,14 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
 ```
 
 **参数选择**：
-- `max_rounds: 6` — CFL 判据是硬约束（r=1.0>0.5 直接淘汰显式），剩余 implicit vs Crank-Nicolson 一轮可定，3 轮足够
+- `max_rounds: 6` — CFL 判据是硬约束（r=1.0>0.5 直接淘汰显式），剩余 implicit vs Crank-Nicolson 一轮可定，6 轮为收敛余量
 - `timeout_ms: 900000`（15 min）— 给足余量
 - 无 `signoff_*` 参数 — 共识机制即闸
 
 ### 2.4 执行流程（时序）
 
 ```
-T+0m    master 调用 team_consensus (topic, max_rounds=3)
+T+0m    master 调用 team_consensus (topic, max_rounds=6)
 T+0m    OCTeam 并行 dispatch 3 个 simulator，Round 1：各陈立场 + 算 r
 T+0~3m  各成员算 CFL: r=1.0>0.5 → 显式被自我否决
 T+3m    Round 2：alice 让步；implicit vs crank 辩精度
@@ -199,7 +199,7 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
 
 **背景**：模式串匹配是基础算法题。当文本很短（<1KB）且模式也短（≤32 字符）时，朴素法、KMP、Boyer-Moore、Sunday 各有适用场景：朴素法常数极小（无预处理），KMP 保证 O(n+m) 最坏情况但预处理对小输入不值，Sunday（Horspool 变体）平均 O(n/m) 子线性，Boyer-Moore 适合较长模式。短文本下「最优」取决于文本/模式长度比——适合多轮辩论。
 
-**目标**：3 个成员各辩护一种算法（naive / KMP / Sunday），通过 ≤3 轮辩论收敛到一个共识结论：「一个以文本/模式长度为键的决策树」（例：n×m<256 用 naive，否则 Sunday）。
+**目标**：3 个成员各辩护一种算法（naive / KMP / Sunday），通过 ≤6 轮辩论收敛到一个共识结论：「一个以文本/模式长度为键的决策树」（例：n×m<256 用 naive，否则 Sunday）。
 
 **成功标准（可机器评判）**：
 - 每个成员最终轮输出含 `<consensus>{"agreed": ..., "choice": "..."}</consensus>` 标记
@@ -250,14 +250,14 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
 ```
 
 **参数选择**：
-- `max_rounds: 6` — 短文本场景边界清晰（n<1KB），3 轮足够从「亮立场 → 实测对比 → 收敛决策树」
+- `max_rounds: 6` — 短文本场景边界清晰（n<1KB），核心对比通常 3 轮内「亮立场 → 实测对比 → 收敛决策树」即成，6 轮为收敛余量
 - `timeout_ms: 900000`（15 min）— 给足余量，正常 ~8 min 收敛
 - 无 `signoff_*` 参数 — 共识机制即闸
 
 ### 3.4 执行流程（时序）
 
 ```
-T+0m    master 调用 team_consensus (topic, max_rounds=3)
+T+0m    master 调用 team_consensus (topic, max_rounds=6)
 T+0m    OCTeam 并行 dispatch 3 个 coder，Round 1：各陈立场
 T+0~3m  各成员给算法分析（复杂度 + 适用边界）
 T+3m    Round 2：成员可写基准实测短文本耗时 → 用数据反驳
