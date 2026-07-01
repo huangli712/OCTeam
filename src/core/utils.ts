@@ -97,17 +97,43 @@ export function extractOutputFromParts(parts: unknown): string {
 /**
  * Truncate output to maxBytes (default 8KB) of UTF-8 to prevent context-window
  * blowups. Counts and cuts on UTF-8 byte length (not UTF-16 code units), and
- * backs the cut up to a complete-character boundary so a multibyte sequence is
+ * backs each cut up to a complete-character boundary so a multibyte sequence is
  * never split (CJK / emoji safe).
+ *
+ * Preserves BOTH the head and the tail: when truncation is required, the first
+ * and last ~maxBytes/2 bytes are kept with an elision marker between them. This
+ * is essential because the project's prompt convention places deliverable
+ * markers (e.g. `<!-- SORT_OK: true -->`) at the END of member output ("Your
+ * output MUST end with..."). A head-only cut silently drops those end-markers
+ * for any turn exceeding maxBytes, which breaks every reduce / select / merge /
+ * rubric summary path — the reducer receives the truncated head and honestly
+ * reports the member's result as "unavailable / truncated before final markers"
+ * even though the full output (with markers) was persisted losslessly to the
+ * run's <member>.md file. Head+tail at the same byte budget is strictly more
+ * informative than head-only, so no caller regresses.
  */
 export function truncateOutput(text: string, maxBytes: number = 8192): string {
     if (Buffer.byteLength(text, "utf8") <= maxBytes) return text
     const buf = Buffer.from(text, "utf8")
-    // Back the cut point up while it sits on a UTF-8 continuation byte
-    // (0b10xxxxxx), so we never slice through the middle of a character.
-    let end = maxBytes
-    while (end > 0 && (buf[end] & 0xc0) === 0x80) end--
-    return buf.toString("utf8", 0, end) + "\n…[truncated]"
+    // Reserve a fixed overhead for the elision marker and split the rest evenly
+    // between head and tail. 48 bytes covers "\n…[truncated <digits> middle
+    // bytes]…\n" for any realistic omitted count (each … is 3 UTF-8 bytes).
+    const sepOverhead = 48
+    const usable = Math.max(0, maxBytes - sepOverhead)
+    const half = Math.floor(usable / 2)
+
+    // Head: first `half` bytes, backed up over UTF-8 continuation bytes
+    // (0b10xxxxxx) to a lead-byte boundary so no character is split.
+    let headEnd = half
+    while (headEnd > 0 && (buf[headEnd] & 0xc0) === 0x80) headEnd--
+    // Tail: last `half` bytes, advanced over continuation bytes to a lead-byte
+    // boundary. buf.length > maxBytes guarantees tailStart > headEnd (no overlap).
+    let tailStart = buf.length - half
+    while (tailStart < buf.length && (buf[tailStart] & 0xc0) === 0x80) tailStart++
+
+    const omitted = buf.length - headEnd - (buf.length - tailStart)
+    const sep = `\n…[truncated ${omitted} middle bytes]…\n`
+    return buf.toString("utf8", 0, headEnd) + sep + buf.toString("utf8", tailStart)
 }
 
 /**
