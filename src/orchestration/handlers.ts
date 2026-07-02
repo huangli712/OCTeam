@@ -479,12 +479,14 @@ export async function handleStatusEvent(
         } else if (entry?.type === "idle") {
             live.retryingSince = undefined
             await saveTeamState(team)
-        } else if (entry?.type === "running") {
+        } else if (entry?.type === "busy") {
             // Sync member.status with the actual session state. A member may
-            // be flipped to running by a wake-hint (promptAsync) without going
+            // be flipped to busy by a wake-hint (promptAsync) without going
             // through dispatchToMember — without this branch member.status
             // stays "idle" while the session is actually working, which makes
             // the delegate/recurse deadlock check (allIdle) false-positive.
+            // NOTE: the SDK SessionStatus type uses "busy" (not "running") for
+            // an actively-processing session.
             if (live.status === "idle") {
                 live.status = "running"
                 await saveTeamState(team)

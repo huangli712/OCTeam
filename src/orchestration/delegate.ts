@@ -68,9 +68,13 @@ export async function runDelegateStyleTail(
             const trulyAllIdle = team.members.every(m => {
                 if (!m.sessionId) return true
                 const entry = (status.data as Record<string, { type?: string }> | undefined)?.[m.sessionId]
-                // If the live session reports "running", the member is not
-                // truly idle even if member.status has not caught up.
-                return entry?.type !== "running"
+                // A member is truly idle only when its SDK session reports
+                // "idle" (or the entry is missing). The SDK SessionStatus type
+                // has no "running" variant — an actively-working session
+                // reports "busy", and a retrying one reports "retry". Both must
+                // count as non-idle here, otherwise the deadlock check
+                // false-positives while members woken via wake-hint are busy.
+                return !entry || entry.type === "idle"
             })
             if (trulyAllIdle) {
                 await deliverSummaryToLeader(ctx, team, `${label}_deadlock`)
