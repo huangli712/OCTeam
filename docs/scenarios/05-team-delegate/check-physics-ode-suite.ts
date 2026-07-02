@@ -16,7 +16,7 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const PREY_RE = /<!--\s*PREY_X20:\s*([\d.eE+-]+)\s*-->/;
 const AMP_RE = /<!--\s*AMPLITUDE:\s*([\d.eE+-]+)\s*-->/;
@@ -37,6 +37,39 @@ async function readAll(runDir: string): Promise<string> {
         parts.push(await readFile(join(runDir, f), "utf8"));
     }
     return parts.join("\n");
+}
+
+/**
+ * Delegate members deliver markers via team_send_message, which land in
+ * <team_dir>/mailbox/*.jsonl (not in the captured .md turn output). Each
+ * JSONL line has a `body` field carrying the message content. This returns
+ * all message bodies so their markers are not missed.
+ */
+async function loadMailboxBodies(teamDir: string): Promise<string[]> {
+    const mailboxDir = join(teamDir, "mailbox");
+    let entries: string[];
+    try {
+        entries = await readdir(mailboxDir);
+    } catch {
+        return []; // no mailbox dir (non-delegate modes) — nothing to merge
+    }
+    const bodies: string[] = [];
+    for (const entry of entries.filter((e) => e.endsWith(".jsonl"))) {
+        const raw = await readFile(join(mailboxDir, entry), "utf8");
+        for (const line of raw.split("\n")) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+                const msg = JSON.parse(trimmed);
+                if (typeof msg.body === "string") {
+                    bodies.push(msg.body);
+                }
+            } catch {
+                // skip malformed JSONL lines
+            }
+        }
+    }
+    return bodies;
 }
 
 function extractNumeric(blob: string, re: RegExp, label: string): number {
@@ -67,6 +100,14 @@ async function main(): Promise<void> {
     let blob: string;
     try {
         blob = await readAll(runDir);
+        // Merge mailbox messages: delegate members deliver markers via
+        // team_send_message, which land in <team_dir>/mailbox/*.jsonl —
+        // not in the captured .md turn output.
+        const teamDir = resolve(runDir, "../..");
+        const mailboxBodies = await loadMailboxBodies(teamDir);
+        if (mailboxBodies.length > 0) {
+            blob += "\n" + mailboxBodies.join("\n");
+        }
     } catch (err) {
         console.error(`IO error: ${(err as Error).message}`);
         process.exit(2);

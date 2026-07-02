@@ -13,7 +13,7 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 interface Expected {
     label: string;
@@ -44,6 +44,39 @@ function valuesMatch(reported: string, expected: number | string): boolean {
     return reported.trim().toLowerCase() === expected.toLowerCase();
 }
 
+/**
+ * Delegate members deliver markers via team_send_message, which land in
+ * <team_dir>/mailbox/*.jsonl (not in the captured .md turn output). Each
+ * JSONL line has a `body` field carrying the message content. This returns
+ * all message bodies so their markers are not missed.
+ */
+async function loadMailboxBodies(teamDir: string): Promise<string[]> {
+    const mailboxDir = join(teamDir, "mailbox");
+    let entries: string[];
+    try {
+        entries = await readdir(mailboxDir);
+    } catch {
+        return []; // no mailbox dir (non-delegate modes) — nothing to merge
+    }
+    const bodies: string[] = [];
+    for (const entry of entries.filter((e) => e.endsWith(".jsonl"))) {
+        const raw = await readFile(join(mailboxDir, entry), "utf8");
+        for (const line of raw.split("\n")) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+                const msg = JSON.parse(trimmed);
+                if (typeof msg.body === "string") {
+                    bodies.push(msg.body);
+                }
+            } catch {
+                // skip malformed JSONL lines
+            }
+        }
+    }
+    return bodies;
+}
+
 async function main(): Promise<void> {
     const runDir = process.argv[2];
     if (!runDir) {
@@ -68,6 +101,16 @@ async function main(): Promise<void> {
         for (const f of files) {
             const raw = await readFile(join(runDir, f), "utf8");
             for (const m of raw.matchAll(ANSWER_RE)) {
+                reported.push(m[1].trim());
+            }
+        }
+        // Merge mailbox messages: delegate members deliver markers via
+        // team_send_message, which land in <team_dir>/mailbox/*.jsonl —
+        // not in the captured .md turn output.
+        const teamDir = resolve(runDir, "../..");
+        const mailboxBodies = await loadMailboxBodies(teamDir);
+        for (const body of mailboxBodies) {
+            for (const m of body.matchAll(ANSWER_RE)) {
                 reported.push(m[1].trim());
             }
         }
