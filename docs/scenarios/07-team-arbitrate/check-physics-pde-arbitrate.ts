@@ -8,15 +8,15 @@
  *
  * This script verifies:
  *   1. All five debaters emitted an <!-- ARG: ... --> marker.
- *   2. The arbiter emitted a <!-- RULING: ... --> marker naming one of the
- *      five candidate methods (fem, fdm, fvm, spectral, bem).
- *   3. The arbiter emitted a non-empty <!-- REASON: ... --> marker referencing
- *      at least two of the governing aspects (curved, boundary, advection,
- *      nonlinear, flux, mesh). Physically FEM or FVM is expected to win -- both
- *      conform to curved boundaries via unstructured meshes and tame advection
- *      via stabilization / flux-limiting -- but any of the five is accepted as
- *      a well-formed ruling; BEM is physically disqualified by the nonlinear
- *      source term.
+ *   2. The arbiter emitted a <ruling>{"decision":"...","rationale":"..."}</ruling>
+ *      block whose decision names one of the five candidate methods
+ *      (fem, fdm, fvm, spectral, bem).
+ *   3. The rationale is non-empty and references at least two of the governing
+ *      aspects (curved, boundary, advection, nonlinear, flux, mesh). Physically
+ *      FEM or FVM is expected to win -- both conform to curved boundaries via
+ *      unstructured meshes and tame advection via stabilization / flux-limiting
+ *      -- but any of the five is accepted as a well-formed ruling; BEM is
+ *      physically disqualified by the nonlinear source term.
  *
  * Usage:  bun check-physics-pde-arbitrate.ts <run_dir>
  *   <run_dir>  directory containing alice.md, bob.md, carol.md,
@@ -39,8 +39,26 @@ const REASON_KEY_TERMS = ["curved", "boundary", "advection", "nonlinear", "flux"
 const MIN_KEY_TERMS = 2;
 
 const ARG_RE = /<!--\s*ARG:\s*(.+?)\s*-->/;
-const RULING_RE = /<!--\s*RULING:\s*(\w[\w-]*)\s*-->/;
-const REASON_RE = /<!--\s*REASON:\s*(.+?)\s*-->/;
+// The arbiter emits a tagged-JSON decision block (aligned with the
+// orchestration's parseArbitrationDecision convention) rather than HTML
+// comment markers, so the orchestration layer can also parse the ruling:
+//   <ruling>{"decision":"<choice>","rationale":"<text>"}</ruling>
+const RULING_TAG_RE = /<ruling>\s*(\{[\s\S]*?\})\s*<\/ruling>/;
+
+function parseRuling(raw: string): { decision: string; rationale: string } {
+    const m = raw.match(RULING_TAG_RE);
+    if (!m) fail("arbiter did not emit a <ruling>{...}</ruling> decision block");
+    let obj: { decision?: string; rationale?: string };
+    try {
+        obj = JSON.parse(m![1]) as { decision?: string; rationale?: string };
+    } catch {
+        fail(`arbiter <ruling> block is not valid JSON: ${m![1]}`);
+    }
+    const decision = (obj!.decision ?? "").trim();
+    const rationale = (obj!.rationale ?? "").trim();
+    if (!decision) fail('arbiter <ruling> JSON lacks a non-empty "decision" field');
+    return { decision, rationale };
+}
 
 function fail(msg: string): never {
     console.error(`FAIL: ${msg}`);
@@ -76,30 +94,21 @@ async function main(): Promise<void> {
 
     const arbiterRaw = await readMember(runDir, ARBITER);
 
-    // Assertion 2: arbiter's RULING names one of the five candidate methods.
-    const rulingMatch = arbiterRaw.match(RULING_RE);
-    if (!rulingMatch) {
-        fail(`arbiter did not emit an <!-- RULING: ... --> marker`);
-    }
-    const ruling = rulingMatch![1].trim().toLowerCase();
-    console.log(`  arbiter RULING = ${ruling}`);
-    if (!ALLOWED_RULINGS.some(r => r === ruling)) {
+    // Assertion 2+3: arbiter's <ruling>{...} decision names one of the five
+    // candidate methods and carries a rationale referencing enough key terms.
+    const { decision: ruling, rationale: reason } = parseRuling(arbiterRaw);
+    const rulingLower = ruling.toLowerCase();
+    console.log(`  arbiter RULING = ${rulingLower}`);
+    if (!ALLOWED_RULINGS.some(r => r === rulingLower)) {
         fail(`arbiter ruled "${ruling}", expected one of [${ALLOWED_RULINGS.join(", ")}]`);
     }
-
-    // Assertion 3: arbiter's REASON is non-empty and references enough key terms.
-    const reasonMatch = arbiterRaw.match(REASON_RE);
-    if (!reasonMatch) {
-        fail(`arbiter did not emit an <!-- REASON: ... --> marker`);
-    }
-    const reason = reasonMatch![1].trim();
     if (reason.length === 0) {
-        fail("arbiter REASON is empty");
+        fail("arbiter rationale is empty");
     }
     const lower = reason.toLowerCase();
     const matchedTerms = REASON_KEY_TERMS.filter(term => lower.includes(term));
     if (matchedTerms.length < MIN_KEY_TERMS) {
-        fail(`arbiter REASON references ${matchedTerms.length} of the key terms [${REASON_KEY_TERMS.join(" / ")}], need at least ${MIN_KEY_TERMS}: "${reason}"`);
+        fail(`arbiter rationale references ${matchedTerms.length} of the key terms [${REASON_KEY_TERMS.join(" / ")}], need at least ${MIN_KEY_TERMS}: "${reason}"`);
     }
     console.log(`  matched key terms: ${matchedTerms.join(", ")}`);
     console.log(`  arbiter REASON = ${reason}`);

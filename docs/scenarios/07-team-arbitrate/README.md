@@ -27,8 +27,8 @@
 
 **成功标准（可机器评判）**：
 - 两名辩手输出各含 `<!-- ARG: <一句话立场> -->` 标注
-- 仲裁输出含 `<!-- RULING: <choice> -->`（期望 `direct`）与 `<!-- REASON: <text> -->`
-- `REASON` 非空且提及关键术语（`condition` 或 `dense`）
+- 仲裁输出含 `<ruling>{"decision":"<choice>","rationale":"<text>"}</ruling>` 标签 JSON 块（期望 `decision` = `direct`）
+- `rationale` 非空且提及关键术语（`condition` 或 `dense`）
 
 ### 1.2 Team 配置
 
@@ -50,7 +50,7 @@
     {
       "name": "carol",
       "role": "reviewer",
-      "prompt": "You are the ARBITER. Two mathematicians debated whether to invert a dense, well-conditioned 4x4 matrix (condition number ~10) via DIRECT Gaussian elimination or an ITERATIVE method (e.g. Jacobi). Weigh both sides objectively, then deliver a single BINDING ruling. Recall the standard numerical-linear-algebra result: for small, dense, well-conditioned systems direct elimination is exact, assumption-free, and asymptotically cheaper in the constant-factor regime, while iterative methods are designed for large sparse systems. Your output MUST end with two lines exactly formatted: first <!-- RULING: direct --> (or <!-- RULING: iterative -->) then <!-- REASON: <one-sentence rationale referencing why, for this specific matrix class, the winner dominates> -->."
+      "prompt": "You are the ARBITER. Two mathematicians debated whether to invert a dense, well-conditioned 4x4 matrix (condition number ~10) via DIRECT Gaussian elimination or an ITERATIVE method (e.g. Jacobi). Weigh both sides objectively, then deliver a single BINDING ruling. Recall the standard numerical-linear-algebra result: for small, dense, well-conditioned systems direct elimination is exact, assumption-free, and asymptotically cheaper in the constant-factor regime, while iterative methods are designed for large sparse systems. Your output MUST end with exactly one line formatted: <ruling>{\"decision\": \"<direct or iterative>\", \"rationale\": \"<one-sentence rationale referencing why, for this specific matrix class, the winner dominates>\"}</ruling>."
     }
   ]
 }
@@ -102,11 +102,11 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
 - **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：
   - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
-  - 仲裁 `<!-- RULING:\s*(\w[\w-]*)\s*-->` 与 `<!-- REASON:\s*(.+?)\s*-->`
+  - 仲裁 `<ruling>{...}</ruling>` 标签 JSON 块（`JSON.parse` 取 `decision` 与 `rationale`）
 - **断言**：
   1. 两名辩手均产出 `ARG` 标记
-  2. 仲裁 `RULING == "direct"`
-  3. `REASON` 非空且包含 `condition` 或 `dense`（不区分大小写）
+  2. 仲裁 `decision == "direct"`
+  3. `rationale` 非空且包含 `condition` 或 `dense`（不区分大小写）
 
 ---
 
@@ -122,8 +122,8 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
 
 **成功标准（可机器评判）**：
 - 两名辩手输出各含 `<!-- ARG: <一句话立场> -->` 标注
-- 仲裁输出含 `<!-- RULING: implicit -->` 与 `<!-- REASON: <text> -->`
-- `REASON` 非空且提及关键术语（`stiff` 或 `stability`）
+- 仲裁输出含 `<ruling>{"decision":"implicit","rationale":"<text>"}</ruling>` 标签 JSON 块
+- `rationale` 非空且提及关键术语（`stiff` 或 `stability`）
 
 ### 2.2 Team 配置
 
@@ -145,7 +145,7 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
     {
       "name": "carol",
       "role": "physicist",
-      "prompt": "You are the ARBITER. Two simulators debated whether to integrate the stiff ODE dy/dt = -1000*y (y(0)=1, to t=1) with EXPLICIT RK4 or IMPLICIT backward Euler. Weigh both sides objectively, then deliver a single BINDING ruling. Recall the governing principle: for stiff systems, the step size is dictated by stability (the fast mode -1000), not accuracy. RK4's explicit stability region forces dt < 2/1000 = 0.002 (hundreds-to-thousands of steps); backward Euler is A-stable and advances in a handful of large steps. Stability wins over per-step accuracy for stiff problems. Your output MUST end with two lines exactly formatted: first <!-- RULING: implicit --> (or <!-- RULING: explicit -->) then <!-- REASON: <one-sentence rationale referencing stiffness / CFL-like stability constraint> -->."
+      "prompt": "You are the ARBITER. Two simulators debated whether to integrate the stiff ODE dy/dt = -1000*y (y(0)=1, to t=1) with EXPLICIT RK4 or IMPLICIT backward Euler. Weigh both sides objectively, then deliver a single BINDING ruling. Recall the governing principle: for stiff systems, the step size is dictated by stability (the fast mode -1000), not accuracy. RK4's explicit stability region forces dt < 2/1000 = 0.002 (hundreds-to-thousands of steps); backward Euler is A-stable and advances in a handful of large steps. Stability wins over per-step accuracy for stiff problems. Your output MUST end with exactly one line formatted: <ruling>{"decision": "<implicit or explicit>", "rationale": "<one-sentence rationale referencing stiffness / CFL-like stability constraint>"}</ruling>."
     }
   ]
 }
@@ -196,11 +196,11 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
 - **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：
   - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
-  - 仲裁 `<!-- RULING:\s*(\w[\w-]*)\s*-->` 与 `<!-- REASON:\s*(.+?)\s*-->`
+  - 仲裁 `<ruling>{...}</ruling>` 标签 JSON 块（`JSON.parse` 取 `decision` 与 `rationale`）
 - **断言**：
   1. 两名辩手均产出 `ARG` 标记
-  2. 仲裁 `RULING == "implicit"`
-  3. `REASON` 非空且包含 `stiff` 或 `stability`（不区分大小写）
+  2. 仲裁 `decision == "implicit"`
+  3. `rationale` 非空且包含 `stiff` 或 `stability`（不区分大小写）
 
 ---
 
@@ -216,8 +216,8 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
 
 **成功标准（可机器评判）**：
 - 两名辩手输出各含 `<!-- ARG: <一句话立场> -->` 标注
-- 仲裁输出含 `<!-- RULING: lru -->` 与 `<!-- REASON: <text> -->`
-- `REASON` 非空且提及关键术语（`temporal` 或 `recency`）
+- 仲裁输出含 `<ruling>{"decision":"lru","rationale":"<text>"}</ruling>` 标签 JSON 块
+- `rationale` 非空且提及关键术语（`temporal` 或 `recency`）
 
 ### 3.2 Team 配置
 
@@ -239,7 +239,7 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
     {
       "name": "carol",
       "role": "reviewer",
-      "prompt": "You are the ARBITER. Two coders debated whether a single-process capacity-8 cache under STRONG TEMPORAL LOCALITY (recently-accessed keys likely re-accessed soon) and UNIFORM frequencies should use LRU or LFU eviction. Weigh both sides objectively, then deliver a single BINDING ruling. Recall the caching principle: when temporal locality dominates and frequencies are uniform, recency (LRU) is the signal that tracks the access pattern; frequency (LFU) carries little information when frequencies are uniform and can even retain stale popular items. Your output MUST end with two lines exactly formatted: first <!-- RULING: lru --> (or <!-- RULING: lfu -->) then <!-- REASON: <one-sentence rationale referencing temporal locality / recency> -->."
+      "prompt": "You are the ARBITER. Two coders debated whether a single-process capacity-8 cache under STRONG TEMPORAL LOCALITY (recently-accessed keys likely re-accessed soon) and UNIFORM frequencies should use LRU or LFU eviction. Weigh both sides objectively, then deliver a single BINDING ruling. Recall the caching principle: when temporal locality dominates and frequencies are uniform, recency (LRU) is the signal that tracks the access pattern; frequency (LFU) carries little information when frequencies are uniform and can even retain stale popular items. Your output MUST end with exactly one line formatted: <ruling>{"decision": "<lru or lfu>", "rationale": "<one-sentence rationale referencing temporal locality / recency>"}</ruling>."
     }
   ]
 }
@@ -290,11 +290,11 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 - **加载**：`runs/<run_id>/{alice,bob,carol}.md`
 - **提取**：
   - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
-  - 仲裁 `<!-- RULING:\s*(\w[\w-]*)\s*-->` 与 `<!-- REASON:\s*(.+?)\s*-->`
+  - 仲裁 `<ruling>{...}</ruling>` 标签 JSON 块（`JSON.parse` 取 `decision` 与 `rationale`）
 - **断言**：
   1. 两名辩手均产出 `ARG` 标记
-  2. 仲裁 `RULING == "lru"`
-  3. `REASON` 非空且包含 `temporal` 或 `recency`（不区分大小写）
+  2. 仲裁 `decision == "lru"`
+  3. `rationale` 非空且包含 `temporal` 或 `recency`（不区分大小写）
 
 ---
 
@@ -312,8 +312,8 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 
 **成功标准（可机器评判）**：
 - 五名辩手输出各含 `<!-- ARG: <一句话立场> -->` 标注
-- 仲裁输出含 `<!-- RULING: <method> -->`（`method` ∈ {fem, fdm, fvm, spectral, bem}）与 `<!-- REASON: <text> -->`
-- `REASON` 非空且至少提及 `{curved, boundary, advection, nonlinear, flux, mesh}` 中的两项（不区分大小写）
+- 仲裁输出含 `<ruling>{"decision":"<method>","rationale":"<text>"}</ruling>` 标签 JSON 块（`decision` ∈ {fem, fdm, fvm, spectral, bem}）
+- `rationale` 非空且至少提及 `{curved, boundary, advection, nonlinear, flux, mesh}` 中的两项（不区分大小写）
 - **物理预期**：FEM 或 FVM 胜出——两者都能通过非结构网格贴合弯曲边界、通过稳定化 / 通量限制处理对流占优，并自然纳入非线性源项；Spectral 难以适应复杂几何，FDM 在弯曲边界上费力，BEM 仅适用于线性问题（非线性源项直接排除 BEM）。
 
 ### 4.2 Team 配置
@@ -351,7 +351,7 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
     {
       "name": "frank",
       "role": "reviewer",
-      "prompt": "You are the ARBITER. Five physicists debated which numerical method — FEM, FDM, FVM, Spectral, or BEM — should solve a PDE with a COMPLEX CURVED BOUNDARY, ADVECTION-DOMINATED transport, AND a NONLINEAR source term. Weigh all five sides objectively across three dimensions — (1) geometry adaptability to the curved boundary, (2) stability under advection dominance, (3) handling the nonlinear source — then deliver a single BINDING ruling. Recall the governing trade-offs: FEM and FVM conform to curved boundaries via unstructured meshes and tame advection via SUPG / flux-limiting respectively, and both admit the nonlinear source term naturally; FDM struggles to conform to curved boundaries; Spectral methods lose their exponential-convergence advantage and geometric flexibility on complex domains; BEM requires a linear PDE with a known fundamental solution, so the nonlinear source term fundamentally disqualifies it. Your output MUST end with two lines exactly formatted: first <!-- RULING: fem --> (or <!-- RULING: fdm --> / <!-- RULING: fvm --> / <!-- RULING: spectral --> / <!-- RULING: bem -->) then <!-- REASON: <one-sentence rationale referencing at least two of: curved boundary, advection, nonlinearity, flux, mesh> -->."
+      "prompt": "You are the ARBITER. Five physicists debated which numerical method — FEM, FDM, FVM, Spectral, or BEM — should solve a PDE with a COMPLEX CURVED BOUNDARY, ADVECTION-DOMINATED transport, AND a NONLINEAR source term. Weigh all five sides objectively across three dimensions — (1) geometry adaptability to the curved boundary, (2) stability under advection dominance, (3) handling the nonlinear source — then deliver a single BINDING ruling. Recall the governing trade-offs: FEM and FVM conform to curved boundaries via unstructured meshes and tame advection via SUPG / flux-limiting respectively, and both admit the nonlinear source term naturally; FDM struggles to conform to curved boundaries; Spectral methods lose their exponential-convergence advantage and geometric flexibility on complex domains; BEM requires a linear PDE with a known fundamental solution, so the nonlinear source term fundamentally disqualifies it. Your output MUST end with exactly one line formatted: <ruling>{"decision": "<fem | fdm | fvm | spectral | bem>", "rationale": "<one-sentence rationale referencing at least two of: curved boundary, advection, nonlinearity, flux, mesh>"}</ruling>."
     }
   ]
 }
@@ -406,11 +406,11 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 - **加载**：`runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md`
 - **提取**：
   - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
-  - 仲裁 `<!-- RULING:\s*(\w[\w-]*)\s*-->` 与 `<!-- REASON:\s*(.+?)\s*-->`
+  - 仲裁 `<ruling>{...}</ruling>` 标签 JSON 块（`JSON.parse` 取 `decision` 与 `rationale`）
 - **断言**：
   1. 五名辩手均产出 `ARG` 标记
-  2. 仲裁 `RULING` ∈ {fem, fdm, fvm, spectral, bem}
-  3. `REASON` 非空且至少包含 `{curved, boundary, advection, nonlinear, flux, mesh}` 中的两项（不区分大小写）
+  2. 仲裁 `decision` ∈ {fem, fdm, fvm, spectral, bem}
+  3. `rationale` 非空且至少包含 `{curved, boundary, advection, nonlinear, flux, mesh}` 中的两项（不区分大小写）
 
 ---
 
@@ -420,14 +420,14 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 - [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` / `reviewer` / `physicist` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_arbitrate` schema（`arbiter` 非 master、非辩手；`debaters` ≥2 且唯一）
 - [ ] 每场景总时长 ≤ 18 min（远低于 30 min 上限）
-- [ ] 成员 prompt 中明确输出格式约定（`ARG` / `RULING` / `REASON` marker），评判脚本与之对齐
+- [ ] 成员 prompt 中明确输出格式约定（辩手 `<!-- ARG -->`；arbiter `<ruling>{json}</ruling>` 标签块），评判脚本与之对齐
 
 
 ---
 
 ## 快速启动 Prompt（复制即用）
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成完整闭环。arbitrate 模式评判读 **carol** 成员的最终裁决（含 RULING / REASON marker）。
+> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成完整闭环。arbitrate 模式评判读 arbiter 成员的最终裁决（含 `<ruling>{"decision":"...","rationale":"..."}</ruling>` 标签 JSON 块）。
 
 ### 场景 1: 4×4 矩阵求逆法之争（数学）
 

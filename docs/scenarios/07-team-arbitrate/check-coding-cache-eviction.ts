@@ -7,10 +7,10 @@
  *
  * This script verifies:
  *   1. Both debaters emitted an <!-- ARG: ... --> marker.
- *   2. The arbiter emitted a <!-- RULING: ... --> marker matching the expected
- *      choice ("lru"). Temporal locality favors recency-based eviction.
- *   3. The arbiter emitted a non-empty <!-- REASON: ... --> marker containing a
- *      key term ("temporal" or "recency").
+ *   2. The arbiter emitted a <ruling>{"decision":"...","rationale":"..."}</ruling>
+ *      block whose decision matches the expected choice ("lru"). Temporal
+ *      locality favors recency-based eviction.
+ *   3. The rationale is non-empty and contains a key term ("temporal" or "recency").
  *
  * Usage:  bun check-coding-cache-eviction.ts <run_dir>
  *   <run_dir>  directory containing alice.md, bob.md, carol.md
@@ -30,8 +30,26 @@ const EXPECTED_RULING = "lru";
 const REASON_KEY_TERMS = ["temporal", "recency"] as const;
 
 const ARG_RE = /<!--\s*ARG:\s*(.+?)\s*-->/;
-const RULING_RE = /<!--\s*RULING:\s*(\w[\w-]*)\s*-->/;
-const REASON_RE = /<!--\s*REASON:\s*(.+?)\s*-->/;
+// The arbiter emits a tagged-JSON decision block (aligned with the
+// orchestration's parseArbitrationDecision convention) rather than HTML
+// comment markers, so the orchestration layer can also parse the ruling:
+//   <ruling>{"decision":"<choice>","rationale":"<text>"}</ruling>
+const RULING_TAG_RE = /<ruling>\s*(\{[\s\S]*?\})\s*<\/ruling>/;
+
+function parseRuling(raw: string): { decision: string; rationale: string } {
+    const m = raw.match(RULING_TAG_RE);
+    if (!m) fail("arbiter did not emit a <ruling>{...}</ruling> decision block");
+    let obj: { decision?: string; rationale?: string };
+    try {
+        obj = JSON.parse(m![1]) as { decision?: string; rationale?: string };
+    } catch {
+        fail(`arbiter <ruling> block is not valid JSON: ${m![1]}`);
+    }
+    const decision = (obj!.decision ?? "").trim();
+    const rationale = (obj!.rationale ?? "").trim();
+    if (!decision) fail('arbiter <ruling> JSON lacks a non-empty "decision" field');
+    return { decision, rationale };
+}
 
 function fail(msg: string): never {
     console.error(`FAIL: ${msg}`);
@@ -67,30 +85,20 @@ async function main(): Promise<void> {
 
     const arbiterRaw = await readMember(runDir, ARBITER);
 
-    // Assertion 2: arbiter's RULING matches the expected choice.
-    const rulingMatch = arbiterRaw.match(RULING_RE);
-    if (!rulingMatch) {
-        fail(`arbiter did not emit an <!-- RULING: ... --> marker`);
-    }
-    const ruling = rulingMatch![1].trim();
+    // Assertion 2+3: arbiter's <ruling>{...} decision carries the expected
+    // choice and a non-empty rationale referencing a key term.
+    const { decision: ruling, rationale: reason } = parseRuling(arbiterRaw);
     console.log(`  arbiter RULING = ${ruling}`);
     if (ruling !== EXPECTED_RULING) {
         fail(`arbiter ruled "${ruling}", expected "${EXPECTED_RULING}" (temporal locality favors recency-based eviction)`);
     }
-
-    // Assertion 3: arbiter's REASON is non-empty and references a key term.
-    const reasonMatch = arbiterRaw.match(REASON_RE);
-    if (!reasonMatch) {
-        fail(`arbiter did not emit an <!-- REASON: ... --> marker`);
-    }
-    const reason = reasonMatch![1].trim();
     if (reason.length === 0) {
-        fail("arbiter REASON is empty");
+        fail("arbiter rationale is empty");
     }
     const lower = reason.toLowerCase();
     const hasKeyTerm = REASON_KEY_TERMS.some(term => lower.includes(term));
     if (!hasKeyTerm) {
-        fail(`arbiter REASON lacks a key term (${REASON_KEY_TERMS.join(" / ")}): "${reason}"`);
+        fail(`arbiter rationale lacks a key term (${REASON_KEY_TERMS.join(" / ")}): "${reason}"`);
     }
     console.log(`  arbiter REASON = ${reason}`);
 
