@@ -405,7 +405,7 @@ T+7m    运行: bun check-coding-cli-calc.ts <run_dir>
       "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
     },
     {
-      "name": "eve",
+      "name": "erin",
       "role": "mathematician",
       "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
     },
@@ -589,7 +589,7 @@ T+90m    运行: bun docs/scenarios/05-team-delegate/check-math-100-problems.ts 
 执行 docs/scenarios/05-team-delegate/README.md「场景 4」的完整闭环并自动评判。注意：此为挑战级场景，预计 ~90 min、8 成员并发。
 
 步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（8 个 mathematician 成员 alice..henry）
+1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（8 个 mathematician 成员 alice..henry，含 erin）
 2. team_activate 激活
 3. 读 README「4.3 Master 启动调用」+ Ref scheme 表，按 team_delegate JSON 启动编排：tasks[] 需展开为 100 条（p1..p100），按 4 个 family 模板生成（π(10·k) / σ(101..125) / 2^k mod 1e9+7 / φ(201..225)），全部无 blocked_by
 4. team_results 轮询至 master 收到汇总（成员自取自报，无任务即停；100 题 / 8 成员 ≈ 13 轮）
