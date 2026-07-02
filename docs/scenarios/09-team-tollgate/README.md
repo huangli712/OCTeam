@@ -27,7 +27,7 @@
 - producer 输出含 `<!-- IMPL: modPow -->` 标注，且嵌入可加载的 ```typescript 代码块
 - 代码通过三例：`modPow(2,10,1000)=24`、`modPow(3,0,7)=1`、`modPow(7,256,13)=9`
 - `exp=0` 返回 `1`
-- verifier 输出含 `<!-- VERDICT: PASS -->`
+- verifier 输出含 `<verdict>{"result":"PASS",...}</verdict>` 标签 JSON 块
 
 ### 1.2 Team 配置
 
@@ -49,7 +49,7 @@
     {
       "name": "bob",
       "role": "reviewer",
-      "prompt": "You are a reviewer. You verify mathematical implementations by running them against the gate's criteria. Emit a verdict: PASS if every criterion holds, FAIL otherwise (naming the failing case). Your output MUST end with a line exactly formatted: <!-- VERDICT: PASS --> (or <!-- VERDICT: FAIL -->)."
+      "prompt": "You are a reviewer. You verify mathematical implementations by running them against the gate's criteria. Emit a verdict: PASS if every criterion holds, FAIL otherwise (naming the failing case). Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case or measured value if FAIL, else empty>\"}</verdict>."
     }
   ]
 }
@@ -105,11 +105,11 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 - **加载**：`runs/<run_id>/{alice,bob}.md`
 - **提取**：
   - producer 代码：抓取 ` ```typescript ... ``` ` 代码块
-  - verifier 判定：正则 `<!--\s*VERDICT:\s*(PASS|FAIL)\s*-->`
+  - verifier 判定：`<verdict>{...}</verdict>` 标签 JSON 块（`JSON.parse` 取 `result`）
 - **断言**：
   1. producer 代码可用 `new Function` 加载为 `modPow` 函数
   2. `modPow(2,10,1000)===24`、`modPow(3,0,7)===1`、`modPow(7,256,13)===9`
-  3. verifier VERDICT 为 `PASS`
+  3. verifier `result` 为 `PASS`
 
 ---
 
@@ -124,7 +124,7 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 **成功标准（可机器评判）**：
 - producer 输出含 `<!-- DRIFT: <数值> -->` 标注（相对漂移 `|E_end - E0|/E0`）
 - 漂移 `< 1e-3`（辛格式的标志）
-- verifier 输出含 `<!-- VERDICT: PASS -->`
+- verifier 输出含 `<verdict>{"result":"PASS",...}</verdict>` 标签 JSON 块
 
 ### 2.2 Team 配置
 
@@ -146,7 +146,7 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
     {
       "name": "bob",
       "role": "physicist",
-      "prompt": "You are a physicist. You verify numerical results against physical conservation laws and known tolerances. Emit a verdict: PASS if the criterion holds, FAIL otherwise (with the measured value). Your output MUST end with a line exactly formatted: <!-- VERDICT: PASS --> (or <!-- VERDICT: FAIL -->)."
+      "prompt": "You are a physicist. You verify numerical results against physical conservation laws and known tolerances. Emit a verdict: PASS if the criterion holds, FAIL otherwise (with the measured value). Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case or measured value if FAIL, else empty>\"}</verdict>."
     }
   ]
 }
@@ -198,11 +198,11 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 - **加载**：`runs/<run_id>/{alice,bob}.md`
 - **提取**：
   - producer 漂移：正则 `<!--\s*DRIFT:\s*([\d.eE+-]+)\s*-->`
-  - verifier 判定：正则 `<!--\s*VERDICT:\s*(PASS|FAIL)\s*-->`
+  - verifier 判定：`<verdict>{...}</verdict>` 标签 JSON 块（`JSON.parse` 取 `result`）
 - **断言**：
   1. 漂移值存在且 `Number.isFinite`
   2. `drift < 1e-3`（辛格式守恒界）
-  3. verifier VERDICT 为 `PASS`
+  3. verifier `result` 为 `PASS`
 
 ---
 
@@ -217,7 +217,7 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 **成功标准（可机器评判）**：
 - producer 输出含 `<!-- IMPL: reverseStr -->` 标注，嵌入可加载代码块
 - `reverseStr('abc')==='cba'`、`reverseStr('')===''`、`reverseStr('a🚀b')==='b🚀a'`（代理对保持完整）
-- verifier 输出含 `<!-- VERDICT: PASS -->`
+- verifier 输出含 `<verdict>{"result":"PASS",...}</verdict>` 标签 JSON 块
 
 ### 3.2 Team 配置
 
@@ -239,7 +239,7 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
     {
       "name": "bob",
       "role": "tester",
-      "prompt": "You are a tester. You verify implementations by running them against the gate's test cases, including edge cases. Emit a verdict: PASS if every case holds, FAIL otherwise (naming the failing case). Your output MUST end with a line exactly formatted: <!-- VERDICT: PASS --> (or <!-- VERDICT: FAIL -->)."
+      "prompt": "You are a tester. You verify implementations by running them against the gate's test cases, including edge cases. Emit a verdict: PASS if every case holds, FAIL otherwise (naming the failing case). Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case or measured value if FAIL, else empty>\"}</verdict>."
     }
   ]
 }
@@ -291,11 +291,11 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 - **加载**：`runs/<run_id>/{alice,bob}.md`
 - **提取**：
   - producer 代码：抓取 ` ```typescript ... ``` ` 代码块
-  - verifier 判定：正则 `<!--\s*VERDICT:\s*(PASS|FAIL)\s*-->`
+  - verifier 判定：`<verdict>{...}</verdict>` 标签 JSON 块（`JSON.parse` 取 `result`）
 - **断言**：
   1. producer 代码可用 `new Function` 加载为 `reverseStr` 函数
   2. `reverseStr('abc')==='cba'`、`reverseStr('')===''`、`reverseStr('a🚀b')==='b🚀a'`
-  3. verifier VERDICT 为 `PASS`
+  3. verifier `result` 为 `PASS`
 
 ---
 
@@ -313,9 +313,9 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 **目标**：6 名成员组成 V&V 认证组，3 个门串行推进——每门由一名 producer 产出证据、一名独立 verifier 裁定 PASS/FAIL，全 PASS 才予 release。
 
 **成功标准（可机器评判）**：
-- G1 producer（alice）输出含 `<!-- GATE1_RESULT: <max_error> -->`；G1 verifier（bob）输出含 `<!-- VERDICT1: PASS -->`
-- G2 producer（carol）输出含 `<!-- GATE2_RESULT: <order> -->`；G2 verifier（dave）输出含 `<!-- VERDICT2: PASS -->`
-- G3 producer（erin）输出含 `<!-- GATE3_RESULT: <drift> -->`；G3 verifier（frank）输出含 `<!-- VERDICT3: PASS -->`
+- G1 producer（alice）输出含 `<!-- GATE1_RESULT: <max_error> -->`；G1 verifier（bob）输出含 `<verdict>{"result":"PASS",...}</verdict>`
+- G2 producer（carol）输出含 `<!-- GATE2_RESULT: <order> -->`；G2 verifier（dave）输出含 `<verdict>{"result":"PASS",...}</verdict>`
+- G3 producer（erin）输出含 `<!-- GATE3_RESULT: <drift> -->`；G3 verifier（frank）输出含 `<verdict>{"result":"PASS",...}</verdict>`
 - 交叉核对：G1 `max_error < 1e-3`、G2 `order ≥ 2`、G3 `drift < 1e-4`
 
 ### 4.2 Team 配置
@@ -338,7 +338,7 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
     {
       "name": "bob",
       "role": "reviewer",
-      "prompt": "You are a reviewer. You verify numerical correctness against a manufactured (analytic) solution by comparing the producer's reported max-error to the tolerance. Emit a verdict: PASS if the criterion holds, FAIL otherwise. Your output MUST end with a line exactly formatted: <!-- VERDICT1: PASS --> (or <!-- VERDICT1: FAIL -->)."
+      "prompt": "You are a reviewer. You verify numerical correctness against a manufactured (analytic) solution by comparing the producer's reported max-error to the tolerance. Emit a verdict: PASS if the criterion holds, FAIL otherwise. Your output MUST end with exactly one line formatted: <verdict>{"result": "PASS" (or "FAIL"), "rationale": "<one-sentence why>", "diff": "<measured value if FAIL, else empty>"}</verdict>."
     },
     {
       "name": "carol",
@@ -348,7 +348,7 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
     {
       "name": "dave",
       "role": "physicist",
-      "prompt": "You are a physicist. You verify that a measured convergence order matches the theoretical expectation for the discretization (>= 2 for centered-space). Emit a verdict: PASS if the criterion holds, FAIL otherwise. Your output MUST end with a line exactly formatted: <!-- VERDICT2: PASS --> (or <!-- VERDICT2: FAIL -->)."
+      "prompt": "You are a physicist. You verify that a measured convergence order matches the theoretical expectation for the discretization (>= 2 for centered-space). Emit a verdict: PASS if the criterion holds, FAIL otherwise. Your output MUST end with exactly one line formatted: <verdict>{"result": "PASS" (or "FAIL"), "rationale": "<one-sentence why>", "diff": "<measured order if FAIL, else empty>"}</verdict>."
     },
     {
       "name": "erin",
@@ -358,7 +358,7 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
     {
       "name": "frank",
       "role": "physicist",
-      "prompt": "You are a physicist. You verify heat conservation: under zero-flux boundaries total heat is invariant up to round-off. Emit a verdict: PASS if the drift criterion holds, FAIL otherwise. Your output MUST end with a line exactly formatted: <!-- VERDICT3: PASS --> (or <!-- VERDICT3: FAIL -->)."
+      "prompt": "You are a physicist. You verify heat conservation: under zero-flux boundaries total heat is invariant up to round-off. Emit a verdict: PASS if the drift criterion holds, FAIL otherwise. Your output MUST end with exactly one line formatted: <verdict>{"result": "PASS" (or "FAIL"), "rationale": "<one-sentence why>", "diff": "<measured drift if FAIL, else empty>"}</verdict>."
     }
   ]
 }
@@ -434,15 +434,15 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 - **加载**：`runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md`（6 个文件）
 - **提取**：
   - G1 误差：alice.md 正则 `<!--\s*GATE1_RESULT:\s*([\d.eE+-]+)\s*-->`
-  - G1 判定：bob.md 正则 `<!--\s*VERDICT1:\s*(PASS|FAIL)\s*-->`
+  - G1 判定：bob.md `<verdict>{...}</verdict>` 标签 JSON 块
   - G2 阶：carol.md 正则 `<!--\s*GATE2_RESULT:\s*([\d.eE+-]+)\s*-->`
-  - G2 判定：dave.md 正则 `<!--\s*VERDICT2:\s*(PASS|FAIL)\s*-->`
+  - G2 判定：dave.md `<verdict>{...}</verdict>` 标签 JSON 块
   - G3 漂移：erin.md 正则 `<!--\s*GATE3_RESULT:\s*([\d.eE+-]+)\s*-->`
-  - G3 判定：frank.md 正则 `<!--\s*VERDICT3:\s*(PASS|FAIL)\s*-->`
+  - G3 判定：frank.md `<verdict>{...}</verdict>` 标签 JSON 块
 - **断言**：
   1. 三个 GATE_RESULT 值均为有限数
   2. 交叉核对阈值：G1 `max_error < 1e-3`、G2 `order >= 2`、G3 `drift < 1e-4`
-  3. 三个 VERDICT 均为 `PASS`
+  3. 三个 verifier `result` 均为 `PASS`
 
 ---
 
@@ -453,7 +453,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 - [ ] 每个 stage 的 `verifier != member`（`bob` ≠ `alice`，满足 tollgate 硬约束）
 - [ ] 每个 master 调用参数符合 `team_tollgate` schema（`stages[].{member,task,verifier,criteria}`）
 - [ ] 场景 1-3 总时长 ≤ 8 min（远低于 30 min 上限）；场景 4 为挑战级约 60 min（6 成员、3 门串行）
-- [ ] 成员 prompt 与评判脚本标记对齐：场景 1-3 producer 发 `IMPL`/`DRIFT`、verifier 发 `VERDICT`；场景 4 producer 发 `GATE<n>_RESULT`、verifier 发 `VERDICT<n>`
+- [ ] 成员 prompt 与评判脚本标记对齐：场景 1-3 producer 发 `IMPL`/`DRIFT`、verifier 发 `<verdict>` 标签 JSON 块；场景 4 producer 发 `GATE<n>_RESULT`、verifier 发 `<verdict>` 标签 JSON 块
 
 
 ---

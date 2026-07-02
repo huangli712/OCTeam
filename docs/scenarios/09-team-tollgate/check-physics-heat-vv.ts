@@ -28,8 +28,24 @@ const G3_MAX_DRIFT = 1e-4; // total-heat conservation under Neumann BC
 function gateResultRe(n: number): RegExp {
     return new RegExp(`<!--\\s*GATE${n}_RESULT:\\s*([\\d.eE+-]+)\\s*-->`);
 }
-function verdictRe(n: number): RegExp {
-    return new RegExp(`<!--\\s*VERDICT${n}:\\s*(PASS|FAIL)\\s*-->`);
+// The verifier emits a tagged-JSON verdict block (aligned with the
+// orchestration's parseVerdict convention) rather than numbered HTML comments:
+//   <verdict>{"result":"PASS|FAIL|INVALID","rationale":"...","diff":"..."}</verdict>
+// Each verifier's .md contains exactly one such block (one per gate).
+const VERDICT_TAG_RE = /<verdict>\s*(\{[\s\S]*?\})\s*<\/verdict>/;
+
+function parseVerdict(raw: string): { result: string; rationale: string; diff: string } {
+    const m = raw.match(VERDICT_TAG_RE);
+    if (!m) fail("verifier did not emit a <verdict>{...}</verdict> decision block");
+    let obj: { result?: string; rationale?: string; diff?: string };
+    try {
+        obj = JSON.parse(m![1]) as { result?: string; rationale?: string; diff?: string };
+    } catch {
+        fail(`verifier <verdict> block is not valid JSON: ${m![1]}`);
+    }
+    const result = (obj!.result ?? "").trim().toUpperCase();
+    if (!result) fail('verifier <verdict> JSON lacks a non-empty "result" field');
+    return { result, rationale: (obj!.rationale ?? "").trim(), diff: (obj!.diff ?? "").trim() };
 }
 
 function fail(msg: string): never {
@@ -58,14 +74,6 @@ function extractNumber(raw: string, re: RegExp, label: string): number {
     return val;
 }
 
-function extractVerdict(raw: string, re: RegExp, label: string): string {
-    const m = raw.match(re);
-    if (!m) {
-        fail(`${label}: did not emit a ${re.source} marker`);
-    }
-    return m[1];
-}
-
 async function main(): Promise<void> {
     const runDir = process.argv[2];
     if (!runDir) {
@@ -83,7 +91,7 @@ async function main(): Promise<void> {
 
     // --- G1: correctness (manufactured-solution max-error) ---
     const g1Error = extractNumber(alice, gateResultRe(1), "G1 producer (alice)");
-    const g1Verdict = extractVerdict(bob, verdictRe(1), "G1 verifier (bob)");
+    const g1Verdict = parseVerdict(bob).result;
     console.log(
         `  G1 max-error = ${g1Error.toExponential(4)} ` +
             `(threshold < ${G1_MAX_ERROR.toExponential(0)}); verdict = ${g1Verdict}`,
@@ -100,7 +108,7 @@ async function main(): Promise<void> {
 
     // --- G2: grid-convergence order ---
     const g2Order = extractNumber(carol, gateResultRe(2), "G2 producer (carol)");
-    const g2Verdict = extractVerdict(dave, verdictRe(2), "G2 verifier (dave)");
+    const g2Verdict = parseVerdict(dave).result;
     console.log(
         `  G2 order     = ${g2Order.toFixed(4)} ` +
             `(threshold >= ${G2_MIN_ORDER}); verdict = ${g2Verdict}`,
@@ -114,7 +122,7 @@ async function main(): Promise<void> {
 
     // --- G3: heat conservation drift ---
     const g3Drift = extractNumber(erin, gateResultRe(3), "G3 producer (erin)");
-    const g3Verdict = extractVerdict(frank, verdictRe(3), "G3 verifier (frank)");
+    const g3Verdict = parseVerdict(frank).result;
     console.log(
         `  G3 drift     = ${g3Drift.toExponential(4)} ` +
             `(threshold < ${G3_MAX_DRIFT.toExponential(0)}); verdict = ${g3Verdict}`,

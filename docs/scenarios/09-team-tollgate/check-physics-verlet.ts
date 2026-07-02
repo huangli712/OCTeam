@@ -20,7 +20,25 @@ import { join } from "node:path";
 const DRIFT_TOLERANCE = 1e-3;
 
 const DRIFT_RE = /<!--\s*DRIFT:\s*([\d.eE+-]+)\s*-->/;
-const VERDICT_RE = /<!--\s*VERDICT:\s*(PASS|FAIL)\s*-->/;
+// The verifier emits a tagged-JSON verdict block (aligned with the
+// orchestration's parseVerdict convention) rather than HTML comments, so the
+// orchestration layer can also parse the gate result:
+//   <verdict>{"result":"PASS|FAIL|INVALID","rationale":"...","diff":"..."}</verdict>
+const VERDICT_TAG_RE = /<verdict>\s*(\{[\s\S]*?\})\s*<\/verdict>/;
+
+function parseVerdict(raw: string): { result: string; rationale: string; diff: string } {
+    const m = raw.match(VERDICT_TAG_RE);
+    if (!m) fail("verifier did not emit a <verdict>{...}</verdict> decision block");
+    let obj: { result?: string; rationale?: string; diff?: string };
+    try {
+        obj = JSON.parse(m![1]) as { result?: string; rationale?: string; diff?: string };
+    } catch {
+        fail(`verifier <verdict> block is not valid JSON: ${m![1]}`);
+    }
+    const result = (obj!.result ?? "").trim().toUpperCase();
+    if (!result) fail('verifier <verdict> JSON lacks a non-empty "result" field');
+    return { result, rationale: (obj!.rationale ?? "").trim(), diff: (obj!.diff ?? "").trim() };
+}
 
 function fail(msg: string): never {
     console.error(`FAIL: ${msg}`);
@@ -74,14 +92,11 @@ async function main(): Promise<void> {
         process.exit(2);
     }
 
-    const verdictMatch = bobRaw.match(VERDICT_RE);
-    if (!verdictMatch) {
-        fail(`verifier (bob.md) did not emit a <!-- VERDICT: PASS|FAIL --> marker`);
-    }
+    const { result: verdict } = parseVerdict(bobRaw);
 
     // Assertion 3: verifier verdict is PASS.
-    if (verdictMatch[1] !== "PASS") {
-        fail(`verifier verdict is ${verdictMatch[1]}, expected PASS`);
+    if (verdict !== "PASS") {
+        fail(`verifier verdict is ${verdict}, expected PASS`);
     }
 
     console.log("PASS: drift within symplectic tolerance; verifier verdict = PASS.");
