@@ -66,6 +66,11 @@ function makeCtx(
                     })
                     return { data: {} }
                 },
+                status: async () => ({
+                    data: Object.fromEntries(
+                        Object.entries(outputs).map(([id]) => [id, { type: "idle" }]),
+                    ),
+                }),
             },
         },
     } as unknown as PluginContext

@@ -30,6 +30,7 @@ function makeCtx(calls: DispatchCall[] = []): PluginContext {
                     calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
                     return { data: {} }
                 },
+                status: async () => ({ data: {} }),
             },
         },
     } as unknown as PluginContext
@@ -153,6 +154,40 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
         const leaderCall = calls.find(c => c.sessionId === "ses_lead")
         expect(leaderCall).toBeDefined()
         expect(leaderCall!.text).toContain("delegate_deadlock")
+    })
+
+    test("no claimable tasks, cached idle, but live session running -> NOT deadlock (wake-hint cross-check)", async () => {
+        // Regression: a member woken by a wake-hint (promptAsync) has its
+        // OpenCode session actually running, but member.status lags at "idle".
+        // The cross-check against ctx.client.session.status must prevent a
+        // false-positive deadlock verdict while the member is still working.
+        const calls: DispatchCall[] = []
+        const team = makeTeam({
+            activeTask: makeDelegateTask(),
+            members: [{ name: "alice", sessionId: "ses_alice" }],
+        })
+        const blocker = await seedTask(team, { subject: "blocker", description: "x", status: "in_progress" })
+        await seedTask(team, {
+            subject: "stuck",
+            description: "x",
+            status: "pending",
+            blockedBy: [blocker.id],
+        })
+
+        // Override makeCtx to report alice's session as "running" (wake-hint path).
+        const ctx = makeCtx(calls)
+        ;(ctx.client.session as any).status = async () => ({
+            data: { ses_alice: { type: "running" } },
+        })
+
+        await processIdle(ctx, team, team.members[0], "ses_alice")
+
+        // Not a deadlock — alice is actually running. Run stays live.
+        expect(team.status).toBe("busy")
+        expect(team.activeTask).toBeDefined()
+        // No deadlock summary delivered to the leader.
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeUndefined()
     })
 
     test("a claimable task with an idle member -> re-prompts that member (run stays live)", async () => {

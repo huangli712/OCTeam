@@ -54,11 +54,31 @@ export async function runDelegateStyleTail(
     // the deadlock check -- its claimed tasks are reaped by the sweep and a
     // survivor reclaims them.
     if (claimable.length === 0) {
-        const allIdle = team.members.every(m => m.status === "idle" || m.status === "errored" || !m.sessionId)
-        if (allIdle) {
-            await deliverSummaryToLeader(ctx, team, `${label}_deadlock`)
-            clearActiveTask(team)
-            team.status = "failed"
+        // Fast path: use cached member.status.
+        const prelimAllIdle = team.members.every(
+            m => m.status === "idle" || m.status === "errored" || !m.sessionId,
+        )
+        if (prelimAllIdle) {
+            // Cross-check against the live OpenCode session status. A member
+            // woken by a wake-hint (promptAsync) flips its OpenCode session to
+            // running without going through dispatchToMember, so its
+            // member.status may lag at "idle". Without this cross-check the
+            // deadlock verdict fires while the session is actually working.
+            const status = await ctx.client.session.status({})
+            const trulyAllIdle = team.members.every(m => {
+                if (!m.sessionId) return true
+                const entry = (status.data as Record<string, { type?: string }> | undefined)?.[m.sessionId]
+                // If the live session reports "running", the member is not
+                // truly idle even if member.status has not caught up.
+                return entry?.type !== "running"
+            })
+            if (trulyAllIdle) {
+                await deliverSummaryToLeader(ctx, team, `${label}_deadlock`)
+                clearActiveTask(team)
+                team.status = "failed"
+                return
+            }
+            // A member is actually running (wake-hint path) — wait for it.
             return
         }
         return // some members still running, wait
