@@ -24,6 +24,11 @@ function makeCtx(outputs: Record<string, string>, calls: DispatchCall[] = []): P
     return {
         directory: "/app",
         client: {
+            app: {
+                // logEvent fires on decision parse failure (loop.ts:37) and must
+                // not throw — other tests never hit that path so this is inert.
+                log: async () => ({}),
+            },
             session: {
                 messages: async ({ path }: { path: { id: string } }) => {
                     const text = outputs[path.id] ?? ""
@@ -268,5 +273,108 @@ describe("handleLoopIdle (via processIdle): decider termination", () => {
         const leaderCall = calls.find(c => c.sessionId === "ses_lead")
         expect(leaderCall).toBeDefined()
         expect(leaderCall!.text).toContain("loop_complete:no_issues")
+    })
+})
+
+// --- decision parse failure escalation (loop.ts:37-44) ---
+// Covers the parseFailed branch: 1-2 consecutive failures continue the loop,
+// the 3rd consecutive failure aborts with "loop_complete:decision_parse_failure".
+
+describe("handleLoopIdle (via processIdle): decision parse failure escalation", () => {
+    test("decider emits unparseable output (1st failure) → decisionParseFailures++ and loop continues", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeLoopTask({
+            stages: [
+                { member: "alice", task: "write code", completed: true },
+                { member: "bob", task: "decide", action: "read_only", completed: false },
+            ],
+            deciderMember: "bob",
+            currentStageIndex: 1,
+            currentRound: 1,
+            maxRounds: 3,
+            decisionParseFailures: 0,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        // Bob's output has NO <decision> tag → parseDecision returns parseFailed.
+        const ctx = makeCtx({ ses_bob: "I am unable to decide at this time." }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        // Parse failure counted but run NOT aborted (1 < 3).
+        expect(task.decisionParseFailures).toBe(1)
+        expect(team.status).toBe("busy")
+        expect(team.activeTask).toBeDefined()
+        // Loop advanced to round 2 and re-dispatched stage 0 (alice).
+        expect(task.currentRound).toBe(2)
+        expect(task.currentStageIndex).toBe(0)
+        expect(calls.some(c => c.sessionId === "ses_alice")).toBe(true)
+    })
+
+    test("3rd consecutive parse failure → run failed with 'loop_complete:decision_parse_failure'", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeLoopTask({
+            stages: [
+                { member: "alice", task: "write code", completed: true },
+                { member: "bob", task: "decide", action: "read_only", completed: false },
+            ],
+            deciderMember: "bob",
+            currentStageIndex: 1,
+            currentRound: 1,
+            maxRounds: 3,
+            decisionParseFailures: 2, // already at 2 — one more triggers the cap
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: "no decision tag here either" }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        // 3rd failure → fail-fast.
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("loop_complete:decision_parse_failure")
+    })
+
+    test("a successful parse resets the consecutive-failure counter to 0", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeLoopTask({
+            stages: [
+                { member: "alice", task: "write code", completed: true },
+                { member: "bob", task: "decide", action: "read_only", completed: false },
+            ],
+            deciderMember: "bob",
+            currentStageIndex: 1,
+            currentRound: 1,
+            maxRounds: 3,
+            decisionParseFailures: 2, // near the cap
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        // This time bob emits a valid "continue" decision → counter resets.
+        const ctx = makeCtx({ ses_bob: CONTINUE() }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(task.decisionParseFailures).toBe(0)
+        expect(team.status).toBe("busy")
+        expect(task.currentRound).toBe(2)
     })
 })

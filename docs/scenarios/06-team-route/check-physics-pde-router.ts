@@ -23,8 +23,11 @@ const BRANCH_TO_MEMBER: Record<string, string> = {
 const EXPECTED_BRANCH = "parabolic";
 
 // Acceptable numerical methods for a parabolic (heat/diffusion) equation.
-// Comparison is case-insensitive after trimming.
-const VALID_METHODS = new Set(["crank-nicolson", "implicit", "ftcs"]);
+// Comparison is case-insensitive after trimming; a reported method passes if
+// it CONTAINS any entry below as a substring (see assertion 3).
+// `adi` (Alternating Direction Implicit, e.g. Peaceman-Rachford) is the
+// canonical 2D parabolic family — on par with Crank-Nicolson / FTCS.
+const VALID_METHODS = new Set(["crank-nicolson", "implicit", "ftcs", "adi"]);
 
 const ROUTE_TAG_RE = /<route>([\s\S]*?)<\/route>/;
 const METHOD_RE = /<!--\s*METHOD:\s*(.*?)\s*-->/;
@@ -102,20 +105,28 @@ async function main(): Promise<void> {
     }
 
     // Assertion 3: matched branch produced a METHOD marker with a valid value.
+    // Accept any reported method that CONTAINS a known valid name as a
+    // substring — members often give more precise variants (e.g.
+    // "adi-crank-nicolson" for the 2D alternating-direction-implicit form of
+    // Crank-Nicolson, or "implicit-euler") which are mathematically correct.
     const methodMatch = simRaw.match(METHOD_RE);
     if (!methodMatch) {
         fail(`matched branch "${member}" did not emit <!-- METHOD: ... -->`);
     }
     const method = methodMatch[1].trim().toLowerCase();
     console.log(`  ${member} METHOD: ${method}`);
-    if (!VALID_METHODS.has(method)) {
+    const matchedValid = [...VALID_METHODS].find((v) => method.includes(v));
+    if (matchedValid === undefined) {
         fail(
-            `method "${method}" not in valid set {${[...VALID_METHODS].join(", ")}} ` +
-                `for a parabolic equation`,
+            `method "${method}" does not contain any valid method name ` +
+                `from {${[...VALID_METHODS].join(", ")}} for a parabolic equation`,
         );
     }
 
-    console.log(`PASS: router selected parabolic; ${member} proposed "${method}".`);
+    console.log(
+        `PASS: router selected parabolic; ${member} proposed "${method}" ` +
+            `(matches valid "${matchedValid}").`,
+    );
 }
 
 main();

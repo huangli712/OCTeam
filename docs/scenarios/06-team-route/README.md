@@ -437,12 +437,12 @@ T+2m      Phase B: dispatch 全部被选中分支（并行）
 T+2~20m   各命中分支读工单 → 判领域 → 写 ACTION（并行壁钟 ≈ 最慢分支）
           未命中分支不产生 .md（schema：仅 dispatch 选中分支）
 T+~20m    target barrier 收敛 → 汇总交付 master
-T+~20m    运行: bun check-coding-ticket-router.ts <run_dir>
+T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
 ```
 
 ### 4.5 评判脚本
 
-[`check-coding-ticket-router.ts`](./check-coding-ticket-router.ts)
+[`check-coding-multi-ticket-router.ts`](./check-coding-multi-ticket-router.ts)
 
 - **加载**：`<run_dir>/alice.md` + 每个被选中分支对应的成员 `.md`（分支名→成员名映射见脚本顶部 `BRANCH_TO_MEMBER`）
 - **提取**：
@@ -534,7 +534,7 @@ T+~20m    运行: bun check-coding-ticket-router.ts <run_dir>
 3. 读 README「4.3 Master 启动调用」，按 team_route JSON 启动编排（input 是一段 200 字多面性工单）
 4. team_results 轮询至 master 收到汇总（router 先多选分类，命中分支并行执行）
 5. 定位 <run_dir>（含 router 与各命中分支成员 .md）
-6. 运行：bun docs/scenarios/06-team-route/check-coding-ticket-router.ts <run_dir>
+6. 运行：bun docs/scenarios/06-team-route/check-coding-multi-ticket-router.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：router 以 {"branches":[...]} 选中 ≥4 分支（至少含 bug/refactor/test/docs/perf 中 4 个）；每个命中分支产 ACTION 计划；bug 分支的 ACTION 含 guard/throw/empty/null/undefined/check 之一。
