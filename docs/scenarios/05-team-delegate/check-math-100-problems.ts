@@ -24,7 +24,7 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 // --------------------------------------------------------------------------
 // Ground-truth helpers
@@ -189,6 +189,57 @@ function fail(msg: string): never {
     process.exit(1);
 }
 
+/**
+ * Delegate members deliver markers via team_send_message, which land in
+ * <team_dir>/mailbox/*.jsonl (not in the captured .md turn output). Each
+ * JSONL line has a `body` field carrying the message content. This returns
+ * all message bodies so their markers are not missed.
+ */
+async function loadMailboxBodies(teamDir: string): Promise<string[]> {
+    const mailboxDir = join(teamDir, "mailbox");
+    let entries: string[];
+    try {
+        entries = await readdir(mailboxDir);
+    } catch {
+        return []; // no mailbox dir (non-delegate modes) — nothing to merge
+    }
+    const bodies: string[] = [];
+    for (const entry of entries.filter((e) => e.endsWith(".jsonl"))) {
+        const raw = await readFile(join(mailboxDir, entry), "utf8");
+        for (const line of raw.split("\n")) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+                const msg = JSON.parse(trimmed);
+                if (typeof msg.body === "string") {
+                    bodies.push(msg.body);
+                }
+            } catch {
+                // skip malformed JSONL lines
+            }
+        }
+    }
+    return bodies;
+}
+
+/** Scan a single text blob for ANSWER_<n> markers and merge into `reported`. */
+function scanMarkers(raw: string, reported: Map<number, bigint>): { added: number; malformed: number } {
+    let added = 0;
+    let malformed = 0;
+    for (const m of raw.matchAll(ANSWER_N_RE)) {
+        const idx = Number(m[1]);
+        const valStr = m[2];
+        if (!Number.isInteger(idx) || idx < 1 || idx > 100) {
+            malformed++;
+            continue;
+        }
+        if (reported.has(idx)) continue;
+        reported.set(idx, BigInt(valStr));
+        added++;
+    }
+    return { added, malformed };
+}
+
 async function main(): Promise<void> {
     const runDir = process.argv[2];
     if (!runDir) {
@@ -218,17 +269,19 @@ async function main(): Promise<void> {
     try {
         for (const f of files) {
             const raw = await readFile(join(runDir, f), "utf8");
-            for (const m of raw.matchAll(ANSWER_N_RE)) {
-                const idx = Number(m[1]);
-                const valStr = m[2];
-                if (!Number.isInteger(idx) || idx < 1 || idx > 100) {
-                    malformed++;
-                    continue;
-                }
-                if (reported.has(idx)) continue;
-                reported.set(idx, BigInt(valStr));
-                totalMarkers++;
-            }
+            const r = scanMarkers(raw, reported);
+            totalMarkers += r.added;
+            malformed += r.malformed;
+        }
+        // Merge mailbox messages: delegate members deliver markers via
+        // team_send_message, which land in <team_dir>/mailbox/*.jsonl —
+        // not in the captured .md turn output.
+        const teamDir = resolve(runDir, "../..");
+        const mailboxBodies = await loadMailboxBodies(teamDir);
+        for (const body of mailboxBodies) {
+            const r = scanMarkers(body, reported);
+            totalMarkers += r.added;
+            malformed += r.malformed;
         }
     } catch (err) {
         console.error(`IO error reading member output: ${(err as Error).message}`);
