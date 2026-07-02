@@ -80,6 +80,7 @@ function makeTeam(opts: {
         sessionId: m.sessionId,
         agent: m.agent,
         isMaster: m.isMaster,
+        error: m.error,
     }))
     return {
         version: 1,
@@ -178,5 +179,120 @@ describe("parallel output capture (processIdle)", () => {
         expect(content).toContain("alice produced this artifact")
         // The run is still live (bob never idled, so the barrier did not fire).
         expect(team.activeTask).toBeDefined()
+    })
+})
+
+// --- failure isolation + reduce re-entry (parallel.ts:26-30, 37-38) ---
+// These branches live inside handleParallelIdle's onBarrier callback.
+// Reaching them via processIdle is impractical: checkTermination (Step 7)
+// fail-fasts over-tolerance errored members before the barrier can fire on
+// a later idle. Calling handleParallelIdle directly bypasses that gate so
+// the onBarrier body itself is exercised.
+
+describe("handleParallelIdle: onBarrier failure isolation", () => {
+    test("all participants errored, tolerance 0 → fails with member_error (parallel.ts:26-30)", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({}, calls)
+        const task = makeParallelTask({ mode: "isolated", maxErroredMembers: 0 })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", status: "errored", error: "crashed" },
+                { name: "bob", sessionId: "ses_bob", status: "errored", error: "timeout" },
+            ],
+        })
+
+        await handleParallelIdle(ctx, team)
+
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("member_error:alice:crashed")
+    })
+
+    test("errored over tolerance with survivors → fails (parallel.ts:26-30)", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({}, calls)
+        const task = makeParallelTask({ mode: "isolated", maxErroredMembers: 1 })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", status: "errored", error: "a" },
+                { name: "bob", sessionId: "ses_bob", status: "errored", error: "b" },
+                { name: "carol", sessionId: "ses_carol", status: "idle" },
+            ],
+        })
+
+        await handleParallelIdle(ctx, team)
+
+        // 2 errored > tolerance 1 → fail even though carol survived.
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall!.text).toContain("member_error:")
+    })
+
+    test("within tolerance with survivors → partial delivery (not failure)", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({}, calls)
+        const task = makeParallelTask({
+            mode: "isolated",
+            maxErroredMembers: 1,
+            responses: { alice: "A", bob: "errored output" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", status: "idle" },
+                { name: "bob", sessionId: "ses_bob", status: "errored", error: "boom" },
+            ],
+        })
+
+        await handleParallelIdle(ctx, team)
+
+        // 1 errored <= tolerance 1, survivors=1 → deliver partial success.
+        expect(team.status).toBe("idle")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall!.text).toContain("parallel_isolated_partial:1_errored")
+    })
+})
+
+describe("handleParallelIdle: reduceStage re-entry fallback (parallel.ts:37-38)", () => {
+    test("reduceStage still set at barrier → cleared, falls back to non-reduced delivery", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({}, calls)
+        // reduceStage=true simulates: the reducer was dispatched but reached a
+        // terminal state (errored) without idling through handleReduceIdle, so
+        // reduceStage was never cleared. The barrier fallback clears it and
+        // delivers the mappers' raw outputs instead of hanging.
+        const task = makeParallelTask({
+            mode: "isolated",
+            reduceStage: true,
+            reducerMember: "alice",
+            reducePolicy: "summarize",
+            responses: { alice: "ALICE_RAW", bob: "BOB_RAW" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", status: "idle" },
+                { name: "bob", sessionId: "ses_bob", status: "idle" },
+            ],
+        })
+
+        await handleParallelIdle(ctx, team)
+
+        // reduceStage was cleared (parallel.ts:38) and delivery proceeded
+        // with a non-reduced reason.
+        expect(task.reduceStage).toBe(false)
+        expect(team.status).toBe("idle")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        // Non-reduced delivery: the reason does NOT carry "reduced".
+        expect(leaderCall!.text).toContain("parallel_isolated_complete")
+        expect(leaderCall!.text).not.toContain("reduced")
     })
 })
