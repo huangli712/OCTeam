@@ -13,6 +13,17 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+// Minimal type declaration for Bun.Transpiler -- the check script convention
+// is zero external deps (see _AUTHORING.md), so we declare only the surface we
+// use instead of pulling in @types/bun. Accessed via globalThis at runtime.
+interface BunTranspiler {
+    transformSync(code: string): string;
+}
+interface BunGlobal {
+    Transpiler: new (opts: { loader: string }) => BunTranspiler;
+}
+const Bun = (globalThis as unknown as { Bun: BunGlobal }).Bun;
+
 interface ModPowCase {
     base: number;
     exp: number;
@@ -55,8 +66,13 @@ function fail(msg: string): never {
 function loadModPow(code: string): (base: number, exp: number, mod: number) => number {
     // Member prompt fixes the signature `function modPow(base, exp, mod)`.
     // Works for both `function modPow(...)` declarations and `const modPow = ...`.
+    // Producer emits TypeScript with `: number` annotations and may use a
+    // module-level `export`; transpile types to JS, then strip `export` so
+    // `new Function` (a function body, not a module) can load it.
+    const transpiled = new Bun.Transpiler({ loader: "ts" }).transformSync(code);
+    const js = transpiled.replace(/\bexport\s+/g, "");
     // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
-    const factory = new Function(`${code}; return typeof modPow === "function" ? modPow : null;`) as
+    const factory = new Function(`${js}; return typeof modPow === "function" ? modPow : null;`) as
         () => ((base: number, exp: number, mod: number) => number) | null;
     const fn = factory();
     if (typeof fn !== "function") {

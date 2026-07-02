@@ -16,6 +16,17 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
+// Minimal type declaration for Bun.Transpiler -- the check script convention
+// is zero external deps (see _AUTHORING.md), so we declare only the surface we
+// use instead of pulling in @types/bun. Accessed via globalThis at runtime.
+interface BunTranspiler {
+    transformSync(code: string): string;
+}
+interface BunGlobal {
+    Transpiler: new (opts: { loader: string }) => BunTranspiler;
+}
+const Bun = (globalThis as unknown as { Bun: BunGlobal }).Bun;
+
 interface CalcCase {
     op: string;
     a: number;

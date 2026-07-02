@@ -5,12 +5,12 @@
  * extracts the refactored fib code, loads it via `new Function`, and re-runs
  * the 4 canonical cases to confirm the refactor preserved behavior.
  *
- * NOTE on TS stripping: members are asked to emit `function fib(n: number):
+ * NOTE on TS loading: members are asked to emit `function fib(n: number):
  * number`, but `new Function` is a runtime JS primitive that does NOT accept
- * TypeScript type annotations (Bun transpiles .ts files but not dynamic
- * strings). We therefore strip TS type annotations from the extracted code
- * before loading. This mirrors the gold template's `new Function` loading
- * strategy while accommodating the typed signature the task requires.
+ * TypeScript type annotations or module `export` (Bun transpiles .ts files but
+ * not dynamic strings). We therefore run the extracted code through
+ * `Bun.Transpiler` (strips types) and a regex (strips `export`) before loading.
+ * This mirrors the shared check-script convention (see _AUTHORING.md).
  *
  * Usage:  bun check-coding-fib-tdd.ts <run_dir>
  *   <run_dir>  directory containing carol.md
@@ -20,6 +20,17 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+
+// Minimal type declaration for Bun.Transpiler -- the check script convention
+// is zero external deps (see _AUTHORING.md), so we declare only the surface we
+// use instead of pulling in @types/bun. Accessed via globalThis at runtime.
+interface BunTranspiler {
+    transformSync(code: string): string;
+}
+interface BunGlobal {
+    Transpiler: new (opts: { loader: string }) => BunTranspiler;
+}
+const Bun = (globalThis as unknown as { Bun: BunGlobal }).Bun;
 
 const FINAL_MEMBER = "carol";
 
@@ -49,25 +60,21 @@ function fail(msg: string): never {
 }
 
 /**
- * Strip TypeScript type annotations so the code is loadable via `new Function`.
- * Handles the common function-signature forms:
- *   - return types:  `): <type> {`  and  `): <type> =>`
- *   - param/var types: `name: <type>`  (type runs up to , ) = or newline)
+ * Load TypeScript code via the shared `Bun.Transpiler` + strip-`export`
+ * convention (matches check-coding-twosum.md et al.). Members are asked to emit
+ * `function fib(n: number): number`, but `new Function` is a runtime JS
+ * primitive that does NOT accept TypeScript annotations or module `export`.
+ * Bun.Transpiler strips types; the regex strips `export`.
  */
-function stripTsTypes(code: string): string {
-    return code
-        .replace(/\)\s*:\s*[A-Za-z_$][\w$<>[\]|&, .]*?\s*(?=\{|\=>)/g, ") ")
-        .replace(/\b([A-Za-z_$][\w$]*)\s*:\s*[A-Za-z_$][\w$<>[\]|&, .]*?(?=[,)=\n])/g, "$1");
-}
-
 function loadFib(code: string): (n: number) => number {
-    const jsCode = stripTsTypes(code);
+    const transpiled = new Bun.Transpiler({ loader: "ts" }).transformSync(code);
+    const jsCode = transpiled.replace(/\bexport\s+/g, "");
     let factory: () => unknown;
     try {
         // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
         factory = new Function(`${jsCode}; return typeof fib === "function" ? fib : null;`) as () => unknown;
     } catch (err) {
-        throw new Error(`syntax error after type-stripping: ${(err as Error).message}`);
+        throw new Error(`syntax error after transpiling: ${(err as Error).message}`);
     }
     const fn = factory();
     if (typeof fn !== "function") {

@@ -22,6 +22,17 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+// Minimal type declaration for Bun.Transpiler -- the check script convention
+// is zero external deps (see _AUTHORING.md), so we declare only the surface we
+// use instead of pulling in @types/bun. Accessed via globalThis at runtime.
+interface BunTranspiler {
+    transformSync(code: string): string;
+}
+interface BunGlobal {
+    Transpiler: new (opts: { loader: string }) => BunTranspiler;
+}
+const Bun = (globalThis as unknown as { Bun: BunGlobal }).Bun;
+
 // Decomposer member (set in the team_create config above). The root aggregator.
 const DECOMPOSER = "alice";
 // Test member that reports the assembled-suite pass count.
@@ -121,9 +132,14 @@ function extractConvert(docs: MemberDoc[]): (markdown: string) => string {
 
     let fn: (markdown: string) => string;
     try {
+        // Member code is TypeScript (annotations, possibly module `export`).
+        // Transpile types to JS and strip `export` so `new Function` (a
+        // function body, not a module) can load it. Shared convention.
+        const transpiled = new Bun.Transpiler({ loader: "ts" }).transformSync(found!.code);
+        const codeLoadable = transpiled.replace(/\bexport\s+/g, "");
         // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
         const factory = new Function(
-            `${found!.code}; return typeof convert === "function" ? convert : null;`,
+            `${codeLoadable}; return typeof convert === "function" ? convert : null;`,
         ) as () => ((markdown: string) => string) | null;
         const g = factory();
         if (typeof g !== "function") {

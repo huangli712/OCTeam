@@ -67,7 +67,7 @@
     "stages": [
       {
         "member": "alice",
-        "task": "Implement `modPow(base, exp, mod)` computing base^exp mod mod via binary exponentiation (iterative square-and-multiply). Handle exp=0 (return 1 for any mod>0). Embed TypeScript code in a fenced block.",
+        "task": "Implement `modPow(base, exp, mod)` computing base^exp mod mod via binary exponentiation (iterative square-and-multiply). Use `number` type for all parameters and return value (NOT bigint). Handle exp=0 (return 1 for any mod>0). Embed TypeScript code in a fenced block.",
         "verifier": "bob",
         "criteria": "Verify modPow(2,10,1000)=24, modPow(3,0,7)=1, modPow(7,256,13)=9. Also confirm exp=0 returns 1. If all pass emit PASS, else FAIL with the failing case."
       }
