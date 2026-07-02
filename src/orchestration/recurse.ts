@@ -94,6 +94,36 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             const result = output.length > 0 ? output : "(no output provided)"
             await updateTask(team.directory, T.id, { status: "completed", result })
         }
+    } else if (member.name === task.decomposerMember && task.rootTaskId) {
+        // Aggregation fallback: after decomposing, the root task is re-queued
+        // as pending/unowned/blockedBy. Once all subtasks complete it becomes
+        // claimable and runDelegateStyleTail re-prompts the decomposer. But
+        // the decomposer typically emits the aggregation report WITHOUT
+        // re-claiming the root (the prompt says "the orchestrator finalizes
+        // on idle"), so the T-lookup above stays empty and the root never
+        // flips to completed -> indefinite re-prompt loop. When the
+        // decomposer idles holding no task but the root is pending with all
+        // blockers completed and the decomposer produced non-empty output,
+        // finalize the root here with that output. This is safe: the root
+        // is the single aggregation point, and updateTask's expectedStatus
+        // guard prevents a double-finalize if two events race.
+        const root = tasks.find(t => t.id === task.rootTaskId)
+        const output = task.responses[member.name] ?? ""
+        if (
+            root
+            && root.status === "pending"
+            && root.blockedBy.length > 0
+            && root.blockedBy.every(id => tasks.find(x => x.id === id)?.status === "completed")
+            && output.length > 0
+        ) {
+            await updateTask(team.directory, root.id, { status: "completed", result: output })
+            recordEvent(team, {
+                timestamp: Date.now(),
+                kind: "aggregated",
+                member: member.name,
+                detail: root.subject.slice(0, 60),
+            })
+        }
     }
 
     // Shared delegate-style tail: all-complete / deadlock / re-prompt.

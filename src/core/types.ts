@@ -323,6 +323,7 @@ export type RunEventKind =
     | "routed"          // router selected target branch(es) (route mode)
     | "arbitrated"      // arbiter issued a binding ruling (arbitrate mode)
     | "decomposed"      // a task was split into subtasks (recurse mode)
+    | "aggregated"      // the root task was finalized after all subtasks completed (recurse mode)
     | "verdict"         // a gate produced a PASS/FAIL/INVALID verdict (tollgate mode)
 
 export type RunEvent = {
