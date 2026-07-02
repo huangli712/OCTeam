@@ -12,7 +12,8 @@ import type { MemberState } from "../core/types.js"
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import { recordEvent } from "./events.js"
 import { parseDecompose } from "./decisions.js"
-import { runDelegateStyleTail } from "./delegate.js"
+import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
+import { dispatchToMember } from "./dispatch.js"
 
 /**
  * Build the recursive-decomposition contract prompt: claim a task, then either
@@ -123,6 +124,42 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 member: member.name,
                 detail: root.subject.slice(0, 60),
             })
+        }
+    }
+
+    // Recurse-specific: when the root becomes claimable (all sub-tasks done),
+    // dispatch the DECOMPOSER for aggregation — not whichever solver happened
+    // to idle last. Without this, a solver member (e.g. bob) claims root,
+    // writes an aggregation report with the wrong marker, and the decomposer's
+    // aggregation turn never runs. Only fires when the current idling member is
+    // NOT the decomposer (if it is, runDelegateStyleTail below handles it).
+    if (
+        task.rootTaskId
+        && task.decomposerMember
+        && member.name !== task.decomposerMember
+    ) {
+        const root = tasks.find(t => t.id === task.rootTaskId)
+        if (
+            root
+            && root.status === "pending"
+            && root.blockedBy.length > 0
+            && root.blockedBy.every(id => tasks.find(x => x.id === id)?.status === "completed")
+        ) {
+            const decomposer = team.members.find(m => m.name === task.decomposerMember)
+            if (decomposer && decomposer.status === "idle" && decomposer.sessionId) {
+                const now = Date.now()
+                if (!decomposer.lastNotifiedAt || now - decomposer.lastNotifiedAt >= NOTIFY_COOLDOWN_MS) {
+                    decomposer.lastNotifiedAt = now
+                    await dispatchToMember(
+                        ctx,
+                        decomposer,
+                        buildRecursePrompt(),
+                        decomposer.worktreePath ?? ctx.directory,
+                        team,
+                    )
+                    return
+                }
+            }
         }
     }
 

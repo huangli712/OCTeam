@@ -283,8 +283,9 @@ export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: s
 
 /**
  * Step 4 of processIdle: capture the member's output from the current turn.
- * Mode-aware (delegate skips — results go via team_send_message; signoff stage
- * always captures to parse <signoff> tags).
+ * Uniform across all modes: turn output is captured to <member>.md. Delegate
+ * members ALSO report via team_send_message (mailbox); both paths coexist so
+ * run_dir holds a full-output archive while master receives per-task reports.
  *
  * Persistence is ACCUMULATIVE across turns (not last-turn overwrite): a member
  * may idle multiple times in one run (reducer role, re-prompt, multi-turn
@@ -309,8 +310,9 @@ export async function captureMemberOutput(
 ): Promise<void> {
     const task = team.activeTask
     if (!task) return
-    const shouldCapture = task.type !== "delegate" || !!task.signoffStage
-    if (!shouldCapture) return
+    // All modes capture turn output to <member>.md. Delegate members ALSO
+    // report via team_send_message; both paths coexist (mailbox is the
+    // per-task report, .md is the lossless full-turn archive).
     // Find the start of the current turn (last user message).
     let turnStart = 0
     for (let i = messages.length - 1; i >= 0; i--) {

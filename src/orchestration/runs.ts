@@ -159,7 +159,7 @@ export async function persistRun(team: Team, reason: string): Promise<void> {
     try {
         entries = await fs.readdir(dir)
     } catch {
-        // dir may not exist (e.g. delegate with no captured outputs) — that's fine
+        // dir may not exist (e.g. a run with no member turns yet) — that's fine
     }
     for (const file of entries) {
         if (!file.endsWith(".md")) continue

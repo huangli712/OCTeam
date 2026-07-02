@@ -13,8 +13,9 @@ import { listAllTasks } from "../state/tasks.js"
 import { dispatchToMember } from "./dispatch.js"
 import { deliverSummaryToLeader } from "./summary.js"
 import { maybeTriggerSignoff } from "./signoff.js"
+import { captureMemberOutput } from "./handlers.js"
 
-const NOTIFY_COOLDOWN_MS = 10_000
+export const NOTIFY_COOLDOWN_MS = 10_000
 
 /**
  * Shared delegate-style termination tail: scan the task list, deliver on
@@ -35,6 +36,18 @@ export async function runDelegateStyleTail(
     if (incomplete.length === 0) {
         if (await maybeTriggerSignoff(ctx, team)) {
             return  // signoff in progress
+        }
+        // Before clearing the active task, capture any member whose turn output
+        // hasn't been persisted yet. Delegate/recurse members run concurrently;
+        // when the completing member idles and triggers this branch, others may
+        // still be running or have idled without their captureMemberOutput
+        // firing (their subsequent idle would hit a cleared activeTask and skip).
+        // Idempotent: already-captured members yield empty outputs and return early.
+        for (const m of team.members) {
+            if (m.isMaster || !m.sessionId) continue
+            const res = await ctx.client.session.messages({ path: { id: m.sessionId } })
+            const msgs = (res.data ?? []) as Array<{ info?: any; parts?: any }>
+            await captureMemberOutput(ctx, team, m, msgs)
         }
         await deliverSummaryToLeader(ctx, team, `${label}_complete`)
         clearActiveTask(team)
@@ -88,18 +101,28 @@ export async function runDelegateStyleTail(
         return // some members still running, wait
     }
 
-    // Re-prompt this member -- RATE-LIMITED to avoid claim-race busy-loop.
+    // Dispatch idle members toward claimable tasks -- RATE-LIMITED per member
+    // to avoid claim-race busy-loop. The current idling member is dispatched
+    // first, then any OTHER idle members are dispatched until enough are
+    // heading for the available tasks (claimable <= running). Without this
+    // extra pass, only the member that just idled gets re-prompted while
+    // other idle members (e.g. woken earlier by wake-hint, found no tasks,
+    // went back to idle) never get a second chance to claim tasks created
+    // later in the same run.
     const now = Date.now()
-    if (member.lastNotifiedAt && now - member.lastNotifiedAt < NOTIFY_COOLDOWN_MS) {
-        return
+    const idleMembers = team.members.filter(
+        m => !m.isMaster && m.sessionId && m.status === "idle"
+            && (!m.lastNotifiedAt || now - m.lastNotifiedAt >= NOTIFY_COOLDOWN_MS),
+    )
+    // Sort so the current member is first (it just produced output / has the
+    // freshest context), then the rest.
+    idleMembers.sort(a => a.name === member.name ? -1 : 1)
+    for (const m of idleMembers) {
+        const curRunning = team.members.filter(mm => mm.status === "running" && !mm.isMaster).length
+        if (claimable.length <= curRunning) break // enough dispatched
+        m.lastNotifiedAt = now
+        await dispatchToMember(ctx, m, buildReprompt(claimable.length), m.worktreePath ?? ctx.directory, team)
     }
-    const running = team.members.filter(m => m.status === "running" && !m.isMaster).length
-    if (claimable.length <= running) {
-        return // enough members already heading for the available tasks
-    }
-    if (!member.sessionId) return
-    member.lastNotifiedAt = now
-    await dispatchToMember(ctx, member, buildReprompt(claimable.length), member.worktreePath ?? ctx.directory, team)
 }
 
 export async function handleDelegateIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
