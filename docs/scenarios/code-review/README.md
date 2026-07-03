@@ -9,7 +9,7 @@
 | 阶段 | 团队 | 编排原语 | 输入 | 产出（交接 marker） |
 |------|------|---------|------|---------------------|
 | ① 审计 | **audit-team** | `team_parallel` | `<TARGET>` 源码 | `<!-- FINDING: <id>:<dim>:<severity> -->` |
-| ② 确认缺陷（真假辩论） | **triage-team** | `team_consensus` | audit 汇总的 findings | `<!-- CONFIRMED: <id> -->` |
+| ② 确认缺陷（真假辩论） | **triage-team** | `team_arbitrate` | audit 汇总的 findings | `<!-- CONFIRMED: <id> -->` |
 | ③ 修复（逐个门控） | **fix-team** | `team_tollgate` | 每个 CONFIRMED 一条流水线（逐个串行 run） | `<!-- FIXED: <id> -->` + 补丁 |
 
 用到 3 种编排：**parallel / consensus / tollgate**。tollgate 的每道 stage 有独立 verifier（两道门用不同 verifier），FAIL 回退 producer，INVALID 升级到 arbiter，最终由 signoff decider 签字。
@@ -17,7 +17,7 @@
 ```
 <TARGET> ──► audit-team (parallel)  ──findings──► master
                                                      │
-             triage-team  (consensus) ◄──findings──────┘
+             triage-team  (arbitrate) ◄──findings────┘
                   │
                   └──confirmed──────────────────► master
                                                      │
@@ -137,57 +137,74 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
   - 若无 high 但 medium / low 都存在 → 只保留 medium，丢弃 low。
   - 若只有 low → 保留 low。
 - 裁剪后若 **0 条 findings**（没有任何维度的任何发现），master 如实汇报并**中断流程**。
-- 这张清单作为 §2 `team_consensus` 的 `topic` 喂给 triage-team。
+- 这张清单作为 §2 `team_arbitrate` 的 `task` 喂给 triage-team。
 
 ---
 
-## §2 triage-team（`team_consensus`）— 确认缺陷（真假辩论）
+## §2 triage-team（`team_arbitrate`）— 确认缺陷（真假辩论）
 
 ### 2.1 阶段说明
 
-4 名 debater（2 reviewer + 2 architect）多轮辩论 audit 的 findings：**哪些是真问题、哪些是误报**。**本阶段不讨论修复策略**——修复方案交给 §3 fix-team 的 coder 自行决定。达成共识后，输出被确认为真问题的缺陷清单。
+6 名 debater（2 reviewer + 2 architect + 1 coder + 1 explorer）多轮辩论 audit 的 findings：**哪些是真问题、哪些是误报**。**本阶段不讨论修复策略**——修复方案交给 §3 fix-team 的 coder 自行决定。辩论结束后，1 名 `almighty` 仲裁（sam）权衡各方立场下达**有约束力裁决**——**只确认 debater 达成共识的发现**（仍有分歧的默认丢弃）。
 
 ### 2.2 Team 配置
 
 ```json
 {
   "name": "cr-triage",
-  "description": "Code review plan team: 4 debaters (2 reviewers + 2 architects) triage audit findings — debate real-vs-false-positive only, NOT fix strategies",
+  "description": "Code review triage team: 6 debaters (2 reviewers + 2 architects + 1 coder + 1 explorer) + 1 almighty arbiter triage audit findings via arbitrate — debate real-vs-false-positive, arbiter confirms only consensus findings; NOT fix strategies",
   "members": [
     {
       "name": "erin",
       "role": "reviewer",
-      "prompt": "You are a reviewer debating which audit findings are REAL, actionable issues (not false positives). For each finding argue ONLY: is it a genuine issue? does the code actually exhibit the described problem? Reach agreement with your teammates. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL message, emit one line per confirmed-real issue exactly formatted: <!-- CONFIRMED: <finding-id> -->. Findings you collectively reject as false positives are simply omitted."
+      "prompt": "You are a reviewer debating which audit findings are REAL, actionable issues (not false positives). For each finding argue ONLY: is it a genuine issue? does the code actually exhibit the described problem? Engage with your teammates' positions across rounds. Do NOT discuss fix strategies — that is delegated to the fix team. Do NOT emit CONFIRMED markers — the arbiter weighs all positions and issues a binding ruling."
     },
     {
       "name": "frank",
       "role": "reviewer",
-      "prompt": "You are a reviewer debating which audit findings are REAL, actionable issues (not false positives). For each finding argue ONLY: is it a genuine issue? does the code actually exhibit the described problem? Reach agreement with your teammates. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL message, emit one line per confirmed-real issue exactly formatted: <!-- CONFIRMED: <finding-id> -->. Findings you collectively reject as false positives are simply omitted."
+      "prompt": "You are a reviewer debating which audit findings are REAL, actionable issues (not false positives). For each finding argue ONLY: is it a genuine issue? does the code actually exhibit the described problem? Engage with your teammates' positions across rounds. Do NOT discuss fix strategies — that is delegated to the fix team. Do NOT emit CONFIRMED markers — the arbiter weighs all positions and issues a binding ruling."
     },
     {
       "name": "grace",
       "role": "architect",
-      "prompt": "You are an architect debating which audit findings are REAL. Weigh whether the described problem genuinely violates design invariants or contracts. Reach agreement with your teammates. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL message, emit one line per confirmed-real issue exactly formatted: <!-- CONFIRMED: <finding-id> -->. Findings you collectively reject as false positives are simply omitted."
+      "prompt": "You are an architect debating which audit findings are REAL. Weigh whether the described problem genuinely violates design invariants or contracts. Engage with your teammates' positions across rounds. Do NOT discuss fix strategies — that is delegated to the fix team. Do NOT emit CONFIRMED markers — the arbiter weighs all positions and issues a binding ruling."
     },
     {
       "name": "quinn",
       "role": "architect",
-      "prompt": "You are an architect debating which audit findings are REAL. Weigh whether the described problem genuinely violates design invariants, contracts, or long-term correctness. Reach agreement with your teammates. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL message, emit one line per confirmed-real issue exactly formatted: <!-- CONFIRMED: <finding-id> -->. Findings you collectively reject as false positives are simply omitted."
+      "prompt": "You are an architect debating which audit findings are REAL. Weigh whether the described problem genuinely violates design invariants, contracts, or long-term correctness. Engage with your teammates' positions across rounds. Do NOT discuss fix strategies — that is delegated to the fix team. Do NOT emit CONFIRMED markers — the arbiter weighs all positions and issues a binding ruling."
+    },
+    {
+      "name": "mona",
+      "role": "coder",
+      "prompt": "You are a CODER debating which audit findings are REAL. Approach each finding SKEPTICALLY from an implementer's perspective: by default suspect it is a false positive — ask whether real-world code paths actually trigger the described behavior, whether existing guards or context already cover it, whether the described impact is genuinely reachable. Only concede a finding is real if presented with concrete evidence (a triggering call path, a missing guard, a demonstrated failure). Engage with your teammates' positions across rounds. Do NOT discuss fix strategies — that is delegated to the fix team. Do NOT emit CONFIRMED markers — the arbiter weighs all positions and issues a binding ruling."
+    },
+    {
+      "name": "ruby",
+      "role": "explorer",
+      "prompt": "You are an EXPLORER debating which audit findings are REAL. Approach each finding SKEPTICALLY from a codebase-traversal perspective: by default suspect it is a false positive — trace whether the flagged code is actually reachable in real execution, whether callers or upstream already validate the input, whether the described race or error window can actually open. Only concede a finding is real if presented with concrete evidence (a live call path reaching the code, an unguarded entry point, a demonstrated trigger). Engage with your teammates' positions across rounds. Do NOT discuss fix strategies — that is delegated to the fix team. Do NOT emit CONFIRMED markers — the arbiter weighs all positions and issues a binding ruling."
+    },
+    {
+      "name": "sam",
+      "role": "almighty",
+      "prompt": "You are the ARBITER (almighty). Six debaters (2 reviewers, 2 architects, 1 coder, 1 explorer) debated which audit findings are REAL, actionable issues. Weigh all positions impartially across the rounds. Apply this BINDING rule: confirm a finding ONLY IF the debaters reached consensus that it is real — i.e. no substantive dissent remained, or any initial skepticism was withdrawn when confronted with concrete evidence (a triggering call path, a missing guard, a demonstrated failure). Findings with unresolved disagreement are rejected as unconfirmed. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL ruling, emit one line per confirmed finding exactly formatted: <!-- CONFIRMED: <finding-id> --> (rejected findings are simply omitted), then emit exactly one line formatted: <ruling>{\"decision\":\"<comma-separated confirmed ids, or none>\",\"rationale\":\"<which findings reached consensus and which did not, and why>\"}</ruling>."
     }
   ]
 }
 ```
 
-**Role 选择**：erin/frank 用 `reviewer`（只读深审），grace/quinn 用 `architect`（架构视角判断是否真违反不变量/契约）。辩论焦点统一收敛到"真假"，策略留给后续。
+**Role 选择**：erin/frank 用 `reviewer`（只读深审），grace/quinn 用 `architect`（架构视角判断是否真违反不变量/契约）。mona 用 `coder`（实现者视角，默认质疑可触发性）、ruby 用 `explorer`（代码库可达性视角，默认质疑路径可达），两人倾向唱反调——除非被具体证据（触发调用链、缺失防护、可演示失败）说服，否则倾向于判为误报。sam 用 `almighty`（仲裁，非辩手、非 master）——辩论结束后权衡 6 方立场，按「只确认共识发现」的约束力规则下达裁决。辩论焦点统一收敛到"真假"，策略留给后续。
 
 ### 2.3 Master 启动调用
 
 ```json
 {
-  "tool": "team_consensus",
+  "tool": "team_arbitrate",
   "args": {
     "team_id": "cr-triage",
-    "topic": "<把 §1.5 的 findings 清单原文粘进来：每条 FINDING id/dim/severity/描述>",
+    "task": "<把 §1.5 的 findings 清单原文粘进来：每条 FINDING id/dim/severity/描述>",
+    "arbiter": "sam",
+    "debaters": ["erin", "frank", "grace", "quinn", "mona", "ruby"],
     "max_rounds": 6,
     "timeout_ms": 2400000
   }
@@ -195,23 +212,25 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 ```
 
 **参数选择**：
-- `topic` = audit findings 清单（master 手递手填入）。
+- `task` = audit findings 清单（master 手递手填入）；arbitrate 的 `task` 即争议主题。
+- `arbiter: "sam"`（role=`almighty`）——非 debater、非 master；权衡 6 名 debater 立场后下达有约束力裁决。
+- `debaters`——6 名辩手（erin/frank/grace/quinn/mona/ruby），≥2 且唯一，均不得为 arbiter。
 - `max_rounds: 6`——给足辩论空间，应对大量 findings 时有回旋余量。
-- 不设 `signoff_policy`——consensus 的「全同意」机制本身就是门。
+- 不设 `signoff_policy`——arbiter 的裁决本身即为终点（等价 `none` 门）。
 
 ### 2.4 生命周期步骤（master）
 
 ```
 team_create(cr-triage)
 team_activate(cr-triage)        # （此时 cr-audit 已 deactivate）
-team_consensus(...)           # topic = §1.5 findings 清单
-# 等待共识 → team_results 取汇总
+team_arbitrate(...)           # task = §1.5 findings 清单，arbiter=sam
+# 等待 arbiter 裁决 → team_results 取汇总
 team_deactivate(cr-triage)
 ```
 
 ### 2.5 产出与交接
 
-- master 抓取所有 `<!-- CONFIRMED: <id> -->`，去重成**确认缺陷表**。
+- master 从 arbiter 裁决输出抓取所有 `<!-- CONFIRMED: <id> -->`，去重成**确认缺陷表**。
 - 对每个 CONFIRMED id，从 §1.5 维护的 id → 描述映射查出缺陷描述，组装 §3 每次 tollgate run 的 task。
 - 这张表用于 §3：每条 CONFIRMED 展开成**一次独立的 tollgate run**。
 
@@ -345,8 +364,8 @@ T+0   team_create(cr-audit) → team_activate → team_parallel
         8 reviewer 并行审计 <TARGET>
 T+~12  收 findings → 按严重度裁剪 → team_deactivate(cr-audit)
         若裁剪后 0 条 → 中断，如实汇报
-T+~12  team_create(cr-triage) → team_activate → team_consensus(topic=findings)
-        4 debater（2 reviewer + 2 architect）辩论真假（≤6 轮）
+T+~12  team_create(cr-triage) → team_activate → team_arbitrate(task=findings)
+        6 debater（2 reviewer + 2 architect + 1 coder + 1 explorer）辩论真假（≤6 轮）→ arbiter(sam) 裁决
 T+~25  收 confirmed → team_deactivate(cr-triage)
 T+~25  team_create(cr-fix) → team_activate
         for each CONFIRMED finding（逐个串行）:
@@ -370,7 +389,7 @@ T+~25+N×10   你读取全部输出，裁定结果
 
 1. audit-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。8 名 reviewer 并行审计 <TARGET>。完成后 deactivate。汇总所有 <!-- FINDING: ... --> marker 成 findings 清单，同时维护 id→描述映射。按严重度裁剪：只保留存在的最高严重度等级的全部发现（high>medium>low），更低等级全部丢弃。裁剪后若 0 条则中断流程。
 
-2. triage-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步裁剪后的 findings 清单，max_rounds=6）。4 名 debater（2 reviewer + 2 architect）辩论哪些是真问题、哪些是误报——不讨论修复策略。完成后 deactivate。汇总所有 <!-- CONFIRMED: <id> --> marker 成确认缺陷表。
+2. triage-team (team_arbitrate，§2)：按 §2.2 team_create（6 debater + 1 almighty arbiter），§2.3 team_arbitrate（task = 上一步裁剪后的 findings 清单，arbiter=sam，max_rounds=6）。6 名 debater 辩论哪些是真问题、哪些是误报——不讨论修复策略；arbiter 只确认达成共识的发现。完成后 deactivate。汇总 arbiter 裁决中的所有 <!-- CONFIRMED: <id> --> marker 成确认缺陷表。
 
 3. fix-team (team_tollgate，§3)：按 §3.2 team_create（5 人：henry tester / iris reviewer / jack coder / kate reviewer / leo reviewer），§3.3 对每个 CONFIRMED finding 串行启动一次 team_tollgate run（替换 <id> 和缺陷描述）。每次 run 两道门：henry 写 failing test → iris 验证；jack 修复 → kate 验证；leo 仲裁签字。max_gate_retries=2，signoff_policy=decider，signoff_decider=leo。全部 finding 跑完后 deactivate。汇总所有 <!-- FIXED: <id> --> + 补丁。
 
@@ -390,6 +409,6 @@ T+~25+N×10   你读取全部输出，裁定结果
 
 - [`docs/scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
 - [`docs/scenarios/01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
-- [`docs/scenarios/02-team-consensus/README.md`](../../02-team-consensus/README.md) — consensus 原语参考
+- [`docs/scenarios/07-team-arbitrate/README.md`](../../07-team-arbitrate/README.md) — arbitrate 原语参考
 - [`docs/scenarios/09-team-tollgate/README.md`](../../09-team-tollgate/README.md) — tollgate 原语参考
-- parallel / consensus / tollgate 源码：[`src/orchestration/parallel.ts`](../../../../src/orchestration/parallel.ts) / [`consensus.ts`](../../../../src/orchestration/consensus.ts) / [`tollgate.ts`](../../../../src/orchestration/tollgate.ts)
+- parallel / arbitrate / tollgate 源码：[`src/orchestration/parallel.ts`](../../../../src/orchestration/parallel.ts) / [`arbitrate.ts`](../../../../src/orchestration/arbitrate.ts) / [`tollgate.ts`](../../../../src/orchestration/tollgate.ts)
