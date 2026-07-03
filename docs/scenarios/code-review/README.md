@@ -108,6 +108,7 @@
     "mode": "isolated",
     "task": "Audit the code at <TARGET> for actionable issues strictly within YOUR ASSIGNED DIMENSION (see your role brief). For each issue, emit the <!-- FINDING: <id>:<dim>:<severity> --> marker exactly as your brief specifies, followed by a short description. Report every issue you find.",
     "reduce_policy": "merge",
+    "reducer_member": "pat",
     "timeout_ms": 1800000
   }
 }
@@ -115,7 +116,7 @@
 
 **参数选择**：
 - `mode: isolated` + 维度烤进成员 prompt——8 路并行各自扫一个维度，互不重叠。
-- `reduce_policy: merge`——8 路产出**合并**成一份（保留全部维度发现，不摘要/挑选），让 triage-team 拿到完整 findings 清单。
+- `reduce_policy: merge` + `reducer_member: pat`——8 路产出**合并**成一份（保留全部维度发现，不摘要/挑选），让 triage-team 拿到完整 findings 清单。reducer 必须是 team 成员之一（工具从 `team.members.find()` 查找）；选 pat 是因 maintainability 维度天然贴合"汇总全局发现"的视角，且 reduce 阶段 prompt 固定为机械合并（不与其审计维度 prompt 冲突）。
 - 不设 `signoff_policy`——parallel 默认无 signoff，跑完即汇总。
 
 ### 1.4 生命周期步骤（master）
