@@ -786,3 +786,112 @@ describe("buildSummary: recurse case", () => {
         expect(summary).toContain("(no result)")
     })
 })
+
+// --- aggregation dispatch + stall detection (regression for removed fallback) ---
+
+describe("handleRecurseIdle aggregation dispatch (no fake completion)", () => {
+    test("decomposer idle without claiming root: dispatched with [AGGREGATION PHASE] prompt, root stays pending", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeRecurseTask()
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "alice", sessionId: "ses_alice", status: "idle" }],
+        })
+        // Root pending, blocked by two completed children.
+        const childA = await seedTask(team, { subject: "A", description: "x", status: "completed" })
+        const childB = await seedTask(team, { subject: "B", description: "x", status: "completed" })
+        const root = await seedTask(team, {
+            subject: "root",
+            description: "aggregate A and B",
+            status: "pending",
+            blockedBy: [childA.id, childB.id],
+        })
+        task.rootTaskId = root.id
+
+        // Alice idles WITHOUT claiming root -- protocol slip. The old fallback
+        // would have faked root completion here using her non-empty output.
+        await processIdle(
+            makeCtx({ ses_alice: "Waiting for teammate info..." }, calls),
+            team,
+            team.members[0],
+            "ses_alice",
+        )
+
+        // Aggregation prompt dispatched (not the generic recurse prompt).
+        expect(calls.some(c => c.text.includes("[AGGREGATION PHASE]"))).toBe(true)
+        // Root NOT fake-completed -- remains pending for the decomposer to claim.
+        const r = await getTask(team.directory, root.id)
+        expect(r!.status).toBe("pending")
+    })
+
+    test("stall detection: exceeds dispatch cap -> fail with recurse_aggregation_stalled", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeRecurseTask({ aggregationDispatchCount: 3 })
+        const runId = task.runId!
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "alice", sessionId: "ses_alice", status: "idle" }],
+        })
+        const child = await seedTask(team, { subject: "A", description: "x", status: "completed" })
+        const root = await seedTask(team, {
+            subject: "root",
+            description: "aggregate",
+            status: "pending",
+            blockedBy: [child.id],
+        })
+        task.rootTaskId = root.id
+
+        await processIdle(
+            makeCtx({ ses_alice: "still not claiming root" }, calls),
+            team,
+            team.members[0],
+            "ses_alice",
+        )
+
+        // Run failed fast instead of looping to wall-clock.
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        // aggregation_stalled event recorded.
+        await waitForEvent(team.directory, runId, "aggregation_stalled")
+        // Summary delivered to leader.
+        expect(calls.some(c => c.sessionId === "ses_lead")).toBe(true)
+        // Root still pending -- never fake-completed.
+        const r = await getTask(team.directory, root.id)
+        expect(r!.status).toBe("pending")
+    })
+
+    test("decomposer claims root and finalizes: stall counter reset, normal completion", async () => {
+        const calls: DispatchCall[] = []
+        // Pre-set a non-zero stall count to verify it resets on root claim.
+        const task = makeRecurseTask({ aggregationDispatchCount: 2 })
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "alice", sessionId: "ses_alice", status: "idle" }],
+        })
+        const child = await seedTask(team, { subject: "A", description: "x", status: "completed" })
+        const root = await seedTask(team, {
+            subject: "root",
+            description: "aggregate",
+            owner: "alice",
+            status: "claimed",
+            blockedBy: [child.id],
+        })
+        task.rootTaskId = root.id
+
+        await processIdle(
+            makeCtx({ ses_alice: "Synthesized final answer: D4=9 <!-- D4_FINAL: 9 -->" }, calls),
+            team,
+            team.members[0],
+            "ses_alice",
+        )
+
+        // Root finalized with the decomposer's output.
+        const r = await getTask(team.directory, root.id)
+        expect(r!.status).toBe("completed")
+        expect(r!.result).toContain("D4_FINAL")
+        // Stall counter reset (decomposer did its job).
+        expect(task.aggregationDispatchCount).toBe(0)
+        // No aggregation dispatch needed -- decomposer already claimed root.
+        expect(calls.some(c => c.text.includes("[AGGREGATION PHASE]"))).toBe(false)
+    })
+})

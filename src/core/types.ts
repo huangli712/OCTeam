@@ -247,6 +247,7 @@ export interface RecurseTask extends ActiveTaskBase {
     maxDepth?: number                        // recursion depth upper bound (default 3)
     maxSubtasks?: number                     // per-decomposition subtask upper bound (default 5)
     rootTaskId?: string                      // the root task id; its result is the final deliverable
+    aggregationDispatchCount?: number        // decomposer dispatches that failed to produce a root claim (stall detection; recurse mode)
 }
 
 // tollgate: verdict-gated pipeline (produce -> verify -> escalate). A gated
@@ -324,6 +325,7 @@ export type RunEventKind =
     | "arbitrated"      // arbiter issued a binding ruling (arbitrate mode)
     | "decomposed"      // a task was split into subtasks (recurse mode)
     | "aggregated"      // the root task was finalized after all subtasks completed (recurse mode)
+    | "aggregation_stalled"  // decomposer failed to claim+aggregate root after dispatch cap (recurse mode)
     | "verdict"         // a gate produced a PASS/FAIL/INVALID verdict (tollgate mode)
 
 export type RunEvent = {

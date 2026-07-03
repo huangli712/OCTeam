@@ -7,12 +7,13 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team } from "../state/store.js"
+import { type Team, clearActiveTask } from "../state/store.js"
 import type { MemberState } from "../core/types.js"
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import { recordEvent } from "./events.js"
 import { parseDecompose } from "./decisions.js"
 import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
+import { deliverSummaryToLeader } from "./summary.js"
 import { dispatchToMember } from "./dispatch.js"
 
 /**
@@ -31,6 +32,27 @@ export function buildRecursePrompt(): string {
         + `If the task you claimed has completed sub-tasks (shown under "Blocked by"), DO NOT decompose —\n`
         + `read each sub-task's result via team_task_get and synthesize them into this task's result.\n`
         + `Do NOT call team_task_update completed — the orchestrator finalizes your task when you go idle.`
+    )
+}
+
+/**
+ * Aggregation-phase dispatch prompt for the decomposer. Stronger than the
+ * generic buildRecursePrompt(): names the completed sub-tasks, forbids
+ * waiting on teammate messages or re-decomposing, and prescribes the exact
+ * claim-root -> read -> synthesize -> idle sequence. Output FORMAT (markers
+ * like D4_FINAL) stays scene-defined — this prompt reinforces BEHAVIOR only.
+ */
+function buildAggregationPrompt(rootSubject: string, childCount: number): string {
+    return (
+        `[AGGREGATION PHASE] All ${childCount} sub-tasks of the root task "${rootSubject}" are now COMPLETED.\n`
+        + `Your next action (no alternatives):\n`
+        + `  1. team_task_update(status="claimed") on the ROOT task to acquire it.\n`
+        + `  2. team_task_get each sub-task to read its result.\n`
+        + `  3. Synthesize the sub-task results into the final answer.\n`
+        + `  4. Then idle.\n`
+        + `The sub-task results are FINAL — do NOT request more information from\n`
+        + `teammates via team_send_message. Do NOT re-decompose.\n`
+        + `Claim root → read results → synthesize → idle.`
     )
 }
 
@@ -92,52 +114,26 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             // Leaf (or capped/aggregator): finalize with the member's output,
             // or a placeholder when the member produced nothing (so an aggregating
             // parent reads a recognizable sub-result, not an empty string).
+            // Reset aggregation stall counter when the decomposer claims and
+            // finalizes the ROOT — the decomposer is doing its job.
+            if (T.id === task.rootTaskId) {
+                task.aggregationDispatchCount = 0
+            }
             const result = output.length > 0 ? output : "(no output provided)"
             await updateTask(team.directory, T.id, { status: "completed", result })
         }
-    } else if (member.name === task.decomposerMember && task.rootTaskId) {
-        // Aggregation fallback: after decomposing, the root task is re-queued
-        // as pending/unowned/blockedBy. Once all subtasks complete it becomes
-        // claimable and runDelegateStyleTail re-prompts the decomposer. But
-        // the decomposer typically emits the aggregation report WITHOUT
-        // re-claiming the root (the prompt says "the orchestrator finalizes
-        // on idle"), so the T-lookup above stays empty and the root never
-        // flips to completed -> indefinite re-prompt loop. When the
-        // decomposer idles holding no task but the root is pending with all
-        // blockers completed and the decomposer produced non-empty output,
-        // finalize the root here with that output. This is safe: the root
-        // is the single aggregation point, and updateTask's expectedStatus
-        // guard prevents a double-finalize if two events race.
-        const root = tasks.find(t => t.id === task.rootTaskId)
-        const output = task.responses[member.name] ?? ""
-        if (
-            root
-            && root.status === "pending"
-            && root.blockedBy.length > 0
-            && root.blockedBy.every(id => tasks.find(x => x.id === id)?.status === "completed")
-            && output.length > 0
-        ) {
-            await updateTask(team.directory, root.id, { status: "completed", result: output })
-            recordEvent(team, {
-                timestamp: Date.now(),
-                kind: "aggregated",
-                member: member.name,
-                detail: root.subject.slice(0, 60),
-            })
-        }
     }
 
-    // Recurse-specific: when the root becomes claimable (all sub-tasks done),
-    // dispatch the DECOMPOSER for aggregation — not whichever solver happened
-    // to idle last. Without this, a solver member (e.g. bob) claims root,
-    // writes an aggregation report with the wrong marker, and the decomposer's
-    // aggregation turn never runs. Only fires when the current idling member is
-    // NOT the decomposer (if it is, runDelegateStyleTail below handles it).
-    if (
-        task.rootTaskId
-        && task.decomposerMember
-        && member.name !== task.decomposerMember
-    ) {
+    // Recurse-specific: when the root becomes aggregation-ready (all sub-tasks
+    // completed), dispatch the DECOMPOSER with the aggregation prompt. Covers
+    // two cases:
+    //   1. A non-decomposer member just idled (woke the decomposer).
+    //   2. The decomposer itself idled WITHOUT claiming the root (T was
+    //      undefined above — protocol slip; re-dispatch with a stronger
+    //      aggregation instruction). Previously handled by an aggregation
+    //      fallback that faked root completion; removing that fallback means
+    //      we must now actively re-dispatch here.
+    if (task.rootTaskId && task.decomposerMember) {
         const root = tasks.find(t => t.id === task.rootTaskId)
         if (
             root
@@ -145,15 +141,49 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             && root.blockedBy.length > 0
             && root.blockedBy.every(id => tasks.find(x => x.id === id)?.status === "completed")
         ) {
+            // Only dispatch if the decomposer did not just claim the root. If
+            // T exists and T.id === rootTaskId, the decomposer is mid-
+            // aggregation and the leaf branch above finalizes on its next
+            // idle — do not interrupt with another dispatch.
+            const decomposerIdleWithoutRoot = !T || T.id !== task.rootTaskId
             const decomposer = team.members.find(m => m.name === task.decomposerMember)
-            if (decomposer && decomposer.status === "idle" && decomposer.sessionId) {
+            if (
+                decomposer
+                && decomposer.status === "idle"
+                && decomposer.sessionId
+                && decomposerIdleWithoutRoot
+            ) {
                 const now = Date.now()
-                if (!decomposer.lastNotifiedAt || now - decomposer.lastNotifiedAt >= NOTIFY_COOLDOWN_MS) {
+                if (
+                    !decomposer.lastNotifiedAt
+                    || now - decomposer.lastNotifiedAt >= NOTIFY_COOLDOWN_MS
+                ) {
+                    // Stall detection: count only ACTUAL dispatches (not every
+                    // idle event — cooldown-filtered idles would otherwise
+                    // exhaust the cap without dispatching). Each dispatch that
+                    // fails to produce a root claim increments the counter;
+                    // once it exceeds the cap the run fails fast instead of
+                    // looping to wall-clock. Reset to 0 when the decomposer
+                    // claims the root (see leaf branch above).
+                    const MAX_AGGREGATION_DISPATCHES = 3
+                    task.aggregationDispatchCount = (task.aggregationDispatchCount ?? 0) + 1
+                    if (task.aggregationDispatchCount > MAX_AGGREGATION_DISPATCHES) {
+                        recordEvent(team, {
+                            timestamp: Date.now(),
+                            kind: "aggregation_stalled",
+                            member: task.decomposerMember,
+                            detail: `root still pending after ${MAX_AGGREGATION_DISPATCHES} aggregation dispatches`,
+                        })
+                        await deliverSummaryToLeader(ctx, team, "recurse_aggregation_stalled")
+                        clearActiveTask(team)
+                        team.status = "failed"
+                        return
+                    }
                     decomposer.lastNotifiedAt = now
                     await dispatchToMember(
                         ctx,
                         decomposer,
-                        buildRecursePrompt(),
+                        buildAggregationPrompt(root.subject, root.blockedBy.length),
                         decomposer.worktreePath ?? ctx.directory,
                         team,
                     )
