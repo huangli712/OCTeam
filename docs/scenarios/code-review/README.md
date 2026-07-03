@@ -33,7 +33,7 @@
 3. **交接**：每个团队的 marker 产出由 master 汇总，作为下一个团队的输入（findings → topic；confirmed → 逐个 tollgate run 的 task）。
 4. **判断**：你读取 fix-team 的 FIXED marker 与补丁，自行裁定结果。本场景**不设回归门 / 不跑评判脚本**。
 
-## team 切换铁律
+## team 切换
 
 同一时刻**仅一个团队** active。`team_activate` 在已有 active 团队时会拒绝——**必须先 `team_deactivate` 再 `team_activate` 下一个**。每个团队段的 master 步骤都已显式写出 deactivate。
 
