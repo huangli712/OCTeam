@@ -380,7 +380,7 @@ T+~25+N×10   你读取全部输出，裁定结果
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
 - 裁剪规则：只保留最高严重度等级。若 high/medium/low 都有 → 只留 high；若 medium/low 都有 → 只留 medium；若只有 low → 留 low。裁剪后若 0 条则中断。
 - fix-team 逐个串行跑 tollgate：每个 CONFIRMED 一次独立 run，复用同一 fix-team。不要批量塞进单次 run。
-- 当 team 在运行中时不要频繁轮询 team_progress/team_results，等待 OCTeam 通知完成即可。
+- 当 team 在运行中时，轮询 team_progress/team_results 的间隔为 30 秒，不要更频繁。
 ```
 
 ---
