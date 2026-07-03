@@ -1,6 +1,6 @@
 # 综合场景：OCTeam 多团队代码评审
 
-5 阶段代码评审链（**审计 → 确认缺陷 → 制定修复方案 → 修复 → 修复部分复审**），由 4 个独立团队 × 4 种编排原语串联完成。master 作集成枢纽，团队间彼此隔离、数据手递手。
+3 阶段代码评审链（**审计 → 确认缺陷 → 修复**），由 3 个独立团队 × 3 种编排原语串联完成。master 作集成枢纽，团队间彼此隔离、数据手递手。
 
 **自用模板**：不绑定特定靶子，不含评判脚本。把 `<TARGET>` 替换为你要评审的代码（文件 / 模块 / 目录），按文末 quick-start prompt 跑通；发现的真假与修复的正确性**由你自行判断**。
 
@@ -8,12 +8,11 @@
 
 | 阶段 | 团队 | 编排原语 | 输入 | 产出（交接 marker） |
 |------|------|---------|------|---------------------|
-| ① 审计 + ② 发现缺陷 | **audit-team** | `team_parallel` | `<TARGET>` 源码 | `<!-- FINDING: <id>:<dim>:<severity> -->` |
-| ③ 制定修复方案（含确认） | **plan-team** | `team_consensus` | audit 汇总的 findings | `<!-- CONFIRMED: <id>:<strategy> -->` |
-| ④ 修复 | **fix-team** | `team_delegate` | 每个 CONFIRMED 发现一条 task | `<!-- FIXED: <id> -->` + 补丁 |
-| ⑤ 修复部分复审（测试 + 审计） | **verify-team** | `team_loop` | 补丁后的工作副本 | tester `<!-- TESTS: ... -->`；reviewer `<!-- VERDICT: <id>: pass\|fail -->` |
+| ① 审计 | **audit-team** | `team_parallel` | `<TARGET>` 源码 | `<!-- FINDING: <id>:<dim>:<severity> -->` |
+| ② 确认缺陷（真假辩论） | **plan-team** | `team_consensus` | audit 汇总的 findings | `<!-- CONFIRMED: <id> -->` |
+| ③ 修复（逐个门控） | **fix-team** | `team_tollgate` | 每个 CONFIRMED 一条流水线（逐个串行 run） | `<!-- FIXED: <id> -->` + 补丁 |
 
-用到 4 种编排：**parallel / consensus / delegate / loop**。loop 的 decider 是成员（非 master），裁决「通过 / 继续循环」。
+用到 3 种编排：**parallel / consensus / tollgate**。tollgate 的每道 stage 有独立 verifier（两道门用不同 verifier），FAIL 回退 producer，INVALID 升级到 arbiter，最终由 signoff decider 签字。
 
 ```
 <TARGET> ──► audit-team (parallel)  ──findings──► master
@@ -22,21 +21,17 @@
                   │
                   └──confirmed──────────────────► master
                                                      │
-             fix-team   (delegate) ◄──confirmed──────┘
-                  │
-                  └──fixed+patches──────────────► master
-                                                     │
-             verify-team (loop) ◄───────patched──────┘
-                  │
-                  └──verdicts───────────────────► master ──► 你判断
+             fix-team   (tollgate) ◄──confirmed──────┘
+                  │  (逐个串行 run，每个 CONFIRMED 一次)
+                  └──fixed+patches──────────────► master ──► 你判断
 ```
 
 ## 如何使用
 
 1. **确定 `<TARGET>`**：你要评审的代码路径（单文件 / 目录 / 模块名）。
-2. **依次跑 4 个团队**（§1–§4）。每个团队走完整生命周期：`team_create` → `team_activate` → `team_<mode>` → 收产出 → `team_deactivate`。
-3. **交接**：每个团队的 marker 产出由 master 汇总，作为下一个团队的输入（findings → topic；confirmed → tasks；fixed+patches → 复审对象）。
-4. **判断**：你读取 verify-team 的 verdict 与各团队输出，自行裁定结果。本场景**不设回归门 / 不跑评判脚本**。
+2. **依次跑 3 个团队**（§1–§3）。每个团队走完整生命周期：`team_create` → `team_activate` → `team_<mode>` → 收产出 → `team_deactivate`。
+3. **交接**：每个团队的 marker 产出由 master 汇总，作为下一个团队的输入（findings → topic；confirmed → 逐个 tollgate run 的 task）。
+4. **判断**：你读取 fix-team 的 FIXED marker 与补丁，自行裁定结果。本场景**不设回归门 / 不跑评判脚本**。
 
 ## team 切换铁律
 
@@ -44,7 +39,7 @@
 
 ---
 
-## §1 audit-team（`team_parallel`）— 审计 + 发现缺陷
+## §1 audit-team（`team_parallel`）— 审计
 
 ### 1.1 阶段说明
 
@@ -135,51 +130,54 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 
 ### 1.5 产出与交接
 
-- master 从 8 份成员输出抓取所有 `<!-- FINDING: <id>:<dim>:<severity> -->`，**汇总成一张 findings 清单**（id + dim + severity + 描述）。
-- **裁减规则**：汇总后 findings 总数必须 **≤ 10**。如果 > 10，master 从 severity=low 开始逐条剔除，low 全部剔除后仍 > 10 则继续剔除 severity=medium，直到总数 = 10 即停止。severity=high 的发现**不受数量限制**，必须全部保留。
+- master 从 8 份成员输出抓取所有 `<!-- FINDING: <id>:<dim>:<severity> -->`，**汇总成一张 findings 清单**（id + dim + severity + 描述），同时维护 **id → 描述映射**（后续 §3 tollgate task 展开需要）。
+- **裁剪规则（按严重度层级取最高）**：只保留存在的**最高严重度等级**的全部发现，更低等级全部丢弃：
+  - 若 high / medium / low 都存在 → 只保留 high，丢弃 medium 和 low。
+  - 若无 high 但 medium / low 都存在 → 只保留 medium，丢弃 low。
+  - 若只有 low → 保留 low。
+- 裁剪后若 **0 条 findings**（没有任何维度的任何发现），master 如实汇报并**中断流程**。
 - 这张清单作为 §2 `team_consensus` 的 `topic` 喂给 plan-team。
-- 如果没有发现问题，那么 master 应该如实汇报，并中断流程。
 
 ---
 
-## §2 plan-team（`team_consensus`）— 确认缺陷 + 制定修复方案
+## §2 plan-team（`team_consensus`）— 确认缺陷（真假辩论）
 
 ### 2.1 阶段说明
 
-4 名 debater（2 reviewer + 2 architect）多轮辩论 audit 的 findings：哪些是真问题、严重度如何、用什么修复策略。达成共识后，输出被确认的缺陷表 + 每条的修复策略。
+4 名 debater（2 reviewer + 2 architect）多轮辩论 audit 的 findings：**哪些是真问题、哪些是误报**。**本阶段不讨论修复策略**——修复方案交给 §3 fix-team 的 coder 自行决定。达成共识后，输出被确认为真问题的缺陷清单。
 
 ### 2.2 Team 配置
 
 ```json
 {
   "name": "cr-plan",
-  "description": "Code review plan team: 4 debaters (2 reviewers + 2 architects) triage audit findings, agree on real issues + fix strategies",
+  "description": "Code review plan team: 4 debaters (2 reviewers + 2 architects) triage audit findings — debate real-vs-false-positive only, NOT fix strategies",
   "members": [
     {
       "name": "erin",
       "role": "reviewer",
-      "prompt": "You are a reviewer debating which audit findings are REAL, actionable issues worth fixing. For each finding argue: is it a genuine issue (not a false positive)? what is the correct severity? what is the minimal, safe fix strategy? Reach agreement with your teammates. In your FINAL message, emit one line per confirmed issue exactly formatted: <!-- CONFIRMED: <finding-id>:<fix-strategy-slug> --> where strategy is a short kebab-case hint (e.g. narrow-the-catch / add-missing-lock / off-by-one-minus-one). Findings you collectively reject are simply omitted."
+      "prompt": "You are a reviewer debating which audit findings are REAL, actionable issues (not false positives). For each finding argue ONLY: is it a genuine issue? does the code actually exhibit the described problem? Reach agreement with your teammates. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL message, emit one line per confirmed-real issue exactly formatted: <!-- CONFIRMED: <finding-id> -->. Findings you collectively reject as false positives are simply omitted."
     },
     {
       "name": "frank",
       "role": "reviewer",
-      "prompt": "You are a reviewer debating which audit findings are REAL, actionable issues worth fixing. For each finding argue: is it a genuine issue (not a false positive)? what is the correct severity? what is the minimal, safe fix strategy? Reach agreement with your teammates. In your FINAL message, emit one line per confirmed issue exactly formatted: <!-- CONFIRMED: <finding-id>:<fix-strategy-slug> -->. Findings you collectively reject are simply omitted."
+      "prompt": "You are a reviewer debating which audit findings are REAL, actionable issues (not false positives). For each finding argue ONLY: is it a genuine issue? does the code actually exhibit the described problem? Reach agreement with your teammates. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL message, emit one line per confirmed-real issue exactly formatted: <!-- CONFIRMED: <finding-id> -->. Findings you collectively reject as false positives are simply omitted."
     },
     {
       "name": "grace",
       "role": "architect",
-      "prompt": "You are an architect debating which audit findings are REAL and how to fix them cleanly. Weigh design impact and invariant preservation when proposing fix strategies. Reach agreement with your teammates. In your FINAL message, emit one line per confirmed issue exactly formatted: <!-- CONFIRMED: <finding-id>:<fix-strategy-slug> -->. Findings you collectively reject are simply omitted."
+      "prompt": "You are an architect debating which audit findings are REAL. Weigh whether the described problem genuinely violates design invariants or contracts. Reach agreement with your teammates. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL message, emit one line per confirmed-real issue exactly formatted: <!-- CONFIRMED: <finding-id> -->. Findings you collectively reject as false positives are simply omitted."
     },
     {
       "name": "quinn",
       "role": "architect",
-      "prompt": "You are an architect debating which audit findings are REAL and how to fix them cleanly. Weigh design impact, invariant preservation, and long-term maintainability when proposing fix strategies. Reach agreement with your teammates. In your FINAL message, emit one line per confirmed issue exactly formatted: <!-- CONFIRMED: <finding-id>:<fix-strategy-slug> -->. Findings you collectively reject are simply omitted."
+      "prompt": "You are an architect debating which audit findings are REAL. Weigh whether the described problem genuinely violates design invariants, contracts, or long-term correctness. Reach agreement with your teammates. Do NOT discuss fix strategies — that is delegated to the fix team. In your FINAL message, emit one line per confirmed-real issue exactly formatted: <!-- CONFIRMED: <finding-id> -->. Findings you collectively reject as false positives are simply omitted."
     }
   ]
 }
 ```
 
-**Role 选择**：erin/frank 用 `reviewer`（只读深审），grace/quinn 用 `architect`（双架构视角权衡修复策略的设计影响）。
+**Role 选择**：erin/frank 用 `reviewer`（只读深审），grace/quinn 用 `architect`（架构视角判断是否真违反不变量/契约）。辩论焦点统一收敛到"真假"，策略留给后续。
 
 ### 2.3 Master 启动调用
 
@@ -212,181 +210,130 @@ team_deactivate(cr-plan)
 
 ### 2.5 产出与交接
 
-- master 抓取所有 `<!-- CONFIRMED: <id>:<strategy> -->`，去重成**确认缺陷表**。
-- 这张表用于 §3：每条 CONFIRMED 展开成 fix-team 的一个 delegate task。
+- master 抓取所有 `<!-- CONFIRMED: <id> -->`，去重成**确认缺陷表**。
+- 对每个 CONFIRMED id，从 §1.5 维护的 id → 描述映射查出缺陷描述，组装 §3 每次 tollgate run 的 task。
+- 这张表用于 §3：每条 CONFIRMED 展开成**一次独立的 tollgate run**。
 
 ---
 
-## §3 fix-team（`team_delegate`）— 修复
+## §3 fix-team（`team_tollgate`）— 修复（逐个门控，TDD 顺序）
 
 ### 3.1 阶段说明
 
-3 名 coder **自取**任务：每条确认缺陷是一个 task（含修复策略），coder 认领后在 `<TARGET>` 上打最小补丁。
+5 名成员采用 TDD 门控流水线，**逐个**修复 confirmed finding。master 为每条 CONFIRMED **串行启动一次独立的 tollgate run**（N 条 → N 次 run，复用同一 fix-team）。每次 run 走两道门：
+
+```
+Stage 1:  henry 写 failing test  →  iris 验证
+            criteria: 测试准确复现该 bug（FAIL 必须源于此 bug，非泛泛失败）
+            FAIL → 回退 henry 重写        INVALID → escalate leo
+
+Stage 2:  jack 修复代码  →  kate 验证
+            criteria: 1) failing test 转 PASS
+                      2) 全量回归无新增失败
+                      3) 修改最小化（无夹带重构）
+                      4) 类型安全（无 as any / @ts-ignore）
+            FAIL → 回退 jack 重修          INVALID → escalate leo
+
+两道门都 PASS → leo 最终签字（signoff_policy: decider）
+```
+
+**为什么 TDD 顺序（tester 先于 coder）**：完成标准由独立的 tester 提前固化——修复前测试必须 FAIL、修复后必须 PASS。coder 无法写"能 pass 的橡皮图章测试"，测试客观定义了"修好"的标准。
+
+**为什么两道门用不同 verifier**：iris 和 kate 分别把守测试门和修复门，避免单一验证者的盲区。
+
+**为什么逐个串行而非批量**：tollgate 的 stages 是固定单条流水线。逐个串行让每个 bug 独立门控，互不干扰；同一 fix-team 复用，N 次 run 之间由 master 串行启动。
 
 ### 3.2 Team 配置
 
 ```json
 {
   "name": "cr-fix",
-  "description": "Code review fix team: 3 coders self-claim confirmed findings and apply minimal fixes to <TARGET>",
+  "description": "Code review fix team: 5 members, TDD tollgate (write failing test → verify → fix → verify → signoff), one run per confirmed finding",
   "members": [
     {
       "name": "henry",
-      "role": "coder",
-      "prompt": "You are a coder in delegate mode. Use team_task_list to find available fix tasks, claim one with team_task_update (status 'claimed'), apply the MINIMAL fix described by its strategy to <TARGET>, then report to master via team_send_message and release the task. Make the smallest change that resolves the issue without unrelated edits. For each completed task, emit a line exactly formatted: <!-- FIXED: <finding-id> --> and include the patch (diff or changed lines). Repeat until no tasks remain."
+      "role": "tester",
+      "prompt": "You are the TESTER (Stage 1 producer) in a tollgate fix pipeline. For the confirmed finding assigned in the task, write a FOCUSED regression test (in <TARGET>'s test directory) that reproduces the bug. The test MUST fail on the current (unfixed) code for the RIGHT reason (the actual bug, not a trivial/syntax error, not a different bug). Do NOT modify production code. Emit <!-- TEST-WRITTEN: <finding-id> --> with the test file path."
     },
     {
       "name": "iris",
-      "role": "coder",
-      "prompt": "You are a coder in delegate mode. Use team_task_list to find available fix tasks, claim one with team_task_update (status 'claimed'), apply the MINIMAL fix described by its strategy to <TARGET>, then report to master via team_send_message and release the task. Make the smallest change that resolves the issue without unrelated edits. For each completed task, emit a line exactly formatted: <!-- FIXED: <finding-id> --> and include the patch. Repeat until no tasks remain."
+      "role": "reviewer",
+      "prompt": "You are the Stage 1 VERIFIER in a tollgate fix pipeline. Verify that Henry's failing test accurately reproduces the confirmed finding: it FAILS on the current code for the right reason, is focused, and would turn PASS once the bug is fixed. Emit PASS / FAIL (with reason) / INVALID (if the finding description is ambiguous and no accurate test can be written)."
     },
     {
       "name": "jack",
       "role": "coder",
-      "prompt": "You are a coder in delegate mode. Use team_task_list to find available fix tasks, claim one with team_task_update (status 'claimed'), apply the MINIMAL fix described by its strategy to <TARGET>, then report to master via team_send_message and release the task. Make the smallest change that resolves the issue without unrelated edits. For each completed task, emit a line exactly formatted: <!-- FIXED: <finding-id> --> and include the patch. Repeat until no tasks remain."
-    }
-  ]
-}
-```
-
-**Role 选择**：`coder` 用 oct-junior agent，最小变更、专注实现。3 人对称（delegate 模式角色对称，差异来自认领的任务）。
-
-### 3.3 Master 启动调用
-
-`tasks` 数组每条对应一个 CONFIRMED 缺陷。下面给模板 + 样例（按实际 `CONFIRMED` 列表展开）。
-
-```json
-{
-  "tool": "team_delegate",
-  "args": {
-    "team_id": "cr-fix",
-    "tasks": [
-      {
-        "ref": "fix-<finding-id>",
-        "subject": "Fix <finding-id>",
-        "description": "Apply the fix for finding <finding-id> using strategy: <strategy-slug>. Background: <一句缺陷描述>. Make the minimal change to <TARGET> that resolves it. Emit <!-- FIXED: <finding-id> --> and include the patch. <策略展开提示，如：narrow the catch to only ENOENT / add the missing lock around the claim / change <= to < on capacity>"
-      }
-    ],
-    "timeout_ms": 1800000,
-    "max_errored_members": 0
-  }
-}
-```
-
-**参数选择**：
-- 无 `blocked_by`——各缺陷修复相互独立（若某两个修复改同一文件需串行，可加 `blocked_by` 串起来）。
-- `max_errored_members: 0`——任一修复失败即整体失败（你手动重跑该条即可）。
-- 不设 `signoff_policy`——delegate 默认 none，任务完成直接交付。
-
-### 3.4 生命周期步骤（master）
-
-```
-team_create(cr-fix)
-team_activate(cr-fix)         # （此时 cr-plan 已 deactivate）
-team_delegate(...)            # tasks = §2.5 确认缺陷表展开
-# 等待 coder 自取自报 → team_results 取汇总
-team_deactivate(cr-fix)
-```
-
-### 3.5 产出与交接
-
-- master 抓取所有 `<!-- FIXED: <id> -->` + 对应补丁。
-- 补丁后的 `<TARGET>` 工作副本作为 §4 verify-team 的复审对象。
-
----
-
-## §4 verify-team（`team_loop`）— 修复部分复审（测试 + 审计）
-
-### 4.1 阶段说明
-
-修复有没有真解决问题、有没有引入新问题、有没有回归？用纠正循环，每轮按 **测试（tester，写+跑回归测试）→ 修复（coder）→ 审计（reviewer）** 三阶段串行，decider 裁决「全通过 / 继续循环」。最多 3 轮。**不设硬性回归门，最终由你判断。**
-
-**decider 不能兼任 stage 成员**（team_loop 规则：decider 是 auto-appended 只读，不能出现在 stages 里）。所以「审计」stage 用独立 reviewer 成员 ruby，mona 留作 decider。
-
-### 4.2 Team 配置
-
-```json
-{
-  "name": "cr-verify",
-  "description": "Code review verify team: test->fix->audit loop each round; decider judges done",
-  "members": [
-    {
-      "name": "leo",
-      "role": "tester",
-      "prompt": "You are the TESTER (stage 1) in the verify loop. Each round, for each confirmed finding's fix, WRITE a focused regression test (in <TARGET>'s test directory) if one does not already cover it, then run the full test suite. Emit <!-- TESTS: <passed>/<total> --> (or <!-- TESTS: skip:no-suite --> if <TARGET> has no runnable test suite). Call out which findings' fixes are covered and whether they pass. You MAY add test files — do NOT modify the production fix code itself (that is Kate's job)."
+      "prompt": "You are the CODER (Stage 2 producer) in a tollgate fix pipeline. Apply the MINIMAL fix to <TARGET> that turns the failing test PASS. Make the smallest change that resolves the issue without unrelated edits or refactors. Emit <!-- FIXED: <finding-id> --> with the patch (diff or changed lines)."
     },
     {
       "name": "kate",
-      "role": "coder",
-      "prompt": "You are the CODER (stage 2) in the verify loop. Each round, if Leo's tests or Ruby's previous-round audit flagged any fix as failing or incomplete, apply the MINIMAL rework to <TARGET> to resolve it. Emit <!-- REWORKED: <finding-id> --> for each finding you re-touched this round. If nothing needs rework, confirm the fixes stand."
+      "role": "reviewer",
+      "prompt": "You are the Stage 2 VERIFIER in a tollgate fix pipeline. Verify Jack's fix: 1) Henry's failing test now PASSES. 2) Full regression suite has no new failures (or no test suite exists). 3) The fix is minimal — no unrelated refactors, no scope creep. 4) Type-safe — no 'as any', no '@ts-ignore', no suppressed errors. Emit PASS / FAIL (with reason) / INVALID (if the fix approach is fundamentally flawed, not merely an implementation slip)."
     },
     {
-      "name": "ruby",
+      "name": "leo",
       "role": "reviewer",
-      "prompt": "You are the AUDITOR (stage 3) in the verify loop. Each round, re-audit EACH confirmed finding's fix in <TARGET>: is the original issue actually resolved? did the fix introduce a new issue or regression? Emit exactly one line per finding: <!-- VERDICT: <finding-id>: pass --> if resolved with no new issue, or <!-- VERDICT: <finding-id>: fail --> with a one-line reason if not."
-    },
-    {
-      "name": "mona",
-      "role": "reviewer",
-      "prompt": "You are the DECIDER in the verify loop. After each round (Leo's tests -> Kate's rework -> Ruby's audit), decide whether ALL confirmed findings' fixes are verified: Ruby's VERDICT all pass AND Leo's tests green (or skipped). Emit <decision>{\"done\": true}</decision> when all pass, or <decision>{\"done\": false, \"reason\": \"...\"}</decision> naming the failing finding ids to loop back. Preserve invariants; do not lower the bar."
+      "prompt": "You are the ESCALATION TARGET and SIGNOFF DECIDER for the fix tollgate. When a verifier emits INVALID (finding ambiguous or fix approach fundamentally flawed), issue a binding ruling on how to proceed. When both gates PASS, provide final signoff. Do NOT participate as a stage member or debater — you only rule on escalations and sign off."
     }
   ]
 }
 ```
 
-**Role 选择**：leo `tester`（写回归测试 + 跑测试，stage1 modify 测试文件）、kate `coder`（返工修复，stage2 modify 生产代码）、ruby `reviewer`（复审，stage3 只读）、mona `reviewer`（decider，auto-appended 只读裁决）。
+**Role 选择**：henry `tester`（写 failing test），iris/kate/leo `reviewer`（验证 + 仲裁），jack `coder`（修复）。每个 stage 的 verifier ≠ producer（iris≠henry，kate≠jack），leo 不参与任何 stage 只做仲裁签字。
 
-### 4.3 Master 启动调用
+### 3.3 Master 启动调用（每条 CONFIRMED 一次）
 
 ```json
 {
-  "tool": "team_loop",
+  "tool": "team_tollgate",
   "args": {
-    "team_id": "cr-verify",
-    "initial_task": "Verify the fixes applied to <TARGET> for these confirmed findings: <把 §2.5 的 CONFIRMED id 列表粘进来>. Each round runs Leo (write+run regression tests) -> Kate (rework failures) -> Ruby (re-audit each fix, VERDICT). Mona decides whether ALL fixes are verified.",
+    "team_id": "cr-fix",
     "stages": [
       {
-        "member": "leo",
-        "task": "For each confirmed finding's fix, write a regression test (in <TARGET>'s test dir) if not already covered, then run the full suite. Emit <!-- TESTS: <passed>/<total> --> (or <!-- TESTS: skip:no-suite -->). Flag which findings' fixes are covered and pass. Add tests only — do not touch the fix code.",
-        "action": "modify"
+        "member": "henry",
+        "task": "Write a failing test that reproduces confirmed finding <id>: <一句缺陷描述>. Place it in <TARGET>'s test directory. The test MUST fail on the current (unfixed) code and would pass once the bug is fixed. Do NOT modify production code.",
+        "verifier": "iris",
+        "criteria": "The test accurately reproduces confirmed finding <id>: it FAILS on the current code for the right reason (the actual bug, not a trivial/syntax failure, not a different bug). The test is focused and would turn PASS once the bug is fixed."
       },
       {
-        "member": "kate",
-        "task": "If Leo's tests or Ruby's previous-round audit flagged any fix as failing or incomplete, apply the MINIMAL rework to <TARGET>. Emit <!-- REWORKED: <id> --> for each re-touched finding.",
-        "action": "modify"
-      },
-      {
-        "member": "ruby",
-        "task": "Re-audit each confirmed finding's fix in <TARGET>. Emit one <!-- VERDICT: <id>: pass --> (resolved, no new issue) or <!-- VERDICT: <id>: fail --> (with one-line reason) per finding.",
-        "action": "read_only"
+        "member": "jack",
+        "task": "Apply the MINIMAL fix to <TARGET> that resolves confirmed finding <id>: <一句缺陷描述>. Make the smallest change that turns Henry's failing test PASS without unrelated edits. Do NOT refactor neighboring code.",
+        "verifier": "kate",
+        "criteria": "1. Henry's failing test now PASSES. 2. Full regression suite has no new failures (or no test suite exists). 3. The fix is minimal — no unrelated refactors, no scope creep. 4. Type-safe — no 'as any', no '@ts-ignore', no suppressed errors."
       }
     ],
-    "decider": "mona",
-    "max_rounds": 3,
+    "escalate_to": "leo",
+    "max_gate_retries": 2,
+    "max_invalid_cycles": 3,
+    "signoff_policy": "decider",
+    "signoff_decider": "leo",
     "timeout_ms": 1800000
   }
 }
 ```
 
 **参数选择**：
-- `stages` 顺序：leo(modify，写+跑测试) → kate(modify，返工) → ruby(read_only，复审)，每轮跑一遍；decider mona 每轮裁决。
-- 测试先行：每轮 tester 先写回归测试 + 跑全套暴露回归/失败，coder 再修，reviewer 最后审计正确性。
-- `max_rounds: 3`——3 轮内修不干净就交回你处理（避免死循环）。
+- 每个 CONFIRMED finding 替换 `<id>` 和 `<一句缺陷描述>`（从 §1.5 的 id → 描述映射查出）。
+- `max_gate_retries: 2`——每道门最多回退 2 次，避免无限循环。
+- `max_invalid_cycles: 3`——INVALID 最多 3 轮后强制升级失败。
+- `signoff_policy: decider` + `signoff_decider: leo`——leo 最终签字放行。
+- `escalate_to: leo`——两道门的 INVALID 都升级到 leo 裁决。
 
-### 4.4 生命周期步骤（master）
+### 3.4 生命周期步骤（master）
 
 ```
-team_create(cr-verify)
-team_activate(cr-verify)      # （此时 cr-fix 已 deactivate）
-team_loop(...)                # initial_task + stages 如上
-# 等待 decider 裁决 done / 达 max_rounds → team_results 取汇总
-team_deactivate(cr-verify)
+team_create(cr-fix)
+team_activate(cr-fix)         # （此时 cr-plan 已 deactivate）
+for each CONFIRMED finding:   # 逐个串行，N 条 → N 次 run
+    team_tollgate(...)         # 用 §3.3 JSON，替换 <id> 和 <一句缺陷描述>
+    # 等待 signoff → team_results 取该 run 产出
+team_deactivate(cr-fix)
 ```
 
-### 4.5 产出与交接
+### 3.5 产出与交接
 
-- master 抓取 leo 的 `<!-- TESTS: ... -->` 与 ruby 的所有 `<!-- VERDICT: <id>: pass|fail -->`（+ kate 的 `<!-- REWORKED: <id> -->` 痕迹）。
-- **你读取这些测试结果与 verdict，自行裁定整次评审的成败。** 场景到此结束。
+- master 抓取每个 run 的 `<!-- FIXED: <id> -->` + 对应补丁。
+- **你读取这些补丁与 FIXED marker，自行裁定整次评审的成败。** 场景到此结束。
 
 ---
 
@@ -395,47 +342,44 @@ team_deactivate(cr-verify)
 ```
 T+0   team_create(cr-audit) → team_activate → team_parallel
         8 reviewer 并行审计 <TARGET>
-T+~12  收 findings → team_deactivate(cr-audit)
+T+~12  收 findings → 按严重度裁剪 → team_deactivate(cr-audit)
+        若裁剪后 0 条 → 中断，如实汇报
 T+~12  team_create(cr-plan) → team_activate → team_consensus(topic=findings)
-        4 debater（2 reviewer + 2 architect）辩论确认 + 定策略（≤5 轮）
+        4 debater（2 reviewer + 2 architect）辩论真假（≤6 轮）
 T+~25  收 confirmed → team_deactivate(cr-plan)
-T+~25  team_create(cr-fix) → team_activate → team_delegate(tasks=per-confirmed)
-        3 coder 自取自修 <TARGET>
-T+~40  收 fixed+patches → team_deactivate(cr-fix)
-T+~40  team_create(cr-verify) → team_activate → team_loop
-        每轮 leo 写+跑测试 → kate 修复 → ruby 审计，mona 裁决
-T+~55  收 verdicts → team_deactivate(cr-verify)
-T+~55  你读取全部输出，裁定结果
+T+~25  team_create(cr-fix) → team_activate
+        for each CONFIRMED finding（逐个串行）:
+            team_tollgate (henry→iris 写测试门, jack→kate 修复门, leo 签字)
+T+~25+N×~10  收 fixed+patches → team_deactivate(cr-fix)
+T+~25+N×10   你读取全部输出，裁定结果
 ```
 
-（时长仅为量级估计；`<TARGET>` 越大越久。本场景不设硬性 timeout 上限。）
+（时长仅为量级估计；`<TARGET>` 越大、CONFIRMED 越多越久。N = CONFIRMED 条数。）
 
 ---
 
 ## 快速启动 Prompt（复制即用）
 
-> 把 `<TARGET>` 替换为你要评审的代码路径，整段粘贴给 master 会话。master 会依次跑 4 个团队，每步按 README 的 JSON 配置执行，团队间数据由 master 手递手。
+> 把 `<TARGET>` 替换为你要评审的代码路径，整段粘贴给 master 会话。master 会依次跑 3 个团队，每步按 README 的 JSON 配置执行，团队间数据由 master 手递手。
 
 ```text
-按 docs/scenarios/composite/code-review/README.md 跑一次多团队代码评审，目标代码 = <TARGET>。
+按 docs/scenarios/code-review/README.md 跑一次多团队代码评审，目标代码 = <TARGET>。
 
-执行 4 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
+执行 3 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
 
-1. audit-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。8 名 reviewer 并行审计 <TARGET>。完成后 deactivate。汇总所有 <!-- FINDING: ... --> marker 成 findings 清单。
+1. audit-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。8 名 reviewer 并行审计 <TARGET>。完成后 deactivate。汇总所有 <!-- FINDING: ... --> marker 成 findings 清单，同时维护 id→描述映射。按严重度裁剪：只保留存在的最高严重度等级的全部发现（high>medium>low），更低等级全部丢弃。裁剪后若 0 条则中断流程。
 
-2. plan-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步 findings 清单，max_rounds=5）。4 名 debater（2 reviewer + 2 architect）辩论确认。完成后 deactivate。汇总所有 <!-- CONFIRMED: <id>:<strategy> --> marker 成确认缺陷表。
+2. plan-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步裁剪后的 findings 清单，max_rounds=6）。4 名 debater（2 reviewer + 2 architect）辩论哪些是真问题、哪些是误报——不讨论修复策略。完成后 deactivate。汇总所有 <!-- CONFIRMED: <id> --> marker 成确认缺陷表。
 
-3. fix-team (team_delegate，§3)：按 §3.2 team_create，§3.3 team_delegate（tasks = 把确认缺陷表每条展开成一个 fix task，含 strategy）。3 名 coder 自取自修。完成后 deactivate。汇总所有 <!-- FIXED: <id> --> + 补丁。
+3. fix-team (team_tollgate，§3)：按 §3.2 team_create（5 人：henry tester / iris reviewer / jack coder / kate reviewer / leo reviewer），§3.3 对每个 CONFIRMED finding 串行启动一次 team_tollgate run（替换 <id> 和缺陷描述）。每次 run 两道门：henry 写 failing test → iris 验证；jack 修复 → kate 验证；leo 仲裁签字。max_gate_retries=2，signoff_policy=decider，signoff_decider=leo。全部 finding 跑完后 deactivate。汇总所有 <!-- FIXED: <id> --> + 补丁。
 
-4. verify-team (team_loop，§4)：按 §4.2 team_create，§4.3 team_loop（initial_task 含 CONFIRMED id 列表）。每轮 leo 写+跑测试 → kate 修复 → ruby 审计，mona 裁决。完成后 deactivate。汇总 leo 的 <!-- TESTS: ... --> 与 ruby 的所有 <!-- VERDICT: <id>: pass|fail -->。
-
-全部完成后，把每个团队的产出（findings / confirmed / fixed+patches / tests+verdicts）整理给我，由我裁定结果。不跑评判脚本、不设回归门。
+全部完成后，把每个团队的产出（findings / confirmed / fixed+patches）整理给我，由我裁定结果。不跑评判脚本、不设回归门。
 
 注意：
 - 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby/sam...），角色必须用 reviewer/architect/coder/tester 等预设值。
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
-- 如果audit-team 没有发现high或medium级的问题，并且low级的问题小于3项，应中断流程。
-- 如果audit-team 汇总后的 findings 总数 > 10，先剔除所有 severity=low 发现，如果仍 > 10 继续剔除 severity=medium，直到总数 = 10。high 级别的发现必须全部保留。
+- 裁剪规则：只保留最高严重度等级。若 high/medium/low 都有 → 只留 high；若 medium/low 都有 → 只留 medium；若只有 low → 留 low。裁剪后若 0 条则中断。
+- fix-team 逐个串行跑 tollgate：每个 CONFIRMED 一次独立 run，复用同一 fix-team。不要批量塞进单次 run。
 - 当 team 在运行中时不要频繁轮询 team_progress/team_results，等待 OCTeam 通知完成即可。
 ```
 
@@ -444,8 +388,7 @@ T+~55  你读取全部输出，裁定结果
 ## 相关文档
 
 - [`docs/scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
-- [`docs/scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
 - [`docs/scenarios/01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
-- [`docs/scenarios/05-team-delegate/README.md`](../../05-team-delegate/README.md) — delegate 原语参考（自取流程）
-- parallel / consensus / pipeline / loop 源码：[`src/tools/parallel.ts`](../../../../src/tools/parallel.ts) / [`consensus.ts`](../../../../src/tools/consensus.ts) / [`pipeline.ts`](../../../../src/tools/pipeline.ts) / [`loop.ts`](../../../../src/tools/loop.ts)
-- delegate / route / arbitrate / tollgate / recurse 源码：[`src/tools/delegate.ts`](../../../../src/tools/delegate.ts) / [`router.ts`](../../../../src/tools/router.ts) / [`arbitrate.ts`](../../../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../../../src/tools/tollgate.ts) / [`recurse.ts`](../../../../src/tools/recurse.ts)
+- [`docs/scenarios/02-team-consensus/README.md`](../../02-team-consensus/README.md) — consensus 原语参考
+- [`docs/scenarios/09-team-tollgate/README.md`](../../09-team-tollgate/README.md) — tollgate 原语参考
+- parallel / consensus / tollgate 源码：[`src/orchestration/parallel.ts`](../../../../src/orchestration/parallel.ts) / [`consensus.ts`](../../../../src/orchestration/consensus.ts) / [`tollgate.ts`](../../../../src/orchestration/tollgate.ts)
