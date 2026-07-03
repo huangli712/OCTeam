@@ -350,7 +350,7 @@ T+10m   运行: bun check-coding-fib-tdd.ts <run_dir>
 
 **成功标准（可机器评判）**：
 - stage-8（`henry`）输出含 `<!-- TEMP_K: <数值> -->` 标注（产出阶段平均温度，期望 ≈ 120 K ± 20）
-- stage-8 输出含 `<!-- RDF_PEAK_A: <数值> -->` 标注（g(r) 第一峰位置，单位 Å，期望 ≈ 3.40 ± 0.2 Å，即约一个 σ）
+- stage-8 输出含 `<!-- RDF_PEAK_A: <数值> -->` 标注（g(r) 第一峰位置，单位 Å，期望 3.50–3.80 Å；稠密 LJ 液体 g(r) 第一峰文献值 3.65–3.90 Å，仿真结果与之吻合，并非 σ 处）
 - stage-8 输出含 `<!-- ENERGY_DRIFT: <数值> -->` 标注（产出 NVE 阶段总能量相对漂移 `|ΔE|/|<E>|`，期望 < 0.05）
 - 评判脚本只读末段 `henry.md`（流水线语义：前 7 段输出会被框架自动前缀追加到 `henry` 的任务上，故末段即完整产物）
 
@@ -394,7 +394,7 @@ T+10m   运行: bun check-coding-fib-tdd.ts <run_dir>
     {
       "name": "grace",
       "role": "simulator",
-      "prompt": "You are stage 7 (rdf) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. The previous stage handed a 1000-frame trajectory in the periodic box. Your job: compute the radial distribution function g(r) from the 1000 frames using bin width 0.02*sigma over r in [0, L/2] (L is the box length), with PBC minimum-image. Normalize correctly for a uniform-ideal-gas reference. Embed the code in a fenced block. Report the position of the FIRST peak of g(r) in Angstrom (expect approx sigma = 3.40 A). Hand g(r) and the first-peak position forward. Your output MUST end with a line exactly formatted: <!-- RDF_PEAK: <first_peak_position_in_Angstrom> -->"
+      "prompt": "You are stage 7 (rdf) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. The previous stage handed a 1000-frame trajectory in the periodic box. Your job: compute the radial distribution function g(r) from the 1000 frames using bin width 0.02*sigma over r in [0, L/2] (L is the box length), with PBC minimum-image. Normalize correctly for a uniform-ideal-gas reference. Embed the code in a fenced block. Report the position of the FIRST peak of g(r) in Angstrom (dense LJ liquids peak at r* ≈ 1.07–1.10 sigma; for sigma = 3.40 A this corresponds to ~3.64–3.74 A). Hand g(r) and the first-peak position forward. Your output MUST end with a line exactly formatted: <!-- RDF_PEAK: <first_peak_position_in_Angstrom> -->"
     },
     {
       "name": "henry",
@@ -471,7 +471,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 - **断言**：
   1. 三条 marker 均存在且可解析为数值
   2. `100 <= TEMP_K <= 140`（NVT 锁定 120 K，NVE 产出期间温度浮动 ±20 K 内）
-  3. `3.2 <= RDF_PEAK_A <= 3.6`（液氩 g(r) 第一峰位于约一个 σ ≈ 3.40 Å）
+  3. `3.50 <= RDF_PEAK_A <= 3.80`（稠密 LJ 液体 g(r) 第一峰文献值 3.65–3.90 Å（Yarnell 1973 中子衍射 3.68 Å、Lund 1974 3.65–3.75 Å、Smelser 1969 3.85 Å），窗口覆盖已发表基准值加 bin 量化容差）
   4. `ENERGY_DRIFT < 0.05`（velocity Verlet 在 h=2 fs、10⁵ 步内的相对能量漂移）
 
 ---
@@ -556,5 +556,5 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 6. 运行：bun docs/scenarios/03-team-pipeline/check-physics-md-pipeline.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
-成功标准：末阶段（henry）报 TEMP_K ∈ [100,140] K、RDF_PEAK_A ∈ [3.2,3.6] Å、ENERGY_DRIFT < 0.05。
+成功标准：末阶段（henry）报 TEMP_K ∈ [100,140] K、RDF_PEAK_A ∈ [3.50,3.80] Å、ENERGY_DRIFT < 0.05。
 ```

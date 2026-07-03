@@ -223,14 +223,20 @@ export async function resolveTeamMember(
 export async function resolveCallerInTeam(
     storageRoot: string,
     sessionID: string,
-    teamId: string,
+    teamId: string | undefined,
     opts: { requireActive?: boolean } = {},
 ): Promise<ResolvedMember | null> {
     const requireActive = opts.requireActive ?? true
     // Member path (1:1) — activation never gates members.
     const m = memberIndex.get(sessionID)
     if (m) {
-        if (m.teamName !== teamId) return null
+        // Fallback: a member session is bound 1:1 to exactly one team, so when
+        // the caller omits team_id (a common model mistake — the agent does
+        // not always know its own team name), resolve to the indexed team
+        // instead of failing with a misleading "caller is not a member"
+        // error. Master sessions are NOT given this fallback (1:many, ambiguous).
+        const effectiveTeamId = (!teamId || teamId === "") ? m.teamName : teamId
+        if (m.teamName !== effectiveTeamId) return null
         return resolveMemberFromIndex(sessionID)
     }
     // Master path (1:many) — find the team by explicit teamId.
