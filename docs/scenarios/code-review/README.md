@@ -9,7 +9,7 @@
 | 阶段 | 团队 | 编排原语 | 输入 | 产出（交接 marker） |
 |------|------|---------|------|---------------------|
 | ① 审计 | **audit-team** | `team_parallel` | `<TARGET>` 源码 | `<!-- FINDING: <id>:<dim>:<severity> -->` |
-| ② 确认缺陷（真假辩论） | **plan-team** | `team_consensus` | audit 汇总的 findings | `<!-- CONFIRMED: <id> -->` |
+| ② 确认缺陷（真假辩论） | **triage-team** | `team_consensus` | audit 汇总的 findings | `<!-- CONFIRMED: <id> -->` |
 | ③ 修复（逐个门控） | **fix-team** | `team_tollgate` | 每个 CONFIRMED 一条流水线（逐个串行 run） | `<!-- FIXED: <id> -->` + 补丁 |
 
 用到 3 种编排：**parallel / consensus / tollgate**。tollgate 的每道 stage 有独立 verifier（两道门用不同 verifier），FAIL 回退 producer，INVALID 升级到 arbiter，最终由 signoff decider 签字。
@@ -17,7 +17,7 @@
 ```
 <TARGET> ──► audit-team (parallel)  ──findings──► master
                                                      │
-             plan-team  (consensus) ◄──findings──────┘
+             triage-team  (consensus) ◄──findings──────┘
                   │
                   └──confirmed──────────────────► master
                                                      │
@@ -115,7 +115,7 @@
 
 **参数选择**：
 - `mode: isolated` + 维度烤进成员 prompt——8 路并行各自扫一个维度，互不重叠。
-- `reduce_policy: merge`——8 路产出**合并**成一份（保留全部维度发现，不摘要/挑选），让 plan-team 拿到完整 findings 清单。
+- `reduce_policy: merge`——8 路产出**合并**成一份（保留全部维度发现，不摘要/挑选），让 triage-team 拿到完整 findings 清单。
 - 不设 `signoff_policy`——parallel 默认无 signoff，跑完即汇总。
 
 ### 1.4 生命周期步骤（master）
@@ -136,11 +136,11 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
   - 若无 high 但 medium / low 都存在 → 只保留 medium，丢弃 low。
   - 若只有 low → 保留 low。
 - 裁剪后若 **0 条 findings**（没有任何维度的任何发现），master 如实汇报并**中断流程**。
-- 这张清单作为 §2 `team_consensus` 的 `topic` 喂给 plan-team。
+- 这张清单作为 §2 `team_consensus` 的 `topic` 喂给 triage-team。
 
 ---
 
-## §2 plan-team（`team_consensus`）— 确认缺陷（真假辩论）
+## §2 triage-team（`team_consensus`）— 确认缺陷（真假辩论）
 
 ### 2.1 阶段说明
 
@@ -150,7 +150,7 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 
 ```json
 {
-  "name": "cr-plan",
+  "name": "cr-triage",
   "description": "Code review plan team: 4 debaters (2 reviewers + 2 architects) triage audit findings — debate real-vs-false-positive only, NOT fix strategies",
   "members": [
     {
@@ -185,7 +185,7 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 {
   "tool": "team_consensus",
   "args": {
-    "team_id": "cr-plan",
+    "team_id": "cr-triage",
     "topic": "<把 §1.5 的 findings 清单原文粘进来：每条 FINDING id/dim/severity/描述>",
     "max_rounds": 6,
     "timeout_ms": 2400000
@@ -201,11 +201,11 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 ### 2.4 生命周期步骤（master）
 
 ```
-team_create(cr-plan)
-team_activate(cr-plan)        # （此时 cr-audit 已 deactivate）
+team_create(cr-triage)
+team_activate(cr-triage)        # （此时 cr-audit 已 deactivate）
 team_consensus(...)           # topic = §1.5 findings 清单
 # 等待共识 → team_results 取汇总
-team_deactivate(cr-plan)
+team_deactivate(cr-triage)
 ```
 
 ### 2.5 产出与交接
@@ -323,7 +323,7 @@ Stage 2:  jack 修复代码  →  kate 验证
 
 ```
 team_create(cr-fix)
-team_activate(cr-fix)         # （此时 cr-plan 已 deactivate）
+team_activate(cr-fix)         # （此时 cr-triage 已 deactivate）
 for each CONFIRMED finding:   # 逐个串行，N 条 → N 次 run
     team_tollgate(...)         # 用 §3.3 JSON，替换 <id> 和 <一句缺陷描述>
     # 等待 signoff → team_results 取该 run 产出
@@ -344,9 +344,9 @@ T+0   team_create(cr-audit) → team_activate → team_parallel
         8 reviewer 并行审计 <TARGET>
 T+~12  收 findings → 按严重度裁剪 → team_deactivate(cr-audit)
         若裁剪后 0 条 → 中断，如实汇报
-T+~12  team_create(cr-plan) → team_activate → team_consensus(topic=findings)
+T+~12  team_create(cr-triage) → team_activate → team_consensus(topic=findings)
         4 debater（2 reviewer + 2 architect）辩论真假（≤6 轮）
-T+~25  收 confirmed → team_deactivate(cr-plan)
+T+~25  收 confirmed → team_deactivate(cr-triage)
 T+~25  team_create(cr-fix) → team_activate
         for each CONFIRMED finding（逐个串行）:
             team_tollgate (henry→iris 写测试门, jack→kate 修复门, leo 签字)
@@ -369,7 +369,7 @@ T+~25+N×10   你读取全部输出，裁定结果
 
 1. audit-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。8 名 reviewer 并行审计 <TARGET>。完成后 deactivate。汇总所有 <!-- FINDING: ... --> marker 成 findings 清单，同时维护 id→描述映射。按严重度裁剪：只保留存在的最高严重度等级的全部发现（high>medium>low），更低等级全部丢弃。裁剪后若 0 条则中断流程。
 
-2. plan-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步裁剪后的 findings 清单，max_rounds=6）。4 名 debater（2 reviewer + 2 architect）辩论哪些是真问题、哪些是误报——不讨论修复策略。完成后 deactivate。汇总所有 <!-- CONFIRMED: <id> --> marker 成确认缺陷表。
+2. triage-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步裁剪后的 findings 清单，max_rounds=6）。4 名 debater（2 reviewer + 2 architect）辩论哪些是真问题、哪些是误报——不讨论修复策略。完成后 deactivate。汇总所有 <!-- CONFIRMED: <id> --> marker 成确认缺陷表。
 
 3. fix-team (team_tollgate，§3)：按 §3.2 team_create（5 人：henry tester / iris reviewer / jack coder / kate reviewer / leo reviewer），§3.3 对每个 CONFIRMED finding 串行启动一次 team_tollgate run（替换 <id> 和缺陷描述）。每次 run 两道门：henry 写 failing test → iris 验证；jack 修复 → kate 验证；leo 仲裁签字。max_gate_retries=2，signoff_policy=decider，signoff_decider=leo。全部 finding 跑完后 deactivate。汇总所有 <!-- FIXED: <id> --> + 补丁。
 
