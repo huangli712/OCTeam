@@ -8,9 +8,10 @@ import {
     teamTaskUpdateTool,
 } from "../src/tools/task.js"
 import { createTask } from "../src/state/tasks.js"
-import { initTeamState, loadTeamState } from "../src/state/store.js"
+import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import type { RecurseTask } from "../src/core/types.js"
 
 function makeCtx(storageRoot: string): PluginContext {
     return { storageRoot, scope: "project" } as unknown as PluginContext
@@ -190,5 +191,62 @@ describe("team_task_get (tool layer)", () => {
             { sessionID: sid } as any,
         )
         expect(result).toContain("not found")
+    })
+})
+
+
+// ---------------------------------------------------------------------------
+// team_task_create under recurse mode (regression: manual create produces
+// duplicate tasks; orchestrator should own subtask creation via <decompose>)
+// ---------------------------------------------------------------------------
+describe("team_task_create (recurse-mode guard)", () => {
+    test("rejected when team.activeTask.type === 'recurse'", async () => {
+        const root = tmpRoot("ttc-recurse-blocked")
+        const sid = "ses_ttc_recurse_blocked"
+        tracked.push(sid)
+        await setupTeam(root, sid)
+        // Set an active recurse task so the guard fires.
+        const team = await loadTeamState(root, "alpha", sid)
+        team.activeTask = {
+            type: "recurse",
+            startedAt: 0,
+            wallClockTimeoutMs: 300000,
+            tokensUsed: 0,
+            tokensByMember: {},
+            messagesSent: 0,
+            responses: {},
+            stages: [],
+            currentStageIndex: 0,
+            decisionHistory: [],
+            decisionParseFailures: 0,
+        } as RecurseTask
+        await saveTeamState(team)
+
+        const result = await teamTaskCreateTool(makeCtx(root)).execute(
+            { team_id: "alpha", subject: "sub-a", description: "do A" },
+            { sessionID: sid } as any,
+        )
+        // Guard rejects with a clear explanation pointing to <decompose>.
+        expect(result).toContain("Error")
+        expect(result).toContain("recurse mode")
+        expect(result).toContain("disabled")
+        expect(result).toContain("<decompose>")
+        // No task was created.
+        const after = await loadTeamState(root, "alpha", sid)
+        const tasks = await import("../src/state/tasks.js").then(m => m.listAllTasks(after.directory))
+        expect(tasks).toHaveLength(0)
+    })
+
+    test("still allowed under delegate/other modes (no false positive)", async () => {
+        const root = tmpRoot("ttc-delegate-ok")
+        const sid = "ses_ttc_delegate_ok"
+        tracked.push(sid)
+        await setupTeam(root, sid)
+        // activeTask is undefined (no orchestration running) — create allowed.
+        const result = await teamTaskCreateTool(makeCtx(root)).execute(
+            { team_id: "alpha", subject: "freeform", description: "any" },
+            { sessionID: sid } as any,
+        )
+        expect(result).toContain("Task created")
     })
 })

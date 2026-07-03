@@ -54,6 +54,21 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
             if (liveTasks >= team.bounds.maxTasks) {
                 return `Error: team task limit reached (${team.bounds.maxTasks}). Complete or delete tasks before creating more.`
             }
+            // Recurse mode guard: subtasks are created AUTOMATICALLY by the
+            // orchestrator from the decomposer's <decompose> block. A member
+            // calling team_task_create manually produces duplicate tasks that
+            // siblings then claim and work in parallel with the real ones,
+            // doubling token spend and confusing aggregation. Reject at the
+            // source so the LLM cannot create duplicates even when its scene
+            // prompt is ignored. The decomposer never needs team_task_create.
+            if (team.activeTask?.type === "recurse") {
+                return (
+                    `Error: team_task_create is disabled in recurse mode. Subtasks are created `
+                    + `automatically by the orchestrator from the decomposer's <decompose> block. `
+                    + `Emit a <decompose>{"subtasks":[...]}</decompose> block instead — the orchestrator `
+                    + `parses it, creates the subtasks, and re-queues the root as their aggregator.`
+                )
+            }
             const task = await createTask(caller.directory, {
                 subject: args.subject,
                 description: args.description,

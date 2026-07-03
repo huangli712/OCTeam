@@ -31,6 +31,9 @@ export function buildRecursePrompt(): string {
         + `   <decompose>{"subtasks":[{"subject":"...","description":"..."}]}</decompose>  (Chinese <分解> accepted)\n`
         + `If the task you claimed has completed sub-tasks (shown under "Blocked by"), DO NOT decompose —\n`
         + `read each sub-task's result via team_task_get and synthesize them into this task's result.\n`
+        + `NEVER call team_task_create — subtasks come ONLY from your <decompose> block, which the\n`
+        + `orchestrator parses and creates automatically. Manual team_task_create produces duplicate\n`
+        + `tasks, wastes tokens, and is rejected at the tool layer.\n`
         + `Do NOT call team_task_update completed — the orchestrator finalizes your task when you go idle.`
     )
 }
