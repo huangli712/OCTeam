@@ -137,6 +137,33 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
             // lock (expectedOwner). Master bypasses the owner check.
             const existing = await getTask(dir, args.task_id)
             if (!existing) return `Error: task ${args.task_id} not found`
+            // Recurse-mode guard (symmetric to team_task_create's guard):
+            // completion is owned by the orchestrator. A member calling
+            // team_task_update(status="completed") manually races the
+            // orchestrator's own finalize (recurse.ts leaf branch), which also
+            // writes the result field. The member's call carries no result,
+            // so if it lands after the orchestrator's finalize it leaves the
+            // task completed-but-resultless. Reject so the orchestrator stays
+            // the single writer of terminal status in recurse mode. Only fires
+            // for status="completed"; other statuses (in_progress/deleted) are
+            // unaffected. loadTeamState is only called on this path (not the
+            // claim path), so the guard adds zero overhead to hot operations.
+            if (args.status === "completed") {
+                let team
+                try {
+                    team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+                } catch {
+                    // team not found — no activeTask to guard, proceed
+                }
+                if (team?.activeTask?.type === "recurse") {
+                    return (
+                        `Error: in recurse mode, task completion is owned by the orchestrator. `
+                        + `Do NOT call team_task_update(status="completed") — the orchestrator `
+                        + `finalizes your task automatically when you go idle, including writing `
+                        + `your output as the result. Just solve the task and go idle.`
+                    )
+                }
+            }
             try {
                 const task = await updateTask(
                     dir,

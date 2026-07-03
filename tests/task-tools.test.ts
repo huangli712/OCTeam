@@ -7,7 +7,7 @@ import {
     teamTaskListTool,
     teamTaskUpdateTool,
 } from "../src/tools/task.js"
-import { createTask } from "../src/state/tasks.js"
+import { createTask, getTask, updateTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
@@ -248,5 +248,96 @@ describe("team_task_create (recurse-mode guard)", () => {
             { sessionID: sid } as any,
         )
         expect(result).toContain("Task created")
+    })
+})
+
+
+// ---------------------------------------------------------------------------
+// team_task_update (completed) under recurse mode — symmetric guard to
+// team_task_create: completion is owned by the orchestrator in recurse mode.
+// ---------------------------------------------------------------------------
+describe("team_task_update (recurse-mode completed guard)", () => {
+    test("status=\"completed\" rejected when team.activeTask.type === 'recurse'", async () => {
+        const root = tmpRoot("ttu-recurse-completed-blocked")
+        const sid = "ses_ttu_recurse_completed_blocked"
+        tracked.push(sid)
+        await setupTeam(root, sid)
+        const team = await loadTeamState(root, "alpha", sid)
+        team.activeTask = {
+            type: "recurse",
+            startedAt: 0,
+            wallClockTimeoutMs: 300000,
+            tokensUsed: 0,
+            tokensByMember: {},
+            messagesSent: 0,
+            responses: {},
+            stages: [],
+            currentStageIndex: 0,
+            decisionHistory: [],
+            decisionParseFailures: 0,
+        } as RecurseTask
+        await saveTeamState(team)
+        // Seed a claimed task owned by alice.
+        const dir = team.directory
+        const t = await createTask(dir, { subject: "leaf", description: "solve" })
+        await updateTask(dir, t.id, { status: "claimed", owner: "alice" })
+
+        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+            { team_id: "alpha", task_id: t.id, status: "completed" },
+            { sessionID: sid } as any,
+        )
+        expect(result).toContain("Error")
+        expect(result).toContain("recurse mode")
+        expect(result).toContain("orchestrator")
+        // Task NOT flipped to completed by the member.
+        const after = await getTask(dir, t.id)
+        expect(after!.status).toBe("claimed")
+    })
+
+    test("status=\"completed\" allowed under delegate/other modes (no false positive)", async () => {
+        const root = tmpRoot("ttu-delegate-completed-ok")
+        const sid = "ses_ttu_delegate_completed_ok"
+        tracked.push(sid)
+        const dir = await setupTeamDir(root, sid)
+        const t = await createTask(dir, { subject: "leaf", description: "solve" })
+        await updateTask(dir, t.id, { status: "claimed", owner: "alice" })
+
+        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+            { team_id: "alpha", task_id: t.id, status: "completed" },
+            { sessionID: sid } as any,
+        )
+        expect(result).toContain("updated to completed")
+    })
+
+    test("status=\"deleted\" NOT blocked under recurse mode (non-terminal-member action)", async () => {
+        const root = tmpRoot("ttu-recurse-delete-ok")
+        const sid = "ses_ttu_recurse_delete_ok"
+        tracked.push(sid)
+        await setupTeam(root, sid)
+        const team = await loadTeamState(root, "alpha", sid)
+        team.activeTask = {
+            type: "recurse",
+            startedAt: 0,
+            wallClockTimeoutMs: 300000,
+            tokensUsed: 0,
+            tokensByMember: {},
+            messagesSent: 0,
+            responses: {},
+            stages: [],
+            currentStageIndex: 0,
+            decisionHistory: [],
+            decisionParseFailures: 0,
+        } as RecurseTask
+        await saveTeamState(team)
+        const dir = team.directory
+        const t = await createTask(dir, { subject: "cancel", description: "x" })
+        await updateTask(dir, t.id, { status: "claimed", owner: "alice" })
+
+        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+            { team_id: "alpha", task_id: t.id, status: "deleted" },
+            { sessionID: sid } as any,
+        )
+        // delete is NOT completion — guard only fires for status="completed".
+        expect(result).toContain("updated to deleted")
     })
 })

@@ -24,7 +24,9 @@ import { dispatchToMember } from "./dispatch.js"
  */
 export function buildRecursePrompt(): string {
     return (
-        `[Recursive task] Claim an available task (team_task_update status="claimed"), then read it (team_task_get).\n`
+        `[Recursive task] You MUST claim a task FIRST (team_task_update status="claimed"), then read it (team_task_get).\n`
+        + `Until you claim a task, any <decompose> block you emit is IGNORED — the orchestrator\n`
+        + `only inspects output from members who currently hold a claimed/in_progress task.\n`
         + `Then EITHER:\n`
         + ` • Solve it directly — produce the full result as your final message; OR\n`
         + ` • If too large to solve in one step, emit exactly one:\n`
