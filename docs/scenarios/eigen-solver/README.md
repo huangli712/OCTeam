@@ -630,8 +630,8 @@ T+~120 你读取全部输出，裁定结果
 ## 相关文档
 
 - [`docs/scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 综合场景三类）
-- [`docs/scenarios/composite/code-review/README.md`](../code-review/README.md) — 姊妹综合场景：多团队代码评审
-- [`docs/scenarios/composite/feature-dev/README.md`](../feature-dev/README.md) — 姊妹综合场景：OCTeam 功能增强
+- [`docs/scenarios/code-review/README.md`](../../code-review/README.md) — 姊妹综合场景：多团队代码评审
+- [`docs/scenarios/feature-dev/README.md`](../../feature-dev/README.md) — 姊妹综合场景：OCTeam 功能增强
 - [`docs/scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
 - [`docs/scenarios/01-team-parallel/README.md`](../../01-team-parallel/README.md) — parallel 原语参考
 - [`docs/scenarios/04-team-loop/README.md`](../../04-team-loop/README.md) — loop 原语参考

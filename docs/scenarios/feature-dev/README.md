@@ -22,19 +22,19 @@ OCTeam src/ + docs + GitHub/web
         ▼
 research-team (parallel)  ──≥8 candidates──► master
                                                 │
-discussion-team (consensus) ◄──candidates──────┘
+discussion-team (consensus) ◄──candidates───────┘
         │
-        └──SELECTED feature──► master
-                                 │
-plan-team (loop)               ◄──selected──────┘
+        └──SELECTED feature────────────────► master
+                                                │
+plan-team (loop)             ◄────selected──────┘
         │  编写→审计→...→通过
-        └──approved plan──► master
-                              │
-implement-team (pipeline)    ◄──plan──────────┘
+        └──approved plan───────────────────► master
+                                                │
+implement-team (pipeline)    ◄──plan────────────┘
         │  coder→tester→reviewer
-        └──feature+tests──► master
-                              │
-audit-team (parallel)        ◄──feature───────┘
+        └──feature+tests───────────────────► master
+                                                │
+audit-team (parallel)        ◄──feature─────────┘
         │
         └──audit verdicts──► master ──► 你判断
 ```
@@ -514,7 +514,7 @@ T+~85  你读取全部输出，裁定结果
 ## 相关文档
 
 - [`docs/scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
-- [`docs/scenarios/composite/code-review/README.md`](../code-review/README.md) — 姊妹综合场景：多团队代码评审（同样 4 编排，可对照）
+- [`docs/scenarios/code-review/README.md`](../../code-review/README.md) — 姊妹综合场景：多团队代码评审（同样 4 编排，可对照）
 - [`docs/scenarios/_AUTHORING.md`](../../_AUTHORING.md) — 单原语场景编写规范（本综合场景为变体：多团队多编排、无评判脚本）
 - parallel / consensus / pipeline / loop 源码：[`src/tools/parallel.ts`](../../../../src/tools/parallel.ts) / [`consensus.ts`](../../../../src/tools/consensus.ts) / [`pipeline.ts`](../../../../src/tools/pipeline.ts) / [`loop.ts`](../../../../src/tools/loop.ts)
 - delegate / route / arbitrate / tollgate / recurse 源码：[`src/tools/delegate.ts`](../../../../src/tools/delegate.ts) / [`router.ts`](../../../../src/tools/router.ts) / [`arbitrate.ts`](../../../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../../../src/tools/tollgate.ts) / [`recurse.ts`](../../../../src/tools/recurse.ts)
