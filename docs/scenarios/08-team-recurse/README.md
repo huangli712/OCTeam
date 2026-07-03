@@ -287,7 +287,7 @@ T+9m    运行: bun check-coding-md-converter.ts <run_dir>
 
 ## 场景 4: Vandermonde 恒等式多层证明（挑战级）
 
-> **挑战级**：本场景刻意突破 `_AUTHORING.md` 的标准预算（30 min 总时长 / ≤4 成员 / `max_depth=2`），用于压测 `team_recurse` 在更深（`max_depth=4`）、更宽（`max_subtasks=4`）、更多成员（6 人）下的多层递归分解与自底向上聚合能力。
+> **挑战级**：本场景刻意突破标准预算（30 min 总时长 / ≤4 成员 / `max_depth=2`），用于压测 `team_recurse` 在更深（`max_depth=4`）、更宽（`max_subtasks=4`）、更多成员（6 人）下的多层递归分解与自底向上聚合能力。
 
 ### 4.1 场景描述
 

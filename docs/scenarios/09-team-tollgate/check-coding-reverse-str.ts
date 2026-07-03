@@ -15,7 +15,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // Minimal type declaration for Bun.Transpiler -- the check script convention
-// is zero external deps (see _AUTHORING.md), so we declare only the surface we
+// is zero external deps, so we declare only the surface we
 // use instead of pulling in @types/bun. Accessed via globalThis at runtime.
 interface BunTranspiler {
     transformSync(code: string): string;

@@ -93,8 +93,6 @@
 
 **挑战级场景**放宽至：6-10 成员、端到端 35-90 min；阶段/轮数/深度按模式而定（见各模式 README）。
 
-详见 [`_AUTHORING.md`](./_AUTHORING.md)（内部编写规范）。
-
 ## 相关文档
 
 - [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) — 9 种编排原语的官方定义与状态持久化模型

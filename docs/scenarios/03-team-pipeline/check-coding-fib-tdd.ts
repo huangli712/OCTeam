@@ -10,7 +10,7 @@
  * TypeScript type annotations or module `export` (Bun transpiles .ts files but
  * not dynamic strings). We therefore run the extracted code through
  * `Bun.Transpiler` (strips types) and a regex (strips `export`) before loading.
- * This mirrors the shared check-script convention (see _AUTHORING.md).
+ * This mirrors the shared check-script convention.
  *
  * Usage:  bun check-coding-fib-tdd.ts <run_dir>
  *   <run_dir>  directory containing carol.md
@@ -22,7 +22,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // Minimal type declaration for Bun.Transpiler -- the check script convention
-// is zero external deps (see _AUTHORING.md), so we declare only the surface we
+// is zero external deps, so we declare only the surface we
 // use instead of pulling in @types/bun. Accessed via globalThis at runtime.
 interface BunTranspiler {
     transformSync(code: string): string;
