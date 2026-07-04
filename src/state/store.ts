@@ -20,11 +20,17 @@ import {
  * persistence so a racing handler holding the same in-memory reference cannot
  * recreate the just-removed directory via atomicWrite's mkdir({recursive:true}).
  * None of these fields is written to state.json (see stripRuntimeFields).
+ *
+ * `spawning` is a runtime guard set by startOrchestration between Phase 1
+ * (busy pre-check) and Phase 3 (activeTask commit). It prevents a second
+ * concurrent caller from entering Phase 2 (ensureMembersReady) and
+ * duplicating member-session spawns while the first has released the mutex.
  */
 export type Team = TeamState & {
     mutex: AsyncMutex
     directory: string
     deleted?: boolean
+    spawning?: boolean
 }
 
 /**
@@ -51,7 +57,7 @@ const teamRegistry = new Map<string, Team>()
 
 /** Strip the non-persisted runtime fields, leaving the pure TeamState. */
 function stripRuntimeFields(team: Team): TeamState {
-    const { mutex: _mutex, directory: _directory, deleted: _deleted, ...state } = team
+    const { mutex: _mutex, directory: _directory, deleted: _deleted, spawning: _spawning, ...state } = team
     return state
 }
 

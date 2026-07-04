@@ -212,48 +212,60 @@ export async function startOrchestration(
     const validationError = validate(team)
     if (validationError) return validationError
 
-    // Step 4: Phase 1 — busy pre-check under mutex.
+    // Step 4: Phase 1 — busy pre-check under mutex. The spawning guard
+    // reserves the spawn slot: a second concurrent caller that also passed
+    // Steps 1-3 sees spawning=true here and bails before duplicating
+    // member-session spawns in Phase 2 (which runs OUTSIDE the mutex).
     let busy = false
     await team.mutex.runExclusive(async () => {
-        if (team.activeTask) busy = true
+        if (team.activeTask || team.spawning) busy = true
+        else team.spawning = true
     })
     if (busy) return "Error: team already has an active orchestration"
     let raced = false
     let buildError: string | undefined
 
-    // Step 5: Phase 2 — spawn + role-setup barrier (OUTSIDE mutex).
-    await ensureMembersReady(ctx, team)
+    // try/finally guarantees team.spawning is cleared on every exit path
+    // (success, raced, build error, or exception). Without this a barrier
+    // timeout or dispatch throw would leave spawning=true and permanently
+    // block the team.
+    try {
+        // Step 5: Phase 2 — spawn + role-setup barrier (OUTSIDE mutex).
+        await ensureMembersReady(ctx, team)
 
-    // Step 6: Phase 3 — commit activeTask + initial dispatch (UNDER mutex).
-    await team.mutex.runExclusive(async () => {
-        if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
-        const built = await buildTask(team)
-        if ("error" in built) {
-            buildError = built.error
-            return
-        }
-        const prevStatus = team.status
-        team.status = "busy"
-        team.activeTask = built
-        await saveTeamState(team)
-        // Reset per-member done/retry flags for the new run so a previous
-        // run's acks don't bleed in. declaredDone only matters when
-        // requireDoneAck is true, but cheap to always reset.
-        for (const m of team.members) {
-            m.declaredDone = false
-            m.retryCount = 0
-        }
-        try {
-            await dispatch(team, built)
-        } catch (err) {
-            // Roll back the busy+activeTask commit so a dispatch failure
-            // does not wedge the team requiring external recovery.
-            team.status = prevStatus
-            team.activeTask = undefined
+        // Step 6: Phase 3 — commit activeTask + initial dispatch (UNDER mutex).
+        await team.mutex.runExclusive(async () => {
+            if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
+            const built = await buildTask(team)
+            if ("error" in built) {
+                buildError = built.error
+                return
+            }
+            const prevStatus = team.status
+            team.status = "busy"
+            team.activeTask = built
             await saveTeamState(team)
-            throw err
-        }
-    })
+            // Reset per-member done/retry flags for the new run so a previous
+            // run's acks don't bleed in. declaredDone only matters when
+            // requireDoneAck is true, but cheap to always reset.
+            for (const m of team.members) {
+                m.declaredDone = false
+                m.retryCount = 0
+            }
+            try {
+                await dispatch(team, built)
+            } catch (err) {
+                // Roll back the busy+activeTask commit so a dispatch failure
+                // does not wedge the team requiring external recovery.
+                team.status = prevStatus
+                team.activeTask = undefined
+                await saveTeamState(team)
+                throw err
+            }
+        })
+    } finally {
+        team.spawning = false
+    }
     if (raced) return "Error: team already has an active orchestration"
     if (buildError) return buildError
 
