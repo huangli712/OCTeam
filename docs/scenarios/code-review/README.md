@@ -14,7 +14,7 @@
 
 ②③ 按 5 条一组循环 G=⌈N/5⌉ 次（末组可不足 5）。audit 去重合并后**不按 severity 裁剪**，high/medium/low 全保留。
 
-用到 3 种编排：**parallel / consensus / tollgate**。tollgate 的每道 stage 有独立 verifier（两道门用不同 verifier），FAIL 回退 producer，INVALID 升级到 arbiter，最终由 signoff decider 签字。
+用到 3 种编排：**parallel / arbitrate / tollgate**。tollgate 的每道 stage 有独立 verifier（两道门用不同 verifier），FAIL 回退 producer，INVALID 升级到 arbiter，最终由 signoff decider 签字。
 
 ```
 <TARGET> ──► audit-team (parallel)  ──findings──► master
@@ -23,11 +23,11 @@
                            ┌─── loop G 组 ────────────────────────┐
                            │                                      │
                            │  triage-team (arbitrate)             │
-                           │    ◄── 当前组 findings (≤5) ──       │
-                           │    └── confirmed (本组) ──► master   │
+                           │    ◄── 当前组 findings (≤5) ──        │
+                           │    └── confirmed (本组) ──► master    │
                            │                                      │
                            │  fix-team (tollgate)                 │
-                           │    ◄── confirmed (本组) ──           │
+                           │    ◄── confirmed (本组) ──            │
                            │    └── fixed+patches ──► master      │
                            └──────────────────────────────────────┘
                                                      │ 全部组完成
