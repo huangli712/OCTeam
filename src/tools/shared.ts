@@ -232,6 +232,7 @@ export async function startOrchestration(
             buildError = built.error
             return
         }
+        const prevStatus = team.status
         team.status = "busy"
         team.activeTask = built
         await saveTeamState(team)
@@ -242,7 +243,16 @@ export async function startOrchestration(
             m.declaredDone = false
             m.retryCount = 0
         }
-        await dispatch(team, built)
+        try {
+            await dispatch(team, built)
+        } catch (err) {
+            // Roll back the busy+activeTask commit so a dispatch failure
+            // does not wedge the team requiring external recovery.
+            team.status = prevStatus
+            team.activeTask = undefined
+            await saveTeamState(team)
+            throw err
+        }
     })
     if (raced) return "Error: team already has an active orchestration"
     if (buildError) return buildError
