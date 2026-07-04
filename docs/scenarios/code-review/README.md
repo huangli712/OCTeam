@@ -23,16 +23,16 @@
                            ┌─── loop G 组 ────────────────────────┐
                            │                                      │
                            │  triage-team (arbitrate)             │
-                           │    ◄── 当前组 findings (≤5) ──        │
-                           │    └── confirmed (本组) ──► master    │
+                           │    ◄── 当前组 findings (≤5) ──       │
+                           │    └── confirmed (本组) ──► master   │
                            │                                      │
                            │  fix-team (tollgate)                 │
-                           │    ◄── confirmed (本组) ──            │
+                           │    ◄── confirmed (本组) ──           │
                            │    └── fixed+patches ──► master      │
                            └──────────────────────────────────────┘
                                                      │ 全部组完成
                                                      ▼
-                                              master ──► 你判断
+                                                     master ──► 你判断
 ```
 
 ## 如何使用
