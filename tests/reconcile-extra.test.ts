@@ -189,9 +189,9 @@ describe("reconcileCrashedTeams", () => {
         await reconcileCrashedTeams(ctxFor(root, userRoot))
 
         const team = await loadTeamState(userRoot, "useralpha")
-        expect(team.status).toBe("failed")
-        expect(team.members[0].status).toBe("errored")
-        expect(team.activeTask).toBeUndefined()
+        // New semantics: busy team is NOT auto-failed (concurrent-instance safety).
+        expect(team.status).toBe("busy")
+        expect(team.members[0].status).toBe("running")
     })
 
     test("project scope: corrupt state.json is swallowed (logSwallowed), other teams still reconciled", async () => {
@@ -232,8 +232,11 @@ describe("reconcileCrashedTeams", () => {
         await expect(reconcileCrashedTeams(ctxFor(root, userRoot))).resolves.toBeUndefined()
 
         // Healthy team still reconciled despite the sibling corruption.
+        // New semantics: busy team is NOT auto-failed (concurrent-instance safety);
+        // reconcile only snapshots lastInterruptedTask.
         const after = await loadTeamState(root, "healthy", sid)
-        expect(after.status).toBe("failed")
+        expect(after.status).toBe("busy")
+        expect(after.lastInterruptedTask).toBeDefined()
     })
 
     test("user scope: corrupt state.json is swallowed without affecting project scope", async () => {

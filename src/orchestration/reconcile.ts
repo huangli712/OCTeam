@@ -4,12 +4,13 @@
  * here. Called from server() init (reconcileActivation + reconcileCrashedTeams)
  * and from the event handler (handleSessionDeleted on session.deleted).
  *
- * reconcileOne recovers teams left in a non-terminal state by a previous process
- * that crashed mid-orchestration:
- *   - busy: the in-flight orchestration cannot resume deterministically — release
- *     stale mailbox reservations, mark running members errored, and transition the
- *     team to "failed". Its sessions persist and are reusable by a fresh workflow
- *     call (ensureMembersReady reuses members that already have a sessionId).
+ * reconcileOne releases stale resources for teams left in a non-terminal state:
+ *   - busy: release stale mailbox reservations and snapshot the active task onto
+ *     lastInterruptedTask for a later team_resume. The team is NOT auto-failed,
+ *     because listAllTeams traverses ALL session directories and a concurrent
+ *     OpenCode instance must not mark another live process's busy team as failed.
+ *     A genuinely crashed process's busy team stays busy on disk; the user
+ *     resolves it via team_cancel or team_resume.
  *   - idle: release stale reservations (members reusable as-is).
  * live / failed are terminal-or-pristine → skipped.
  * Runs once in server() init, AFTER rebuildSessionIndex, BEFORE startSweepTimer.
@@ -17,21 +18,21 @@
  * runs concurrently. Iterates BOTH scopes: project (session-segmented) + user
  * (flat).
  *
- * Layer note: lives in orchestration/ (not state/) because reconcileOne calls
- * recordEvent + persistRun to persist terminated run records — a state/ placement
- * would invert the layer dependency (state → orchestration).
+ * Layer note: lives in orchestration/ (not state/) for historical reasons —
+ * the original implementation persisted terminated run records here, which a
+ * state/ placement would have inverted the layer dependency. That run-record
+ * persistence was removed (see reconcileOne), but the module stays in
+ * orchestration/ to avoid a wide import churn.
  */
 
 import fs from "node:fs/promises"
 import path from "node:path"
 
 import type { PluginContext } from "../core/context.js"
-import { clearActiveTask, invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from "../state/store.js"
+import { invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from "../state/store.js"
 import { unindexSession } from "../state/resolve.js"
 import { assertSafeSegment } from "../state/paths.js"
 import { releaseStaleReservations } from "../messaging/mailbox.js"
-import { persistRun } from "./runs.js"
-import { recordEvent } from "./events.js"
 import { logSwallowed } from "../core/log.js"
 
 async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx: PluginContext): Promise<void> {
@@ -42,27 +43,22 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             await releaseStaleReservations(team.directory, m.name).catch(() => {})
         }
         if (team.status === "busy") {
-            // Interrupted orchestration is unrecoverable — fail it cleanly.
-            // Persist a run record + terminated event for the in-flight run BEFORE
-            // clearing it, so a crashed run is not orphaned (its captured member
-            // outputs become retrievable via team_results). deliverSummaryToLeader
-            // is intentionally skipped — there is no live leader to prompt after a
-            // restart. Best-effort: failure must not block reconciliation.
+            // Do NOT auto-fail a busy team here. The original logic assumed the
+            // current process always owns every team it can see, but project-scope
+            // teams are leadSessionId-segmented and listAllTeams traverses ALL
+            // session directories — a concurrent OpenCode instance (e.g. spawned
+            // for config probing or a sibling session) running server() init will
+            // see another live process's busy team and incorrectly mark it failed,
+            // writing a spurious terminated:interrupted event that fools the leader
+            // into cancelling a healthy in-flight orchestration.
+            //
+            // Instead, only preserve the active task snapshot for an explicit
+            // team_resume. A genuinely crashed process's busy team stays busy on
+            // disk; the user resolves it via team_cancel or team_resume. Releasing
+            // stale reservations above is safe and reversible.
             if (team.activeTask) {
-                recordEvent(team, { timestamp: Date.now(), kind: "terminated", reason: "interrupted" })
-                await persistRun(team, "interrupted").catch((err) =>
-                    logSwallowed(ctx, "persist run record failed (reconcile)", err, { team: team.teamName })
-                )
-            }
-            // Preserve for explicit team_resume; NOT auto-resumed (never-auto-activate rule).
-            team.lastInterruptedTask = team.activeTask
-            clearActiveTask(team)
-            team.status = "failed"
-            for (const m of team.members) {
-                if (m.status === "running") {
-                    m.status = "errored"
-                    m.error = "interrupted by plugin/host restart"
-                }
+                team.lastInterruptedTask = team.activeTask
+                await saveTeamState(team)
             }
         }
         await saveTeamState(team).catch((err) =>

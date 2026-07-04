@@ -159,7 +159,7 @@ describe("Fix4: reconcileCrashedTeams persists interrupted run", () => {
         } as unknown as PluginContext
     }
 
-    test("busy team → record.json (status=failed, reason=interrupted) + terminated event", async () => {
+    test("busy team → NOT auto-failed (concurrent-instance safety); no interrupted event written", async () => {
         const root = tmpRoot("fix4-recon")
         const sid = "ses_f4"
         tracked.push(sid)
@@ -184,36 +184,21 @@ describe("Fix4: reconcileCrashedTeams persists interrupted run", () => {
         }
         await initTeamState(root, busy, sid)
 
-        // Stage a captured member output, as a real run would have at crash time.
-        const dir = teamDir(root, "crash", sid)
-        await fs.mkdir(runDir(dir, "run-x"), { recursive: true })
-        await fs.writeFile(runMemberOutputPath(dir, "run-x", "alice"), "alice full output")
-
         await reconcileCrashedTeams(ctxFor(root))
-        // terminated event + run record are fire-and-forget — wait for both.
-        await waitUntil(
-            () => {
-                const evPath = runEventsPath(dir, "run-x")
-                return existsSync(runRecordPath(dir, "run-x"))
-                    && existsSync(evPath)
-                    && readFileSync(evPath, "utf8").includes('"kind":"terminated"')
-            },
-            { timeoutMs: 2000, pollMs: 10 },
-        )
 
-        const rec = await readRunRecord(dir, "run-x")
-        expect(rec).not.toBeNull()
-        expect(rec!.status).toBe("failed")
-        expect(rec!.reason).toBe("interrupted")
-        expect(rec!.memberOutputs.alice).toBeDefined()
-        expect(rec!.memberOutputs.alice.bytes).toBe("alice full output".length)
-
-        const events = await readRunEvents(dir, "run-x")
-        expect(events.some(e => e.kind === "terminated" && e.reason === "interrupted")).toBe(true)
-
-        // team transitioned to failed and activeTask cleared
+        // New semantics: reconcile must NOT auto-fail a busy team or write a
+        // spurious terminated:interrupted event. A concurrent OpenCode instance
+        // running server() init could otherwise mark another live process's
+        // healthy in-flight orchestration as failed.
         const reloaded = await loadTeamState(root, "crash", sid)
-        expect(reloaded.status).toBe("failed")
-        expect(reloaded.activeTask).toBeUndefined()
+        expect(reloaded.status).toBe("busy")
+        expect(reloaded.activeTask).toBeDefined()
+        // lastInterruptedTask is snapshotted for a potential team_resume.
+        expect(reloaded.lastInterruptedTask).toEqual(busy.activeTask)
+
+        // No run record or terminated event should be persisted.
+        const dir = teamDir(root, "crash", sid)
+        expect(existsSync(runRecordPath(dir, "run-x"))).toBe(false)
+        expect(existsSync(runEventsPath(dir, "run-x"))).toBe(false)
     })
 })

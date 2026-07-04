@@ -130,7 +130,7 @@ function reconcileCtx(root: string): PluginContext {
 }
 
 describe("reconcileCrashedTeams preserves lastInterruptedTask (T3)", () => {
-    test("busy crash: lastInterruptedTask === original activeTask; status → failed; running member → errored", async () => {
+    test("busy crash: lastInterruptedTask preserved; team NOT auto-failed (concurrent-instance safety)", async () => {
         const root = tmpRoot("reconcile-busy")
         const sid = "ses_crash_busy"
         const task = makeActiveTask({ runId: "run-x", type: "parallel" })
@@ -144,10 +144,12 @@ describe("reconcileCrashedTeams preserves lastInterruptedTask (T3)", () => {
         await reconcileCrashedTeams(reconcileCtx(root))
 
         const team = await loadTeamState(root, "crashed", sid)
-        // Force-fail semantics unchanged.
-        expect(team.status).toBe("failed")
-        expect(team.activeTask).toBeUndefined()
-        expect(team.members[0].status).toBe("errored")
+        // New semantics: a concurrent OpenCode instance must not fail another
+        // live process's busy team. The team stays busy for explicit resolution
+        // via team_cancel/team_resume; only lastInterruptedTask is snapshotted.
+        expect(team.status).toBe("busy")
+        expect(team.activeTask).toEqual(task)
+        expect(team.members[0].status).toBe("running")
         // T3: the interrupted task is preserved for an explicit team_resume.
         expect(team.lastInterruptedTask).toEqual(task)
     })
