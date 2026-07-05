@@ -1,6 +1,6 @@
 # 综合场景：OCTeam 多团队代码评审
 
-3 阶段代码评审链（**审计 → 确认缺陷 → 修复**），由 3 个独立团队 × 3 种编排原语串联完成。audit 一次性审计；triage 与 fix 按 **5 条一组**循环（每组先 triage 辩论、再 fix 逐个修复），直至 findings 处理完。master 作集成枢纽，团队间彼此隔离、数据手递手。
+3 阶段代码评审链（**审计 → 确认缺陷 → 修复**），由 3 个独立团队 × 3 种编排原语串联完成。audit 一次性审计；triage 与 fix 按 **5 条一组**循环（每组先 triage 辩论、再 fix 逐个修复），直至 findings 处理完。master 作集成枢纽，团队间彼此隔离、数据手递手。**fix-team 每组创建全新实例**（避免单实例累积 tollgate run 性能下降）。
 
 **自用模板**：不绑定特定靶子，不含评判脚本。把 `<TARGET>` 替换为你要评审的代码（文件 / 模块 / 目录），按文末 quick-start prompt 跑通；发现的真假与修复的正确性**由你自行判断**。
 
@@ -255,9 +255,9 @@ for each group g in 1..G:        # §1.5 分组循环
 
 ### 3.1 阶段说明
 
-> fix-team 在 §1.5 分组循环中**每组**（triage 完成后）激活一次：对本组 CONFIRMED 的每条 finding 逐个跑 tollgate run，跑完 deactivate，进入下一组。
+> fix-team 在 §1.5 分组循环中**每组**（triage 完成后）创建一个全新实例：删除上一组的旧 fix-team（如有），team_create 新实例，激活后对本组 CONFIRMED 的每条 finding 逐个跑 tollgate run，跑完 deactivate，进入下一组。
 
-5 名成员采用 TDD 门控流水线，**逐个**修复**本组** confirmed finding。master 为本组每条 CONFIRMED **串行启动一次独立的 tollgate run**（本组 N 条 → N 次 run，复用同一 fix-team）。每次 run 走两道门：
+5 名成员采用 TDD 门控流水线，**逐个**修复**本组** confirmed finding。master 为本组每条 CONFIRMED **串行启动一次独立的 tollgate run**（本组 N 条 → N 次 run，均在本次新建的 fix-team 内执行）。每次 run 走两道门：
 
 ```
 Stage 1:  henry 写 failing test  →  iris 验证
@@ -278,7 +278,7 @@ Stage 2:  jack 修复代码  →  kate 验证
 
 **为什么两道门用不同 verifier**：iris 和 kate 分别把守测试门和修复门，避免单一验证者的盲区。
 
-**为什么逐个串行而非批量**：tollgate 的 stages 是固定单条流水线。逐个串行让每个 bug 独立门控，互不干扰；同一 fix-team 复用，N 次 run 之间由 master 串行启动。
+**为什么逐个串行而非批量**：tollgate 的 stages 是固定单条流水线。逐个串行让每个 bug 独立门控，互不干扰；本组 N 次 run 在同一 fix-team 实例内由 master 串行启动，组间则重建实例。
 
 ### 3.2 Team 配置
 
@@ -358,17 +358,22 @@ Stage 2:  jack 修复代码  →  kate 验证
 
 ### 3.4 生命周期步骤（master）
 
-fix-team 在循环中每组复用，定义一次、按组激活（紧跟同组 triage 之后）：
+fix-team 每组创建全新实例（避免单实例累积过多 tollgate run 导致性能下降），紧跟同组 triage 之后：
 
 ```
-team_create(cr-fix)            # 循环外定义一次
-for each group g in 1..G:       # §1.5 分组循环（triage 已为该组跑完）
-    team_activate(cr-fix)        # （此时 cr-triage 已 deactivate）
-    for each CONFIRMED in group g:   # 逐个串行，本组 N 条 → N 次 run
-        team_tollgate(...)        # 用 §3.3 JSON，替换 <id> 和 <一句缺陷描述>
+# cr-triage 循环外定义一次（见 §2.4）
+for each group g in 1..G:         # §1.5 分组循环（triage 已为该组跑完）
+    if g > 1:
+        team_delete(cr-fix)        # 删除上一组的旧 fix-team（已完成、已 deactivate）
+    team_create(cr-fix)            # 每组创建全新 fix-team（用 §3.2 JSON）
+    team_activate(cr-fix)          # （此时 cr-triage 已 deactivate）
+    for each CONFIRMED in group g: # 逐个串行，本组 N 条 → N 次 run
+        team_tollgate(...)          # 用 §3.3 JSON，替换 <id> 和 <一句缺陷描述>
         # 等待 signoff → team_results 取该 run 产出
-    team_deactivate(cr-fix)      # 为下一组的 triage 让路
+    team_deactivate(cr-fix)        # 为下一组的 triage 让路
 ```
+
+> **为什么每组重建 fix-team**：单个 fix-team 实例连续执行多次 team_tollgate 后性能会下降。每组 triage 确认完 findings 后，删除旧 fix-team（如有）、创建全新的，再执行本组修复。triage-team 不受此影响，仍然循环外定义一次、按组复用。
 
 ### 3.5 产出与交接（当前组）
 
@@ -389,7 +394,6 @@ T+~12  收 findings → 去重合并（不裁剪）→ 分组（每组 5 条，�
         组数 G = ⌈总条数 / 5⌉
 
 team_create(cr-triage)   # 循环外定义一次
-team_create(cr-fix)      # 循环外定义一次
 
 for g in 1..G:                          # 分组循环：每组 triage → fix
     team_activate(cr-triage)              # （另一团队已 deactivate）
@@ -397,7 +401,10 @@ for g in 1..G:                          # 分组循环：每组 triage → fix
         6 debater 辩论本组真假 → arbiter(sam) 只确认共识发现
     team_deactivate(cr-triage)
 
-    team_activate(cr-fix)                 # （cr-triage 已 deactivate）
+    if g > 1:
+        team_delete(cr-fix)                # 删除上一组的旧 fix-team
+    team_create(cr-fix)                    # 每组创建全新 fix-team
+    team_activate(cr-fix)                  # （cr-triage 已 deactivate）
     for each CONFIRMED in group g（逐个串行）:
         team_tollgate (henry→iris 写测试门, jack→kate 修复门, leo 签字)
     team_deactivate(cr-fix)
@@ -421,10 +428,10 @@ for g in 1..G:                          # 分组循环：每组 triage → fix
 1. audit-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。8 名 reviewer 并行审计 <TARGET>。完成后 deactivate。汇总所有 <!-- FINDING: ... --> marker 成 findings 清单，同时维护 id→描述映射。**只去重合并，不按 severity 裁剪**（high/medium/low 全保留）。去重后若 0 条则中断流程。然后**分组：每组 5 条，末组可不足 5 条**，组数 G = ⌈总条数/5⌉。
 
 2. triage-team (team_arbitrate，§2) + fix-team (team_tollgate，§3) 交替循环 G 组：
-   循环前：team_create(cr-triage)、team_create(cr-fix) 各一次。
+   循环前：team_create(cr-triage) 一次。
    for g in 1..G:
      - activate cr-triage → team_arbitrate（task = 第 g 组 findings（≤5 条），arbiter=sam，max_rounds=6）。6 名 debater 辩论本组哪些是真问题、哪些是误报——不讨论修复策略；arbiter 只确认达成共识的发现。deactivate cr-triage。汇总本组 <!-- CONFIRMED: <id> -->。
-     - activate cr-fix → 对本组每个 CONFIRMED finding 串行启动一次 team_tollgate run（替换 <id> 和缺陷描述）。每次 run 两道门：henry 写 failing test → iris 验证；jack 修复 → kate 验证；leo 仲裁签字。max_gate_retries=2，signoff_policy=decider，signoff_decider=leo。本组跑完 deactivate cr-fix。
+     - 若 g>1 先 team_delete(cr-fix) 删除上一组的旧 fix-team；然后 team_create(cr-fix) 创建全新实例 → activate cr-fix → 对本组每个 CONFIRMED finding 串行启动一次 team_tollgate run（替换 <id> 和缺陷描述）。每次 run 两道门：henry 写 failing test → iris 验证；jack 修复 → kate 验证；leo 仲裁签字。max_gate_retries=2，signoff_policy=decider，signoff_decider=leo。本组跑完 deactivate cr-fix。
 
 3. 全部 G 组处理完毕后，把每个团队的产出（findings / confirmed / fixed+patches）整理给我，由我裁定结果。不跑评判脚本、不设回归门。
 
@@ -433,7 +440,7 @@ for g in 1..G:                          # 分组循环：每组 triage → fix
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
 - **不按 severity 裁剪**：去重后 high/medium/low 全保留，每组 5 条（末组可不足 5），组与组之间 triage→fix 交替循环。
 - **组间严格串行不并行**：一组 triage→fix 全部跑完才进入下一组。严禁同时跑多组的 triage、或多组的 fix、或一组的 triage 与另一组的 fix 交叉。
-- fix-team 逐个串行跑 tollgate：每个 CONFIRMED 一次独立 run，复用同一 fix-team。不要批量塞进单次 run。
+- fix-team 每组新建：每组 triage 完成后删除旧 fix-team（如有）、team_create 全新实例。本组内逐个串行跑 tollgate：每个 CONFIRMED 一次独立 run。不要批量塞进单次 run。
 - 当 team 在运行中时，轮询 team_progress/team_results 的间隔为 30 秒，不要更频繁。
 ```
 

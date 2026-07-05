@@ -12,7 +12,7 @@
 | ② 讨论 | **discussion-team** | `team_consensus` | 8+ 候选作 topic | `<!-- SELECTED: <id> -->` + 理由 |
 | ③ 计划 | **plan-team** | `team_loop` | 选中的功能 | 实施方案，编写→审计→loop 至 decider 通过（`<!-- PLAN-APPROVED -->`） |
 | ④ 实现 | **implement-team** | `team_pipeline` | 通过的方案 | coder→tester→reviewer 顺序产出功能代码+测试 |
-| ⑤ 审计 | **audit-team** | `team_parallel` | 实现后的功能 | 多维并行审计（`<!-- AUDIT: <dim>: pass\|fail -->`） |
+| ⑤ 审计 | **audit-team** | `team_parallel` | 实现后的功能 | 多维并行审计（`<!-- AUDIT: <dim>: pass\|fail -->`）+ peer-quorum 投票（参考） |
 
 用到 4 种编排：**parallel / consensus / loop / pipeline**（parallel 在调研与审计各用一次）。
 
@@ -36,7 +36,7 @@ implement-team (pipeline)    ◄──plan────────────�
                                                 │
 audit-team (parallel)        ◄──feature─────────┘
         │
-        └──audit verdicts──► master ──► 你判断
+        └──audit verdicts + 投票──► master ──► 你判断
 ```
 
 ## 如何使用
@@ -205,6 +205,7 @@ team_create(fd-discussion)
 team_activate(fd-discussion)   # （此时 fd-research 已 deactivate）
 team_consensus(...)            # topic = §1.5 候选清单
 # 等待共识 → team_results 取汇总
+# 若 max_rounds 用尽仍未达成共识（consensus_max_rounds）→ 中断流程，deactivate 后不继续
 team_deactivate(fd-discussion)
 ```
 
@@ -212,6 +213,7 @@ team_deactivate(fd-discussion)
 
 - master 抓取 `<!-- SELECTED: <id> -->`（共识后各成员应收敛到同一 id）+ 理由。
 - 选中的功能作为 §3 plan-team 的编写对象。
+- **若 consensus 未达成（consensus_max_rounds），中断流程**——deactivate 后不进入 §3，向你汇报讨论记录。
 
 ---
 
@@ -237,7 +239,7 @@ team_deactivate(fd-discussion)
     },
     {
       "name": "iris",
-      "role": "reviewer",
+      "role": "auditor",
       "prompt": "You are the AUDITOR (stage 2) in the plan loop. Each round, audit Henry's plan for: completeness (all affected code paths?), correctness (will it actually work?), testability (are tests specified?), risk (what can break?), and fit with OCTeam's architecture. Emit a short audit verdict listing gaps Jack should send back. Do not modify the plan."
     },
     {
@@ -249,7 +251,7 @@ team_deactivate(fd-discussion)
 }
 ```
 
-**Role 选择**：henry `writer`（编写方案，modify），iris `reviewer`（审计，read_only），jack `reviewer`（decider，auto-appended 只读裁决）。
+**Role 选择**：henry `writer`（编写方案，modify），iris `auditor`（审计，read_only，backed by oct-momus），jack `reviewer`（decider，auto-appended 只读裁决）。
 
 ### 3.3 Master 启动调用
 
@@ -280,7 +282,7 @@ team_deactivate(fd-discussion)
 
 **参数选择**：
 - `stages` 顺序：henry(modify，编写) → iris(read_only，审计)，每轮一遍；decider jack 每轮裁决。
-- `max_rounds: 4`——4 轮内未通过则交回你处理。
+- `max_rounds: 4`——4 轮内未通过则**中断流程**，不进入 §4。
 
 ### 3.4 生命周期步骤（master）
 
@@ -288,7 +290,8 @@ team_deactivate(fd-discussion)
 team_create(fd-plan)
 team_activate(fd-plan)        # （此时 fd-discussion 已 deactivate）
 team_loop(...)                # initial_task + stages 如上
-# 等待 decider 裁决 approved / 达 max_rounds → team_results 取 PLAN-APPROVED + 方案
+# 等待 decider 裁决 approved → team_results 取 PLAN-APPROVED + 方案
+# 若 max_rounds 用尽仍未通过（loop_complete:max_rounds）→ 中断流程，deactivate 后不继续
 team_deactivate(fd-plan)
 ```
 
@@ -296,6 +299,7 @@ team_deactivate(fd-plan)
 
 - master 抓取 `<!-- PLAN-APPROVED -->` + 完整实施方案。
 - 这份方案作为 §4 implement-team pipeline 首阶段（coder）的输入。
+- **若 max_rounds 用尽仍未 approved（loop_complete:max_rounds），中断流程**——deactivate 后不进入 §4，向你汇报方案草案与审计记录。
 
 ---
 
@@ -367,12 +371,15 @@ team_deactivate(fd-plan)
 ### 4.4 生命周期步骤（master）
 
 ```
+aft_safety(checkpoint, "pre-implement")   # 快照当前代码，便于最后回退
 team_create(fd-implement)
 team_activate(fd-implement)   # （此时 fd-plan 已 deactivate）
 team_pipeline(...)            # stages 如上，首阶段 task 含 §3.5 方案
 # 等待三阶段顺序完成 → team_results 取汇总（code + tests + review）
 team_deactivate(fd-implement)
 ```
+
+> **为什么在 implement 前 checkpoint**：kate 会直接修改 `src/` 代码。用 `aft_safety`（`op: "checkpoint"`, `name: "pre-implement"`）快照当前文件状态，审计后若需回退可 `aft_safety restore "pre-implement"` 恢复。
 
 ### 4.5 产出与交接
 
@@ -385,7 +392,7 @@ team_deactivate(fd-implement)
 
 ### 5.1 阶段说明
 
-4 名审计员**并行**深审新功能，每人一个维度，独立于 §4 pipeline 内联的 reviewer：**正确性 / 回归 / 测试完备性 / 设计契合**。
+4 名审计员**并行**深审新功能，每人一个维度，独立于 §4 pipeline 内联的 reviewer：**正确性 / 回归 / 测试完备性 / 设计契合**。并行审计完成后，4 人基于全部审计摘要进行 **peer-quorum 投票**（≥50% approve 即通过），投票结果供你参考。
 
 ### 5.2 Team 配置
 
@@ -429,6 +436,8 @@ team_deactivate(fd-implement)
     "team_id": "fd-audit",
     "mode": "isolated",
     "task": "Audit the newly implemented OCTeam feature (see §4 output: changed files + tests + review) strictly within YOUR ASSIGNED DIMENSION (see your role brief). Emit the <!-- AUDIT: <dim>: pass|fail --> marker exactly as your brief specifies, followed by your findings.",
+    "signoff_policy": "peer-quorum",
+    "signoff_quorum": 0.5,
     "timeout_ms": 1500000
   }
 }
@@ -437,6 +446,7 @@ team_deactivate(fd-implement)
 **参数选择**：
 - `mode: isolated` + 维度烤进 prompt——4 路并行各审一个维度。
 - audit-team 看到的是 §4 的实现产出（master 在 task 里给出 changed files 摘要）。
+- `signoff_policy: peer-quorum` + `signoff_quorum: 0.5`——4 路审计完成后，buildSummary 汇总全部审计结论发给每人，各自投 `<signoff>{"approved": true|false}</signoff>`。≥2/4 approve 即通过。投票结果**供你参考**，最终裁定仍由你做。
 
 ### 5.4 生命周期步骤（master）
 
@@ -451,7 +461,8 @@ team_deactivate(fd-audit)
 ### 5.5 产出与交接
 
 - master 抓取所有 `<!-- AUDIT: <dim>: pass|fail -->` + findings。
-- **你读取这 4 维审计结论 + 各团队输出，自行裁定整次功能增强的成败。** 场景到此结束。
+- master 抓取 peer-quorum 投票结果（signoff_quorum_reached / signoff_quorum_not_reached）。
+- **审计报告与投票结果均为参考；你读取 4 维审计结论 + 投票结果 + 各团队输出，自行裁定整次功能增强的成败。** 若需回退实现，`aft_safety restore "pre-implement"` 恢复到实现前的代码。场景到此结束。
 
 ---
 
@@ -464,15 +475,18 @@ T+~15  收 ≥8 candidates → team_deactivate(fd-research)
 T+~15  team_create(fd-discussion) → team_activate → team_consensus(topic=candidates)
          5 debater 辩论投票选 1（≤4 轮）
 T+~30  收 SELECTED → team_deactivate(fd-discussion)
+         ⚠️ 若未达成共识 → 中断流程，不继续
 T+~30  team_create(fd-plan) → team_activate → team_loop
          每轮 henry 编写 → iris 审计，jack 裁决
 T+~45  收 PLAN-APPROVED → team_deactivate(fd-plan)
-T+~45  team_create(fd-implement) → team_activate → team_pipeline
+         ⚠️ 若 max_rounds 用尽未通过 → 中断流程，不继续
+T+~45  aft_safety(checkpoint, "pre-implement")   # 快照代码，便于回退
+       team_create(fd-implement) → team_activate → team_pipeline
          kate 实现 → leo 测试 → mona 评审
 T+~70  收 feature+tests → team_deactivate(fd-implement)
 T+~70  team_create(fd-audit) → team_activate → team_parallel
-         4 审计员并行深审（正确性/回归/测试/设计）
-T+~85  收 audit verdicts → team_deactivate(fd-audit)
+         4 审计员并行深审（正确性/回归/测试/设计）→ peer-quorum 投票
+T+~85  收 audit verdicts + 投票结果 → team_deactivate(fd-audit)
 T+~85  你读取全部输出，裁定结果
 ```
 
@@ -491,13 +505,13 @@ T+~85  你读取全部输出，裁定结果
 
 1. research-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。6 名研究员并行调研（内部 src/docs + GitHub/web 外部）。完成后 deactivate。汇总所有 <!-- CANDIDATE: <id>:<short> --> marker 成候选清单（应 ≥8 条）。
 
-2. discussion-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步候选清单，max_rounds=4）。5 名 debater 综合必要性/可行性/复杂度投票选 1。完成后 deactivate。抓取 <!-- SELECTED: <id> --> + 理由。
+2. discussion-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步候选清单，max_rounds=4）。5 名 debater 综合必要性/可行性/复杂度投票选 1。完成后 deactivate。抓取 <!-- SELECTED: <id> --> + 理由。**若未达成共识（consensus_max_rounds），deactivate 后中断流程，不继续。**
 
-3. plan-team (team_loop，§3)：按 §3.2 team_create，§3.3 team_loop（initial_task 含 SELECTED 功能）。每轮 henry 编写 → iris 审计，jack 裁决。完成后 deactivate。抓取 <!-- PLAN-APPROVED --> + 完整方案。
+3. plan-team (team_loop，§3)：按 §3.2 team_create，§3.3 team_loop（initial_task 含 SELECTED 功能）。每轮 henry 编写 → iris 审计，jack 裁决。完成后 deactivate。抓取 <!-- PLAN-APPROVED --> + 完整方案。**若 max_rounds 用尽仍未通过（loop_complete:max_rounds），deactivate 后中断流程，不继续。**
 
-4. implement-team (team_pipeline，§4)：按 §4.2 team_create，§4.3 team_pipeline（首阶段 task 内嵌 §3.5 方案）。kate 实现 → leo 写+跑测试 → mona 评审。完成后 deactivate。汇总改动摘要 + 测试结果 + 评审结论。
+4. implement-team (team_pipeline，§4)：**先 aft_safety(checkpoint, "pre-implement") 快照当前代码（便于最后回退）**，再按 §4.2 team_create，§4.3 team_pipeline（首阶段 task 内嵌 §3.5 方案）。kate 实现 → leo 写+跑测试 → mona 评审。完成后 deactivate。汇总改动摘要 + 测试结果 + 评审结论。
 
-5. audit-team (team_parallel，§5)：按 §5.2 team_create，§5.3 team_parallel（task 含 §4 实现摘要）。4 名审计员并行深审（正确性/回归/测试完备/设计契合）。完成后 deactivate。汇总所有 <!-- AUDIT: <dim>: pass|fail --> marker。
+5. audit-team (team_parallel，§5)：按 §5.2 team_create，§5.3 team_parallel（task 含 §4 实现摘要，signoff_policy=peer-quorum，signoff_quorum=0.5）。4 名审计员并行深审后全员投票。完成后 deactivate。汇总所有 <!-- AUDIT: <dim>: pass|fail --> marker + 投票结果（参考）。
 
 全部完成后，把每个团队的产出（candidates / selected / plan / implementation / audit verdicts）整理给我，由我裁定结果。不跑评判脚本。
 
@@ -506,7 +520,9 @@ T+~85  你读取全部输出，裁定结果
 - 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
 - plan-team 的 decider（jack）不能出现在 stages 里。
 - pipeline 模式无 action 字段；各 stage 顺序加工，前 stage 产出自动拼进下 stage task。
-- 当 team 在运行中时不要频繁轮询 team_progress/team_results，等待 OCTeam 通知完成即可。
+- 当 team 在运行中时，轮询 team_progress/team_results 的间隔为 30 秒，不要更频繁。
+- **discussion-team 未达成共识或 plan-team 方案未通过时，立即中断流程**，deactivate 当前团队后不继续后续阶段。
+- implement-team 启动前一定先 `aft_safety(checkpoint)` 快照代码，审计后可按需 `restore` 回退。
 ```
 
 ---
