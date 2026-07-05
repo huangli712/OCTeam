@@ -8,7 +8,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { dispatchToMember } from "../orchestration/dispatch.js"
-import { createTask } from "../state/tasks.js"
+import { createTask, listAllTasks } from "../state/tasks.js"
 import { buildRecursePrompt } from "../orchestration/recurse.js"
 import {
     DEFAULT_RECURSE_DEPTH,
@@ -56,6 +56,14 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                 // buildTask: seed the root task BEFORE committing activeTask
                 // so a mid-create failure leaves the team idle.
                 async (team) => {
+                    // Enforce maxTasks: seeding the root task via createTask
+                    // bypasses team_task_create's cap check, so guard here.
+                    const liveTasks = (await listAllTasks(team.directory)).filter(
+                        t => t.status !== "deleted",
+                    ).length
+                    if (liveTasks >= team.bounds.maxTasks) {
+                        return { error: `Error: team task limit reached (${team.bounds.maxTasks}). Complete or delete tasks before creating more.` }
+                    }
                     const subject = args.task.length <= 480 ? args.task : args.task.slice(0, 477) + "..."
                     const root = await createTask(team.directory, {
                         subject,

@@ -4,6 +4,7 @@ import type { PluginContext } from "../src/core/context.js"
 import type { TeamSpec } from "../src/core/types.js"
 import { teamQueryTool } from "../src/tools/query.js"
 import { initTeamState, writeTeamSpec } from "../src/state/store.js"
+import { teamDir, worktreesDir } from "../src/state/paths.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
@@ -88,13 +89,14 @@ describe("team_query tool", () => {
         const root = tmpRoot("q-wt")
         const sid = "ses_q_wt"
         tracked.push(sid)
-        const alice = { ...makeMember("alice"), worktreePath: "/tmp/wt-alice" }
+        const wtPath = `${worktreesDir(teamDir(root, "alpha", sid))}/alice`
+        const alice = { ...makeMember("alice"), worktreePath: wtPath }
         await setupTeam(root, sid, { members: [alice], activatedAt: Date.now() })
         const result = await teamQueryTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice" },
             { sessionID: sid } as any,
         )
-        expect(result).toContain("/tmp/wt-alice")
+        expect(result).toContain(wtPath)
     })
 
     test("member without model → model field shown as 'none'", async () => {

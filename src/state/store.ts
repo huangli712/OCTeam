@@ -1,14 +1,17 @@
 import fs from "node:fs/promises"
+import path from "node:path"
 
 import type { TeamState, TeamSpec } from "../core/types.js"
 import { isOCTeamAgent } from "../core/role.js"
 import { atomicWrite, AsyncMutex, withLock } from "./locks.js"
 import {
     configPath,
+    isSafePathSegment,
     stateLockPath,
     statePath,
     teamDir,
     teamsDir,
+    worktreesDir,
 } from "./paths.js"
 /**
  * Runtime team object: TeamState plus non-persisted handles.
@@ -31,6 +34,7 @@ export type Team = TeamState & {
     directory: string
     deleted?: boolean
     spawning?: boolean
+    _diskSnapshot?: TeamState  // last known on-disk state (for three-way merge in saveTeamState)
 }
 
 /**
@@ -57,7 +61,7 @@ const teamRegistry = new Map<string, Team>()
 
 /** Strip the non-persisted runtime fields, leaving the pure TeamState. */
 function stripRuntimeFields(team: Team): TeamState {
-    const { mutex: _mutex, directory: _directory, deleted: _deleted, spawning: _spawning, ...state } = team
+    const { mutex: _mutex, directory: _directory, deleted: _deleted, spawning: _spawning, _diskSnapshot: _snap, ...state } = team
     return state
 }
 
@@ -77,7 +81,7 @@ function stripRuntimeFields(team: Team): TeamState {
  * check, the load is rejected, and safeMemberAgent() would have clamped it to
  * the read-only fallback (oct-oracle) anyway at dispatch time.
  */
-function isValidTeamState(value: unknown): value is TeamState {
+function isValidTeamState(value: unknown, teamDirectory: string): value is TeamState {
     if (typeof value !== "object" || value === null) return false
     const s = value as Record<string, unknown>
     if (
@@ -91,11 +95,36 @@ function isValidTeamState(value: unknown): value is TeamState {
     // Reject any member whose agent is present but not in the oct-* allowlist.
     // A missing agent is allowed here (legacy/old state) — safeMemberAgent at
     // dispatch falls back to oct-oracle (read-only) in that case.
+    // Worktree-path hardening: a persisted worktreePath is passed VERBATIM as
+    // the child session's `directory` at spawn/dispatch time
+    // (dispatch.ts: `member.worktreePath ?? ctx.directory`), so a tampered
+    // state.json could otherwise make a member session run OUTSIDE the team
+    // worktree. Reject any worktreePath that does not resolve strictly inside
+    // the team's own worktrees/ directory. A missing worktreePath is allowed
+    // (members without worktree: true).
+    const wtRoot = worktreesDir(teamDirectory)
     for (const m of s.members) {
         if (typeof m !== "object" || m === null) return false
+        // Validate required per-member fields: name (used as a path segment in
+        // mailbox/reserved dir operations) must be a safe segment, and status
+        // must be a string. A tampered state.json with a missing/unsafe name
+        // or missing status would otherwise propagate and crash downstream
+        // path operations (reservedDir → assertSafeSegment in the sweep loop).
+        const name = (m as { name?: unknown }).name
+        if (typeof name !== "string" || !isSafePathSegment(name)) return false
+        const status = (m as { status?: unknown }).status
+        if (typeof status !== "string") return false
         const agent = (m as { agent?: unknown }).agent
         if (agent !== undefined && (typeof agent !== "string" || !isOCTeamAgent(agent))) {
             return false
+        }
+        const wt = (m as { worktreePath?: unknown }).worktreePath
+        if (wt !== undefined) {
+            if (typeof wt !== "string") return false
+            const resolved = path.resolve(teamDirectory, wt)
+            if (resolved !== wtRoot && !resolved.startsWith(wtRoot + path.sep)) {
+                return false
+            }
         }
     }
     return true
@@ -144,11 +173,14 @@ export async function loadTeamState(
     const dir = teamDir(storageRoot, teamName, leadSessionId)
     let team = teamRegistry.get(dir)
     if (!team) {
-        const state = await readJsonOrNull<TeamState>(statePath(dir), isValidTeamState)
+        const state = await readJsonOrNull<TeamState>(
+            statePath(dir),
+            (v): v is TeamState => isValidTeamState(v, dir),
+        )
         if (!state) {
             throw new Error(`loadTeamState: no state.json for team "${teamName}"`)
         }
-        team = { ...state, mutex: new AsyncMutex(), directory: dir }
+        team = { ...state, mutex: new AsyncMutex(), directory: dir, _diskSnapshot: deepClone(state) }
         teamRegistry.set(dir, team)
     }
     // Once registered, the in-memory Team is the authoritative copy — every
@@ -159,6 +191,131 @@ export async function loadTeamState(
     return team
 }
 
+/** Deep-clone a JSON-serializable value (all TeamState fields are JSON-safe). */
+function deepClone<T>(value: T): T {
+    return JSON.parse(JSON.stringify(value))
+}
+
+/** Structural equality for JSON-serializable values. */
+function jsonEqual<T>(a: T, b: T): boolean {
+    return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * Three-way merge of TeamState: start with `disk`, apply fields the caller
+ * changed (current ≠ ancestor → caller mutated), preserve fields the caller
+ * did NOT touch (current == ancestor → another process may have changed disk).
+ */
+function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState): TeamState {
+    const merged: TeamState = { ...disk }
+    // Scalar fields (except members/activeTask): caller wins only if changed.
+    for (const key of Object.keys(current) as (keyof TeamState)[]) {
+        if (key === "members" || key === "activeTask") continue
+        if (!jsonEqual(current[key], ancestor[key])) {
+            ;(merged as Record<string, unknown>)[key] = current[key]
+        }
+    }
+    merged.members = mergeMembers(disk.members ?? [], ancestor.members ?? [], current.members ?? [])
+    // activeTask is a nested mutable object (responses, tokensByMember,
+    // messagesSent, stages, ...). A top-level comparison would let one
+    // process's change to any sub-field clobber another's concurrent sub-field
+    // update. Field-level three-way merge preserves both processes' changes.
+    if (current.activeTask !== undefined || ancestor.activeTask !== undefined || disk.activeTask !== undefined) {
+        merged.activeTask = mergeObjects(
+            disk.activeTask, ancestor.activeTask, current.activeTask,
+        ) as TeamState["activeTask"]
+    }
+    return merged
+}
+
+/**
+ * Recursive three-way merge for plain JSON objects (objects + arrays +
+ * scalars). For each key: if current != ancestor the caller changed it
+ * (current wins); otherwise the caller didn't touch it (disk wins, preserving
+ * another process's change). Arrays/objects are recursed so nested concurrent
+ * sub-field changes are both preserved. Non-plain values (or when any side is
+ * undefined/mismatched) fall back to the top-level rule.
+ */
+function mergeObjects(
+    disk: unknown,
+    ancestor: unknown,
+    current: unknown,
+): unknown {
+    // Non-object or type mismatch: fall back to top-level rule.
+    if (
+        disk === undefined || ancestor === undefined || current === undefined
+        || typeof disk !== "object" || typeof ancestor !== "object" || typeof current !== "object"
+        || Array.isArray(disk) || Array.isArray(ancestor) || Array.isArray(current)
+        || disk === null || ancestor === null || current === null
+    ) {
+        return jsonEqual(current, ancestor) ? disk : current
+    }
+    const d = disk as Record<string, unknown>
+    const a = ancestor as Record<string, unknown>
+    const c = current as Record<string, unknown>
+    const result: Record<string, unknown> = { ...d }
+    const keys = new Set([...Object.keys(d), ...Object.keys(c)])
+    for (const key of keys) {
+        if (jsonEqual(c[key], a[key])) continue  // caller didn't touch → keep disk
+        result[key] = mergeObjects(d[key], a[key], c[key])
+    }
+    return result
+}
+
+/** Three-way merge of members[] by name. */
+function mergeMembers(
+    disk: TeamState["members"],
+    ancestor: TeamState["members"],
+    current: TeamState["members"],
+): TeamState["members"] {
+    const ancestorByName = new Map(ancestor.map(m => [m.name, m]))
+    const currentByName = new Map(current.map(m => [m.name, m]))
+    // Iterate names from disk + current. A name present on disk but absent
+    // from BOTH current and ancestor means another process added it after our
+    // last load — preserve it. A name in ancestor but absent from current
+    // means the caller explicitly removed it — honor the removal (do NOT
+    // restore from disk).
+    const allNames = new Set<string>([
+        ...disk.map(m => m.name),
+        ...current.map(m => m.name),
+    ])
+    const result: TeamState["members"] = []
+    for (const name of allNames) {
+        const c = currentByName.get(name)
+        if (!c) {
+            // Caller does not have this member. Two sub-cases:
+            //   - It was in ancestor → caller explicitly removed it → drop it.
+            //   - It was NOT in ancestor → another process added it since our
+            //     load → preserve from disk.
+            if (ancestorByName.has(name)) continue  // caller removed: honor it
+            const d = disk.find(m => m.name === name)
+            if (d) result.push(d)  // concurrent add: preserve
+            continue
+        }
+        const d = disk.find(m => m.name === name)
+        if (!d) {
+            // Member added by caller — use caller's.
+            result.push(c)
+            continue
+        }
+        const a = ancestorByName.get(name)
+        if (!a) {
+            // No ancestor for this member — use caller's.
+            result.push(c)
+            continue
+        }
+        // Field-level three-way merge: start with disk, apply caller's changed fields.
+        const mergedMember = { ...d }
+        for (const key of Object.keys(c) as (keyof typeof c)[]) {
+            if (!jsonEqual(c[key], a[key])) {
+                ;(mergedMember as Record<string, unknown>)[key] = c[key]
+            }
+        }
+        result.push(mergedMember)
+    }
+    return result
+}
+
 /**
  * Persist the TeamState portion of a team to state.json via a cross-process
  * file lock + atomic write. The mutex/directory fields are NOT persisted.
@@ -166,27 +323,33 @@ export async function loadTeamState(
  * The caller is expected to already hold team.mutex.runExclusive for in-process
  * serialization.
  *
- * Lock scope (H7 hazard): `withLock(stateLockPath())` provides torn-WRITE
- * protection only — it guarantees the atomicity of this single write. It does
- * NOT prevent lost updates across processes. This is a blind write: it
- * serializes the caller's whole in-memory Team snapshot under the lock WITHOUT
- * re-reading state.json first, so a stale snapshot silently clobbers any
- * concurrent mutation.
- *
- * Lost updates are only reachable for user-scope teams
- * (~/.octeam/teams/<name>), which are single-process-by-contract; project-scope
- * teams are leadSessionId-segmented and thus not shared across processes.
- *
- * Deferred fix: replace this blind write with a locked read-merge-write that
- * re-reads state.json inside the lock and merges before persisting.
+ * Lock scope: `withLock(stateLockPath())` provides cross-process serialization.
+ * Inside the lock, this performs a READ-MERGE-WRITE: it re-reads state.json
+ * and three-way-merges (disk, caller's last-known disk snapshot, caller's
+ * current state) so a stale snapshot from another process does not clobber
+ * concurrent mutations. Fields the caller did not touch (current == ancestor)
+ * are taken from disk; fields the caller explicitly changed (current !=
+ * ancestor) override disk.
  */
 export async function saveTeamState(team: Team): Promise<void> {
     if (team.deleted) return  // tombstone: do not resurrect deleted team
     const dir = team.directory
-    const state = stripRuntimeFields(team)
-    const payload = JSON.stringify(state, null, 2)
+    const currentState = stripRuntimeFields(team)
+    const payload = JSON.stringify(currentState, null, 2)
     await withLock(stateLockPath(dir), async () => {
-        await atomicWrite(statePath(dir), payload)
+        const ancestor = team._diskSnapshot
+        let toWrite: TeamState
+        if (ancestor) {
+            const diskState = await readJsonOrNull<TeamState>(statePath(dir))
+            toWrite = diskState
+                ? mergeTeamState(diskState, ancestor, currentState)
+                : currentState
+        } else {
+            // No ancestor snapshot (first save / legacy) — blind write.
+            toWrite = currentState
+        }
+        await atomicWrite(statePath(dir), JSON.stringify(toWrite, null, 2))
+        team._diskSnapshot = deepClone(toWrite)
     })
 }
 
@@ -239,11 +402,7 @@ export async function deleteTeamStorage(
 ): Promise<void> {
     await fs.rm(teamDir(storageRoot, teamName, leadSessionId), {
         recursive: true,
-        force: true,
-    }).catch((err: unknown) => {
-        // Best-effort, but observable: an orphaned team dir is easier to
-        // diagnose when the failure surfaces in logs rather than vanishing.
-        console.warn(`[octeam] deleteTeamStorage failed for "${teamName}":`, err)
+        force: true, // force:true already swallows ENOENT (dir already gone).
     })
 }
 

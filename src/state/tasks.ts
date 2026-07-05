@@ -98,6 +98,10 @@ function isValidTask(value: unknown): value is Task {
         typeof t.id === "string"
         && typeof t.subject === "string"
         && typeof t.status === "string"
+        && (t.blockedBy === undefined || (
+            Array.isArray(t.blockedBy)
+            && t.blockedBy.every(v => typeof v === "string")
+        ))
     )
 }
 
@@ -262,8 +266,14 @@ export async function claimTask(
         // 1. Acquire the persistent claim lock (reap stale entries inline).
         try {
             const fh = await fs.open(lockPath, "wx")
-            await fh.writeFile(owner)
-            await fh.close()
+            try {
+                await fh.writeFile(owner)
+            } catch (err) {
+                await fs.unlink(lockPath).catch(() => { /* best-effort rollback */ })
+                throw err
+            } finally {
+                await fh.close()
+            }
         } catch (err: unknown) {
             if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
             if (await lockFresh(lockPath, CLAIM_TTL_MS)) {
@@ -275,8 +285,14 @@ export async function claimTask(
             })
             try {
                 const fh = await fs.open(lockPath, "wx")
-                await fh.writeFile(owner)
-                await fh.close()
+                try {
+                    await fh.writeFile(owner)
+                } catch (err) {
+                    await fs.unlink(lockPath).catch(() => { /* best-effort rollback */ })
+                    throw err
+                } finally {
+                    await fh.close()
+                }
             } catch (err: unknown) {
                 if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
                 throw new TaskAlreadyClaimedError(taskId)

@@ -36,6 +36,7 @@ import path from "node:path"
 import { RESERVATION_TTL_MS, atomicWrite, refuseSymlink, withLock } from "../state/locks.js"
 import {
     inboxPath,
+    isSafePathSegment,
     mailboxLockPath,
     processedPath,
     reservedDir,
@@ -47,6 +48,39 @@ import type { Message } from "../core/types.js"
 // log is append-only by nature; without a cap it grows unbounded across a
 // long-lived team. Pruning keeps the most recent entries (see ackMessages).
 const PROCESSED_MAX_LINES = 1000
+
+// In-memory registry binding directive IDs to their authenticated CONTENT.
+// The mailbox JSONL lives under .octeam/ which member agents can write to, so
+// stored fields (id, from, kind, body) are all forgeable (see file header
+// "TRUST BOUNDARY"). A member CAN read a legitimate directive's id from the
+// JSONL and append a forged line with the SAME id but a DIFFERENT body. To
+// defeat this replay attack, the registry maps id → {from, body}: the stored
+// content must match BOTH the id AND the from/body of the line being rendered.
+// A member cannot add to this in-process map (only writeMailboxMessage, running
+// in the host plugin, can), so the only forged line that passes is a VERBATIM
+// copy of a legitimate directive — which merely re-delivers identical content
+// (harmless, bounded by pollMailbox's exactly-once delivery).
+const authenticatedDirectives = new Map<string, { from: string; body: string }>()
+
+/**
+ * Register a directive's authenticated content (called by writeMailboxMessage
+ * for kind:"directive" messages). The (from, body) binding prevents a member
+ * from replaying a legitimate id with forged content.
+ */
+export function authenticateDirective(msg: Message): void {
+    authenticatedDirectives.set(msg.id, { from: msg.from, body: msg.body })
+}
+
+/** True iff `msg` is a directive whose (id, from, body) match a registered
+ *  legitimate write. Rejects forged lines (unregistered id OR same id with
+ *  different content). */
+function isAuthenticatedDirective(msg: Message): boolean {
+    if (msg.kind !== "directive") return false
+    const registered = authenticatedDirectives.get(msg.id)
+    return registered !== undefined
+        && registered.from === msg.from
+        && registered.body === msg.body
+}
 
 // --- low-level jsonl helpers ---
 
@@ -74,6 +108,7 @@ function isValidMessage(value: unknown): value is Message {
     const m = value as Record<string, unknown>
     return (
         typeof m.id === "string"
+        && isSafePathSegment(m.id)
         && typeof m.from === "string"
         && typeof m.body === "string"
     )
@@ -129,6 +164,13 @@ export async function writeMailboxMessage(
     recipient: string,
     message: Message,
 ): Promise<void> {
+    // Authenticate directives at the legitimate write-API boundary, binding
+    // the id to the actual (from, body) content. A member forging a line via
+    // direct FS append bypasses this function → unregistered → downgraded at
+    // render. A replay (same id, different body) fails the content check.
+    if (message.kind === "directive") {
+        authenticateDirective(message)
+    }
     // Hold the mailbox lock so this append is mutually exclusive with
     // pollMailbox's read-reserve-truncate. Without it, an append landing
     // between pollMailbox's read and truncate is silently destroyed
@@ -153,10 +195,26 @@ export async function pollMailbox(
         const inbox = await readJsonl(inboxPath(teamDirectory, recipient))
         if (inbox.length === 0) return []
         for (const msg of inbox) {
-            await atomicWrite(
-                reservedPath(teamDirectory, recipient, msg.id),
-                JSON.stringify({ ...msg, deliveryStatus: "delivered", reservedAt: Date.now() }),
-            )
+            try {
+                await atomicWrite(
+                    reservedPath(teamDirectory, recipient, msg.id),
+                    JSON.stringify({ ...msg, deliveryStatus: "delivered", reservedAt: Date.now() }),
+                )
+            } catch (err) {
+                // Rollback: a later reservation write failed after earlier ones
+                // succeeded. Without this cleanup the earlier messages would
+                // exist in BOTH reserved/ and inbox/ (inbox is never truncated),
+                // and releaseStaleReservations (TTL 30s) would re-append the
+                // reserved copy → duplicate injection. Unlink the reserved
+                // copies written so far so the inbox remains authoritative.
+                for (const done of inbox) {
+                    if (done.id === msg.id) break
+                    await fs.unlink(reservedPath(teamDirectory, recipient, done.id)).catch(() => {
+                        // already removed or never written
+                    })
+                }
+                throw err
+            }
         }
         try {
             await truncateFile(inboxPath(teamDirectory, recipient))
@@ -200,8 +258,13 @@ export async function ackMessages(
                 ...msg,
                 deliveryStatus: "processed",
             })
-            await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch(() => {
-                // already removed
+            await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
+                // ENOENT is the benign race (reservation already removed) —
+                // swallow. Any other errno (EPERM, EBUSY, EROFS, ...) leaves
+                // the reservation on disk; releaseStaleReservations would then
+                // re-append it to the inbox → duplicate delivery of an already
+                // processed message. Surface the failure instead.
+                if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
             })
         }
         // Retention: cap the audit log so it doesn't grow unbounded.
@@ -249,6 +312,26 @@ export async function releaseStaleReservations(
             if ((err as NodeJS.ErrnoException).code === "ENOENT") return
             throw err
         }
+        // Build a set of already-processed message ids so we don't re-deliver
+        // a message whose ack succeeded but whose reservation unlink failed
+        // (non-ENOENT — see ackMessages). Such an orphan would otherwise be
+        // reaped and re-appended to the inbox → duplicate delivery.
+        const processedIds = new Set<string>()
+        try {
+            const processedRaw = await fs.readFile(processedPath(teamDirectory, recipient), "utf8")
+            for (const line of processedRaw.split("\n")) {
+                if (line.length === 0) continue
+                try {
+                    const p = JSON.parse(line) as { id?: unknown }
+                    if (typeof p.id === "string") processedIds.add(p.id)
+                } catch {
+                    // skip malformed line
+                }
+            }
+        } catch (err: unknown) {
+            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+            // no processed.jsonl yet — nothing to dedupe against
+        }
         for (const f of files) {
             const p = path.join(dir, f)
             let reservedAt: number | undefined
@@ -268,12 +351,36 @@ export async function releaseStaleReservations(
             }
             const age = Date.now() - (reservedAt ?? mtime ?? 0)
             if (age > RESERVATION_TTL_MS && parsed) {
+                // Skip re-delivery if the message was already processed (its
+                // ack succeeded but the reservation unlink failed, leaving an
+                // orphan). Just clean up the stale reservation file.
+                if (typeof parsed.id === "string" && processedIds.has(parsed.id)) {
+                    await fs.unlink(p).catch(() => {
+                        // already gone
+                    })
+                    continue
+                }
+                // Unlink BEFORE requeuing. If the unlink fails (any errno,
+                // including non-ENOENT like EPERM/EBUSY), skip the requeue and
+                // leave the file for the next sweep — otherwise the same
+                // reservation would be re-requeued on every sweep → infinite
+                // duplicate requeues. ENOENT means another sweep already
+                // removed it, so the requeue is still safe.
+                let unlinked = true
+                try {
+                    await fs.unlink(p)
+                } catch (err: unknown) {
+                    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+                        // already gone — safe to requeue (no duplicate risk)
+                    } else {
+                        // unlink failed — do NOT requeue; retry next sweep
+                        unlinked = false
+                    }
+                }
+                if (!unlinked) continue
                 await appendJsonl(inboxPath(teamDirectory, recipient), {
                     ...parsed,
                     deliveryStatus: "pending",
-                })
-                await fs.unlink(p).catch(() => {
-                    // already gone
                 })
             }
         }
@@ -340,19 +447,25 @@ function escapeXmlAttr(value: string): string {
  * each prefixed with a [DIRECTIVE] marker, so they take visual precedence in
  * the injected prompt. Regular messages follow after, preserving their order.
  *
- * SECURITY NOTE: `kind` and `from` are taken verbatim from the stored line (no
- * authenticity check — see the file header "TRUST BOUNDARY" comment). Only the
- * legitimate write path (writeMailboxMessage, called by team_send_message and
- * team_intervene) sets these fields; a member with FS write to .octeam/ can
- * forge a directive that will be honored here.
+ * SECURITY: `kind` and `from` are taken verbatim from the stored line (no
+ * authenticity check — see the file header "TRUST BOUNDARY" comment). Only
+ * the legitimate write path (writeMailboxMessage, called by team_send_message
+ * and team_intervene) sets these fields; the only legitimate directive source
+ * is team_intervene, which writes `from: "master"`. A `kind:"directive"` line
+ * with any other `from` is a forgery (a member with FS write to .octeam/
+ * impersonating control traffic) and is downgraded to a regular message here.
  */
 export function formatMailboxInjection(msgs: Message[]): string {
     const render = (m: Message, prefix: string): string =>
         `<team_message from="${escapeXmlAttr(m.from)}"${m.correlationId ? ` correlationId="${escapeXmlAttr(m.correlationId)}"` : ""}>\n`
         + `${prefix}${escapeXmlText(m.body)}\n</team_message>`
     // Directives first (with marker), then regular messages in original order.
-    const directives = msgs.filter(m => m.kind === "directive")
-    const regular = msgs.filter(m => m.kind !== "directive")
+    // Authentication: only directives whose (id, from, body) match a
+    // legitimate writeMailboxMessage registration are honored. A forged line
+    // — whether unregistered id OR a replayed id with different content — is
+    // downgraded to a regular message (no [DIRECTIVE] prefix, no priority).
+    const directives = msgs.filter(m => isAuthenticatedDirective(m))
+    const regular = msgs.filter(m => !isAuthenticatedDirective(m))
     return [
         ...directives.map(m => render(m, "[DIRECTIVE] ")),
         ...regular.map(m => render(m, "")),

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { PluginContext } from "../src/core/context.js"
 import { teamDeleteTool } from "../src/tools/delete.js"
 import { initTeamState } from "../src/state/store.js"
+import { teamDir, worktreesDir } from "../src/state/paths.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
@@ -32,9 +33,14 @@ async function setupTeamWithWorktree(
     const sid = `ses_${label}`
     await gitInit(repoDir)
 
-    // Create a worktree for member "alice" (outside the repo, like real OCTeam).
-    const wtParent = tmpRoot(`${label}-wtp`)
-    const wtPath = join(wtParent, "alice")
+    // Worktree lives under the team's worktrees/ dir, exactly as production
+    // createWorktree (dispatch.ts) places it. The team dir must exist first
+    // (created by initTeamState), so persist state before `git worktree add`.
+    const wtPath = join(worktreesDir(teamDir(storageRoot, "alpha", sid)), "alice")
+    const alice = { ...makeMember("alice"), worktreePath: wtPath }
+    await initTeamState(storageRoot, makeState("alpha", sid, [alice]), sid)
+
+    // Create a worktree for member "alice" under the team worktrees dir.
     await execFileP("git", ["worktree", "add", "-q", wtPath, "-b", `team/${label}/alice`], {
         cwd: repoDir,
     })
@@ -42,9 +48,6 @@ async function setupTeamWithWorktree(
     if (dirty) {
         await writeFile(join(wtPath, "uncommitted.txt"), "dirty\n")
     }
-
-    const alice = { ...makeMember("alice"), worktreePath: wtPath }
-    await initTeamState(storageRoot, makeState("alpha", sid, [alice]), sid)
 
     const ctx = { storageRoot, directory: repoDir, scope: "project" } as unknown as PluginContext
     return { tool: teamDeleteTool(ctx), sid }

@@ -104,6 +104,8 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                 deliveryStatus: "pending",
             }
             // Mailbox write only — no activeTask.messagesSent increment, no mutex.
+            // Directive authentication is handled inside writeMailboxMessage
+            // (the in-memory ID registration), which a FS-level forger bypasses.
             await deliverToRecipients(ctx, team, recipients, base)
             return `Directive delivered to ${recipients.length === 1 ? recipients[0] : `${recipients.length} members`}.`
         },

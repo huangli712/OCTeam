@@ -36,13 +36,21 @@ function extractTaggedJSON(
     zh?: string,
 ): Record<string, unknown> | null | undefined {
     const tag = zh ? `(?:${en}|${zh})` : en
-    const match = text?.match(new RegExp(`<${tag}>\\s*(\\{[\\s\\S]*\\})\\s*</${tag}>`))
-    if (!match) return null
-    try {
-        return JSON.parse(match[1]) as Record<string, unknown>
-    } catch {
-        return undefined
+    // Lazy quantifier so each tag block captures only its own {...} payload,
+    // not spanning across multiple same-named tags. Match ALL occurrences and
+    // return the LAST parseable one: when a decider restates a prior decision
+    // before issuing a new one, the latest (last) block is authoritative.
+    const re = new RegExp(`<${tag}>\\s*(\\{[\\s\\S]*?\\})\\s*</${tag}>`, "g")
+    const matches = [...(text?.matchAll(re) ?? [])]
+    if (matches.length === 0) return null
+    for (let i = matches.length - 1; i >= 0; i--) {
+        try {
+            return JSON.parse(matches[i][1]) as Record<string, unknown>
+        } catch {
+            // this block's payload didn't parse — try earlier blocks
+        }
     }
+    return undefined
 }
 
 /**

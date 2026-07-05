@@ -6,7 +6,7 @@ import fs from "node:fs/promises"
 
 import type { PluginContext } from "../src/core/context.js"
 import { createTransformHook } from "../src/hooks.js"
-import { countUnreadMessages, formatMailboxInjection, writeMailboxMessage } from "../src/messaging/mailbox.js"
+import { authenticateDirective, countUnreadMessages, formatMailboxInjection, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { processedPath, reservedDir, teamDir } from "../src/state/paths.js"
 import * as store from "../src/state/store.js"
 import type { ActiveTask, Message, TeamState } from "../src/core/types.js"
@@ -153,9 +153,14 @@ async function exists(p: string): Promise<boolean> {
 
 describe("formatMailboxInjection directive priority (T5 Part A)", () => {
     test("(a) directives render FIRST with [DIRECTIVE] marker, before regular messages", () => {
+        // Register the directive as authenticated (writeMailboxMessage does
+        // this automatically for real writes; this pure unit test must do it
+        // explicitly since it builds messages in-memory without writing).
+        const d = directiveMsg("d1", "the-directive", undefined)
+        authenticateDirective(d)
         const out = formatMailboxInjection([
             regularMsg("m1", "regular-one"),
-            directiveMsg("d1", "the-directive", undefined),
+            d,
             regularMsg("m2", "regular-two"),
         ])
         // Directive marker present and applied to the directive body.

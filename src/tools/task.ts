@@ -40,19 +40,11 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller) return "Error: caller is not a member of this team"
-            // Cap live (non-deleted) tasks per team to bound disk use
-            // and prevent a member from flooding the shared tasklist (DoS).
             let team
             try {
                 team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
             } catch {
                 return `Error: team "${args.team_id}" not found`
-            }
-            const liveTasks = (await listAllTasks(caller.directory)).filter(
-                t => t.status !== "deleted",
-            ).length
-            if (liveTasks >= team.bounds.maxTasks) {
-                return `Error: team task limit reached (${team.bounds.maxTasks}). Complete or delete tasks before creating more.`
             }
             // Recurse mode guard: subtasks are created AUTOMATICALLY by the
             // orchestrator from the decomposer's <decompose> block. A member
@@ -69,12 +61,49 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     + `parses it, creates the subtasks, and re-queues the root as their aggregator.`
                 )
             }
-            const task = await createTask(caller.directory, {
-                subject: args.subject,
-                description: args.description,
-                blockedBy: args.blocked_by,
+            // Validate blocked_by entries: each must be a well-formed task ID
+            // (UUID) referencing an existing non-deleted task. A bogus blocker
+            // (typo) would make the task permanently unclaimable in delegate
+            // mode (delegate.ts:62 never resolves a non-existent blocker to
+            // "completed"), wedging the team in a deadlock.
+            if (args.blocked_by && args.blocked_by.length > 0) {
+                const existing = await listAllTasks(caller.directory)
+                const existingIds = new Set(
+                    existing.filter(t => t.status !== "deleted").map(t => t.id),
+                )
+                for (const id of args.blocked_by) {
+                    if (!TASK_ID_PATTERN.test(id)) {
+                        return `Error: blocked_by entry "${id}" is not a valid task ID.`
+                    }
+                    if (!existingIds.has(id)) {
+                        return `Error: blocked_by entry "${id}" does not match an existing task.`
+                    }
+                }
+            }
+            // Wrap the count-check + create in team.mutex so concurrent
+            // team_task_create calls cannot both read the same live-task count
+            // and both bypass maxTasks. Without this, the check-then-act race
+            // lets two callers both pass the limit and both create.
+            let task
+            let limitError = false
+            await team.mutex.runExclusive(async () => {
+                const liveTasks = (await listAllTasks(caller.directory)).filter(
+                    t => t.status !== "deleted",
+                ).length
+                if (liveTasks >= team.bounds.maxTasks) {
+                    limitError = true
+                    return
+                }
+                task = await createTask(caller.directory, {
+                    subject: args.subject,
+                    description: args.description,
+                    blockedBy: args.blocked_by,
+                })
             })
-            return `Task created: ${task.id} [${task.subject}]`
+            if (limitError) {
+                return `Error: team task limit reached (${team.bounds.maxTasks}). Complete or delete tasks before creating more.`
+            }
+            return `Task created: ${task!.id} [${task!.subject}]`
         },
     })
 }
