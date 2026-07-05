@@ -41,22 +41,44 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 return `Error: team "${args.team_id}" has only ${team.members.length} member(s). Cannot remove the last member.`
             }
 
-            let spec: TeamSpec | null = null
-            try {
-                spec = await readTeamSpec(ctx.storageRoot, args.team_id, pathLeadSessionId)
-            } catch {
-                return `Error: cannot read config for team "${args.team_id}"`
-            }
-            if (!spec) return `Error: cannot read config for team "${args.team_id}"`
-            const specToPersist = spec
+            let staleState = false
+            let specError = false
             await team.mutex.runExclusive(async () => {
-                const specIdx = specToPersist.members.findIndex(m => m.name === args.member_name)
-                if (specIdx !== -1) specToPersist.members.splice(specIdx, 1)
+                // Revalidate inside the mutex: a concurrent
+                // startOrchestration may have flipped status live→busy since
+                // the outside-mutex check at line 32. Refuse rather than
+                // mutating during an active run.
+                if (team.status !== "live") {
+                    staleState = true
+                    return
+                }
+                // Re-read config.json INSIDE the mutex so concurrent mutators
+                // don't clobber each other's spec changes.
+                let spec: TeamSpec | null = null
+                try {
+                    spec = await readTeamSpec(ctx.storageRoot, args.team_id, pathLeadSessionId)
+                } catch {
+                    specError = true
+                    return
+                }
+                if (!spec) {
+                    specError = true
+                    return
+                }
+                const specIdx = spec.members.findIndex(m => m.name === args.member_name)
+                if (specIdx !== -1) spec.members.splice(specIdx, 1)
                 team.members.splice(stateIdx, 1)
 
-                await writeTeamSpec(ctx.storageRoot, specToPersist, pathLeadSessionId)
+                await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
                 await saveTeamState(team)
             })
+
+            if (staleState) {
+                return `Error: team "${args.team_id}" status is "${team.status}", not "live". Members can only be removed before sessions are spawned (workflow calls).`
+            }
+            if (specError) {
+                return `Error: cannot read config for team "${args.team_id}"`
+            }
 
             return `Member "${args.member_name}" removed from team "${args.team_id}" (${team.members.length} members remaining).`
         },

@@ -56,9 +56,7 @@ export async function deliverSummaryToLeader(
                 },
             ],
         },
-    }).catch(err =>
-        logSwallowed(ctx, "deliver summary to leader failed", err, { team: team.teamName, reason }),
-    )
+    })
 }
 
 /**

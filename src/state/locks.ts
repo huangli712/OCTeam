@@ -147,8 +147,17 @@ async function acquireLock(lockPath: string): Promise<void> {
     for (;;) {
         try {
             const fh = await fs.open(lockPath, "wx")
-            await fh.writeFile(String(process.pid))
-            await fh.close()
+            try {
+                await fh.writeFile(String(process.pid))
+            } catch (err) {
+                // writeFile failed — unlink the orphan lock file so the next
+                // caller does not spin until LOCK_TTL_MS (stale-reap refuses a
+                // fresh mtime). Best-effort; a race is fine (EEXIST path handles it).
+                await fs.unlink(lockPath).catch(() => { /* best-effort */ })
+                throw err
+            } finally {
+                await fh.close()
+            }
             return
         } catch (err: unknown) {
             const code = (err as NodeJS.ErrnoException).code
@@ -208,8 +217,12 @@ async function releaseLock(lockPath: string): Promise<void> {
         // Lock now belongs to another process — must not delete it.
         return
     }
-    await fs.unlink(lockPath).catch(() => {
-        // Raced with a reaper or another release — already gone.
+    await fs.unlink(lockPath).catch((err: unknown) => {
+        // ENOENT is the benign race (reaper or another release won) — swallow.
+        // Any other errno (EPERM, EBUSY, EROFS, ...) is a real release failure
+        // that would leave a fresh live-owner lock wedging the next caller for
+        // LOCK_MAX_WAIT_MS; surface it through withLock's finally.
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
     })
 }
 

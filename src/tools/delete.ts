@@ -12,6 +12,7 @@ import { unindexMasterTeam, unindexSession } from "../state/resolve.js"
 import { clearWakeHint } from "../messaging/wake-hint.js"
 import { abortAndResetMembers } from "./shared.js"
 import { cleanWorktree, hasUncommittedChanges } from "../state/worktrees.js"
+import { worktreesDir } from "../state/paths.js"
 
 export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -56,7 +57,8 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             // processIdle early-returns and saveTeamState skips persistence, preventing
             // the handler from recreating the just-deleted directory via atomicWrite's
             // mkdir({recursive:true}).
-            await team.mutex.runExclusive(async () => {
+            try {
+                await team.mutex.runExclusive(async () => {
                 team.deleted = true  // tombstone: prevent any racing handler from resurrecting this dir
                 // Force-deleting a busy team: abort running members and clear the
                 // active task in memory FIRST (mirrors team_cancel) so any handler
@@ -78,18 +80,26 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 // master's map (unindexSession on the leader would wipe the session's
                 // OTHER teams).
                 for (const m of team.members) {
-                    await cleanWorktree(ctx.directory, m.worktreePath)
+                    await cleanWorktree(ctx.directory, m.worktreePath, worktreesDir(team.directory))
                     if (m.sessionId) {
                         unindexSession(m.sessionId)
                         clearWakeHint(m.sessionId)
                     }
                 }
-                unindexMasterTeam(team.leadSessionId, team.directory)
-                clearWakeHint(team.leadSessionId)
-                await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
-                invalidateTeam(team.directory)
-            })
-            return `Team "${args.team_id}" deleted${force ? " (forced)" : ""}.`
+                    unindexMasterTeam(team.leadSessionId, team.directory)
+                    clearWakeHint(team.leadSessionId)
+                    await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
+                    invalidateTeam(team.directory)
+                })
+                return `Team "${args.team_id}" deleted${force ? " (forced)" : ""}.`
+            } catch (err: unknown) {
+                // deleteTeamStorage failed (non-ENOENT fs.rm error). The on-disk
+                // state still exists — surface the failure so the caller knows
+                // the deletion was incomplete and the orphaned state may
+                // resurrect on restart.
+                const msg = err instanceof Error ? err.message : String(err)
+                return `Error: failed to fully delete team "${args.team_id}" storage: ${msg}. The team directory may still exist on disk; manual cleanup may be required.`
+            }
         },
     })
 }

@@ -14,9 +14,10 @@ import { promisify } from "node:util"
 import type { PluginContext } from "../core/context.js"
 import type { Team } from "../state/store.js"
 import { readTeamSpec, saveTeamState } from "../state/store.js"
-import { worktreePath } from "../state/paths.js"
+import { worktreePath, worktreesDir } from "../state/paths.js"
+import { cleanWorktree } from "../state/worktrees.js"
 import { buildRolePrompt, chunk, truncateOutput, waitUntil } from "../core/utils.js"
-import { indexMember } from "../state/resolve.js"
+import { indexMember, unindexSession } from "../state/resolve.js"
 import { safeMemberAgent } from "../core/role.js"
 import type { MemberState, Stage } from "../core/types.js"
 import { logSwallowed } from "../core/log.js"
@@ -113,6 +114,7 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
             batch.map(async member => {
                 const memberSpec = specByName.get(member.name)
                 // 1. Worktree (only if configured)
+                let worktreeCreated = false
                 if (memberSpec?.worktree) {
                     member.worktreePath = await createWorktree(
                         ctx.directory,
@@ -120,7 +122,9 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
                         team.teamName,
                         member.name,
                     )
+                    worktreeCreated = true
                 }
+                try {
                 // 2. Create child session linked to leader
                 const result = await ctx.client.session.create({
                     body: {
@@ -156,6 +160,30 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
                     },
                 })
                 member.turnCount = 1
+                } catch (err) {
+                    // Rollback to pre-spawn state so a retry re-enters
+                    // toSpawn (no sessionId) cleanly. Undo in reverse order:
+                    // unindex/forget the session, restore member runtime
+                    // fields, then tear down the worktree + branch.
+                    if (member.sessionId) {
+                        unindexSession(member.sessionId)
+                        member.sessionId = undefined
+                    }
+                    member.status = "pending"
+                    member.initialized = false
+                    member.prompt = undefined
+                    member.promptDelivered = false
+                    member.turnCount = 0
+                    if (worktreeCreated) {
+                        const branch = `team/${team.teamName}/${member.name}`
+                        await cleanWorktree(ctx.directory, member.worktreePath, worktreesDir(team.directory))
+                        member.worktreePath = undefined
+                        await execFileP("git", ["branch", "-D", branch], {
+                            cwd: ctx.directory,
+                        }).catch(() => { /* best effort */ })
+                    }
+                    throw err
+                }
             }),
         )
         // NOTE: no per-batch saveTeamState here. saveTeamState documents that
@@ -175,19 +203,27 @@ export async function ensureMembersReady(ctx: PluginContext, team: Team): Promis
         () => toSpawn.every(m => team.members.find(x => x.name === m.name)?.initialized),
         { timeoutMs: ROLE_SETUP_BARRIER_TIMEOUT_MS },
     ).catch(async () => {
-        // Mark non-idle members errored; the caller reports the failure.
-        for (const m of toSpawn) {
-            const cur = team.members.find(x => x.name === m.name)
-            if (cur && !cur.initialized) {
-                cur.status = "errored"
-                cur.error = "role-setup barrier timed out"
+        // Serialize the errored-marking + save with the idle handler (which
+        // also mutates member state + saves under team.mutex). Without the
+        // mutex here, the unlocked saveTeamState would violate the save
+        // contract (store.ts: caller must hold team.mutex) and could clobber
+        // an idle handler's just-persisted initialized=true with errored.
+        await team.mutex.runExclusive(async () => {
+            // Re-check initialized under the mutex: the idle handler may have
+            // flipped it since the outside-mutex waitUntil evaluation.
+            for (const m of toSpawn) {
+                const cur = team.members.find(x => x.name === m.name)
+                if (cur && !cur.initialized) {
+                    cur.status = "errored"
+                    cur.error = "role-setup barrier timed out"
+                }
             }
-        }
-        // L3: persist the errored state before throwing so a restart sees it
-        // (the tool handler aborts before its Phase 3 saveTeamState).
-        await saveTeamState(team).catch((err) =>
-            logSwallowed(ctx, "persist failed before barrier-timeout abort", err, { team: team.teamName })
-        )
+            // L3: persist the errored state before throwing so a restart sees it
+            // (the tool handler aborts before its Phase 3 saveTeamState).
+            await saveTeamState(team).catch((err) =>
+                logSwallowed(ctx, "persist failed before barrier-timeout abort", err, { team: team.teamName })
+            )
+        })
         throw new Error("ensureMembersReady: role-setup barrier timed out")
     })
 }

@@ -44,14 +44,6 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 return `Error: team already has ${team.bounds.maxMembers} members (maximum)`
             }
 
-            let spec: TeamSpec | null = null
-            try {
-                spec = await readTeamSpec(ctx.storageRoot, args.team_id, pathLeadSessionId)
-            } catch {
-                return `Error: cannot read config for team "${args.team_id}"`
-            }
-            if (!spec) return `Error: cannot read config for team "${args.team_id}"`
-
             // Resolve name: explicit name or auto-pick from pool.
             const existingNames = new Set(team.members.map(m => m.name))
             let memberName: string
@@ -100,14 +92,57 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 agent,
             }
 
-            const specToPersist = spec
+            let staleState = false
+            let capReached = false
+            let specError = false
             await team.mutex.runExclusive(async () => {
-                specToPersist.members.push(newSpec)
+                // Revalidate inside the mutex: a concurrent
+                // startOrchestration may have flipped status live→busy and
+                // committed an activeTask since the outside-mutex check at
+                // line 40. Refuse rather than mutating during an active run.
+                if (team.status !== "live") {
+                    staleState = true
+                    return
+                }
+                // Re-check the member cap inside the mutex: two concurrent
+                // team_add_member calls can both pass the outside-mutex cap
+                // check (line 43) with the same members.length, then both
+                // push inside the mutex → exceed maxMembers.
+                if (team.members.length >= team.bounds.maxMembers) {
+                    capReached = true
+                    return
+                }
+                // Re-read config.json INSIDE the mutex so concurrent mutators
+                // (e.g. a parallel add/remove) don't clobber each other's spec
+                // changes. Reading outside the lock would produce a stale
+                // snapshot whose writeTeamSpec overwrites another op's changes.
+                let spec: TeamSpec | null = null
+                try {
+                    spec = await readTeamSpec(ctx.storageRoot, args.team_id, pathLeadSessionId)
+                } catch {
+                    specError = true
+                    return
+                }
+                if (!spec) {
+                    specError = true
+                    return
+                }
+                spec.members.push(newSpec)
                 team.members.push(newState)
 
-                await writeTeamSpec(ctx.storageRoot, specToPersist, pathLeadSessionId)
+                await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
                 await saveTeamState(team)
             })
+
+            if (staleState) {
+                return `Error: team "${args.team_id}" status is "${team.status}", not "live". Members can only be added before sessions are spawned (workflow calls).`
+            }
+            if (capReached) {
+                return `Error: team already has ${team.bounds.maxMembers} members (maximum)`
+            }
+            if (specError) {
+                return `Error: cannot read config for team "${args.team_id}"`
+            }
 
             return `Member "${memberName}" added to team "${args.team_id}" (${team.members.length} members).`
         },

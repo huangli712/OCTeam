@@ -57,10 +57,26 @@ export function teamDoneTool(ctx: PluginContext): ToolDefinition {
                 return "Error: this run did not enable require_done_ack; just stop producing tool calls and the barrier will fire normally on idle"
             }
 
+            // Bind this ack to the current run's identity. The active run may
+            // change between the outside-mutex read above and the critical
+            // section below (startOrchestration commits a new activeTask and
+            // resets declaredDone under this same mutex); a stale ack from a
+            // prior run must not bleed into the new run's barrier.
+            const ackedRunId = task.runId
+
             let alreadyAcked = false
+            let staleRun = false
             await team.mutex.runExclusive(async () => {
                 const member = team.members.find(m => m.name === caller.name)
                 if (!member) return
+                // Revalidate run identity inside the mutex: if the active run
+                // changed since the outside-mutex validation, refuse the ack
+                // rather than letting it count toward the wrong run's barrier.
+                const active = team.activeTask
+                if (!active || active.runId !== ackedRunId) {
+                    staleRun = true
+                    return
+                }
                 if (member.declaredDone) {
                     alreadyAcked = true
                     return
@@ -69,6 +85,9 @@ export function teamDoneTool(ctx: PluginContext): ToolDefinition {
                 await saveTeamState(team)
             })
 
+            if (staleRun) {
+                return "Error: the active run changed before this acknowledgement was applied; re-evaluate the current run and ack again if appropriate"
+            }
             if (alreadyAcked) {
                 return `Already acknowledged. ${caller.name} is declared done; waiting for the rest of the team.`
             }

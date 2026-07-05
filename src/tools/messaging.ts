@@ -85,10 +85,25 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
 
             // Backpressure: enforce unread mailbox cap per recipient using the
             // ACTUAL inbox byte size (not a line-count proxy that under-counts
-            // max-size bodies by up to 32x).
+            // max-size bodies by up to 32x). Account for the new message's
+            // projected on-disk size (JSON-serialized line + "\n") so a
+            // near-limit mailbox cannot accept another message and exceed the
+            // cap.
+            const baseSize = JSON.stringify({
+                version: 1,
+                id: "",
+                from: sender.name,
+                to: args.to,
+                kind: "message",
+                body: args.body,
+                summary: args.summary,
+                timestamp: 0,
+                correlationId: args.correlation_id,
+                deliveryStatus: "pending",
+            }).length + 1  // +1 for the appended "\n"
             for (const r of recipients) {
                 const bytes = await unreadInboxBytes(team.directory, r)
-                if (bytes > team.bounds.messageUnreadMaxBytes) {
+                if (bytes + baseSize > team.bounds.messageUnreadMaxBytes) {
                     return `Error: recipient "${r}" mailbox is full (backpressure). Try later.`
                 }
             }

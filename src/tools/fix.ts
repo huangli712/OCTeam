@@ -49,12 +49,6 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 return `Error: member "${args.member_name}" is currently running. Wait for it to finish before modifying.`
             }
 
-            let spec: TeamSpec | null = null
-            try {
-                spec = await readTeamSpec(ctx.storageRoot, caller.teamName, caller.leadSessionId)
-            } catch { /* best-effort */ }
-            const specMember = spec?.members.find(m => m.name === args.member_name)
-
             // Agent override (optional): must be one of OCTeam's hardened oct-*
             // agents. A bare host agent (e.g. "build") would bypass the
             // role->agent permission-hardening chokepoint (role.ts).
@@ -75,7 +69,24 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
 
             const changes: string[] = []
 
+            let staleState = false
             await team.mutex.runExclusive(async () => {
+                // Revalidate inside the mutex: a concurrent
+                // startOrchestration may have flipped status to "busy" since
+                // the outside-mutex check at line 43. Refuse rather than
+                // modifying members during an active run.
+                if (team.status === "busy") {
+                    staleState = true
+                    return
+                }
+                // Re-read config.json INSIDE the mutex so concurrent mutators
+                // don't clobber each other's spec changes.
+                let spec: TeamSpec | null = null
+                try {
+                    spec = await readTeamSpec(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+                } catch { /* best-effort */ }
+                const specMember = spec?.members.find(m => m.name === args.member_name)
+
                 // --- new_name: rename member across state, spec, index, mailbox ---
                 if (renaming) {
                     const oldName = member.name
@@ -144,6 +155,10 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 await saveTeamState(team)
                 if (spec) await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
             })
+
+            if (staleState) {
+                return `Error: team "${args.team_id}" is busy. Wait for the workflow to finish before modifying members.`
+            }
 
             return `Member "${args.member_name}" updated — ${changes.join("; ")}`
         },

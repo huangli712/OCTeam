@@ -182,6 +182,20 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             })
 
             const now = Date.now()
+            const bounds = defaultBounds(args.bounds)
+            // Cross-validate: the configured member cap must fit the initial
+            // members. The schema validates members.length (1-8) and
+            // bounds.maxMembers (>=1) independently; without this check a team
+            // can be persisted already over its cap, breaking every downstream
+            // invariant (add_member's >= check, spawn loops, quota reporting).
+            if (bounds.maxMembers < resolved.length) {
+                // Best-effort cleanup of the just-created directory so a retry
+                // doesn't hit EEXIST.
+                await fs.rm(teamDir(ctx.storageRoot, args.name, leadSessionId), {
+                    recursive: true, force: true,
+                }).catch(() => { /* best-effort */ })
+                return `Error: bounds.maxMembers (${bounds.maxMembers}) is less than the number of initial members (${resolved.length}). Set maxMembers to at least ${resolved.length}.`
+            }
             const spec: TeamSpec = {
                 version: 1,
                 name: args.name,
@@ -189,8 +203,6 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 createdAt: now,
                 members: resolved,
             }
-            await writeTeamSpec(ctx.storageRoot, spec, leadSessionId)
-
             const members: MemberState[] = resolved.map(m => ({
                 name: m.name,
                 status: "pending",
@@ -200,20 +212,31 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 agent: m.agent,
             }))
 
-            const createdTeam = await initTeamState(ctx.storageRoot, {
-                version: 1,
-                teamRunId: crypto.randomUUID(),
-                teamName: args.name,
-                status: "live",
-                leadSessionId: context.sessionID,
-                members,
-                bounds: defaultBounds(args.bounds),
-                createdAt: now,
-                // Per project rule: never auto-activate.
-                activatedAt: undefined,
-            }, leadSessionId)
+            try {
+                await writeTeamSpec(ctx.storageRoot, spec, leadSessionId)
 
-            indexMasterTeam(context.sessionID, args.name, leadSessionId, ctx.storageRoot, createdTeam.directory)
+                const createdTeam = await initTeamState(ctx.storageRoot, {
+                    version: 1,
+                    teamRunId: crypto.randomUUID(),
+                    teamName: args.name,
+                    status: "live",
+                    leadSessionId: context.sessionID,
+                    members,
+                    bounds,
+                    createdAt: now,
+                    // Per project rule: never auto-activate.
+                    activatedAt: undefined,
+                }, leadSessionId)
+
+                indexMasterTeam(context.sessionID, args.name, leadSessionId, ctx.storageRoot, createdTeam.directory)
+            } catch (err) {
+                // Rollback the just-created directory so a transient write
+                // failure does not orphan it and permanently reserve the name.
+                await fs.rm(teamDir(ctx.storageRoot, args.name, leadSessionId), {
+                    recursive: true, force: true,
+                }).catch(() => { /* best-effort */ })
+                throw err
+            }
 
             return `Team "${args.name}" created with ${members.length} member(s): ${members.map(m => m.name).join(", ")}. Status: live (inactive — call team_activate to activate it). Sessions will spawn on first workflow call.`
         },
