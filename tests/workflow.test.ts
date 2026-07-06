@@ -125,6 +125,7 @@ describe("handleWorkflowIdle (via processIdle): task steps", () => {
         await processIdle(ctx, team, team.members[0], "ses_alice")
 
         expect(task.steps![0].completed).toBe(true)
+        expect(task.steps![0].output).toContain("alice's step-1 result")
         expect(task.currentStageIndex).toBe(1)
         const bobCall = calls.find(c => c.sessionId === "ses_bob")
         expect(bobCall).toBeDefined()

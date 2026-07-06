@@ -120,9 +120,9 @@ describe("buildSummary: workflow case", () => {
     test("renders a per-step ledger plus completed task-step outputs", async () => {
         const task = makeWorkflowTask({
             steps: [
-                { kind: "task", member: "alice", task: "draft", completed: true },
+                { kind: "task", member: "alice", task: "draft", completed: true, output: "alice draft output" },
                 { kind: "gate", verifier: "bob", criteria: "ok", onFail: "retry", maxRetries: 1, attempts: 1, completed: true, verdict: "PASS" },
-                { kind: "task", member: "carol", task: "polish", completed: true },
+                { kind: "task", member: "carol", task: "polish", completed: true, output: "carol polish output" },
             ],
             responses: { alice: "alice draft output", carol: "carol polish output" },
         })
@@ -130,15 +130,14 @@ describe("buildSummary: workflow case", () => {
 
         expect(summary).toContain("mode=workflow")
         expect(summary).toContain("reason=workflow_complete")
-        // Step ledger: one line per step, with kind + actor + gate verdict.
-        expect(summary).toContain("[task] alice")
-        expect(summary).toContain("[gate] bob -> PASS")
-        expect(summary).toContain("1 retries")
-        expect(summary).toContain("[task] carol")
-        // Completed task-step outputs are included.
-        expect(summary).toContain("### alice")
+        // Step ledger: 1-based numbering, one line per step.
+        expect(summary).toContain("1. [task] alice (done)")
+        expect(summary).toContain("2. [gate] bob -> PASS (1 retries)")
+        expect(summary).toContain("3. [task] carol (done)")
+        // Outputs labeled by step number + member (NOT duplicate ### member headers).
+        expect(summary).toContain("### Step 1 - alice")
         expect(summary).toContain("alice draft output")
-        expect(summary).toContain("### carol")
+        expect(summary).toContain("### Step 3 - carol")
         expect(summary).toContain("carol polish output")
     })
 
@@ -149,7 +148,7 @@ describe("buildSummary: workflow case", () => {
         })
         const summary = await buildSummary(mockTeam, task, "workflow_failed:bob")
         expect(summary).toContain("mode=workflow")
-        expect(summary).toContain("[task] alice")
-        expect(summary).not.toContain("### alice")
+        expect(summary).toContain("1. [task] alice")
+        expect(summary).not.toContain("### Step")
     })
 })

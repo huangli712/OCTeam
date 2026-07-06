@@ -294,6 +294,7 @@ export type WorkflowStep = {
     maxRetries?: number                 // FAIL retry cap, distinct from provider-retry maxRetries (gate steps; default 0)
     attempts?: number                   // FAIL retry count so far (gate steps)
     verdict?: Verdict                   // last verdict rendered (gate steps)
+    output?: string                     // task steps: captured output snapshot at completion time (per-step, NOT overwritten by later steps the same member runs)
     // shared
     completed: boolean                  // true when the step is done (task produced; gate PASS)
 }

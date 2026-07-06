@@ -181,12 +181,13 @@ export async function handleWorkflowIdle(
 
     if (step.kind === "task") {
         if (member.name !== step.member) return              // stray idle
+        step.output = task.responses[member.name] ?? ""
         step.completed = true
         const nextIndex = steps.findIndex(s => !s.completed)
         if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
             stage: task.currentStageIndex,
-            summary: `Workflow step ${task.currentStageIndex} (task) completed by ${step.member}. Review before step ${nextIndex} starts.`,
+            summary: `Workflow step ${task.currentStageIndex + 1} (task) completed by ${step.member}. Review before step ${nextIndex + 1} starts.`,
         })) {
             return
         }
@@ -218,7 +219,7 @@ export async function handleWorkflowIdle(
         if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
             stage: task.currentStageIndex,
-            summary: `Workflow gate ${task.currentStageIndex} passed verification by ${step.verifier}. Review before step ${nextIndex} starts.`,
+            summary: `Workflow gate ${task.currentStageIndex + 1} passed verification by ${step.verifier}. Review before step ${nextIndex + 1} starts.`,
         })) {
             return
         }
@@ -247,6 +248,7 @@ export async function handleWorkflowIdle(
     }
     const producerStep = steps[producerIdx]
     producerStep.completed = false
+    producerStep.output = undefined
     task.currentStageIndex = producerIdx
     const producer = team.members.find(m => m.name === producerStep.member && !m.isMaster)
     if (producer?.sessionId) {

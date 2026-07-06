@@ -253,19 +253,25 @@ function summarizePipeline(task: ActiveTask, head: string): string {
     return `${head}\n${candidates}`
 }
 
-// Wave 1 stub -- replaced in Wave 2 (T5). Renders a per-step ledger plus the
-// task-step outputs (gate verdicts are control-flow, not work product).
+// Renders a 1-based per-step ledger plus the task-step outputs (each labeled
+// by step number + member, so a member running multiple task steps does not
+// produce duplicate ### member headers with the wrong output).
 function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head: string): string {
     const steps = task.steps ?? []
     const rows = steps.map((s, i) => {
         if (s.kind === "task") {
-            return `${i}. [task] ${s.member ?? "?"}${s.completed ? " (done)" : ""}`
+            return `${i + 1}. [task] ${s.member ?? "?"}${s.completed ? " (done)" : ""}`
         }
-        return `${i}. [gate] ${s.verifier ?? "?"} -> ${s.verdict ?? "pending"}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}`
+        return `${i + 1}. [gate] ${s.verifier ?? "?"} -> ${s.verdict ?? "pending"}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}`
     })
     const outputs = steps
-        .filter(s => s.kind === "task" && s.completed && s.member)
-        .map(s => `### ${s.member}\n${truncateOutput(task.responses[s.member!] ?? "")}`)
+        .map((s, i) => {
+            if (s.kind === "task" && s.completed) {
+                return `### Step ${i + 1} - ${s.member ?? "?"}\n${truncateOutput(s.output ?? "")}`
+            }
+            return null
+        })
+        .filter((x): x is string => x !== null)
         .join("\n\n")
     const ledger = rows.length > 0 ? `\nSteps:\n${rows.join("\n")}` : ""
     return outputs ? `${head}${ledger}\n\n${outputs}` : `${head}${ledger}`
