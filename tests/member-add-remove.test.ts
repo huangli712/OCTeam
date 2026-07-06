@@ -8,7 +8,7 @@ import { teamRemoveMemberTool } from "../src/tools/remove.js"
 import { teamRenameTool } from "../src/tools/rename.js"
 import { initTeamState, invalidateTeam, loadTeamState, readTeamSpec, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {
     return { storageRoot, scope: "project" } as unknown as PluginContext
@@ -50,7 +50,7 @@ describe("team_add_member", () => {
         const tool = teamAddMemberTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "alpha", role: "physicist", prompt: "do physics" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("added to team")
@@ -74,7 +74,7 @@ describe("team_add_member", () => {
         const tool = teamAddMemberTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "beta", name: "bob", role: "tester", prompt: "test" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("bob")
@@ -95,7 +95,7 @@ describe("team_add_member", () => {
         const tool = teamAddMemberTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "gamma", name: "alice", role: "tester", prompt: "test" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("already exists")
@@ -114,7 +114,7 @@ describe("team_add_member", () => {
         const tool = teamAddMemberTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "delta", name: "master", role: "coder", prompt: "c" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("reserved")
@@ -135,7 +135,7 @@ describe("team_add_member", () => {
         const tool = teamAddMemberTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "epsilon", role: "coder", prompt: "p" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("not \"live\"")
@@ -147,7 +147,7 @@ describe("team_add_member", () => {
     test("non-master caller → rejected", async () => {
         const root = tmpRoot("add-nonmaster")
         const sid = "ses_add_nonmaster"
-        const { team } = await setupLiveTeam(root, undefined as any, "zeta", [
+        const { team } = await setupLiveTeam(root, undefined as never, "zeta", [
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
@@ -155,7 +155,7 @@ describe("team_add_member", () => {
         const tool = teamAddMemberTool(ctx)
         const result = await tool.execute(
             { team_id: "zeta", role: "coder", prompt: "p" },
-            { sessionID: "ses_other" } as any,
+            makeToolContext("ses_other"),
         )
 
         expect(result).toContain("master-only")
@@ -177,7 +177,7 @@ describe("team_remove_member", () => {
         const tool = teamRemoveMemberTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "alpha", member_name: "bob" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("removed")
@@ -202,7 +202,7 @@ describe("team_remove_member", () => {
         const tool = teamRemoveMemberTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "beta", member_name: "solo" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("Cannot remove the last member")
@@ -221,7 +221,7 @@ describe("team_remove_member", () => {
         const tool = teamRemoveMemberTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "gamma", member_name: "ghost" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("not found")
@@ -242,7 +242,7 @@ describe("team_remove_member", () => {
         const tool = teamRemoveMemberTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "delta", member_name: "bob" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("not \"live\"")
@@ -254,7 +254,7 @@ describe("team_remove_member", () => {
     test("non-master caller → rejected", async () => {
         const root = tmpRoot("rm-nonmaster")
         const sid = "ses_rm_nonmaster"
-        const { team } = await setupLiveTeam(root, undefined as any, "epsilon", [
+        const { team } = await setupLiveTeam(root, undefined as never, "epsilon", [
             { name: "alice", role: "coder", prompt: "code" },
             { name: "bob", role: "tester", prompt: "test" },
         ])
@@ -263,7 +263,7 @@ describe("team_remove_member", () => {
         const tool = teamRemoveMemberTool(ctx)
         const result = await tool.execute(
             { team_id: "epsilon", member_name: "bob" },
-            { sessionID: "ses_other" } as any,
+            makeToolContext("ses_other"),
         )
 
         expect(result).toContain("master-only")
@@ -284,7 +284,7 @@ describe("team_rename", () => {
         const tool = teamRenameTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "old-name", new_name: "new-name" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("renamed to")
@@ -311,7 +311,7 @@ describe("team_rename", () => {
         const tool = teamRenameTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "zeta", new_name: "zeta" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("already named")
@@ -333,7 +333,7 @@ describe("team_rename", () => {
         const tool = teamRenameTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "alpha", new_name: "beta" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("already exists")
@@ -353,7 +353,7 @@ describe("team_rename", () => {
         const tool = teamRenameTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "gamma", new_name: "delta" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("not \"live\"")
@@ -365,7 +365,7 @@ describe("team_rename", () => {
     test("non-master caller → rejected", async () => {
         const root = tmpRoot("rn-nonmaster")
         const sid = "ses_rn_nonmaster"
-        const { team } = await setupLiveTeam(root, undefined as any, "epsilon", [
+        const { team } = await setupLiveTeam(root, undefined as never, "epsilon", [
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
@@ -373,7 +373,7 @@ describe("team_rename", () => {
         const tool = teamRenameTool(ctx)
         const result = await tool.execute(
             { team_id: "epsilon", new_name: "zeta" },
-            { sessionID: "ses_other" } as any,
+            makeToolContext("ses_other"),
         )
 
         expect(result).toContain("master-only")
@@ -394,7 +394,7 @@ describe("team_rename", () => {
         try {
             await tool.execute(
                 { team_id: "eta", new_name: "INVALID" },
-                { sessionID: sid } as any,
+                makeToolContext(sid),
             )
             expect.unreachable("should have thrown")
         } catch {

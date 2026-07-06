@@ -5,7 +5,7 @@ import type { ActiveTask } from "../src/core/types.js"
 import { teamDetailsTool } from "../src/tools/details.js"
 import { initTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {
     return { storageRoot, scope: "project" } as unknown as PluginContext
@@ -52,7 +52,7 @@ describe("team_details new fields", () => {
         const sid = "ses_det_active"
         tracked.push(sid)
         await setupTeam(root, sid, { activatedAt: Date.now() })
-        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("active: yes")
     })
 
@@ -61,7 +61,7 @@ describe("team_details new fields", () => {
         const sid = "ses_det_inactive"
         tracked.push(sid)
         await setupTeam(root, sid, {})
-        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("active: no")
     })
 
@@ -71,7 +71,7 @@ describe("team_details new fields", () => {
         tracked.push(sid)
         const alice = { ...makeMember("alice"), model: "anthropic/claude-sonnet-4" }
         await setupTeam(root, sid, { members: [alice] })
-        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("anthropic/claude-sonnet-4")
     })
 
@@ -89,7 +89,7 @@ describe("team_details new fields", () => {
                 signoffDecider: "alice",
             }),
         })
-        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("reduce: rubric")
         expect(result).toContain("signoff: decider")
         expect(result).toContain("decider: alice")
@@ -109,7 +109,7 @@ describe("team_details new fields", () => {
                 decisionParseFailures: 0,
             }),
         })
-        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("decider: alice")
         expect(result).toContain("last: continue")
         expect(result).toContain("round 1")
@@ -126,7 +126,7 @@ describe("team_details new fields", () => {
                 topic: "use sqlite",
             }),
         })
-        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("Consensus: reached")
     })
 
@@ -137,7 +137,7 @@ describe("team_details new fields", () => {
         await setupTeam(root, sid, {
             activeTask: makeTask({ type: "delegate" }),
         })
-        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const result = await teamDetailsTool(makeCtx(root)).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("Tasks:")
         expect(result).toContain("of 0)")
     })

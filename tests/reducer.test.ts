@@ -46,7 +46,7 @@ function makeTeam(opts: {
         status: "busy",
         leadSessionId: "ses_lead",
         members,
-        bounds: {} as any,
+        bounds: {},
         createdAt: 0,
         activeTask: opts.activeTask,
         mutex: new AsyncMutex(),

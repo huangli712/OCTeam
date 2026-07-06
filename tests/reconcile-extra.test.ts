@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 import type { PluginContext } from "../src/core/context.js"
+import type { ActiveTask } from "../src/core/types.js"
 import {
     handleSessionDeleted,
     reconcileActivation,
@@ -219,7 +220,7 @@ describe("reconcileCrashedTeams", () => {
                 currentStageIndex: 0,
                 decisionHistory: [],
                 decisionParseFailures: 0,
-            } as any,
+            } as ActiveTask,
         }
         await initTeamState(root, healthy, sid)
         // Corrupt team under the SAME session: valid teams/ dir but bad JSON.

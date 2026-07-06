@@ -10,7 +10,7 @@ import {
 import { createTask, getTask, updateTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 import type { RecurseTask } from "../src/core/types.js"
 
 function makeCtx(storageRoot: string): PluginContext {
@@ -44,7 +44,7 @@ describe("team_task_create (tool layer)", () => {
         await setupTeam(root, sid)
         const result = await teamTaskCreateTool(makeCtx(root)).execute(
             { team_id: "alpha", subject: "fix bug", description: "fix the login bug" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("Task created")
         expect(result).toContain("fix bug")
@@ -58,7 +58,7 @@ describe("team_task_create (tool layer)", () => {
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)])
         const result = await teamTaskCreateTool(makeCtx(root)).execute(
             { team_id: "alpha", subject: "fix bug", description: "desc" },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         // Members can create tasks — it's cooperative.
         expect(result).toContain("Task created")
@@ -76,7 +76,7 @@ describe("team_task_list (tool layer)", () => {
         await setupTeam(root, sid)
         const result = await teamTaskListTool(makeCtx(root)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("No tasks")
     })
@@ -90,7 +90,7 @@ describe("team_task_list (tool layer)", () => {
         await createTask(dir, { subject: "t2", description: "d2" })
         const result = await teamTaskListTool(makeCtx(root)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain(t1.id)
         expect(result).toContain("[pending]")
@@ -112,7 +112,7 @@ describe("team_task_update (tool layer)", () => {
         const t = await createTask(dir, { subject: "t1", description: "d" })
         const result = await teamTaskUpdateTool(makeCtx(root)).execute(
             { team_id: "alpha", task_id: t.id, status: "claimed" },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("Claimed")
     })
@@ -131,12 +131,12 @@ describe("team_task_update (tool layer)", () => {
         // Alice claims the task.
         await teamTaskUpdateTool(makeCtx(root)).execute(
             { team_id: "alpha", task_id: t.id, status: "claimed" },
-            { sessionID: aliceSid } as any,
+            makeToolContext(aliceSid),
         )
         // Bob tries to mark it completed → rejected.
         const result = await teamTaskUpdateTool(makeCtx(root)).execute(
             { team_id: "alpha", task_id: t.id, status: "completed" },
-            { sessionID: bobSid } as any,
+            makeToolContext(bobSid),
         )
         expect(result).toContain("Error")
         expect(result).toContain("owner")
@@ -152,12 +152,12 @@ describe("team_task_update (tool layer)", () => {
         // Alice claims it.
         await teamTaskUpdateTool(makeCtx(root)).execute(
             { team_id: "alpha", task_id: t.id, status: "claimed" },
-            { sessionID: aliceSid } as any,
+            makeToolContext(aliceSid),
         )
         // Master completes it (bypasses owner check).
         const result = await teamTaskUpdateTool(makeCtx(root)).execute(
             { team_id: "alpha", task_id: t.id, status: "completed" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("updated to completed")
     })
@@ -175,7 +175,7 @@ describe("team_task_get (tool layer)", () => {
         const t = await createTask(dir, { subject: "t1", description: "desc1" })
         const result = await teamTaskGetTool(makeCtx(root)).execute(
             { team_id: "alpha", task_id: t.id },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("t1")
         expect(result).toContain("pending")
@@ -188,7 +188,7 @@ describe("team_task_get (tool layer)", () => {
         await setupTeam(root, sid)
         const result = await teamTaskGetTool(makeCtx(root)).execute(
             { team_id: "alpha", task_id: "00000000-0000-0000-0000-000000000000" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("not found")
     })
@@ -224,7 +224,7 @@ describe("team_task_create (recurse-mode guard)", () => {
 
         const result = await teamTaskCreateTool(makeCtx(root)).execute(
             { team_id: "alpha", subject: "sub-a", description: "do A" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         // Guard rejects with a clear explanation pointing to <decompose>.
         expect(result).toContain("Error")
@@ -245,7 +245,7 @@ describe("team_task_create (recurse-mode guard)", () => {
         // activeTask is undefined (no orchestration running) — create allowed.
         const result = await teamTaskCreateTool(makeCtx(root)).execute(
             { team_id: "alpha", subject: "freeform", description: "any" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("Task created")
     })
@@ -284,7 +284,7 @@ describe("team_task_update (recurse-mode completed guard)", () => {
 
         const result = await teamTaskUpdateTool(makeCtx(root)).execute(
             { team_id: "alpha", task_id: t.id, status: "completed" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("Error")
         expect(result).toContain("recurse mode")
@@ -304,7 +304,7 @@ describe("team_task_update (recurse-mode completed guard)", () => {
 
         const result = await teamTaskUpdateTool(makeCtx(root)).execute(
             { team_id: "alpha", task_id: t.id, status: "completed" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("updated to completed")
     })
@@ -335,7 +335,7 @@ describe("team_task_update (recurse-mode completed guard)", () => {
 
         const result = await teamTaskUpdateTool(makeCtx(root)).execute(
             { team_id: "alpha", task_id: t.id, status: "deleted" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         // delete is NOT completion — guard only fires for status="completed".
         expect(result).toContain("updated to deleted")

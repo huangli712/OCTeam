@@ -17,7 +17,7 @@ import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 // ============================================================================
 // Fix1 — path-traversal rejection (BLOCKING-1, security)
@@ -60,7 +60,7 @@ describe("Fix1: tools reject traversal in run_id / member", () => {
         await setup(root, sid, memberSid)
         const result = await teamResultGetTool(makeCtx(root)).execute(
             { team_id: "alpha", run_id: "../../../../etc" },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("invalid run_id")
     })
@@ -72,7 +72,7 @@ describe("Fix1: tools reject traversal in run_id / member", () => {
         await setup(root, sid, memberSid)
         const result = await teamResultGetTool(makeCtx(root)).execute(
             { team_id: "alpha", member: "../alice" },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("invalid member")
     })
@@ -84,7 +84,7 @@ describe("Fix1: tools reject traversal in run_id / member", () => {
         await setup(root, sid, memberSid)
         const result = await teamProgressTool(makeCtx(root)).execute(
             { team_id: "alpha", run_id: "../../other/runs/x" },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("invalid run_id")
     })

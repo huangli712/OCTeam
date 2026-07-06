@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
+import type { ToolContext } from "@opencode-ai/plugin"
 import type { MemberState, TeamState } from "../src/core/types.js"
 
 // Track every tmp root created in this process. mkdtempSync dirs otherwise
@@ -72,5 +73,37 @@ export function makeState(
         },
         createdAt: Date.now(),
         activatedAt,
+    }
+}
+
+/**
+ * Build a minimal ToolContext stub for tool.execute() calls in tests.
+ *
+ * The real ToolContext (from @opencode-ai/plugin) has 8 required fields, but
+ * OCTeam tool handlers only read `sessionID` (for master/member resolution).
+ * This factory fills the remaining fields with safe no-op defaults so tests
+ * pass a fully-typed ToolContext instead of `{ sessionID } as any`.
+ *
+ * `ask` returns an Effect; the no-op stub never resolves (tools that call ask
+ * would hang — but no OCTeam tool uses ask in the tested code paths).
+ *
+ * Override any field via the optional second argument when a test needs a
+ * non-default value (e.g. a custom abort signal).
+ */
+export function makeToolContext(
+    sessionID: string,
+    overrides?: Partial<ToolContext>,
+): ToolContext {
+    return {
+        sessionID,
+        messageID: `msg-${sessionID}`,
+        agent: "oct-junior",
+        directory: "/app",
+        worktree: "/app",
+        abort: new AbortController().signal,
+        metadata: () => {},
+        // ask is never called by OCTeam tools; stub with an unresolved Effect.
+        ask: (() => ({}) as never) as ToolContext["ask"],
+        ...overrides,
     }
 }

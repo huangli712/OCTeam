@@ -5,7 +5,7 @@ import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 import fs from "node:fs/promises"
 import { createTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { processIdle } from "../src/orchestration/handlers.js"
@@ -91,7 +91,7 @@ describe("team_resume", () => {
         })
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(res).toContain("Resumed parallel")
         expect(calls).toEqual(["ses_bob"])
@@ -112,7 +112,7 @@ describe("team_resume", () => {
         })
         await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(team.members[0].error).toBeUndefined()
         expect(team.members[0].status).toBe("running")
@@ -134,7 +134,7 @@ describe("team_resume", () => {
         })
         await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         // handleParallelIdle → deliverSummaryToLeader → promptAsync to leader
         expect(calls).toEqual([sid])
@@ -154,7 +154,7 @@ describe("team_resume", () => {
         const ctx = makeCtx(root, async () => {})
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(res).toContain("resume failed")
         expect(team.status).toBe("failed")
@@ -179,7 +179,7 @@ describe("team_resume", () => {
         })
         await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         // Re-dispatched despite having a response — completion = declaredDone.
         expect(calls).toEqual(["ses_alice"])
@@ -206,7 +206,7 @@ describe("team_resume", () => {
         const ctx = makeCtx(root, async (req: any) => {
             if (req.path.id === "ses_bob") bobPrompt = req.body.parts[0].text
         })
-        await teamResumeTool(ctx).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(bobPrompt).toContain("ALICE_UPSTREAM_OUTPUT")
     })
 
@@ -225,7 +225,7 @@ describe("team_resume", () => {
             const raw = await fs.readFile(`${team.directory}/state.json`, "utf8")
             captured = JSON.parse(raw).activeTask
         })
-        await teamResumeTool(ctx).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(captured).toBeUndefined()
     })
 
@@ -249,7 +249,7 @@ describe("team_resume", () => {
         const ctx = makeCtx(root, async () => {})
         await teamResumeTool(ctx).execute(
             { team_id: "alpha", token_budget: 5000 },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(team.activeTask?.tokenBudget).toBe(5000)
     })
@@ -267,7 +267,7 @@ describe("team_resume", () => {
         await updateTask(dir, t1.id, { status: "claimed", owner: "alice" })
         await updateTask(dir, t2.id, { status: "in_progress", owner: "alice" })
         const ctx = makeCtx(root, async () => {})
-        await teamResumeTool(ctx).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         const after = await listAllTasks(dir)
         const byId = (id: string) => after.find(t => t.id === id)!.status
         expect(byId(t1.id)).toBe("pending")
@@ -292,7 +292,7 @@ describe("team_resume", () => {
         ])
         const calls: string[] = []
         const ctx = makeCtx(root, async (req: any) => { calls.push(req.path.id) })
-        await teamResumeTool(ctx).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(calls).toEqual([sid])
         expect(team.status).toBe("failed")
     })
@@ -306,7 +306,7 @@ describe("team_resume", () => {
         const ctx = makeCtx(root, async () => { throw new Error("dead session") })
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(res).toContain("resume failed")
         expect(team.activeTask).toBeUndefined()
@@ -322,7 +322,7 @@ describe("team_resume", () => {
         const ctx = makeCtx(root, async () => {})
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(res).toContain("no interrupted task")
     })

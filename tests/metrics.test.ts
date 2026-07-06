@@ -7,7 +7,7 @@ import { teamMetricsTool } from "../src/tools/metrics.js"
 import { initTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { teamDir, runDir, runRecordPath } from "../src/state/paths.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {
     return { storageRoot, scope: "project" } as unknown as PluginContext
@@ -58,7 +58,7 @@ describe("team_metrics", () => {
         await setupTeam(root, sid)
         const result = await teamMetricsTool(makeCtx(root)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("No run records")
     })
@@ -75,7 +75,7 @@ describe("team_metrics", () => {
         await writeRun(dir, { runId: "r5", status: "failed", reason: "budget_exceeded", finishedAt: 1, tokensUsed: 500, messagesSent: 0 })
         const result = await teamMetricsTool(makeCtx(root)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         // Runs line: 5 total, 3 completed, 2 failed, 60% success.
         expect(result).toContain("total=5")
@@ -96,7 +96,7 @@ describe("team_metrics", () => {
         await writeRun(dir, { runId: "r2", finishedAt: 1, tokensUsed: 800, tokensByMember: { alice: 500, carol: 300 } })
         const result = await teamMetricsTool(makeCtx(root)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("alice: 1500")
         expect(result).toContain("bob: 200")
@@ -112,7 +112,7 @@ describe("team_metrics", () => {
         await writeRun(dir, { runId: "r2", finishedAt: 1, tokensUsed: 1000, messagesSent: 1 })
         const result = await teamMetricsTool(makeCtx(root)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("(no token data)")
         expect(result).toContain("No-token-data runs: 1")
@@ -128,7 +128,7 @@ describe("team_metrics", () => {
         }
         const result = await teamMetricsTool(makeCtx(root)).execute(
             { team_id: "alpha", limit: 2 },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("showing 2 of 5 retained")
     })
@@ -143,7 +143,7 @@ describe("team_metrics", () => {
         await writeRun(dir, { runId: "r3", type: "consensus", finishedAt: 1, tokensUsed: 500 })
         const result = await teamMetricsTool(makeCtx(root)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("parallel: count=2")
         expect(result).toContain("3000")

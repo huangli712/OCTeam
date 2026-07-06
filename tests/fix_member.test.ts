@@ -4,7 +4,7 @@ import type { PluginContext } from "../src/core/context.js"
 import { teamFixMemberTool } from "../src/tools/fix.js"
 import { initTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {
     return { storageRoot, scope: "project" } as unknown as PluginContext
@@ -31,7 +31,7 @@ describe("team_fix_member constraint (1)", () => {
 
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_prompt: "new prompt" },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("master-only")
     })
@@ -46,7 +46,7 @@ describe("team_fix_member constraint (1)", () => {
 
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_prompt: "updated prompt" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("updated")
     })
@@ -61,7 +61,7 @@ describe("team_fix_member constraint (1)", () => {
 
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_prompt: "x" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("running")
     })

@@ -14,7 +14,7 @@ import type { Message } from "../src/core/types.js"
 function makeCtx(
     storageRoot: string,
     overrides?: {
-        promptAsync?: (req: unknown) => Promise<unknown>
+        promptAsync?: (req: { body: { parts: Array<{ text: string }> } }) => Promise<unknown>
         messages?: (req: unknown) => Promise<{ data: unknown[] }>
         status?: (req: unknown) => Promise<{ data: unknown }>
         directory?: string
@@ -116,7 +116,7 @@ describe("processIdle: role-setup barrier (Step 1.5)", () => {
         const sid = "ses_pid_rsb"
         const memberSid = "ses_pid_rsb_alice"
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -149,10 +149,10 @@ describe("processIdle: unread-message wake hint (Step 5)", () => {
         const sid = "ses_pid_wake"
         const memberSid = "ses_pid_wake_alice"
         const captured: string[] = []
-        const promptAsync = mock(async (req: any) => {
+        const promptAsync = mock(async (req: { body: { parts: Array<{ text: string }> } }) => {
             captured.push(req.body.parts[0].text)
         })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -187,10 +187,10 @@ describe("processIdle: premature-idle re-prompt (require_done_ack recovery)", ()
         const sid = "ses_pid_premature"
         const memberSid = "ses_pid_premature_alice"
         const captured: string[] = []
-        const promptAsync = mock(async (req: any) => {
+        const promptAsync = mock(async (req: { body: { parts: Array<{ text: string }> } }) => {
             captured.push(req.body.parts[0].text)
         })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -223,7 +223,7 @@ describe("processIdle: premature-idle re-prompt (require_done_ack recovery)", ()
         const sid = "ses_pid_premature_coop"
         const memberSid = "ses_pid_premature_coop_alice"
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -251,7 +251,7 @@ describe("processIdle: premature-idle re-prompt (require_done_ack recovery)", ()
         const sid = "ses_pid_premature_ack"
         const memberSid = "ses_pid_premature_ack_alice"
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -274,7 +274,7 @@ describe("processIdle: premature-idle re-prompt (require_done_ack recovery)", ()
         // Either way, the re-prompt copy (which mentions team_done explicitly)
         // must NOT appear.
         if (promptAsync.mock.calls.length > 0) {
-            const text = (promptAsync.mock.calls[0] as unknown[])[0] as any
+            const text = (promptAsync.mock.calls[0] as unknown[])[0] as { body: { parts: Array<{ text: string }> } }
             expect(text.body.parts[0].text).not.toContain("require_done_ack")
         }
     })
@@ -291,7 +291,7 @@ describe("processIdle: reduce-stage priority (Step 6 prefix)", () => {
         const sid = "ses_pid_reduce"
         const memberSid = "ses_pid_reduce_alice"
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -340,7 +340,7 @@ describe("handleStatusEvent: retry escalation", () => {
         const status = mock(async () => ({
             data: { [memberSid]: { type: "retry", message: "rate limited" } },
         }))
-        const ctx = makeCtx(root, { status: status as any })
+        const ctx = makeCtx(root, { status })
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
         ])
@@ -367,7 +367,7 @@ describe("handleStatusEvent: retry escalation", () => {
         const status = mock(async () => ({
             data: { [memberSid]: { type: "retry", message: "transient" } },
         }))
-        const ctx = makeCtx(root, { status: status as any })
+        const ctx = makeCtx(root, { status })
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
         ])
@@ -400,7 +400,7 @@ describe("handleStatusEvent: retry escalation", () => {
         const status = mock(async () => ({
             data: { [memberSid]: { type: "idle" } },
         }))
-        const ctx = makeCtx(root, { status: status as any })
+        const ctx = makeCtx(root, { status })
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
         ])

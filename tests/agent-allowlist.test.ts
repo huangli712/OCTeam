@@ -25,7 +25,7 @@ import { teamAddMemberTool } from "../src/tools/add.js"
 import { teamFixMemberTool } from "../src/tools/fix.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { indexMasterTeam, setActiveTeam, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 import type { TeamSpec } from "../src/core/types.js"
 
 function makeCtx(storageRoot: string): PluginContext {
@@ -70,7 +70,7 @@ describe("team_create: agent must be a hardened oct-* agent (P0-2)", () => {
                 name: "alpha",
                 members: [{ role: "coder", prompt: "code", agent: "build" }],
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toMatch(/Error:.*not a hardened oct-\* agent/i)
@@ -88,7 +88,7 @@ describe("team_create: agent must be a hardened oct-* agent (P0-2)", () => {
                 name: "alpha",
                 members: [{ role: "coder", prompt: "code", agent: "oracle" }],
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toMatch(/Error:.*not a hardened oct-\* agent/i)
@@ -105,7 +105,7 @@ describe("team_create: agent must be a hardened oct-* agent (P0-2)", () => {
                 name: "alpha",
                 members: [{ role: "coder", prompt: "code", agent: "oct-junior" }],
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         // Accepted — no agent-validation error. The team is created.
@@ -124,7 +124,7 @@ describe("team_create: agent must be a hardened oct-* agent (P0-2)", () => {
                 name: "alpha",
                 members: [{ role: "coder", prompt: "code" }],
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).not.toMatch(/not a hardened oct-\* agent/i)
@@ -147,7 +147,7 @@ describe("team_add_member: agent must be a hardened oct-* agent (P0-2)", () => {
                 prompt: "code",
                 agent: "build",
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toMatch(/Error:.*not a hardened oct-\* agent/i)
@@ -167,7 +167,7 @@ describe("team_add_member: agent must be a hardened oct-* agent (P0-2)", () => {
                 prompt: "review",
                 agent: "oct-oracle",
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).not.toMatch(/not a hardened oct-\* agent/i)
@@ -196,7 +196,7 @@ describe("team_fix_member: new_agent must be a hardened oct-* agent (P0-2)", () 
                 member_name: "alice",
                 new_agent: "build",
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toMatch(/Error:.*not a hardened oct-\* agent/i)
@@ -218,7 +218,7 @@ describe("team_fix_member: new_agent must be a hardened oct-* agent (P0-2)", () 
                 member_name: "alice",
                 new_agent: "oct-explore",
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).not.toMatch(/not a hardened oct-\* agent/i)

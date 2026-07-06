@@ -32,7 +32,7 @@ import type { ActiveTask, TeamSpec } from "../src/core/types.js"
 import { startOrchestration } from "../src/tools/shared.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { isIndexedMember, rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 describe("concurrent-workflow-spawns-duplicate-sessions", () => {
     const tracked: string[] = []
@@ -89,8 +89,8 @@ describe("concurrent-workflow-spawns-duplicate-sessions", () => {
             client: {
                 app: { log: mock(async () => ({})) },
                 session: {
-                    create: sessionCreate as any,
-                    promptAsync: promptAsync as any,
+                    create: sessionCreate,
+                    promptAsync: promptAsync,
                     messages: mock(async () => ({ data: [] })),
                 },
             },
@@ -124,7 +124,7 @@ describe("concurrent-workflow-spawns-duplicate-sessions", () => {
         const [r1, r2] = await Promise.all([
             startOrchestration(
                 "alpha",
-                { sessionID: masterSid } as any,
+                makeToolContext(masterSid),
                 ctx,
                 "team_parallel",
                 validate,
@@ -134,7 +134,7 @@ describe("concurrent-workflow-spawns-duplicate-sessions", () => {
             ),
             startOrchestration(
                 "alpha",
-                { sessionID: masterSid } as any,
+                makeToolContext(masterSid),
                 ctx,
                 "team_parallel",
                 validate,

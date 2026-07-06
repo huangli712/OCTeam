@@ -102,7 +102,7 @@ describe("checkTermination: token budget exceeded", () => {
         expect(team.activeTask).toBeUndefined()
         // The leader got the failure summary with budget_exceeded marker.
         expect(promptAsync).toHaveBeenCalledTimes(1)
-        const req = (promptAsync.mock.calls[0] as unknown[])[0] as any
+        const req = (promptAsync.mock.calls[0] as Array<{ body: { parts: Array<{ text: string }> } }>)[0]
         expect(req.body.parts[0].text).toContain("budget_exceeded")
     })
 
@@ -150,7 +150,7 @@ describe("checkTermination: per-member turn limit", () => {
 
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
-        const req = (promptAsync.mock.calls[0] as unknown[])[0] as any
+        const req = (promptAsync.mock.calls[0] as Array<{ body: { parts: Array<{ text: string }> } }>)[0]
         expect(req.body.parts[0].text).toContain("member_turn_limit:bob")
     })
 
@@ -169,7 +169,7 @@ describe("checkTermination: per-member turn limit", () => {
     test("master member is excluded from the turn-limit check", async () => {
         const team = makeTeam({
             maxMemberTurns: 5,
-            members: [{ name: "master", turnCount: 999, isMaster: true as any }],
+            members: [{ name: "master", turnCount: 999, isMaster: true }],
         })
 
         await checkTermination(makeCtx(), team)

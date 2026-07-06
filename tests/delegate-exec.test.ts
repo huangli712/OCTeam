@@ -176,7 +176,7 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
 
         // Override makeCtx to report alice's session as "running" (wake-hint path).
         const ctx = makeCtx(calls)
-        ;(ctx.client.session as any).status = async () => ({
+        ;(ctx.client.session as { status: unknown }).status = async () => ({
             data: { ses_alice: { type: "running" } },
         })
 

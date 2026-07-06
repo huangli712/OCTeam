@@ -6,7 +6,7 @@ import { teamQueryTool } from "../src/tools/query.js"
 import { initTeamState, writeTeamSpec } from "../src/state/store.js"
 import { teamDir, worktreesDir } from "../src/state/paths.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 function makeCtx(storageRoot: string): PluginContext {
     return { storageRoot, scope: "project" } as unknown as PluginContext
@@ -45,7 +45,7 @@ describe("team_query tool", () => {
         const root = tmpRoot("q-404")
         const result = await teamQueryTool(makeCtx(root)).execute(
             { team_id: "nonexistent", member_name: "alice" },
-            { sessionID: "ses_x" } as any,
+            makeToolContext("ses_x"),
         )
         expect(result).toContain("Error")
         expect(result).toContain("not a member")
@@ -58,7 +58,7 @@ describe("team_query tool", () => {
         await setupTeam(root, sid, { activatedAt: Date.now() })
         const result = await teamQueryTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "bob" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("not found")
     })
@@ -71,7 +71,7 @@ describe("team_query tool", () => {
         await setupTeam(root, sid, { members: [alice], activatedAt: Date.now() })
         const result = await teamQueryTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         // 7 core fields
         expect(result).toContain("Name:")
@@ -94,7 +94,7 @@ describe("team_query tool", () => {
         await setupTeam(root, sid, { members: [alice], activatedAt: Date.now() })
         const result = await teamQueryTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain(wtPath)
     })
@@ -106,7 +106,7 @@ describe("team_query tool", () => {
         await setupTeam(root, sid, { members: [makeMember("alice")], activatedAt: Date.now() })
         const result = await teamQueryTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("Model:")
     })

@@ -12,14 +12,14 @@ import { teamRecurseTool } from "../src/tools/recurse.js"
 import { teamRouteTool } from "../src/tools/router.js"
 import { initTeamState, loadTeamState, readTeamSpec, writeTeamSpec } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 // --- ctx fixture: full client for tools that dispatch ---
 
 function makeCtx(
     storageRoot: string,
     overrides?: {
-        promptAsync?: (req: unknown) => Promise<unknown>
+        promptAsync?: (req: { path: { id: string } }) => Promise<unknown>
         agents?: (req: unknown) => Promise<{ data: Array<{ name: string; model?: { providerID: string; modelID: string } }> }>
     },
 ): PluginContext {
@@ -101,7 +101,7 @@ describe("team_fix_member: input validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("provide at least one")
     })
@@ -118,7 +118,7 @@ describe("team_fix_member: input validation", () => {
 
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_prompt: "x" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("busy")
     })
@@ -129,7 +129,7 @@ describe("team_fix_member: input validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "ghost", new_prompt: "x" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("not found")
     })
@@ -140,7 +140,7 @@ describe("team_fix_member: input validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_agent: "build" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("not a hardened oct-* agent")
     })
@@ -151,7 +151,7 @@ describe("team_fix_member: input validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_name: "notapoolname" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("not a preset pool name")
     })
@@ -162,7 +162,7 @@ describe("team_fix_member: input validation", () => {
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_name: "bob" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("already exists")
     })
@@ -178,7 +178,7 @@ describe("team_fix_member: happy paths", () => {
 
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_name: "bob" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("name: alice → bob")
 
@@ -196,7 +196,7 @@ describe("team_fix_member: happy paths", () => {
 
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_role: "reviewer" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("role: reviewer")
 
@@ -218,11 +218,11 @@ describe("team_fix_member: happy paths", () => {
                 },
             ],
         }))
-        const ctx = makeCtx(root, { agents: agents as any })
+        const ctx = makeCtx(root, { agents })
 
         const result = await teamFixMemberTool(ctx).execute(
             { team_id: "alpha", member_name: "alice", new_agent: "oct-oracle" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("agent: oct-oracle")
         expect(result).toContain("model: anthropic/claude-sonnet")
@@ -239,11 +239,11 @@ describe("team_fix_member: happy paths", () => {
         await writeSpecForMembers(root, sid, [{ name: "alice" }])
 
         const agents = mock(async () => ({ data: [{ name: "oct-explore" }] })) // no model
-        const ctx = makeCtx(root, { agents: agents as any })
+        const ctx = makeCtx(root, { agents })
 
         const result = await teamFixMemberTool(ctx).execute(
             { team_id: "alpha", member_name: "alice", new_agent: "oct-explore" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("agent: oct-explore")
         expect(result).toContain("no bound model")
@@ -258,11 +258,11 @@ describe("team_fix_member: happy paths", () => {
         const agents = mock(async () => {
             throw new Error("registry offline")
         })
-        const ctx = makeCtx(root, { agents: agents as any })
+        const ctx = makeCtx(root, { agents })
 
         const result = await teamFixMemberTool(ctx).execute(
             { team_id: "alpha", member_name: "alice", new_agent: "oct-explore" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("registry unavailable")
     })
@@ -277,7 +277,7 @@ describe("team_fix_member: happy paths", () => {
 
         const result = await teamFixMemberTool(makeCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_prompt: "updated standing instructions" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("prompt: updated")
 
@@ -298,7 +298,7 @@ describe("team_consensus: validation + happy path", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamConsensusTool(makeCtx(root)).execute(
             { team_id: "alpha", topic: "is water wet?" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("at least 2")
     })
@@ -315,14 +315,12 @@ describe("team_consensus: validation + happy path", () => {
             Date.now(),
         )
         const dispatched: string[] = []
-        const promptAsync = mock(async (req: any) => {
-            dispatched.push(req.path.id)
-        })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
+        const ctx = makeCtx(root, { promptAsync })
 
         const result = await teamConsensusTool(ctx).execute(
             { team_id: "alpha", topic: "pineapple on pizza?" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("started")
 
@@ -352,14 +350,12 @@ describe("team_pipeline: happy-path startup", () => {
         const aliceSid = "ses_pip_h_a"
         await setupTeam(root, sid, [makeMember("alice", aliceSid)], Date.now())
         const dispatched: string[] = []
-        const promptAsync = mock(async (req: any) => {
-            dispatched.push(req.path.id)
-        })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
+        const ctx = makeCtx(root, { promptAsync })
 
         const result = await teamPipelineTool(ctx).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "do A" }] },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("started")
         expect(dispatched).toContain(aliceSid)
@@ -377,10 +373,8 @@ describe("team_loop: happy-path startup", () => {
         const aliceSid = "ses_loop_h_a"
         await setupTeam(root, sid, [makeMember("alice", aliceSid)], Date.now())
         const dispatched: string[] = []
-        const promptAsync = mock(async (req: any) => {
-            dispatched.push(req.path.id)
-        })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
+        const ctx = makeCtx(root, { promptAsync })
 
         const result = await teamLoopTool(ctx).execute(
             {
@@ -390,7 +384,7 @@ describe("team_loop: happy-path startup", () => {
                 max_rounds: 3,
                 initial_task: "start work",
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("started")
         expect(dispatched).toContain(aliceSid)
@@ -415,7 +409,7 @@ describe("team_loop: happy-path startup", () => {
                 max_rounds: 3,
                 initial_task: "start",
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("unique")
     })
@@ -432,7 +426,7 @@ describe("team_loop: happy-path startup", () => {
             Date.now(),
         )
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
 
         // alice is the only stage member; bob is the decider but NOT listed
         // in stages — buildTask must append bob as a read-only decider stage.
@@ -444,7 +438,7 @@ describe("team_loop: happy-path startup", () => {
                 max_rounds: 3,
                 initial_task: "start work",
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("started")
 
@@ -469,14 +463,12 @@ describe("team_delegate: happy-path startup", () => {
         const aliceSid = "ses_del_h_a"
         await setupTeam(root, sid, [makeMember("alice", aliceSid)], Date.now())
         const dispatched: string[] = []
-        const promptAsync = mock(async (req: any) => {
-            dispatched.push(req.path.id)
-        })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
+        const ctx = makeCtx(root, { promptAsync })
 
         const result = await teamDelegateTool(ctx).execute(
             { team_id: "alpha", tasks: [{ subject: "do thing", description: "details" }] },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("started")
         // Delegate dispatches the first pending task to a member.
@@ -500,10 +492,8 @@ describe("team_parallel: cooperative happy-path startup", () => {
             Date.now(),
         )
         const dispatched: string[] = []
-        const promptAsync = mock(async (req: any) => {
-            dispatched.push(req.path.id)
-        })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
+        const ctx = makeCtx(root, { promptAsync })
 
         const result = await teamParallelTool(ctx).execute(
             {
@@ -511,7 +501,7 @@ describe("team_parallel: cooperative happy-path startup", () => {
                 mode: "cooperative",
                 tasks: { alice: "do A", bob: "do B" },
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("started")
         expect(dispatched).toContain(aliceSid)
@@ -536,10 +526,8 @@ describe("team_router: happy-path startup", () => {
             Date.now(),
         )
         const dispatched: string[] = []
-        const promptAsync = mock(async (req: any) => {
-            dispatched.push(req.path.id)
-        })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
+        const ctx = makeCtx(root, { promptAsync })
 
         const result = await teamRouteTool(ctx).execute(
             {
@@ -548,7 +536,7 @@ describe("team_router: happy-path startup", () => {
                 input: "classify this",
                 routes: [{ name: "branch-a", member: "branch" }],
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("started")
         expect(dispatched).toContain(routerSid)
@@ -576,10 +564,8 @@ describe("team_arbitrate: happy-path startup", () => {
             Date.now(),
         )
         const dispatched: string[] = []
-        const promptAsync = mock(async (req: any) => {
-            dispatched.push(req.path.id)
-        })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
+        const ctx = makeCtx(root, { promptAsync })
 
         const result = await teamArbitrateTool(ctx).execute(
             {
@@ -588,7 +574,7 @@ describe("team_arbitrate: happy-path startup", () => {
                 arbiter: "carol",
                 debaters: ["alice", "bob"],
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("started")
         // Both debaters get the initial prompt.
@@ -607,10 +593,8 @@ describe("team_recurse: happy-path startup", () => {
         const aliceSid = "ses_rec_h_a"
         await setupTeam(root, sid, [makeMember("alice", aliceSid)], Date.now())
         const dispatched: string[] = []
-        const promptAsync = mock(async (req: any) => {
-            dispatched.push(req.path.id)
-        })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
+        const ctx = makeCtx(root, { promptAsync })
 
         const result = await teamRecurseTool(ctx).execute(
             {
@@ -618,7 +602,7 @@ describe("team_recurse: happy-path startup", () => {
                 task: "build a calculator",
                 decomposer: "alice",
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("started")
         expect(dispatched).toContain(aliceSid)

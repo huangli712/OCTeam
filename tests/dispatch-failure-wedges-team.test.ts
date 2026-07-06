@@ -5,7 +5,7 @@ import type { ActiveTask } from "../src/core/types.js"
 import { startOrchestration } from "../src/tools/shared.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {
     return { storageRoot, scope: "project" } as unknown as PluginContext
@@ -60,7 +60,7 @@ describe("startOrchestration dispatch-failure rollback", () => {
         await expect(
             startOrchestration(
                 "alpha",
-                { sessionID: sid } as any,
+                makeToolContext(sid),
                 makeCtx(root),
                 "team_test",
                 () => null,

@@ -9,11 +9,16 @@ import { makeMember, makeState, tmpRoot } from "./helpers.js"
 
 // --- ctx + team fixtures ---
 
+/** Shared request shape for promptAsync mocks (union of all fields accessed across tests). */
+type PromptReq = { path: { id: string }; body: { parts: Array<{ text: string; synthetic?: boolean }>; title?: string } }
+/** Shared request shape for session.create mocks. */
+type CreateReq = PromptReq
+
 function makeCtx(
     storageRoot: string,
     overrides?: {
-        promptAsync?: (req: unknown) => Promise<unknown>
-        sessionCreate?: (req: unknown) => Promise<{ data: { id?: string } }>
+        promptAsync?: (req: PromptReq) => Promise<unknown>
+        sessionCreate?: (req: CreateReq) => Promise<{ data: { id?: string } }>
         directory?: string
     },
 ): PluginContext {
@@ -101,7 +106,7 @@ describe("advanceToStage", () => {
         const sid = "ses_ats_noactive"
         tracked.push(sid)
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice")])
 
         const stage: Stage = { member: "alice", task: "do thing", completed: false }
@@ -145,10 +150,10 @@ describe("advanceToStage", () => {
         const sid = "ses_ats_upstream"
         tracked.push(sid)
         let captured = ""
-        const promptAsync = mock(async (req: any) => {
+        const promptAsync = mock(async (req: PromptReq) => {
             captured = req.body.parts[0].text
         })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
@@ -182,10 +187,10 @@ describe("advanceToStage", () => {
         const sid = "ses_ats_ro"
         tracked.push(sid)
         let captured = ""
-        const promptAsync = mock(async (req: any) => {
+        const promptAsync = mock(async (req: PromptReq) => {
             captured = req.body.parts[0].text
         })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice")])
         await setActiveTask(root, sid, { type: "loop", stages: [] })
 
@@ -206,10 +211,10 @@ describe("advanceToStage", () => {
         const sid = "ses_ats_modify"
         tracked.push(sid)
         let captured = ""
-        const promptAsync = mock(async (req: any) => {
+        const promptAsync = mock(async (req: PromptReq) => {
             captured = req.body.parts[0].text
         })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice")])
         await setActiveTask(root, sid, { type: "pipeline", stages: [] })
 
@@ -225,10 +230,10 @@ describe("advanceToStage", () => {
         const sid = "ses_ats_prefix"
         tracked.push(sid)
         let captured = ""
-        const promptAsync = mock(async (req: any) => {
+        const promptAsync = mock(async (req: PromptReq) => {
             captured = req.body.parts[0].text
         })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
@@ -259,10 +264,10 @@ describe("advanceToStage", () => {
         const sid = "ses_ats_si"
         tracked.push(sid)
         const captured: string[] = []
-        const promptAsync = mock(async (req: any) => {
+        const promptAsync = mock(async (req: PromptReq) => {
             captured.push(req.body.parts[0].text)
         })
-        const ctx = makeCtx(root, { promptAsync: promptAsync as any })
+        const ctx = makeCtx(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice")])
         const alice = team.members.find(m => m.name === "alice")!
         alice.prompt = "You are the verifier."
@@ -320,7 +325,7 @@ describe("ensureMembersReady", () => {
         const create = mock(async () => {
             throw new Error("session.create must NOT be called when all members are spawned")
         })
-        const ctx = makeCtx(root, { sessionCreate: create as any })
+        const ctx = makeCtx(root, { sessionCreate: create })
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_a")])
 
         await ensureMembersReady(ctx, team)
@@ -344,7 +349,7 @@ describe("ensureMembersReady", () => {
         const sid = "ses_emr_noid"
         tracked.push(sid)
         const create = mock(async () => ({ data: {} })) // missing id
-        const ctx = makeCtx(root, { sessionCreate: create as any })
+        const ctx = makeCtx(root, { sessionCreate: create })
         await writeSpec(root, "alpha", sid, [{ name: "alice" }])
         const team = await makeTeam(root, sid, tracked, [makeMember("alice")])
 
@@ -359,7 +364,7 @@ describe("ensureMembersReady", () => {
         tracked.push(newMemberSid)
 
         let promptText = ""
-        const promptAsync = mock(async (req: any) => {
+        const promptAsync = mock(async (req: PromptReq) => {
             promptText = req.body.parts[0].text
             // Simulate the event handler flipping initialized after the
             // role-setup prompt is sent — the barrier resolves on its next tick.
@@ -368,8 +373,8 @@ describe("ensureMembersReady", () => {
         })
         const create = mock(async () => ({ data: { id: newMemberSid } }))
         const ctx = makeCtx(root, {
-            promptAsync: promptAsync as any,
-            sessionCreate: create as any,
+            promptAsync,
+            sessionCreate: create,
         })
 
         await writeSpec(root, "alpha", sid, [
@@ -404,10 +409,10 @@ describe("ensureMembersReady", () => {
         // body.agent + query.directory wired through on session.create
         // (role-setup promptAsync is identity-only — no directory needed,
         // member session already inherits ctx.directory from create).
-        const createReq = (create.mock.calls[0] as unknown[])[0] as any
+        const createReq = (create.mock.calls[0] as unknown as Array<{ body: { parentID: string }; query: { directory: string } }>)[0]
         expect(createReq.body.parentID).toBe(sid)
         expect(createReq.query.directory).toBe("/app")
-        const promptReq = (promptAsync.mock.calls[0] as unknown[])[0] as any
+        const promptReq = (promptAsync.mock.calls[0] as unknown as Array<{ body: { parts: Array<{ synthetic: boolean }> } }>)[0]
         expect(promptReq.body.parts[0].synthetic).toBe(true)
     })
 
@@ -420,15 +425,15 @@ describe("ensureMembersReady", () => {
         tracked.push(newMemberSid)
 
         let promptText = ""
-        const promptAsync = mock(async (req: any) => {
+        const promptAsync = mock(async (req: PromptReq) => {
             promptText = req.body.parts[0].text
             const bob = team.members.find(m => m.name === "bob")!
             bob.initialized = true
         })
         const create = mock(async () => ({ data: { id: newMemberSid } }))
         const ctx = makeCtx(root, {
-            promptAsync: promptAsync as any,
-            sessionCreate: create as any,
+            promptAsync,
+            sessionCreate: create,
         })
 
         // Spec lists a DIFFERENT member; bob is in state but not in spec.
@@ -462,20 +467,20 @@ describe("ensureMembersReady", () => {
         await writeSpec(root, "alpha", sid, [{ name: "alice" }, { name: "bob" }])
 
         const spawnOrder: string[] = []
-        const create = mock(async (req: any) => {
-            const name = req.body.title.split("/")[1]
+        const create = mock(async (req: PromptReq) => {
+            const name = req.body.title!.split("/")[1]
             const id = `ses_${name}_spawned`
             spawnOrder.push(name)
             tracked.push(id)
             return { data: { id } }
         })
-        const promptAsync = mock(async (req: any) => {
+        const promptAsync = mock(async (req: PromptReq) => {
             const m = team.members.find(x => `ses_${x.name}_spawned` === req.path.id)
             if (m) m.initialized = true
         })
         const ctx = makeCtx(root, {
-            promptAsync: promptAsync as any,
-            sessionCreate: create as any,
+            promptAsync,
+            sessionCreate: create,
         })
 
         await ensureMembersReady(ctx, team)

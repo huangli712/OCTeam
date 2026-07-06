@@ -9,7 +9,7 @@ import { teamParallelTool } from "../src/tools/parallel.js"
 import { teamPipelineTool } from "../src/tools/pipeline.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {
     return { storageRoot, scope: "project" } as unknown as PluginContext
@@ -63,7 +63,7 @@ describe("team_parallel startup validation", () => {
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
         const result = await teamParallelTool(makeCtx(root)).execute(
             { team_id: "alpha", mode: "isolated", task: "do x" },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("master-only")
     })
@@ -75,7 +75,7 @@ describe("team_parallel startup validation", () => {
         await setupTeam(root, sid, undefined, undefined) // no activatedAt
         const result = await teamParallelTool(makeCtx(root)).execute(
             { team_id: "alpha", mode: "isolated", task: "do x" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("Error")
     })
@@ -88,7 +88,7 @@ describe("team_parallel startup validation", () => {
         await setBusy(root, sid, "parallel")
         const result = await teamParallelTool(makeCtx(root)).execute(
             { team_id: "alpha", mode: "isolated", task: "do x" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("already has an active orchestration")
     })
@@ -100,7 +100,7 @@ describe("team_parallel startup validation", () => {
         await setupTeam(root, sid, undefined, Date.now())
         const result = await teamParallelTool(makeCtx(root)).execute(
             { team_id: "alpha", mode: "isolated" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("requires `task`")
     })
@@ -112,7 +112,7 @@ describe("team_parallel startup validation", () => {
         await setupTeam(root, sid, undefined, Date.now())
         const result = await teamParallelTool(makeCtx(root)).execute(
             { team_id: "alpha", mode: "cooperative" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("requires `tasks`")
     })
@@ -124,7 +124,7 @@ describe("team_parallel startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamParallelTool(makeCtx(root)).execute(
             { team_id: "alpha", mode: "isolated", task: "do x", signoff_policy: "decider", signoff_decider: "bob" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("not a member")
     })
@@ -136,7 +136,7 @@ describe("team_parallel startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamParallelTool(makeCtx(root)).execute(
             { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "select" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("requires reducer_member")
     })
@@ -148,7 +148,7 @@ describe("team_parallel startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamParallelTool(makeCtx(root)).execute(
             { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "merge" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("requires reducer_member")
     })
@@ -160,7 +160,7 @@ describe("team_parallel startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamParallelTool(makeCtx(root)).execute(
             { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "rubric", reduce_rubric: "correctness" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("requires reducer_member")
     })
@@ -178,7 +178,7 @@ describe("team_consensus startup validation", () => {
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
         const result = await teamConsensusTool(makeCtx(root)).execute(
             { team_id: "alpha", topic: "use sqlite?" },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("master-only")
     })
@@ -190,7 +190,7 @@ describe("team_consensus startup validation", () => {
         await setupTeam(root, sid, undefined, undefined)
         const result = await teamConsensusTool(makeCtx(root)).execute(
             { team_id: "alpha", topic: "use sqlite?" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("Error")
     })
@@ -203,7 +203,7 @@ describe("team_consensus startup validation", () => {
         await setBusy(root, sid, "consensus")
         const result = await teamConsensusTool(makeCtx(root)).execute(
             { team_id: "alpha", topic: "use sqlite?" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("already has an active orchestration")
     })
@@ -221,7 +221,7 @@ describe("team_pipeline startup validation", () => {
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
         const result = await teamPipelineTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("master-only")
     })
@@ -233,7 +233,7 @@ describe("team_pipeline startup validation", () => {
         await setupTeam(root, sid, undefined, undefined)
         const result = await teamPipelineTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("Error")
     })
@@ -246,7 +246,7 @@ describe("team_pipeline startup validation", () => {
         await setBusy(root, sid, "pipeline")
         const result = await teamPipelineTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("already has an active orchestration")
     })
@@ -258,7 +258,7 @@ describe("team_pipeline startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamPipelineTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "do x" }], signoff_policy: "decider", signoff_decider: "bob" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("not a member")
     })
@@ -270,7 +270,7 @@ describe("team_pipeline startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamPipelineTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "bob", task: "do x" }] },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("unknown member")
     })
@@ -282,7 +282,7 @@ describe("team_pipeline startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamPipelineTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "a" }, { member: "alice", task: "b" }] },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("unique")
     })
@@ -300,7 +300,7 @@ describe("team_loop startup validation", () => {
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
         const result = await teamLoopTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("master-only")
     })
@@ -312,7 +312,7 @@ describe("team_loop startup validation", () => {
         await setupTeam(root, sid, undefined, undefined)
         const result = await teamLoopTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("Error")
     })
@@ -325,7 +325,7 @@ describe("team_loop startup validation", () => {
         await setBusy(root, sid, "loop")
         const result = await teamLoopTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("already has an active orchestration")
     })
@@ -337,7 +337,7 @@ describe("team_loop startup validation", () => {
         await setupTeam(root, sid, undefined, Date.now())
         const result = await teamLoopTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "master", max_rounds: 3, initial_task: "start" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("must be a member")
     })
@@ -349,7 +349,7 @@ describe("team_loop startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamLoopTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "bob", max_rounds: 3, initial_task: "start" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("not a member")
     })
@@ -361,7 +361,7 @@ describe("team_loop startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         const result = await teamLoopTool(makeCtx(root)).execute(
             { team_id: "alpha", stages: [{ member: "bob", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("unknown member")
     })
@@ -379,7 +379,7 @@ describe("team_delegate startup validation", () => {
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
         const result = await teamDelegateTool(makeCtx(root)).execute(
             { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("master-only")
     })
@@ -391,7 +391,7 @@ describe("team_delegate startup validation", () => {
         await setupTeam(root, sid, undefined, undefined)
         const result = await teamDelegateTool(makeCtx(root)).execute(
             { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("Error")
     })
@@ -404,7 +404,7 @@ describe("team_delegate startup validation", () => {
         await setBusy(root, sid, "delegate")
         const result = await teamDelegateTool(makeCtx(root)).execute(
             { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("already has an active orchestration")
     })
@@ -421,7 +421,7 @@ describe("team_delegate startup validation", () => {
                     { ref: "t1", subject: "s1", description: "d1", blocked_by: ["t2"] },
                 ],
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("unknown blockedBy")
         expect(result).toContain("t2")
@@ -439,7 +439,7 @@ describe("team_delegate startup validation", () => {
                 signoff_policy: "decider",
                 signoff_decider: "bob",
             },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
         expect(result).toContain("not a member")
     })

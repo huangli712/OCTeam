@@ -78,8 +78,8 @@ describe("dispatchToMember unit", () => {
 
         expect(promptAsync).toHaveBeenCalledTimes(1)
         const req = (promptAsync.mock.calls[0] as unknown[])[0] as Record<string, unknown>
-        expect((req as any).body.agent).toBe("oct-oracle")
-        expect((req as any).query.directory).toBe("/worktrees/alice")
+        expect((req as { body: { agent: string } }).body.agent).toBe("oct-oracle")
+        expect((req as { query: { directory: string } }).query.directory).toBe("/worktrees/alice")
         expect(member.status).toBe("running")
         expect(member.turnCount).toBe(1)
     })
@@ -100,7 +100,7 @@ describe("dispatchToMember unit", () => {
         const req = (promptAsync.mock.calls[0] as unknown[])[0] as Record<string, unknown>
         // safeMemberAgent clamps undefined to SAFE_FALLBACK_AGENT ("oct-oracle"),
         // NOT "build" — fail-safe to read-only, never fail-open to full privilege.
-        expect((req as any).body.agent).toBe("oct-oracle")
+        expect((req as { body: { agent: string } }).body.agent).toBe("oct-oracle")
     })
 
     test("clamps a non-oct-* agent (e.g. tampered 'build') to oct-oracle (fail-safe)", async () => {
@@ -119,7 +119,7 @@ describe("dispatchToMember unit", () => {
         await dispatchToMember(ctx, member, "task", "/app")
 
         const req = (promptAsync.mock.calls[0] as unknown[])[0] as Record<string, unknown>
-        expect((req as any).body.agent).toBe("oct-oracle")
+        expect((req as { body: { agent: string } }).body.agent).toBe("oct-oracle")
     })
 
     test("no-ops when member.sessionId is absent — no request, no mutation", async () => {
@@ -155,7 +155,7 @@ describe("dispatchToMember unit", () => {
         await dispatchToMember(ctx, member, "task", member.worktreePath ?? ctx.directory)
 
         const req = (promptAsync.mock.calls[0] as unknown[])[0] as Record<string, unknown>
-        expect((req as any).query.directory).toBe("/project")
+        expect((req as { query: { directory: string } }).query.directory).toBe("/project")
     })
 
     test("prepends <standing-instruction> on FIRST dispatch then no-ops (promptDelivered wiring)", async () => {

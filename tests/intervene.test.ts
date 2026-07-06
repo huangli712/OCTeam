@@ -10,7 +10,7 @@ import { inboxPath, teamDir } from "../src/state/paths.js"
 import { loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { ActiveTask, Message, MemberState, TeamState } from "../src/core/types.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 const TEAM = "intervene-team"
 
@@ -108,7 +108,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
 
         const result = await teamInterveneTool(makeCtx(root)).execute(
             { team_id: TEAM, to: "alice", body: "stop and rebase now" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("alice")
 
@@ -140,7 +140,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
 
         const result = await teamInterveneTool(makeCtx(root)).execute(
             { team_id: TEAM, to: "*", body: "all hands: switch to plan B" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("3 members")
 
@@ -172,7 +172,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
 
         const result = await teamInterveneTool(makeCtx(root)).execute(
             { team_id: TEAM, to: "alice", body: "should be rejected" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("backpressure")
         // Only the pre-existing message remains; the directive was NOT written.
@@ -197,7 +197,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
 
         const result = await teamInterveneTool(makeCtx(root)).execute(
             { team_id: TEAM, to: "alice", body: "member trying to intervene" },
-            { sessionID: memberSid } as any,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("master-only")
         // Nothing written by a rejected non-master caller.
@@ -220,7 +220,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
 
         const result = await teamInterveneTool(makeCtx(root)).execute(
             { team_id: TEAM, to: "alice", body: "intervene on idle team" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("no active run")
         const inbox = await readInbox(dir, "alice")
@@ -244,7 +244,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
 
         const result = await teamInterveneTool(makeCtx(root)).execute(
             { team_id: TEAM, to: "alice", body: "intervene on inactive team" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("Error")
         // Blocked before any write.
@@ -267,7 +267,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
 
         const result = await teamInterveneTool(makeCtx(root)).execute(
             { team_id: TEAM, to: "alice", body: "directive does not count" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("alice")
         // messagesSent untouched at its pre-set value.
@@ -290,7 +290,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
 
         const result = await teamInterveneTool(makeCtx(root)).execute(
             { team_id: TEAM, to: "nobody", body: "to a ghost" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("unknown recipient")
     })
@@ -310,7 +310,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
 
         const result = await teamInterveneTool(makeCtx(root)).execute(
             { team_id: TEAM, to: "alice", body: "no runId yet" },
-            { sessionID: masterSid } as any,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("alice")
         const inbox = await readInbox(dir, "alice")

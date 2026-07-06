@@ -10,7 +10,7 @@ import { teamDeleteTool } from "../src/tools/delete.js"
 import { initTeamState } from "../src/state/store.js"
 import { teamDir, worktreesDir } from "../src/state/paths.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const execFileP = promisify(execFile)
 
@@ -62,7 +62,7 @@ describe("team_delete uncommitted-changes guard", () => {
     test("dirty worktree + force:false → rejected, names the member", async () => {
         const { tool, sid } = await setupTeamWithWorktree("dirty-noforce", true)
         tracked.push(sid)
-        const result = await tool.execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const result = await tool.execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("uncommitted changes")
         expect(result).toContain("alice")
     })
@@ -70,7 +70,7 @@ describe("team_delete uncommitted-changes guard", () => {
     test("dirty worktree + force:true → deleted (forced)", async () => {
         const { tool, sid } = await setupTeamWithWorktree("dirty-force", true)
         tracked.push(sid)
-        const result = await tool.execute({ team_id: "alpha", force: true }, { sessionID: sid } as any)
+        const result = await tool.execute({ team_id: "alpha", force: true }, makeToolContext(sid))
         expect(result).toContain("deleted")
         expect(result).toContain("forced")
     })
@@ -78,7 +78,7 @@ describe("team_delete uncommitted-changes guard", () => {
     test("clean worktree + force:false → deleted normally", async () => {
         const { tool, sid } = await setupTeamWithWorktree("clean-noforce", false)
         tracked.push(sid)
-        const result = await tool.execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const result = await tool.execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("deleted")
         expect(result).not.toContain("uncommitted")
     })
@@ -92,7 +92,7 @@ describe("team_delete uncommitted-changes guard", () => {
         await initTeamState(storageRoot, makeState("alpha", sid, [makeMember("alice")]), sid)
         const ctx = { storageRoot, directory: repoDir, scope: "project" } as unknown as PluginContext
         tracked.push(sid)
-        const result = await teamDeleteTool(ctx).execute({ team_id: "alpha" }, { sessionID: sid } as any)
+        const result = await teamDeleteTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("deleted")
         expect(result).not.toContain("uncommitted")
     })

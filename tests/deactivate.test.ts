@@ -11,7 +11,7 @@ import {
     setActiveTeam,
     unindexSession,
 } from "../src/state/resolve.js"
-import { makeState, tmpRoot } from "./helpers.js"
+import { makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 /** Minimal PluginContext stub: teamDeactivateTool only reads storageRoot + scope. */
 function makeCtx(storageRoot: string): PluginContext {
@@ -49,7 +49,7 @@ describe("team_deactivate", () => {
         const tool = teamDeactivateTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "alpha" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("deactivated")
@@ -75,7 +75,7 @@ describe("team_deactivate", () => {
         const tool = teamDeactivateTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "beta" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("already inactive")
@@ -99,7 +99,7 @@ describe("team_deactivate", () => {
         const tool = teamDeactivateTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "gamma" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("Error")
@@ -129,7 +129,7 @@ describe("team_deactivate", () => {
         // Caller is a different session, not the leader.
         const result = await tool.execute(
             { team_id: "delta" },
-            { sessionID: "ses_other" } as any,
+            makeToolContext("ses_other"),
         )
 
         expect(result).toContain("Error")
@@ -150,7 +150,7 @@ describe("team_deactivate", () => {
         const tool = teamDeactivateTool(makeCtx(root))
         const result = await tool.execute(
             { team_id: "ghost" },
-            { sessionID: sid } as any,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("not found")
