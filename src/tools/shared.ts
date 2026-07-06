@@ -4,8 +4,9 @@
  * overlap and every tool file imported exactly one of them, so a single
  * shared module removes a split that no longer reflects a real boundary.
  *
- * Lifecycle helpers: ActivateDecision, decideActivate, defaultBounds,
- * withOrderedLocks.
+ * Lifecycle helpers: defaultBounds.
+ * (Activation logic ActivateDecision/decideActivate/withOrderedLocks moved to
+ * tools/activation.ts — used exclusively by the team_activate tool.)
  *
  * Workflow helpers: startOrchestration (shared three-phase lock order — see
  * the Phase 1/2/3 contract below), baseTaskFields, validateSignoff,
@@ -39,34 +40,8 @@ import { resolveCallerInTeam } from "../state/resolve.js"
 import type { ActiveTask, Bounds, DecisionRecord, ReducePolicy, SignoffPolicy } from "../core/types.js"
 
 // ============================================================
-// Lifecycle helpers (former lifecycle-shared.ts)
+// Bounds + member validation (used by create, add_member, and workflow tools)
 // ============================================================
-
-/**
- * Pure decision for team_activate (exported for unit tests). Auto-switching
- * is disabled: the decision refuses when another team is already active (the
- * user must team_deactivate it first). Activating an already-active team is a
- * no-op.
- */
-export type ActivateDecision =
-    | { kind: "noop" }
-    | { kind: "ok" }
-    | { kind: "error"; message: string }
-
-export function decideActivate(opts: {
-    targetIsAlreadyActive: boolean
-    outgoingExists: boolean
-    outgoingName?: string
-}): ActivateDecision {
-    if (opts.targetIsAlreadyActive) return { kind: "noop" }
-    if (opts.outgoingExists) {
-        return {
-            kind: "error",
-            message: `Cannot activate: team "${opts.outgoingName}" is currently active. Call team_deactivate("${opts.outgoingName}") first — auto-switching is disabled.`,
-        }
-    }
-    return { kind: "ok" }
-}
 
 /** Resource bounds with design defaults, overridden by user input. */
 export function defaultBounds(override?: Partial<Bounds>): Bounds {
