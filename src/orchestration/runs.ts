@@ -78,7 +78,7 @@ const DecisionRecordSchema = z.object({
     timestamp: z.number(),
 })
 
-const ApprovalKindSchema = z.enum(["pipeline_stage", "tollgate_gate", "loop_done", "route_decision", "recurse_decompose"])
+const ApprovalKindSchema = z.enum(["pipeline_stage", "tollgate_gate", "loop_done", "route_decision", "recurse_decompose", "arbitrate_ruling", "consensus_deadlock"])
 const ApprovalDecisionRecordSchema = z.object({
     id: z.string(),
     kind: ApprovalKindSchema,

@@ -114,6 +114,7 @@ Run history persists across plugin restarts.
 
 **Human-in-the-loop approvals.** `team_pipeline`, `team_tollgate`, `team_loop`,
 `team_route`, and `team_recurse` can pause at supported mid-run boundaries when
+`team_route`, `team_recurse`, `team_arbitrate`, and `team_consensus` can pause at supported mid-run boundaries when
 `human_approval` is enabled. The leader resumes with `team_approve` or rejects
 with `team_reject`. This is distinct from `signoff`: HITL is a mid-run human
 approval gate, while signoff is a post-completion member-agent review.

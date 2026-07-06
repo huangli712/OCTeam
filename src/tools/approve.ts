@@ -79,6 +79,12 @@ export async function applyApprovalDecision(
             case "route_decision":
                 await finishRun(ctx, team, "route_human_rejected", "failed")
                 return `Rejected ${request.kind} for team "${team.teamName}".`
+            case "arbitrate_ruling":
+                await finishRun(ctx, team, "arbitrate_human_rejected", "failed")
+                return `Rejected ${request.kind} for team "${team.teamName}".`
+            case "consensus_deadlock":
+                await finishRun(ctx, team, "consensus_human_rejected", "failed")
+                return `Rejected ${request.kind} for team "${team.teamName}".`
             case "recurse_decompose":
                 await rejectRecurseDecompose(ctx, team, request)
                 return `Rejected ${request.kind} for team "${team.teamName}".`
@@ -102,6 +108,12 @@ export async function applyApprovalDecision(
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         case "route_decision":
             await advanceRouteAfterDecision(ctx, team)
+            return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
+        case "arbitrate_ruling":
+            await finishRun(ctx, team, "arbitrate_complete:ruled", "idle")
+            return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
+        case "consensus_deadlock":
+            await finishRun(ctx, team, "consensus_max_rounds_accepted", "idle")
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         case "recurse_decompose":
             await approveRecurseDecompose(ctx, team, request)

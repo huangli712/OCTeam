@@ -16,6 +16,7 @@ import { buildRoundSummary, finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { waitForBarrier } from "./barriers.js"
 import { allMembersAgree } from "./decisions.js"
+import { maybeRequestApproval } from "./hitl.js"
 
 export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
@@ -29,7 +30,13 @@ export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promi
             return
         }
         if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
-            // Reached here only when consensus was NOT detected -> failed.
+            if (await maybeRequestApproval(ctx, team, {
+                kind: "consensus_deadlock",
+                round: task.currentRound,
+                summary: `Consensus not reached after ${task.currentRound} round(s) on topic "${task.topic ?? "unknown"}" — ${participants.length} member positions below.`,
+            })) {
+                return
+            }
             await finishRun(ctx, team, "consensus_max_rounds", "failed")
             return
         }

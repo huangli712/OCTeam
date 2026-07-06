@@ -25,6 +25,7 @@ import { truncateOutput } from "../core/utils.js"
 import { waitForBarrier } from "./barriers.js"
 import { parseArbitrationDecision } from "./decisions.js"
 import { maybeTriggerSignoff } from "./signoff.js"
+import { maybeRequestApproval } from "./hitl.js"
 
 /**
  * Build a debater's prompt for the current debate round. Round 1 states the
@@ -123,6 +124,12 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
     })
     if (await maybeTriggerSignoff(ctx, team)) {
         return // signoff in progress
+    }
+    if (await maybeRequestApproval(ctx, team, {
+        kind: "arbitrate_ruling",
+        summary: `Arbiter ${task.arbiterMember ?? "unknown"} ruled: "${r.ruling}".\n\nRationale: ${r.rationale}`,
+    })) {
+        return
     }
     await finishRun(ctx, team, "arbitrate_complete:ruled", "idle")
 }

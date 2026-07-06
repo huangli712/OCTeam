@@ -107,7 +107,7 @@ export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | 
 export type ParallelMode = "isolated" | "cooperative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
-export type ApprovalKind = "pipeline_stage" | "tollgate_gate" | "loop_done" | "route_decision" | "recurse_decompose"
+export type ApprovalKind = "pipeline_stage" | "tollgate_gate" | "loop_done" | "route_decision" | "recurse_decompose" | "arbitrate_ruling" | "consensus_deadlock"
 export type ApprovalTimeoutAction = "fail" | "approve" | "reject"
 
 // tollgate: three-valued verification verdict emitted by a gate's verifier.

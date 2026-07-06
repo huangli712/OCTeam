@@ -11,6 +11,8 @@ import {
     DEFAULT_SIGNOFF_POLICY,
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
+    humanApprovalSchemaFields,
+    humanApprovalTaskFields,
     startOrchestration,
 } from "./shared.js"
 
@@ -25,6 +27,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            ...humanApprovalSchemaFields,
         },
         async execute(args, context) {
             return startOrchestration(
@@ -56,6 +59,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                     // succeeds when every participant emits agreed=true -- so a
                     // separate post-completion signoff stage would be redundant.
                     signoffPolicy: DEFAULT_SIGNOFF_POLICY,
+                    ...humanApprovalTaskFields(args),
                 }),
                 // dispatch: round 1 to every participant.
                 async (team, task) => {
