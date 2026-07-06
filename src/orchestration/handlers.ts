@@ -27,7 +27,7 @@ import type { PluginContext } from "../core/context.js"
 import { type Team, loadTeamState, saveTeamState } from '../state/store.js';
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"
-import { extractOutputFromParts, sumMemberTokens, truncateOutput } from "../core/utils.js"
+import { extractOutputFromParts, isEnoent, sumMemberTokens, truncateOutput } from '../core/utils.js';
 import { resolveTeamMember } from "../state/resolve.js"
 import { safeMemberAgent } from "../core/role.js"
 import { atomicWrite } from "../state/locks.js"
@@ -356,7 +356,7 @@ export async function captureMemberOutput(
     try {
         prev = await readFile(outPath, "utf8")
     } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+        if (!isEnoent(err)) throw err
     }
     const accumulated = appendTurnBlock(prev, full, new Date().toISOString())
 

@@ -15,6 +15,7 @@
 import fs from "node:fs/promises"
 import crypto from "node:crypto"
 
+import { isEnoent } from '../core/utils.js';
 import { CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./locks.js"
 import { claimLockPath, claimMutexPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./paths.js"
 import type { Task, TaskStatus } from "../core/types.js"
@@ -118,7 +119,7 @@ async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task
         }
         return parsed
     } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
+        if (isEnoent(err)) return null
         throw err
     }
 }
@@ -154,7 +155,7 @@ export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
     try {
         entries = await fs.readdir(tasksDir(teamDirectory), { withFileTypes: true })
     } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
+        if (isEnoent(err)) return []
         throw err
     }
     const ids: string[] = []

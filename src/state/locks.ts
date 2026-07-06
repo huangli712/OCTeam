@@ -2,6 +2,9 @@ import crypto from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 
+import { isEnoent } from '../core/utils.js';
+
+
 /** Default stale-lock TTL: a lock older than this is treated as dead (30s). */
 export const LOCK_TTL_MS = 30_000
 
@@ -103,7 +106,7 @@ export async function withLock<T>(lockPath: string, fn: () => Promise<T>): Promi
     const heartbeat = setInterval(() => {
         const now = new Date()
         fs.utimes(lockPath, now, now).catch((err) => {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") return // lock vanished or refresh raced — release() handles ownership cleanup
+            if (isEnoent(err)) return // lock vanished or refresh raced — release() handles ownership cleanup
             // Non-vanish error (ENOSPC/EIO/EROFS/EPERM): swallow rather than
             // throw. The heartbeat is best-effort — a transient utimes failure
             // does not affect lock correctness: the next heartbeat (every
@@ -222,7 +225,7 @@ async function releaseLock(lockPath: string): Promise<void> {
         // Any other errno (EPERM, EBUSY, EROFS, ...) is a real release failure
         // that would leave a fresh live-owner lock wedging the next caller for
         // LOCK_MAX_WAIT_MS; surface it through withLock's finally.
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+        if (!isEnoent(err)) throw err
     })
 }
 
@@ -252,8 +255,7 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
             throw new Error(`atomicWrite: refusing to write through symlink: ${filePath}`)
         }
     } catch (err: unknown) {
-        const code = (err as NodeJS.ErrnoException).code
-        if (code !== "ENOENT") throw err
+        if (!isEnoent(err)) throw err
         // Target does not exist yet — safe to proceed.
     }
 
@@ -307,7 +309,7 @@ export async function refuseSymlink(filePath: string): Promise<void> {
             throw new Error(`refuseSymlink: refusing to write through symlink: ${filePath}`)
         }
     } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+        if (!isEnoent(err)) throw err
     }
 }
 

@@ -3,6 +3,7 @@ import path from "node:path"
 
 import type { TeamState, TeamSpec } from "../core/types.js"
 import { isOCTeamAgent } from "../core/role.js"
+import { isEnoent } from '../core/utils.js';
 import { atomicWrite, AsyncMutex, withLock } from "./locks.js"
 import {
     configPath,
@@ -146,7 +147,7 @@ async function readJsonOrNull<T>(
         }
         return parsed as T
     } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
+        if (isEnoent(err)) return null
         throw err
     }
 }
@@ -416,7 +417,7 @@ export async function listTeamNames(storageRoot: string, leadSessionId?: string)
         const entries = await fs.readdir(root, { withFileTypes: true })
         return entries.filter(e => e.isDirectory()).map(e => e.name)
     } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
+        if (isEnoent(err)) return []
         throw err
     }
 }
@@ -443,7 +444,7 @@ export async function listAllTeams(
         const entries = await fs.readdir(storageRoot, { withFileTypes: true })
         sids = entries.filter(e => e.isDirectory()).map(e => e.name)
     } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
+        if (isEnoent(err)) return []
         throw err
     }
     const out: { leadSessionId?: string; teamName: string }[] = []

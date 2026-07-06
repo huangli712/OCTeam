@@ -153,6 +153,17 @@ export function sumMemberTokens(messages: Array<{ info?: Message }> | undefined)
     return total
 }
 
+// --- fs error helpers ---
+
+/**
+ * Returns true iff `err` is a Node.js ENOENT ("no such file or directory")
+ * error. Centralizes the cast-and-check pattern used at every fs.* catch site
+ * so the NodeJS.ErrnoException cast lives in one place.
+ */
+export function isEnoent(err: unknown): boolean {
+    return (err as NodeJS.ErrnoException).code === "ENOENT"
+}
+
 // --- polling primitive ---
 
 /** Resolve when predicate is true; reject on timeout. Polls every pollMs. */

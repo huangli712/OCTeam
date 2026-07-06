@@ -33,6 +33,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
+import { isEnoent } from '../core/utils.js';
 import { RESERVATION_TTL_MS, atomicWrite, refuseSymlink, withLock } from "../state/locks.js"
 import {
     inboxPath,
@@ -141,7 +142,7 @@ async function readJsonl(filePath: string): Promise<Message[]> {
         }
         return out
     } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
+        if (isEnoent(err)) return []
         throw err
     }
 }
@@ -149,7 +150,7 @@ async function readJsonl(filePath: string): Promise<Message[]> {
 async function truncateFile(filePath: string): Promise<void> {
     await refuseSymlink(filePath)
     await fs.writeFile(filePath, "", "utf8").catch(err => {
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+        if (!isEnoent(err)) throw err
     })
 }
 
@@ -264,7 +265,7 @@ export async function ackMessages(
                 // the reservation on disk; releaseStaleReservations would then
                 // re-append it to the inbox → duplicate delivery of an already
                 // processed message. Surface the failure instead.
-                if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+                if (!isEnoent(err)) throw err
             })
         }
         // Retention: cap the audit log so it doesn't grow unbounded.
@@ -285,7 +286,7 @@ async function _pruneProcessedLogUnlocked(teamDirectory: string, recipient: stri
     try {
         raw = await fs.readFile(p, "utf8")
     } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return
+        if (isEnoent(err)) return
         throw err
     }
     const lines = raw.split("\n").filter(l => l.length > 0)
@@ -309,7 +310,7 @@ export async function releaseStaleReservations(
         try {
             files = await fs.readdir(dir)
         } catch (err: unknown) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") return
+            if (isEnoent(err)) return
             throw err
         }
         // Build a set of already-processed message ids so we don't re-deliver
@@ -329,7 +330,7 @@ export async function releaseStaleReservations(
                 }
             }
         } catch (err: unknown) {
-            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+            if (!isEnoent(err)) throw err
             // no processed.jsonl yet — nothing to dedupe against
         }
         for (const f of files) {
@@ -370,7 +371,7 @@ export async function releaseStaleReservations(
                 try {
                     await fs.unlink(p)
                 } catch (err: unknown) {
-                    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+                    if (isEnoent(err)) {
                         // already gone — safe to requeue (no duplicate risk)
                     } else {
                         // unlink failed — do NOT requeue; retry next sweep
@@ -414,7 +415,7 @@ export async function unreadInboxBytes(
         const stat = await fs.stat(inboxPath(teamDirectory, recipient))
         return stat.size
     } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0
+        if (isEnoent(err)) return 0
         throw err
     }
 }
