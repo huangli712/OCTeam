@@ -1,7 +1,8 @@
 # team_workflow 编排场景设计
 
 > **模式**：`team_workflow` — 声明式、确定性线性步骤引擎（GAP-2）。每个 step 是 `task`（一个成员产出）或 `gate`（验证者对前一个 task 的产出给出 PASS/FAIL 判定）。引擎——而非 master LLM——驱动每一步推进，中间结果不进 master 上下文。`gate` FAIL 且 `on_fail="retry"` 时把前一个 task 连同 diff 重派（最多 `max_retries` 次），否则失败整条 run。MVP：线性推进 + 门控重试；无 fanout / route / 循环节点。
-> **源码**：[`src/tools/workflow.ts`](../../../src/tools/workflow.ts)
+> **模式**：`team_workflow` — 声明式、确定性线性步骤引擎。每个 step 是 `task`（一个成员产出）或 `gate`（验证者对指定前导 task 的产出给出 PASS / FAIL / INVALID 三值判定）。引擎——而非 master LLM——驱动每一步推进，中间结果不进 master 上下文。`gate` FAIL 且 `on_fail="retry"` 时把目标 task 连同 diff 重派（最多 `max_retries` 次）；`gate` 输出 INVALID 或无法解析时，run 以 `workflow_invalid:*` 终止，不惩罚 producer（与 tollgate 一致）。MVP：线性推进 + 门控重试；无 fanout / route / 循环节点。
+> **源码**：[`src/tools/workflow.ts`](../../../src/tools/workflow.ts) / [`src/orchestration/workflow.ts`](../../../src/orchestration/workflow.ts)
 > **控时设计**：4 步链（task → gate → task → gate）、2 成员，每步 3-5 min，串行 ≈ 14-18 min（远低于 30 min 上限）。
 
 ## 与 pipeline / tollgate 的区别
@@ -13,6 +14,34 @@
 | `team_workflow` | step（task \| gate 任意交错） | 声明式线性步骤 + 门控重试，engine 驱动每一步 |
 
 `team_workflow` 的价值在于：把"先做两个普通 task，再对第三步 gate，再继续普通 task"这类异构链一次性声明、可重复执行，且所有推进逻辑落在可持久化的 engine 里，而非占用 master 的上下文预算。
+
+**phase 1-3 强化项**（已落地）：内部 `currentStageIndex` 保持 0-based，所有用户可见文本（summary / progress / approval prompt / result ledger）统一 1-based；`RunRecord` 新增 `workflow.steps` 快照，`team_result_get` 可重建完整 step ledger；同一成员跑多个 task step 时，下游/gate 注入的是该 step 自身产出快照，而非成员最新响应；`gate` 支持显式 `target_step`（1-based，省略则验证最近前导 task）；`gate` FAIL retry 记录结构化 `retry` 事件（含 display step / attempts / verifier / diff）；task/gate 步骤演员缺失 live session 时 run 以 `workflow_failed:no_session:*` 显式终止，不再静默卡到 timeout；`team_workflow` 启动校验拒绝跨类字段、`on_fail="retry"` 必须显式 `max_retries`；`dry_run: true` 只渲染 1-based step 计划，不启动编排。
+
+### gate 三值语义（PASS / FAIL / INVALID）
+
+| 判定 | engine 行为 | run 结果 |
+|------|------------|---------|
+| PASS | 标记 gate 完成，推进下一步 | 继续 |
+| FAIL + `on_fail="fail"`（默认） | 立即终止 | `workflow_failed:<verifier>` |
+| FAIL + `on_fail="retry"` 且 `attempts ≤ max_retries` | 把 `target_step` 指向的 task（连同其与 gate 之间的已完成步骤）重置并重派；`retry` 事件含 display step / attempts / diff | 继续 |
+| FAIL + `on_fail="retry"` 且 `attempts > max_retries` | 终止 | `workflow_failed:<verifier>` |
+| INVALID 或 verdict 无法解析 | 终止，不重派 producer（producer 中立） | `workflow_invalid:<verifier>` |
+
+### gate `target_step`：验证更早的 task
+
+`gate` 默认验证“最近的前导 task”。若想验证更早或更具体的 task，用 `target_step`（1-based）：
+
+```json
+{
+  "steps": [
+    { "kind": "task", "member": "alice", "task": "draft design" },
+    { "kind": "task", "member": "carol", "task": "add tests" },
+    { "kind": "gate", "verifier": "bob", "target_step": 1, "criteria": "design covers the API surface", "on_fail": "retry", "max_retries": 1 }
+  ]
+}
+```
+
+约束：`target_step` 必须 < 当前 gate 的序号、必须指向 task 步骤、且 verifier 不能等于该 task 的成员（禁止自验证）。FAIL retry 时会重派该 `target_step`，并把它与 gate 之间的已完成步骤一并重置重跑，保证线性依赖一致。
 
 ## 场景一览
 
@@ -112,6 +141,7 @@
 - step 3 是 `task`，engine 自动注入 step 1 的产出作为上游上下文（gate 步骤的判定不计入上游）
 - step 4 是 `gate`，验证 step 3 的重构产出——`verifier: "bob"` ≠ step 3 的 `member: "alice"`，同样满足「禁止自验证」；criteria 复用 step 2 的三用例 + 额外要求提取了 `validate()`，确保重构无回归
 - step 4 `on_fail: "retry"` + `max_retries: 1` —— 重构也可能引入回归，给 alice 一次修正机会
+> 注：step 4 默认验证“最近前导 task”（即 step 3）。如需让 step 4 复用 step 2 已确认的同一组用例但显式验证 step 1 的实现，可加 `target_step: 1`；本场景保持默认以演示最近前导语义。
 - `timeout_ms: 1200000`（20 min）—— 串行四步，正常 16 min 完成，留余量
 
 ### 1.4 执行流程（时序）
@@ -133,6 +163,8 @@ T+12~16m bob 再判定 → <verdict>
 T+16m    workflow_complete，汇总交付 master（含四步账本 + task 产出）
 ```
 
+> 期间任意 task/gate 演员缺失 live session（session 未创建或成员已 errored），engine 立即终止为 `workflow_failed:no_session:<member>`，并把 `workflow.steps` 快照写入 `RunRecord`（每步 kind / member / verifier / targetStep / verdict / attempts / completed / output / outputBytes）。`team_result_get` 读取该 run 时会渲染 `### workflow steps` 分组，按 Step N 展示账本 + 各 task 产出快照。
+
 ### 1.5 可选：人工审批（HITL）
 
 在 `team_workflow` 加 `"human_approval": true`，engine 会在每个非终步完成（task 完成、gate PASS）后、推进下一步前暂停，等待 `team_approve` / `team_reject`：
@@ -140,13 +172,39 @@ T+16m    workflow_complete，汇总交付 master（含四步账本 + task 产出
 - `team_approve(team_id, approval_id)` —— 继续下一步
 - `team_reject(team_id, approval_id, feedback)` —— 整条 run 失败（`workflow_human_rejected`）
 
-挂钟在暂停期间不计入超时（与其它编排的 HITL 一致）。
+挂钟在暂停期间不计入超时（与其它编排的 HITL 一致）。approval prompt 会显示 `workflow_step (step N)`（1-based）并附上当前完成步骤的 kind / actor / verdict rationale 与下一步摘要，便于 master 直接判断。
+
+### 1.6 可选：dry_run 预演
+
+启动前加 `dry_run: true`，`team_workflow` 只渲染 1-based step 计划，不创建 `activeTask`、不派发成员：
+
+```json
+{
+  "tool": "team_workflow",
+  "args": {
+    "team_id": "register-handler-flow",
+    "dry_run": true,
+    "steps": [ /* 同 1.3 */ ]
+  }
+}
+```
+
+输出形如：
+```
+Workflow dry run for "register-handler-flow" (4 step(s)):
+1. [task] alice: Implement ...
+2. [gate] bob verifies step 1: Verify handleRegister ...; on_fail=retry max_retries=1
+3. [task] alice: Refactor ...
+4. [gate] bob verifies step 3: Re-verify ...; on_fail=retry max_retries=1
+```
+
+校验失败（如 `on_fail="retry"` 缺 `max_retries`、task/gate 跨字段、`target_step` 指向 gate）也会在此阶段报错，避免半启动的 run。
 
 ## 恢复与检查点粒度
 
 `team_workflow` 的状态完全保存在 `activeTask`（`steps[]` + `currentStageIndex` 游标）中，因此复用现有的 `team_resume`：进程崩溃后，`team_resume` 会重新驱动当前步骤（若当前步演员已有产出则直接处理，否则重新派发），或若全部步骤已完成则直接交付。
 
-**已知限制**（与所有编排一致）：检查点粒度是整条 task，恢复时从**当前步骤**重新开始，而非步骤内部的子进度。
+**已知限制**（与所有编排一致）：检查点粒度是整条 task，恢复时从**当前步骤**重新开始，而非步骤内部的子进度。恢复覆盖分支（captured task 重放 / no captured response 重派 / all-complete 直接交付 / captured gate verdict 重放）见 `tests/resume-dispatch-branches.test.ts`。
 
 
 ## 快速启动 Prompt（复制即用）
@@ -167,7 +225,7 @@ T+16m    workflow_complete，汇总交付 master（含四步账本 + task 产出
 6. 人工核对（无 check 脚本）：
    - alice 的 .md 含可加载的 handleRegister 实现（step 1）+ 重构后的版本（step 3，提取了 validate 函数、行为不变）
    - bob 的 .md 含两个 <verdict>{"result":"PASS",...}</verdict>（step 2 验证原实现 + step 4 再验证重构产出）
-   - master 汇总含「workflow_complete」+ 四步账本（[task] alice / [gate] bob -> PASS / [task] alice / [gate] bob -> PASS）
+   - master 汇总含「workflow_complete」+ 四步账本（[task] alice (done) / [gate] bob verifies nearest task -> PASS / [task] alice (done) / [gate] bob verifies nearest task -> PASS）
 
 成功标准（人工自判）：handleRegister 三路径正确（空 email→400、password<8→400、合法输入→200）；两道 gate 均 PASS；重构后行为不变且提取了 validate 函数。
 ```
