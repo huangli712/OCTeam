@@ -10,6 +10,8 @@ import { dispatchToMember } from "../orchestration/dispatch.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
+    humanApprovalSchemaFields,
+    humanApprovalTaskFields,
     signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
@@ -31,6 +33,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 )
                 .min(1),
             ...signoffSchemaFields,
+            ...humanApprovalSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
@@ -65,6 +68,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                         type: "pipeline",
                         ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                         stages,
+                        ...humanApprovalTaskFields(args),
                         ...signoffTaskFields(args),
                     }
                 },

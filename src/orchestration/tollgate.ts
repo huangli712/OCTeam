@@ -24,6 +24,7 @@ import { recordEvent } from "./events.js"
 import { truncateOutput } from "../core/utils.js"
 import { parseVerdict } from "./decisions.js"
 import { maybeTriggerSignoff } from "./signoff.js"
+import { maybeRequestApproval } from "./hitl.js"
 
 /**
  * Build the verifier's dispatch prompt: the producer's output, the criteria,
@@ -97,6 +98,23 @@ export async function advanceToGatedStage(
         task.gatedStages ?? [], task.responses, task.currentStageIndex)
     const text = upstream ? `${upstream}\n\n[Your task]\n${stage.task}` : stage.task
     await dispatchToMember(ctx, producer, text, producer.worktreePath ?? ctx.directory, team)
+}
+
+export async function advanceTollgateAfterPass(ctx: PluginContext, team: Team): Promise<void> {
+    const task = team.activeTask
+    if (!task || task.type !== "tollgate" || !task.gatedStages) return
+    const next = task.gatedStages.findIndex(s => !s.completed)
+    if (next === -1) {
+        if (await maybeTriggerSignoff(ctx, team)) return
+        await finishRun(ctx, team, "tollgate_complete", "idle")
+        return
+    }
+    task.currentStageIndex = next
+    task.tollgatePhase = "produce"
+    const nextStage = task.gatedStages[next]
+    if (!nextStage) return
+    await advanceToGatedStage(ctx, team, nextStage)
+    await saveTeamState(team)
 }
 
 /**
@@ -217,10 +235,14 @@ export async function handleTollgateIdle(
             await finishRun(ctx, team, "tollgate_complete", "idle")
             return
         }
-        task.currentStageIndex = next
-        task.tollgatePhase = "produce"
-        await advanceToGatedStage(ctx, team, task.gatedStages[next])
-        await saveTeamState(team)
+        if (await maybeRequestApproval(ctx, team, {
+            kind: "tollgate_gate",
+            stage: task.currentStageIndex,
+            summary: `Tollgate stage ${task.currentStageIndex} passed verification. Review before stage ${next} starts.`,
+        })) {
+            return
+        }
+        await advanceTollgateAfterPass(ctx, team)
         return
     }
 

@@ -131,6 +131,13 @@ export const signoffSchemaFields = {
         .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
 }
 
+export const humanApprovalSchemaFields = {
+    human_approval: tool.schema
+        .boolean()
+        .optional()
+        .describe("Pause at supported mid-run boundaries and require the leader to call team_approve/team_reject before continuing."),
+}
+
 // Named defaults for orchestration parameters (wf-011). Previously these were
 // scattered as inline `?? N` literals across the Phase-3 commit blocks, which
 // made the effective defaults hard to audit and easy to drift between tools.
@@ -314,6 +321,15 @@ export function signoffTaskFields(
         signoffPolicy: args.signoff_policy ?? DEFAULT_SIGNOFF_POLICY,
         signoffDecider: args.signoff_decider,
         signoffQuorum: args.signoff_quorum,
+    }
+}
+
+export function humanApprovalTaskFields(
+    args: { human_approval?: boolean },
+): { humanApproval: boolean | undefined; approvalHistory: [] } {
+    return {
+        humanApproval: args.human_approval,
+        approvalHistory: [],
     }
 }
 

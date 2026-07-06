@@ -28,6 +28,7 @@ import { buildArbiterPrompt, buildDebatePrompt, handleArbitrateIdle } from "../o
 import { buildRouterPrompt } from "./router.js"
 import { buildSummary, finishRun } from "../orchestration/summary.js"
 import { buildReducePrompt, buildSignoffReviewPrompt, handleReduceIdle } from "../orchestration/signoff.js"
+import { resumeApprovalStage } from "../orchestration/hitl.js"
 import { listAllTasks, reapStaleClaims, updateTask } from "../state/tasks.js"
 
 /**
@@ -244,6 +245,7 @@ export async function resumeDispatch(
     team: Team,
     task: ActiveTask,
 ): Promise<void> {
+    if (await resumeApprovalStage(ctx, team)) return
     // Signoff/reduce sub-stage recovery (returns early if in progress).
     if (await resumeSignoffReduceStage(ctx, team, task)) return
 

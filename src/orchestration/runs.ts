@@ -49,6 +49,7 @@ const FAILED_REASON_MARKERS = [
     "tollgate_invalid",    // tollgate: verifier/oracle unevaluable, no escalation handler
     "signoff_rejected",           // signoff: decider/reviewer rejected the work
     "signoff_quorum_not_reached", // signoff: peer-quorum did not get enough approvals
+    "human_rejected",             // HITL: leader rejected a mid-run approval request
 ] as const
 
 /** Derive run status from the verbatim termination reason (heuristic; see set above). */
@@ -77,6 +78,16 @@ const DecisionRecordSchema = z.object({
     timestamp: z.number(),
 })
 
+const ApprovalKindSchema = z.enum(["pipeline_stage", "tollgate_gate", "loop_done"])
+const ApprovalDecisionRecordSchema = z.object({
+    id: z.string(),
+    kind: ApprovalKindSchema,
+    approved: z.boolean(),
+    requestedAt: z.number(),
+    resolvedAt: z.number(),
+    feedback: z.string().optional(),
+})
+
 const RunRecordSchema = z.object({
     version: z.literal(1),
     runId: z.string(),
@@ -93,6 +104,7 @@ const RunRecordSchema = z.object({
     messagesSent: z.number(),
     currentRound: z.number().optional(),
     decisionHistory: z.array(DecisionRecordSchema).optional(),
+    approvalHistory: z.array(ApprovalDecisionRecordSchema).optional(),
     consensusReached: z.boolean().optional(),
     signoffPolicy: SignoffPolicySchema.optional(),
     signoffApprovals: z.record(z.string(), z.boolean()).optional(),
@@ -109,7 +121,7 @@ const RunEventSchema = z.object({
     timestamp: z.number(),
     kind: z.enum([
         "dispatched", "captured", "retry", "errored", "stage_advanced", "round",
-        "signoff", "terminated", "routed", "arbitrated", "decomposed", "verdict",
+        "signoff", "approval_requested", "approval_resolved", "terminated", "routed", "arbitrated", "decomposed", "verdict",
         "aggregation_stalled",
     ]),
     member: z.string().optional(),
@@ -189,6 +201,7 @@ export async function persistRun(team: Team, reason: string): Promise<void> {
         messagesSent: task.messagesSent,
         currentRound: task.currentRound,
         decisionHistory: task.type === "loop" ? task.decisionHistory : undefined,
+        approvalHistory: task.approvalHistory,
         consensusReached: task.type === "consensus" ? task.consensusReached : undefined,
         signoffPolicy: task.signoffPolicy,
         signoffApprovals: task.signoffApprovals,

@@ -1,0 +1,146 @@
+/**
+ * Human approval tools. These are master-only control-plane tools that resolve
+ * a mid-run approvalStage by approving or rejecting the current request.
+ */
+
+import { tool, type ToolDefinition } from "@opencode-ai/plugin"
+
+import type { PluginContext } from "../core/context.js"
+import type { ApprovalDecisionRecord, ApprovalRequest } from "../core/types.js"
+import { finishRun } from "../orchestration/summary.js"
+import { recordEvent } from "../orchestration/events.js"
+import { advancePipelineAfterStage } from "../orchestration/pipeline.js"
+import { advanceTollgateAfterPass } from "../orchestration/tollgate.js"
+import { approveLoopDone, rejectLoopDone } from "../orchestration/loop.js"
+import { resolveCallerInTeam } from "../state/resolve.js"
+import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
+
+type ApprovalDecision = {
+    approved: boolean
+    feedback?: string
+}
+
+function validateApproval(team: Team, approvalId: string | undefined): ApprovalRequest | string {
+    const task = team.activeTask
+    if (!task?.approvalStage || !task.approvalRequest) {
+        return `Error: team "${team.teamName}" has no pending human approval.`
+    }
+    if (approvalId !== undefined && approvalId !== task.approvalRequest.id) {
+        return `Error: approval_id "${approvalId}" does not match pending approval "${task.approvalRequest.id}".`
+    }
+    return task.approvalRequest
+}
+
+export async function applyApprovalDecision(
+    ctx: PluginContext,
+    team: Team,
+    decision: ApprovalDecision,
+): Promise<string> {
+    const task = team.activeTask
+    if (!task?.approvalStage || !task.approvalRequest) {
+        return `Error: team "${team.teamName}" has no pending human approval.`
+    }
+    const request = task.approvalRequest
+    const resolvedAt = Date.now()
+    const pausedMs = Math.max(0, resolvedAt - request.requestedAt)
+    task.startedAt += pausedMs
+    const record: ApprovalDecisionRecord = {
+        id: request.id,
+        kind: request.kind,
+        approved: decision.approved,
+        requestedAt: request.requestedAt,
+        resolvedAt,
+    }
+    if (decision.feedback !== undefined) record.feedback = decision.feedback
+    task.approvalHistory = [...(task.approvalHistory ?? []), record]
+    task.approvalStage = undefined
+    task.approvalRequest = undefined
+    recordEvent(team, {
+        timestamp: resolvedAt,
+        kind: "approval_resolved",
+        stage: request.stage,
+        round: request.round,
+        detail: `${request.kind}:${decision.approved ? "approved" : "rejected"}`,
+    })
+
+    if (!decision.approved) {
+        switch (request.kind) {
+            case "pipeline_stage":
+                await finishRun(ctx, team, "pipeline_human_rejected", "failed")
+                return `Rejected ${request.kind} for team "${team.teamName}".`
+            case "tollgate_gate":
+                await finishRun(ctx, team, "tollgate_human_rejected", "failed")
+                return `Rejected ${request.kind} for team "${team.teamName}".`
+            case "loop_done":
+                await rejectLoopDone(ctx, team, decision.feedback)
+                return `Rejected ${request.kind} for team "${team.teamName}".`
+            default: {
+                const _exhaustive: never = request.kind
+                void _exhaustive
+                return `Error: unsupported approval kind.`
+            }
+        }
+    }
+
+    switch (request.kind) {
+        case "pipeline_stage":
+            await advancePipelineAfterStage(ctx, team)
+            return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
+        case "tollgate_gate":
+            await advanceTollgateAfterPass(ctx, team)
+            return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
+        case "loop_done":
+            await approveLoopDone(ctx, team)
+            return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
+        default: {
+            const _exhaustive: never = request.kind
+            void _exhaustive
+            return `Error: unsupported approval kind.`
+        }
+    }
+}
+
+function approvalTool(ctx: PluginContext, approved: boolean): ToolDefinition {
+    return tool({
+        description: approved
+            ? "Master-only: approve the current human approval pause and resume the orchestration."
+            : "Master-only: reject the current human approval pause and apply the mode-specific rejection behavior.",
+        args: {
+            team_id: tool.schema.string().min(1),
+            approval_id: tool.schema.string().optional(),
+            feedback: tool.schema.string().max(32768).optional(),
+        },
+        async execute(args, context) {
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller) return "Error: caller is not a member of this team"
+            if (!caller.isMaster) return approved ? "Error: team_approve is master-only" : "Error: team_reject is master-only"
+
+            let team
+            try {
+                team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+            } catch {
+                return `Error: team "${args.team_id}" not found`
+            }
+
+            let result = ""
+            await team.mutex.runExclusive(async () => {
+                const validation = validateApproval(team, args.approval_id)
+                if (typeof validation === "string") {
+                    result = validation
+                    return
+                }
+                result = await applyApprovalDecision(ctx, team, { approved, feedback: args.feedback })
+                await saveTeamState(team)
+            })
+            return result
+        },
+    })
+}
+
+export function teamApproveTool(ctx: PluginContext): ToolDefinition {
+    return approvalTool(ctx, true)
+}
+
+export function teamRejectTool(ctx: PluginContext): ToolDefinition {
+    return approvalTool(ctx, false)
+}

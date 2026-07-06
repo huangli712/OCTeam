@@ -33,6 +33,14 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
                 lines.push(
                     `Active: ${t.type}${t.mode ? `/${t.mode}` : ""}  round ${t.currentRound ?? "-"}/${t.maxRounds ?? "-"}  tokens ${t.tokensUsed}`,
                 )
+                if (t.approvalStage && t.approvalRequest) {
+                    const req = t.approvalRequest
+                    const where = [
+                        req.stage !== undefined ? `stage ${req.stage}` : "",
+                        req.round !== undefined ? `round ${req.round}` : "",
+                    ].filter(Boolean).join(" ")
+                    lines.push(`Awaiting approval: ${req.kind} ${req.id.slice(0, 8)}${where ? ` (${where})` : ""}`)
+                }
                 // parallel: reduce + signoff policy
                 if (t.type === "parallel") {
                     const pol: string[] = []

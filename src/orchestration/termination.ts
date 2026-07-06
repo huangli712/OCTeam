@@ -17,8 +17,9 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
     const task = team.activeTask
     if (!task) return
 
-    // Wall-clock timeout
-    if (Date.now() - task.startedAt > task.wallClockTimeoutMs) {
+    // Wall-clock timeout. Human approval pauses suspend wall-clock accounting;
+    // team_approve/team_reject shifts startedAt by the paused duration on resume.
+    if (!task.approvalStage && Date.now() - task.startedAt > task.wallClockTimeoutMs) {
         await finishRun(ctx, team, "timeout", "failed")
         return
     }

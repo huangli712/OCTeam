@@ -27,6 +27,15 @@ function formatSnapshot(team: Team): string[] {
         const stage = t.stages.length > 0 ? `  stage ${t.currentStageIndex}/${t.stages.length}` : ""
         const round = t.currentRound !== undefined ? `  round ${t.currentRound}/${t.maxRounds ?? "-"}` : ""
         lines.push(`Active: ${t.type}${t.mode ? `/${t.mode}` : ""}${stage}${round}  tokens ${t.tokensUsed}`)
+        if (t.approvalStage && t.approvalRequest) {
+            const req = t.approvalRequest
+            const age = Math.max(0, Math.floor((Date.now() - req.requestedAt) / 1000))
+            const where = [
+                req.stage !== undefined ? `stage ${req.stage}` : "",
+                req.round !== undefined ? `round ${req.round}` : "",
+            ].filter(Boolean).join(" ")
+            lines.push(`Awaiting approval: ${req.kind} ${req.id.slice(0, 8)}${where ? ` (${where})` : ""} requested ${age}s ago`)
+        }
     } else {
         lines.push("Active: none")
     }

@@ -19,6 +19,56 @@ import { advanceToStage } from "./dispatch.js"
 import { deliverSummaryToLeader, finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { allReadOnlyStagesReportNoIssues, parseDecision } from "./decisions.js"
+import { maybeRequestApproval } from "./hitl.js"
+
+async function continueLoopRound(
+    ctx: PluginContext,
+    team: Team,
+    rationale: string,
+    nextActions: string[],
+): Promise<void> {
+    const task = team.activeTask
+    if (!task || task.type !== "loop") return
+    task.currentRound = (task.currentRound ?? 0) + 1
+    recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
+    task.currentStageIndex = 0
+    for (const s of task.stages) s.completed = false
+    const feedback =
+        `[Round ${task.currentRound} — decider feedback]\n${rationale}`
+        + (nextActions.length > 0
+            ? `\nNext actions:\n${nextActions.map(a => `- ${a}`).join("\n")}`
+            : "")
+    await advanceToStage(ctx, team, task.stages[0], feedback)
+}
+
+export async function approveLoopDone(ctx: PluginContext, team: Team): Promise<void> {
+    const task = team.activeTask
+    if (!task || task.type !== "loop") return
+    const deciderOutput = task.responses[task.deciderMember ?? ""]
+    const decision = parseDecision(deciderOutput ?? "")
+    await deliverSummaryToLeader(ctx, team, "loop_complete:human_approved")
+    task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
+    clearActiveTask(team)
+    team.status = "idle"
+}
+
+export async function rejectLoopDone(ctx: PluginContext, team: Team, feedback?: string): Promise<void> {
+    const task = team.activeTask
+    if (!task || task.type !== "loop") return
+    const deciderOutput = task.responses[task.deciderMember ?? ""]
+    const decision = parseDecision(deciderOutput ?? "")
+    task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
+    if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
+        await finishRun(ctx, team, "loop_complete:human_rejected_max_rounds", "failed")
+        return
+    }
+    await continueLoopRound(
+        ctx,
+        team,
+        feedback ?? "Human rejected the completion decision.",
+        feedback ? [feedback] : ["Continue after human rejected completion."],
+    )
+}
 
 export async function handleLoopIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
     const task = team.activeTask
@@ -53,6 +103,13 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
     }
 
     if (decision.decision === "done") {
+        if (await maybeRequestApproval(ctx, team, {
+            kind: "loop_done",
+            round: task.currentRound,
+            summary: `Loop decider ${task.deciderMember ?? "unknown"} reported done. Review before the loop completes.\n\nRationale: ${decision.rationale}`,
+        })) {
+            return
+        }
         await deliverSummaryToLeader(ctx, team, "loop_complete:decider_done")
         task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
         clearActiveTask(team)
@@ -78,14 +135,5 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
     // nextActions) into stage 0's prompt so the loop is actually corrective.
     // Without this the next round re-sends the original task verbatim.
     task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
-    task.currentRound = (task.currentRound ?? 0) + 1
-    recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
-    task.currentStageIndex = 0
-    for (const s of task.stages) s.completed = false
-    const feedback =
-        `[Round ${task.currentRound} — decider feedback]\n${decision.rationale}`
-        + (decision.nextActions.length > 0
-            ? `\nNext actions:\n${decision.nextActions.map(a => `- ${a}`).join("\n")}`
-            : "")
-    await advanceToStage(ctx, team, stages[0], feedback)
+    await continueLoopRound(ctx, team, decision.rationale, decision.nextActions)
 }

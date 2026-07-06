@@ -16,31 +16,25 @@ import { safeMemberAgent } from "../core/role.js"
 import { finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { maybeTriggerSignoff } from "./signoff.js"
+import { maybeRequestApproval } from "./hitl.js"
 
-export async function handlePipelineIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
+export async function advancePipelineAfterStage(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
-    if (!task) return
+    if (!task || task.type !== "pipeline") return
     const stages = task.stages
-
-    const currentStage = stages[task.currentStageIndex]
-    if (!currentStage || currentStage.member !== member.name) return // stray idle
-
-    currentStage.completed = true
 
     const nextIndex = stages.findIndex(s => !s.completed)
     if (nextIndex === -1) {
-        // All stages complete -> maybe trigger signoff, then deliver.
-        if (await maybeTriggerSignoff(ctx, team)) {
-            return  // signoff in progress
-        }
+        if (await maybeTriggerSignoff(ctx, team)) return
         await finishRun(ctx, team, "pipeline_complete", "idle")
         return
     }
 
     task.currentStageIndex = nextIndex
     const nextStage = stages[nextIndex]
+    if (!nextStage) return
     const nextMember = team.members.find(m => m.name === nextStage.member)
-    if (!nextMember || !nextMember.sessionId) return
+    if (!nextMember?.sessionId) return
 
     const upstream = buildUpstreamContext(stages, task.responses, nextIndex)
     const stageTask = upstream
@@ -65,4 +59,25 @@ export async function handlePipelineIdle(ctx: PluginContext, team: Team, member:
         member: nextMember.name,
         stage: nextIndex,
     })
+}
+
+export async function handlePipelineIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
+    const task = team.activeTask
+    if (!task) return
+    const stages = task.stages
+
+    const currentStage = stages[task.currentStageIndex]
+    if (!currentStage || currentStage.member !== member.name) return // stray idle
+
+    currentStage.completed = true
+
+    const nextIndex = stages.findIndex(s => !s.completed)
+    if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
+        kind: "pipeline_stage",
+        stage: task.currentStageIndex,
+        summary: `Pipeline stage ${task.currentStageIndex} completed by ${currentStage.member}. Review before stage ${nextIndex} starts.`,
+    })) {
+        return
+    }
+    await advancePipelineAfterStage(ctx, team)
 }

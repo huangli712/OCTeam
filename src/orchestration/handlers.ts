@@ -245,6 +245,9 @@ export async function processIdle(
     // a new mode without a table entry is a type error, not a runtime gap.
     if (!team.activeTask) return
     const taskType = team.activeTask.type
+    if (team.activeTask.approvalStage) {
+        return
+    }
     // reduce stage takes priority (real map-reduce).
     if (team.activeTask.reduceStage) {
         await handleReduceIdle(ctx, team, member)

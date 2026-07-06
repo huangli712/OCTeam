@@ -20,7 +20,7 @@ Peer dependencies (`@opencode-ai/plugin` >=1.4.7, `@opencode-ai/sdk` >=1.4.7,
 `@opentui/solid` >=0.1.99, `solid-js` >=1.9.0) are resolved by OpenCode's
 plugin host.
 
-## Tool surface (33 tools)
+## Tool surface (35 tools)
 
 ### Lifecycle
 
@@ -80,6 +80,8 @@ orchestration. Only one orchestration can be active per team at a time.
 | `team_result_get` | Fetch a specific run's full record and member outputs |
 | `team_progress` | Show live progress and event timeline |
 | `team_intervene` | Inject a directive into a member's mailbox mid-run |
+| `team_approve` | Approve a pending human-in-the-loop pause and resume the run |
+| `team_reject` | Reject a pending human-in-the-loop pause and apply the mode-specific rejection path |
 | `team_metrics` | Aggregate token/message/success metrics across runs |
 | `team_resume` | Resume an interrupted orchestration from a crash checkpoint |
 
@@ -109,6 +111,12 @@ and optional `worktrees/` directories.
 **Orchestration runs.** Every workflow produces a run record under
 `runs/<runId>/` with per-member output files and an append-only event timeline.
 Run history persists across plugin restarts.
+
+**Human-in-the-loop approvals.** `team_pipeline`, `team_tollgate`, and
+`team_loop` can pause at supported mid-run boundaries when `human_approval` is
+enabled. The leader resumes with `team_approve` or rejects with `team_reject`.
+This is distinct from `signoff`: HITL is a mid-run human approval gate, while
+signoff is a post-completion member-agent review.
 
 **Crash recovery.** On plugin restart, OCTeam reconciles any team left "busy"
 by a crashed process, rebuilds the session index from disk, and makes the

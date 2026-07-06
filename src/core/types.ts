@@ -107,6 +107,8 @@ export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | 
 export type ParallelMode = "isolated" | "cooperative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
+export type ApprovalKind = "pipeline_stage" | "tollgate_gate" | "loop_done"
+export type ApprovalTimeoutAction = "fail" | "approve" | "reject"
 
 // tollgate: three-valued verification verdict emitted by a gate's verifier.
 export type Verdict = "PASS" | "FAIL" | "INVALID"
@@ -182,6 +184,14 @@ export interface ActiveTaskBase {
     signoffQuorum?: number                   // 0-1, default 0.5 (peer-quorum mode, Phase D)
     signoffApprovals?: Record<string, boolean>  // collected approvals
     signoffStage?: boolean                   // true when in signoff phase
+
+    // human approval policy (mid-run HITL pause; distinct from post-completion signoff)
+    humanApproval?: boolean                  // true when configured for modes that support HITL
+    approvalStage?: boolean                  // true while paused for team_approve/team_reject
+    approvalRequest?: ApprovalRequest        // current pending human approval request
+    approvalTimeoutMs?: number               // optional bound on the human approval pause
+    onApprovalTimeout?: ApprovalTimeoutAction // default fail when approvalTimeoutMs elapses
+    approvalHistory?: ApprovalDecisionRecord[] // resolved approval decisions for audit/history
 
     // delegate mode: uses shared tasklist (team_task_*), no extra fields
 
@@ -304,6 +314,7 @@ export type RunRecord = {
     messagesSent: number
     currentRound?: number              // consensus / loop
     decisionHistory?: DecisionRecord[] // loop
+    approvalHistory?: ApprovalDecisionRecord[] // HITL approval audit trail
     consensusReached?: boolean         // consensus
     signoffPolicy?: SignoffPolicy
     signoffApprovals?: Record<string, boolean>
@@ -324,6 +335,8 @@ export type RunEventKind =
     | "stage_advanced"  // pipeline/loop moved to a new stage
     | "round"           // consensus/loop incremented the round
     | "signoff"         // a signoff review stage was triggered
+    | "approval_requested" // a human approval pause was requested
+    | "approval_resolved"  // a human approval request was approved/rejected
     | "terminated"      // the orchestration ended (any reason)
     | "routed"          // router selected target branch(es) (route mode)
     | "arbitrated"      // arbiter issued a binding ruling (arbitrate mode)
@@ -348,6 +361,24 @@ export type Stage = {
     task: string                       // task description
     action?: "modify" | "read_only"    // loop mode only
     completed: boolean
+}
+
+export type ApprovalRequest = {
+    id: string                          // UUID used by team_approve/team_reject
+    kind: ApprovalKind                  // mode-specific pause point
+    requestedAt: number                 // epoch ms, used to suspend wall-clock timing
+    summary: string                     // text presented to the leader for approval
+    stage?: number                      // currentStageIndex for stage/gate approvals
+    round?: number                      // currentRound for loop done approval
+}
+
+export type ApprovalDecisionRecord = {
+    id: string
+    kind: ApprovalKind
+    approved: boolean
+    requestedAt: number
+    resolvedAt: number
+    feedback?: string
 }
 
 // tollgate: a Stage with an associated verification gate. The gate's verifier

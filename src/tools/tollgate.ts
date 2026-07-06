@@ -11,6 +11,8 @@ import { advanceToGatedStage } from "../orchestration/tollgate.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
+    humanApprovalSchemaFields,
+    humanApprovalTaskFields,
     signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
@@ -54,6 +56,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                 .optional()
                 .describe("cap on INVALID/escalate ping-pong per gate. Default 3; beyond it the run fails with tollgate_invalid:exhausted instead of burning wall-clock/turn budget."),
             ...signoffSchemaFields,
+            ...humanApprovalSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0. Distinct from max_gate_retries."),
@@ -108,6 +111,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                         escalateTo: args.escalate_to,
                         maxGateRetries: args.max_gate_retries,
                         maxInvalidCycles: args.max_invalid_cycles,
+                        ...humanApprovalTaskFields(args),
                         ...signoffTaskFields(args),
                     }
                 },

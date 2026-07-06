@@ -11,6 +11,8 @@ import {
     DEFAULT_LOOP_TIMEOUT_MS,
     assertMember,
     baseTaskFields,
+    humanApprovalSchemaFields,
+    humanApprovalTaskFields,
     startOrchestration,
 } from "./shared.js"
 
@@ -35,6 +37,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             timeout_ms: tool.schema.number().min(1000).optional(),
             token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            ...humanApprovalSchemaFields,
         },
         async execute(args, context) {
             return startOrchestration(
@@ -78,6 +81,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                         type: "loop",
                         ...baseTaskFields(args, team, DEFAULT_LOOP_TIMEOUT_MS),
                         stages,
+                        ...humanApprovalTaskFields(args),
                         deciderMember: args.decider,
                         currentRound: 1,
                         maxRounds: args.max_rounds,
