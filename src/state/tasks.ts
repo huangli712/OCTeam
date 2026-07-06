@@ -15,6 +15,7 @@
 import fs from "node:fs/promises"
 import crypto from "node:crypto"
 
+import { logger } from '../core/log.js';
 import { isEnoent } from '../core/utils.js';
 import { CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./locks.js"
 import { claimLockPath, claimMutexPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./paths.js"
@@ -114,7 +115,7 @@ async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task
             // Corrupt / tampered task file: reject so callers take the not-found
             // path (getTask -> null; listAllTasks skips it) instead of trusting
             // the cast and propagating garbage.
-            console.warn(`[octeam] readTaskFile: schema validation failed for task ${taskId}`)
+            logger.warn("readTaskFile: schema validation failed", { taskId })
             return null
         }
         return parsed
@@ -175,7 +176,7 @@ export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
                 return await readTaskFile(teamDirectory, id)
             } catch (err) {
                 // A single corrupt/unreadable task file must not break the listing.
-                console.warn(`[octeam] listAllTasks: skipping unreadable task ${id}:`, err)
+                logger.warn("listAllTasks: skipping unreadable task", { taskId: id, error: err instanceof Error ? err.message : String(err) })
                 return null
             }
         }),

@@ -11,7 +11,7 @@ import {
 } from "./hooks.js"
 import { reconcileActivation, reconcileCrashedTeams } from "./orchestration/reconcile.js"
 import { rebuildSessionIndex } from "./state/resolve.js"
-import { logSwallowed } from "./core/log.js"
+import { initLogger, logSwallowed } from "./core/log.js"
 import { createConfigHook } from "./agents/index.js"
 
 const id = "octeam"
@@ -27,6 +27,10 @@ const id = "octeam"
  */
 const server = async (input: PluginInput): Promise<Hooks> => {
     const ctx: PluginContext = createPluginContext(input)
+
+    // Initialize the global logger sink so bottom-layer modules (state/,
+    // messaging/) can emit structured logs without a ctx parameter.
+    initLogger(ctx)
 
     // Crash recovery: rebuild the sessionID -> member index from on-disk state
     // so idles/transforms resolve correctly after a plugin/OpenCode restart.

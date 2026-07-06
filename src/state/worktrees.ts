@@ -10,6 +10,9 @@ import { execFile } from "node:child_process"
 import path from "node:path"
 import { promisify } from "node:util"
 
+import { logger } from '../core/log.js';
+
+
 const execFileP = promisify(execFile)
 
 /**
@@ -34,7 +37,7 @@ export async function cleanWorktree(
     const root = path.resolve(worktreesRoot)
     const resolved = path.resolve(root, worktreePath)
     if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-        console.warn(`[octeam] cleanWorktree: refusing out-of-bounds worktreePath: ${worktreePath}`)
+        logger.warn("cleanWorktree: refusing out-of-bounds worktreePath", { path: worktreePath })
         return
     }
     await execFileP("git", ["worktree", "remove", worktreePath, "--force"], {

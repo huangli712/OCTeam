@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
+import { logger } from '../core/log.js';
 import type { TeamState, TeamSpec } from "../core/types.js"
 import { isOCTeamAgent } from "../core/role.js"
 import { isEnoent } from '../core/utils.js';
@@ -142,7 +143,7 @@ async function readJsonOrNull<T>(
             // Structurally valid JSON but wrong shape (corrupt / tampered).
             // Reject rather than trusting the cast; the caller takes its
             // not-found path instead of propagating garbage.
-            console.warn(`[octeam] readJsonOrNull: schema validation failed for ${filePath}`)
+            logger.warn("readJsonOrNull: schema validation failed", { file: filePath })
             return null
         }
         return parsed as T

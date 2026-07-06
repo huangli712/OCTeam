@@ -33,6 +33,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
+import { logger } from '../core/log.js';
 import { isEnoent } from '../core/utils.js';
 import { RESERVATION_TTL_MS, atomicWrite, refuseSymlink, withLock } from "../state/locks.js"
 import {
@@ -138,7 +139,7 @@ async function readJsonl(filePath: string): Promise<Message[]> {
             out.push(parsed)
         }
         if (skipped > 0) {
-            console.warn(`[octeam] readJsonl: skipped ${skipped} invalid message line(s) in ${filePath}`)
+            logger.warn(`readJsonl: skipped ${skipped} invalid message line(s)`, { file: filePath, skipped })
         }
         return out
     } catch (err: unknown) {
