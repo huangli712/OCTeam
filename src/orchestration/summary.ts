@@ -149,6 +149,7 @@ export async function buildSummary(
         case "pipeline": return summarizePipeline(task, head)
         case "consensus": return summarizeConsensus(task, head)
         case "parallel": return summarizeParallel(task, head)
+        case "workflow": return summarizeWorkflow(task, head)
         default: {
             // Exhaustiveness guard for OrchestrationType. Every variant has an
             // explicit case above, so task narrows to `never` here. Adding a new
@@ -250,6 +251,24 @@ function summarizePipeline(task: ActiveTask, head: string): string {
         .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
         .join("\n\n")
     return `${head}\n${candidates}`
+}
+
+// Wave 1 stub -- replaced in Wave 2 (T5). Renders a per-step ledger plus the
+// task-step outputs (gate verdicts are control-flow, not work product).
+function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head: string): string {
+    const steps = task.steps ?? []
+    const rows = steps.map((s, i) => {
+        if (s.kind === "task") {
+            return `${i}. [task] ${s.member ?? "?"}${s.completed ? " (done)" : ""}`
+        }
+        return `${i}. [gate] ${s.verifier ?? "?"} -> ${s.verdict ?? "pending"}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}`
+    })
+    const outputs = steps
+        .filter(s => s.kind === "task" && s.completed && s.member)
+        .map(s => `### ${s.member}\n${truncateOutput(task.responses[s.member!] ?? "")}`)
+        .join("\n\n")
+    const ledger = rows.length > 0 ? `\nSteps:\n${rows.join("\n")}` : ""
+    return outputs ? `${head}${ledger}\n\n${outputs}` : `${head}${ledger}`
 }
 
 function summarizeConsensus(task: ActiveTask, head: string): string {

@@ -14,6 +14,7 @@ import { advanceTollgateAfterPass } from "../orchestration/tollgate.js"
 import { approveLoopDone, rejectLoopDone } from "../orchestration/loop.js"
 import { advanceRouteAfterDecision } from "../orchestration/route.js"
 import { approveRecurseDecompose, rejectRecurseDecompose } from "../orchestration/recurse.js"
+import { advanceWorkflowStep } from "../orchestration/workflow.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 
@@ -88,6 +89,9 @@ export async function applyApprovalDecision(
             case "recurse_decompose":
                 await rejectRecurseDecompose(ctx, team, request)
                 return `Rejected ${request.kind} for team "${team.teamName}".`
+            case "workflow_step":
+                await finishRun(ctx, team, "workflow_human_rejected", "failed")
+                return `Rejected ${request.kind} for team "${team.teamName}".`
             default: {
                 const _exhaustive: never = request.kind
                 void _exhaustive
@@ -117,6 +121,9 @@ export async function applyApprovalDecision(
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         case "recurse_decompose":
             await approveRecurseDecompose(ctx, team, request)
+            return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
+        case "workflow_step":
+            await advanceWorkflowStep(ctx, team)
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         default: {
             const _exhaustive: never = request.kind

@@ -46,6 +46,7 @@ import { handleRecurseIdle } from "./recurse.js"
 import { handleTollgateIdle } from "./tollgate.js"
 import { handleRouteIdle } from "./route.js"
 import { handleArbitrateIdle } from "./arbitrate.js"
+import { handleWorkflowIdle } from "./workflow.js"
 
 // --- helpers ---
 
@@ -70,6 +71,15 @@ export function getExpectedMember(task: ActiveTask): string | null {
         return task.arbitrationStage ? (task.arbiterMember ?? null) : null
     }
     if (task.type === "recurse") return null   // same as delegate: any member advances
+    if (task.type === "workflow") {
+        // workflow: only the current step's actor may advance. A task step's
+        // actor is its member; a gate step's actor is its verifier. Without this
+        // explicit branch the trailing stages[] fallthrough (workflow keeps
+        // stages empty) would return null and let ANY member's idle advance.
+        const s = task.steps?.[task.currentStageIndex]
+        if (!s) return null
+        return (s.kind === "gate" ? s.verifier : s.member) ?? null
+    }
     // tollgate: a single gate is active at a time. Only the phase-appropriate
     // member may advance — the producer (produce), the verifier (verify), or the
     // escalation handler (escalate). Returning escalateTo in the escalate phase
@@ -192,6 +202,7 @@ const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, m
     arbitrate: async (ctx, team) => handleArbitrateIdle(ctx, team),
     recurse: async (ctx, team, member) => handleRecurseIdle(ctx, team, member),
     tollgate: async (ctx, team, member) => handleTollgateIdle(ctx, team, member),
+    workflow: async (ctx, team, member) => handleWorkflowIdle(ctx, team, member),
 }
 
 export async function processIdle(

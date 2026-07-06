@@ -23,6 +23,7 @@ import { handleParallelIdle } from "../orchestration/parallel.js"
 import { handleConsensusIdle } from "../orchestration/consensus.js"
 import { buildRecursePrompt } from "../orchestration/recurse.js"
 import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../orchestration/tollgate.js"
+import { advanceWorkflowStep, handleWorkflowIdle } from "../orchestration/workflow.js"
 import { handleRouteIdle } from "../orchestration/route.js"
 import { buildArbiterPrompt, buildDebatePrompt, handleArbitrateIdle } from "../orchestration/arbitrate.js"
 import { buildRouterPrompt } from "./router.js"
@@ -240,6 +241,32 @@ async function resumeTollgateMode(ctx: PluginContext, team: Team, task: Extract<
     }
 }
 
+// Re-drives the workflow after a crash. If the current step's actor already
+// produced output pre-crash, re-run the handler to process it (parse verdict /
+// mark complete + advance); otherwise dispatch the first incomplete step, or
+// deliver if all steps are already complete (all-complete crash edge).
+async function resumeWorkflowMode(
+    ctx: PluginContext,
+    team: Team,
+    task: Extract<ActiveTask, { type: "workflow" }>,
+): Promise<void> {
+    const steps = task.steps ?? []
+    const step = steps[task.currentStageIndex]
+    if (step) {
+        const actorName = step.kind === "gate" ? step.verifier : step.member
+        if (actorName && task.responses[actorName]) {
+            const actor = team.members.find(m => m.name === actorName && !m.isMaster)
+            if (actor) {
+                await handleWorkflowIdle(ctx, team, actor)
+                return
+            }
+        }
+    }
+    // No captured response to process -> dispatch the next incomplete step, or
+    // deliver workflow_complete if every step is already done.
+    await advanceWorkflowStep(ctx, team)
+}
+
 export async function resumeDispatch(
     ctx: PluginContext,
     team: Team,
@@ -259,6 +286,7 @@ export async function resumeDispatch(
         case "arbitrate": return await resumeArbitrateMode(ctx, team, task)
         case "recurse": return await resumeRecurseMode(ctx, team)
         case "tollgate": return await resumeTollgateMode(ctx, team, task)
+        case "workflow": return await resumeWorkflowMode(ctx, team, task)
         default: {
             // Exhaustiveness guard: every OrchestrationType is handled above, so
             // task.type narrows to `never` here. A new type added without a

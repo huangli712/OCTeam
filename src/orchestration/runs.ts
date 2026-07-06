@@ -47,6 +47,7 @@ const FAILED_REASON_MARKERS = [
     "arbiter_unavailable", // arbitrate: arbiter has no live session at ruling time
     "tollgate_failed",     // tollgate: a gate's FAIL retries (maxGateRetries) exhausted
     "tollgate_invalid",    // tollgate: verifier/oracle unevaluable, no escalation handler
+    "workflow_failed",     // workflow: a gate FAIL (onFail='fail' or retries exhausted) or unparseable verdict
     "signoff_rejected",           // signoff: decider/reviewer rejected the work
     "signoff_quorum_not_reached", // signoff: peer-quorum did not get enough approvals
     "human_rejected",             // HITL: leader rejected a mid-run approval request
@@ -64,7 +65,7 @@ export function runStatusFromReason(reason: string): RunStatus {
  * Unknown keys are stripped (zod default); required fields match the types.
  */
 const OrchestrationTypeSchema = z.enum([
-    "parallel", "pipeline", "loop", "delegate", "consensus", "route", "arbitrate", "recurse", "tollgate",
+    "parallel", "pipeline", "loop", "delegate", "consensus", "route", "arbitrate", "recurse", "tollgate", "workflow",
 ])
 const ParallelModeSchema = z.enum(["isolated", "cooperative"])
 const RunStatusSchema = z.enum(["completed", "failed"])
@@ -78,7 +79,7 @@ const DecisionRecordSchema = z.object({
     timestamp: z.number(),
 })
 
-const ApprovalKindSchema = z.enum(["pipeline_stage", "tollgate_gate", "loop_done", "route_decision", "recurse_decompose", "arbitrate_ruling", "consensus_deadlock"])
+const ApprovalKindSchema = z.enum(["pipeline_stage", "tollgate_gate", "loop_done", "route_decision", "recurse_decompose", "arbitrate_ruling", "consensus_deadlock", "workflow_step"])
 const ApprovalDecisionRecordSchema = z.object({
     id: z.string(),
     kind: ApprovalKindSchema,

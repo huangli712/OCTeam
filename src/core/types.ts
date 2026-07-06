@@ -103,11 +103,11 @@ export type Bounds = {
 
 // --- ActiveTask ---
 
-export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse" | "tollgate"
+export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse" | "tollgate" | "workflow"
 export type ParallelMode = "isolated" | "cooperative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
-export type ApprovalKind = "pipeline_stage" | "tollgate_gate" | "loop_done" | "route_decision" | "recurse_decompose" | "arbitrate_ruling" | "consensus_deadlock"
+export type ApprovalKind = "pipeline_stage" | "tollgate_gate" | "loop_done" | "route_decision" | "recurse_decompose" | "arbitrate_ruling" | "consensus_deadlock" | "workflow_step"
 export type ApprovalTimeoutAction = "fail" | "approve" | "reject"
 
 // tollgate: three-valued verification verdict emitted by a gate's verifier.
@@ -275,6 +275,34 @@ export interface TollgateTask extends ActiveTaskBase {
     maxInvalidCycles?: number                // cap on INVALID/escalate ping-pong per gate (default 3); beyond it the run fails with tollgate_invalid:exhausted instead of looping to wall-clock
 }
 
+// workflow: deterministic, declaratively-composed linear step engine. Each step
+// is either a `task` (one member produces output) or a `gate` (a verifier
+// renders a PASS/FAIL verdict over the preceding task's output). The engine --
+// not the master LLM -- drives every step transition, keeping intermediate
+// results out of master context. MVP is linear with gate-driven retry only.
+export type WorkflowStepKind = "task" | "gate"
+
+export type WorkflowStep = {
+    kind: WorkflowStepKind
+    // task step
+    member?: string                     // the actor member name (task steps)
+    task?: string                       // the task text (task steps)
+    // gate step
+    verifier?: string                   // the verifier member name (gate steps; NOT the preceding task's member)
+    criteria?: string                   // verification criteria (gate steps)
+    onFail?: "retry" | "fail"           // FAIL control: retry the preceding task, or fail the run (gate steps; default "fail")
+    maxRetries?: number                 // FAIL retry cap, distinct from provider-retry maxRetries (gate steps; default 0)
+    attempts?: number                   // FAIL retry count so far (gate steps)
+    verdict?: Verdict                   // last verdict rendered (gate steps)
+    // shared
+    completed: boolean                  // true when the step is done (task produced; gate PASS)
+}
+
+export interface WorkflowTask extends ActiveTaskBase {
+    type: "workflow"
+    steps?: WorkflowStep[]              // declarative step list; currentStageIndex is the cursor. Optional to match the codebase convention (all variant-specific fields are optional, like gatedStages?); handlers guard with `task.steps ?? []`.
+}
+
 export type ActiveTask =
     | ParallelTask
     | PipelineTask
@@ -285,6 +313,7 @@ export type ActiveTask =
     | ArbitrateTask
     | RecurseTask
     | TollgateTask
+    | WorkflowTask
 
 // --- LastModeRecord (persists after activeTask cleanup, for sidebar display) ---
 
