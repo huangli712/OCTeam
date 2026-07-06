@@ -4,7 +4,7 @@
  *   - releaseStaleReservations stale/fresh/unreadable/ENOENT branches
  *
  * Existing tests (c2-mailbox-ack-lock, poll-mailbox-truncate-rollback,
- * mailbox-concurrent-drain, hooks.transform) cover the happy paths of
+ * mailbox-concurrent-drain, hooks-transform) cover the happy paths of
  * write/poll/ack/release. This file fills the remaining branches.
  */
 import { existsSync } from "node:fs"

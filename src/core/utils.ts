@@ -43,7 +43,7 @@ export function activationError(
  * Skips synthetic parts (injected role prompts / mailbox injections) so they
  * are never mistaken for member-produced text.
  *
- * @internal Exported only for use by tests/output_capture.test.ts (baseline
+ * @internal Exported only for use by tests/output-capture.test.ts (baseline
  * regression for the text-only extraction contract). Production callers use
  * `extractOutputFromParts` (which composes this with output-shape handling).
  */
