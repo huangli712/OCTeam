@@ -1,6 +1,6 @@
 {
     "name": "octeam",
-    "version": "0.9.13",
+    "version": "0.10.0",
     "type": "module",
     "license": "MIT",
     "exports": {
