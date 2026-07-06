@@ -7,12 +7,16 @@
  * identity validation (getExpectedMember), output capture, and dispatch all run.
  */
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { processIdle } from "../src/orchestration/handlers.js"
+import { advanceWorkflowStep } from "../src/orchestration/workflow.js"
+import { readRunEvents } from "../src/orchestration/runs.js"
 import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
+import { waitUntil } from "../src/core/utils.js"
+import { runEventsPath } from "../src/state/paths.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
 import type { PluginContext } from "../src/core/context.js"
@@ -102,6 +106,15 @@ function makeTeam(opts: {
 
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
 const FAIL_VERDICT = '<verdict>{"result":"FAIL","rationale":"wrong","diff":"off by one"}</verdict>'
+const INVALID_VERDICT = '<verdict>{"result":"INVALID","rationale":"cannot run tests","diff":""}</verdict>'
+
+async function waitForEvent(directory: string, runId: string, kind: string): Promise<void> {
+    const p = runEventsPath(directory, runId)
+    await waitUntil(
+        () => existsSync(p) && readFileSync(p, "utf8").includes(`"kind":"${kind}"`),
+        { timeoutMs: 2000, pollMs: 10 },
+    )
+}
 
 describe("handleWorkflowIdle (via processIdle): task steps", () => {
     test("a non-final task step completes -> advances and dispatches the next task with upstream context", async () => {
@@ -180,6 +193,60 @@ describe("handleWorkflowIdle (via processIdle): task steps", () => {
         expect(task.steps![0].completed).toBe(false)
         expect(calls.some(c => c.sessionId === "ses_alice")).toBe(false)
         expect(team.activeTask).toBeDefined()
+    })
+
+    test("a later task step receives the prior step's own output snapshot", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "draft", completed: true, output: "step-1 snapshot" },
+                { kind: "task", member: "bob", task: "polish", completed: false },
+            ],
+            currentStageIndex: 0,
+            responses: { alice: "latest alice response should not be used" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({}, calls)
+
+        await advanceWorkflowStep(ctx, team)
+
+        const bobCall = calls.find(c => c.sessionId === "ses_bob")
+        expect(bobCall).toBeDefined()
+        expect(bobCall!.text).toContain("step-1 snapshot")
+        expect(bobCall!.text).not.toContain("latest alice response should not be used")
+    })
+
+    test("a missing next-step session fails explicitly instead of stalling", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "step 1", completed: false },
+                { kind: "task", member: "bob", task: "step 2", completed: false },
+            ],
+            currentStageIndex: 0,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob" },
+            ],
+        })
+        const ctx = makeCtx({ ses_alice: "done" }, calls)
+
+        await processIdle(ctx, team, team.members[0], "ses_alice")
+
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("workflow_failed:no_session:bob")
     })
 })
 
@@ -299,6 +366,11 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         const retryCall = calls.find(c => c.sessionId === "ses_alice")
         expect(retryCall).toBeDefined()
         expect(retryCall!.text).toContain("Gate FAILED")
+        await waitForEvent(team.directory, task.runId!, "retry")
+        const events = await readRunEvents(team.directory, task.runId!)
+        const retryEvent = events.find(e => e.kind === "retry")
+        expect(retryEvent?.stage).toBe(1)
+        expect(retryEvent?.detail).toContain("workflow step 2")
         expect(team.activeTask).toBeDefined()
 
         // alice re-runs the task -> completes again -> advances back to the gate.
@@ -317,7 +389,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(leaderCall!.text).toContain("workflow_failed")
     })
 
-    test("a gate verdict that fails to parse -> fails the run", async () => {
+    test("a gate verdict that fails to parse -> fails the run as workflow_invalid", async () => {
         const calls: DispatchCall[] = []
         const task = makeWorkflowTask({
             steps: [
@@ -342,6 +414,65 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(team.activeTask).toBeUndefined()
         const leaderCall = calls.find(c => c.sessionId === "ses_lead")
         expect(leaderCall).toBeDefined()
-        expect(leaderCall!.text).toContain("workflow_failed")
+        expect(leaderCall!.text).toContain("workflow_invalid")
+    })
+
+    test("a gate INVALID verdict does not retry the target producer", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "do work", completed: true, output: "alice output" },
+                { kind: "gate", verifier: "bob", criteria: "passes tests", onFail: "retry", maxRetries: 2, attempts: 0, completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(team.status).toBe("failed")
+        expect(task.steps![1].attempts).toBe(0)
+        expect(calls.some(c => c.sessionId === "ses_alice")).toBe(false)
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("workflow_invalid")
+    })
+
+    test("a gate target_step verifies the selected previous task step", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "draft", completed: true, output: "selected step output" },
+                { kind: "task", member: "carol", task: "other", completed: true, output: "nearest task output" },
+                { kind: "gate", verifier: "bob", targetStepIndex: 0, criteria: "check draft", completed: false },
+            ],
+            currentStageIndex: 2,
+            responses: { alice: "latest alice response", carol: "latest carol response" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+            ],
+        })
+        const ctx = makeCtx({}, calls)
+
+        await advanceWorkflowStep(ctx, team)
+
+        const bobCall = calls.find(c => c.sessionId === "ses_bob")
+        expect(bobCall).toBeDefined()
+        expect(bobCall!.text).toContain("workflow step 1")
+        expect(bobCall!.text).toContain("selected step output")
+        expect(bobCall!.text).not.toContain("nearest task output")
+        expect(bobCall!.text).not.toContain("latest alice response")
     })
 })

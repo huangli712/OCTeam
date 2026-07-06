@@ -145,6 +145,39 @@ describe("teamProgressTool.execute", () => {
         expect(result).toContain("captured")
     })
 
+    test("active workflow displays one-based step progress and timeline stages", async () => {
+        const root = tmpRoot("prog-workflow-step")
+        const masterSid = "ses_prog_master_wf"
+        tracked.push(masterSid)
+        const workflowTask: ActiveTask = {
+            ...makeActiveTask(),
+            type: "workflow",
+            mode: undefined,
+            currentStageIndex: 1,
+            steps: [
+                { kind: "task", member: "alice", task: "draft", completed: true, output: "draft" },
+                { kind: "gate", verifier: "bob", criteria: "ok", completed: false },
+            ],
+        } as ActiveTask
+        const dir = await setup({
+            root,
+            masterSid,
+            members: [makeMember("alice", "ses_prog_alice_wf"), makeMember("bob", "ses_prog_bob_wf")],
+            activeTask: workflowTask,
+        })
+        await seedEvents(dir, "run-active-1", [
+            { timestamp: Date.now(), kind: "verdict", member: "bob", stage: 1, detail: "PASS" },
+        ])
+
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM },
+            { sessionID: masterSid } as never,
+        )
+
+        expect(result).toContain("Active: workflow  step 2/2")
+        expect(result).toContain("stage 2")
+    })
+
     test("since filter excludes events at or before the timestamp", async () => {
         const root = tmpRoot("prog-since")
         const masterSid = "ses_prog_master_5"

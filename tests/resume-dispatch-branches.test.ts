@@ -418,6 +418,40 @@ describe("resumeDispatch: workflow mid-task-step crash", () => {
         expect(dispatched[0].text).toContain("draft the design")
         expect(team.activeTask).toBeDefined()
     })
+
+    test("current task actor already responded -> handler re-run and advances", async () => {
+        const root = tmpRoot("rdb-wf-midtask-captured")
+        const sid = "ses_rdb_wf_midtask_captured"
+        tracked.push(sid)
+        const task = makeTask({
+            type: "workflow",
+            steps: [
+                { kind: "task", member: "alice", task: "draft the design", completed: false },
+                { kind: "task", member: "bob", task: "polish", completed: false },
+            ],
+            currentStageIndex: 0,
+            responses: { alice: "captured draft" },
+        })
+        const team = await setup(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+
+        const dispatched: { id: string; text: string }[] = []
+        const ctx = makeCtx(root, async req => {
+            dispatched.push({ id: req.path.id, text: req.body.parts[0].text })
+        })
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!)
+        })
+
+        if (task.type !== "workflow") throw new Error("expected workflow task")
+        expect(task.steps?.[0].completed).toBe(true)
+        expect(task.steps?.[0].output).toBe("captured draft")
+        expect(dispatched.map(d => d.id)).toEqual(["ses_bob"])
+        expect(dispatched[0].text).toContain("polish")
+    })
 })
 
 describe("resumeDispatch: workflow mid-gate-step crash with captured verdict", () => {

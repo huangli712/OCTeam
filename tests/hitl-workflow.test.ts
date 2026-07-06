@@ -116,6 +116,9 @@ describe("HITL: team_workflow", () => {
         // Next step's member NOT dispatched while paused.
         expect(calls.some(c => c.sessionId === "ses_bob")).toBe(false)
         expect(calls.some(c => c.sessionId === sid && c.text.includes("team_approve"))).toBe(true)
+        const approvalCall = calls.find(c => c.sessionId === sid && c.text.includes("Human approval required"))
+        expect(approvalCall?.text).toContain("workflow_step (step 1)")
+        expect(approvalCall?.text).toContain("Next: step 2 (task) by bob")
         const progress = await teamProgressTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(progress).toContain("Awaiting approval: workflow_step")
 

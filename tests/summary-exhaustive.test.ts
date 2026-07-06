@@ -132,7 +132,7 @@ describe("buildSummary: workflow case", () => {
         expect(summary).toContain("reason=workflow_complete")
         // Step ledger: 1-based numbering, one line per step.
         expect(summary).toContain("1. [task] alice (done)")
-        expect(summary).toContain("2. [gate] bob -> PASS (1 retries)")
+        expect(summary).toContain("2. [gate] bob verifies nearest task -> PASS (1 retries)")
         expect(summary).toContain("3. [task] carol (done)")
         // Outputs labeled by step number + member (NOT duplicate ### member headers).
         expect(summary).toContain("### Step 1 - alice")

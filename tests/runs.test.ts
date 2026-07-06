@@ -108,6 +108,7 @@ describe("runStatusFromReason", () => {
         expect(runStatusFromReason("loop_complete:max_rounds")).toBe("failed")
         expect(runStatusFromReason("delegate_deadlock")).toBe("failed")
         expect(runStatusFromReason("loop_complete:decision_parse_failure")).toBe("failed")
+        expect(runStatusFromReason("workflow_invalid:bob")).toBe("failed")
     })
 })
 
@@ -190,6 +191,30 @@ describe("persistRun", () => {
         expect(rec!.decisionHistory).toHaveLength(2)
         expect(rec!.decisionHistory![1].decision).toBe("done")
         expect(rec!.currentRound).toBe(2)
+    })
+
+    test("workflow: record carries per-step snapshot", async () => {
+        const dir = tmpTeamDir()
+        const team = makeTeam({
+            directory: dir,
+            activeTask: {
+                runId: "run-w",
+                type: "workflow",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft", completed: true, output: "draft output" },
+                    { kind: "task", member: "carol", task: "polish", completed: true, output: "polish output" },
+                    { kind: "gate", verifier: "bob", targetStepIndex: 0, criteria: "ok", attempts: 1, verdict: "PASS", completed: true },
+                ],
+            },
+        })
+
+        await persistRun(team, "workflow_complete")
+
+        const rec = await readRunRecord(dir, "run-w")
+        expect(rec!.type).toBe("workflow")
+        expect(rec!.workflow?.steps).toHaveLength(3)
+        expect(rec!.workflow?.steps[0]).toMatchObject({ step: 1, kind: "task", member: "alice", output: "draft output" })
+        expect(rec!.workflow?.steps[2]).toMatchObject({ step: 3, kind: "gate", verifier: "bob", targetStep: 1, verdict: "PASS", attempts: 1 })
     })
 
     test("no activeTask → no-op", async () => {

@@ -421,6 +421,36 @@ describe("teamResultGetTool.execute", () => {
         expect(result).toContain("Reason: parallel_complete:all_members_idle")
     })
 
+    test("workflow run renders per-step ledger", async () => {
+        const root = tmpRoot("res-workflow-ledger")
+        const masterSid = "ses_res_master_wf"
+        tracked.push(masterSid)
+        const { directory } = await setupTeam({ root, masterSid, members: [] })
+        await seedRunRecord(directory, {
+            ...SAMPLE_RUN,
+            runId: "run-workflow-1",
+            type: "workflow",
+            mode: undefined,
+            reason: "workflow_complete",
+            workflow: {
+                steps: [
+                    { index: 0, step: 1, kind: "task", member: "alice", completed: true, output: "draft output", outputBytes: 12 },
+                    { index: 1, step: 2, kind: "gate", verifier: "bob", targetStep: 1, verdict: "PASS", attempts: 1, completed: true },
+                ],
+            },
+        })
+
+        const result = await teamResultGetTool(makeCtx(root)).execute(
+            { team_id: TEAM, run_id: "run-workflow-1" },
+            { sessionID: masterSid } as never,
+        )
+
+        expect(result).toContain("### workflow steps")
+        expect(result).toContain("Step 1: [task] alice")
+        expect(result).toContain("draft output")
+        expect(result).toContain("Step 2: [gate] bob verifies step 1 -> PASS")
+    })
+
     test("omitted run_id returns latest run", async () => {
         const root = tmpRoot("res-latest")
         const masterSid = "ses_res_master_7"

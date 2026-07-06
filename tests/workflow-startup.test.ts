@@ -379,6 +379,36 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("no preceding task")
     })
 
+    test("task step with gate-only fields -> rejected", async () => {
+        const root = tmpRoot("wf-task-gate-field")
+        const sid = "ses_wf_tgf"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x", verifier: "bob" }] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("must not set gate fields")
+    })
+
+    test("gate step with task-only fields -> rejected", async () => {
+        const root = tmpRoot("wf-gate-task-field")
+        const sid = "ses_wf_gtf"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "do x" },
+                    { kind: "gate", verifier: "bob", criteria: "ok", member: "alice" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("must not set task fields")
+    })
+
     test("gate self-verification (verifier == preceding task member) -> rejected", async () => {
         const root = tmpRoot("wf-selfverify")
         const sid = "ses_wf_sv"
@@ -389,6 +419,87 @@ describe("team_workflow startup validation", () => {
             makeToolContext(sid),
         )
         expect(result).toContain("self-verification")
+    })
+
+    test("target_step self-verification -> rejected against target member", async () => {
+        const root = tmpRoot("wf-target-selfverify")
+        const sid = "ses_wf_tsv"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "task", member: "bob", task: "polish" },
+                    { kind: "gate", verifier: "alice", target_step: 1, criteria: "check draft" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("target step 1")
+        expect(result).toContain("self-verification")
+    })
+
+    test("target_step must reference a previous task step", async () => {
+        const root = tmpRoot("wf-target-bad")
+        const sid = "ses_wf_tb"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", criteria: "check draft" },
+                    { kind: "gate", verifier: "bob", target_step: 2, criteria: "check gate" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("target_step must reference a task step")
+    })
+
+    test("on_fail retry requires explicit max_retries", async () => {
+        const root = tmpRoot("wf-retry-no-max")
+        const sid = "ses_wf_rnm"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", criteria: "ok", on_fail: "retry" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("requires `max_retries`")
+    })
+
+    test("dry_run returns a step ledger without starting orchestration", async () => {
+        const root = tmpRoot("wf-dry-run")
+        const sid = "ses_wf_dr"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", target_step: 1, criteria: "ok", on_fail: "retry", max_retries: 1 },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("Workflow dry run")
+        expect(result).toContain("1. [task] alice")
+        expect(result).toContain("2. [gate] bob verifies step 1")
+        const after = await loadTeamState(root, "alpha", sid)
+        expect(after.activeTask).toBeUndefined()
+        expect(after.status).toBe("live")
     })
 
     test("unknown gate verifier -> rejected", async () => {
