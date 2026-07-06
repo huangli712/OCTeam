@@ -30,7 +30,9 @@ import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
+import { OCTEAM_AGENTS, isOCTeamAgent } from "../core/role.js"
 import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
+import { MEMBER_NAME_POOL } from "../state/naming.js"
 import { ensureMembersReady } from "../orchestration/dispatch.js"
 import { activationError } from "../core/utils.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
@@ -79,6 +81,38 @@ export function defaultBounds(override?: Partial<Bounds>): Bounds {
         messageUnreadMaxBytes: 1048576,
         ...override,
     }
+}
+
+/**
+ * Validate a member name against the reserved-name and name-pool membership
+ * rules. Shared by team_create (per-input-member) and team_add_member so the
+ * two paths cannot drift. Returns an error string, or null when valid.
+ */
+export function validateMemberName(name: string): string | null {
+    // "master" and "orchestrator" are reserved synthetic identities (the
+    // leader pseudo-member and the orchestrator message sender); a real
+    // member by either name would collide with them.
+    if (name === "master" || name === "orchestrator") {
+        return `Error: "${name}" is a reserved name and cannot be a member name`
+    }
+    if (!(MEMBER_NAME_POOL as readonly string[]).includes(name)) {
+        return `Error: name "${name}" is not a preset pool name. Choose one of: ${MEMBER_NAME_POOL.join(", ")}`
+    }
+    return null
+}
+
+/**
+ * Validate an agent override: must be one of OCTeam's hardened oct-* agents.
+ * A bare host agent (e.g. "build") would bypass the role->agent
+ * permission-hardening chokepoint (role.ts). Shared by team_create and
+ * team_add_member so the two paths cannot drift. Returns an error string, or
+ * null when valid. Callers gate on `agent !== undefined` themselves.
+ */
+export function validateMemberAgent(agent: string): string | null {
+    if (!isOCTeamAgent(agent)) {
+        return `Error: agent "${agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'agent' to derive it from the role.`
+    }
+    return null
 }
 
 /** Run fn while holding every team's mutex, acquired in a deterministic order

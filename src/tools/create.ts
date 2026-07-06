@@ -13,10 +13,10 @@ import type { PluginContext } from "../core/context.js"
 import { initTeamState, writeTeamSpec } from "../state/store.js"
 import { indexMasterTeam, isIndexedMember } from "../state/resolve.js"
 import { teamDir, teamsDir } from "../state/paths.js"
-import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../core/role.js"
+import { normalizeRole, roleAgent } from "../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../core/types.js"
-import { MEMBER_NAME_POOL, pickName } from "../state/naming.js"
-import { defaultBounds } from "./shared.js"
+import { pickName } from "../state/naming.js"
+import { defaultBounds, validateMemberAgent, validateMemberName } from "./shared.js"
 
 /**
  * Best-effort model resolution for team_create. Resolves, in order:
@@ -120,8 +120,9 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             // in its own early loop so it runs for EVERY member (named or not),
             // not just members that pass the name-reserved/pool checks below.
             for (const m of args.members) {
-                if (m.agent !== undefined && !isOCTeamAgent(m.agent)) {
-                    return `Error: agent "${m.agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'agent' to derive it from the role.`
+                if (m.agent !== undefined) {
+                    const err = validateMemberAgent(m.agent)
+                    if (err) return err
                 }
             }
 
@@ -134,12 +135,8 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // "master" and "orchestrator" are reserved synthetic identities
                 // (the leader pseudo-member and the orchestrator message sender);
                 // a real member by either name would collide with them.
-                if (m.name === "master" || m.name === "orchestrator") {
-                    return `Error: "${m.name}" is a reserved name and cannot be a member name`
-                }
-                if (!(MEMBER_NAME_POOL as readonly string[]).includes(m.name)) {
-                    return `Error: name "${m.name}" is not a preset pool name. Choose one of: ${MEMBER_NAME_POOL.join(", ")}`
-                }
+                const nameErr = validateMemberName(m.name)
+                if (nameErr) return nameErr
                 if (taken.has(m.name)) return `Error: duplicate member name "${m.name}"`
                 taken.add(m.name)
             }

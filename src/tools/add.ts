@@ -6,9 +6,10 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../state/store.js"
-import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../core/role.js"
+import { normalizeRole, roleAgent } from "../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
+import { validateMemberAgent, validateMemberName } from "./shared.js"
 
 export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -48,12 +49,8 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
             const existingNames = new Set(team.members.map(m => m.name))
             let memberName: string
             if (args.name) {
-                if (args.name === "master" || args.name === "orchestrator") {
-                    return `Error: "${args.name}" is a reserved name and cannot be a member name`
-                }
-                if (!(MEMBER_NAME_POOL as readonly string[]).includes(args.name)) {
-                    return `Error: name "${args.name}" is not a preset pool name. Choose one of: ${MEMBER_NAME_POOL.join(", ")}`
-                }
+                const nameErr = validateMemberName(args.name)
+                if (nameErr) return nameErr
                 if (existingNames.has(args.name)) {
                     return `Error: name "${args.name}" already exists in team "${args.team_id}"`
                 }
@@ -69,8 +66,9 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
             // Agent override (optional): must be one of OCTeam's hardened oct-*
             // agents. A bare host agent (e.g. "build") would bypass the
             // role->agent permission-hardening chokepoint (role.ts).
-            if (args.agent !== undefined && !isOCTeamAgent(args.agent)) {
-                return `Error: agent "${args.agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'agent' to derive it from the role.`
+            if (args.agent !== undefined) {
+                const err = validateMemberAgent(args.agent)
+                if (err) return err
             }
 
             const role = normalizeRole(args.role)
