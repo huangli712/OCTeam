@@ -7,7 +7,7 @@
 import crypto from "node:crypto"
 
 import type { PluginContext } from "../core/context.js"
-import type { ApprovalKind, ApprovalRequest } from "../core/types.js"
+import type { ApprovalKind, ApprovalRequest, ApprovalSubtask } from "../core/types.js"
 import { type Team, saveTeamState } from "../state/store.js"
 import { recordEvent } from "./events.js"
 
@@ -16,6 +16,9 @@ type ApprovalRequestInput = {
     summary: string
     stage?: number
     round?: number
+    taskId?: string
+    member?: string
+    subtasks?: ApprovalSubtask[]
 }
 
 export function buildApprovalPrompt(teamName: string, request: ApprovalRequest): string {
@@ -56,6 +59,9 @@ export async function maybeRequestApproval(
         summary: input.summary,
         stage: input.stage,
         round: input.round,
+        taskId: input.taskId,
+        member: input.member,
+        subtasks: input.subtasks,
     }
     task.approvalStage = true
     task.approvalRequest = request

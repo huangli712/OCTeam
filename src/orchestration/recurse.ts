@@ -15,14 +15,15 @@
 
 import type { PluginContext } from "../core/context.js"
 import { type Team } from "../state/store.js"
-import type { MemberState } from "../core/types.js"
-import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
+import type { ApprovalRequest, MemberState } from "../core/types.js"
+import { createTask, getTask, listAllTasks, updateTask } from "../state/tasks.js"
 import { recordEvent } from "./events.js"
 import { parseDecompose } from "./decisions.js"
 import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
 import { DEFAULT_RECURSE_DEPTH, DEFAULT_RECURSE_SUBTASKS } from "./defaults.js"
 import { finishRun } from "./summary.js"
 import { dispatchToMember } from "./dispatch.js"
+import { maybeRequestApproval } from "./hitl.js"
 
 /**
  * Build the recursive-decomposition contract prompt: claim a task, then either
@@ -69,6 +70,63 @@ function buildAggregationPrompt(rootSubject: string, childCount: number): string
     )
 }
 
+async function runRecurseTailFromApproval(ctx: PluginContext, team: Team, memberName: string | undefined): Promise<void> {
+    const member = team.members.find(m => m.name === memberName)
+    if (!member) return
+    await runDelegateStyleTail(ctx, team, member, "recurse", () => buildRecursePrompt())
+}
+
+export async function approveRecurseDecompose(
+    ctx: PluginContext,
+    team: Team,
+    request: ApprovalRequest,
+): Promise<void> {
+    const task = team.activeTask
+    if (!task || task.type !== "recurse" || !request.taskId || !request.subtasks) return
+    const parent = await getTask(team.directory, request.taskId)
+    if (!parent) return
+    const childDepth = (parent.depth ?? 0) + 1
+    const ids: string[] = []
+    for (const subtask of request.subtasks) {
+        const child = await createTask(team.directory, {
+            subject: subtask.subject,
+            description: subtask.description,
+            depth: childDepth,
+        })
+        ids.push(child.id)
+    }
+    await updateTask(team.directory, parent.id, {
+        status: "pending",
+        owner: undefined,
+        blockedBy: ids,
+    })
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "decomposed",
+        member: request.member,
+        detail: `${parent.subject} -> ${ids.length} @d${childDepth}`,
+    })
+    await runRecurseTailFromApproval(ctx, team, request.member)
+}
+
+export async function rejectRecurseDecompose(
+    ctx: PluginContext,
+    team: Team,
+    request: ApprovalRequest,
+): Promise<void> {
+    const task = team.activeTask
+    if (!task || task.type !== "recurse" || !request.taskId) return
+    const parent = await getTask(team.directory, request.taskId)
+    if (!parent) return
+    if (parent.id === task.rootTaskId) {
+        task.aggregationDispatchCount = 0
+    }
+    const output = request.member ? (task.responses[request.member] ?? "") : ""
+    const result = output.length > 0 ? output : "(no output provided)"
+    await updateTask(team.directory, parent.id, { status: "completed", result })
+    await runRecurseTailFromApproval(ctx, team, request.member)
+}
+
 /**
  * Hierarchical recursive decomposition (recurse mode). When a member idles,
  * the orchestrator inspects that member's claimed task and either:
@@ -102,6 +160,15 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             && dec.subtasks.length <= maxSubtasks
             && tasks.filter(t => t.status !== "deleted").length + dec.subtasks.length <= team.bounds.maxTasks
         if (canDecompose) {
+            if (await maybeRequestApproval(ctx, team, {
+                kind: "recurse_decompose",
+                summary: `Member ${member.name} proposed decomposing task "${T.subject}" into ${dec.subtasks.length} subtasks.`,
+                taskId: T.id,
+                member: member.name,
+                subtasks: dec.subtasks,
+            })) {
+                return
+            }
             // Branch: create subtasks (depth+1), re-queue T as their aggregator.
             const ids: string[] = []
             for (const s of dec.subtasks) {

@@ -12,6 +12,8 @@ import { recordEvent } from "../orchestration/events.js"
 import { advancePipelineAfterStage } from "../orchestration/pipeline.js"
 import { advanceTollgateAfterPass } from "../orchestration/tollgate.js"
 import { approveLoopDone, rejectLoopDone } from "../orchestration/loop.js"
+import { advanceRouteAfterDecision } from "../orchestration/route.js"
+import { approveRecurseDecompose, rejectRecurseDecompose } from "../orchestration/recurse.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 
@@ -74,6 +76,12 @@ export async function applyApprovalDecision(
             case "loop_done":
                 await rejectLoopDone(ctx, team, decision.feedback)
                 return `Rejected ${request.kind} for team "${team.teamName}".`
+            case "route_decision":
+                await finishRun(ctx, team, "route_human_rejected", "failed")
+                return `Rejected ${request.kind} for team "${team.teamName}".`
+            case "recurse_decompose":
+                await rejectRecurseDecompose(ctx, team, request)
+                return `Rejected ${request.kind} for team "${team.teamName}".`
             default: {
                 const _exhaustive: never = request.kind
                 void _exhaustive
@@ -91,6 +99,12 @@ export async function applyApprovalDecision(
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         case "loop_done":
             await approveLoopDone(ctx, team)
+            return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
+        case "route_decision":
+            await advanceRouteAfterDecision(ctx, team)
+            return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
+        case "recurse_decompose":
+            await approveRecurseDecompose(ctx, team, request)
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         default: {
             const _exhaustive: never = request.kind

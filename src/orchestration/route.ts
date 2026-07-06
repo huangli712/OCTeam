@@ -21,6 +21,22 @@ import { recordEvent } from "./events.js"
 import { waitForBarrier } from "./barriers.js"
 import { parseRouteDecision } from "./decisions.js"
 import { maybeTriggerSignoff } from "./signoff.js"
+import { maybeRequestApproval } from "./hitl.js"
+
+export async function advanceRouteAfterDecision(ctx: PluginContext, team: Team): Promise<void> {
+    const task = team.activeTask
+    if (!task || task.type !== "route") return
+    const branches = task.routeBranches ?? []
+    const targets = task.routeTargets ?? []
+    const selected = branches.filter(b => targets.includes(b.member))
+    for (const b of selected) {
+        const m = team.members.find(x => x.name === b.member && !x.isMaster)
+        if (!m?.sessionId) continue
+        const text = b.task ?? task.task ?? ""
+        await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
+    }
+    await saveTeamState(team)
+}
 
 /**
  * No default route: a parse failure or zero matching branches fails the run
@@ -53,13 +69,13 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
             member: task.routerMember,
             detail: `targets: ${task.routeTargets.join(",")}`,
         })
-        for (const b of selected) {
-            const m = team.members.find(x => x.name === b.member && !x.isMaster)
-            if (!m?.sessionId) continue
-            const text = b.task ?? task.task ?? ""
-            await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
+        if (await maybeRequestApproval(ctx, team, {
+            kind: "route_decision",
+            summary: `Router ${task.routerMember ?? "unknown"} selected target member(s): ${task.routeTargets.join(", ")}.\n\nRationale: ${decision.rationale}`,
+        })) {
+            return
         }
-        await saveTeamState(team)
+        await advanceRouteAfterDecision(ctx, team)
         return
     }
 

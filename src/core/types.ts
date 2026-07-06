@@ -107,7 +107,7 @@ export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | 
 export type ParallelMode = "isolated" | "cooperative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
-export type ApprovalKind = "pipeline_stage" | "tollgate_gate" | "loop_done"
+export type ApprovalKind = "pipeline_stage" | "tollgate_gate" | "loop_done" | "route_decision" | "recurse_decompose"
 export type ApprovalTimeoutAction = "fail" | "approve" | "reject"
 
 // tollgate: three-valued verification verdict emitted by a gate's verifier.
@@ -370,6 +370,14 @@ export type ApprovalRequest = {
     summary: string                     // text presented to the leader for approval
     stage?: number                      // currentStageIndex for stage/gate approvals
     round?: number                      // currentRound for loop done approval
+    taskId?: string                     // recurse approval: task being decomposed
+    member?: string                     // recurse approval: member that requested decomposition
+    subtasks?: ApprovalSubtask[]        // recurse approval: proposed child tasks
+}
+
+export type ApprovalSubtask = {
+    subject: string
+    description: string
 }
 
 export type ApprovalDecisionRecord = {
