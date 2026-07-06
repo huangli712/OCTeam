@@ -37,28 +37,15 @@
  *            -> the .rejects assertion PASSES.
  */
 
-import { afterAll, describe, expect, mock, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 import { chmod, mkdir } from "node:fs/promises"
 import path from "node:path"
 
 import { captureMemberOutput } from "../src/orchestration/handlers.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
-import type { PluginContext } from "../src/core/context.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
-
-/** PluginContext with a mocked app.log sink (the swallowed path logs here). */
-function makeCtx(): PluginContext {
-    return {
-        directory: "/app",
-        client: {
-            app: {
-                log: mock(async () => ({})),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeParallelTask(runId: string): ActiveTask {
     return {
