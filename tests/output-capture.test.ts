@@ -268,8 +268,8 @@ function oneTurn(assistantText: string): Array<{ info?: { role: string }; parts?
 }
 
 describe("appendTurnBlock (pure accumulation helper)", () => {
-    test("first turn (prev='') writes verbatim with no separator", () => {
-        expect(appendTurnBlock("", "hello", "2026-07-01T00:00:00Z")).toBe("hello")
+    test("first turn (prev='') is prefixed with a separator carrying iso + byte count", () => {
+        expect(appendTurnBlock("", "hello", "2026-07-01T00:00:00Z")).toBe("--- captured 2026-07-01T00:00:00Z (5 bytes) ---\n\nhello")
     })
 
     test("subsequent turn prepends a separator carrying iso + byte count", () => {

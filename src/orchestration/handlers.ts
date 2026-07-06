@@ -283,17 +283,17 @@ export async function processIdle(
 
 /**
  * Build the accumulated run-member output by appending the current turn's
- * output to whatever was captured previously. The first turn writes verbatim;
- * each subsequent turn is prefixed with a separator carrying the capture
- * timestamp and turn byte-length, so the file reads as a complete transcript
+ * output to whatever was captured previously. EVERY turn (including the first)
+ * is prefixed with a separator carrying the capture timestamp and turn
+ * byte-length, so the file reads as a complete, uniformly-delimited transcript
  * of the member's deliveries across the run (NOT just the last turn).
  *
  * Extracted from captureMemberOutput so the accumulation logic is unit-testable
  * independent of ctx/team plumbing. Pure: no IO, no side effects.
  */
 export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: string): string {
-    if (prev === "") return turnOutput
-    return `${prev}\n\n--- captured ${capturedIso} (${turnOutput.length} bytes) ---\n\n${turnOutput}`
+    const block = `--- captured ${capturedIso} (${turnOutput.length} bytes) ---\n\n${turnOutput}`
+    return prev === "" ? block : `${prev}\n\n${block}`
 }
 
 /**
