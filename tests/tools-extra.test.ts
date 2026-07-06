@@ -454,7 +454,11 @@ describe("team_loop: happy-path startup", () => {
         // Appended decider stage is read-only and names bob.
         expect(stages![1].member).toBe("bob")
         expect(stages![1].action).toBe("read_only")
-        expect(team.activeTask?.deciderMember).toBe("bob")
+        const task = team.activeTask
+        expect(task?.type).toBe("loop")
+        if (task?.type === "loop") {
+            expect(task.deciderMember).toBe("bob")
+        }
     })
 })
 

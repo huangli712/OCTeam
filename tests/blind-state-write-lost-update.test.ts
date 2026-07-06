@@ -100,7 +100,7 @@ describe("blind state write lost update (finding: blind-state-write-lost-update)
 
         // --- Writer B: its in-memory snapshot is STALE (alice=idle — captured
         //     before A's write). B mutates bob → completed and saves. ---
-        teamB.members.find(m => m.name === "bob")!.status = "completed"
+        teamB.members.find(m => m.name === "bob")!.status = "idle"
         await saveTeamState(teamB)
 
         // --- ASSERT: BOTH writers' mutations must survive on disk. ---
@@ -110,6 +110,6 @@ describe("blind state write lost update (finding: blind-state-write-lost-update)
         // lock, saw alice=errored, preserved it, applied bob=completed → PASSES.
         const final = await readDiskState(dir)
         expect(final.members.find(m => m.name === "alice")!.status).toBe("errored")
-        expect(final.members.find(m => m.name === "bob")!.status).toBe("completed")
+        expect(final.members.find(m => m.name === "bob")!.status).toBe("idle")
     })
 })

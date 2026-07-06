@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
-import type { ActiveTask, MemberState } from "../src/core/types.js"
+import type { ActiveTask, MemberState, MemberStatus } from "../src/core/types.js"
 import { handleStatusEvent, processIdle } from "../src/orchestration/handlers.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
@@ -133,7 +133,7 @@ describe("processIdle: role-setup barrier (Step 1.5)", () => {
         // Barrier flipped initialized and saved; no dispatch happened yet
         // (role-setup does NOT advance the state machine).
         expect(alice.initialized).toBe(true)
-        expect(alice.status).toBe("idle") // Step 1 set this before the barrier check
+        expect(alice.status as MemberStatus).toBe("idle") // Step 1 set this before the barrier check
         expect(promptAsync).toHaveBeenCalledTimes(0)
     })
 })
@@ -162,7 +162,7 @@ describe("processIdle: unread-message wake hint (Step 5)", () => {
         alice.status = "running"
 
         // Drop an unread message into alice's mailbox.
-        await writeMailboxMessage(team.directory, "alice", mailboxMsg("m1", "wake content"))
+        await writeMailboxMessage(team.directory, "alice", mailboxMsg("m1", "wake content", "alice"))
 
         await team.mutex.runExclusive(async () => {
             await processIdle(ctx, team, alice, memberSid)

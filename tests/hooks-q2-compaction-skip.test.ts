@@ -134,7 +134,7 @@ describe("Q2 compaction guard: createTransformHook skips injection when flag is 
 
         // Arm the compacting flag.
         const compacting = createCompactingHook()
-        await compacting({ sessionID: memberSid } as never)
+        await compacting({ sessionID: memberSid } as never, { context: [] } as never)
 
         const output = makeOutput(memberSid)
         await createTransformHook(makeCtx(root))({} as never, output as never)
@@ -155,7 +155,7 @@ describe("Q2 compaction guard: createTransformHook skips injection when flag is 
 
         // Arm the flag, then advance the clock past the 15s TTL.
         const compacting = createCompactingHook()
-        await compacting({ sessionID: memberSid } as never)
+        await compacting({ sessionID: memberSid } as never, { context: [] } as never)
 
         const realNow = Date.now
         const future = realNow() + 20_000 // > COMPACTING_FLAG_TTL_MS (15_000)
@@ -193,7 +193,7 @@ describe("Q2 compaction guard: createTransformHook skips injection when flag is 
 
         // Arm flag.
         const compacting = createCompactingHook()
-        await compacting({ sessionID: memberSid } as never)
+        await compacting({ sessionID: memberSid } as never, { context: [] } as never)
 
         // First transform consumes the flag and skips. (No injection.)
         const out1 = makeOutput(memberSid)

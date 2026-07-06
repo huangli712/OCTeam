@@ -28,7 +28,7 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { readFile, writeFile } from "node:fs/promises"
 
-import { initTeamState, invalidateTeam, loadTeamState } from "../src/state/store.js"
+import { initTeamState, invalidateTeam, loadTeamState, type Team } from "../src/state/store.js"
 import { releaseStaleReservations } from "../src/messaging/mailbox.js"
 import { statePath, teamDir } from "../src/state/paths.js"
 import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
@@ -71,8 +71,8 @@ describe("team state member schema incomplete (finding: team-state-member-schema
         // loadTeamState throws "no state.json" → the tampered state never
         // propagates.
         const loadResult = await loadTeamState(root, "alpha", sid).then(
-            team => ({ loaded: true, team }),
-            (err: unknown) => ({ loaded: false, err: err as Error }),
+            (team): { loaded: true; team: Team } => ({ loaded: true, team }),
+            (err: unknown): { loaded: false; err: Error } => ({ loaded: false, err: err as Error }),
         )
 
         if (loadResult.loaded) {
