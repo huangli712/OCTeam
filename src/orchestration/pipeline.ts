@@ -4,11 +4,11 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team, clearActiveTask } from "../state/store.js"
+import { type Team } from "../state/store.js"
 import type { MemberState } from "../core/types.js"
 import { buildUpstreamContext, prependStandingInstruction } from "./dispatch.js"
 import { safeMemberAgent } from "../core/role.js"
-import { deliverSummaryToLeader } from "./summary.js"
+import { finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { maybeTriggerSignoff } from "./signoff.js"
 
@@ -28,9 +28,7 @@ export async function handlePipelineIdle(ctx: PluginContext, team: Team, member:
         if (await maybeTriggerSignoff(ctx, team)) {
             return  // signoff in progress
         }
-        await deliverSummaryToLeader(ctx, team, "pipeline_complete")
-        clearActiveTask(team)
-        team.status = "idle"
+        await finishRun(ctx, team, "pipeline_complete", "idle")
         return
     }
 

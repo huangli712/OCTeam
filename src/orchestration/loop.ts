@@ -8,7 +8,7 @@ import { logEvent } from "../core/log.js"
 import { type Team, clearActiveTask } from "../state/store.js"
 import type { MemberState } from "../core/types.js"
 import { advanceToStage } from "./dispatch.js"
-import { deliverSummaryToLeader } from "./summary.js"
+import { deliverSummaryToLeader, finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { allReadOnlyStagesReportNoIssues, parseDecision } from "./decisions.js"
 
@@ -37,9 +37,7 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
         logEvent(ctx, "warn", "decision parse failed", { team: team.teamName, member: member.name })
         task.decisionParseFailures++
         if (task.decisionParseFailures >= 3) {
-            await deliverSummaryToLeader(ctx, team, "loop_complete:decision_parse_failure")
-            clearActiveTask(team)
-            team.status = "failed"
+            await finishRun(ctx, team, "loop_complete:decision_parse_failure", "failed")
             return
         }
     } else {
@@ -59,16 +57,12 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
     // succeed -- even on the final round. Checking max_rounds first would
     // misreport a clean final round as a max_rounds failure.
     if (allReadOnlyStagesReportNoIssues(task)) {
-        await deliverSummaryToLeader(ctx, team, "loop_complete:no_issues")
-        clearActiveTask(team)
-        team.status = "idle"
+        await finishRun(ctx, team, "loop_complete:no_issues", "idle")
         return
     }
 
     if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
-        await deliverSummaryToLeader(ctx, team, "loop_complete:max_rounds")
-        clearActiveTask(team)
-        team.status = "failed"
+        await finishRun(ctx, team, "loop_complete:max_rounds", "failed")
         return
     }
 

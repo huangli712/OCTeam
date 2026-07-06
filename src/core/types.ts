@@ -81,9 +81,11 @@ export type TeamState = {
     startedAt?: number                 // when first task started
     activatedAt?: number               // epoch ms; presence ⇒ "available" team for its
                                        // leadSessionId. INVARIANT: ≤1 team per leadSessionId
-                                       // has this set, enforced by team_activate (deactivates
-                                       // sibling) + startup reconcile (keeps latest on >1
-                                       // violation). Orthogonal to TeamStatus lifecycle.
+                                       // has this set. Enforced by team_activate (refuses if a
+                                       // sibling is already active — auto-switching is disabled;
+                                       // caller must team_deactivate first) + startup reconcile
+                                       // (clears ALL activatedAt on plugin restart so nothing
+                                       // auto-activates after a reload). Orthogonal to TeamStatus.
 }
 
 // --- Bounds (resource limits, Section 8) ---
@@ -128,7 +130,9 @@ export type Verdict = "PASS" | "FAIL" | "INVALID"
 export interface ActiveTaskBase {
     type: OrchestrationType                  // discriminant (narrowed to a literal per variant)
     startedAt: number
-    wallClockTimeoutMs: number               // hard timeout, default 300000 (5 min)
+    wallClockTimeoutMs: number               // hard timeout in ms; set by the tool layer to
+                                       // DEFAULT_TIMEOUT_MS (600_000 / 10 min) or
+                                       // DEFAULT_LOOP_TIMEOUT_MS (900_000 / 15 min for loop)
     tokenBudget?: number                     // optional cost cap
     tokensUsed: number                       // running total = sum of tokensByMember (recomputed)
     tokensByMember: Record<string, number>   // memberName -> sum(input+output+reasoning)

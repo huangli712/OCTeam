@@ -17,7 +17,7 @@
 
 import type { PluginContext } from "../core/context.js"
 import type { ActiveTask } from "../core/types.js"
-import { type Team, clearActiveTask } from "../state/store.js"
+import { type Team } from "../state/store.js"
 import { advanceToStage, dispatchToMember } from "../orchestration/dispatch.js"
 import { handleParallelIdle } from "../orchestration/parallel.js"
 import { handleConsensusIdle } from "../orchestration/consensus.js"
@@ -26,8 +26,8 @@ import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../o
 import { handleRouteIdle } from "../orchestration/route.js"
 import { buildArbiterPrompt, buildDebatePrompt, handleArbitrateIdle } from "../orchestration/arbitrate.js"
 import { buildRouterPrompt } from "./router.js"
-import { buildSummary, deliverSummaryToLeader } from "../orchestration/summary.js"
-import { handleReduceIdle, handleSignoffIdle } from "../orchestration/signoff.js"
+import { buildSummary, finishRun } from "../orchestration/summary.js"
+import { buildReducePrompt, buildSignoffReviewPrompt, handleReduceIdle, handleSignoffIdle } from "../orchestration/signoff.js"
 import { listAllTasks, reapStaleClaims, updateTask } from "../state/tasks.js"
 
 /**
@@ -69,10 +69,7 @@ export async function resumeDispatch(
         const reducer = team.members.find(m => m.name === task.reducerMember && !m.isMaster)
         if (reducer && !task.responses[reducer.name]) {
             const body = await buildSummary(team, task, "pending_reduce")
-            const prompt =
-                `[Reduce task] You are the reducer for a parallel run. Combine the candidate `
-                + `outputs below into ONE final result per the policy. Output ONLY the final `
-                + `result, with no preamble.\n\n${body}`
+            const prompt = buildReducePrompt(body)
             await dispatchToMember(ctx, reducer, prompt, reducer.worktreePath ?? ctx.directory, team)
             dispatched = 1
         } else if (reducer) {
@@ -89,10 +86,7 @@ export async function resumeDispatch(
         // the caller's sweep/checkTermination eventually re-drives
         // handleSignoffIdle via the missed-idle path.
         const summary = await buildSummary(team, task, "pending_signoff")
-        const reviewPrompt =
-            `[Signoff review] Review the following workflow output. `
-            + `If it meets quality standards, emit <signoff>{"approved": true, "rationale": "..."}</signoff>. `
-            + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
+        const reviewPrompt = buildSignoffReviewPrompt(summary)
         let reviewers: typeof team.members = []
         if (task.signoffPolicy === "decider") {
             const decider = team.members.find(m => m.name === task.signoffDecider && !m.isMaster)
@@ -160,9 +154,7 @@ export async function resumeDispatch(
         case "loop": {
             if (task.currentStageIndex >= task.stages.length) {
                 // All-complete edge (crash before delivery).
-                await deliverSummaryToLeader(ctx, team, `${task.type}_complete`)
-                clearActiveTask(team)
-                team.status = "idle"
+                await finishRun(ctx, team, `${task.type}_complete`, "idle")
             } else {
                 // O3: advanceToStage uses responses[] internally;
                 // pass the Stage OBJECT (stages[idx]), NOT the index.

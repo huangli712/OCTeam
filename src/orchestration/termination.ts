@@ -6,9 +6,8 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { clearActiveTask } from '../state/store.js';
 import type { Team } from "../state/store.js"
-import { deliverSummaryToLeader } from "./summary.js"
+import { finishRun } from "./summary.js"
 
 /**
  * Check the active task's termination conditions and, if met, deliver a summary
@@ -20,17 +19,13 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
 
     // Wall-clock timeout
     if (Date.now() - task.startedAt > task.wallClockTimeoutMs) {
-        await deliverSummaryToLeader(ctx, team, "timeout")
-        clearActiveTask(team)
-        team.status = "failed"
+        await finishRun(ctx, team, "timeout", "failed")
         return
     }
 
     // Token budget
     if (task.tokenBudget !== undefined && task.tokensUsed > task.tokenBudget) {
-        await deliverSummaryToLeader(ctx, team, "budget_exceeded")
-        clearActiveTask(team)
-        team.status = "failed"
+        await finishRun(ctx, team, "budget_exceeded", "failed")
         return
     }
 
@@ -40,9 +35,7 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
         m => !m.isMaster && m.turnCount > team.bounds.maxMemberTurns,
     )
     if (overTurns) {
-        await deliverSummaryToLeader(ctx, team, `member_turn_limit:${overTurns.name}`)
-        clearActiveTask(team)
-        team.status = "failed"
+        await finishRun(ctx, team, `member_turn_limit:${overTurns.name}`, "failed")
         return
     }
 
@@ -58,9 +51,7 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
         const survivors = team.members.filter(m => !m.isMaster).length - erroredMembers.length
         if (erroredMembers.length > tolerance || survivors === 0) {
             const first = erroredMembers[0]
-            await deliverSummaryToLeader(ctx, team, `member_error:${first.name}:${first.error ?? "unknown"}`)
-            clearActiveTask(team)
-            team.status = "failed"
+            await finishRun(ctx, team, `member_error:${first.name}:${first.error ?? "unknown"}`, "failed")
             return
         }
         // within tolerance with survivors → NO-OP. The barrier delivers survivors.

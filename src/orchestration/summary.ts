@@ -13,7 +13,7 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import type { Team } from "../state/store.js"
+import { type Team, clearActiveTask } from "../state/store.js"
 import { formatMailboxInjection, pollMailbox, ackMessages } from "../messaging/mailbox.js"
 import { listAllTasks } from "../state/tasks.js"
 import { truncateOutput } from "../core/utils.js"
@@ -35,7 +35,7 @@ export async function deliverSummaryToLeader(
     const summary = await buildSummary(team, team.activeTask, reason)
 
     // Timeline (#5): emit the terminated event while runId is still on the task
-    // (clearActiveTask runs at every call site right after this).
+    // (finishRun at most call sites calls clearActiveTask right after this).
     recordEvent(team, { timestamp: Date.now(), kind: "terminated", reason })
 
     // Persist the run record (#2) BEFORE clearing/delivering. Best-effort: a
@@ -57,6 +57,24 @@ export async function deliverSummaryToLeader(
             ],
         },
     })
+}
+
+/**
+ * Deliver the run summary, clear the active task, and set the team status.
+ * Consolidates the teardown triplet (deliver -> clear -> status) that was
+ * copy-pasted across the orchestration primitives. Sites with intervening
+ * work between deliver and clear (e.g. loop's decisionHistory.push) call the
+ * individual operations directly.
+ */
+export async function finishRun(
+    ctx: PluginContext,
+    team: Team,
+    reason: string,
+    status: "idle" | "failed",
+): Promise<void> {
+    await deliverSummaryToLeader(ctx, team, reason)
+    clearActiveTask(team)
+    team.status = status
 }
 
 /**

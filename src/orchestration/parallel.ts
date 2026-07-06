@@ -4,8 +4,8 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team, clearActiveTask } from "../state/store.js"
-import { deliverSummaryToLeader } from "./summary.js"
+import { type Team } from "../state/store.js"
+import { finishRun } from "./summary.js"
 import { waitForBarrier } from "./barriers.js"
 import { maybeTriggerReduce, maybeTriggerSignoff } from "./signoff.js"
 
@@ -24,9 +24,7 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
         const survivors = participants.length - errored.length
         if (survivors === 0 || errored.length > tolerance) {
             const e = team.members.find(m => m.name === errored[0])
-            await deliverSummaryToLeader(ctx, team, `member_error:${e?.name}:${e?.error ?? "unknown"}`)
-            clearActiveTask(team)
-            team.status = "failed"
+            await finishRun(ctx, team, `member_error:${e?.name}:${e?.error ?? "unknown"}`, "failed")
             return
         }
         // Reduce (real map-reduce) BEFORE signoff: signoff then reviews the single
@@ -47,8 +45,6 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
         const reason = errored.length > 0
             ? `parallel_${task.mode}_partial:${errored.length}_errored`
             : `parallel_${task.mode}_complete`
-        await deliverSummaryToLeader(ctx, team, reason)
-        clearActiveTask(team)
-        team.status = "idle"
+        await finishRun(ctx, team, reason, "idle")
     })
 }

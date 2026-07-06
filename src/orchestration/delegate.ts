@@ -7,11 +7,11 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team, clearActiveTask } from "../state/store.js"
+import { type Team } from "../state/store.js"
 import type { MemberState } from "../core/types.js"
 import { listAllTasks } from "../state/tasks.js"
 import { dispatchToMember } from "./dispatch.js"
-import { deliverSummaryToLeader } from "./summary.js"
+import { finishRun } from "./summary.js"
 import { maybeTriggerSignoff } from "./signoff.js"
 import { captureMemberOutput } from "./handlers.js"
 
@@ -49,9 +49,7 @@ export async function runDelegateStyleTail(
             const msgs = (res.data ?? []) as Array<{ info?: any; parts?: any }>
             await captureMemberOutput(ctx, team, m, msgs)
         }
-        await deliverSummaryToLeader(ctx, team, `${label}_complete`)
-        clearActiveTask(team)
-        team.status = "idle"
+        await finishRun(ctx, team, `${label}_complete`, "idle")
         return
     }
 
@@ -90,9 +88,7 @@ export async function runDelegateStyleTail(
                 return !entry || entry.type === "idle"
             })
             if (trulyAllIdle) {
-                await deliverSummaryToLeader(ctx, team, `${label}_deadlock`)
-                clearActiveTask(team)
-                team.status = "failed"
+                await finishRun(ctx, team, `${label}_deadlock`, "failed")
                 return
             }
             // A member is actually running (wake-hint path) — wait for it.

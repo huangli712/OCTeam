@@ -8,10 +8,10 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team, clearActiveTask, saveTeamState } from "../state/store.js"
+import { type Team, saveTeamState } from "../state/store.js"
 import type { ActiveTask, ArbitrateTask } from "../core/types.js"
 import { dispatchToMember } from "./dispatch.js"
-import { buildRoundSummary, deliverSummaryToLeader } from "./summary.js"
+import { buildRoundSummary, finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { truncateOutput } from "../core/utils.js"
 import { waitForBarrier } from "./barriers.js"
@@ -74,9 +74,7 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
                 )
                 if (!arbiter?.sessionId) {
                     // Arbiter unavailable: cannot rule -> fail.
-                    await deliverSummaryToLeader(ctx, team, "arbitrate_complete:arbiter_unavailable")
-                    clearActiveTask(team)
-                    team.status = "failed"
+                    await finishRun(ctx, team, "arbitrate_complete:arbiter_unavailable", "failed")
                     return
                 }
                 await dispatchToMember(
@@ -104,9 +102,7 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
     // Phase B: ruling (only the arbiter's idle reaches here).
     const r = parseArbitrationDecision(task.responses[task.arbiterMember ?? ""] ?? "")
     if (r.parseFailed) {
-        await deliverSummaryToLeader(ctx, team, "arbitrate_complete:decision_parse_failure")
-        clearActiveTask(team)
-        team.status = "failed"
+        await finishRun(ctx, team, "arbitrate_complete:decision_parse_failure", "failed")
         return
     }
     task.arbitrationRuling = r.ruling
@@ -120,7 +116,5 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
     if (await maybeTriggerSignoff(ctx, team)) {
         return // signoff in progress
     }
-    await deliverSummaryToLeader(ctx, team, "arbitrate_complete:ruled")
-    clearActiveTask(team)
-    team.status = "idle"
+    await finishRun(ctx, team, "arbitrate_complete:ruled", "idle")
 }

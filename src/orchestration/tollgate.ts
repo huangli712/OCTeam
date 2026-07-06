@@ -8,10 +8,10 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team, clearActiveTask, saveTeamState } from "../state/store.js"
+import { type Team, saveTeamState } from "../state/store.js"
 import type { ActiveTask, GatedStage, MemberState } from "../core/types.js"
 import { buildUpstreamContext, dispatchToMember } from "./dispatch.js"
-import { deliverSummaryToLeader } from "./summary.js"
+import { finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { truncateOutput } from "../core/utils.js"
 import { parseVerdict } from "./decisions.js"
@@ -121,9 +121,7 @@ async function escalateInvalid(
     // wall-clock/turn budget is spent. Fail with a clear reason past the cap.
     const maxI = task.maxInvalidCycles ?? 3
     if (stage.invalidAttempts > maxI) {
-        await deliverSummaryToLeader(ctx, team, `tollgate_invalid:exhausted:${stage.member}`)
-        clearActiveTask(team)
-        team.status = "failed"
+        await finishRun(ctx, team, `tollgate_invalid:exhausted:${stage.member}`, "failed")
         return
     }
     const handler = team.members.find(m => m.name === task.escalateTo && !m.isMaster)
@@ -142,9 +140,7 @@ async function escalateInvalid(
         return
     }
     // No escalation handler -> hand to the leader (does not penalize producer).
-    await deliverSummaryToLeader(ctx, team, `tollgate_invalid:${stage.member}:${reason}`)
-    clearActiveTask(team)
-    team.status = "failed"
+    await finishRun(ctx, team, `tollgate_invalid:${stage.member}:${reason}`, "failed")
 }
 
 /**
@@ -210,9 +206,7 @@ export async function handleTollgateIdle(
         if (next === -1) {
             // All gates passed -> maybe signoff, then deliver.
             if (await maybeTriggerSignoff(ctx, team)) return
-            await deliverSummaryToLeader(ctx, team, "tollgate_complete")
-            clearActiveTask(team)
-            team.status = "idle"
+            await finishRun(ctx, team, "tollgate_complete", "idle")
             return
         }
         task.currentStageIndex = next
@@ -227,9 +221,7 @@ export async function handleTollgateIdle(
         const maxR = task.maxGateRetries ?? 0                // distinct from provider-retry maxRetries
         if (stage.attempts > maxR) {
             // Retries exhausted -> fail the run.
-            await deliverSummaryToLeader(ctx, team, `tollgate_failed:${stage.member}`)
-            clearActiveTask(team)
-            team.status = "failed"
+            await finishRun(ctx, team, `tollgate_failed:${stage.member}`, "failed")
             return
         }
         // Within retries -> return to produce with the diff diagnostic.

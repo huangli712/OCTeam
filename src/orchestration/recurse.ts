@@ -7,13 +7,13 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team, clearActiveTask } from "../state/store.js"
+import { type Team } from "../state/store.js"
 import type { MemberState } from "../core/types.js"
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import { recordEvent } from "./events.js"
 import { parseDecompose } from "./decisions.js"
 import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
-import { deliverSummaryToLeader } from "./summary.js"
+import { finishRun } from "./summary.js"
 import { dispatchToMember } from "./dispatch.js"
 
 /**
@@ -179,9 +179,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                             member: task.decomposerMember,
                             detail: `root still pending after ${MAX_AGGREGATION_DISPATCHES} aggregation dispatches`,
                         })
-                        await deliverSummaryToLeader(ctx, team, "recurse_aggregation_stalled")
-                        clearActiveTask(team)
-                        team.status = "failed"
+                        await finishRun(ctx, team, "recurse_aggregation_stalled", "failed")
                         return
                     }
                     decomposer.lastNotifiedAt = now

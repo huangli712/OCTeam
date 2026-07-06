@@ -15,12 +15,36 @@
 
 import type { PluginContext } from "../core/context.js"
 import { logEvent } from "../core/log.js"
-import { type Team, clearActiveTask, saveTeamState } from "../state/store.js"
+import { type Team, saveTeamState } from "../state/store.js"
 import type { MemberState } from "../core/types.js"
 import { dispatchToMember } from "./dispatch.js"
-import { buildSummary, deliverSummaryToLeader } from "./summary.js"
+import { buildSummary, finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { isQuorumReached, parseSignoff } from "./decisions.js"
+
+// --- shared prompt builders (live + crash-recovery paths must use identical wording) ---
+
+/**
+ * Build the [Reduce task] prompt. Shared by maybeTriggerReduce (live path) and
+ * resumeDispatch (crash-recovery) so a one-sided edit cannot make a resumed
+ * run send different instructions than the original.
+ */
+export function buildReducePrompt(body: string): string {
+    return `[Reduce task] You are the reducer for a parallel run. Combine the candidate `
+        + `outputs below into ONE final result per the policy. Output ONLY the final `
+        + `result, with no preamble.\n\n${body}`
+}
+
+/**
+ * Build the [Signoff review] prompt. Shared by maybeTriggerSignoff (live path)
+ * and resumeDispatch (crash-recovery) for the same drift-prevention reason as
+ * buildReducePrompt.
+ */
+export function buildSignoffReviewPrompt(summary: string): string {
+    return `[Signoff review] Review the following workflow output. `
+        + `If it meets quality standards, emit <signoff>{"approved": true, "rationale": "..."}</signoff>. `
+        + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
+}
 
 // --- signoff helpers (Phase B: decider mode; Phase D adds peer-quorum) ---
 
@@ -40,10 +64,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     recordEvent(team, { timestamp: Date.now(), kind: "signoff", detail: task.signoffPolicy })
 
     const summary = await buildSummary(team, task, "pending_signoff")
-    const reviewPrompt =
-        `[Signoff review] Review the following workflow output. `
-        + `If it meets quality standards, emit <signoff>{"approved": true, "rationale": "..."}</signoff>. `
-        + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
+    const reviewPrompt = buildSignoffReviewPrompt(summary)
 
     if (task.signoffPolicy === "decider") {
         const decider = team.members.find(m => m.name === task.signoffDecider && !m.isMaster)
@@ -94,9 +115,7 @@ export async function handleSignoffIdle(ctx: PluginContext, team: Team, member: 
     if (task.signoffPolicy === "decider") {
         const approved = signoff?.approved === true
         const reason = approved ? "signoff_approved" : "signoff_rejected"
-        await deliverSummaryToLeader(ctx, team, reason)
-        clearActiveTask(team)
-        team.status = "idle"
+        await finishRun(ctx, team, reason, "idle")
     } else if (task.signoffPolicy === "peer-quorum") {
         // Wait for all reviewers to respond, then check quorum. Must use the
         // SAME errored-exclusion as the dispatch site, else the denominator
@@ -110,9 +129,7 @@ export async function handleSignoffIdle(ctx: PluginContext, team: Team, member: 
         if (!allResponded) return  // wait for more
 
         const reason = reached ? "signoff_quorum_reached" : "signoff_quorum_not_reached"
-        await deliverSummaryToLeader(ctx, team, reason)
-        clearActiveTask(team)
-        team.status = "idle"
+        await finishRun(ctx, team, reason, "idle")
     }
 }
 
@@ -141,10 +158,7 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     // prompt (reducedResult is still unset here, so buildSummary returns the
     // guidance block, not the verbatim result).
     const body = await buildSummary(team, task, "pending_reduce")
-    const prompt =
-        `[Reduce task] You are the reducer for a parallel run. Combine the candidate `
-        + `outputs below into ONE final result per the policy. Output ONLY the final `
-        + `result, with no preamble.\n\n${body}`
+    const prompt = buildReducePrompt(body)
     await dispatchToMember(ctx, reducer, prompt, reducer.worktreePath ?? ctx.directory, team)
     await saveTeamState(team)
     return true
@@ -164,7 +178,5 @@ export async function handleReduceIdle(ctx: PluginContext, team: Team, member: M
     task.reduceStage = false
     // Post-reduce tail: signoff reviews the single reduced artifact, else deliver.
     if (await maybeTriggerSignoff(ctx, team)) return
-    await deliverSummaryToLeader(ctx, team, `parallel_${task.mode}_reduced:${task.reducePolicy}`)
-    clearActiveTask(team)
-    team.status = "idle"
+    await finishRun(ctx, team, `parallel_${task.mode}_reduced:${task.reducePolicy}`, "idle")
 }

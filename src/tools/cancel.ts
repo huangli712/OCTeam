@@ -7,8 +7,8 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { clearActiveTask, loadTeamState, saveTeamState, type Team } from "../state/store.js"
-import { deliverSummaryToLeader } from "../orchestration/summary.js"
+import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
+import { finishRun } from "../orchestration/summary.js"
 import { abortAndResetMembers } from "./shared.js"
 
 export function teamCancelTool(ctx: PluginContext): ToolDefinition {
@@ -45,11 +45,8 @@ export function teamCancelTool(ctx: PluginContext): ToolDefinition {
                 }
                 // a. Abort running member turns + reset to idle (shared helper).
                 await abortAndResetMembers(ctx, team)
-                // b. Notify master BEFORE clearing (summary reads activeTask).
-                await deliverSummaryToLeader(ctx, team, "cancelled")
-                // c. Clear + transition to idle (NOT failed).
-                clearActiveTask(team)
-                team.status = "idle"
+                // b. Notify master, clear active task, and transition to idle.
+                await finishRun(ctx, team, "cancelled", "idle")
                 // d. Persist.
                 await saveTeamState(team)
                 result = `Team "${args.team_id}" orchestration cancelled. Team is idle and reusable.`

@@ -4,9 +4,9 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team, clearActiveTask } from "../state/store.js"
+import { type Team } from "../state/store.js"
 import { dispatchToMember } from "./dispatch.js"
-import { buildRoundSummary, deliverSummaryToLeader } from "./summary.js"
+import { buildRoundSummary, finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { waitForBarrier } from "./barriers.js"
 import { allMembersAgree } from "./decisions.js"
@@ -19,16 +19,12 @@ export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promi
     await waitForBarrier(team, participants, async () => {
         task.consensusReached = allMembersAgree(task.responses)
         if (task.consensusReached) {
-            await deliverSummaryToLeader(ctx, team, "consensus_reached")
-            clearActiveTask(team)
-            team.status = "idle"
+            await finishRun(ctx, team, "consensus_reached", "idle")
             return
         }
         if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
             // Reached here only when consensus was NOT detected -> failed.
-            await deliverSummaryToLeader(ctx, team, "consensus_max_rounds")
-            clearActiveTask(team)
-            team.status = "failed"
+            await finishRun(ctx, team, "consensus_max_rounds", "failed")
             return
         }
         // Next round: broadcast prior-round summary, reset to running.

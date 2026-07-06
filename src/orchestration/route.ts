@@ -8,9 +8,9 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team, clearActiveTask, saveTeamState } from "../state/store.js"
+import { type Team, saveTeamState } from "../state/store.js"
 import { dispatchToMember } from "./dispatch.js"
-import { deliverSummaryToLeader } from "./summary.js"
+import { finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { waitForBarrier } from "./barriers.js"
 import { parseRouteDecision } from "./decisions.js"
@@ -33,9 +33,7 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
 
         if (decision.parseFailed || selected.length === 0) {
             // No default route: unmatched input fails the run.
-            await deliverSummaryToLeader(ctx, team, "route_complete:decision_parse_failure")
-            clearActiveTask(team)
-            team.status = "failed"
+            await finishRun(ctx, team, "route_complete:decision_parse_failure", "failed")
             return
         }
 
@@ -68,8 +66,6 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
         if (await maybeTriggerSignoff(ctx, team)) {
             return // signoff in progress
         }
-        await deliverSummaryToLeader(ctx, team, "route_complete")
-        clearActiveTask(team)
-        team.status = "idle"
+        await finishRun(ctx, team, "route_complete", "idle")
     })
 }
