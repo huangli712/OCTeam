@@ -290,6 +290,7 @@ export type WorkflowStep = {
     // gate step
     verifier?: string                   // the verifier member name (gate steps; NOT the preceding task's member)
     criteria?: string                   // verification criteria (gate steps)
+    targetStepIndex?: number            // gate steps: zero-based index of the task step being verified; omitted means nearest preceding task
     onFail?: "retry" | "fail"           // FAIL control: retry the preceding task, or fail the run (gate steps; default "fail")
     maxRetries?: number                 // FAIL retry cap, distinct from provider-retry maxRetries (gate steps; default 0)
     attempts?: number                   // FAIL retry count so far (gate steps)
@@ -328,6 +329,20 @@ export type LastModeRecord = {
 
 export type RunStatus = "completed" | "failed"
 
+export type WorkflowRunStep = {
+    index: number                       // zero-based internal workflow step index
+    step: number                        // one-based display step number
+    kind: WorkflowStepKind
+    member?: string
+    verifier?: string
+    targetStep?: number                 // one-based display target task step for gate steps
+    verdict?: Verdict
+    attempts?: number
+    completed: boolean
+    output?: string                     // bounded task-step snapshot captured at completion
+    outputBytes?: number
+}
+
 export type RunRecord = {
     version: 1
     runId: string                      // per-orchestration UUID
@@ -353,6 +368,8 @@ export type RunRecord = {
     memberOutputs: Record<string, { bytes: number; file: string }>
     // delegate snapshot of the shared task list at completion
     tasks?: Array<{ id: string; subject: string; status: string; owner?: string }>
+    // workflow snapshot of the step ledger at completion/failure
+    workflow?: { steps: WorkflowRunStep[] }
 }
 
 // --- RunEvent (append-only run timeline, stored as runs/<runId>/events.jsonl) ---

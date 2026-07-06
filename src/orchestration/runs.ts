@@ -48,6 +48,7 @@ const FAILED_REASON_MARKERS = [
     "tollgate_failed",     // tollgate: a gate's FAIL retries (maxGateRetries) exhausted
     "tollgate_invalid",    // tollgate: verifier/oracle unevaluable, no escalation handler
     "workflow_failed",     // workflow: a gate FAIL (onFail='fail' or retries exhausted) or unparseable verdict
+    "workflow_invalid",    // workflow: verifier could not evaluate the target task output
     "signoff_rejected",           // signoff: decider/reviewer rejected the work
     "signoff_quorum_not_reached", // signoff: peer-quorum did not get enough approvals
     "human_rejected",             // HITL: leader rejected a mid-run approval request
@@ -89,6 +90,22 @@ const ApprovalDecisionRecordSchema = z.object({
     feedback: z.string().optional(),
 })
 
+const WorkflowStepKindSchema = z.enum(["task", "gate"])
+const VerdictSchema = z.enum(["PASS", "FAIL", "INVALID"])
+const WorkflowRunStepSchema = z.object({
+    index: z.number(),
+    step: z.number(),
+    kind: WorkflowStepKindSchema,
+    member: z.string().optional(),
+    verifier: z.string().optional(),
+    targetStep: z.number().optional(),
+    verdict: VerdictSchema.optional(),
+    attempts: z.number().optional(),
+    completed: z.boolean(),
+    output: z.string().optional(),
+    outputBytes: z.number().optional(),
+})
+
 const RunRecordSchema = z.object({
     version: z.literal(1),
     runId: z.string(),
@@ -116,6 +133,9 @@ const RunRecordSchema = z.object({
         status: z.string(),
         owner: z.string().optional(),
     })).optional(),
+    workflow: z.object({
+        steps: z.array(WorkflowRunStepSchema),
+    }).optional(),
 })
 
 const RunEventSchema = z.object({
@@ -217,6 +237,24 @@ export async function persistRun(team: Team, reason: string): Promise<void> {
             status: t.status,
             owner: t.owner,
         }))
+    }
+
+    if (task.type === "workflow") {
+        record.workflow = {
+            steps: (task.steps ?? []).map((step, index) => ({
+                index,
+                step: index + 1,
+                kind: step.kind,
+                member: step.member,
+                verifier: step.verifier,
+                targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
+                verdict: step.verdict,
+                attempts: step.attempts,
+                completed: step.completed,
+                output: step.output,
+                outputBytes: step.output === undefined ? undefined : Buffer.byteLength(step.output, "utf8"),
+            })),
+        }
     }
 
     await atomicWrite(runRecordPath(team.directory, runId), JSON.stringify(record, null, 2))

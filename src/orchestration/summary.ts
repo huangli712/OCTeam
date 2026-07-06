@@ -262,7 +262,8 @@ function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head
         if (s.kind === "task") {
             return `${i + 1}. [task] ${s.member ?? "?"}${s.completed ? " (done)" : ""}`
         }
-        return `${i + 1}. [gate] ${s.verifier ?? "?"} -> ${s.verdict ?? "pending"}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}`
+        const target = s.targetStepIndex === undefined ? "nearest task" : `step ${s.targetStepIndex + 1}`
+        return `${i + 1}. [gate] ${s.verifier ?? "?"} verifies ${target} -> ${s.verdict ?? "pending"}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}`
     })
     const outputs = steps
         .map((s, i) => {

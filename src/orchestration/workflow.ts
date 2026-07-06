@@ -11,8 +11,8 @@
  *       FAIL   -> if onFail="retry" and attempts <= maxRetries, reset and
  *                 re-dispatch the preceding task's actor with a diff diagnostic;
  *                 else fail the run (workflow_failed).
- *       parse-failure -> fail the run (workflow_failed). MVP has no INVALID
- *                 escalation (unlike tollgate); an unevaluable verdict fails.
+ *       INVALID / parse-failure -> fail the run as workflow_invalid. This is
+ *                 producer-neutral: the target task is not retried.
  *   - All steps complete -> maybeTriggerSignoff -> deliver (idle: workflow_complete)
  *
  * Reuses dispatchToMember (canonical member dispatch), parseVerdict (tollgate's
@@ -46,7 +46,6 @@ const UPSTREAM_TOTAL_CAP = 65_536
  */
 function buildWorkflowUpstream(
     steps: WorkflowStep[],
-    responses: Record<string, string>,
     uptoIndex: number,
 ): string {
     const blocks: string[] = []
@@ -54,7 +53,7 @@ function buildWorkflowUpstream(
     for (let i = 0; i < uptoIndex; i++) {
         const s = steps[i]
         if (!s?.completed || s.kind !== "task" || !s.member) continue
-        const out = responses[s.member]
+        const out = s.output
         if (!out) continue
         const block = `[Output from ${s.member}]\n${truncateOutput(out)}`
         if (used + block.length > UPSTREAM_TOTAL_CAP) {
@@ -72,14 +71,15 @@ function buildWorkflowUpstream(
  * criteria, and the exact <verdict> block the verifier must emit. PASS = the
  * output meets the criteria, FAIL = it does not (rationale + diff).
  */
-function buildGateVerifierPrompt(step: WorkflowStep, producerOutput: string): string {
+function buildGateVerifierPrompt(step: WorkflowStep, producerOutput: string, targetStep: number): string {
     return (
-        `[Verification gate] Verify the producer's output below against the criteria.\n`
+        `[Verification gate] Verify workflow step ${targetStep} output below against the criteria.\n`
         + `Criteria: ${step.criteria ?? ""}\n\n`
         + `Producer output:\n${producerOutput}\n\n`
         + `Emit EXACTLY one:\n`
-        + `<verdict>{"result":"PASS|FAIL","rationale":"...","diff":"..."}</verdict>\n`
-        + `PASS = the output meets the criteria. FAIL = it does not (give rationale + diff).`
+        + `<verdict>{"result":"PASS|FAIL|INVALID","rationale":"...","diff":"..."}</verdict>\n`
+        + `PASS = the output meets the criteria. FAIL = it does not (give rationale + diff). `
+        + `INVALID = you cannot evaluate the output or criteria; this is not a producer failure.`
     )
 }
 
@@ -95,20 +95,38 @@ function precedingTaskIndex(steps: WorkflowStep[], gateIndex: number): number {
     return -1
 }
 
+function gateTargetIndex(steps: WorkflowStep[], gateIndex: number): number {
+    const gate = steps[gateIndex]
+    if (gate?.kind === "gate" && gate.targetStepIndex !== undefined) return gate.targetStepIndex
+    return precedingTaskIndex(steps, gateIndex)
+}
+
+function hasLiveSession(member: MemberState | undefined): member is MemberState & { sessionId: string } {
+    return member?.sessionId !== undefined && member.status !== "errored"
+}
+
+function describeStep(step: WorkflowStep | undefined, index: number): string {
+    if (!step) return `step ${index + 1}`
+    if (step.kind === "task") return `step ${index + 1} (task) by ${step.member ?? "?"}`
+    const target = step.targetStepIndex === undefined ? "nearest task" : `step ${step.targetStepIndex + 1}`
+    return `step ${index + 1} (gate) by ${step.verifier ?? "?"}, verifying ${target}`
+}
+
 /** Dispatch a task step's actor with upstream context prefixed. */
 async function dispatchTaskStep(
     ctx: PluginContext,
     team: Team,
     task: WorkflowTask,
     index: number,
-): Promise<void> {
+): Promise<boolean> {
     const step = task.steps?.[index]
-    if (!step || step.kind !== "task" || !step.member || !step.task) return
+    if (!step || step.kind !== "task" || !step.member || !step.task) return false
     const member = team.members.find(m => m.name === step.member && !m.isMaster)
-    if (!member?.sessionId) return
-    const upstream = buildWorkflowUpstream(task.steps ?? [], task.responses, index)
+    if (!hasLiveSession(member)) return false
+    const upstream = buildWorkflowUpstream(task.steps ?? [], index)
     const text = upstream ? `${upstream}\n\n[Your task]\n${step.task}` : step.task
     await dispatchToMember(ctx, member, text, member.worktreePath ?? ctx.directory, team)
+    return true
 }
 
 /** Dispatch a gate step's verifier with the preceding task's output + criteria. */
@@ -117,21 +135,23 @@ async function dispatchGateStep(
     team: Team,
     task: WorkflowTask,
     index: number,
-): Promise<void> {
+): Promise<boolean> {
     const step = task.steps?.[index]
-    if (!step || step.kind !== "gate" || !step.verifier) return
+    if (!step || step.kind !== "gate" || !step.verifier) return false
     const verifier = team.members.find(m => m.name === step.verifier && !m.isMaster)
-    if (!verifier?.sessionId) return
-    const producerIdx = precedingTaskIndex(task.steps ?? [], index)
-    const producerMember = producerIdx >= 0 ? task.steps?.[producerIdx]?.member : undefined
-    const producerOutput = producerMember ? truncateOutput(task.responses[producerMember] ?? "") : ""
+    if (!hasLiveSession(verifier)) return false
+    const producerIdx = gateTargetIndex(task.steps ?? [], index)
+    if (producerIdx < 0) return false
+    const producerStep = producerIdx >= 0 ? task.steps?.[producerIdx] : undefined
+    const producerOutput = producerStep?.kind === "task" ? truncateOutput(producerStep.output ?? "") : ""
     await dispatchToMember(
         ctx,
         verifier,
-        buildGateVerifierPrompt(step, producerOutput),
+        buildGateVerifierPrompt(step, producerOutput, producerIdx + 1),
         verifier.worktreePath ?? ctx.directory,
         team,
     )
+    return true
 }
 
 /**
@@ -154,10 +174,13 @@ export async function advanceWorkflowStep(ctx: PluginContext, team: Team): Promi
     task.currentStageIndex = nextIndex
     const step = steps[nextIndex]
     if (!step) return
-    if (step.kind === "task") {
-        await dispatchTaskStep(ctx, team, task, nextIndex)
-    } else {
-        await dispatchGateStep(ctx, team, task, nextIndex)
+    const dispatched = step.kind === "task"
+        ? await dispatchTaskStep(ctx, team, task, nextIndex)
+        : await dispatchGateStep(ctx, team, task, nextIndex)
+    if (!dispatched) {
+        const actor = step.kind === "task" ? step.member : step.verifier
+        await finishRun(ctx, team, `workflow_failed:no_session:${actor ?? "unknown"}`, "failed")
+        return
     }
     await saveTeamState(team)
 }
@@ -187,7 +210,7 @@ export async function handleWorkflowIdle(
         if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
             stage: task.currentStageIndex,
-            summary: `Workflow step ${task.currentStageIndex + 1} (task) completed by ${step.member}. Review before step ${nextIndex + 1} starts.`,
+            summary: `Completed ${describeStep(step, task.currentStageIndex)}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
         })) {
             return
         }
@@ -207,11 +230,15 @@ export async function handleWorkflowIdle(
     })
 
     if (v.parseFailed || !v.verdict) {
-        // MVP: an unparseable verdict fails the run (no INVALID escalation).
-        await finishRun(ctx, team, `workflow_failed:parse_failure:${step.verifier}`, "failed")
+        await finishRun(ctx, team, `workflow_invalid:parse_failure:${step.verifier}`, "failed")
         return
     }
     step.verdict = v.verdict
+
+    if (v.verdict === "INVALID") {
+        await finishRun(ctx, team, `workflow_invalid:${step.verifier}`, "failed")
+        return
+    }
 
     if (v.verdict === "PASS") {
         step.completed = true
@@ -219,7 +246,7 @@ export async function handleWorkflowIdle(
         if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
             stage: task.currentStageIndex,
-            summary: `Workflow gate ${task.currentStageIndex + 1} passed verification by ${step.verifier}. Review before step ${nextIndex + 1} starts.`,
+            summary: `Completed ${describeStep(step, task.currentStageIndex)} with PASS from ${step.verifier}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
         })) {
             return
         }
@@ -240,28 +267,50 @@ export async function handleWorkflowIdle(
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
         return
     }
-    const producerIdx = precedingTaskIndex(steps, task.currentStageIndex)
+    const gateIndex = task.currentStageIndex
+    const producerIdx = gateTargetIndex(steps, gateIndex)
     if (producerIdx === -1) {
         // No preceding task to retry -> fail (defensive; tool layer rejects gate-first).
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
         return
     }
+    for (let i = producerIdx; i <= gateIndex; i++) {
+        const retryStep = steps[i]
+        if (!retryStep) continue
+        retryStep.completed = false
+        if (retryStep.kind === "task") retryStep.output = undefined
+        if (retryStep.kind === "gate") {
+            retryStep.verdict = undefined
+            if (i !== gateIndex) retryStep.attempts = 0
+        }
+    }
     const producerStep = steps[producerIdx]
-    producerStep.completed = false
-    producerStep.output = undefined
+    if (!producerStep || producerStep.kind !== "task") {
+        await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
+        return
+    }
     task.currentStageIndex = producerIdx
     const producer = team.members.find(m => m.name === producerStep.member && !m.isMaster)
-    if (producer?.sessionId) {
-        const feedback =
-            `[Gate FAILED — attempt ${step.attempts}/${maxR}]\n`
-            + `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`
-        await dispatchToMember(
-            ctx,
-            producer,
-            `${feedback}\n\n[Your task]\n${producerStep.task ?? ""}`,
-            producer.worktreePath ?? ctx.directory,
-            team,
-        )
+    if (!hasLiveSession(producer)) {
+        await finishRun(ctx, team, `workflow_failed:no_session:${producerStep.member ?? "unknown"}`, "failed")
+        return
     }
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "retry",
+        member: producerStep.member,
+        stage: gateIndex,
+        detail: `workflow step ${gateIndex + 1} attempt ${step.attempts}/${maxR}; retry target step ${producerIdx + 1}; verifier ${step.verifier}; diff: ${v.diff}`,
+    })
+    const feedback =
+        `[Gate FAILED - attempt ${step.attempts}/${maxR}]\n`
+        + `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`
+    await dispatchToMember(
+        ctx,
+        producer,
+        `${feedback}\n\n[Your task]\n${producerStep.task ?? ""}`,
+        producer.worktreePath ?? ctx.directory,
+        team,
+    )
     await saveTeamState(team)
 }

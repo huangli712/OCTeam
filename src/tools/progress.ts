@@ -24,7 +24,9 @@ function formatSnapshot(team: Team): string[] {
     const lines: string[] = [`Team: ${team.teamName}  status: ${team.status}`]
     if (team.activeTask) {
         const t = team.activeTask
-        const stage = t.stages.length > 0 ? `  stage ${t.currentStageIndex}/${t.stages.length}` : ""
+        const stage = t.type === "workflow"
+            ? (t.steps && t.steps.length > 0 ? `  step ${t.currentStageIndex + 1}/${t.steps.length}` : "")
+            : (t.stages.length > 0 ? `  stage ${t.currentStageIndex + 1}/${t.stages.length}` : "")
         const round = t.currentRound !== undefined ? `  round ${t.currentRound}/${t.maxRounds ?? "-"}` : ""
         lines.push(`Active: ${t.type}${t.mode ? `/${t.mode}` : ""}${stage}${round}  tokens ${t.tokensUsed}`)
         if (t.approvalStage && t.approvalRequest) {
@@ -57,7 +59,7 @@ function formatTimeline(events: RunEvent[], runId: string, totalBefore: number):
     const lines = events.map(e => {
         const who = e.member ? ` ${e.member}` : ""
         const extra = [
-            e.stage !== undefined ? `stage ${e.stage}` : "",
+            e.stage !== undefined ? `stage ${e.stage + 1}` : "",
             e.round !== undefined ? `round ${e.round}` : "",
             e.bytes !== undefined ? `${e.bytes} bytes` : "",
             e.reason ? `— ${e.reason}` : "",

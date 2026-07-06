@@ -18,7 +18,17 @@ import { truncateOutput } from "../core/utils.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { listRunRecords, readRunRecord } from "../orchestration/runs.js"
 import { runMemberOutputPath, isSafePathSegment } from "../state/paths.js"
-import type { RunRecord } from "../core/types.js"
+import type { RunRecord, WorkflowRunStep } from "../core/types.js"
+
+function formatWorkflowStepLine(step: WorkflowRunStep): string {
+    if (step.kind === "task") {
+        const bytes = step.outputBytes === undefined ? "" : ` (${step.outputBytes} bytes)`
+        return `- Step ${step.step}: [task] ${step.member ?? "?"}${step.completed ? " (done)" : ""}${bytes}`
+    }
+    const target = step.targetStep === undefined ? "nearest task" : `step ${step.targetStep}`
+    const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
+    return `- Step ${step.step}: [gate] ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${attempts}`
+}
 
 function formatRunLine(r: RunRecord): string {
     const mode = r.mode ? `/${r.mode}` : ""
@@ -129,6 +139,17 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                     t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
                 )
                 previews.push(`### tasks\n${taskLines.join("\n")}`)
+            }
+
+            if (record.workflow && record.workflow.steps.length > 0) {
+                const lines: string[] = []
+                for (const step of record.workflow.steps) {
+                    lines.push(formatWorkflowStepLine(step))
+                    if (step.kind === "task" && step.output) {
+                        lines.push(truncateOutput(step.output, 1024))
+                    }
+                }
+                previews.push(`### workflow steps\n${lines.join("\n")}`)
             }
 
             const body = previews.length > 0 ? previews.join("\n\n") : "(no member outputs captured)"

@@ -22,8 +22,12 @@ type ApprovalRequestInput = {
 }
 
 export function buildApprovalPrompt(teamName: string, request: ApprovalRequest): string {
+    const stageLabel = request.kind === "workflow_step" ? "step" : "stage"
+    const stageDisplay = request.kind === "workflow_step" && request.stage !== undefined
+        ? request.stage + 1
+        : request.stage
     const where = [
-        request.stage !== undefined ? `stage ${request.stage}` : "",
+        stageDisplay !== undefined ? `${stageLabel} ${stageDisplay}` : "",
         request.round !== undefined ? `round ${request.round}` : "",
     ].filter(Boolean).join(", ")
     const location = where ? ` (${where})` : ""
