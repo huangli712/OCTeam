@@ -159,10 +159,14 @@ export const signoffSchemaFields = {
 // Named defaults for orchestration parameters (wf-011). Previously these were
 // scattered as inline `?? N` literals across the Phase-3 commit blocks, which
 // made the effective defaults hard to audit and easy to drift between tools.
-export const DEFAULT_CONSENSUS_ROUNDS = 3
-export const DEFAULT_ARBITRATE_ROUNDS = 1
-export const DEFAULT_RECURSE_DEPTH = 3
-export const DEFAULT_RECURSE_SUBTASKS = 5
+// The numeric defaults live in orchestration/defaults.ts (single-sourced for
+// both the tool and handler layers); re-exported here for tool-layer callers.
+export {
+    DEFAULT_CONSENSUS_ROUNDS,
+    DEFAULT_ARBITRATE_ROUNDS,
+    DEFAULT_RECURSE_DEPTH,
+    DEFAULT_RECURSE_SUBTASKS,
+} from "../orchestration/defaults.js"
 export const DEFAULT_SIGNOFF_POLICY: SignoffPolicy = "none"
 export const DEFAULT_REDUCE_POLICY: ReducePolicy = "summarize"
 

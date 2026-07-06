@@ -1,15 +1,14 @@
 /**
- * Invariant test for the three 9-way switches over OrchestrationType:
- *   - processIdle    (src/orchestration/handlers.ts)
- *   - resumeDispatch (src/tools/dispatch.ts)
- *   - buildSummary   (src/orchestration/summary.ts)
+ * Invariant test for the three 9-way dispatchers over OrchestrationType:
+ *   - processIdle    (src/orchestration/handlers.ts) — Record<OrchestrationType, ...> table
+ *   - resumeDispatch (src/tools/dispatch.ts) — switch with `_exhaustive: never` guard
+ *   - buildSummary   (src/orchestration/summary.ts) — switch with `_exhaustive: never` guard
  *
- * The `_exhaustive: never` default guards catch a *missing* case at compile
- * time, but cannot catch a *divergent* semantic between the live handler and
- * the resume path. This meta-test locks the weaker invariant — every
- * OrchestrationType has an explicit case in all three switches — so adding a
- * new OrchestrationType to core/types.ts without updating any one of the three
- * switches fails this test immediately at CI time.
+ * processIdle was converted from a switch to a Record table in P1-6: the
+ * Record<OrchestrationType, ...> type enforces compile-time completeness.
+ * This meta-test locks the weaker runtime invariant — every OrchestrationType
+ * appears as a key/case — so adding a new type without updating any one of
+ * the three dispatchers fails this test at CI time.
  *
  * Source-inspection approach is used because processIdle / resumeDispatch have
  * heavy host-ctx + state dependencies that make dynamic invocation brittle.
@@ -74,10 +73,14 @@ async function readSwitchBody(filePath: string, fnName: string): Promise<string>
 }
 
 describe("9-way switch invariant: every OrchestrationType has a case in all three switches", () => {
-    test("processIdle (handlers.ts) covers all 9 OrchestrationTypes", async () => {
-        const body = await readSwitchBody("src/orchestration/handlers.ts", "processIdle")
+    test("processIdle (handlers.ts) covers all 9 OrchestrationTypes via idleDispatch table", async () => {
+        // After P1-6, processIdle dispatches via a Record<OrchestrationType, ...>
+        // table (idleDispatch) instead of a switch. Record enforces compile-time
+        // completeness; this test verifies all 9 keys are present in the source.
+        const src = await readFile(path.resolve("src/orchestration/handlers.ts"), "utf8")
         for (const t of ORCHESTRATION_TYPES) {
-            expect(body).toContain(`case "${t}"`)
+            // Each type appears as a top-level key: `    parallel: async ...`
+            expect(src).toMatch(new RegExp(`^    ${t}:\\s*async`, "m"))
         }
     })
 

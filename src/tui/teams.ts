@@ -94,7 +94,7 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                 name: state.teamName ?? e.name,
                 status: state.status ?? "unknown",
                 activated: state.activatedAt !== undefined,
-                members: await Promise.all((state.members ?? []).map(async (m: any) => {
+                members: await Promise.all((state.members ?? []).map(async (m) => {
                     const mailbox = await countMailbox(dir, m.name)
                     return {
                         name: m.name,

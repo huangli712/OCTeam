@@ -129,6 +129,9 @@ export async function deliverQueuedResultsToMaster(
  * were already delivered to master via team_send_message; responses[] is NOT
  * used for delegate). loop uses decisionHistory (structured) rather than
  * the overwritten responses[]. parallel/pipeline concatenate captured outputs.
+ *
+ * Per-mode formatting lives in the summarize* helpers below; this function is
+ * a thin dispatcher with an exhaustiveness guard on OrchestrationType.
  */
 export async function buildSummary(
     team: Team,
@@ -137,175 +140,191 @@ export async function buildSummary(
 ): Promise<string> {
     const head = `mode=${task.type} reason=${reason} tokens=${task.tokensUsed}`
     switch (task.type) {
-        case "delegate": {
-            const tasks = await listAllTasks(team.directory)
-            const lines = tasks.map(
-                t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
-            )
-            return `${head}\n${lines.join("\n")}`
-        }
-        case "loop": {
-            const last = task.decisionHistory.at(-1)
-            const rounds = task.decisionHistory.map(
-                d => `  round ${d.round}: ${d.decision} — ${d.rationale}`,
-            )
-            const decisions = `${head} rounds=${task.currentRound}\nfinal: ${last?.decision ?? "n/a"}\n${rounds.join("\n")}`
-            // Include the actual member outputs (the work product), not just the
-            // decision log — otherwise a finished loop delivers nothing usable.
-            const outputs = Object.entries(task.responses)
-                .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
-                .join("\n\n")
-            return outputs ? `${decisions}\n\n${outputs}` : decisions
-        }
-        case "route": {
-            // Exclude the router's <route> decision JSON (noise); show only the
-            // selected targets' outputs plus the router's rationale.
-            const targets = task.routeTargets ?? []
-            const outputs = targets
-                .map(name => `### ${name}\n${truncateOutput(task.responses[name] ?? "")}`)
-                .join("\n\n")
-            const rationale = task.routeDecisionRationale
-                ? `\nRouter rationale: ${task.routeDecisionRationale}`
-                : ""
-            return `${head}${rationale}\n${outputs}`
-        }
-        case "arbitrate": {
-            // Lead with the arbiter's binding ruling; follow with the debaters'
-            // final positions. The arbiter's raw <ruling> JSON is excluded.
-            const positions = (task.disputants ?? [])
-                .map(name => `### ${name}\n${truncateOutput(task.responses[name] ?? "")}`)
-                .join("\n\n")
-            const ruling = task.arbitrationRuling
-                ? `Ruling: ${task.arbitrationRuling}`
-                : "Ruling: (none)"
-            const rationale = task.arbitrationRationale
-                ? `\nRationale: ${task.arbitrationRationale}`
-                : ""
-            return `${head}\n${ruling}${rationale}\n\n${positions}`
-        }
-        case "recurse": {
-            // Lead with the root task's result (the final deliverable); follow
-            // with the decomposition tree (depth-indented subject/status).
-            const tasks = await listAllTasks(team.directory)
-            const root = tasks.find(t => t.id === task.rootTaskId)
-            const rootResult = root?.result ?? "(no result)"
-            const tree = tasks
-                .slice()
-                .sort((a, b) => (a.depth ?? 0) - (b.depth ?? 0))
-                .map(t => `${"  ".repeat(t.depth ?? 0)}- [${t.status}] ${t.subject}`)
-                .join("\n")
-            return `${head}\nRoot result:\n${truncateOutput(rootResult)}\n\nTask tree:\n${tree}`
-        }
-        case "tollgate": {
-            // One line per gate: its verdict (or pending), producer, verifier,
-            // and FAIL-retry count. Follow with each completed gate's output.
-            const stages = task.gatedStages ?? []
-            const rows = stages.map((s, i) =>
-                `${i}. [${s.verdict ?? "pending"}] ${s.member} -> verified by ${s.verifier}`
-                + (s.attempts > 0 ? ` (${s.attempts} retries)` : ""))
-            const outputs = stages
-                .filter(s => s.completed)
-                .map(s => `### ${s.member}\n${truncateOutput(task.responses[s.member] ?? "")}`)
-                .join("\n\n")
-            return outputs
-                ? `${head}\nGates:\n${rows.join("\n")}\n\n${outputs}`
-                : `${head}\nGates:\n${rows.join("\n")}`
-        }
-        case "pipeline": {
-            // Concatenate stage outputs in order.
-            const candidates = Object.entries(task.responses)
-                .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
-                .join("\n\n")
-            return `${head}\n${candidates}`
-        }
-        case "consensus": {
-            // Consensus has no reducePolicy; concatenate member outputs
-            // (the same summarize behavior the old default branch produced).
-            const candidates = Object.entries(task.responses)
-                .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
-                .join("\n\n")
-            return `${head}\n${candidates}`
-        }
-        case "parallel": {
-            // #4 real reduce: once the reducer member has produced a combined
-            // result, deliver it verbatim instead of the [Reduce policy:X] header.
-            // (Gated on reducedResult presence, NOT the reason, so reduce_policy
-            // tests that exercise the header path stay green.)
-            if (task.reducedResult !== undefined) {
-                return `${head}\n${task.reducedResult}`
-            }
-            const outputs = Object.entries(task.responses)
-            const candidates = outputs
-                .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
-                .join("\n\n")
-
-            // parallel: switch on reducePolicy
-            const policy = task.reducePolicy ?? "summarize"
-            switch (policy) {
-                case "summarize":
-                    return `${head}\n${candidates}`
-                case "select": {
-                    // reduceSelect (method-neutral) makes "best" explicit so the
-                    // reducer does not default to its own prior task assignment as
-                    // the judging standard. The anti-bias line is always present
-                    // because the reducer is often also a contestant.
-                    const criteria = task.reduceSelect ?? "the best overall answer"
-                    return (
-                        `${head}\n`
-                        + `[Reduce policy: SELECT]\n`
-                        + `Selection criteria: ${criteria}\n`
-                        + `The following ${outputs.length} candidates were produced. `
-                        + `Select the single best candidate per the criteria above. `
-                        + `Judge ONLY against the stated criteria — do NOT favor a `
-                        + `candidate because it matches your own method or assignment. `
-                        + `State your choice and reasoning.\n\n`
-                        + candidates
-                    )
-                }
-                case "merge":
-                    return (
-                        `${head}\n`
-                        + `[Reduce policy: MERGE]\n`
-                        + `The following ${outputs.length} solutions were produced. `
-                        + `Merge them into a single best solution, resolving conflicts. `
-                        + `Cite which candidate contributed each part.\n\n`
-                        + candidates
-                    )
-                case "rubric": {
-                    const rubric = task.reduceRubric ?? "correctness (40%), clarity (30%), completeness (30%)"
-                    return (
-                        `${head}\n`
-                        + `[Reduce policy: RUBRIC]\n`
-                        + `Rubric: ${rubric}\n`
-                        + `Score each candidate on the rubric, then select the top-scoring one.\n\n`
-                        + candidates
-                    )
-                }
-                default: {
-                    // Exhaustiveness guard: if ReducePolicy gains a new variant,
-                    // this assignment fails to compile, forcing a case here.
-                    // Runtime fallback (defensive — an unknown value should not
-                    // reach here) mirrors summarize so the summary text is never
-                    // the literal string "undefined".
-                    const _exhaustive: never = policy
-                    void _exhaustive
-                    return `${head}\n${candidates}`
-                }
-            }
-        }
+        case "delegate": return await summarizeDelegate(team, head)
+        case "loop": return summarizeLoop(task, head)
+        case "route": return summarizeRoute(task, head)
+        case "arbitrate": return summarizeArbitrate(task, head)
+        case "recurse": return await summarizeRecurse(team, task, head)
+        case "tollgate": return summarizeTollgate(task, head)
+        case "pipeline": return summarizePipeline(task, head)
+        case "consensus": return summarizeConsensus(task, head)
+        case "parallel": return summarizeParallel(task, head)
         default: {
-            // Exhaustiveness guard for the outer OrchestrationType switch.
-            // Every variant has an explicit case above (delegate/loop/route/
-            // arbitrate/recurse/tollgate/pipeline/parallel; consensus also has
-            // its own case), so task.type narrows to `never` here. Adding a new
+            // Exhaustiveness guard for OrchestrationType. Every variant has an
+            // explicit case above, so task narrows to `never` here. Adding a new
             // OrchestrationType without a matching case fails this assignment at
-            // compile time — the same guard pattern used in handlers.ts:249 and
-            // tools/dispatch.ts:289. At runtime this is unreachable; the
-            // defensive throw prevents silent fall-through if the invariant ever
-            // regresses.
+            // compile time. Runtime throw prevents silent fall-through.
             const _exhaustive: never = task
             void _exhaustive
             throw new Error(`buildSummary: unhandled OrchestrationType: ${String((task as { type: string }).type)}`)
+        }
+    }
+}
+
+// --- per-mode summary builders (extracted from buildSummary) ---
+
+async function summarizeDelegate(team: Team, head: string): Promise<string> {
+    const tasks = await listAllTasks(team.directory)
+    const lines = tasks.map(
+        t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
+    )
+    return `${head}\n${lines.join("\n")}`
+}
+
+function summarizeLoop(task: ActiveTask, head: string): string {
+    const history = task.decisionHistory ?? []
+    const last = history.at(-1)
+    const rounds = history.map(
+        d => `  round ${d.round}: ${d.decision} — ${d.rationale}`,
+    )
+    const decisions = `${head} rounds=${task.currentRound ?? 0}\nfinal: ${last?.decision ?? "n/a"}\n${rounds.join("\n")}`
+    // Include the actual member outputs (the work product), not just the
+    // decision log — otherwise a finished loop delivers nothing usable.
+    const outputs = Object.entries(task.responses)
+        .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+        .join("\n\n")
+    return outputs ? `${decisions}\n\n${outputs}` : decisions
+}
+
+function summarizeRoute(task: Extract<ActiveTask, { type: "route" }>, head: string): string {
+    // Exclude the router's <route> decision JSON (noise); show only the
+    // selected targets' outputs plus the router's rationale.
+    const targets = task.routeTargets ?? []
+    const outputs = targets
+        .map(name => `### ${name}\n${truncateOutput(task.responses[name] ?? "")}`)
+        .join("\n\n")
+    const rationale = task.routeDecisionRationale
+        ? `\nRouter rationale: ${task.routeDecisionRationale}`
+        : ""
+    return `${head}${rationale}\n${outputs}`
+}
+
+function summarizeArbitrate(task: Extract<ActiveTask, { type: "arbitrate" }>, head: string): string {
+    // Lead with the arbiter's binding ruling; follow with the debaters'
+    // final positions. The arbiter's raw <ruling> JSON is excluded.
+    const positions = (task.disputants ?? [])
+        .map(name => `### ${name}\n${truncateOutput(task.responses[name] ?? "")}`)
+        .join("\n\n")
+    const ruling = task.arbitrationRuling
+        ? `Ruling: ${task.arbitrationRuling}`
+        : "Ruling: (none)"
+    const rationale = task.arbitrationRationale
+        ? `\nRationale: ${task.arbitrationRationale}`
+        : ""
+    return `${head}\n${ruling}${rationale}\n\n${positions}`
+}
+
+async function summarizeRecurse(team: Team, task: Extract<ActiveTask, { type: "recurse" }>, head: string): Promise<string> {
+    // Lead with the root task's result (the final deliverable); follow
+    // with the decomposition tree (depth-indented subject/status).
+    const tasks = await listAllTasks(team.directory)
+    const root = tasks.find(t => t.id === task.rootTaskId)
+    const rootResult = root?.result ?? "(no result)"
+    const tree = tasks
+        .slice()
+        .sort((a, b) => (a.depth ?? 0) - (b.depth ?? 0))
+        .map(t => `${"  ".repeat(t.depth ?? 0)}- [${t.status}] ${t.subject}`)
+        .join("\n")
+    return `${head}\nRoot result:\n${truncateOutput(rootResult)}\n\nTask tree:\n${tree}`
+}
+
+function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }>, head: string): string {
+    // One line per gate: its verdict (or pending), producer, verifier,
+    // and FAIL-retry count. Follow with each completed gate's output.
+    const stages = task.gatedStages ?? []
+    const rows = stages.map((s, i) =>
+        `${i}. [${s.verdict ?? "pending"}] ${s.member} -> verified by ${s.verifier}`
+        + (s.attempts > 0 ? ` (${s.attempts} retries)` : ""))
+    const outputs = stages
+        .filter(s => s.completed)
+        .map(s => `### ${s.member}\n${truncateOutput(task.responses[s.member] ?? "")}`)
+        .join("\n\n")
+    return outputs
+        ? `${head}\nGates:\n${rows.join("\n")}\n\n${outputs}`
+        : `${head}\nGates:\n${rows.join("\n")}`
+}
+
+function summarizePipeline(task: ActiveTask, head: string): string {
+    // Concatenate stage outputs in order.
+    const candidates = Object.entries(task.responses)
+        .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+        .join("\n\n")
+    return `${head}\n${candidates}`
+}
+
+function summarizeConsensus(task: ActiveTask, head: string): string {
+    // Consensus has no reducePolicy; concatenate member outputs
+    // (the same summarize behavior the old default branch produced).
+    const candidates = Object.entries(task.responses)
+        .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+        .join("\n\n")
+    return `${head}\n${candidates}`
+}
+
+function summarizeParallel(task: ActiveTask, head: string): string {
+    // #4 real reduce: once the reducer member has produced a combined
+    // result, deliver it verbatim instead of the [Reduce policy:X] header.
+    // (Gated on reducedResult presence, NOT the reason, so reduce_policy
+    // tests that exercise the header path stay green.)
+    if (task.reducedResult !== undefined) {
+        return `${head}\n${task.reducedResult}`
+    }
+    const outputs = Object.entries(task.responses)
+    const candidates = outputs
+        .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+        .join("\n\n")
+
+    // parallel: switch on reducePolicy
+    const policy = task.reducePolicy ?? "summarize"
+    switch (policy) {
+        case "summarize":
+            return `${head}\n${candidates}`
+        case "select": {
+            // reduceSelect (method-neutral) makes "best" explicit so the
+            // reducer does not default to its own prior task assignment as
+            // the judging standard. The anti-bias line is always present
+            // because the reducer is often also a contestant.
+            const criteria = task.reduceSelect ?? "the best overall answer"
+            return (
+                `${head}\n`
+                + `[Reduce policy: SELECT]\n`
+                + `Selection criteria: ${criteria}\n`
+                + `The following ${outputs.length} candidates were produced. `
+                + `Select the single best candidate per the criteria above. `
+                + `Judge ONLY against the stated criteria — do NOT favor a `
+                + `candidate because it matches your own method or assignment. `
+                + `State your choice and reasoning.\n\n`
+                + candidates
+            )
+        }
+        case "merge":
+            return (
+                `${head}\n`
+                + `[Reduce policy: MERGE]\n`
+                + `The following ${outputs.length} solutions were produced. `
+                + `Merge them into a single best solution, resolving conflicts. `
+                + `Cite which candidate contributed each part.\n\n`
+                + candidates
+            )
+        case "rubric": {
+            const rubric = task.reduceRubric ?? "correctness (40%), clarity (30%), completeness (30%)"
+            return (
+                `${head}\n`
+                + `[Reduce policy: RUBRIC]\n`
+                + `Rubric: ${rubric}\n`
+                + `Score each candidate on the rubric, then select the top-scoring one.\n\n`
+                + candidates
+            )
+        }
+        default: {
+            // Exhaustiveness guard: if ReducePolicy gains a new variant,
+            // this assignment fails to compile, forcing a case here.
+            // Runtime fallback (defensive — an unknown value should not
+            // reach here) mirrors summarize so the summary text is never
+            // the literal string "undefined".
+            const _exhaustive: never = policy
+            void _exhaustive
+            return `${head}\n${candidates}`
         }
     }
 }

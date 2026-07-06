@@ -24,7 +24,6 @@
 import crypto from "node:crypto"
 import { readFile } from "node:fs/promises"
 import type { PluginContext } from "../core/context.js"
-import { logEvent } from "../core/log.js"
 import { type Team, loadTeamState, saveTeamState } from '../state/store.js';
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"
@@ -33,7 +32,7 @@ import { resolveTeamMember } from "../state/resolve.js"
 import { safeMemberAgent } from "../core/role.js"
 import { atomicWrite } from "../state/locks.js"
 import { runMemberOutputPath, runReduceOutputPath } from "../state/paths.js"
-import type { ActiveTask, MemberState } from "../core/types.js"
+import type { ActiveTask, MemberState, OrchestrationType } from "../core/types.js"
 import { deliverQueuedResultsToMaster } from "./summary.js"
 import { checkTermination } from "./termination.js"
 import { recordEvent } from "./events.js"
@@ -105,6 +104,96 @@ function buildPrematureIdleReprompt(teamName: string): string {
 
 // --- main entry ---
 
+// processIdle helpers (extracted from the 158-line function for readability)
+
+/**
+ * Steps 2-3: Fetch session messages, recompute token accounting (always from
+ * full history, never +=), and validate the idle member's identity (stray
+ * idle must not advance pipeline/loop). Returns the fetched messages for
+ * Step 4 (captureMemberOutput) to reuse without a second API call, or null
+ * if this is a stray idle (caller must return after persisting).
+ */
+async function accountAndValidateIdle(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+    sessionID: string,
+): Promise<Array<{ info?: any; parts?: any }> | null> {
+    const msgs = await ctx.client.session.messages({ path: { id: sessionID } })
+    const messages = (msgs.data ?? []) as Array<{ info?: any; parts?: any }>
+    if (team.activeTask) {
+        // Step 2: Token accounting (recompute from full history, never +=).
+        team.activeTask.tokensByMember[member.name] = sumMemberTokens(messages)
+        team.activeTask.tokensUsed = Object.values(team.activeTask.tokensByMember).reduce(
+            (a, b) => a + b,
+            0,
+        )
+        // Step 3: Identity validation — stray idle must not advance pipeline/loop.
+        const expected = getExpectedMember(team.activeTask)
+        if (expected !== null && member.name !== expected) {
+            await saveTeamState(team) // persist token tally; do NOT advance
+            return null
+        }
+    }
+    return messages
+}
+
+/**
+ * require_done_ack recovery: a member that went idle without calling
+ * team_done() is "premature idle". Re-prompt it with explicit instructions
+ * instead of consulting the barrier (which would not fire anyway, since
+ * declaredDone is still false, but re-prompting here gives the member a
+ * chance to ack or report a blocker). maxMemberTurns / wall-clock timeout
+ * (checkTermination) cap retries.
+ * Returns true if re-prompted (caller must return); false to proceed normally.
+ */
+async function maybeRepromptPrematureIdle(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+): Promise<boolean> {
+    if (!team.activeTask) return false
+    if (
+        team.activeTask.requireDoneAck
+        && (team.activeTask.mode === "isolated" || team.activeTask.mode === "cooperative")
+        && !member.declaredDone
+        && member.sessionId
+    ) {
+        await ctx.client.session.promptAsync({
+            path: { id: member.sessionId },
+            body: {
+                parts: [{ type: "text", text: buildPrematureIdleReprompt(team.teamName), synthetic: true }],
+                agent: safeMemberAgent(member.agent),
+            },
+            query: { directory: member.worktreePath ?? ctx.directory },
+        })
+        member.status = "running"
+        member.turnCount++
+        await saveTeamState(team)
+        await checkTermination(ctx, team)
+        return true
+    }
+    return false
+}
+
+/**
+ * Idle dispatch table. Record<OrchestrationType, ...> enforces compile-time
+ * completeness: adding a new OrchestrationType without a table entry is a
+ * type error. Wrappers adapt heterogeneous handler signatures (some take
+ * member, some don't) to a uniform interface.
+ */
+const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, member: MemberState) => Promise<void>> = {
+    parallel: async (ctx, team) => handleParallelIdle(ctx, team),
+    consensus: async (ctx, team) => handleConsensusIdle(ctx, team),
+    pipeline: async (ctx, team, member) => handlePipelineIdle(ctx, team, member),
+    loop: async (ctx, team, member) => handleLoopIdle(ctx, team, member),
+    delegate: async (ctx, team, member) => handleDelegateIdle(ctx, team, member),
+    route: async (ctx, team) => handleRouteIdle(ctx, team),
+    arbitrate: async (ctx, team) => handleArbitrateIdle(ctx, team),
+    recurse: async (ctx, team, member) => handleRecurseIdle(ctx, team, member),
+    tollgate: async (ctx, team, member) => handleTollgateIdle(ctx, team, member),
+}
+
 export async function processIdle(
     ctx: PluginContext,
     team: Team,
@@ -135,25 +224,9 @@ export async function processIdle(
         return
     }
 
-    // Step 2: Token accounting (recompute from full history, never +=).
-    const msgs = await ctx.client.session.messages({ path: { id: sessionID } })
-    const messages = (msgs.data ?? []) as Array<{ info?: any; parts?: any }>
-    if (team.activeTask) {
-        team.activeTask.tokensByMember[member.name] = sumMemberTokens(messages)
-        team.activeTask.tokensUsed = Object.values(team.activeTask.tokensByMember).reduce(
-            (a, b) => a + b,
-            0,
-        )
-    }
-
-    // Step 3: Identity validation — stray idle must not advance pipeline/loop.
-    if (team.activeTask) {
-        const expected = getExpectedMember(team.activeTask)
-        if (expected !== null && member.name !== expected) {
-            await saveTeamState(team) // persist token tally; do NOT advance
-            return
-        }
-    }
+    // Steps 2-3: Token accounting + identity validation.
+    const messages = await accountAndValidateIdle(ctx, team, member, sessionID)
+    if (messages === null) return // stray idle
 
     // Step 4: Capture output (mode-aware; delegate skips, signoff always captures).
     await captureMemberOutput(ctx, team, member, messages)
@@ -167,98 +240,27 @@ export async function processIdle(
         return
     }
 
-    // Step 6: Dispatch by active-task type.
+    // Step 6: Dispatch by active-task type via the handler table.
+    // Record<OrchestrationType, ...> enforces compile-time completeness:
+    // a new mode without a table entry is a type error, not a runtime gap.
     if (!team.activeTask) return
-    // Capture the discriminant into a local so the switch narrows it (and the
-    // default-branch exhaustiveness check) rather than re-reading a property on
-    // the union each time — the latter defeats TS narrowing for `never` checks.
     const taskType = team.activeTask.type
-    // reduce stage takes priority (real map-reduce): the reducer's idle is
-    // captured into reducedResult, then signoff/deliver runs.
+    // reduce stage takes priority (real map-reduce).
     if (team.activeTask.reduceStage) {
         await handleReduceIdle(ctx, team, member)
         await checkTermination(ctx, team)
         return
     }
-    // signoff stage takes priority over normal mode dispatch
+    // signoff stage takes priority over normal mode dispatch.
     if (team.activeTask.signoffStage) {
         await handleSignoffIdle(ctx, team, member)
         await checkTermination(ctx, team)
         return
     }
-    switch (taskType) {
-        case "parallel":
-            // require_done_ack recovery: a member that went idle without calling
-            // team_done() is "premature idle". Re-prompt it with explicit
-            // instructions instead of consulting the barrier (which would not
-            // fire anyway, since declaredDone is still false, but re-prompting
-            // here gives the member a chance to ack or report a blocker).
-            // maxMemberTurns / wall-clock timeout (checkTermination) cap retries.
-            if (
-                team.activeTask.requireDoneAck
-                && (team.activeTask.mode === "isolated" || team.activeTask.mode === "cooperative")
-                && !member.declaredDone
-                && member.sessionId
-            ) {
-                await ctx.client.session.promptAsync({
-                    path: { id: member.sessionId },
-                    body: {
-                        parts: [{ type: "text", text: buildPrematureIdleReprompt(team.teamName), synthetic: true }],
-                        agent: safeMemberAgent(member.agent),
-                    },
-                    query: { directory: member.worktreePath ?? ctx.directory },
-                })
-                member.status = "running"
-                member.turnCount++
-                await saveTeamState(team)
-                await checkTermination(ctx, team)
-                return
-            }
-            await handleParallelIdle(ctx, team)
-            break
-        case "consensus":
-            await handleConsensusIdle(ctx, team)
-            break
-        case "pipeline":
-            await handlePipelineIdle(ctx, team, member)
-            break
-        case "loop":
-            await handleLoopIdle(ctx, team, member)
-            break
-        case "delegate":
-            await handleDelegateIdle(ctx, team, member)
-            break
-        case "route":
-            await handleRouteIdle(ctx, team)
-            break
-        case "arbitrate":
-            await handleArbitrateIdle(ctx, team)
-            break
-        case "recurse":
-            await handleRecurseIdle(ctx, team, member)
-            break
-        case "tollgate":
-            await handleTollgateIdle(ctx, team, member)
-            break
-        default: {
-            // Exhaustiveness check: every OrchestrationType above is handled, so
-            // this branch is unreachable and team.activeTask.type narrows to
-            // `never`. If a new OrchestrationType is added in core/types.ts without
-            // a matching case here, this assignment fails to compile — a compile-
-            // time guard against silent fall-through. At runtime it also fails fast:
-            // mark the member errored so the post-switch checkTermination fails the
-            // run instead of letting the member stall until the wall-clock timeout.
-            const _exhaustive: never = taskType
-            logEvent(ctx, "error", "processIdle: unhandled task type", {
-                team: team.teamName,
-                member: member.name,
-                type: String(_exhaustive),
-            })
-            member.status = "errored"
-            member.error = `unhandled task type: ${String(_exhaustive)}`
-            break
-        }
-    }
+    // require_done_ack recovery (parallel-only): re-prompt premature idle.
+    if (taskType === "parallel" && await maybeRepromptPrematureIdle(ctx, team, member)) return
+
+    await idleDispatch[taskType](ctx, team, member)
 
     // Step 7: Termination checks.
     await checkTermination(ctx, team)

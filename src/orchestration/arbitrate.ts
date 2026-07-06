@@ -11,6 +11,7 @@ import type { PluginContext } from "../core/context.js"
 import { type Team, saveTeamState } from "../state/store.js"
 import type { ActiveTask, ArbitrateTask } from "../core/types.js"
 import { dispatchToMember } from "./dispatch.js"
+import { DEFAULT_ARBITRATE_ROUNDS } from "./defaults.js"
 import { buildRoundSummary, finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { truncateOutput } from "../core/utils.js"
@@ -66,7 +67,7 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
     // Phase A: debate (arbitrationStage not yet set).
     if (!task.arbitrationStage) {
         await waitForBarrier(team, disputants, async () => {
-            if ((task.currentRound ?? 1) >= (task.maxRounds ?? 1)) {
+            if ((task.currentRound ?? 1) >= (task.maxRounds ?? DEFAULT_ARBITRATE_ROUNDS)) {
                 // Debate exhausted -> transition to the ruling phase.
                 task.arbitrationStage = true
                 const arbiter = team.members.find(

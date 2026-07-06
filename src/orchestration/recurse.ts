@@ -13,6 +13,7 @@ import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import { recordEvent } from "./events.js"
 import { parseDecompose } from "./decisions.js"
 import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
+import { DEFAULT_RECURSE_DEPTH, DEFAULT_RECURSE_SUBTASKS } from "./defaults.js"
 import { finishRun } from "./summary.js"
 import { dispatchToMember } from "./dispatch.js"
 
@@ -84,8 +85,8 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
         const output = task.responses[member.name] ?? ""
         const depth = T.depth ?? 0
         const dec = parseDecompose(output)
-        const maxDepth = task.maxDepth ?? 3
-        const maxSubtasks = task.maxSubtasks ?? 5
+        const maxDepth = task.maxDepth ?? DEFAULT_RECURSE_DEPTH
+        const maxSubtasks = task.maxSubtasks ?? DEFAULT_RECURSE_SUBTASKS
         const canDecompose =
             !dec.parseFailed
             && dec.subtasks.length > 0
