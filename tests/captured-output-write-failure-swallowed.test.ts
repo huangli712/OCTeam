@@ -138,7 +138,7 @@ describe("captureMemberOutput must not swallow persistence failure (finding: cap
             // EACCES -> captureMemberOutput resolves -> rejects assertion FAILS.
             // FIXED: the failure propagates -> rejects -> PASS.
             await expect(
-                captureMemberOutput(makeCtx(), team, team.members[0], messages),
+                captureMemberOutput(team, team.members[0], messages),
             ).rejects.toThrow()
         } finally {
             // Restore writability so cleanupTmpRoots can remove the tree.

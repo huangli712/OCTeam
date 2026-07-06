@@ -53,7 +53,7 @@ export async function runDelegateStyleTail(
             if (m.isMaster || !m.sessionId) continue
             const res = await ctx.client.session.messages({ path: { id: m.sessionId } })
             const msgs = (res.data ?? []) as Array<{ info?: any; parts?: any }>
-            await captureMemberOutput(ctx, team, m, msgs)
+            await captureMemberOutput(team, m, msgs)
         }
         await finishRun(ctx, team, `${label}_complete`, "idle")
         return

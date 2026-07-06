@@ -229,7 +229,7 @@ export async function processIdle(
     if (messages === null) return // stray idle
 
     // Step 4: Capture output (mode-aware; delegate skips, signoff always captures).
-    await captureMemberOutput(ctx, team, member, messages)
+    await captureMemberOutput(team, member, messages)
 
     await saveTeamState(team)
 
@@ -304,7 +304,6 @@ export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: s
  * and injected into prompts; also the source of reducedResult in handleReduceIdle).
  */
 export async function captureMemberOutput(
-    ctx: PluginContext,
     team: Team,
     member: MemberState,
     messages: Array<{ info?: any; parts?: any }>,

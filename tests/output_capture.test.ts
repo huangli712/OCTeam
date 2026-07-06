@@ -306,8 +306,8 @@ describe("captureMemberOutput: turn accumulation (last-turn-overwrite regression
 
         await team.mutex.runExclusive(async () => {
             team.activeTask = parallelCaptureTask({ runId: "run-acc" })
-            await captureMemberOutput(ctx, team, alice, oneTurn("TURN_ONE_DELIVERABLE"))
-            await captureMemberOutput(ctx, team, alice, oneTurn("TURN_TWO_ACK"))
+            await captureMemberOutput(team, alice, oneTurn("TURN_ONE_DELIVERABLE"))
+            await captureMemberOutput(team, alice, oneTurn("TURN_TWO_ACK"))
         })
 
         const md = await readFile(runMemberOutputPath(dir, "run-acc", "alice"), "utf8")
@@ -340,7 +340,7 @@ describe("captureMemberOutput: reduce-stage routing (reducer.md overwrite regres
                 reduceStage: true,
                 reducerMember: "bob",
             })
-            await captureMemberOutput(ctx, team, bob, oneTurn("REDUCED_ARTIFACT"))
+            await captureMemberOutput(team, bob, oneTurn("REDUCED_ARTIFACT"))
         })
 
         // Reduce-stage output lands in the run-level reduce.md.
@@ -368,10 +368,10 @@ describe("captureMemberOutput: reduce-stage routing (reducer.md overwrite regres
         await team.mutex.runExclusive(async () => {
             // Turn 1: bob's own exec deliverable (reduceStage = false).
             team.activeTask = parallelCaptureTask({ runId: "run-both", reducerMember: "bob" })
-            await captureMemberOutput(ctx, team, bob, oneTurn("BOB_OWN_DELIVERABLE"))
+            await captureMemberOutput(team, bob, oneTurn("BOB_OWN_DELIVERABLE"))
             // Turn 2: bob becomes the reducer (reduceStage = true, same reducer).
             team.activeTask.reduceStage = true
-            await captureMemberOutput(ctx, team, bob, oneTurn("REDUCED_SYNTHESIS"))
+            await captureMemberOutput(team, bob, oneTurn("REDUCED_SYNTHESIS"))
         })
 
         const bobMd = await readFile(runMemberOutputPath(dir, "run-both", "bob"), "utf8")
@@ -404,7 +404,7 @@ describe("captureMemberOutput: delegate parity (captures like other modes)", () 
 
         await team.mutex.runExclusive(async () => {
             team.activeTask = delegateCaptureTask({ runId: "run-del" })
-            await captureMemberOutput(ctx, team, alice, oneTurn("DELEGATE_DELIVERABLE"))
+            await captureMemberOutput(team, alice, oneTurn("DELEGATE_DELIVERABLE"))
         })
 
         // Regression: delegate used to skip capture entirely; now it writes .md
@@ -427,7 +427,7 @@ describe("captureMemberOutput: delegate parity (captures like other modes)", () 
 
         await team.mutex.runExclusive(async () => {
             team.activeTask = delegateCaptureTask({ runId: "run-del-msg" })
-            await captureMemberOutput(ctx, team, alice, [
+            await captureMemberOutput(team, alice, [
                 { info: { role: "user" }, parts: [{ type: "text", text: "prompt" }] },
                 {
                     info: { role: "assistant" }, parts: [
@@ -528,7 +528,7 @@ describe("runDelegateStyleTail: trailing-member capture on completion", () => {
         await team.mutex.runExclusive(async () => {
             team.activeTask = delegateCaptureTask({ runId: "run-idem" })
             // alice already captured her turn via the normal idle path.
-            await captureMemberOutput(ctx, team, alice, oneTurn("ALICE_WORK_ONCE"))
+            await captureMemberOutput(team, alice, oneTurn("ALICE_WORK_ONCE"))
             const t = await createTask(dir, { subject: "done", description: "x" })
             await updateTask(dir, t.id, { status: "completed" })
             await runDelegateStyleTail(ctx, team, bob, "delegate", () => "reprompt")

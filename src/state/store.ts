@@ -336,7 +336,6 @@ export async function saveTeamState(team: Team): Promise<void> {
     if (team.deleted) return  // tombstone: do not resurrect deleted team
     const dir = team.directory
     const currentState = stripRuntimeFields(team)
-    const payload = JSON.stringify(currentState, null, 2)
     await withLock(stateLockPath(dir), async () => {
         const ancestor = team._diskSnapshot
         let toWrite: TeamState
