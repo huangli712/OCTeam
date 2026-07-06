@@ -7,6 +7,7 @@ import { teamDelegateTool } from "../src/tools/delegate.js"
 import { teamLoopTool } from "../src/tools/loop.js"
 import { teamParallelTool } from "../src/tools/parallel.js"
 import { teamPipelineTool } from "../src/tools/pipeline.js"
+import { teamWorkflowTool } from "../src/tools/workflow.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
@@ -285,6 +286,133 @@ describe("team_pipeline startup validation", () => {
             makeToolContext(sid),
         )
         expect(result).toContain("unique")
+    })
+})
+
+// -----------------------------------------------------------------------
+// team_workflow
+// -----------------------------------------------------------------------
+describe("team_workflow startup validation", () => {
+    test("non-master -> rejected", async () => {
+        const root = tmpRoot("wf-nomaster")
+        const masterSid = "ses_wf_m"
+        const memberSid = "ses_wf_a"
+        tracked.push(masterSid, memberSid)
+        await setupTeam(root, masterSid, [makeMember("alice", memberSid), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
+            makeToolContext(memberSid),
+        )
+        expect(result).toContain("master-only")
+    })
+
+    test("inactive team -> rejected", async () => {
+        const root = tmpRoot("wf-inactive")
+        const sid = "ses_wf_inact"
+        tracked.push(sid)
+        await setupTeam(root, sid, undefined, undefined)
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("Error")
+    })
+
+    test("already busy -> rejected", async () => {
+        const root = tmpRoot("wf-busy")
+        const sid = "ses_wf_busy"
+        tracked.push(sid)
+        await setupTeam(root, sid, undefined, Date.now())
+        await setBusy(root, sid, "workflow")
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("already has an active orchestration")
+    })
+
+    test("empty steps -> rejected", async () => {
+        const root = tmpRoot("wf-empty")
+        const sid = "ses_wf_empty"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("steps")
+    })
+
+    test("task step missing member -> rejected", async () => {
+        const root = tmpRoot("wf-nomember")
+        const sid = "ses_wf_nm"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", task: "do x" }] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("requires `member`")
+    })
+
+    test("unknown task member -> rejected", async () => {
+        const root = tmpRoot("wf-unknown")
+        const sid = "ses_wf_unk"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "bob", task: "do x" }] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("unknown member")
+    })
+
+    test("gate-first (no preceding task) -> rejected", async () => {
+        const root = tmpRoot("wf-gatefirst")
+        const sid = "ses_wf_gf"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "gate", verifier: "bob", criteria: "ok" }] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("no preceding task")
+    })
+
+    test("gate self-verification (verifier == preceding task member) -> rejected", async () => {
+        const root = tmpRoot("wf-selfverify")
+        const sid = "ses_wf_sv"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }, { kind: "gate", verifier: "alice", criteria: "ok" }] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("self-verification")
+    })
+
+    test("unknown gate verifier -> rejected", async () => {
+        const root = tmpRoot("wf-unknownverifier")
+        const sid = "ses_wf_uv"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }, { kind: "gate", verifier: "bob", criteria: "ok" }] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("unknown member")
+    })
+
+    test("signoff_decider not a member -> rejected", async () => {
+        const root = tmpRoot("wf-sd")
+        const sid = "ses_wf_sd"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }], signoff_policy: "decider", signoff_decider: "bob" },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("not a member")
     })
 })
 

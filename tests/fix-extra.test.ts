@@ -33,7 +33,7 @@ function makeParallelTask(): ActiveTask {
         tokensByMember: { alice: 60, bob: 40 },
         messagesSent: 2,
         responses: { alice: "alice-output", bob: "bob-output" },
-        stages: [{ member: "alice", task: "do A", status: "completed" }],
+        stages: [{ member: "alice", task: "do A", completed: true }],
         currentStageIndex: 0,
         decisionHistory: [],
         decisionParseFailures: 0,
@@ -43,7 +43,6 @@ function makeParallelTask(): ActiveTask {
 function makeLoopTask(): ActiveTask {
     return {
         type: "loop",
-        mode: "reviewer",
         startedAt: Date.now(),
         wallClockTimeoutMs: 300_000,
         tokensUsed: 0,
@@ -56,7 +55,7 @@ function makeLoopTask(): ActiveTask {
         decisionParseFailures: 0,
         currentRound: 1,
         maxRounds: 3,
-        initialTask: "start",
+        task: "start",
         deciderMember: "alice",
     } as ActiveTask
 }

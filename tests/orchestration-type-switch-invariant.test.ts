@@ -30,6 +30,7 @@ const ORCHESTRATION_TYPES = [
     "arbitrate",
     "recurse",
     "tollgate",
+    "workflow",
 ] as const
 
 /**
@@ -72,11 +73,11 @@ async function readSwitchBody(filePath: string, fnName: string): Promise<string>
     return src.slice(switchIdx, end + 1)
 }
 
-describe("9-way switch invariant: every OrchestrationType has a case in all three switches", () => {
-    test("processIdle (handlers.ts) covers all 9 OrchestrationTypes via idleDispatch table", async () => {
+describe("10-way switch invariant: every OrchestrationType has a case in all three switches", () => {
+    test("processIdle (handlers.ts) covers all 10 OrchestrationTypes via idleDispatch table", async () => {
         // After P1-6, processIdle dispatches via a Record<OrchestrationType, ...>
         // table (idleDispatch) instead of a switch. Record enforces compile-time
-        // completeness; this test verifies all 9 keys are present in the source.
+        // completeness; this test verifies all 10 keys are present in the source.
         const src = await readFile(path.resolve("src/orchestration/handlers.ts"), "utf8")
         for (const t of ORCHESTRATION_TYPES) {
             // Each type appears as a top-level key: `    parallel: async ...`
@@ -84,7 +85,7 @@ describe("9-way switch invariant: every OrchestrationType has a case in all thre
         }
     })
 
-    test("resumeDispatch (tools/dispatch.ts) covers all 9 OrchestrationTypes", async () => {
+    test("resumeDispatch (tools/dispatch.ts) covers all 10 OrchestrationTypes", async () => {
         // pipeline and loop share a single case block (`case "pipeline":\ncase "loop": {`),
         // so each must appear as its own label — the test asserts both labels exist.
         const body = await readSwitchBody("src/tools/dispatch.ts", "resumeDispatch")
@@ -93,7 +94,7 @@ describe("9-way switch invariant: every OrchestrationType has a case in all thre
         }
     })
 
-    test("buildSummary (orchestration/summary.ts) covers all 9 OrchestrationTypes", async () => {
+    test("buildSummary (orchestration/summary.ts) covers all 10 OrchestrationTypes", async () => {
         const body = await readSwitchBody("src/orchestration/summary.ts", "buildSummary")
         for (const t of ORCHESTRATION_TYPES) {
             expect(body).toContain(`case "${t}"`)
@@ -103,8 +104,8 @@ describe("9-way switch invariant: every OrchestrationType has a case in all thre
     test("ORCHESTRATION_TYPES list itself matches the documented count", () => {
         // Sanity guard: if someone shrinks the list above to "fix" the test
         // instead of updating the source, this count assertion catches it.
-        expect(ORCHESTRATION_TYPES).toHaveLength(9)
+        expect(ORCHESTRATION_TYPES).toHaveLength(10)
         // And the entries are unique.
-        expect(new Set(ORCHESTRATION_TYPES).size).toBe(9)
+        expect(new Set(ORCHESTRATION_TYPES).size).toBe(10)
     })
 })

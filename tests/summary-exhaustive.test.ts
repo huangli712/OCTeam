@@ -21,7 +21,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { buildSummary } from "../src/orchestration/summary.js"
-import type { ActiveTask, ConsensusTask } from "../src/core/types.js"
+import type { ActiveTask, ConsensusTask, WorkflowTask } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 
 // buildSummary's consensus case does not access team.directory (only delegate
@@ -96,5 +96,60 @@ describe("buildSummary: exhaustive guard throws on unknown type (P2-1)", () => {
         await expect(buildSummary(mockTeam, task, "test")).rejects.toThrow(
             /unhandled OrchestrationType/i,
         )
+    })
+})
+
+describe("buildSummary: workflow case", () => {
+    function makeWorkflowTask(opts: Partial<WorkflowTask> = {}): WorkflowTask {
+        return {
+            type: "workflow",
+            startedAt: 0,
+            wallClockTimeoutMs: 300_000,
+            tokensUsed: 0,
+            tokensByMember: {},
+            messagesSent: 0,
+            responses: {},
+            stages: [],
+            currentStageIndex: 0,
+            decisionHistory: [],
+            decisionParseFailures: 0,
+            ...opts,
+        } as WorkflowTask
+    }
+
+    test("renders a per-step ledger plus completed task-step outputs", async () => {
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "draft", completed: true },
+                { kind: "gate", verifier: "bob", criteria: "ok", onFail: "retry", maxRetries: 1, attempts: 1, completed: true, verdict: "PASS" },
+                { kind: "task", member: "carol", task: "polish", completed: true },
+            ],
+            responses: { alice: "alice draft output", carol: "carol polish output" },
+        })
+        const summary = await buildSummary(mockTeam, task, "workflow_complete")
+
+        expect(summary).toContain("mode=workflow")
+        expect(summary).toContain("reason=workflow_complete")
+        // Step ledger: one line per step, with kind + actor + gate verdict.
+        expect(summary).toContain("[task] alice")
+        expect(summary).toContain("[gate] bob -> PASS")
+        expect(summary).toContain("1 retries")
+        expect(summary).toContain("[task] carol")
+        // Completed task-step outputs are included.
+        expect(summary).toContain("### alice")
+        expect(summary).toContain("alice draft output")
+        expect(summary).toContain("### carol")
+        expect(summary).toContain("carol polish output")
+    })
+
+    test("with no completed task steps produces head + ledger only", async () => {
+        const task = makeWorkflowTask({
+            steps: [{ kind: "task", member: "alice", task: "draft", completed: false }],
+            responses: {},
+        })
+        const summary = await buildSummary(mockTeam, task, "workflow_failed:bob")
+        expect(summary).toContain("mode=workflow")
+        expect(summary).toContain("[task] alice")
+        expect(summary).not.toContain("### alice")
     })
 })

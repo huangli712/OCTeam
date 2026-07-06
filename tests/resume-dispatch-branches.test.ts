@@ -349,3 +349,110 @@ describe("resumeDispatch: route Phase B target re-dispatch", () => {
         expect(team.activeTask).toBeUndefined()
     })
 })
+
+describe("resumeDispatch: workflow all-complete crash edge", () => {
+    test("all steps completed pre-crash -> delivers + clears (no re-dispatch)", async () => {
+        const root = tmpRoot("rdb-wf-allcomplete")
+        const sid = "ses_rdb_wf_done"
+        tracked.push(sid)
+        // Crash happened AFTER the last step completed but BEFORE delivery:
+        // every step completed; currentStageIndex is past the end.
+        const task = makeTask({
+            type: "workflow",
+            steps: [
+                { kind: "task", member: "alice", task: "do work", completed: true },
+                { kind: "gate", verifier: "bob", criteria: "ok", onFail: "fail", maxRetries: 0, attempts: 0, completed: true, verdict: "PASS" },
+            ],
+            currentStageIndex: 2,
+            responses: { alice: "A", bob: '<verdict>{"result":"PASS","rationale":"","diff":""}</verdict>' },
+        })
+        const team = await setup(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+
+        const dispatched: string[] = []
+        const ctx = makeCtx(root, async req => { dispatched.push(req.path.id) })
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!)
+        })
+
+        // No member re-dispatched; only the leader receives workflow_complete.
+        expect(dispatched).toEqual([sid])
+        expect(team.status).toBe("idle")
+        expect(team.activeTask).toBeUndefined()
+    })
+})
+
+describe("resumeDispatch: workflow mid-task-step crash", () => {
+    test("current task step's actor has no response -> re-dispatched with its task", async () => {
+        const root = tmpRoot("rdb-wf-midtask")
+        const sid = "ses_rdb_wf_midtask"
+        tracked.push(sid)
+        // Crashed at step 0 (alice's task), alice has produced nothing yet.
+        const task = makeTask({
+            type: "workflow",
+            steps: [
+                { kind: "task", member: "alice", task: "draft the design", completed: false },
+                { kind: "gate", verifier: "bob", criteria: "ok", onFail: "fail", maxRetries: 0, attempts: 0, completed: false },
+            ],
+            currentStageIndex: 0,
+            responses: {},
+        })
+        const team = await setup(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+
+        const dispatched: { id: string; text: string }[] = []
+        const ctx = makeCtx(root, async req => {
+            dispatched.push({ id: req.path.id, text: req.body.parts[0].text })
+        })
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!)
+        })
+
+        expect(dispatched.map(d => d.id)).toEqual(["ses_alice"])
+        expect(dispatched[0].text).toContain("draft the design")
+        expect(team.activeTask).toBeDefined()
+    })
+})
+
+describe("resumeDispatch: workflow mid-gate-step crash with captured verdict", () => {
+    test("current gate's verifier already responded -> handler re-run (delivers, no re-dispatch)", async () => {
+        const root = tmpRoot("rdb-wf-midgate")
+        const sid = "ses_rdb_wf_midgate"
+        tracked.push(sid)
+        // Crashed at the gate (step 1) AFTER bob rendered a PASS verdict but
+        // before the handler processed it: bob's response is captured.
+        const passVerdict = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
+        const task = makeTask({
+            type: "workflow",
+            steps: [
+                { kind: "task", member: "alice", task: "do work", completed: true },
+                { kind: "gate", verifier: "bob", criteria: "ok", onFail: "fail", maxRetries: 0, attempts: 0, completed: false },
+            ],
+            currentStageIndex: 1,
+            responses: { alice: "alice's work", bob: passVerdict },
+        })
+        const team = await setup(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+
+        const dispatched: string[] = []
+        const ctx = makeCtx(root, async req => { dispatched.push(req.path.id) })
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!)
+        })
+
+        // The captured PASS verdict is processed (no re-dispatch of bob); the
+        // leader receives workflow_complete.
+        expect(dispatched).toEqual([sid])
+        expect(team.status).toBe("idle")
+        expect(team.activeTask).toBeUndefined()
+    })
+})
