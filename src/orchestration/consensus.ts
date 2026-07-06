@@ -1,6 +1,12 @@
 /**
  * Consensus handler -- multi-round broadcast until agreement or max_rounds.
  * Relies on waitForBarrier to converge each round.
+ *
+ * STATE MACHINE:
+ *   round_N_dispatch → barrier_wait → consensus_reached | max_rounds | next_round
+ *   - All members agree → deliver (idle: consensus_reached)
+ *   - Max rounds exceeded without agreement → deliver (failed: consensus_max_rounds)
+ *   - Else → next round dispatch with prior-round summary
  */
 
 import type { PluginContext } from "../core/context.js"

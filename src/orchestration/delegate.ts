@@ -4,6 +4,12 @@
  * delivers, all-idle-with-claimable fails as deadlock, otherwise the just-idled
  * member is RATE-LIMITED re-prompted toward remaining claimable tasks.
  * Recurse (recurse.ts) reuses this tail.
+ *
+ * STATE MACHINE:
+ *   member_dispatch → task_claim → work → idle → [claim_more | rate_limited | deadlock | all_complete]
+ *   - All tasks completed → deliver (idle: delegate_complete)
+ *   - All idle, no claimable tasks (deadlock) → deliver (failed: delegate_deadlock)
+ *   - Member idle with claimable tasks → rate-limited re-prompt toward next task
  */
 
 import type { PluginContext } from "../core/context.js"

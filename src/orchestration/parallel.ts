@@ -1,6 +1,12 @@
 /**
  * Parallel handler -- single-barrier fan-in with failure isolation, optional
  * reduce and signoff. Relies on waitForBarrier to converge.
+ *
+ * STATE MACHINE:
+ *   dispatch → barrier_wait → [reduce_stage → signoff_stage →] deliver
+ *   - All members complete, within tolerance → reduce → signoff → deliver (idle)
+ *   - Over tolerance errored → deliver (failed: member_error)
+ *   - All errored / zero survivors → deliver (failed: member_error)
  */
 
 import type { PluginContext } from "../core/context.js"

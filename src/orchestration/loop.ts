@@ -1,6 +1,14 @@
 /**
  * Loop handler -- round-based decider loop with feedback injection into the
  * next round. Honors genuine-completion and max_rounds checks.
+ *
+ * STATE MACHINE:
+ *   decider_dispatch → parse_decision → [done | no_issues | max_rounds | parse_fail | next_round]
+ *   - Decider says "done" → deliver (idle: loop_complete:decider_done)
+ *   - All read-only stages report <no_issues/> → deliver (idle: loop_complete:no_issues)
+ *   - Max rounds exceeded → deliver (failed: loop_complete:max_rounds)
+ *   - Decision parse failure (≥3 retries) → deliver (failed: loop_complete:decision_parse_failure)
+ *   - Else → next round with decider feedback injected into member prompts
  */
 
 import type { PluginContext } from "../core/context.js"

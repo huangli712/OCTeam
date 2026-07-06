@@ -1,6 +1,11 @@
 /**
  * Pipeline handler -- linear handoff stage N -> stage N+1, with upstream
  * context injection. Honors signoff before final delivery.
+ *
+ * STATE MACHINE:
+ *   stage[0]_dispatch → stage[0]_barrier → stage[1]_dispatch → ... → all_complete
+ *   - All stages complete → check signoff → deliver (idle: pipeline_complete)
+ *   - Any stage member errors → termination check fails (tolerance 0)
  */
 
 import type { PluginContext } from "../core/context.js"

@@ -5,6 +5,14 @@
  * escalate→verify transitions; escalateInvalid is shared by the verifier-
  * unavailable path and the INVALID-verdict path; buildVerifierPrompt is private
  * to startVerification.
+ *
+ * STATE MACHINE (per gate, see handleTollgateIdle for full detail):
+ *   produce → verify → [PASS→next_gate | FAIL→retry_produce | INVALID→escalate]
+ *   escalate → re-verify (handler reports verifier fixed)
+ *   - All gates pass → check signoff → deliver (idle: tollgate_complete)
+ *   - Gate FAIL retries exhausted → deliver (failed: tollgate_failed:<producer>)
+ *   - INVALID cycles exhausted → deliver (failed: tollgate_invalid:exhausted)
+ *   - INVALID without escalateTo → deliver (failed: tollgate_invalid:<producer>:<reason>)
  */
 
 import type { PluginContext } from "../core/context.js"

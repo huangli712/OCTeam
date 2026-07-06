@@ -4,6 +4,13 @@
  * When a member idles, the orchestrator inspects that member's claimed task and
  * either branches (splits into subtasks, re-queues parent as aggregator) or
  * finalizes it as a leaf.
+ *
+ * STATE MACHINE:
+ *   decompose → subtask_dispatch → [branch | finalize_leaf] → aggregate → [root_complete | stalled]
+ *   - Decomposer decomposes → create subtasks, re-queue parent as aggregator
+ *   - Decomposer finalizes → mark leaf complete (no children)
+ *   - Root task completed → deliver (idle: recurse_root_complete)
+ *   - Aggregation stalled (dispatch cap exceeded) → deliver (failed: recurse_aggregation_stalled)
  */
 
 import type { PluginContext } from "../core/context.js"

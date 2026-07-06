@@ -1,5 +1,5 @@
 /**
- * OCTeam data model types (design doc Section 2).
+ * OCTeam data model types (see docs/ARCHITECTURE.md).
  *
  * All types in this file are JSON-serializable — they are persisted to disk
  * (config.json / state.json / mailbox *.jsonl / tasks/*.json). Runtime-only
@@ -76,7 +76,7 @@ export type TeamState = {
     activeTask?: ActiveTask            // only one active orchestration at a time
     lastInterruptedTask?: ActiveTask       // task to resume on reconnect (survives activeTask cleanup)
     lastMode?: LastModeRecord          // most recent orchestration mode (survives activeTask cleanup)
-    bounds: Bounds                     // resource limits (Section 8)
+    bounds: Bounds                     // resource limits
     createdAt: number
     startedAt?: number                 // when first task started
     activatedAt?: number               // epoch ms; presence ⇒ "available" team for its
@@ -88,7 +88,7 @@ export type TeamState = {
                                        // auto-activates after a reload). Orthogonal to TeamStatus.
 }
 
-// --- Bounds (resource limits, Section 8) ---
+// --- Bounds (resource limits) ---
 
 export type Bounds = {
     maxMembers: number                 // default 8; effective per-team member cap (enforced in add_member)

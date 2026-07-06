@@ -5,6 +5,12 @@
  *   Phase B (targets): the selected branches' members run in parallel; their
  *     barrier converges to delivery (mirrors parallel, including failure
  *     isolation and optional signoff).
+ *
+ * STATE MACHINE:
+ *   Phase A: router_dispatch → parse_route → fan_out_to_targets
+ *   Phase B: target_barrier → [signoff →] deliver
+ *   - All targets complete → check signoff → deliver (idle: route_complete)
+ *   - Route parse failure / no branches selected → deliver (failed: route_complete:decision_parse_failure)
  */
 
 import type { PluginContext } from "../core/context.js"

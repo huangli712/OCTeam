@@ -5,6 +5,13 @@
  *   Phase B (ruling): once rounds are exhausted, the arbiter is dispatched with
  *     all positions and emits a binding <ruling>; its idle delivers the result.
  * The debate/arbiter prompt builders live here next to the only callers.
+ *
+ * STATE MACHINE:
+ *   Phase A: debate_round → barrier → next_round | transition_to_ruling
+ *   Phase B: arbiter_dispatch → parse_ruling → [signoff →] deliver
+ *   - Arbiter rules → check signoff → deliver (idle: arbitrate_complete:ruled)
+ *   - Arbiter unavailable → deliver (failed: arbitrate_complete:arbiter_unavailable)
+ *   - Ruling parse failure → deliver (failed: arbitrate_complete:decision_parse_failure)
  */
 
 import type { PluginContext } from "../core/context.js"
