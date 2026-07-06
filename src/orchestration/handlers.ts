@@ -33,7 +33,6 @@ import { resolveTeamMember } from "../state/resolve.js"
 import { safeMemberAgent } from "../core/role.js"
 import { atomicWrite } from "../state/locks.js"
 import { runMemberOutputPath, runReduceOutputPath } from "../state/paths.js"
-import { logSwallowed } from "../core/log.js"
 import type { ActiveTask, MemberState } from "../core/types.js"
 import { deliverQueuedResultsToMaster } from "./summary.js"
 import { checkTermination } from "./termination.js"
@@ -359,12 +358,7 @@ export async function captureMemberOutput(
     }
     const accumulated = appendTurnBlock(prev, full, new Date().toISOString())
 
-    await atomicWrite(outPath, accumulated).catch(err =>
-        logSwallowed(ctx, "persist member output failed", err, {
-            team: team.teamName,
-            member: member.name,
-        }),
-    )
+    await atomicWrite(outPath, accumulated)
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "captured",

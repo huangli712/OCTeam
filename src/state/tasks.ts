@@ -157,7 +157,7 @@ export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
         throw err
     }
-    const tasks: Task[] = []
+    const ids: string[] = []
     for (const e of entries) {
         if (!e.isFile() || !e.name.endsWith(".json")) continue
         const id = e.name.replace(/\.json$/, "")
@@ -166,15 +166,20 @@ export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
         // taskPath would otherwise throw and break claimTask's "no active task"
         // scan and reapStaleClaims for the entire team.
         if (!TASK_ID_PATTERN.test(id)) continue
-        try {
-            const t = await readTaskFile(teamDirectory, id)
-            if (t) tasks.push(t)
-        } catch (err) {
-            // A single corrupt/unreadable task file must not break the listing.
-            console.warn(`[octeam] listAllTasks: skipping unreadable task ${id}:`, err)
-        }
+        ids.push(id)
     }
-    return tasks
+    const results = await Promise.all(
+        ids.map(async id => {
+            try {
+                return await readTaskFile(teamDirectory, id)
+            } catch (err) {
+                // A single corrupt/unreadable task file must not break the listing.
+                console.warn(`[octeam] listAllTasks: skipping unreadable task ${id}:`, err)
+                return null
+            }
+        }),
+    )
+    return results.filter((t): t is Task => t !== null)
 }
 
 /**

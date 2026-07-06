@@ -92,7 +92,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             && depth < maxDepth
             && T.blockedBy.length === 0
             && dec.subtasks.length <= maxSubtasks
-            && tasks.length + dec.subtasks.length <= team.bounds.maxTasks
+            && tasks.filter(t => t.status !== "deleted").length + dec.subtasks.length <= team.bounds.maxTasks
         if (canDecompose) {
             // Branch: create subtasks (depth+1), re-queue T as their aggregator.
             const ids: string[] = []

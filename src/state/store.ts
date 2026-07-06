@@ -81,7 +81,7 @@ function stripRuntimeFields(team: Team): TeamState {
  * check, the load is rejected, and safeMemberAgent() would have clamped it to
  * the read-only fallback (oct-oracle) anyway at dispatch time.
  */
-function isValidTeamState(value: unknown, teamDirectory: string): value is TeamState {
+export function isValidTeamState(value: unknown, teamDirectory: string): value is TeamState {
     if (typeof value !== "object" || value === null) return false
     const s = value as Record<string, unknown>
     if (

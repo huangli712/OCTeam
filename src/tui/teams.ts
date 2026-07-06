@@ -13,6 +13,7 @@ import path from "node:path"
 // the on-disk storage layout. src/state/paths.ts is the single source of truth
 // for the teams/<name>/{state.json,config.json,mailbox/...} layout.
 import { configPath, inboxPath, processedPath, statePath, teamDir, teamsDir } from "../state/paths.js"
+import { isValidTeamState } from "../state/store.js"
 
 export type TeamMemberRow = {
     name: string
@@ -77,6 +78,7 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
             const dir = teamDir(storageRoot, e.name, leadSessionId)
             const raw = await fs.readFile(statePath(dir), "utf8")
             const state = JSON.parse(raw)
+            if (!isValidTeamState(state, dir)) continue
             // Also read config.json for member roles (role lives in MemberSpec, not MemberState).
             let roleMap: Record<string, string> = {}
             try {

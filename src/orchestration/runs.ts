@@ -110,6 +110,7 @@ const RunEventSchema = z.object({
     kind: z.enum([
         "dispatched", "captured", "retry", "errored", "stage_advanced", "round",
         "signoff", "terminated", "routed", "arbitrated", "decomposed", "verdict",
+        "aggregation_stalled",
     ]),
     member: z.string().optional(),
     stage: z.number().optional(),

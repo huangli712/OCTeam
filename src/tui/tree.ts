@@ -119,6 +119,14 @@ export async function loadChildren(
     const allSessions = result?.data ?? []
     const children = allSessions.filter(s => s.parentID === currentSessionId)
 
+    const childCountByParent = new Map<string, number>()
+    for (const s of allSessions) {
+        const pid = s.parentID
+        if (pid !== undefined) {
+            childCountByParent.set(pid, (childCountByParent.get(pid) ?? 0) + 1)
+        }
+    }
+
     const nodes = await Promise.all(children.map(async s => {
         let duration = ""
         let messages: MessageRow[] = []
@@ -136,7 +144,7 @@ export async function loadChildren(
             startTime: formatTime(s.time?.created),
             created: s.time?.created ?? 0,
             status: mapStatus(api.state.session.status(s.id)),
-            childCount: allSessions.filter(c => c.parentID === s.id).length,
+            childCount: childCountByParent.get(s.id) ?? 0,
         }
     }))
 
