@@ -578,6 +578,76 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(bobCall!.text).toContain("design output")
         expect(bobCall!.text).not.toContain("tests output")
     })
+
+    test("a multi-target gate verifies all selected task outputs", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", id: "api", member: "alice", task: "api", completed: true, output: "api output" },
+                { kind: "task", id: "tests", member: "carol", task: "tests", completed: true, output: "tests output" },
+                { kind: "task", id: "docs", member: "dave", task: "docs", completed: true, output: "docs output" },
+                { kind: "gate", verifier: "bob", targetStepIndices: [0, 2], criteria: "api and docs agree", completed: false },
+            ],
+            currentStageIndex: 3,
+            responses: { alice: "latest api", carol: "latest tests", dave: "latest docs" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+                { name: "dave", sessionId: "ses_dave" },
+            ],
+        })
+        const ctx = makeCtx({}, calls)
+
+        await advanceWorkflowStep(ctx, team)
+
+        const bobCall = calls.find(c => c.sessionId === "ses_bob")
+        expect(bobCall).toBeDefined()
+        expect(bobCall!.text).toContain("workflow steps 1, 3")
+        expect(bobCall!.text).toContain("[Step 1 output from alice]")
+        expect(bobCall!.text).toContain("api output")
+        expect(bobCall!.text).toContain("[Step 3 output from dave]")
+        expect(bobCall!.text).toContain("docs output")
+        expect(bobCall!.text).not.toContain("tests output")
+        expect(bobCall!.text).not.toContain("latest api")
+    })
+
+    test("a multi-target gate FAIL retry resets from the earliest target", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "api", completed: true, output: "api output" },
+                { kind: "task", member: "carol", task: "tests", completed: true, output: "tests output" },
+                { kind: "task", member: "dave", task: "docs", completed: true, output: "docs output" },
+                { kind: "gate", verifier: "bob", targetStepIndices: [0, 2], criteria: "all consistent", onFail: "retry", maxRetries: 1, attempts: 0, completed: false },
+            ],
+            currentStageIndex: 3,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+                { name: "dave", sessionId: "ses_dave" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(task.steps![0].completed).toBe(false)
+        expect(task.steps![1].completed).toBe(false)
+        expect(task.steps![2].completed).toBe(false)
+        expect(task.currentStageIndex).toBe(0)
+        const aliceCall = calls.find(c => c.sessionId === "ses_alice")
+        expect(aliceCall).toBeDefined()
+        expect(aliceCall!.text).toContain("Gate FAILED")
+        expect(aliceCall!.text).toContain("api")
+    })
 })
 
 describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
@@ -612,6 +682,9 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
         const daveCall = calls.find(c => c.sessionId === "ses_dave")
         expect(daveCall).toBeDefined()
         expect(daveCall!.text).toContain("package")
+        expect(daveCall!.text).toContain("[Workflow jump: on_pass]")
+        expect(daveCall!.text).toContain("Verdict: PASS")
+        expect(daveCall!.text).toContain("Rationale: ok")
         // carol was skipped, never dispatched
         expect(calls.some(c => c.sessionId === "ses_carol")).toBe(false)
     })
@@ -643,6 +716,10 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
         const aliceCall = calls.find(c => c.sessionId === "ses_alice")
         expect(aliceCall).toBeDefined()
         expect(aliceCall!.text).toContain("impl")
+        expect(aliceCall!.text).toContain("[Workflow jump: on_fail]")
+        expect(aliceCall!.text).toContain("Verdict: FAIL")
+        expect(aliceCall!.text).toContain("Rationale: wrong")
+        expect(aliceCall!.text).toContain("Diff: off by one")
         expect(team.activeTask).toBeDefined()
     })
 
@@ -673,6 +750,9 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
         const carolCall = calls.find(c => c.sessionId === "ses_carol")
         expect(carolCall).toBeDefined()
         expect(carolCall!.text).toContain("fallback")
+        expect(carolCall!.text).toContain("[Workflow jump: on_invalid:INVALID]")
+        expect(carolCall!.text).toContain("Verdict: INVALID")
+        expect(carolCall!.text).toContain("Rationale: cannot run tests")
         expect(team.activeTask).toBeDefined()
     })
 

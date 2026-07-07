@@ -489,4 +489,43 @@ describe("resumeDispatch: workflow mid-gate-step crash with captured verdict", (
         expect(team.status).toBe("idle")
         expect(team.activeTask).toBeUndefined()
     })
+
+    test("multi-target gate with captured PASS resumes and dispatches the next step", async () => {
+        const root = tmpRoot("rdb-wf-midgate-targets")
+        const sid = "ses_rdb_wf_midgate_targets"
+        tracked.push(sid)
+        const passVerdict = '<verdict>{"result":"PASS","rationale":"all match","diff":""}</verdict>'
+        const task = makeTask({
+            type: "workflow",
+            steps: [
+                { kind: "task", member: "alice", task: "api", completed: true, output: "api output" },
+                { kind: "task", member: "carol", task: "tests", completed: true, output: "tests output" },
+                { kind: "gate", verifier: "bob", criteria: "consistent", targetStepIndices: [0, 1], onFail: "fail", maxRetries: 0, attempts: 0, completed: false },
+                { kind: "task", member: "dave", task: "publish", completed: false },
+            ],
+            currentStageIndex: 2,
+            responses: { alice: "api output", carol: "tests output", bob: passVerdict },
+        })
+        const team = await setup(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+            makeMember("carol", "ses_carol"),
+            makeMember("dave", "ses_dave"),
+        ])
+
+        const dispatched: { id: string; text: string }[] = []
+        const ctx = makeCtx(root, async req => {
+            dispatched.push({ id: req.path.id, text: req.body.parts[0].text })
+        })
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!)
+        })
+
+        expect(dispatched.map(d => d.id)).toEqual(["ses_dave"])
+        expect(dispatched[0].text).toContain("publish")
+        expect(dispatched[0].text).toContain("api output")
+        expect(dispatched[0].text).toContain("tests output")
+        expect(team.activeTask).toBeDefined()
+    })
 })

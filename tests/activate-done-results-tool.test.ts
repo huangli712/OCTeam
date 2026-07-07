@@ -435,7 +435,8 @@ describe("teamResultGetTool.execute", () => {
             workflow: {
                 steps: [
                     { index: 0, step: 1, kind: "task", member: "alice", completed: true, output: "draft output", outputBytes: 12 },
-                    { index: 1, step: 2, kind: "gate", verifier: "bob", targetStep: 1, verdict: "PASS", attempts: 1, completed: true },
+                    { index: 1, step: 2, kind: "task", member: "carol", completed: true, output: "tests output", outputBytes: 12 },
+                    { index: 2, step: 3, kind: "gate", verifier: "bob", targetStep: 1, targetSteps: [1, 2], verdict: "PASS", attempts: 1, completed: true },
                 ],
             },
         })
@@ -448,7 +449,8 @@ describe("teamResultGetTool.execute", () => {
         expect(result).toContain("### workflow steps")
         expect(result).toContain("Step 1: [task] alice")
         expect(result).toContain("draft output")
-        expect(result).toContain("Step 2: [gate] bob verifies step 1 -> PASS")
+        expect(result).toContain("tests output")
+        expect(result).toContain("Step 3: [gate] bob verifies steps 1, 2 -> PASS")
     })
 
     test("omitted run_id returns latest run", async () => {

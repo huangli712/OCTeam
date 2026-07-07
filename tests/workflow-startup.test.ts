@@ -501,6 +501,99 @@ describe("team_workflow startup validation", () => {
         expect(after.activeTask).toBeUndefined()
     })
 
+    test("targets resolves multiple previous task ids in dry_run", async () => {
+        const root = tmpRoot("wf-targets-id")
+        const sid = "ses_wf_targets"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol"), makeMember("dave")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", id: "api", member: "alice", task: "build api" },
+                    { kind: "task", id: "tests", member: "carol", task: "write tests" },
+                    { kind: "task", id: "docs", member: "dave", task: "write docs" },
+                    { kind: "gate", verifier: "bob", targets: ["api", "tests", "docs"], criteria: "all consistent" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("verifies steps 1 (api), 2 (tests), 3 (docs)")
+        const after = await loadTeamState(root, "alpha", sid)
+        expect(after.activeTask).toBeUndefined()
+    })
+
+    test("targets cannot be combined with target_step", async () => {
+        const root = tmpRoot("wf-targets-conflict")
+        const sid = "ses_wf_targets_conflict"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", target_step: 1, targets: [1], criteria: "ok" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("must not set both target_step and targets")
+    })
+
+    test("targets must reference previous task steps and cannot self-verify", async () => {
+        const root = tmpRoot("wf-targets-invalid")
+        const sid = "ses_wf_targets_invalid"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", criteria: "ok" },
+                    { kind: "gate", verifier: "alice", targets: [1, 2], criteria: "check both" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("targets[1]")
+        expect(result).toContain("must reference a previous task step")
+    })
+
+    test("targets self-verification is rejected against every target member", async () => {
+        const root = tmpRoot("wf-targets-selfverify")
+        const sid = "ses_wf_targets_selfverify"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "api" },
+                    { kind: "task", member: "carol", task: "tests" },
+                    { kind: "gate", verifier: "carol", targets: [1, 2], criteria: "both ok" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("target step 2")
+        expect(result).toContain("self-verification")
+    })
+
+    test("task step with targets is rejected as a gate-only field", async () => {
+        const root = tmpRoot("wf-task-targets")
+        const sid = "ses_wf_task_targets"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x", targets: [1] }] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("must not set gate fields")
+    })
+
     test("target_step unknown id -> rejected", async () => {
         const root = tmpRoot("wf-target-unknown-id")
         const sid = "ses_wf_tui"
