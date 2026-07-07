@@ -156,6 +156,89 @@ async function dispatchGateStep(
 }
 
 /**
+ * Execute a verdict-driven conditional jump to `targetIndex`. Bounds the state
+ * machine via the per-gate max_jumps cap (default 3). Forward jumps mark the
+ * intermediate steps as skipped (completed + skipped); backward jumps reset
+ * steps[targetIndex..gateIndex] (mirroring FAIL-retry semantics) so the path
+ * re-runs. The triggering gate's attempts/invalidAttempts/jumpCount are NEVER
+ * reset by the range reset, so retry + jump bounds compose safely.
+ *
+ * Returns true when the jump dispatched (caller must not also advance), false
+ * when the jump cap was exceeded and the run terminated.
+ */
+async function gotoWorkflowStep(
+    ctx: PluginContext,
+    team: Team,
+    gateIndex: number,
+    targetIndex: number,
+    reason: string,
+): Promise<boolean> {
+    const task = team.activeTask
+    if (!task || task.type !== "workflow") return false
+    const steps = task.steps ?? []
+    const gate = steps[gateIndex]
+    const target = steps[targetIndex]
+    if (!gate || gate.kind !== "gate" || !target) return false
+
+    gate.jumpCount = (gate.jumpCount ?? 0) + 1
+    const maxJ = gate.maxJumps ?? 3
+    if (gate.jumpCount > maxJ) {
+        await finishRun(ctx, team, `workflow_failed:jump_limit:${gate.verifier ?? "unknown"}`, "failed")
+        return false
+    }
+
+    if (targetIndex > gateIndex) {
+        // Forward jump: mark intermediate steps as skipped.
+        for (let i = gateIndex + 1; i < targetIndex; i++) {
+            const s = steps[i]
+            if (!s) continue
+            if (!s.completed) {
+                s.completed = true
+                s.skipped = true
+            }
+        }
+    } else if (targetIndex < gateIndex) {
+        // Backward jump: reset steps[target..gate] so the path re-runs.
+        for (let i = targetIndex; i <= gateIndex; i++) {
+            const s = steps[i]
+            if (!s) continue
+            s.completed = false
+            s.skipped = false
+            if (s.kind === "task") s.output = undefined
+            if (s.kind === "gate") {
+                s.verdict = undefined
+                if (i !== gateIndex) {
+                    s.attempts = 0
+                    s.invalidAttempts = 0
+                }
+            }
+        }
+    }
+    // Mark the triggering gate complete so find-next-incomplete does not loop
+    // back to it after a forward jump, and so approval resume advances past it.
+    gate.completed = true
+
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "stage_advanced",
+        stage: targetIndex,
+        detail: `workflow jump: step ${gateIndex + 1} -> step ${targetIndex + 1} (${reason}); jump ${gate.jumpCount}/${maxJ}`,
+    })
+
+    task.currentStageIndex = targetIndex
+    const dispatched = target.kind === "task"
+        ? await dispatchTaskStep(ctx, team, task, targetIndex)
+        : await dispatchGateStep(ctx, team, task, targetIndex)
+    if (!dispatched) {
+        const actor = target.kind === "task" ? target.member : target.verifier
+        await finishRun(ctx, team, `workflow_failed:no_session:${actor ?? "unknown"}`, "failed")
+        return false
+    }
+    await saveTeamState(team)
+    return true
+}
+
+/**
  * Advance the workflow: find the next incomplete step, dispatch it (task or
  * gate), or -- if all steps are complete -- trigger signoff then deliver
  * (workflow_complete). Shared by the task-step completion path and the
@@ -243,12 +326,17 @@ export async function handleWorkflowIdle(
 
     if (v.verdict === "PASS") {
         step.completed = true
-        const nextIndex = steps.findIndex(s => !s.completed)
+        const gotoIdx = step.onPassGoto ?? -1
+        const nextIndex = gotoIdx >= 0 ? gotoIdx : steps.findIndex(s => !s.completed)
         if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
             stage: task.currentStageIndex,
             summary: `Completed ${describeStep(step, task.currentStageIndex)} with PASS from ${step.verifier}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
         })) {
+            return
+        }
+        if (gotoIdx >= 0) {
+            await gotoWorkflowStep(ctx, team, task.currentStageIndex, gotoIdx, "on_pass")
             return
         }
         await advanceWorkflowStep(ctx, team)
@@ -258,6 +346,11 @@ export async function handleWorkflowIdle(
     // v.verdict === "FAIL"
     const onFail = step.onFail ?? "fail"
     if (onFail === "fail") {
+        const failGoto = step.onFailGoto ?? -1
+        if (failGoto >= 0) {
+            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, "on_fail")
+            return
+        }
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
         return
     }
@@ -265,6 +358,11 @@ export async function handleWorkflowIdle(
     step.attempts = (step.attempts ?? 0) + 1
     const maxR = step.maxRetries ?? 0
     if (step.attempts > maxR) {
+        const failGoto = step.onFailGoto ?? -1
+        if (failGoto >= 0) {
+            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, "on_fail_retry_exhausted")
+            return
+        }
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
         return
     }
@@ -343,6 +441,11 @@ async function handleInvalidVerdict(
         step.invalidAttempts = (step.invalidAttempts ?? 0) + 1
         const maxIR = step.maxInvalidRetries ?? 0
         if (step.invalidAttempts > maxIR) {
+            const invGoto = step.onInvalidGoto ?? -1
+            if (invGoto >= 0) {
+                await gotoWorkflowStep(ctx, team, gateIndex, invGoto, "on_invalid_retry_exhausted")
+                return
+            }
             await finishRun(ctx, team, `workflow_invalid:${reason}:${step.verifier}`, "failed")
             return
         }
@@ -390,5 +493,14 @@ async function handleInvalidVerdict(
         // No escalation handler available -> fall through to terminal fail.
     }
 
+    // on_invalid_goto (incompatible with escalate per validator) jumps instead
+    // of terminating at the INVALID terminal point.
+    if (policy !== "escalate") {
+        const invGoto = step.onInvalidGoto ?? -1
+        if (invGoto >= 0) {
+            await gotoWorkflowStep(ctx, team, gateIndex, invGoto, `on_invalid:${reason}`)
+            return
+        }
+    }
     await finishRun(ctx, team, `workflow_invalid:${reason}:${step.verifier}`, "failed")
 }

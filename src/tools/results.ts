@@ -24,12 +24,14 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
     const idTag = step.id ? ` (${step.id})` : ""
     if (step.kind === "task") {
         const bytes = step.outputBytes === undefined ? "" : ` (${step.outputBytes} bytes)`
-        return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${step.completed ? " (done)" : ""}${bytes}`
+        const state = step.skipped ? " (skipped)" : step.completed ? " (done)" : ""
+        return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${state}${bytes}`
     }
     const target = step.targetStep === undefined ? "nearest task" : `step ${step.targetStep}`
     const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
     const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
-    return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${attempts}${invalidTag}`
+    const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
+    return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${attempts}${invalidTag}${jumpTag}`
 }
 
 function formatRunLine(r: RunRecord): string {

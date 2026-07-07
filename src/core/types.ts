@@ -301,9 +301,18 @@ export type WorkflowStep = {
     maxInvalidRetries?: number          // retry_verifier cap for INVALID verdicts (gate steps; default 0)
     invalidAttempts?: number            // retry_verifier attempt count so far (gate steps)
     verdict?: Verdict                   // last verdict rendered (gate steps)
+    // conditional jumps: verdict-gated goto targets (0-based internal index,
+    // resolved at build time from a 1-based number or step id). Omitted = the
+    // verdict's default behavior (PASS: advance; FAIL/INVALID: terminate).
+    onPassGoto?: number                 // after PASS: jump here instead of advancing linearly
+    onFailGoto?: number                 // at a FAIL terminal point (on_fail=fail, or retry exhausted): jump instead of failing
+    onInvalidGoto?: number             // at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted): jump instead of terminating. NOT applied to escalate.
+    maxJumps?: number                   // per-gate cap on verdict-driven jumps; default 3, max 10
+    jumpCount?: number                  // verdict-driven jumps taken so far at this gate
     output?: string                     // task steps: captured output snapshot at completion time (per-step, NOT overwritten by later steps the same member runs)
     // shared
-    completed: boolean                  // true when the step is done (task produced; gate PASS)
+    completed: boolean                  // true when the step is done (task produced; gate PASS; or skipped by a forward jump)
+    skipped?: boolean                   // true when a forward jump marked this step as skipped (not run)
 }
 
 export interface WorkflowTask extends ActiveTaskBase {
@@ -347,6 +356,8 @@ export type WorkflowRunStep = {
     attempts?: number
     onInvalid?: WorkflowOnInvalid
     invalidAttempts?: number
+    jumpCount?: number
+    skipped?: boolean
     completed: boolean
     output?: string                     // bounded task-step snapshot captured at completion
     outputBytes?: number

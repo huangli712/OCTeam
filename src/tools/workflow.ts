@@ -38,6 +38,10 @@ type WorkflowToolStep = {
     max_retries?: number
     on_invalid?: "fail" | "retry_verifier" | "escalate"
     max_invalid_retries?: number
+    on_pass_goto?: number | string
+    on_fail_goto?: number | string
+    on_invalid_goto?: number | string
+    max_jumps?: number
 }
 
 type WorkflowToolArgs = {
@@ -69,6 +73,21 @@ function resolveGateTargetIndex(steps: WorkflowToolStep[], gateIndex: number): n
     }
     // string id
     const idx = steps.findIndex((s, i) => i < gateIndex && s.kind === "task" && s.id === target)
+    return idx
+}
+
+/**
+ * Resolve a verdict-driven goto target (1-based number or step id) to a 0-based
+ * step index. Unlike gate target_step, a goto may reference ANY step (task or
+ * gate) except the gate itself. Returns -1 when unresolvable.
+ */
+function resolveGotoIndex(steps: WorkflowToolStep[], gateIndex: number, ref: number | string | undefined): number {
+    if (ref === undefined) return -1
+    if (typeof ref === "number") {
+        const idx = ref - 1
+        return idx >= 0 && idx < steps.length && idx !== gateIndex ? idx : -1
+    }
+    const idx = steps.findIndex((s, i) => i !== gateIndex && s.id === ref)
     return idx
 }
 
@@ -122,6 +141,24 @@ function validateWorkflowGraph(args: WorkflowToolArgs, team: Team): string | nul
         if (s.on_invalid === "retry_verifier" && s.max_invalid_retries === undefined) {
             return `Error: step ${displayStep} (gate) with on_invalid='retry_verifier' requires \`max_invalid_retries\``
         }
+        if (s.max_jumps !== undefined && (s.max_jumps < 0 || s.max_jumps > 10)) {
+            return `Error: step ${displayStep} (gate) max_jumps must be between 0 and 10`
+        }
+        // Conditional-jump goto targets must resolve and must not self-jump.
+        for (const [field, ref] of [
+            ["on_pass_goto", s.on_pass_goto],
+            ["on_fail_goto", s.on_fail_goto],
+            ["on_invalid_goto", s.on_invalid_goto],
+        ] as const) {
+            if (ref === undefined) continue
+            const gotoIdx = resolveGotoIndex(args.steps, i, ref)
+            if (gotoIdx < 0) {
+                return `Error: step ${displayStep} (gate) ${field} "${String(ref)}" must reference an existing step${typeof ref === "string" ? " by id" : ""} and must not self-jump`
+            }
+            if (s.on_invalid === "escalate" && field === "on_invalid_goto") {
+                return `Error: step ${displayStep} (gate) on_invalid_goto is incompatible with on_invalid='escalate' (escalate uses approve/reject)`
+            }
+        }
         const targetIndex = resolveGateTargetIndex(args.steps, i)
         if (targetIndex < 0) {
             const t = s.target_step
@@ -169,10 +206,21 @@ function formatWorkflowDryRun(args: WorkflowToolArgs): string {
             const invalid = step.on_invalid && step.on_invalid !== "fail"
                 ? `; on_invalid=${step.on_invalid}${step.on_invalid === "retry_verifier" ? ` max_invalid_retries=${step.max_invalid_retries}` : ""}`
                 : ""
-            lines.push(`${i + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target}: ${step.criteria ?? ""}${retry}${invalid}`)
+            const jumps: string[] = []
+            if (step.on_pass_goto !== undefined) jumps.push(`on_pass->${gotoRefLabel(args.steps, i, step.on_pass_goto)}`)
+            if (step.on_fail_goto !== undefined) jumps.push(`on_fail->${gotoRefLabel(args.steps, i, step.on_fail_goto)}`)
+            if (step.on_invalid_goto !== undefined) jumps.push(`on_invalid->${gotoRefLabel(args.steps, i, step.on_invalid_goto)}`)
+            const jumpTag = jumps.length > 0 ? `; ${jumps.join(" ")} (max_jumps=${step.max_jumps ?? 3})` : ""
+            lines.push(`${i + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target}: ${step.criteria ?? ""}${retry}${invalid}${jumpTag}`)
         }
     }
     return lines.join("\n")
+}
+
+function gotoRefLabel(steps: WorkflowToolStep[], gateIndex: number, ref: number | string): string {
+    const idx = resolveGotoIndex(steps, gateIndex, ref)
+    const id = idx >= 0 ? steps[idx]?.id : undefined
+    return id ? `step ${idx + 1} (${id})` : idx >= 0 ? `step ${idx + 1}` : "?"
 }
 
 export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
@@ -197,6 +245,10 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                         max_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: FAIL retry cap when on_fail='retry'. Default 0."),
                         on_invalid: tool.schema.enum(["fail", "retry_verifier", "escalate"]).optional().describe("gate steps: INVALID control. 'fail' (default) terminates producer-neutral as workflow_invalid; 'retry_verifier' re-dispatches this gate's verifier up to max_invalid_retries; 'escalate' pauses for human approval (approve=advance, reject=workflow_invalid)."),
                         max_invalid_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: retry_verifier cap when on_invalid='retry_verifier'. Default 0. Required when on_invalid='retry_verifier'."),
+                        on_pass_goto: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: step to jump to after PASS (1-based number or step id) instead of advancing linearly. Enables skip / redo paths."),
+                        on_fail_goto: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: step to jump to at a FAIL terminal point (on_fail=fail, or retry exhausted) instead of failing the run."),
+                        on_invalid_goto: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: step to jump to at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted). Incompatible with on_invalid='escalate'."),
+                        max_jumps: tool.schema.number().int().min(0).max(10).optional().describe("gate steps: per-gate cap on verdict-driven jumps. Default 3. Terminates as workflow_failed:jump_limit when exceeded."),
                     }),
                 )
                 .min(1)
@@ -241,6 +293,11 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                         onInvalid: s.kind === "gate" ? (s.on_invalid ?? "fail") : undefined,
                         maxInvalidRetries: s.kind === "gate" ? s.max_invalid_retries : undefined,
                         invalidAttempts: 0,
+                        onPassGoto: s.kind === "gate" ? resolveGotoIndex(args.steps, index, s.on_pass_goto) : undefined,
+                        onFailGoto: s.kind === "gate" ? resolveGotoIndex(args.steps, index, s.on_fail_goto) : undefined,
+                        onInvalidGoto: s.kind === "gate" ? resolveGotoIndex(args.steps, index, s.on_invalid_goto) : undefined,
+                        maxJumps: s.kind === "gate" ? s.max_jumps : undefined,
+                        jumpCount: 0,
                         completed: false,
                     }))
                     const wfTask: WorkflowTask = {

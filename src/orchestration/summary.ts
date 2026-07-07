@@ -261,11 +261,13 @@ function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head
     const rows = steps.map((s, i) => {
         const idTag = s.id ? ` (${s.id})` : ""
         if (s.kind === "task") {
-            return `${i + 1}. [task]${idTag} ${s.member ?? "?"}${s.completed ? " (done)" : ""}`
+            const state = s.skipped ? " (skipped)" : s.completed ? " (done)" : ""
+            return `${i + 1}. [task]${idTag} ${s.member ?? "?"}${state}`
         }
         const target = s.targetStepIndex === undefined ? "nearest task" : `step ${s.targetStepIndex + 1}`
         const invalidTag = s.onInvalid && s.onInvalid !== "fail" ? `, on_invalid=${s.onInvalid}${(s.invalidAttempts ?? 0) > 0 ? ` (${s.invalidAttempts})` : ""}` : ""
-        return `${i + 1}. [gate]${idTag} ${s.verifier ?? "?"} verifies ${target} -> ${s.verdict ?? "pending"}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}${invalidTag}`
+        const jumpTag = (s.jumpCount ?? 0) > 0 ? `, jumps=${s.jumpCount}` : ""
+        return `${i + 1}. [gate]${idTag} ${s.verifier ?? "?"} verifies ${target} -> ${s.verdict ?? "pending"}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}${invalidTag}${jumpTag}`
     })
     const outputs = steps
         .map((s, i) => {
