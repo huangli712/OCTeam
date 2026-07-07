@@ -590,6 +590,10 @@ export async function handleWorkflowIdle(
         return
     }
     task.currentStageIndex = producerIdx
+    // Honor producer approval_before on retry re-dispatch (parity with goto
+    // backward jump and the initial advance path). Without this, a FAIL retry
+    // silently bypassed the leader gate that the step declared.
+    if (await maybePauseBeforeWorkflowStep(ctx, team, producerIdx)) return
     const producer = team.members.find(m => m.name === producerStep.member && !m.isMaster)
     if (!hasLiveSession(producer)) {
         await finishRun(ctx, team, `workflow_failed:no_session:${producerStep.member ?? "unknown"}`, "failed")
@@ -655,6 +659,9 @@ async function handleInvalidVerdict(
             await finishRun(ctx, team, `workflow_failed:no_session:${step.verifier ?? "unknown"}`, "failed")
             return
         }
+        // Honor gate approval_before on invalid-verifier retry re-dispatch
+        // (parity with FAIL retry and the initial advance path).
+        if (await maybePauseBeforeWorkflowStep(ctx, team, gateIndex)) return
         recordEvent(team, {
             timestamp: Date.now(),
             kind: "retry",

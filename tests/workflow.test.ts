@@ -1045,3 +1045,80 @@ describe("handleWorkflowIdle (via processIdle): step-level controls", () => {
         expect(captured).toContain("truncated")
     })
 })
+
+describe("handleWorkflowIdle (via processIdle): approval_before honored on retry re-dispatch", () => {
+    // Regression: FAIL retry and INVALID retry_verifier paths used to call
+    // dispatchToMember directly, bypassing maybePauseBeforeWorkflowStep. A
+    // producer/verifier with approval_before:true was silently re-dispatched
+    // on retry without the leader being asked.
+
+    test("FAIL retry re-dispatch honors producer approval_before", async () => {
+        const calls: DispatchCall[] = []
+        const failVerdict = '<verdict>{"result":"FAIL","rationale":"bad","diff":"fix"}</verdict>'
+        // Producer step 0 has approval_before. First FAIL triggers a retry
+        // (maxRetries=1). The retry must pause before re-dispatching alice.
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", approvalBefore: true, approvalBeforeGranted: true, completed: true, output: "impl" },
+                { kind: "gate", verifier: "bob", criteria: "ok", onFail: "retry", maxRetries: 1, attempts: 0, completed: false },
+            ],
+            currentStageIndex: 1,
+            responses: { alice: "impl", bob: failVerdict },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({}, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        // Paused before re-dispatching alice (producer approval_before honored on retry).
+        expect(task.approvalStage).toBe(true)
+        expect(task.approvalRequest?.kind).toBe("workflow_step")
+        expect(task.steps![0].approvalBeforeGranted).toBe(true)
+        expect(task.steps![0].completed).toBe(false)        // reset for retry
+        expect(task.steps![1].attempts).toBe(1)             // counter still bumped
+        // alice NOT re-dispatched yet.
+        expect(calls.some(c => c.sessionId === "ses_alice")).toBe(false)
+        expect(team.activeTask).toBeDefined()
+    })
+
+    test("INVALID retry_verifier re-dispatch honors gate approval_before", async () => {
+        const calls: DispatchCall[] = []
+        const invalidVerdict = '<verdict>{"result":"INVALID","rationale":"cannot eval","diff":""}</verdict>'
+        // Gate step 1 has approval_before. The gate was dispatched once
+        // (dispatchGateStep consumed approvalBeforeGranted -> undefined) and
+        // produced INVALID. retry_verifier must pause before re-dispatching bob.
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", completed: true, output: "impl" },
+                { kind: "gate", verifier: "bob", criteria: "ok", onInvalid: "retry_verifier", maxInvalidRetries: 1, invalidAttempts: 0, approvalBefore: true, completed: false },
+            ],
+            currentStageIndex: 1,
+            responses: { alice: "impl", bob: invalidVerdict },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({}, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        // Paused before re-dispatching bob (gate approval_before honored on invalid retry).
+        expect(task.approvalStage).toBe(true)
+        expect(task.approvalRequest?.kind).toBe("workflow_step")
+        expect(task.steps![1].approvalBeforeGranted).toBe(true)
+        expect(task.steps![1].invalidAttempts).toBe(1)      // counter still bumped
+        // bob NOT re-dispatched yet.
+        expect(calls.some(c => c.sessionId === "ses_bob")).toBe(false)
+        expect(team.activeTask).toBeDefined()
+    })
+})
