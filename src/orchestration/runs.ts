@@ -118,6 +118,12 @@ const WorkflowRunStepSchema = z.object({
     completed: z.boolean(),
     output: z.string().optional(),
     outputBytes: z.number().optional(),
+    // Static step-level control config (for post-run audit). Mirrors the
+    // runtime-declared controls; approvalBeforeGranted is transient and NOT
+    // persisted (it only matters mid-run).
+    approvalBefore: z.boolean().optional(),
+    approvalAfter: z.boolean().optional(),
+    maxOutputBytes: z.number().optional(),
 })
 
 const RunRecordSchema = z.object({
@@ -276,6 +282,9 @@ export async function persistRun(team: Team, reason: string): Promise<void> {
                 completed: step.completed,
                 output: step.output,
                 outputBytes: step.output === undefined ? undefined : Buffer.byteLength(step.output, "utf8"),
+                approvalBefore: step.approvalBefore,
+                approvalAfter: step.approvalAfter,
+                maxOutputBytes: step.maxOutputBytes,
             })),
         }
     }

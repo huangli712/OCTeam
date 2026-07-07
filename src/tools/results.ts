@@ -50,18 +50,28 @@ function formatWorkflowIssueDetail(step: WorkflowRunStep): string {
     return "\n" + lines.join("\n")
 }
 
+/** Per-step static control config tag (for post-run audit). Mirrors the
+ * dry_run rendering so a reviewer can see which controls a step declared. */
+function workflowStepControlsTag(step: WorkflowRunStep): string {
+    const controls: string[] = []
+    if (step.approvalBefore) controls.push("approval_before")
+    if (step.approvalAfter) controls.push("approval_after")
+    if (step.maxOutputBytes !== undefined) controls.push(`max_output_bytes=${step.maxOutputBytes}`)
+    return controls.length > 0 ? `  [${controls.join(", ")}]` : ""
+}
+
 function formatWorkflowStepLine(step: WorkflowRunStep): string {
     const idTag = step.id ? ` (${step.id})` : ""
     if (step.kind === "task") {
         const bytes = step.outputBytes === undefined ? "" : ` (${step.outputBytes} bytes)`
         const state = step.skipped ? " (skipped)" : step.completed ? " (done)" : ""
-        return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${state}${bytes}`
+        return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${state}${bytes}${workflowStepControlsTag(step)}`
     }
     const target = workflowTargetLabel(step)
     const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
     const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
     const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
-    return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${jumpTag}${formatWorkflowIssueDetail(step)}`
+    return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${jumpTag}${formatWorkflowIssueDetail(step)}${workflowStepControlsTag(step)}`
 }
 
 function formatRunLine(r: RunRecord): string {

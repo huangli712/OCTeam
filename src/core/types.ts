@@ -389,6 +389,11 @@ export type WorkflowRunStep = {
     completed: boolean
     output?: string                     // bounded task-step snapshot captured at completion
     outputBytes?: number
+    // Static step-level control config (post-run audit mirror of the runtime
+    // declared controls). approvalBeforeGranted is transient and not persisted.
+    approvalBefore?: boolean
+    approvalAfter?: boolean
+    maxOutputBytes?: number
 }
 
 export type RunRecord = {

@@ -505,6 +505,56 @@ describe("teamResultGetTool.execute", () => {
         expect(result).toMatch(/critical\b[^\n]*$/m)
     })
 
+    test("workflow run persists step static control config (approval_before/after, max_output_bytes)", async () => {
+        const root = tmpRoot("res-workflow-controls")
+        const masterSid = "ses_res_master_wf_ctrl"
+        tracked.push(masterSid)
+        const { directory } = await setupTeam({ root, masterSid, members: [] })
+        await seedRunRecord(directory, {
+            ...SAMPLE_RUN,
+            runId: "run-workflow-controls",
+            type: "workflow",
+            mode: undefined,
+            reason: "workflow_complete",
+            workflow: {
+                steps: [
+                    {
+                        index: 0,
+                        step: 1,
+                        kind: "task",
+                        member: "alice",
+                        completed: true,
+                        output: "impl",
+                        outputBytes: 4,
+                        approvalBefore: true,
+                        maxOutputBytes: 512,
+                    },
+                    {
+                        index: 1,
+                        step: 2,
+                        kind: "gate",
+                        verifier: "bob",
+                        targetStep: 1,
+                        verdict: "PASS",
+                        attempts: 1,
+                        completed: true,
+                        approvalAfter: true,
+                    },
+                ],
+            },
+        })
+
+        const result = await teamResultGetTool(makeCtx(root)).execute(
+            { team_id: TEAM, run_id: "run-workflow-controls" },
+            { sessionID: masterSid } as never,
+        )
+
+        // Static control config surfaces in the ledger for post-run audit.
+        expect(result).toContain("approval_before")
+        expect(result).toContain("approval_after")
+        expect(result).toContain("max_output_bytes=512")
+    })
+
     test("omitted run_id returns latest run", async () => {
         const root = tmpRoot("res-latest")
         const masterSid = "ses_res_master_7"
