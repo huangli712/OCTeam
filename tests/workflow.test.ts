@@ -475,4 +475,107 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(bobCall!.text).not.toContain("nearest task output")
         expect(bobCall!.text).not.toContain("latest alice response")
     })
+
+    test("on_invalid=retry_verifier re-dispatches the verifier then fails on exhaust", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "do work", completed: true, output: "alice output" },
+                { kind: "gate", verifier: "bob", criteria: "passes tests", onFail: "fail", onInvalid: "retry_verifier", maxInvalidRetries: 1, invalidAttempts: 0, completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+
+        // First INVALID: within retries (0 -> 1) -> re-dispatch bob, NOT alice.
+        let ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls)
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(task.steps![1].invalidAttempts).toBe(1)
+        expect(task.steps![0].completed).toBe(true)
+        expect(task.currentStageIndex).toBe(1)
+        const reverifyCall = calls.find(c => c.sessionId === "ses_bob")
+        expect(reverifyCall).toBeDefined()
+        expect(reverifyCall!.text).toContain("could not be evaluated")
+        expect(calls.some(c => c.sessionId === "ses_alice")).toBe(false)
+        expect(team.activeTask).toBeDefined()
+
+        // Second INVALID: 1 -> 2 > maxInvalidRetries 1 -> fail as workflow_invalid.
+        ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls)
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("workflow_invalid")
+    })
+
+    test("on_invalid=escalate forces a human-approval pause even without humanApproval", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "do work", completed: true, output: "alice output" },
+                { kind: "gate", verifier: "bob", criteria: "passes tests", onFail: "fail", onInvalid: "escalate", completed: false },
+                { kind: "task", member: "carol", task: "follow-up", completed: false },
+            ],
+            currentStageIndex: 1,
+            humanApproval: false,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        // Forced pause: the gate is marked complete (so approve will advance),
+        // an approval request was emitted to the leader, and carol was NOT dispatched yet.
+        expect(task.steps![1].completed).toBe(true)
+        expect(task.approvalStage).toBe(true)
+        expect(task.approvalRequest?.kind).toBe("workflow_step")
+        expect(calls.some(c => c.sessionId === "ses_lead" && c.text.includes("could not be evaluated"))).toBe(true)
+        expect(calls.some(c => c.sessionId === "ses_carol")).toBe(false)
+        expect(team.activeTask).toBeDefined()
+    })
+
+    test("a gate target_step with a string id verifies the named task step", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", id: "design", member: "alice", task: "draft", completed: true, output: "design output" },
+                { kind: "task", member: "carol", task: "tests", completed: true, output: "tests output" },
+                { kind: "gate", id: "verify-design", verifier: "bob", targetStepIndex: 0, criteria: "design ok", completed: false },
+            ],
+            currentStageIndex: 2,
+            responses: { alice: "latest alice", carol: "latest carol" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+            ],
+        })
+        const ctx = makeCtx({}, calls)
+
+        await advanceWorkflowStep(ctx, team)
+
+        const bobCall = calls.find(c => c.sessionId === "ses_bob")
+        expect(bobCall).toBeDefined()
+        expect(bobCall!.text).toContain("design output")
+        expect(bobCall!.text).not.toContain("tests output")
+    })
 })

@@ -457,7 +457,105 @@ describe("team_workflow startup validation", () => {
             },
             makeToolContext(sid),
         )
-        expect(result).toContain("target_step must reference a task step")
+        expect(result).toContain("must reference a previous task step")
+    })
+
+    test("duplicate step id -> rejected", async () => {
+        const root = tmpRoot("wf-dup-id")
+        const sid = "ses_wf_dup"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", id: "draft", member: "alice", task: "draft" },
+                    { kind: "task", id: "draft", member: "alice", task: "again" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("duplicate step id")
+        expect(result).toContain("draft")
+    })
+
+    test("target_step resolves a string id to a previous task", async () => {
+        const root = tmpRoot("wf-target-id")
+        const sid = "ses_wf_tid"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", id: "design", member: "alice", task: "draft design" },
+                    { kind: "task", member: "carol", task: "add tests" },
+                    { kind: "gate", verifier: "bob", target_step: "design", criteria: "design ok", on_fail: "retry", max_retries: 1 },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("verifies step 1 (design)")
+        const after = await loadTeamState(root, "alpha", sid)
+        expect(after.activeTask).toBeUndefined()
+    })
+
+    test("target_step unknown id -> rejected", async () => {
+        const root = tmpRoot("wf-target-unknown-id")
+        const sid = "ses_wf_tui"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", target_step: "missing", criteria: "ok" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("must reference a previous task step by id")
+    })
+
+    test("on_invalid retry_verifier requires max_invalid_retries", async () => {
+        const root = tmpRoot("wf-invalid-no-max")
+        const sid = "ses_wf_inm"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", criteria: "ok", on_invalid: "retry_verifier" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("requires `max_invalid_retries`")
+    })
+
+    test("dry_run renders id and on_invalid policy", async () => {
+        const root = tmpRoot("wf-dry-id")
+        const sid = "ses_wf_dryid"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", id: "impl", member: "alice", task: "implement" },
+                    { kind: "gate", id: "verify", verifier: "bob", target_step: "impl", criteria: "ok", on_invalid: "escalate" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("1. [task] (impl) alice")
+        expect(result).toContain("2. [gate] (verify) bob verifies step 1 (impl)")
+        expect(result).toContain("on_invalid=escalate")
     })
 
     test("on_fail retry requires explicit max_retries", async () => {
