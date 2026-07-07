@@ -24,8 +24,8 @@
 
 import type { PluginContext } from "../core/context.js"
 import { type Team, saveTeamState } from "../state/store.js"
-import type { MemberState, Verdict, WorkflowStep, WorkflowTask } from "../core/types.js"
-import { matchesWorkflowCondition } from "../core/workflow-conditions.js"
+import type { MemberState, Verdict, WorkflowCondition, WorkflowStep, WorkflowTask } from "../core/types.js"
+import { formatWorkflowCondition, matchesWorkflowCondition } from "../core/workflow-conditions.js"
 import { dispatchToMember } from "./dispatch.js"
 import { finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
@@ -78,17 +78,73 @@ function buildWorkflowUpstream(
  * Build the verifier's dispatch prompt: the preceding task's output, the
  * criteria, and the exact <verdict> block the verifier must emit. PASS = the
  * output meets the criteria, FAIL = it does not (rationale + diff).
+ *
+ * When the gate carries a `where` threshold condition, the prompt additionally
+ * asks the verifier to emit the structured fields that condition evaluates
+ * against (score / confidence / issues), so the threshold can actually match
+ * in practice.
  */
 function buildGateVerifierPrompt(step: WorkflowStep, producerOutput: string, targetLabel: string): string {
+    const structuredHint = buildStructuredVerdictHint(step.where)
     return (
         `[Verification gate] Verify ${targetLabel} output below against the criteria.\n`
         + `Criteria: ${step.criteria ?? ""}\n\n`
         + `Producer output:\n${producerOutput}\n\n`
+        + (structuredHint ? `${structuredHint}\n\n` : "")
         + `Emit EXACTLY one:\n`
-        + `<verdict>{"result":"PASS|FAIL|INVALID","rationale":"...","diff":"..."}</verdict>\n`
+        + `<verdict>${buildVerdictSchemaExample(step.where)}</verdict>\n`
         + `PASS = the output meets the criteria. FAIL = it does not (give rationale + diff). `
         + `INVALID = you cannot evaluate the output or criteria; this is not a producer failure.`
     )
+}
+
+/**
+ * Describe the structured fields a `where` condition needs, and emit a matching
+ * `<verdict>` JSON example. A gate without `where` requests only the base
+ * result/rationale/diff triple, keeping prompts minimal for gates that do not
+ * gate on thresholds.
+ */
+function buildStructuredVerdictHint(where: WorkflowCondition | undefined): string {
+    if (where === undefined) return ""
+    const fields: string[] = []
+    switch (where.kind) {
+        case "score_gte":
+        case "score_lt":
+            fields.push("score: a numeric quality score on a 0-10 scale")
+            fields.push("confidence: a 0-1 confidence in your verdict")
+            break
+        case "confidence_gte":
+            fields.push("confidence: a 0-1 confidence in your verdict")
+            break
+        case "has_issue_severity":
+            fields.push("issues: an array of { severity: low|medium|high|critical, message?: string } for every issue you found, ordered by severity")
+            break
+        default:
+            return assertNeverWorkflowCondition(where)
+    }
+    return `This gate gates a downstream step on a threshold condition (${formatWorkflowCondition(where)}). Also emit structured fields so the condition can be evaluated:\n- ${fields.join("\n- ")}`
+}
+
+function buildVerdictSchemaExample(where: WorkflowCondition | undefined): string {
+    const base = `"result":"PASS|FAIL|INVALID","rationale":"...","diff":"..."`
+    if (where === undefined) return `{${base}}`
+    const extras: string[] = []
+    switch (where.kind) {
+        case "score_gte":
+        case "score_lt":
+            extras.push(`"score":8`)
+            extras.push(`"confidence":0.9`)
+            break
+        case "confidence_gte":
+            extras.push(`"confidence":0.9`)
+            break
+        case "has_issue_severity":
+            extras.push(`"issues":[{"severity":"high","message":"..."}]`)
+            break
+        default:
+            return assertNeverWorkflowCondition(where)
+    }
+    return `{${base},${extras.join(",")}}`
 }
 
 /**
@@ -161,6 +217,11 @@ function gatedGotoIndex(step: WorkflowStep, gotoIndex: number | undefined): numb
 
 function whereReason(step: WorkflowStep, fallback: string): string {
     return step.where === undefined ? fallback : `when:${step.where.kind}`
+}
+
+/** Local exhaustive guard for WorkflowCondition, mirroring workflow-conditions.ts. */
+function assertNeverWorkflowCondition(value: never): never {
+    throw new Error(`unhandled workflow condition: ${String(value)}`)
 }
 
 function hasLiveSession(member: MemberState | undefined): member is MemberState & { sessionId: string } {

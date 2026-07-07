@@ -582,6 +582,60 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(bobCall!.text).not.toContain("tests output")
     })
 
+    test("a gate with where score asks the verifier to emit score/confidence", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", completed: true, output: "impl" },
+                { kind: "gate", verifier: "bob", criteria: "ok", onPassGoto: 3, where: { kind: "score_gte", value: 8 }, jumpCount: 0, completed: false },
+                { kind: "task", member: "carol", task: "premium", completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+            ],
+        })
+        const ctx = makeCtx({}, calls)
+
+        await advanceWorkflowStep(ctx, team)
+
+        const bobCall = calls.find(c => c.sessionId === "ses_bob")
+        expect(bobCall).toBeDefined()
+        expect(bobCall!.text).toContain("score")
+        expect(bobCall!.text).toContain("confidence")
+    })
+
+    test("a gate without where does not request structured fields", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", completed: true, output: "impl" },
+                { kind: "gate", verifier: "bob", criteria: "ok", completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({}, calls)
+
+        await advanceWorkflowStep(ctx, team)
+
+        const bobCall = calls.find(c => c.sessionId === "ses_bob")
+        expect(bobCall).toBeDefined()
+        expect(bobCall!.text).not.toContain("structured score")
+        expect(bobCall!.text).not.toContain("structured issues")
+    })
+
     test("a multi-target gate verifies all selected task outputs", async () => {
         const calls: DispatchCall[] = []
         const task = makeWorkflowTask({
