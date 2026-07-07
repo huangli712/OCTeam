@@ -201,14 +201,42 @@ function checkJoinStep(context: WorkflowInvariantContext, index: number, step: W
     if (!step.completed) return
 
     const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
-    const survivorCount = fanout.branchIds.filter(branchId => !erroredBranchIds.has(branchId)).length
-    if (survivorCount === 0) context.violations.push(`step ${index}: completed join has no survivor branches`)
-    if (erroredBranchIds.size > join.maxErrored) context.violations.push(`step ${index}: completed join has ${erroredBranchIds.size} errored branches over cap ${join.maxErrored}`)
+    const survivorBranchIds = fanout.branchIds.filter(branchId => !erroredBranchIds.has(branchId))
+    if (!joinPolicyInvariantOk(join, survivorBranchIds, erroredBranchIds.size)) {
+        context.violations.push(`step ${index}: completed join violates ${join.joinPolicy ?? "tolerance"} policy`)
+    }
     for (let branchIndex = 0; branchIndex < fanout.branchIds.length; branchIndex += 1) {
         const branchId = fanout.branchIds[branchIndex]
         if (branchId === undefined || erroredBranchIds.has(branchId)) continue
         const tailIndex = join.branchTailIndices[branchIndex]
         if (tailIndex === undefined || !isTerminalStep(context.steps[tailIndex])) context.violations.push(`step ${index}: completed join has non-terminal branch ${branchId}`)
+    }
+}
+
+function joinPolicyInvariantOk(
+    join: WorkflowJoinMetadata,
+    survivorBranchIds: readonly string[],
+    errors: number,
+): boolean {
+    const total = join.branchTailIndices.length
+    switch (join.joinPolicy) {
+        case undefined:
+        case "tolerance":
+            return survivorBranchIds.length > 0 && errors <= join.maxErrored
+        case "all":
+        case "reduce":
+            return errors === 0
+        case "quorum":
+            return survivorBranchIds.length / total >= (join.quorum ?? 0)
+        case "any_success":
+            return survivorBranchIds.length >= 1
+        case "required_branches": {
+            const required = join.requiredBranchIds ?? []
+            const survivorSet = new Set(survivorBranchIds)
+            return required.every(branchId => survivorSet.has(branchId))
+        }
+        default:
+            return survivorBranchIds.length > 0 && errors <= join.maxErrored
     }
 }
 

@@ -10,6 +10,10 @@ import type { WorkflowStep, WorkflowTask } from "../core/types.js"
 import type { Team } from "../state/store.js"
 import { finishRun } from "./summary.js"
 import { advanceWorkflowStep, markWorkflowFanoutBranchErrored, redispatchWorkflowStep } from "./workflow.js"
+import {
+    workflowNoSessionReason,
+    workflowTimeoutStepReason,
+} from "../core/workflow-reasons.js"
 
 /**
  * Check the active task's termination conditions and, if met, deliver a summary
@@ -99,7 +103,7 @@ async function handleWorkflowStepTimeout(ctx: PluginContext, team: Team, task: W
     if (step.branch !== undefined) {
         const actor = workflowStepActor(step)
         if (actor === undefined) {
-            await finishRun(ctx, team, `workflow_timeout:step:${index + 1}`, "failed")
+            await finishRun(ctx, team, workflowTimeoutStepReason(index + 1), "failed")
             return
         }
         const result = markWorkflowFanoutBranchErrored(task, actor)
@@ -111,7 +115,7 @@ async function handleWorkflowStepTimeout(ctx: PluginContext, team: Team, task: W
                 await finishRun(ctx, team, result.reason, "failed")
                 return
             case "not_fanout":
-                await finishRun(ctx, team, `workflow_timeout:step:${index + 1}`, "failed")
+                await finishRun(ctx, team, workflowTimeoutStepReason(index + 1), "failed")
                 return
             default:
                 result satisfies never
@@ -120,7 +124,7 @@ async function handleWorkflowStepTimeout(ctx: PluginContext, team: Team, task: W
     }
     switch (policy) {
         case "fail":
-            await finishRun(ctx, team, `workflow_timeout:step:${index + 1}`, "failed")
+            await finishRun(ctx, team, workflowTimeoutStepReason(index + 1), "failed")
             return
         case "skip":
             step.completed = true
@@ -131,12 +135,12 @@ async function handleWorkflowStepTimeout(ctx: PluginContext, team: Team, task: W
         case "retry": {
             step.timeoutAttempts = (step.timeoutAttempts ?? 0) + 1
             if (step.timeoutAttempts > (step.maxTimeoutRetries ?? 0)) {
-                await finishRun(ctx, team, `workflow_timeout:step:${index + 1}`, "failed")
+                await finishRun(ctx, team, workflowTimeoutStepReason(index + 1), "failed")
                 return
             }
             step.dispatchedAt = undefined
             if (!await redispatchWorkflowStep(ctx, team, index)) {
-                await finishRun(ctx, team, `workflow_failed:no_session:${workflowStepActor(step) ?? "unknown"}`, "failed")
+                await finishRun(ctx, team, workflowNoSessionReason(workflowStepActor(step)), "failed")
             }
             step.dispatchedAt = now
             return

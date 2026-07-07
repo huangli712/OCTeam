@@ -306,6 +306,7 @@ export async function dispatchToMember(
     text: string,
     directory: string,
     team?: Team,   // when provided, emit a 'dispatched' run event (#5 observability)
+    eventMeta?: { stepIndex?: number; correlationId?: string },
 ): Promise<void> {
     if (!member.sessionId) return
     // Errored is terminal: never re-dispatch. A dispatch would flip the member
@@ -327,6 +328,6 @@ export async function dispatchToMember(
     member.status = "running"
     member.turnCount++
     if (team) {
-        recordEvent(team, { timestamp: Date.now(), kind: "dispatched", member: member.name })
+        recordEvent(team, { timestamp: Date.now(), kind: "dispatched", member: member.name, ...eventMeta })
     }
 }

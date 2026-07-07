@@ -70,6 +70,14 @@ export type WorkflowToolStep = {
     readonly max_jumps?: number
     readonly branches?: readonly WorkflowFanoutBranch[]
     readonly max_errored?: number
+    readonly join_policy?: "all" | "quorum" | "any_success" | "required_branches" | "reduce"
+    readonly quorum?: number
+    readonly required_branches?: readonly string[]
+    readonly reducer_member?: string
+    readonly matrix?: Readonly<Record<string, readonly string[]>>
+    readonly foreach?: readonly string[]
+    readonly as?: string
+    readonly steps?: readonly WorkflowToolStep[]  // template steps for matrix/foreach fanout
 }
 
 type WorkflowLinearToolStep = WorkflowToolStep & { readonly kind: "task" | "gate" }
@@ -323,7 +331,16 @@ function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly Lowere
                 loweredSteps.push({
                     kind: "fanout",
                     id: step.id,
-                    fanout: { branchIds, branchRanges, joinIndex, maxErrored },
+                    fanout: {
+                        branchIds,
+                        branchRanges,
+                        joinIndex,
+                        maxErrored,
+                        ...(step.join_policy !== undefined ? { joinPolicy: step.join_policy } : {}),
+                        ...(step.quorum !== undefined ? { quorum: step.quorum } : {}),
+                        ...(step.required_branches !== undefined ? { requiredBranchIds: step.required_branches } : {}),
+                        ...(step.reducer_member !== undefined ? { reducerMember: step.reducer_member } : {}),
+                    },
                 })
                 for (let branchIndex = 0; branchIndex < branches.length; branchIndex += 1) {
                     const branch = branches[branchIndex]
@@ -370,6 +387,10 @@ function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly Lowere
                         fanoutIndex,
                         branchTailIndices: branchRanges.map(range => range.endIndex),
                         maxErrored,
+                        ...(step.join_policy !== undefined ? { joinPolicy: step.join_policy } : {}),
+                        ...(step.quorum !== undefined ? { quorum: step.quorum } : {}),
+                        ...(step.required_branches !== undefined ? { requiredBranchIds: step.required_branches } : {}),
+                        ...(step.reducer_member !== undefined ? { reducerMember: step.reducer_member } : {}),
                     },
                 })
                 publicIndex += 1
@@ -437,6 +458,8 @@ function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]): string
                 if (!isFanoutToolStep(step)) break
                 const branchError = validateFanoutBranches(step, index + 1)
                 if (branchError !== null) return branchError
+                const policyError = validateFanoutJoinPolicy(step, index + 1)
+                if (policyError !== null) return policyError
                 break
             }
             default:
@@ -447,7 +470,64 @@ function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]): string
     return null
 }
 
-function validateFanoutBranches(step: WorkflowFanoutToolStep, displayStep: number): string | null {
+/** Pre-expansion shape check for matrix/foreach fanout syntax sugar. */
+function validateMatrixForeachShapeInSteps(steps: readonly WorkflowToolStep[]): string | null {
+    for (let index = 0; index < steps.length; index += 1) {
+        const step = steps[index]
+        if (step === undefined || step.kind !== "fanout") continue
+        const err = validateMatrixForeachShape(step, index + 1)
+        if (err !== null) return err
+    }
+    return null
+}
+
+function validateMatrixForeachShape(step: WorkflowToolStep, displayStep: number): string | null {
+    const hasMatrix = step.matrix !== undefined
+    const hasForeach = step.foreach !== undefined
+    const hasBranches = (step.branches ?? []).length > 0
+    if (hasMatrix && hasForeach) return `Error: fanout step ${displayStep} must not set both matrix and foreach`
+    if ((hasMatrix || hasForeach) && hasBranches) return `Error: fanout step ${displayStep} must not set both matrix/foreach and branches`
+    if (hasMatrix || hasForeach) {
+        if ((step.steps ?? []).length === 0) return `Error: fanout step ${displayStep} with matrix/foreach requires template \`steps\``
+    }
+    return null
+}
+
+function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: number): string | null {
+    const policy = step.join_policy
+    if (policy === undefined) return null
+    const branchIds = (step.branches ?? []).map(branch => branch.id)
+    switch (policy) {
+        case "all":
+        case "any_success":
+        case "reduce":
+            break
+        case "quorum": {
+            if (step.quorum === undefined) return `Error: fanout step ${displayStep} join_policy='quorum' requires \`quorum\``
+            if (!(step.quorum > 0 && step.quorum <= 1)) return `Error: fanout step ${displayStep} quorum must be > 0 and <= 1`
+            break
+        }
+        case "required_branches": {
+            if (step.required_branches === undefined || step.required_branches.length === 0) {
+                return `Error: fanout step ${displayStep} join_policy='required_branches' requires \`required_branches\``
+            }
+            for (const requiredId of step.required_branches) {
+                if (!branchIds.includes(requiredId)) {
+                    return `Error: fanout step ${displayStep} required_branches references unknown branch "${requiredId}"`
+                }
+            }
+            break
+        }
+        default:
+            return `Error: fanout step ${displayStep} unknown join_policy "${String(policy)}"`
+    }
+    if (policy === "reduce" && step.reducer_member === undefined) {
+        return `Error: fanout step ${displayStep} join_policy='reduce' requires \`reducer_member\``
+    }
+    return null
+}
+
+ function validateFanoutBranches(step: WorkflowFanoutToolStep, displayStep: number): string | null {
     const branches = step.branches ?? []
     if (branches.length === 0) return `Error: fanout step ${displayStep} requires at least one branch`
     const maxErrored = step.max_errored ?? 0
@@ -786,7 +866,12 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 }
                 break
             }
-            case "fanout":
+            case "fanout": {
+                if (s.fanout.joinPolicy === "reduce" && s.fanout.reducerMember !== undefined && !isTeamMember(team, s.fanout.reducerMember)) {
+                    return `Error: fanout step ${displayStep} reducer_member "${s.fanout.reducerMember}" is not a team member`
+                }
+                break
+            }
             case "join":
                 break
             default:
@@ -908,11 +993,91 @@ function validateWorkflowSource(args: WorkflowToolArgs): string | null {
 async function resolveWorkflowArgs(ctx: PluginContext, args: WorkflowToolArgs): Promise<ResolvedWorkflowToolArgs | string> {
     const sourceError = validateWorkflowSource(args)
     if (sourceError) return sourceError
-    if (args.steps !== undefined) return { ...args, steps: args.steps }
+    const baseSteps = args.steps ?? ((args.workflow_file === undefined) ? [] : (await loadWorkflowFile(ctx.directory, args.workflow_file, args.vars ?? {})) satisfies { steps: WorkflowToolStep[] } | { error: string } | undefined)
+    if (args.steps !== undefined) {
+        const shapeError = validateMatrixForeachShapeInSteps(args.steps)
+        if (shapeError !== null) return shapeError
+        return { ...args, steps: expandMatrixForeachFanout(args.steps) }
+    }
     if (args.workflow_file === undefined) return "Error: team_workflow must set exactly one of steps or workflow_file"
     const loaded = await loadWorkflowFile(ctx.directory, args.workflow_file, args.vars ?? {})
     if ("error" in loaded) return loaded.error
-    return { ...args, steps: loaded.steps }
+    const shapeError = validateMatrixForeachShapeInSteps(loaded.steps)
+    if (shapeError !== null) return shapeError
+    return { ...args, steps: expandMatrixForeachFanout(loaded.steps) }
+}
+
+/**
+ * Expand matrix/foreach fanout syntax sugar into concrete branches before
+ * validation and lowering. matrix produces the cartesian product of its value
+ * arrays; foreach is single-dimension. Both substitute ${var} in every string
+ * field of the branch's steps. A fanout that already has `branches` must not
+ * set matrix/foreach. Expansion preserves step order and is idempotent.
+ */
+export function expandMatrixForeachFanout(steps: readonly WorkflowToolStep[]): WorkflowToolStep[] {
+    return steps.map(step => {
+        if (step.kind !== "fanout") return step
+        const matrix = step.matrix
+        const foreach = step.foreach
+        if (matrix === undefined && foreach === undefined) return step
+        if (step.branches !== undefined) return step // explicit branches wins; validator rejects the combo
+        const templateSteps = step.steps ?? []
+        if (templateSteps.length === 0) return step
+        const branches = matrix !== undefined
+            ? expandMatrix(matrix, templateSteps)
+            : expandForeach(foreach ?? [], step.as ?? "item", templateSteps)
+        const { matrix: _m, foreach: _f, as: _a, steps: _t, ...rest } = step
+        return { ...rest, branches } satisfies WorkflowToolStep
+    })
+}
+
+function expandMatrix(matrix: Readonly<Record<string, readonly string[]>>, templateSteps: readonly WorkflowToolStep[]): WorkflowFanoutBranch[] {
+    const keys = Object.keys(matrix)
+    const combos = cartesianProduct(keys.map(k => matrix[k] ?? []))
+    return combos.map(combo => {
+        const vars: Record<string, string> = {}
+        keys.forEach((key, i) => { vars[key] = combo[i] ?? "" })
+        const branchId = combo.join("_")
+        return { id: branchId, steps: substituteVarsInSteps(templateSteps, vars) }
+    })
+}
+
+function expandForeach(values: readonly string[], asName: string, templateSteps: readonly WorkflowToolStep[]): WorkflowFanoutBranch[] {
+    return values.map(value => {
+        const vars: Record<string, string> = { [asName]: value }
+        const branchId = sanitizeBranchId(value)
+        return { id: branchId, steps: substituteVarsInSteps(templateSteps, vars) }
+    })
+}
+
+function cartesianProduct(arrays: readonly (readonly string[])[]): readonly (readonly string[])[] {
+    if (arrays.length === 0) return [[]]
+    return arrays.reduce<readonly (readonly string[])[]>(
+        (acc, curr) => acc.flatMap(combo => curr.map(v => [...combo, v])),
+        [[]],
+    )
+}
+
+function substituteVarsInSteps(steps: readonly WorkflowToolStep[], vars: Record<string, string>): WorkflowToolStep[] {
+    return steps.map(step => substituteVarsInStep(step, vars))
+}
+
+function substituteVarsInStep(step: WorkflowToolStep, vars: Record<string, string>): WorkflowToolStep {
+    return {
+        ...step,
+        ...(typeof step.task === "string" ? { task: substituteVars(step.task, vars) } : {}),
+        ...(typeof step.criteria === "string" ? { criteria: substituteVars(step.criteria, vars) } : {}),
+        ...(typeof step.member === "string" ? { member: substituteVars(step.member, vars) } : {}),
+        ...(typeof step.verifier === "string" ? { verifier: substituteVars(step.verifier, vars) } : {}),
+    }
+}
+
+function substituteVars(text: string, vars: Record<string, string>): string {
+    return text.replace(/\$\{([A-Za-z0-9_]+)\}/g, (match, name: string) => vars[name] ?? match)
+}
+
+function sanitizeBranchId(value: string): string {
+    return value.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 64) || "branch"
 }
 
 function gotoRefLabel(steps: readonly LoweredWorkflowStep[], gateIndex: number, ref: WorkflowStepRef): string {
@@ -1020,6 +1185,13 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         on_timeout: tool.schema.enum(["fail", "retry", "skip"]).optional().describe("task/gate steps: timeout control. 'fail' (default) fails the workflow; 'retry' re-dispatches up to max_timeout_retries; 'skip' marks the step skipped and advances."),
         max_timeout_retries: tool.schema.number().int().min(0).max(5).optional().describe("task/gate steps: timeout retry cap when on_timeout='retry'. Required when on_timeout='retry'."),
         max_jumps: tool.schema.number().int().min(0).max(10).optional().describe("gate steps: per-gate cap on verdict-driven jumps. Default 3. Terminates as workflow_failed:jump_limit when exceeded."),
+        join_policy: tool.schema.enum(["all", "quorum", "any_success", "required_branches", "reduce"]).optional().describe("fanout steps: join semantics. Default (unset) uses max_errored tolerance. 'all' requires every branch to succeed; 'quorum' requires quorum fraction of survivors; 'any_success' joins once any branch succeeds; 'required_branches' requires the listed branches to succeed; 'reduce' requires all then dispatches reducer_member to aggregate."),
+        quorum: tool.schema.number().min(0).max(1).optional().describe("fanout steps: survivor fraction required by join_policy='quorum' (0 < quorum <= 1)."),
+        required_branches: tool.schema.array(tool.schema.string().min(1)).min(1).optional().describe("fanout steps: branch ids that must succeed under join_policy='required_branches'."),
+        reducer_member: tool.schema.string().min(1).optional().describe("fanout steps: member who aggregates branch outputs at join under join_policy='reduce'."),
+        matrix: tool.schema.record(tool.schema.string(), tool.schema.array(tool.schema.string().min(1))).optional().describe("fanout steps: expand into the cartesian product of named value arrays, substituting ${name} in each branch step's text fields. Mutually exclusive with branches/foreach."),
+        foreach: tool.schema.array(tool.schema.string().min(1)).optional().describe("fanout steps: single-dimension value list; one branch per value, substituting ${as} in each branch step. Mutually exclusive with branches/matrix."),
+        as: tool.schema.string().min(1).optional().describe("fanout steps: variable name bound to the current foreach value (default 'item')."),
     }
     const workflowBranchStepSchema = tool.schema.object({
         kind: tool.schema.enum(["task", "gate", "fanout", "join"]),

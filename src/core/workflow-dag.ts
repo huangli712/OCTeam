@@ -196,7 +196,7 @@ function isJoinMetadataSatisfied(
     join: NonNullable<WorkflowStep["join"]>,
 ): boolean {
     const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
-    let survivors = 0
+    const survivorBranchIds: string[] = []
     let errors = 0
 
     for (const tailIndex of join.branchTailIndices) {
@@ -210,10 +210,46 @@ function isJoinMetadataSatisfied(
         }
 
         if (!isTerminalWorkflowStep(tail)) return false
-        survivors += 1
+        if (branchId !== undefined) survivorBranchIds.push(branchId)
     }
 
-    return survivors > 0 && errors <= join.maxErrored
+    return joinPolicySatisfied(join, survivorBranchIds, errors)
+}
+
+/**
+ * Apply the join policy to decide whether a fully-terminal fanout survives.
+ * Every policy waits until all branches are terminal (completed or errored);
+ * the policy only changes the success criterion. Default (no joinPolicy) keeps
+ * the legacy max_errored tolerance semantics.
+ */
+function joinPolicySatisfied(
+    join: NonNullable<WorkflowStep["join"]>,
+    survivorBranchIds: readonly string[],
+    errors: number,
+): boolean {
+    const total = join.branchTailIndices.length
+    const survivors = survivorBranchIds.length
+    switch (join.joinPolicy) {
+        case undefined:
+        case "tolerance":
+            return survivors > 0 && errors <= join.maxErrored
+        case "all":
+        case "reduce":
+            return errors === 0
+        case "quorum": {
+            const threshold = join.quorum ?? 0
+            return survivors / total >= threshold
+        }
+        case "any_success":
+            return survivors >= 1
+        case "required_branches": {
+            const required = join.requiredBranchIds ?? []
+            const survivorSet = new Set(survivorBranchIds)
+            return required.every(branchId => survivorSet.has(branchId))
+        }
+        default:
+            return survivors > 0 && errors <= join.maxErrored
+    }
 }
 
 function isTerminalWorkflowStep(step: WorkflowStep): boolean {

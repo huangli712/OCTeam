@@ -102,11 +102,16 @@ const WorkflowBranchRangeSchema = z.object({
     startIndex: z.number().int().nonnegative(),
     endIndex: z.number().int().nonnegative(),
 }).refine(range => range.endIndex >= range.startIndex, "branch range endIndex must be >= startIndex")
+const WorkflowJoinPolicySchema = z.enum(["tolerance", "all", "quorum", "any_success", "required_branches", "reduce"])
 const WorkflowFanoutMetadataSchema = z.object({
     branchIds: z.array(z.string().min(1)),
     branchRanges: z.array(WorkflowBranchRangeSchema),
     joinIndex: z.number().int().nonnegative(),
     maxErrored: z.number().int().nonnegative(),
+    joinPolicy: WorkflowJoinPolicySchema.optional(),
+    quorum: z.number().optional(),
+    requiredBranchIds: z.array(z.string().min(1)).optional(),
+    reducerMember: z.string().min(1).optional(),
 }).refine(fanout => fanout.branchIds.length === fanout.branchRanges.length, "fanout branchIds and branchRanges length mismatch")
 const WorkflowBranchMetadataSchema = z.object({
     fanoutIndex: z.number().int().nonnegative(),
@@ -118,6 +123,10 @@ const WorkflowJoinMetadataSchema = z.object({
     fanoutIndex: z.number().int().nonnegative(),
     branchTailIndices: z.array(z.number().int().nonnegative()),
     maxErrored: z.number().int().nonnegative(),
+    joinPolicy: WorkflowJoinPolicySchema.optional(),
+    quorum: z.number().optional(),
+    requiredBranchIds: z.array(z.string().min(1)).optional(),
+    reducerMember: z.string().min(1).optional(),
     survivorBranchIds: z.array(z.string().min(1)).optional(),
     erroredBranchIds: z.array(z.string().min(1)).optional(),
 })
@@ -303,12 +312,13 @@ const RunEventSchema = z.object({
     timestamp: z.number(),
     kind: z.enum([
         "dispatched", "captured", "retry", "errored", "stage_advanced", "round",
-        "signoff", "approval_requested", "approval_resolved", "terminated", "routed", "arbitrated", "decomposed", "verdict",
-        "aggregation_stalled",
+        "signoff", "approval_requested", "approval_resolved", "terminated", "routed", "arbitrated", "decomposed", "aggregated", "aggregation_stalled", "verdict", "repaired",
     ]),
     member: z.string().optional(),
     stage: z.number().optional(),
     round: z.number().optional(),
+    stepIndex: z.number().optional(),
+    correlationId: z.string().optional(),
     reason: z.string().optional(),
     bytes: z.number().optional(),
     detail: z.string().optional(),

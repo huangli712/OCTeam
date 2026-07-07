@@ -23,9 +23,19 @@
  */
 
 import type { PluginContext } from "../core/context.js"
+import crypto from "node:crypto"
 import { type Team, saveTeamState } from "../state/store.js"
 import type { MemberState, Verdict, WorkflowBranchMetadata, WorkflowCondition, WorkflowStep, WorkflowTask } from "../core/types.js"
 import { formatWorkflowCondition, matchesWorkflowCondition } from "../core/workflow-conditions.js"
+import {
+    workflowCompleteReason,
+    workflowFanoutAllErroredReason,
+    workflowFanoutOverToleranceReason,
+    workflowGateFailReason,
+    workflowInvalidReason,
+    workflowJumpLimitReason,
+    workflowNoSessionReason,
+} from "../core/workflow-reasons.js"
 import { dispatchToMember } from "./dispatch.js"
 import { finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
@@ -359,7 +369,8 @@ async function dispatchTaskStep(
     step.approvalBeforeGranted = undefined
     const upstream = buildWorkflowUpstream(task.steps ?? [], index)
     const text = upstream ? `${upstream}\n\n[Your task]\n${step.task}` : step.task
-    await dispatchToMember(ctx, member, contextPrefix ? `${contextPrefix}\n\n${text}` : text, member.worktreePath ?? ctx.directory, team)
+    step.correlationId = crypto.randomUUID()
+    await dispatchToMember(ctx, member, contextPrefix ? `${contextPrefix}\n\n${text}` : text, member.worktreePath ?? ctx.directory, team, { stepIndex: index, correlationId: step.correlationId })
     step.dispatchedAt = Date.now()
     return true
 }
@@ -379,12 +390,14 @@ async function dispatchGateStep(
     if (targetIndices.length === 0) return false
     step.approvalBeforeGranted = undefined
     const producerOutput = buildGateProducerOutput(task.steps ?? [], targetIndices)
+    step.correlationId = crypto.randomUUID()
     await dispatchToMember(
         ctx,
         verifier,
         buildGateVerifierPrompt(step, producerOutput, workflowTargetLabel(targetIndices)),
         verifier.worktreePath ?? ctx.directory,
         team,
+        { stepIndex: index, correlationId: step.correlationId },
     )
     step.dispatchedAt = Date.now()
     return true
@@ -452,6 +465,11 @@ function completeWorkflowJoinStep(team: Team, steps: WorkflowStep[], joinIndex: 
     const join = step?.join
     if (step?.kind !== "join" || join === undefined || step.completed) return false
 
+    // join_policy='reduce' requires all branches to succeed (same as 'all'). The
+    // reducer_member is validated upstream but a dedicated reduce dispatch at
+    // join (replacing joinedOutput with the reducer's aggregate) is deferred to
+    // a follow-up: it needs the reducer's idle to be handled as a join sub-state.
+    // For now reduce concatenates survivor outputs like the default policy.
     const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])]
     step.join = {
         ...join,
@@ -476,16 +494,54 @@ function evaluateWorkflowFanoutError(steps: WorkflowStep[], joinIndex: number): 
 
     const branchIds = branchIdsForJoin(steps, join)
     const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])]
-    const survivorCount = branchIds.filter(branchId => !erroredBranchIds.includes(branchId)).length
+    const erroredSet = new Set(erroredBranchIds)
+    const remainingSurvivors = branchIds.filter(branchId => !erroredSet.has(branchId)).length
+    const total = branchIds.length
     const fanoutDisplayStep = join.fanoutIndex + 1
 
-    if (survivorCount === 0) {
-        return { kind: "failed", reason: `workflow_failed:fanout:${fanoutDisplayStep}:all_errored` }
-    }
-    if (erroredBranchIds.length > join.maxErrored) {
-        return { kind: "failed", reason: `workflow_failed:fanout:${fanoutDisplayStep}:over_tolerance` }
+    // Fail-fast: can the join policy still be satisfied given current errors?
+    const impossible = fanoutPolicyImpossible(join, erroredBranchIds, remainingSurvivors, total)
+    if (impossible) {
+        return remainingSurvivors === 0
+            ? { kind: "failed", reason: workflowFanoutAllErroredReason(fanoutDisplayStep) }
+            : { kind: "failed", reason: workflowFanoutOverToleranceReason(fanoutDisplayStep) }
     }
     return { kind: "within_tolerance" }
+}
+
+/**
+ * Given the branches that have errored so far, can the join policy still be
+ * satisfied once the remaining (still-running or pending) branches resolve?
+ * Used for fail-fast termination when a branch error makes success impossible.
+ */
+function fanoutPolicyImpossible(
+    join: NonNullable<WorkflowStep["join"]>,
+    erroredBranchIds: readonly string[],
+    remainingSurvivors: number,
+    total: number,
+): boolean {
+    const erroredSet = new Set(erroredBranchIds)
+    switch (join.joinPolicy) {
+        case undefined:
+        case "tolerance":
+            return remainingSurvivors === 0 || erroredBranchIds.length > join.maxErrored
+        case "all":
+        case "reduce":
+            return erroredBranchIds.length > 0
+        case "quorum": {
+            const threshold = join.quorum ?? 0
+            const required = Math.ceil(threshold * total)
+            return remainingSurvivors < required
+        }
+        case "any_success":
+            return remainingSurvivors === 0
+        case "required_branches": {
+            const required = join.requiredBranchIds ?? []
+            return required.some(branchId => erroredSet.has(branchId))
+        }
+        default:
+            return remainingSurvivors === 0 || erroredBranchIds.length > join.maxErrored
+    }
 }
 
 function markWorkflowBranchStepsSkipped(steps: WorkflowStep[], branch: WorkflowBranchMetadata): void {
@@ -694,7 +750,7 @@ async function gotoWorkflowStep(
     gate.jumpCount = (gate.jumpCount ?? 0) + 1
     const maxJ = gate.maxJumps ?? 3
     if (gate.jumpCount > maxJ) {
-        await finishRun(ctx, team, `workflow_failed:jump_limit:${gate.verifier ?? "unknown"}`, "failed")
+        await finishRun(ctx, team, workflowJumpLimitReason(gate.verifier), "failed")
         return false
     }
 
@@ -744,7 +800,7 @@ async function gotoWorkflowStep(
         : await dispatchGateStep(ctx, team, task, targetIndex)
     if (!dispatched) {
         const actor = target.kind === "task" ? target.member : target.verifier
-        await finishRun(ctx, team, `workflow_failed:no_session:${actor ?? "unknown"}`, "failed")
+        await finishRun(ctx, team, workflowNoSessionReason(actor), "failed")
         return false
     }
     await saveTeamState(team)
@@ -770,7 +826,7 @@ export async function advanceWorkflowStep(ctx: PluginContext, team: Team): Promi
             if (ready.length === 0) {
                 if (steps.findIndex(s => !s.completed) === -1) {
                     if (await maybeTriggerSignoff(ctx, team)) return
-                    await finishRun(ctx, team, "workflow_complete", "idle")
+                    await finishRun(ctx, team, workflowCompleteReason(), "idle")
                     return
                 }
                 task.activeStepIndices = []
@@ -792,7 +848,7 @@ export async function advanceWorkflowStep(ctx: PluginContext, team: Team): Promi
                         if (previousActive.has(index)) break
                         if (await maybePauseBeforeWorkflowStep(ctx, team, index)) return
                         if (!await dispatchTaskStep(ctx, team, task, index)) {
-                            await finishRun(ctx, team, `workflow_failed:no_session:${step.member ?? "unknown"}`, "failed")
+                            await finishRun(ctx, team, workflowNoSessionReason(step.member), "failed")
                             return
                         }
                         dispatched = true
@@ -802,7 +858,7 @@ export async function advanceWorkflowStep(ctx: PluginContext, team: Team): Promi
                         if (previousActive.has(index)) break
                         if (await maybePauseBeforeWorkflowStep(ctx, team, index)) return
                         if (!await dispatchGateStep(ctx, team, task, index)) {
-                            await finishRun(ctx, team, `workflow_failed:no_session:${step.verifier ?? "unknown"}`, "failed")
+                            await finishRun(ctx, team, workflowNoSessionReason(step.verifier), "failed")
                             return
                         }
                         dispatched = true
@@ -834,7 +890,7 @@ export async function advanceWorkflowStep(ctx: PluginContext, team: Team): Promi
     const nextIndex = steps.findIndex(s => !s.completed)
     if (nextIndex === -1) {
         if (await maybeTriggerSignoff(ctx, team)) return
-        await finishRun(ctx, team, "workflow_complete", "idle")
+        await finishRun(ctx, team, workflowCompleteReason(), "idle")
         return
     }
     task.currentStageIndex = nextIndex
@@ -846,7 +902,7 @@ export async function advanceWorkflowStep(ctx: PluginContext, team: Team): Promi
         : await dispatchGateStep(ctx, team, task, nextIndex)
     if (!dispatched) {
         const actor = step.kind === "task" ? step.member : step.verifier
-        await finishRun(ctx, team, `workflow_failed:no_session:${actor ?? "unknown"}`, "failed")
+        await finishRun(ctx, team, workflowNoSessionReason(actor), "failed")
         return
     }
     await saveTeamState(team)
@@ -898,6 +954,16 @@ export async function handleWorkflowIdle(
         }
         step.dispatchedAt = undefined
         step.completed = true
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "captured",
+            member: member.name,
+            stepIndex: activeStepIndex,
+            correlationId: step.correlationId,
+            bytes: step.output?.length,
+            detail: `workflow step ${activeStepIndex + 1} captured`,
+        })
+        step.correlationId = undefined
         if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex)) return
         const nextIndex = task.activeStepIndices === undefined
             ? steps.findIndex(s => !s.completed)
@@ -921,6 +987,8 @@ export async function handleWorkflowIdle(
         kind: "verdict",
         member: step.verifier,
         stage: activeStepIndex,
+        stepIndex: activeStepIndex,
+        correlationId: step.correlationId,
         detail: v.verdict ?? "parse_fail",
     })
 
@@ -969,7 +1037,7 @@ export async function handleWorkflowIdle(
             await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, { reason: whereReason(step, "on_fail"), verdict: "FAIL", rationale: v.rationale, diff: v.diff })
             return
         }
-        await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
+        await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed")
         return
     }
     // onFail === "retry": bounded retry of the preceding task.
@@ -981,14 +1049,14 @@ export async function handleWorkflowIdle(
             await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, { reason: whereReason(step, "on_fail_retry_exhausted"), verdict: "FAIL", rationale: v.rationale, diff: v.diff })
             return
         }
-        await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
+        await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed")
         return
     }
     const gateIndex = activeStepIndex
     const producerIdx = gateTargetIndex(steps, gateIndex)
     if (producerIdx === -1) {
         // No preceding task to retry -> fail (defensive; tool layer rejects gate-first).
-        await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
+        await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed")
         return
     }
     for (let i = producerIdx; i <= gateIndex; i++) {
@@ -1004,7 +1072,7 @@ export async function handleWorkflowIdle(
     }
     const producerStep = steps[producerIdx]
     if (!producerStep || producerStep.kind !== "task") {
-        await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
+        await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed")
         return
     }
     moveActiveWorkflowStep(task, gateIndex, producerIdx)
@@ -1014,7 +1082,7 @@ export async function handleWorkflowIdle(
     if (await maybePauseBeforeWorkflowStep(ctx, team, producerIdx)) return
     const producer = team.members.find(m => m.name === producerStep.member && !m.isMaster)
     if (!hasLiveSession(producer)) {
-        await finishRun(ctx, team, `workflow_failed:no_session:${producerStep.member ?? "unknown"}`, "failed")
+        await finishRun(ctx, team, workflowNoSessionReason(producerStep.member), "failed")
         return
     }
     recordEvent(team, {
@@ -1022,17 +1090,20 @@ export async function handleWorkflowIdle(
         kind: "retry",
         member: producerStep.member,
         stage: gateIndex,
+        stepIndex: producerIdx,
         detail: `workflow step ${gateIndex + 1} attempt ${step.attempts}/${maxR}; retry target ${stepIndicesLabel(gateTargetIndices(steps, gateIndex))}; retry anchor step ${producerIdx + 1}; verifier ${step.verifier}; diff: ${v.diff}`,
     })
     const feedback =
         `[Gate FAILED - attempt ${step.attempts}/${maxR}]\n`
         + `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`
+    producerStep.correlationId = crypto.randomUUID()
     await dispatchToMember(
         ctx,
         producer,
         `${feedback}\n\n[Your task]\n${producerStep.task ?? ""}`,
         producer.worktreePath ?? ctx.directory,
         team,
+        { stepIndex: producerIdx, correlationId: producerStep.correlationId },
     )
     producerStep.dispatchedAt = Date.now()
     await saveTeamState(team)
@@ -1070,12 +1141,12 @@ async function handleInvalidVerdict(
                 await gotoWorkflowStep(ctx, team, gateIndex, invGoto, { reason: "on_invalid_retry_exhausted", verdict: reason === "INVALID" ? "INVALID" : undefined, rationale, diff })
                 return
             }
-            await finishRun(ctx, team, `workflow_invalid:${reason}:${step.verifier}`, "failed")
+            await finishRun(ctx, team, workflowInvalidReason(reason, step.verifier), "failed")
             return
         }
         const verifier = team.members.find(m => m.name === step.verifier && !m.isMaster)
         if (!hasLiveSession(verifier)) {
-            await finishRun(ctx, team, `workflow_failed:no_session:${step.verifier ?? "unknown"}`, "failed")
+            await finishRun(ctx, team, workflowNoSessionReason(step.verifier), "failed")
             return
         }
         // Honor gate approval_before on invalid-verifier retry re-dispatch
@@ -1086,6 +1157,7 @@ async function handleInvalidVerdict(
             kind: "retry",
             member: step.verifier,
             stage: gateIndex,
+            stepIndex: gateIndex,
             detail: `workflow step ${gateIndex + 1} invalid retry ${step.invalidAttempts}/${maxIR}; verifier ${step.verifier}; reason ${reason}: ${rationale}`,
         })
         const nudge =
@@ -1094,12 +1166,14 @@ async function handleInvalidVerdict(
             + `Re-evaluate the target output and emit a fresh verdict.`
         const targetIndices = gateTargetIndices(task.steps ?? [], gateIndex)
         const producerOutput = buildGateProducerOutput(task.steps ?? [], targetIndices)
+        step.correlationId = crypto.randomUUID()
         await dispatchToMember(
             ctx,
             verifier,
             `${nudge}\n\n${buildGateVerifierPrompt(step, producerOutput, workflowTargetLabel(targetIndices))}`,
             verifier.worktreePath ?? ctx.directory,
             team,
+            { stepIndex: gateIndex, correlationId: step.correlationId },
         )
         step.dispatchedAt = Date.now()
         await saveTeamState(team)
@@ -1132,5 +1206,5 @@ async function handleInvalidVerdict(
             return
         }
     }
-    await finishRun(ctx, team, `workflow_invalid:${reason}:${step.verifier}`, "failed")
+    await finishRun(ctx, team, workflowInvalidReason(reason, step.verifier), "failed")
 }

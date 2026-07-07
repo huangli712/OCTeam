@@ -17,6 +17,7 @@
 
 import type { PluginContext } from "../core/context.js"
 import type { ActiveTask } from "../core/types.js"
+import { workflowNoSessionReason } from "../core/workflow-reasons.js"
 import { type Team } from "../state/store.js"
 import { advanceToStage, dispatchToMember } from "../orchestration/dispatch.js"
 import { handleParallelIdle } from "../orchestration/parallel.js"
@@ -273,7 +274,7 @@ async function resumeWorkflowMode(
             const actorName = workflowStepActor(step)
             if (actorName === null || task.responses[actorName]) continue
             if (!await redispatchWorkflowStep(ctx, team, index)) {
-                await finishRun(ctx, team, `workflow_failed:no_session:${actorName}`, "failed")
+                await finishRun(ctx, team, workflowNoSessionReason(actorName), "failed")
                 return
             }
             dispatched++

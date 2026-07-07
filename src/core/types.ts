@@ -300,11 +300,17 @@ export type WorkflowBranchRange = {
     readonly endIndex: number
 }
 
+export type WorkflowJoinPolicy = "tolerance" | "all" | "quorum" | "any_success" | "required_branches" | "reduce"
+
 export type WorkflowFanoutMetadata = {
     readonly branchIds: readonly string[]
     readonly branchRanges: readonly WorkflowBranchRange[]
     readonly joinIndex: number
     readonly maxErrored: number
+    readonly joinPolicy?: WorkflowJoinPolicy
+    readonly quorum?: number                  // fraction of branches that must succeed (join_policy='quorum'), 0 < quorum <= 1
+    readonly requiredBranchIds?: readonly string[]  // branch ids that must succeed (join_policy='required_branches')
+    readonly reducerMember?: string           // member who aggregates branch outputs at join (join_policy='reduce')
 }
 
 export type WorkflowBranchMetadata = {
@@ -318,6 +324,10 @@ export type WorkflowJoinMetadata = {
     readonly fanoutIndex: number
     readonly branchTailIndices: readonly number[]
     readonly maxErrored: number
+    readonly joinPolicy?: WorkflowJoinPolicy
+    readonly quorum?: number
+    readonly requiredBranchIds?: readonly string[]
+    readonly reducerMember?: string
     readonly survivorBranchIds?: readonly string[]
     readonly erroredBranchIds?: readonly string[]
     readonly joinedOutput?: string
@@ -365,6 +375,7 @@ export type WorkflowStep = {
     maxTimeoutRetries?: number          // timeout retry cap when onTimeout=retry
     timeoutAttempts?: number            // timeout retry attempts so far
     dispatchedAt?: number               // epoch ms when this step was last dispatched
+    correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl
     // fanout/join DAG metadata (workflow P2). Runtime dispatch wiring lands in a
     // later task; T1 only persists and reads the flat DAG shape.
     fanout?: WorkflowFanoutMetadata     // fanout marker steps
@@ -487,6 +498,7 @@ export type RunEventKind =
     | "aggregated"      // the root task was finalized after all subtasks completed (recurse mode)
     | "aggregation_stalled"  // decomposer failed to claim+aggregate root after dispatch cap (recurse mode)
     | "verdict"         // a gate produced a PASS/FAIL/INVALID verdict (tollgate mode)
+    | "repaired"        // team_fix_workflow performed a surgical repair op
 
 export type RunEvent = {
     timestamp: number                  // epoch ms (readers sort by this, not file order)
@@ -494,6 +506,8 @@ export type RunEvent = {
     member?: string
     stage?: number                     // currentStageIndex (pipeline/loop)
     round?: number                     // currentRound (consensus/loop)
+    stepIndex?: number                 // workflow step index (workflow mode)
+    correlationId?: string             // links related events (e.g. a step dispatch and its capture/verdict)
     reason?: string                    // terminated / errored reason
     bytes?: number                     // captured output size
     detail?: string                    // free-form (signoff policy, "grace n/max", …)

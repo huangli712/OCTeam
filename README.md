@@ -20,7 +20,7 @@ Peer dependencies (`@opencode-ai/plugin` >=1.4.7, `@opencode-ai/sdk` >=1.4.7,
 `@opentui/solid` >=0.1.99, `solid-js` >=1.9.0) are resolved by OpenCode's
 plugin host.
 
-## Tool surface (35 tools)
+## Tool surface (36 tools)
 
 ### Lifecycle
 
@@ -37,6 +37,7 @@ plugin host.
 | `team_query` | Query a specific member's details |
 | `team_details` | Show a team's current status, orchestration progress, and token usage |
 | `team_fix_member` | Modify a member's name, role, prompt, or agent |
+| `team_fix_workflow` | Surgically repair a stuck team_workflow run (redispatch/skip/advance/fail/reassign) |
 | `team_cancel` | Cancel the in-flight orchestration on a busy team |
 
 ### Messaging
