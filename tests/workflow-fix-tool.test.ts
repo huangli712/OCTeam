@@ -416,7 +416,10 @@ describe("team_fix_workflow", () => {
         // Given
         const root = tmpRoot("fix-wf-reassign-conflict")
         const masterSid = "ses_fix_wf_reassign_conflict_master"
-        tracked.push(masterSid)
+        const aliceSid = "ses_fix_wf_reassign_conflict_alice"
+        const carolSid = "ses_fix_wf_reassign_conflict_carol"
+        const bobSid = "ses_fix_wf_reassign_conflict_bob"
+        tracked.push(masterSid, aliceSid, carolSid, bobSid)
         const task = makeWorkflowTask({
             activeStepIndices: [1, 2],
             steps: [
@@ -427,7 +430,7 @@ describe("team_fix_workflow", () => {
             ],
         })
         await setupTeam(root, masterSid, task, [
-            makeMember("alice", "ses_a"), makeMember("carol", "ses_c"), makeMember("bob", "ses_b"),
+            makeMember("alice", aliceSid), makeMember("carol", carolSid), makeMember("bob", bobSid),
         ])
 
         // When: try to reassign api branch (step 2, index 1) to carol, who is active in qa.
@@ -444,12 +447,13 @@ describe("team_fix_workflow", () => {
         // Given
         const root = tmpRoot("fix-wf-reassign-nonmember")
         const masterSid = "ses_fix_wf_reassign_nm_master"
-        tracked.push(masterSid)
+        const aliceSid = "ses_fix_wf_reassign_nm_alice"
+        tracked.push(masterSid, aliceSid)
         const task = makeWorkflowTask({
             activeStepIndices: [0],
             steps: [{ kind: "task", member: "alice", task: "do work", completed: false }],
         })
-        await setupTeam(root, masterSid, task, [makeMember("alice", "ses_a")])
+        await setupTeam(root, masterSid, task, [makeMember("alice", aliceSid)])
 
         // When
         const result = await teamFixWorkflowTool(makeCtx(root)).execute(
