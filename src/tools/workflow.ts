@@ -64,6 +64,9 @@ export type WorkflowToolStep = {
     readonly approval_before?: boolean
     readonly approval_after?: boolean
     readonly max_output_bytes?: number
+    readonly timeout_ms?: number
+    readonly on_timeout?: "fail" | "retry" | "skip"
+    readonly max_timeout_retries?: number
     readonly max_jumps?: number
     readonly branches?: readonly WorkflowFanoutBranch[]
     readonly max_errored?: number
@@ -482,6 +485,16 @@ function registerFanoutBranchActor(
     return null
 }
 
+function validateBranchTimeoutPolicy(step: WorkflowToolStep, fanoutDisplayStep: number, branchId: string, displayStep: number): string | null {
+    if (step.on_timeout === "retry" || step.on_timeout === "skip") {
+        return `Error: fanout step ${fanoutDisplayStep} branch "${branchId}" step ${displayStep} must not set on_timeout='retry' or on_timeout='skip'`
+    }
+    if (step.max_timeout_retries !== undefined) {
+        return `Error: fanout step ${fanoutDisplayStep} branch "${branchId}" step ${displayStep} must not set max_timeout_retries`
+    }
+    return null
+}
+
 function validateBranchSteps(
     branch: WorkflowFanoutBranch,
     fanoutDisplayStep: number,
@@ -501,6 +514,10 @@ function validateBranchSteps(
                     return `Error: fanout step ${fanoutDisplayStep} branch "${branch.id}" step ${displayStep} must not set approval_before/approval_after`
                 }
                 {
+                    const timeoutError = validateBranchTimeoutPolicy(step, fanoutDisplayStep, branch.id, displayStep)
+                    if (timeoutError !== null) return timeoutError
+                }
+                {
                     const actorError = registerFanoutBranchActor(branchByMember, step.member, fanoutDisplayStep, branch.id)
                     if (actorError !== null) return actorError
                 }
@@ -509,6 +526,8 @@ function validateBranchSteps(
                 if (step.approval_before === true || step.approval_after === true) {
                     return `Error: fanout step ${fanoutDisplayStep} branch "${branch.id}" step ${displayStep} must not set approval_before/approval_after`
                 }
+                const timeoutError = validateBranchTimeoutPolicy(step, fanoutDisplayStep, branch.id, displayStep)
+                if (timeoutError !== null) return timeoutError
                 const actorError = registerFanoutBranchActor(branchByMember, step.verifier, fanoutDisplayStep, branch.id)
                 if (actorError !== null) return actorError
                 const targetError = validateBranchGateTargets(branch.steps, index, fanoutDisplayStep, branch.id)
@@ -681,6 +700,12 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 if (s.max_output_bytes !== undefined && (!Number.isInteger(s.max_output_bytes) || s.max_output_bytes <= 0)) {
                     return `Error: ${location} max_output_bytes must be a positive integer`
                 }
+                if (s.timeout_ms !== undefined && (!Number.isInteger(s.timeout_ms) || s.timeout_ms < 1000)) {
+                    return `Error: ${location} timeout_ms must be an integer >= 1000`
+                }
+                if (s.on_timeout === "retry" && s.max_timeout_retries === undefined) {
+                    return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
+                }
                 if (!isTeamMember(team, s.member)) {
                     return `Error: unknown member "${s.member}" in ${stepLocation(s, displayStep, false)}`
                 }
@@ -693,6 +718,12 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 }
                 if (s.max_output_bytes !== undefined) {
                     return `Error: ${location} must not set max_output_bytes (task steps only)`
+                }
+                if (s.timeout_ms !== undefined && (!Number.isInteger(s.timeout_ms) || s.timeout_ms < 1000)) {
+                    return `Error: ${location} timeout_ms must be an integer >= 1000`
+                }
+                if (s.on_timeout === "retry" && s.max_timeout_retries === undefined) {
+                    return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
                 }
                 if (!s.verifier) return `Error: ${location} requires \`verifier\``
                 if (!s.criteria) return `Error: ${location} requires \`criteria\``
@@ -901,6 +932,10 @@ function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkfl
                 approvalBefore: step.approval_before,
                 approvalAfter: step.approval_after,
                 maxOutputBytes: step.max_output_bytes,
+                timeoutMs: step.timeout_ms,
+                onTimeout: step.on_timeout ?? "fail",
+                maxTimeoutRetries: step.max_timeout_retries,
+                timeoutAttempts: 0,
                 branch: step.branch,
                 completed: false,
             }
@@ -928,6 +963,10 @@ function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkfl
                 approvalAfter: step.approval_after,
                 maxJumps: step.max_jumps,
                 jumpCount: 0,
+                timeoutMs: step.timeout_ms,
+                onTimeout: step.on_timeout ?? "fail",
+                maxTimeoutRetries: step.max_timeout_retries,
+                timeoutAttempts: 0,
                 branch: step.branch,
                 completed: false,
             }
@@ -977,6 +1016,9 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         approval_before: tool.schema.boolean().optional().describe("task/gate steps: pause for team_approve before dispatching this step. Disallowed inside fanout branches."),
         approval_after: tool.schema.boolean().optional().describe("task/gate steps: pause for team_approve after this step completes, before advancing. Disallowed inside fanout branches."),
         max_output_bytes: tool.schema.number().int().min(1).optional().describe("task steps: cap the captured output snapshot to N UTF-8 bytes (head+tail preserved). Gate steps may not set this."),
+        timeout_ms: tool.schema.number().int().min(1000).optional().describe("task/gate steps: wall-clock deadline in milliseconds from dispatch time."),
+        on_timeout: tool.schema.enum(["fail", "retry", "skip"]).optional().describe("task/gate steps: timeout control. 'fail' (default) fails the workflow; 'retry' re-dispatches up to max_timeout_retries; 'skip' marks the step skipped and advances."),
+        max_timeout_retries: tool.schema.number().int().min(0).max(5).optional().describe("task/gate steps: timeout retry cap when on_timeout='retry'. Required when on_timeout='retry'."),
         max_jumps: tool.schema.number().int().min(0).max(10).optional().describe("gate steps: per-gate cap on verdict-driven jumps. Default 3. Terminates as workflow_failed:jump_limit when exceeded."),
     }
     const workflowBranchStepSchema = tool.schema.object({
@@ -1067,6 +1109,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                     const first = team.members.find(m => m.name === step.member && !m.isMaster)
                     if (!first?.sessionId || first.status === "errored") throw new Error(`workflow initial member "${step.member}" has no live session`)
                     await dispatchToMember(ctx, first, step.task, first.worktreePath ?? ctx.directory, team)
+                    step.dispatchedAt = Date.now()
                 },
                 // successMessage
                 () => `team_workflow started on "${args.team_id}" with ${lowerWorkflowSteps(resolvedArgs.steps).length} step(s).`,

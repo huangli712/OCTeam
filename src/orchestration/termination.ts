@@ -6,24 +6,27 @@
  */
 
 import type { PluginContext } from "../core/context.js"
+import type { WorkflowStep, WorkflowTask } from "../core/types.js"
 import type { Team } from "../state/store.js"
 import { finishRun } from "./summary.js"
-import { markWorkflowFanoutBranchErrored } from "./workflow.js"
+import { advanceWorkflowStep, markWorkflowFanoutBranchErrored, redispatchWorkflowStep } from "./workflow.js"
 
 /**
  * Check the active task's termination conditions and, if met, deliver a summary
  * to the leader and tear down the active task. No-op if no active task.
  */
-export async function checkTermination(ctx: PluginContext, team: Team): Promise<void> {
+export async function checkTermination(ctx: PluginContext, team: Team, now = Date.now()): Promise<void> {
     const task = team.activeTask
     if (!task) return
 
     // Wall-clock timeout. Human approval pauses suspend wall-clock accounting;
     // team_approve/team_reject shifts startedAt by the paused duration on resume.
-    if (!task.approvalStage && Date.now() - task.startedAt > task.wallClockTimeoutMs) {
+    if (!task.approvalStage && now - task.startedAt > task.wallClockTimeoutMs) {
         await finishRun(ctx, team, "timeout", "failed")
         return
     }
+
+    if (task.type === "workflow" && await checkWorkflowStepTimeouts(ctx, team, task, now)) return
 
     // Token budget
     if (task.tokenBudget !== undefined && task.tokensUsed > task.tokenBudget) {
@@ -75,5 +78,85 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
             return
         }
         // within tolerance with survivors → NO-OP. The barrier delivers survivors.
+    }
+}
+
+async function checkWorkflowStepTimeouts(ctx: PluginContext, team: Team, task: WorkflowTask, now: number): Promise<boolean> {
+    const steps = task.steps ?? []
+    const activeStepIndices = task.activeStepIndices ?? [task.currentStageIndex]
+    for (const index of activeStepIndices) {
+        const step = steps[index]
+        if (step === undefined || step.completed || step.timeoutMs === undefined || step.dispatchedAt === undefined) continue
+        if (now - step.dispatchedAt < step.timeoutMs) continue
+        await handleWorkflowStepTimeout(ctx, team, task, step, index, now)
+        return true
+    }
+    return false
+}
+
+async function handleWorkflowStepTimeout(ctx: PluginContext, team: Team, task: WorkflowTask, step: WorkflowStep, index: number, now: number): Promise<void> {
+    const policy = step.onTimeout ?? "fail"
+    if (step.branch !== undefined) {
+        const actor = workflowStepActor(step)
+        if (actor === undefined) {
+            await finishRun(ctx, team, `workflow_timeout:step:${index + 1}`, "failed")
+            return
+        }
+        const result = markWorkflowFanoutBranchErrored(task, actor)
+        switch (result.kind) {
+            case "within_tolerance":
+                await advanceWorkflowStep(ctx, team)
+                return
+            case "failed":
+                await finishRun(ctx, team, result.reason, "failed")
+                return
+            case "not_fanout":
+                await finishRun(ctx, team, `workflow_timeout:step:${index + 1}`, "failed")
+                return
+            default:
+                result satisfies never
+                return
+        }
+    }
+    switch (policy) {
+        case "fail":
+            await finishRun(ctx, team, `workflow_timeout:step:${index + 1}`, "failed")
+            return
+        case "skip":
+            step.completed = true
+            step.skipped = true
+            step.dispatchedAt = undefined
+            await advanceWorkflowStep(ctx, team)
+            return
+        case "retry": {
+            step.timeoutAttempts = (step.timeoutAttempts ?? 0) + 1
+            if (step.timeoutAttempts > (step.maxTimeoutRetries ?? 0)) {
+                await finishRun(ctx, team, `workflow_timeout:step:${index + 1}`, "failed")
+                return
+            }
+            step.dispatchedAt = undefined
+            if (!await redispatchWorkflowStep(ctx, team, index)) {
+                await finishRun(ctx, team, `workflow_failed:no_session:${workflowStepActor(step) ?? "unknown"}`, "failed")
+            }
+            step.dispatchedAt = now
+            return
+        }
+        default:
+            policy satisfies never
+    }
+}
+
+function workflowStepActor(step: WorkflowStep): string | undefined {
+    switch (step.kind) {
+        case "task":
+            return step.member
+        case "gate":
+            return step.verifier
+        case "fanout":
+        case "join":
+            return undefined
+        default:
+            step.kind satisfies never
+            return undefined
     }
 }

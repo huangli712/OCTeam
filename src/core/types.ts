@@ -360,6 +360,11 @@ export type WorkflowStep = {
     approvalAfter?: boolean             // pause for team_approve after this step completes, before advancing
     approvalBeforeGranted?: boolean     // transient: approval_before was requested for the current step instance; consumed on dispatch, reset on re-entry (retry/goto-back)
     maxOutputBytes?: number             // task steps: cap the captured output snapshot to N UTF-8 bytes (head+tail preserved)
+    timeoutMs?: number                  // task/gate steps: wall-clock deadline from dispatch time
+    onTimeout?: "fail" | "retry" | "skip" // timeout control; default fail
+    maxTimeoutRetries?: number          // timeout retry cap when onTimeout=retry
+    timeoutAttempts?: number            // timeout retry attempts so far
+    dispatchedAt?: number               // epoch ms when this step was last dispatched
     // fanout/join DAG metadata (workflow P2). Runtime dispatch wiring lands in a
     // later task; T1 only persists and reads the flat DAG shape.
     fanout?: WorkflowFanoutMetadata     // fanout marker steps

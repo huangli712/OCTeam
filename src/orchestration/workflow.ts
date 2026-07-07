@@ -360,6 +360,7 @@ async function dispatchTaskStep(
     const upstream = buildWorkflowUpstream(task.steps ?? [], index)
     const text = upstream ? `${upstream}\n\n[Your task]\n${step.task}` : step.task
     await dispatchToMember(ctx, member, contextPrefix ? `${contextPrefix}\n\n${text}` : text, member.worktreePath ?? ctx.directory, team)
+    step.dispatchedAt = Date.now()
     return true
 }
 
@@ -385,6 +386,7 @@ async function dispatchGateStep(
         verifier.worktreePath ?? ctx.directory,
         team,
     )
+    step.dispatchedAt = Date.now()
     return true
 }
 
@@ -894,6 +896,7 @@ export async function handleWorkflowIdle(
         if (step.output === undefined) {
             step.output = step.maxOutputBytes !== undefined ? truncateOutput(raw, step.maxOutputBytes) : raw
         }
+        step.dispatchedAt = undefined
         step.completed = true
         if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex)) return
         const nextIndex = task.activeStepIndices === undefined
@@ -936,6 +939,7 @@ export async function handleWorkflowIdle(
     }
 
     if (v.verdict === "PASS") {
+        step.dispatchedAt = undefined
         step.completed = true
         // approval_after on a gate is validator-guaranteed incompatible with
         // on_*_goto, so pausing here cannot be bypassed by a goto jump.
@@ -1030,6 +1034,7 @@ export async function handleWorkflowIdle(
         producer.worktreePath ?? ctx.directory,
         team,
     )
+    producerStep.dispatchedAt = Date.now()
     await saveTeamState(team)
 }
 
@@ -1096,6 +1101,7 @@ async function handleInvalidVerdict(
             verifier.worktreePath ?? ctx.directory,
             team,
         )
+        step.dispatchedAt = Date.now()
         await saveTeamState(team)
         return
     }

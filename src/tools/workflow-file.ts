@@ -162,6 +162,15 @@ function validateWorkflowStepFields(step: Record<string, unknown>, location: Ste
     if (step.max_output_bytes !== undefined && !isIntegerAtLeast(step.max_output_bytes, 1)) {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} max_output_bytes must be a positive integer`
     }
+    if (step.timeout_ms !== undefined && !isIntegerAtLeast(step.timeout_ms, 1000)) {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix} timeout_ms must be an integer >= 1000`
+    }
+    if (step.on_timeout !== undefined && step.on_timeout !== "fail" && step.on_timeout !== "retry" && step.on_timeout !== "skip") {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix} on_timeout must be fail, retry, or skip`
+    }
+    if (step.max_timeout_retries !== undefined && !isIntegerInRange(step.max_timeout_retries, 0, 5)) {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix} max_timeout_retries must be an integer from 0 to 5`
+    }
     if (step.max_jumps !== undefined && !isIntegerInRange(step.max_jumps, 0, 10)) {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} max_jumps must be an integer from 0 to 10`
     }
