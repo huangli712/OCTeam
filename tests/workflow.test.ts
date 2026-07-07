@@ -579,3 +579,127 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(bobCall!.text).not.toContain("tests output")
     })
 })
+
+describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
+    test("on_pass_goto forward skips intermediate steps", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "build", completed: true, output: "build output" },
+                { kind: "gate", verifier: "bob", criteria: "build ok", onPassGoto: 3, jumpCount: 0, completed: false },
+                { kind: "task", member: "carol", task: "polish", completed: false },
+                { kind: "task", member: "dave", task: "package", completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+                { name: "dave", sessionId: "ses_dave" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: PASS_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(task.steps![1].jumpCount).toBe(1)
+        expect(task.steps![2].completed).toBe(true)
+        expect(task.steps![2].skipped).toBe(true)
+        expect(task.currentStageIndex).toBe(3)
+        const daveCall = calls.find(c => c.sessionId === "ses_dave")
+        expect(daveCall).toBeDefined()
+        expect(daveCall!.text).toContain("package")
+        // carol was skipped, never dispatched
+        expect(calls.some(c => c.sessionId === "ses_carol")).toBe(false)
+    })
+
+    test("on_fail_goto backward resets and re-dispatches the target", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", completed: true, output: "first impl" },
+                { kind: "gate", verifier: "bob", criteria: "ok", onFail: "fail", onFailGoto: 0, jumpCount: 0, completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(task.steps![1].jumpCount).toBe(1)
+        expect(task.steps![0].completed).toBe(false)
+        expect(task.steps![0].output).toBeUndefined()
+        expect(task.currentStageIndex).toBe(0)
+        const aliceCall = calls.find(c => c.sessionId === "ses_alice")
+        expect(aliceCall).toBeDefined()
+        expect(aliceCall!.text).toContain("impl")
+        expect(team.activeTask).toBeDefined()
+    })
+
+    test("on_invalid_goto jumps instead of terminating", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", completed: true, output: "impl output" },
+                { kind: "gate", verifier: "bob", criteria: "ok", onInvalid: "fail", onInvalidGoto: 2, jumpCount: 0, completed: false },
+                { kind: "task", member: "carol", task: "fallback", completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(task.steps![1].jumpCount).toBe(1)
+        expect(task.currentStageIndex).toBe(2)
+        const carolCall = calls.find(c => c.sessionId === "ses_carol")
+        expect(carolCall).toBeDefined()
+        expect(carolCall!.text).toContain("fallback")
+        expect(team.activeTask).toBeDefined()
+    })
+
+    test("max_jumps exceeded terminates as workflow_failed:jump_limit", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", completed: true, output: "impl" },
+                { kind: "gate", verifier: "bob", criteria: "ok", onFail: "fail", onFailGoto: 0, maxJumps: 1, jumpCount: 1, completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("workflow_failed:jump_limit")
+    })
+})

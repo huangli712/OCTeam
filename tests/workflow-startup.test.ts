@@ -558,6 +558,84 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("on_invalid=escalate")
     })
 
+    test("conditional jumps: goto unknown id -> rejected", async () => {
+        const root = tmpRoot("wf-goto-unknown")
+        const sid = "ses_wf_gu"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", criteria: "ok", on_pass_goto: "missing" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("on_pass_goto")
+        expect(result).toContain("must reference an existing step by id")
+    })
+
+    test("conditional jumps: goto self -> rejected", async () => {
+        const root = tmpRoot("wf-goto-self")
+        const sid = "ses_wf_gs"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", id: "g", verifier: "bob", criteria: "ok", on_pass_goto: "g" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("on_pass_goto")
+        expect(result).toContain("must reference an existing step")
+    })
+
+    test("conditional jumps: on_invalid_goto incompatible with escalate -> rejected", async () => {
+        const root = tmpRoot("wf-goto-escalate")
+        const sid = "ses_wf_ge"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", criteria: "ok", on_invalid: "escalate", on_invalid_goto: 1 },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("on_invalid_goto is incompatible with on_invalid='escalate'")
+    })
+
+    test("conditional jumps: dry_run renders goto targets and max_jumps", async () => {
+        const root = tmpRoot("wf-goto-dry")
+        const sid = "ses_wf_gd"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", id: "impl", member: "alice", task: "implement" },
+                    { kind: "task", id: "polish", member: "carol", task: "polish" },
+                    { kind: "gate", id: "verify", verifier: "bob", target_step: "impl", criteria: "ok", on_pass_goto: "polish", on_fail_goto: "impl", max_jumps: 2 },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("on_pass->step 2 (polish)")
+        expect(result).toContain("on_fail->step 1 (impl)")
+        expect(result).toContain("max_jumps=2")
+    })
+
     test("on_fail retry requires explicit max_retries", async () => {
         const root = tmpRoot("wf-retry-no-max")
         const sid = "ses_wf_rnm"
