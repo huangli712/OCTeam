@@ -35,17 +35,34 @@ function resolveWorkflowFilePath(baseDir: string, relPath: string): { filePath: 
     return { filePath }
 }
 
-function applyTemplateVars(value: unknown, vars: Record<string, string>): unknown {
+function applyTemplateVars(value: unknown, vars: Record<string, string>, strict: boolean): unknown {
     if (typeof value === "string") {
-        return value.replace(/\$\{([A-Za-z0-9_]+)\}/g, (match, name: string) => vars[name] ?? match)
+        return value.replace(/\$\{([A-Za-z0-9_]+)\}/g, (match, name: string) => {
+            if (Object.prototype.hasOwnProperty.call(vars, name)) return vars[name]!
+            // Strict mode: surface unknown variables explicitly so a typo in
+            // a var name fails the run loud instead of silently leaking a
+            // literal ${x} into the dispatch prompt. Non-strict keeps the
+            // backward-compatible literal-preserving behavior.
+            if (strict) throw new UnknownTemplateVarError(name)
+            return match
+        })
     }
-    if (Array.isArray(value)) return value.map(item => applyTemplateVars(item, vars))
+    if (Array.isArray(value)) return value.map(item => applyTemplateVars(item, vars, strict))
     if (isRecord(value)) {
         const out: Record<string, unknown> = {}
-        for (const [key, inner] of Object.entries(value)) out[key] = applyTemplateVars(inner, vars)
+        for (const [key, inner] of Object.entries(value)) out[key] = applyTemplateVars(inner, vars, strict)
         return out
     }
     return value
+}
+
+/** Thrown when a ${name} reference has no matching entry in `vars` under strict mode. */
+class UnknownTemplateVarError extends Error {
+    readonly name: string
+    constructor(varName: string) {
+        super(`unknown template variable "${varName}"`)
+        this.name = varName
+    }
 }
 
 function isWorkflowStepArray(value: unknown): value is WorkflowToolStep[] {
@@ -70,7 +87,23 @@ export async function loadWorkflowFile(baseDir: string, relPath: string, vars: R
         return { error: `Error: workflow_file "${relPath}" is not valid JSON` }
     }
 
-    const templated = applyTemplateVars(parsed, vars)
+    const templated: unknown = (() => {
+        // strict_vars is read from the RAW (pre-template) parsed object so the
+        // config itself is never subject to templating. Default: false keeps
+        // backward-compat (unknown ${x} stays literal).
+        const strictVars = isRecord(parsed) && parsed.strict_vars === true
+        try {
+            return applyTemplateVars(parsed, vars, strictVars)
+        } catch (e) {
+            if (e instanceof UnknownTemplateVarError) {
+                return { __templateError: `Error: workflow_file "${relPath}" references unknown template variable "${e.name}"` }
+            }
+            throw e
+        }
+    })()
+    if (isRecord(templated) && typeof templated.__templateError === "string") {
+        return { error: templated.__templateError }
+    }
     if (!isRecord(templated)) {
         return { error: `Error: workflow_file "${relPath}" must contain a workflow steps array` }
     }

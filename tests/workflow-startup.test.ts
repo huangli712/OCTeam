@@ -944,6 +944,78 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("integer")
     })
 
+    test("workflow_file unknown ${var} stays literal by default (backward compat)", async () => {
+        const root = tmpRoot("wf-file-unknown-default")
+        const sid = "ses_wf_file_uk_def"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "f.json"), JSON.stringify({
+            steps: [
+                { kind: "task", member: "alice", task: "do ${missing}" },
+                { kind: "gate", verifier: "bob", criteria: "ok" },
+            ],
+        }))
+
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/f.json", vars: {} },
+            makeToolContext(sid),
+        )
+
+        // Default: unknown ${missing} is left as a literal — backward compat.
+        expect(result).toContain("${missing}")
+    })
+
+    test("workflow_file strict_vars=true rejects unknown template variable", async () => {
+        const root = tmpRoot("wf-file-strict-unknown")
+        const sid = "ses_wf_file_strict_unk"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "f.json"), JSON.stringify({
+            strict_vars: true,
+            steps: [
+                { kind: "task", member: "alice", task: "do ${missing}" },
+                { kind: "gate", verifier: "bob", criteria: "ok" },
+            ],
+        }))
+
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/f.json", vars: {} },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("unknown template variable")
+        expect(result).toContain("missing")
+        expect(result).not.toContain("[task] alice")
+    })
+
+    test("workflow_file strict_vars=false keeps backward-compat literal behavior", async () => {
+        const root = tmpRoot("wf-file-strict-false")
+        const sid = "ses_wf_file_strict_f"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "f.json"), JSON.stringify({
+            strict_vars: false,
+            steps: [
+                { kind: "task", member: "alice", task: "do ${missing}" },
+                { kind: "gate", verifier: "bob", criteria: "ok" },
+            ],
+        }))
+
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/f.json", vars: {} },
+            makeToolContext(sid),
+        )
+
+        // Explicit strict_vars=false -> same as default: literal preserved.
+        expect(result).toContain("${missing}")
+    })
+
     test("workflow_file rejects inline steps at the same time", async () => {
         const root = tmpRoot("wf-file-inline")
         const sid = "ses_wf_file_inline"
