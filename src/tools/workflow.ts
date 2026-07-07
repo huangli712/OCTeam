@@ -28,13 +28,16 @@ import {
 
 type WorkflowToolStep = {
     kind: "task" | "gate"
+    id?: string
     member?: string
     task?: string
     verifier?: string
     criteria?: string
-    target_step?: number
+    target_step?: number | string
     on_fail?: "retry" | "fail"
     max_retries?: number
+    on_invalid?: "fail" | "retry_verifier" | "escalate"
+    max_invalid_retries?: number
 }
 
 type WorkflowToolArgs = {
@@ -45,31 +48,59 @@ type WorkflowToolArgs = {
     signoff_decider?: string
 }
 
-function nearestTaskStepIndex(steps: WorkflowToolStep[], beforeIndex: number): number {
-    for (let i = beforeIndex - 1; i >= 0; i--) {
-        if (steps[i]?.kind === "task") return i
-    }
-    return -1
-}
-
+/**
+ * Resolve a gate's target task index from its target_step (number 1-based or
+ * string step id) or, when omitted, the nearest preceding task step.
+ * Returns -1 when the target cannot be resolved or points forward/to a gate.
+ */
 function resolveGateTargetIndex(steps: WorkflowToolStep[], gateIndex: number): number {
     const gate = steps[gateIndex]
-    if (gate?.kind === "gate" && gate.target_step !== undefined) return gate.target_step - 1
-    return nearestTaskStepIndex(steps, gateIndex)
+    if (gate?.kind !== "gate") return -1
+    const target = gate.target_step
+    if (target === undefined) {
+        for (let i = gateIndex - 1; i >= 0; i--) {
+            if (steps[i]?.kind === "task") return i
+        }
+        return -1
+    }
+    if (typeof target === "number") {
+        const idx = target - 1
+        return idx >= 0 && idx < gateIndex && steps[idx]?.kind === "task" ? idx : -1
+    }
+    // string id
+    const idx = steps.findIndex((s, i) => i < gateIndex && s.kind === "task" && s.id === target)
+    return idx
 }
 
-function validateWorkflowArgs(args: WorkflowToolArgs, team: Team): string | null {
+/**
+ * Graph validator: structural + semantic checks over the declared step list.
+ * Centralizes the linear-engine invariants (unique ids, target resolution,
+ * no self-verification, cross-kind field separation, retry caps required).
+ * Returns a user-facing `Error: ...` string or null when the graph is valid.
+ */
+function validateWorkflowGraph(args: WorkflowToolArgs, team: Team): string | null {
     if (args.steps.length === 0) {
         return "Error: steps must contain at least one step"
     }
     if (args.steps[0]?.kind !== "task") {
         return "Error: step 1 must be a task; a gate has no preceding task step to verify"
     }
+    // Unique step ids (when declared).
+    const ids = new Map<string, number>()
+    for (let i = 0; i < args.steps.length; i++) {
+        const s = args.steps[i]
+        if (s.id === undefined) continue
+        const prev = ids.get(s.id)
+        if (prev !== undefined) {
+            return `Error: duplicate step id "${s.id}" at steps ${prev + 1} and ${i + 1}`
+        }
+        ids.set(s.id, i)
+    }
     for (let i = 0; i < args.steps.length; i++) {
         const s = args.steps[i]
         const displayStep = i + 1
         if (s.kind === "task") {
-            if (s.verifier !== undefined || s.criteria !== undefined || s.target_step !== undefined || s.on_fail !== undefined || s.max_retries !== undefined) {
+            if (s.verifier !== undefined || s.criteria !== undefined || s.target_step !== undefined || s.on_fail !== undefined || s.max_retries !== undefined || s.on_invalid !== undefined || s.max_invalid_retries !== undefined) {
                 return `Error: step ${displayStep} (task) must not set gate fields`
             }
             if (!s.member) return `Error: step ${displayStep} (task) requires \`member\``
@@ -88,15 +119,19 @@ function validateWorkflowArgs(args: WorkflowToolArgs, team: Team): string | null
         if (s.on_fail === "retry" && s.max_retries === undefined) {
             return `Error: step ${displayStep} (gate) with on_fail='retry' requires \`max_retries\``
         }
+        if (s.on_invalid === "retry_verifier" && s.max_invalid_retries === undefined) {
+            return `Error: step ${displayStep} (gate) with on_invalid='retry_verifier' requires \`max_invalid_retries\``
+        }
         const targetIndex = resolveGateTargetIndex(args.steps, i)
-        if (targetIndex < 0 || targetIndex >= i) {
-            return `Error: step ${displayStep} (gate) target_step must reference a previous task step`
+        if (targetIndex < 0) {
+            const t = s.target_step
+            if (t === undefined) {
+                return `Error: step ${displayStep} (gate) has no preceding task step to verify`
+            }
+            return `Error: step ${displayStep} (gate) target_step "${String(t)}" must reference a previous task step${typeof t === "string" ? " by id" : ""}`
         }
         const target = args.steps[targetIndex]
-        if (target?.kind !== "task") {
-            return `Error: step ${displayStep} (gate) target_step must reference a task step`
-        }
-        if (!target.member) return `Error: step ${targetIndex + 1} (task) requires \`member\``
+        if (!target?.member) return `Error: step ${targetIndex + 1} (task) requires \`member\``
         if (s.verifier === target.member) {
             return `Error: step ${displayStep} (gate) verifier "${s.verifier}" must differ from target step ${targetIndex + 1} member (no self-verification)`
         }
@@ -109,16 +144,32 @@ function validateWorkflowArgs(args: WorkflowToolArgs, team: Team): string | null
     return null
 }
 
+function validateWorkflowArgs(args: WorkflowToolArgs, team: Team): string | null {
+    return validateWorkflowGraph(args, team)
+}
+
+function stepTargetLabel(args: WorkflowToolArgs, gateIndex: number): string {
+    const targetIndex = resolveGateTargetIndex(args.steps, gateIndex)
+    const targetId = targetIndex >= 0 ? args.steps[targetIndex]?.id : undefined
+    if (targetId) return `step ${targetIndex + 1} (${targetId})`
+    if (targetIndex >= 0) return `step ${targetIndex + 1}`
+    return "?"
+}
+
 function formatWorkflowDryRun(args: WorkflowToolArgs): string {
     const lines = [`Workflow dry run for "${args.team_id}" (${args.steps.length} step(s)):`]
     for (let i = 0; i < args.steps.length; i++) {
         const step = args.steps[i]
+        const idTag = step.id ? ` (${step.id})` : ""
         if (step.kind === "task") {
-            lines.push(`${i + 1}. [task] ${step.member ?? "?"}: ${step.task ?? ""}`)
+            lines.push(`${i + 1}. [task]${idTag} ${step.member ?? "?"}: ${step.task ?? ""}`)
         } else {
-            const target = resolveGateTargetIndex(args.steps, i)
+            const target = stepTargetLabel(args, i)
             const retry = step.on_fail === "retry" ? `; on_fail=retry max_retries=${step.max_retries}` : ""
-            lines.push(`${i + 1}. [gate] ${step.verifier ?? "?"} verifies step ${target + 1}: ${step.criteria ?? ""}${retry}`)
+            const invalid = step.on_invalid && step.on_invalid !== "fail"
+                ? `; on_invalid=${step.on_invalid}${step.on_invalid === "retry_verifier" ? ` max_invalid_retries=${step.max_invalid_retries}` : ""}`
+                : ""
+            lines.push(`${i + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target}: ${step.criteria ?? ""}${retry}${invalid}`)
         }
     }
     return lines.join("\n")
@@ -134,15 +185,18 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                 .array(
                     tool.schema.object({
                         kind: tool.schema.enum(["task", "gate"]),
+                        id: tool.schema.string().min(1).max(64).optional().describe("optional stable step identifier; gates may reference a task step by this id via target_step"),
                         // task step
                         member: tool.schema.string().min(1).optional().describe("task steps: the actor member name"),
                         task: tool.schema.string().min(1).max(8192).optional().describe("task steps: the task text"),
                         // gate step
-                        verifier: tool.schema.string().min(1).optional().describe("gate steps: the verifier member name (must differ from the preceding task member)"),
+                        verifier: tool.schema.string().min(1).optional().describe("gate steps: the verifier member name (must differ from the target task member)"),
                         criteria: tool.schema.string().min(1).max(8192).optional().describe("gate steps: verification criteria"),
-                        target_step: tool.schema.number().int().min(1).optional().describe("gate steps: 1-based previous task step to verify; omitted means nearest preceding task"),
-                        on_fail: tool.schema.enum(["retry", "fail"]).optional().describe("gate steps: FAIL control. 'fail' (default) fails the run; 'retry' re-dispatches the preceding task up to max_retries."),
+                        target_step: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: target task step to verify — a 1-based number or a step id string; omitted means nearest preceding task"),
+                        on_fail: tool.schema.enum(["retry", "fail"]).optional().describe("gate steps: FAIL control. 'fail' (default) fails the run; 'retry' re-dispatches the target task up to max_retries."),
                         max_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: FAIL retry cap when on_fail='retry'. Default 0."),
+                        on_invalid: tool.schema.enum(["fail", "retry_verifier", "escalate"]).optional().describe("gate steps: INVALID control. 'fail' (default) terminates producer-neutral as workflow_invalid; 'retry_verifier' re-dispatches this gate's verifier up to max_invalid_retries; 'escalate' pauses for human approval (approve=advance, reject=workflow_invalid)."),
+                        max_invalid_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: retry_verifier cap when on_invalid='retry_verifier'. Default 0. Required when on_invalid='retry_verifier'."),
                     }),
                 )
                 .min(1)
@@ -175,6 +229,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                 async (team) => {
                     const steps: WorkflowStep[] = args.steps.map((s, index) => ({
                         kind: s.kind,
+                        id: s.id,
                         member: s.kind === "task" ? s.member : undefined,
                         task: s.kind === "task" ? s.task : undefined,
                         verifier: s.kind === "gate" ? s.verifier : undefined,
@@ -183,6 +238,9 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                         onFail: s.kind === "gate" ? (s.on_fail ?? "fail") : undefined,
                         maxRetries: s.kind === "gate" ? s.max_retries : undefined,
                         attempts: 0,
+                        onInvalid: s.kind === "gate" ? (s.on_invalid ?? "fail") : undefined,
+                        maxInvalidRetries: s.kind === "gate" ? s.max_invalid_retries : undefined,
+                        invalidAttempts: 0,
                         completed: false,
                     }))
                     const wfTask: WorkflowTask = {

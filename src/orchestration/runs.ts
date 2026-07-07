@@ -92,15 +92,19 @@ const ApprovalDecisionRecordSchema = z.object({
 
 const WorkflowStepKindSchema = z.enum(["task", "gate"])
 const VerdictSchema = z.enum(["PASS", "FAIL", "INVALID"])
+const WorkflowOnInvalidSchema = z.enum(["fail", "retry_verifier", "escalate"])
 const WorkflowRunStepSchema = z.object({
     index: z.number(),
     step: z.number(),
     kind: WorkflowStepKindSchema,
+    id: z.string().optional(),
     member: z.string().optional(),
     verifier: z.string().optional(),
     targetStep: z.number().optional(),
     verdict: VerdictSchema.optional(),
     attempts: z.number().optional(),
+    onInvalid: WorkflowOnInvalidSchema.optional(),
+    invalidAttempts: z.number().optional(),
     completed: z.boolean(),
     output: z.string().optional(),
     outputBytes: z.number().optional(),
@@ -245,11 +249,14 @@ export async function persistRun(team: Team, reason: string): Promise<void> {
                 index,
                 step: index + 1,
                 kind: step.kind,
+                id: step.id,
                 member: step.member,
                 verifier: step.verifier,
                 targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
                 verdict: step.verdict,
                 attempts: step.attempts,
+                onInvalid: step.onInvalid,
+                invalidAttempts: step.invalidAttempts,
                 completed: step.completed,
                 output: step.output,
                 outputBytes: step.output === undefined ? undefined : Buffer.byteLength(step.output, "utf8"),

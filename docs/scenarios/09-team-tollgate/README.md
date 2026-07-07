@@ -35,11 +35,6 @@
 {
   "name": "modpow-gate",
   "description": "Fast modular exponentiation: implement (mathematician) then gate-verify (reviewer) against 3 known cases",
-}
-```
-
-```json
-{
   "members": [
     {
       "name": "alice",
@@ -131,12 +126,7 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 ```json
 {
   "name": "verlet-gate",
-  "description": "Velocity Verlet on harmonic oscillator: implement (simulator) then gate-verify (physicist) energy conservation"
-}
-```
-
-```json
-{
+  "description": "Velocity Verlet on harmonic oscillator: implement (simulator) then gate-verify (physicist) energy conservation",
   "members": [
     {
       "name": "alice",
@@ -224,12 +214,7 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 ```json
 {
   "name": "string-gate",
-  "description": "Unicode-safe string reverse: implement (coder) then gate-verify (tester) including a surrogate-pair case"
-}
-```
-
-```json
-{
+  "description": "Unicode-safe string reverse: implement (coder) then gate-verify (tester) including a surrogate-pair case",
   "members": [
     {
       "name": "alice",
@@ -323,12 +308,7 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 ```json
 {
   "name": "heat2d-vv-gate",
-  "description": "2D heat-equation solver V&V certification: 3 sequential gates (correctness -> convergence order -> conservation) across 6 members"
-}
-```
-
-```json
-{
+  "description": "2D heat-equation solver V&V certification: 3 sequential gates (correctness -> convergence order -> conservation) across 6 members",
   "members": [
     {
       "name": "alice",

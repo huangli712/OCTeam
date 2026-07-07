@@ -43,6 +43,44 @@
 
 约束：`target_step` 必须 < 当前 gate 的序号、必须指向 task 步骤、且 verifier 不能等于该 task 的成员（禁止自验证）。FAIL retry 时会重派该 `target_step`，并把它与 gate 之间的已完成步骤一并重置重跑，保证线性依赖一致。
 
+### Phase 4 强化项（已落地）：step id、on_invalid、graph validator
+
+**step `id`（稳定标识）**：每个 step 可声明可选 `id`。`target_step` 既接受 1-based 数字（旧），也接受字符串 id：
+
+```json
+{
+  "steps": [
+    { "kind": "task", "id": "design", "member": "alice", "task": "draft design" },
+    { "kind": "task", "member": "carol", "task": "add tests" },
+    { "kind": "gate", "verifier": "bob", "target_step": "design", "criteria": "design covers the API surface" }
+  ]
+}
+```
+
+id 在整条 workflow 内必须唯一（否则 `dry_run`/启动校验报 `duplicate step id`）。summary / progress / approval prompt / result ledger 在有 id 时显示 `step N (id)`，便于在多 task 链里稳定引用。内部仍用 0-based `targetStepIndex`，id 在 build 时一次性解析成索引。
+
+**gate `on_invalid`（INVALID 策略）**：Phase 3 里 INVALID 一律 producer-neutral 终止。Phase 4 给 gate 加可选 `on_invalid`：
+
+| `on_invalid` | 行为 | run 结果 |
+|---|---|---|
+| `fail`（默认） | 终止，不重派 producer | `workflow_invalid:<reason>:<verifier>` |
+| `retry_verifier` | 重派**本 gate 的 verifier**（带"无法评估"提示），`max_invalid_retries` 次；耗尽后终止 | 继续到 verifier PASS/FAIL/INVALID 为止；耗尽 → `workflow_invalid` |
+| `escalate` | **无视全局 `human_approval`**，强制 HITL 暂停；`team_approve` = 人工放行（gate 标记完成，推进下一步）；`team_reject` = 终止 | approve → 继续；reject → `workflow_human_rejected` |
+
+注意：所有 `on_invalid` 策略都**不重派 producer**——INVALID 表示 verifier 无法评估，不是 producer 的错。`retry_verifier` 要求显式 `max_invalid_retries`（与 `on_fail="retry"` 要求 `max_retries` 对称），避免无限重试。`escalate` 不需要 `human_approval=true`；它是 gate 级强制暂停。
+
+**graph validator**：启动前（含 `dry_run`）统一做线性图校验，任一失败返回 `Error: ...` 且不创建 `activeTask`：
+
+- 首步必须是 task（gate 无前导 task 可验证）
+- step `id` 全局唯一
+- gate `target_step`（数字或 id）必须解析为**当前 gate 之前的 task** 步骤
+- verifier ≠ 目标 task 成员（禁止自验证）
+- task 步骤不得带 gate 字段，gate 步骤不得带 task 字段
+- `on_fail="retry"` 必须带 `max_retries`；`on_invalid="retry_verifier"` 必须带 `max_invalid_retries`
+- verifier / member 必须是团队成员
+
+这些检查集中在新 `validateWorkflowGraph`，`team_workflow` 的 `dry_run` 和真实启动共用同一份校验，保证预演和执行一致。
+
 ## 场景一览
 
 | # | 方向 | 场景 | 成员数 | 成员角色 | step 序列 | 预计总时长 |

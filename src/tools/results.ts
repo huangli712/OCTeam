@@ -21,13 +21,15 @@ import { runMemberOutputPath, isSafePathSegment } from "../state/paths.js"
 import type { RunRecord, WorkflowRunStep } from "../core/types.js"
 
 function formatWorkflowStepLine(step: WorkflowRunStep): string {
+    const idTag = step.id ? ` (${step.id})` : ""
     if (step.kind === "task") {
         const bytes = step.outputBytes === undefined ? "" : ` (${step.outputBytes} bytes)`
-        return `- Step ${step.step}: [task] ${step.member ?? "?"}${step.completed ? " (done)" : ""}${bytes}`
+        return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${step.completed ? " (done)" : ""}${bytes}`
     }
     const target = step.targetStep === undefined ? "nearest task" : `step ${step.targetStep}`
     const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
-    return `- Step ${step.step}: [gate] ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${attempts}`
+    const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
+    return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${attempts}${invalidTag}`
 }
 
 function formatRunLine(r: RunRecord): string {

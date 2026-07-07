@@ -282,8 +282,11 @@ export interface TollgateTask extends ActiveTaskBase {
 // results out of master context. MVP is linear with gate-driven retry only.
 export type WorkflowStepKind = "task" | "gate"
 
+export type WorkflowOnInvalid = "fail" | "retry_verifier" | "escalate"
+
 export type WorkflowStep = {
     kind: WorkflowStepKind
+    id?: string                          // stable step identifier (optional); when set, gates may reference it via targetStepId
     // task step
     member?: string                     // the actor member name (task steps)
     task?: string                       // the task text (task steps)
@@ -294,6 +297,9 @@ export type WorkflowStep = {
     onFail?: "retry" | "fail"           // FAIL control: retry the preceding task, or fail the run (gate steps; default "fail")
     maxRetries?: number                 // FAIL retry cap, distinct from provider-retry maxRetries (gate steps; default 0)
     attempts?: number                   // FAIL retry count so far (gate steps)
+    onInvalid?: WorkflowOnInvalid       // INVALID control: fail the run, re-dispatch the verifier, or escalate to the leader (gate steps; default "fail")
+    maxInvalidRetries?: number          // retry_verifier cap for INVALID verdicts (gate steps; default 0)
+    invalidAttempts?: number            // retry_verifier attempt count so far (gate steps)
     verdict?: Verdict                   // last verdict rendered (gate steps)
     output?: string                     // task steps: captured output snapshot at completion time (per-step, NOT overwritten by later steps the same member runs)
     // shared
@@ -333,11 +339,14 @@ export type WorkflowRunStep = {
     index: number                       // zero-based internal workflow step index
     step: number                        // one-based display step number
     kind: WorkflowStepKind
+    id?: string                          // stable step identifier when declared
     member?: string
     verifier?: string
     targetStep?: number                 // one-based display target task step for gate steps
     verdict?: Verdict
     attempts?: number
+    onInvalid?: WorkflowOnInvalid
+    invalidAttempts?: number
     completed: boolean
     output?: string                     // bounded task-step snapshot captured at completion
     outputBytes?: number

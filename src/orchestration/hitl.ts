@@ -87,3 +87,27 @@ export async function resumeApprovalStage(ctx: PluginContext, team: Team): Promi
     await notifyLeader(ctx, team, request)
     return true
 }
+
+/**
+ * Force a human-approval pause regardless of the task's `humanApproval` flag.
+ * Used by gate-level policies (e.g. workflow on_invalid='escalate') that must
+ * escalate to the leader even when global HITL is disabled.
+ */
+export async function forceApprovalRequest(
+    ctx: PluginContext,
+    team: Team,
+    input: ApprovalRequestInput,
+): Promise<boolean> {
+    if (team.activeTask?.approvalStage && team.activeTask?.approvalRequest) return true
+    // Temporarily enable humanApproval so maybeRequestApproval persists the
+    // pause; restore the original value afterwards to keep global semantics.
+    const task = team.activeTask
+    if (!task) return false
+    const prev = task.humanApproval
+    task.humanApproval = true
+    try {
+        return await maybeRequestApproval(ctx, team, input)
+    } finally {
+        task.humanApproval = prev
+    }
+}

@@ -31,7 +31,7 @@ import { recordEvent } from "./events.js"
 import { truncateOutput } from "../core/utils.js"
 import { parseVerdict } from "./decisions.js"
 import { maybeTriggerSignoff } from "./signoff.js"
-import { maybeRequestApproval } from "./hitl.js"
+import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js"
 
 // Total byte budget for injected upstream context (mirrors dispatch.ts). Caps
 // prompt growth so a long workflow does not bloat the actor's prompt linearly.
@@ -107,9 +107,10 @@ function hasLiveSession(member: MemberState | undefined): member is MemberState 
 
 function describeStep(step: WorkflowStep | undefined, index: number): string {
     if (!step) return `step ${index + 1}`
-    if (step.kind === "task") return `step ${index + 1} (task) by ${step.member ?? "?"}`
+    const idTag = step.id ? ` (${step.id})` : ""
+    if (step.kind === "task") return `step ${index + 1}${idTag} (task) by ${step.member ?? "?"}`
     const target = step.targetStepIndex === undefined ? "nearest task" : `step ${step.targetStepIndex + 1}`
-    return `step ${index + 1} (gate) by ${step.verifier ?? "?"}, verifying ${target}`
+    return `step ${index + 1}${idTag} (gate) by ${step.verifier ?? "?"}, verifying ${target}`
 }
 
 /** Dispatch a task step's actor with upstream context prefixed. */
@@ -230,13 +231,13 @@ export async function handleWorkflowIdle(
     })
 
     if (v.parseFailed || !v.verdict) {
-        await finishRun(ctx, team, `workflow_invalid:parse_failure:${step.verifier}`, "failed")
+        await handleInvalidVerdict(ctx, team, step, "parse_failure", v.rationale, v.diff)
         return
     }
     step.verdict = v.verdict
 
     if (v.verdict === "INVALID") {
-        await finishRun(ctx, team, `workflow_invalid:${step.verifier}`, "failed")
+        await handleInvalidVerdict(ctx, team, step, "INVALID", v.rationale, v.diff)
         return
     }
 
@@ -313,4 +314,81 @@ export async function handleWorkflowIdle(
         team,
     )
     await saveTeamState(team)
+}
+
+/**
+ * Handle an unevaluable gate verdict (INVALID or parse failure) according to
+ * the gate's onInvalid policy. Producer-neutral in all cases: the target task
+ * is never retried on INVALID (only the verifier may be re-dispatched).
+ *   fail          -> terminate as workflow_invalid:<reason>:<verifier>
+ *   retry_verifier-> re-dispatch THIS gate's verifier (bounded by
+ *                    maxInvalidRetries), then on exhaust terminate.
+ *   escalate      -> force a human-approval pause; approve marks the gate
+ *                    complete and advances, reject terminates.
+ */
+async function handleInvalidVerdict(
+    ctx: PluginContext,
+    team: Team,
+    step: WorkflowStep,
+    reason: "INVALID" | "parse_failure",
+    rationale: string,
+    diff: string,
+): Promise<void> {
+    const task = team.activeTask
+    if (!task || task.type !== "workflow") return
+    const gateIndex = task.currentStageIndex
+    const policy = step.onInvalid ?? "fail"
+
+    if (policy === "retry_verifier") {
+        step.invalidAttempts = (step.invalidAttempts ?? 0) + 1
+        const maxIR = step.maxInvalidRetries ?? 0
+        if (step.invalidAttempts > maxIR) {
+            await finishRun(ctx, team, `workflow_invalid:${reason}:${step.verifier}`, "failed")
+            return
+        }
+        const verifier = team.members.find(m => m.name === step.verifier && !m.isMaster)
+        if (!hasLiveSession(verifier)) {
+            await finishRun(ctx, team, `workflow_failed:no_session:${step.verifier ?? "unknown"}`, "failed")
+            return
+        }
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "retry",
+            member: step.verifier,
+            stage: gateIndex,
+            detail: `workflow step ${gateIndex + 1} invalid retry ${step.invalidAttempts}/${maxIR}; verifier ${step.verifier}; reason ${reason}: ${rationale}`,
+        })
+        const nudge =
+            `[Verification could not be evaluated — invalid attempt ${step.invalidAttempts}/${maxIR}]\n`
+            + `Reason: ${reason}. Rationale: ${rationale}. Diff: ${diff}.\n`
+            + `Re-evaluate the target output and emit a fresh verdict.`
+        await dispatchToMember(
+            ctx,
+            verifier,
+            `${nudge}\n\n${buildGateVerifierPrompt(step, "", gateIndex + 1)}`,
+            verifier.worktreePath ?? ctx.directory,
+            team,
+        )
+        await saveTeamState(team)
+        return
+    }
+
+    if (policy === "escalate") {
+        const nextIndex = (task.steps ?? []).findIndex(s => !s.completed)
+        const escalated = await forceApprovalRequest(ctx, team, {
+            kind: "workflow_step",
+            stage: gateIndex,
+            summary: `Step ${gateIndex + 1} (gate) by ${step.verifier ?? "?"} could not be evaluated (${reason}). Rationale: ${rationale}. Approve to override and continue${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""}; reject to fail as workflow_invalid.`,
+        })
+        if (escalated) {
+            // Mark the gate complete so that on team_approve (which calls
+            // advanceWorkflowStep) the workflow proceeds past this gate.
+            step.completed = true
+            await saveTeamState(team)
+            return
+        }
+        // No escalation handler available -> fall through to terminal fail.
+    }
+
+    await finishRun(ctx, team, `workflow_invalid:${reason}:${step.verifier}`, "failed")
 }
