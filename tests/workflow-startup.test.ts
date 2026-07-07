@@ -871,6 +871,79 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("register-handler passes")
     })
 
+    test("workflow_file accepts an explicit version 1", async () => {
+        const root = tmpRoot("wf-file-version1")
+        const sid = "ses_wf_file_v1"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "v.json"), JSON.stringify({
+            version: 1,
+            steps: [
+                { kind: "task", member: "alice", task: "do x" },
+                { kind: "gate", verifier: "bob", criteria: "ok" },
+            ],
+        }))
+
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/v.json" },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("1. [task] alice")
+        expect(result).toContain("2. [gate] bob verifies step 1")
+    })
+
+    test("workflow_file rejects an unsupported future version", async () => {
+        const root = tmpRoot("wf-file-version99")
+        const sid = "ses_wf_file_v99"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "v.json"), JSON.stringify({
+            version: 99,
+            steps: [
+                { kind: "task", member: "alice", task: "do x" },
+                { kind: "gate", verifier: "bob", criteria: "ok" },
+            ],
+        }))
+
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/v.json" },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("version")
+        expect(result).toContain("99")
+        expect(result).toContain("unsupported")
+    })
+
+    test("workflow_file rejects a non-integer version", async () => {
+        const root = tmpRoot("wf-file-version-bad")
+        const sid = "ses_wf_file_vb"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "v.json"), JSON.stringify({
+            version: "1",
+            steps: [
+                { kind: "task", member: "alice", task: "do x" },
+                { kind: "gate", verifier: "bob", criteria: "ok" },
+            ],
+        }))
+
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/v.json" },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("version")
+        expect(result).toContain("integer")
+    })
+
     test("workflow_file rejects inline steps at the same time", async () => {
         const root = tmpRoot("wf-file-inline")
         const sid = "ses_wf_file_inline"

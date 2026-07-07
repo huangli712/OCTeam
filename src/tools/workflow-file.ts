@@ -3,6 +3,12 @@ import path from "node:path"
 
 import type { WorkflowToolStep } from "./workflow.js"
 
+// Supported workflow_file schema versions. When the schema gains a v2, add it
+// here and branch on `version` in loadWorkflowFile. A file with an unlisted
+// version is rejected explicitly so a schema drift fails loudly instead of
+// silently mis-parsing fields (e.g. a renamed key, a removed shape).
+const SUPPORTED_WORKFLOW_FILE_VERSIONS = new Set([1])
+
 type WorkflowFileResult =
     | { steps: WorkflowToolStep[] }
     | { error: string }
@@ -65,7 +71,21 @@ export async function loadWorkflowFile(baseDir: string, relPath: string, vars: R
     }
 
     const templated = applyTemplateVars(parsed, vars)
-    const steps = isRecord(templated) ? templated.steps : templated
+    if (!isRecord(templated)) {
+        return { error: `Error: workflow_file "${relPath}" must contain a workflow steps array` }
+    }
+    // version: optional (absent => 1 for backward compatibility), but when
+    // present must be an integer we recognize. An unknown version is rejected
+    // explicitly so a schema-evolved file fails loud, not silent.
+    if (templated.version !== undefined) {
+        if (typeof templated.version !== "number" || !Number.isInteger(templated.version)) {
+            return { error: `Error: workflow_file "${relPath}" version must be an integer` }
+        }
+        if (!SUPPORTED_WORKFLOW_FILE_VERSIONS.has(templated.version)) {
+            return { error: `Error: workflow_file "${relPath}" version ${templated.version} is unsupported (expected one of: ${[...SUPPORTED_WORKFLOW_FILE_VERSIONS].join(", ")})` }
+        }
+    }
+    const steps = templated.steps
     if (!isWorkflowStepArray(steps)) {
         return { error: `Error: workflow_file "${relPath}" must contain a workflow steps array` }
     }
