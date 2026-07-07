@@ -196,6 +196,9 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
         if (s.max_jumps !== undefined && (s.max_jumps < 0 || s.max_jumps > 10)) {
             return `Error: step ${displayStep} (gate) max_jumps must be between 0 and 10`
         }
+        if (s.max_jumps !== undefined && s.on_pass_goto === undefined && s.on_fail_goto === undefined && s.on_invalid_goto === undefined) {
+            return `Error: step ${displayStep} (gate) max_jumps requires on_pass_goto/on_fail_goto/on_invalid_goto (no goto to bound)`
+        }
         if (s.where !== undefined) {
             if (s.on_pass_goto === undefined && s.on_fail_goto === undefined) {
                 return `Error: step ${displayStep} (gate) where requires on_pass_goto or on_fail_goto`

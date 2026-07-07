@@ -710,6 +710,46 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("task steps")
     })
 
+    test("step controls: max_jumps without on_*_goto is rejected", async () => {
+        const root = tmpRoot("wf-maxjumps-nogoto")
+        const sid = "ses_wf_mjng"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", criteria: "ok", max_jumps: 3 },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("max_jumps")
+        expect(result).toContain("on_pass_goto")
+    })
+
+    test("step controls: max_jumps with on_pass_goto is accepted", async () => {
+        const root = tmpRoot("wf-maxjumps-goto")
+        const sid = "ses_wf_mjg"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", criteria: "ok", on_pass_goto: 3, max_jumps: 2 },
+                    { kind: "task", member: "carol", task: "ship" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("max_jumps=2")
+        expect(result).toContain("on_pass->step 3")
+    })
+
     test("step controls: non-positive max_output_bytes is rejected", async () => {
         const root = tmpRoot("wf-mob-bad")
         const sid = "ses_wf_mobb"
