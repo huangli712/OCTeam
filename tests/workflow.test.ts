@@ -107,6 +107,9 @@ function makeTeam(opts: {
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
 const FAIL_VERDICT = '<verdict>{"result":"FAIL","rationale":"wrong","diff":"off by one"}</verdict>'
 const INVALID_VERDICT = '<verdict>{"result":"INVALID","rationale":"cannot run tests","diff":""}</verdict>'
+const HIGH_SCORE_PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"excellent","diff":"","score":9,"confidence":0.9}</verdict>'
+const LOW_SCORE_PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"barely","diff":"","score":5,"confidence":0.5}</verdict>'
+const HIGH_SEVERITY_FAIL_VERDICT = '<verdict>{"result":"FAIL","rationale":"risky","diff":"fix risk","score":4,"issues":[{"severity":"high","message":"risk"}]}</verdict>'
 
 async function waitForEvent(directory: string, runId: string, kind: string): Promise<void> {
     const p = runEventsPath(directory, runId)
@@ -781,5 +784,97 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
         const leaderCall = calls.find(c => c.sessionId === "ses_lead")
         expect(leaderCall).toBeDefined()
         expect(leaderCall!.text).toContain("workflow_failed:jump_limit")
+    })
+
+    test("on_pass_goto with where only jumps when the structured score matches", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", completed: true, output: "impl" },
+                { kind: "gate", verifier: "bob", criteria: "ok", onPassGoto: 3, where: { kind: "score_gte", value: 8 }, jumpCount: 0, completed: false },
+                { kind: "task", member: "carol", task: "fallback polish", completed: false },
+                { kind: "task", member: "dave", task: "premium polish", completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+                { name: "dave", sessionId: "ses_dave" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: HIGH_SCORE_PASS_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(task.steps![1].score).toBe(9)
+        expect(task.steps![1].confidence).toBe(0.9)
+        expect(task.currentStageIndex).toBe(3)
+        expect(task.steps![2].skipped).toBe(true)
+        const daveCall = calls.find(c => c.sessionId === "ses_dave")
+        expect(daveCall).toBeDefined()
+        expect(daveCall!.text).toContain("premium polish")
+        expect(daveCall!.text).toContain("when:score_gte")
+    })
+
+    test("on_pass_goto with where falls back to linear advance when the score does not match", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", completed: true, output: "impl" },
+                { kind: "gate", verifier: "bob", criteria: "ok", onPassGoto: 3, where: { kind: "score_gte", value: 8 }, jumpCount: 0, completed: false },
+                { kind: "task", member: "carol", task: "fallback polish", completed: false },
+                { kind: "task", member: "dave", task: "premium polish", completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+                { name: "dave", sessionId: "ses_dave" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: LOW_SCORE_PASS_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(task.currentStageIndex).toBe(2)
+        expect(calls.some(c => c.sessionId === "ses_dave")).toBe(false)
+        const carolCall = calls.find(c => c.sessionId === "ses_carol")
+        expect(carolCall).toBeDefined()
+        expect(carolCall!.text).toContain("fallback polish")
+    })
+
+    test("on_fail_goto with where jumps on high-severity issues", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", completed: true, output: "impl" },
+                { kind: "gate", verifier: "bob", criteria: "ok", onFail: "fail", onFailGoto: 0, where: { kind: "has_issue_severity", value: "high" }, jumpCount: 0, completed: false },
+            ],
+            currentStageIndex: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: HIGH_SEVERITY_FAIL_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(task.steps![1].issues).toEqual([{ severity: "high", message: "risk" }])
+        expect(task.currentStageIndex).toBe(0)
+        const aliceCall = calls.find(c => c.sessionId === "ses_alice")
+        expect(aliceCall).toBeDefined()
+        expect(aliceCall!.text).toContain("when:has_issue_severity")
     })
 })

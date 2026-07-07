@@ -203,7 +203,7 @@ describe("persistRun", () => {
                 steps: [
                     { kind: "task", member: "alice", task: "draft", completed: true, output: "draft output" },
                     { kind: "task", member: "carol", task: "polish", completed: true, output: "polish output" },
-                    { kind: "gate", verifier: "bob", targetStepIndex: 0, targetStepIndices: [0, 1], criteria: "ok", attempts: 1, verdict: "PASS", completed: true },
+                    { kind: "gate", verifier: "bob", targetStepIndex: 0, targetStepIndices: [0, 1], criteria: "ok", attempts: 1, verdict: "PASS", score: 9, confidence: 0.8, issues: [{ severity: "medium", message: "minor" }], completed: true },
                 ],
             },
         })
@@ -214,7 +214,7 @@ describe("persistRun", () => {
         expect(rec!.type).toBe("workflow")
         expect(rec!.workflow?.steps).toHaveLength(3)
         expect(rec!.workflow?.steps[0]).toMatchObject({ step: 1, kind: "task", member: "alice", output: "draft output" })
-        expect(rec!.workflow?.steps[2]).toMatchObject({ step: 3, kind: "gate", verifier: "bob", targetStep: 1, targetSteps: [1, 2], verdict: "PASS", attempts: 1 })
+        expect(rec!.workflow?.steps[2]).toMatchObject({ step: 3, kind: "gate", verifier: "bob", targetStep: 1, targetSteps: [1, 2], verdict: "PASS", score: 9, confidence: 0.8, issues: [{ severity: "medium", message: "minor" }], attempts: 1 })
     })
 
     test("no activeTask → no-op", async () => {

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { mkdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask } from "../src/core/types.js"
@@ -13,7 +15,7 @@ import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
+    return { storageRoot, scope: "project", directory: storageRoot } as unknown as PluginContext
 }
 
 const tracked: string[] = []
@@ -727,6 +729,96 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("on_pass->step 2 (polish)")
         expect(result).toContain("on_fail->step 1 (impl)")
         expect(result).toContain("max_jumps=2")
+    })
+
+    test("conditional jumps: dry_run renders where condition for threshold goto", async () => {
+        const root = tmpRoot("wf-where-dry")
+        const sid = "ses_wf_where_dry"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", id: "impl", member: "alice", task: "implement" },
+                    { kind: "gate", id: "verify", verifier: "bob", criteria: "ok", on_pass_goto: "polish", where: { score_gte: 8 } },
+                    { kind: "task", id: "polish", member: "carol", task: "polish" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("on_pass->step 3 (polish) when score_gte 8")
+    })
+
+    test("conditional jumps: where must contain exactly one supported condition", async () => {
+        const root = tmpRoot("wf-where-bad")
+        const sid = "ses_wf_where_bad"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "implement" },
+                    { kind: "gate", verifier: "bob", criteria: "ok", on_pass_goto: 3, where: { score_gte: 8, confidence_gte: 0.9 } },
+                    { kind: "task", member: "carol", task: "polish" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("where")
+        expect(result).toContain("exactly one")
+    })
+
+    test("workflow_file dry_run loads steps and substitutes vars", async () => {
+        const root = tmpRoot("wf-file-dry")
+        const sid = "ses_wf_file_dry"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "register.json"), JSON.stringify({
+            steps: [
+                { kind: "task", member: "alice", task: "Implement ${handler}" },
+                { kind: "gate", verifier: "bob", criteria: "${handler} passes", where: { score_gte: 8 }, on_pass_goto: 1 },
+            ],
+        }))
+
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/register.json", vars: { handler: "register-handler" } },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Implement register-handler")
+        expect(result).toContain("register-handler passes")
+    })
+
+    test("workflow_file rejects inline steps at the same time", async () => {
+        const root = tmpRoot("wf-file-inline")
+        const sid = "ses_wf_file_inline"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", workflow_file: ".octeam/workflows/register.json", steps: [{ kind: "task", member: "alice", task: "x" }] },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("must set exactly one of steps or workflow_file")
+    })
+
+    test("workflow_file rejects paths outside the workspace", async () => {
+        const root = tmpRoot("wf-file-escape")
+        const sid = "ses_wf_file_escape"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", workflow_file: "../escape.json" },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("workflow_file")
+        expect(result).toContain("workspace")
     })
 
     test("on_fail retry requires explicit max_retries", async () => {
