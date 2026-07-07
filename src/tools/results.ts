@@ -20,6 +20,13 @@ import { listRunRecords, readRunRecord } from "../orchestration/runs.js"
 import { runMemberOutputPath, isSafePathSegment } from "../state/paths.js"
 import type { RunRecord, WorkflowRunStep } from "../core/types.js"
 
+function workflowTargetLabel(step: WorkflowRunStep): string {
+    if (step.targetSteps !== undefined && step.targetSteps.length > 0) {
+        return step.targetSteps.length === 1 ? `step ${step.targetSteps[0]}` : `steps ${step.targetSteps.join(", ")}`
+    }
+    return step.targetStep === undefined ? "nearest task" : `step ${step.targetStep}`
+}
+
 function formatWorkflowStepLine(step: WorkflowRunStep): string {
     const idTag = step.id ? ` (${step.id})` : ""
     if (step.kind === "task") {
@@ -27,7 +34,7 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
         const state = step.skipped ? " (skipped)" : step.completed ? " (done)" : ""
         return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${state}${bytes}`
     }
-    const target = step.targetStep === undefined ? "nearest task" : `step ${step.targetStep}`
+    const target = workflowTargetLabel(step)
     const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
     const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
     const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""

@@ -20,7 +20,7 @@ import { truncateOutput } from "../core/utils.js"
 import { logSwallowed } from "../core/log.js"
 import { persistRun } from "./runs.js"
 import { recordEvent } from "./events.js"
-import type { ActiveTask } from "../core/types.js"
+import type { ActiveTask, WorkflowStep } from "../core/types.js"
 
 /**
  * Deliver the workflow summary to the leader. Always pushes via promptAsync
@@ -256,6 +256,14 @@ function summarizePipeline(task: ActiveTask, head: string): string {
 // Renders a 1-based per-step ledger plus the task-step outputs (each labeled
 // by step number + member, so a member running multiple task steps does not
 // produce duplicate ### member headers with the wrong output).
+function workflowTargetLabel(s: WorkflowStep): string {
+    if (s.targetStepIndices !== undefined && s.targetStepIndices.length > 0) {
+        const targets = s.targetStepIndices.map(index => index + 1)
+        return targets.length === 1 ? `step ${targets[0]}` : `steps ${targets.join(", ")}`
+    }
+    return s.targetStepIndex === undefined ? "nearest task" : `step ${s.targetStepIndex + 1}`
+}
+
 function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head: string): string {
     const steps = task.steps ?? []
     const rows = steps.map((s, i) => {
@@ -264,7 +272,7 @@ function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head
             const state = s.skipped ? " (skipped)" : s.completed ? " (done)" : ""
             return `${i + 1}. [task]${idTag} ${s.member ?? "?"}${state}`
         }
-        const target = s.targetStepIndex === undefined ? "nearest task" : `step ${s.targetStepIndex + 1}`
+        const target = workflowTargetLabel(s)
         const invalidTag = s.onInvalid && s.onInvalid !== "fail" ? `, on_invalid=${s.onInvalid}${(s.invalidAttempts ?? 0) > 0 ? ` (${s.invalidAttempts})` : ""}` : ""
         const jumpTag = (s.jumpCount ?? 0) > 0 ? `, jumps=${s.jumpCount}` : ""
         return `${i + 1}. [gate]${idTag} ${s.verifier ?? "?"} verifies ${target} -> ${s.verdict ?? "pending"}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}${invalidTag}${jumpTag}`

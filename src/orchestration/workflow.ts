@@ -24,7 +24,7 @@
 
 import type { PluginContext } from "../core/context.js"
 import { type Team, saveTeamState } from "../state/store.js"
-import type { MemberState, WorkflowStep, WorkflowTask } from "../core/types.js"
+import type { MemberState, Verdict, WorkflowStep, WorkflowTask } from "../core/types.js"
 import { dispatchToMember } from "./dispatch.js"
 import { finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
@@ -36,6 +36,13 @@ import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js"
 // Total byte budget for injected upstream context (mirrors dispatch.ts). Caps
 // prompt growth so a long workflow does not bloat the actor's prompt linearly.
 const UPSTREAM_TOTAL_CAP = 65_536
+
+type WorkflowJumpTransition = {
+    reason: string
+    verdict?: Verdict
+    rationale?: string
+    diff?: string
+}
 
 /**
  * Build the upstream-context prefix for a workflow task step: ALL completed
@@ -71,9 +78,9 @@ function buildWorkflowUpstream(
  * criteria, and the exact <verdict> block the verifier must emit. PASS = the
  * output meets the criteria, FAIL = it does not (rationale + diff).
  */
-function buildGateVerifierPrompt(step: WorkflowStep, producerOutput: string, targetStep: number): string {
+function buildGateVerifierPrompt(step: WorkflowStep, producerOutput: string, targetLabel: string): string {
     return (
-        `[Verification gate] Verify workflow step ${targetStep} output below against the criteria.\n`
+        `[Verification gate] Verify ${targetLabel} output below against the criteria.\n`
         + `Criteria: ${step.criteria ?? ""}\n\n`
         + `Producer output:\n${producerOutput}\n\n`
         + `Emit EXACTLY one:\n`
@@ -96,9 +103,49 @@ function precedingTaskIndex(steps: WorkflowStep[], gateIndex: number): number {
 }
 
 function gateTargetIndex(steps: WorkflowStep[], gateIndex: number): number {
+    const targets = gateTargetIndices(steps, gateIndex)
+    return targets[0] ?? -1
+}
+
+function gateTargetIndices(steps: WorkflowStep[], gateIndex: number): number[] {
     const gate = steps[gateIndex]
-    if (gate?.kind === "gate" && gate.targetStepIndex !== undefined) return gate.targetStepIndex
-    return precedingTaskIndex(steps, gateIndex)
+    if (gate?.kind !== "gate") return []
+    if (gate.targetStepIndices !== undefined && gate.targetStepIndices.length > 0) {
+        return [...gate.targetStepIndices].sort((a, b) => a - b)
+    }
+    if (gate.targetStepIndex !== undefined) return [gate.targetStepIndex]
+    const nearest = precedingTaskIndex(steps, gateIndex)
+    return nearest < 0 ? [] : [nearest]
+}
+
+function stepIndicesLabel(indices: number[]): string {
+    if (indices.length === 0) return "nearest task"
+    const labels = indices.map(index => String(index + 1))
+    const first = labels[0]
+    if (first === undefined) return "nearest task"
+    return labels.length === 1 ? `step ${first}` : `steps ${labels.join(", ")}`
+}
+
+function workflowTargetLabel(indices: number[]): string {
+    return `workflow ${stepIndicesLabel(indices)}`
+}
+
+function buildGateProducerOutput(steps: WorkflowStep[], targetIndices: number[]): string {
+    const blocks: string[] = []
+    for (const targetIndex of targetIndices) {
+        const producerStep = steps[targetIndex]
+        if (!producerStep || producerStep.kind !== "task") continue
+        blocks.push(`[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n${truncateOutput(producerStep.output ?? "")}`)
+    }
+    return blocks.join("\n\n")
+}
+
+function buildJumpContext(transition: WorkflowJumpTransition): string {
+    const lines = [`[Workflow jump: ${transition.reason}]`]
+    if (transition.verdict !== undefined) lines.push(`Verdict: ${transition.verdict}`)
+    if (transition.rationale !== undefined) lines.push(`Rationale: ${transition.rationale}`)
+    if (transition.diff !== undefined) lines.push(`Diff: ${transition.diff}`)
+    return lines.join("\n")
 }
 
 function hasLiveSession(member: MemberState | undefined): member is MemberState & { sessionId: string } {
@@ -109,7 +156,9 @@ function describeStep(step: WorkflowStep | undefined, index: number): string {
     if (!step) return `step ${index + 1}`
     const idTag = step.id ? ` (${step.id})` : ""
     if (step.kind === "task") return `step ${index + 1}${idTag} (task) by ${step.member ?? "?"}`
-    const target = step.targetStepIndex === undefined ? "nearest task" : `step ${step.targetStepIndex + 1}`
+    const target = step.targetStepIndices !== undefined && step.targetStepIndices.length > 0
+        ? stepIndicesLabel(step.targetStepIndices)
+        : step.targetStepIndex === undefined ? "nearest task" : `step ${step.targetStepIndex + 1}`
     return `step ${index + 1}${idTag} (gate) by ${step.verifier ?? "?"}, verifying ${target}`
 }
 
@@ -119,6 +168,7 @@ async function dispatchTaskStep(
     team: Team,
     task: WorkflowTask,
     index: number,
+    contextPrefix?: string,
 ): Promise<boolean> {
     const step = task.steps?.[index]
     if (!step || step.kind !== "task" || !step.member || !step.task) return false
@@ -126,7 +176,7 @@ async function dispatchTaskStep(
     if (!hasLiveSession(member)) return false
     const upstream = buildWorkflowUpstream(task.steps ?? [], index)
     const text = upstream ? `${upstream}\n\n[Your task]\n${step.task}` : step.task
-    await dispatchToMember(ctx, member, text, member.worktreePath ?? ctx.directory, team)
+    await dispatchToMember(ctx, member, contextPrefix ? `${contextPrefix}\n\n${text}` : text, member.worktreePath ?? ctx.directory, team)
     return true
 }
 
@@ -141,14 +191,13 @@ async function dispatchGateStep(
     if (!step || step.kind !== "gate" || !step.verifier) return false
     const verifier = team.members.find(m => m.name === step.verifier && !m.isMaster)
     if (!hasLiveSession(verifier)) return false
-    const producerIdx = gateTargetIndex(task.steps ?? [], index)
-    if (producerIdx < 0) return false
-    const producerStep = producerIdx >= 0 ? task.steps?.[producerIdx] : undefined
-    const producerOutput = producerStep?.kind === "task" ? truncateOutput(producerStep.output ?? "") : ""
+    const targetIndices = gateTargetIndices(task.steps ?? [], index)
+    if (targetIndices.length === 0) return false
+    const producerOutput = buildGateProducerOutput(task.steps ?? [], targetIndices)
     await dispatchToMember(
         ctx,
         verifier,
-        buildGateVerifierPrompt(step, producerOutput, producerIdx + 1),
+        buildGateVerifierPrompt(step, producerOutput, workflowTargetLabel(targetIndices)),
         verifier.worktreePath ?? ctx.directory,
         team,
     )
@@ -171,7 +220,7 @@ async function gotoWorkflowStep(
     team: Team,
     gateIndex: number,
     targetIndex: number,
-    reason: string,
+    transition: WorkflowJumpTransition,
 ): Promise<boolean> {
     const task = team.activeTask
     if (!task || task.type !== "workflow") return false
@@ -222,12 +271,12 @@ async function gotoWorkflowStep(
         timestamp: Date.now(),
         kind: "stage_advanced",
         stage: targetIndex,
-        detail: `workflow jump: step ${gateIndex + 1} -> step ${targetIndex + 1} (${reason}); jump ${gate.jumpCount}/${maxJ}`,
+        detail: `workflow jump: step ${gateIndex + 1} -> step ${targetIndex + 1} (${transition.reason}${transition.verdict ? ` ${transition.verdict}` : ""}); jump ${gate.jumpCount}/${maxJ}`,
     })
 
     task.currentStageIndex = targetIndex
     const dispatched = target.kind === "task"
-        ? await dispatchTaskStep(ctx, team, task, targetIndex)
+        ? await dispatchTaskStep(ctx, team, task, targetIndex, buildJumpContext(transition))
         : await dispatchGateStep(ctx, team, task, targetIndex)
     if (!dispatched) {
         const actor = target.kind === "task" ? target.member : target.verifier
@@ -336,7 +385,7 @@ export async function handleWorkflowIdle(
             return
         }
         if (gotoIdx >= 0) {
-            await gotoWorkflowStep(ctx, team, task.currentStageIndex, gotoIdx, "on_pass")
+            await gotoWorkflowStep(ctx, team, task.currentStageIndex, gotoIdx, { reason: "on_pass", verdict: "PASS", rationale: v.rationale, diff: v.diff })
             return
         }
         await advanceWorkflowStep(ctx, team)
@@ -348,7 +397,7 @@ export async function handleWorkflowIdle(
     if (onFail === "fail") {
         const failGoto = step.onFailGoto ?? -1
         if (failGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, "on_fail")
+            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, { reason: "on_fail", verdict: "FAIL", rationale: v.rationale, diff: v.diff })
             return
         }
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
@@ -360,7 +409,7 @@ export async function handleWorkflowIdle(
     if (step.attempts > maxR) {
         const failGoto = step.onFailGoto ?? -1
         if (failGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, "on_fail_retry_exhausted")
+            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, { reason: "on_fail_retry_exhausted", verdict: "FAIL", rationale: v.rationale, diff: v.diff })
             return
         }
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
@@ -399,7 +448,7 @@ export async function handleWorkflowIdle(
         kind: "retry",
         member: producerStep.member,
         stage: gateIndex,
-        detail: `workflow step ${gateIndex + 1} attempt ${step.attempts}/${maxR}; retry target step ${producerIdx + 1}; verifier ${step.verifier}; diff: ${v.diff}`,
+        detail: `workflow step ${gateIndex + 1} attempt ${step.attempts}/${maxR}; retry target ${stepIndicesLabel(gateTargetIndices(steps, gateIndex))}; retry anchor step ${producerIdx + 1}; verifier ${step.verifier}; diff: ${v.diff}`,
     })
     const feedback =
         `[Gate FAILED - attempt ${step.attempts}/${maxR}]\n`
@@ -443,7 +492,7 @@ async function handleInvalidVerdict(
         if (step.invalidAttempts > maxIR) {
             const invGoto = step.onInvalidGoto ?? -1
             if (invGoto >= 0) {
-                await gotoWorkflowStep(ctx, team, gateIndex, invGoto, "on_invalid_retry_exhausted")
+                await gotoWorkflowStep(ctx, team, gateIndex, invGoto, { reason: "on_invalid_retry_exhausted", verdict: reason === "INVALID" ? "INVALID" : undefined, rationale, diff })
                 return
             }
             await finishRun(ctx, team, `workflow_invalid:${reason}:${step.verifier}`, "failed")
@@ -465,10 +514,12 @@ async function handleInvalidVerdict(
             `[Verification could not be evaluated — invalid attempt ${step.invalidAttempts}/${maxIR}]\n`
             + `Reason: ${reason}. Rationale: ${rationale}. Diff: ${diff}.\n`
             + `Re-evaluate the target output and emit a fresh verdict.`
+        const targetIndices = gateTargetIndices(task.steps ?? [], gateIndex)
+        const producerOutput = buildGateProducerOutput(task.steps ?? [], targetIndices)
         await dispatchToMember(
             ctx,
             verifier,
-            `${nudge}\n\n${buildGateVerifierPrompt(step, "", gateIndex + 1)}`,
+            `${nudge}\n\n${buildGateVerifierPrompt(step, producerOutput, workflowTargetLabel(targetIndices))}`,
             verifier.worktreePath ?? ctx.directory,
             team,
         )
@@ -498,7 +549,7 @@ async function handleInvalidVerdict(
     if (policy !== "escalate") {
         const invGoto = step.onInvalidGoto ?? -1
         if (invGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, gateIndex, invGoto, `on_invalid:${reason}`)
+            await gotoWorkflowStep(ctx, team, gateIndex, invGoto, { reason: `on_invalid:${reason}`, verdict: reason === "INVALID" ? "INVALID" : undefined, rationale, diff })
             return
         }
     }

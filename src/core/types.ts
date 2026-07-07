@@ -293,7 +293,8 @@ export type WorkflowStep = {
     // gate step
     verifier?: string                   // the verifier member name (gate steps; NOT the preceding task's member)
     criteria?: string                   // verification criteria (gate steps)
-    targetStepIndex?: number            // gate steps: zero-based index of the task step being verified; omitted means nearest preceding task
+    targetStepIndex?: number            // gate steps: zero-based primary task step being verified; omitted means nearest preceding task
+    targetStepIndices?: number[]        // gate steps: zero-based multi-target task steps; targetStepIndex remains the primary/legacy target
     onFail?: "retry" | "fail"           // FAIL control: retry the preceding task, or fail the run (gate steps; default "fail")
     maxRetries?: number                 // FAIL retry cap, distinct from provider-retry maxRetries (gate steps; default 0)
     attempts?: number                   // FAIL retry count so far (gate steps)
@@ -351,7 +352,8 @@ export type WorkflowRunStep = {
     id?: string                          // stable step identifier when declared
     member?: string
     verifier?: string
-    targetStep?: number                 // one-based display target task step for gate steps
+    targetStep?: number                 // one-based display primary target task step for gate steps
+    targetSteps?: number[]              // one-based display multi-target task steps for gate steps
     verdict?: Verdict
     attempts?: number
     onInvalid?: WorkflowOnInvalid
