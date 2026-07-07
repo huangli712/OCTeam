@@ -1228,6 +1228,27 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("Error: workflow_file \".octeam/workflows/invalid-retry.json\" step 2 max_invalid_retries must be an integer from 0 to 5")
     })
 
+    test("workflow_file invalid timeout fields -> rejected before runtime", async () => {
+        const root = tmpRoot("wf-file-invalid-timeout")
+        const sid = "ses_wf_file_invalid_timeout"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "invalid-timeout.json"), JSON.stringify({
+            steps: [
+                { kind: "task", member: "alice", task: "Plan", timeout_ms: "soon" },
+            ],
+        }))
+
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/invalid-timeout.json" },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: workflow_file \".octeam/workflows/invalid-timeout.json\" step 1 timeout_ms must be an integer >= 1000")
+    })
+
     test("fanout recursive branch step -> rejected", async () => {
         const root = tmpRoot("wf-fanout-recursive")
         const sid = "ses_wf_fanout_recursive"
@@ -1424,6 +1445,42 @@ describe("team_workflow startup validation", () => {
         )
 
         expect(result).toContain("Error: fanout step 2 max_errored must be an integer from 0 to 1")
+    })
+
+    test("workflow on_timeout retry requires max_timeout_retries -> rejected", async () => {
+        const root = tmpRoot("wf-timeout-retry-required")
+        const sid = "ses_wf_timeout_retry_required"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [{ kind: "task", member: "alice", task: "Plan", timeout_ms: 1000, on_timeout: "retry" }],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: step 1 (task) with on_timeout='retry' requires `max_timeout_retries`")
+    })
+
+    test("fanout branch on_timeout retry -> rejected", async () => {
+        const root = tmpRoot("wf-branch-timeout-retry")
+        const sid = "ses_wf_branch_timeout_retry"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    { kind: "fanout", branches: [{ id: "api", steps: [{ kind: "task", member: "bob", task: "Build", timeout_ms: 1000, on_timeout: "retry", max_timeout_retries: 1 }] }] },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 branch \"api\" step 1 must not set on_timeout='retry' or on_timeout='skip'")
     })
 
     test("fanout branch approval controls -> rejected", async () => {

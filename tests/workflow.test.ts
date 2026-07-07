@@ -559,6 +559,7 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
             { startIndex: 2, endIndex: 3 },
             { startIndex: 4, endIndex: 5 },
         ])
+        expect(task.steps?.[0]?.dispatchedAt).toBeNumber()
         expect(task.activeStepIndices).toEqual([0])
 
         // When: processIdle drives both branch chains through task output and gate PASS verdicts.
@@ -1045,6 +1046,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(retryEvent?.stage).toBe(1)
         expect(retryEvent?.detail).toContain("workflow step 2")
         expect(team.activeTask).toBeDefined()
+        expect(task.steps![0].dispatchedAt).toBeNumber()
 
         // alice re-runs the task -> completes again -> advances back to the gate.
         ctx = makeCtx({ ses_alice: "alice's revised output" }, calls)
@@ -1060,6 +1062,31 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         const leaderCall = calls.find(c => c.sessionId === "ses_lead")
         expect(leaderCall).toBeDefined()
         expect(leaderCall!.text).toContain("workflow_failed")
+    })
+
+    test("a gate INVALID with onInvalid='retry_verifier' refreshes the verifier step dispatchedAt on each retry", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "do work", completed: true },
+                { kind: "gate", verifier: "bob", criteria: "passes tests", onFail: "fail", attempts: 0, onInvalid: "retry_verifier", maxInvalidRetries: 1, invalidAttempts: 0, completed: false },
+            ],
+            currentStageIndex: 1,
+            responses: { alice: "alice's work output" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls)
+
+        await processIdle(ctx, team, team.members[1], "ses_bob")
+
+        expect(task.steps![1].invalidAttempts).toBe(1)
+        expect(task.steps![1].dispatchedAt).toBeNumber()
     })
 
     test("a gate verdict that fails to parse -> fails the run as workflow_invalid", async () => {
