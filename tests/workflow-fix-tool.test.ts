@@ -92,6 +92,43 @@ describe("team_fix_workflow", () => {
         expect(check).toEqual({ ok: true })
     })
 
+    test("redispatches an active fanout branch workflow step without touching sibling branches", async () => {
+        // Given
+        const root = tmpRoot("fix-wf-redispatch-branch")
+        const masterSid = "ses_fix_wf_redispatch_branch_master"
+        const aliceSid = "ses_fix_wf_redispatch_branch_alice"
+        const carolSid = "ses_fix_wf_redispatch_branch_carol"
+        tracked.push(masterSid, aliceSid, carolSid)
+        const task = makeWorkflowTask({
+            activeStepIndices: [1, 2],
+            steps: [
+                { kind: "fanout", completed: true, fanout: { branchIds: ["api", "qa"], branchRanges: [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }], joinIndex: 3, maxErrored: 0 } },
+                { kind: "task", member: "alice", task: "api", completed: false, dispatchedAt: 12345, branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 3 } },
+                { kind: "task", member: "carol", task: "qa", completed: false, branch: { fanoutIndex: 0, branchId: "qa", branchIndex: 1, joinIndex: 3 } },
+                { kind: "join", completed: false, join: { fanoutIndex: 0, branchTailIndices: [1, 2], maxErrored: 0 } },
+            ],
+        })
+        await setupTeam(root, masterSid, task, [makeMember("alice", aliceSid), makeMember("carol", carolSid)])
+        const calls: DispatchCall[] = []
+
+        // When
+        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+            { team_id: "alpha", op: "redispatch", step: 2 },
+            makeToolContext(masterSid),
+        )
+
+        // Then
+        expect(result).toContain("redispatched step 2")
+        expect(calls).toContainEqual({ sessionId: aliceSid, text: "api" })
+        expect(calls.some(call => call.sessionId === carolSid)).toBe(false)
+        const after = await loadTeamState(root, "alpha", masterSid)
+        const afterTask = after.activeTask as WorkflowTask
+        expect(afterTask.activeStepIndices).toEqual([1, 2])
+        expect(afterTask.steps?.[2]?.member).toBe("carol")
+        expect(afterTask.steps?.[2]?.completed).toBe(false)
+        expect(checkWorkflowInvariants(afterTask)).toEqual({ ok: true })
+    })
+
     test("skips a wedged workflow step and advances to the next actor", async () => {
         // Given
         const root = tmpRoot("fix-wf-skip")

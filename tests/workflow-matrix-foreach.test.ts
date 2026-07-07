@@ -1,15 +1,40 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
+import { processIdle } from "../src/orchestration/handlers.js"
+import { checkTermination } from "../src/orchestration/termination.js"
 import { teamWorkflowTool } from "../src/tools/workflow.js"
 import { expandMatrixForeachFanout } from "../src/tools/workflow.js"
 import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
-import { initTeamState } from "../src/state/store.js"
+import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { PluginContext } from "../src/core/context.js"
 import type { WorkflowToolStep } from "../src/tools/workflow.js"
 
-function makeCtx(root: string): PluginContext {
-    return { storageRoot: root, scope: "project", directory: root } as unknown as PluginContext
+type DispatchCall = { readonly sessionId: string; readonly text: string }
+
+function makeCtx(root: string, outputs: Record<string, string> = {}, calls: DispatchCall[] = []): PluginContext {
+    return {
+        storageRoot: root,
+        scope: "project",
+        directory: root,
+        client: {
+            session: {
+                messages: async ({ path }: { readonly path: { readonly id: string } }) => {
+                    const text = outputs[path.id] ?? ""
+                    return {
+                        data: [
+                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
+                            ...(text ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }] : []),
+                        ],
+                    }
+                },
+                promptAsync: async (args: { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }) => {
+                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
+                    return { data: {} }
+                },
+            },
+        },
+    } as unknown as PluginContext
 }
 
 const tracked: string[] = []
@@ -140,5 +165,72 @@ describe("team_workflow matrix/foreach startup validation", () => {
         )
 
         expect(result).toContain("Error: fanout step 2 with matrix/foreach requires template `steps`")
+    })
+})
+
+describe("team_workflow matrix/foreach end-to-end execution", () => {
+    test("foreach fanout with required_branches joins after the required branch survives", async () => {
+        // Given: a foreach fanout where api is required and docs is optional.
+        const root = tmpRoot("wf-foreach-required-runtime")
+        const masterSid = "ses_wf_foreach_required_master"
+        const aliceSid = "ses_wf_foreach_required_alice"
+        const apiSid = "ses_wf_foreach_required_api"
+        const docsSid = "ses_wf_foreach_required_docs"
+        const daveSid = "ses_wf_foreach_required_dave"
+        tracked.push(masterSid, aliceSid, apiSid, docsSid, daveSid)
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx(root, {
+            [aliceSid]: "plan output",
+            [apiSid]: "api branch output",
+            [daveSid]: "downstream output",
+        }, calls)
+        await setup(root, masterSid, [
+            makeMember("alice", aliceSid),
+            makeMember("api", apiSid),
+            makeMember("docs", docsSid),
+            makeMember("dave", daveSid),
+        ])
+
+        const result = await teamWorkflowTool(ctx).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        foreach: ["api", "docs"],
+                        as: "area",
+                        join_policy: "required_branches",
+                        required_branches: ["api"],
+                        steps: [{ kind: "task", member: "${area}", task: "Build ${area}" }],
+                    },
+                    { kind: "join" },
+                    { kind: "task", member: "dave", task: "Integrate" },
+                ],
+            },
+            makeToolContext(masterSid),
+        )
+        const team = await loadTeamState(root, "alpha", masterSid)
+        const alice = team.members.find(member => member.name === "alice")
+        const api = team.members.find(member => member.name === "api")
+        const docs = team.members.find(member => member.name === "docs")
+        if (alice === undefined || api === undefined || docs === undefined) throw new Error("Missing workflow member")
+
+        // When: the optional docs branch errors, then the required api branch succeeds.
+        expect(result).toContain("team_workflow started")
+        await processIdle(ctx, team, alice, aliceSid)
+        docs.status = "errored"
+        docs.error = "docs branch failed"
+        await checkTermination(ctx, team)
+        await processIdle(ctx, team, api, apiSid)
+
+        // Then: required_branches allows the join to complete and dispatches the downstream step.
+        if (team.activeTask?.type !== "workflow") throw new Error("Expected live workflow task")
+        const joinStep = team.activeTask.steps?.[4]
+        expect(team.status).not.toBe("failed")
+        expect(joinStep?.completed).toBe(true)
+        expect(joinStep?.join?.erroredBranchIds).toEqual(["docs"])
+        expect(joinStep?.join?.survivorBranchIds).toEqual(["api"])
+        expect(calls.some(call => call.sessionId === daveSid && call.text.includes("Integrate"))).toBe(true)
     })
 })

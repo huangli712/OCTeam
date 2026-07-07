@@ -610,6 +610,112 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         expect(dispatched[0].text).not.toContain("api branch output")
         expect(dispatched.some(d => d.id === "ses_dave")).toBe(false)
     })
+
+    test("captured branch gate PASS with on_pass_goto resumes and jumps within that branch", async () => {
+        // Given: the api branch gate has a captured PASS, while a sibling branch is already complete.
+        const root = tmpRoot("rdb-wf-fanout-branch-goto")
+        const sid = "ses_rdb_wf_fanout_branch_goto"
+        tracked.push(sid)
+        const passVerdict = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
+        const task = makeTask({
+            type: "workflow",
+            steps: [
+                {
+                    kind: "fanout",
+                    completed: true,
+                    fanout: {
+                        branchIds: ["api", "tests"],
+                        branchRanges: [
+                            { startIndex: 1, endIndex: 4 },
+                            { startIndex: 5, endIndex: 5 },
+                        ],
+                        joinIndex: 6,
+                        maxErrored: 0,
+                    },
+                },
+                {
+                    kind: "task",
+                    member: "bob",
+                    task: "build api branch",
+                    completed: true,
+                    output: "api branch output",
+                    branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 6 },
+                },
+                {
+                    kind: "gate",
+                    verifier: "erin",
+                    criteria: "api passes",
+                    onPassGoto: 4,
+                    jumpCount: 0,
+                    completed: false,
+                    branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 6 },
+                },
+                {
+                    kind: "task",
+                    member: "grace",
+                    task: "api intermediate step",
+                    completed: false,
+                    branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 6 },
+                },
+                {
+                    kind: "task",
+                    member: "frank",
+                    task: "api final step",
+                    completed: false,
+                    branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 6 },
+                },
+                {
+                    kind: "task",
+                    member: "carol",
+                    task: "build test branch",
+                    completed: true,
+                    output: "tests branch output",
+                    branch: { fanoutIndex: 0, branchId: "tests", branchIndex: 1, joinIndex: 6 },
+                },
+                {
+                    kind: "join",
+                    completed: false,
+                    join: { fanoutIndex: 0, branchTailIndices: [4, 5], maxErrored: 0 },
+                },
+                { kind: "task", member: "dave", task: "integrate branch results", completed: false },
+            ],
+            currentStageIndex: 2,
+            activeStepIndices: [2],
+            responses: { bob: "api branch output", erin: passVerdict, carol: "tests branch output" },
+        })
+        const team = await setup(root, sid, task, [
+            makeMember("bob", "ses_bob"),
+            makeMember("erin", "ses_erin"),
+            makeMember("grace", "ses_grace"),
+            makeMember("frank", "ses_frank"),
+            makeMember("carol", "ses_carol"),
+            makeMember("dave", "ses_dave"),
+        ])
+
+        const dispatched: { id: string; text: string }[] = []
+        const ctx = makeCtx(root, async req => {
+            dispatched.push({ id: req.path.id, text: req.body.parts[0].text })
+        })
+
+        // When: resume re-drives the captured branch gate verdict.
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!)
+        })
+
+        // Then: the branch-local goto skips the intermediate api task and dispatches only the api final step.
+        const wfTask = team.activeTask as Extract<ActiveTask, { type: "workflow" }>
+        expect(wfTask.steps?.[2].completed).toBe(true)
+        expect(wfTask.steps?.[2].verdict).toBe("PASS")
+        expect(wfTask.steps?.[2].jumpCount).toBe(1)
+        expect(wfTask.steps?.[3].skipped).toBe(true)
+        expect(wfTask.steps?.[6].completed).toBe(false)
+        expect(dispatched.map(d => d.id)).toEqual(["ses_frank"])
+        expect(dispatched[0].text).toContain("api final step")
+        expect(dispatched.some(d => d.id === "ses_grace")).toBe(false)
+        expect(dispatched.some(d => d.id === "ses_carol")).toBe(false)
+        expect(dispatched.some(d => d.id === "ses_dave")).toBe(false)
+        expect(team.activeTask).toBeDefined()
+    })
 })
 
 describe("resumeDispatch: workflow mid-task-step crash", () => {
