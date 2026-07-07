@@ -691,6 +691,83 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("must reference an existing step")
     })
 
+    test("step controls: max_output_bytes on a gate is rejected", async () => {
+        const root = tmpRoot("wf-mob-gate")
+        const sid = "ses_wf_mobg"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "gate", verifier: "bob", criteria: "ok", max_output_bytes: 100 },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("max_output_bytes")
+        expect(result).toContain("task steps")
+    })
+
+    test("step controls: non-positive max_output_bytes is rejected", async () => {
+        const root = tmpRoot("wf-mob-bad")
+        const sid = "ses_wf_mobb"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft", max_output_bytes: 0 },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("max_output_bytes")
+    })
+
+    test("step controls: approval_after is incompatible with on_pass_goto", async () => {
+        const root = tmpRoot("wf-after-goto")
+        const sid = "ses_wf_ag"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "impl" },
+                    { kind: "gate", verifier: "bob", criteria: "ok", on_pass_goto: 1, approval_after: true },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("approval_after")
+        expect(result).toContain("goto")
+    })
+
+    test("step controls: dry_run renders per-step approval and output caps", async () => {
+        const root = tmpRoot("wf-controls-dry")
+        const sid = "ses_wf_cd"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", member: "alice", task: "draft", approval_before: true, max_output_bytes: 512 },
+                    { kind: "gate", verifier: "bob", criteria: "ok", approval_after: true },
+                    { kind: "task", member: "carol", task: "ship" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("approval_before")
+        expect(result).toContain("max_output_bytes=512")
+        expect(result).toContain("approval_after")
+    })
+
     test("conditional jumps: on_invalid_goto incompatible with escalate -> rejected", async () => {
         const root = tmpRoot("wf-goto-escalate")
         const sid = "ses_wf_ge"

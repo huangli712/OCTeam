@@ -932,3 +932,116 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
         expect(aliceCall!.text).toContain("when:has_issue_severity")
     })
 })
+
+describe("handleWorkflowIdle (via processIdle): step-level controls", () => {
+    test("approval_before on a task step pauses before dispatching it", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "step 0", completed: true, output: "done" },
+                { kind: "task", member: "bob", task: "step 1", approvalBefore: true, completed: false },
+            ],
+            currentStageIndex: 0,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({}, calls)
+
+        await advanceWorkflowStep(ctx, team)
+
+        expect(task.approvalStage).toBe(true)
+        expect(task.approvalRequest?.kind).toBe("workflow_step")
+        expect(task.steps![1].approvalBeforeGranted).toBe(true)
+        // bob (step 1) was NOT dispatched yet — paused before dispatch
+        expect(calls.some(c => c.sessionId === "ses_bob")).toBe(false)
+        expect(team.activeTask).toBeDefined()
+    })
+
+    test("approval_before granted flag is consumed once the step is dispatched on resume", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "step 0", completed: true, output: "done" },
+                { kind: "task", member: "bob", task: "step 1", approvalBefore: true, approvalBeforeGranted: true, completed: false },
+            ],
+            currentStageIndex: 0,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({}, calls)
+
+        await advanceWorkflowStep(ctx, team)
+
+        // granted flag set (simulate post-approve) -> dispatch proceeds, no pause
+        expect(task.approvalStage).toBeUndefined()
+        const bobCall = calls.find(c => c.sessionId === "ses_bob")
+        expect(bobCall).toBeDefined()
+        expect(bobCall!.text).toContain("step 1")
+    })
+
+    test("approval_after on a task step pauses after it completes, before advancing", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "step 0", approvalAfter: true, completed: false },
+                { kind: "task", member: "bob", task: "step 1", completed: false },
+            ],
+            currentStageIndex: 0,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({ ses_alice: "alice output" }, calls)
+
+        await processIdle(ctx, team, team.members[0], "ses_alice")
+
+        expect(task.steps![0].completed).toBe(true)
+        expect(task.approvalStage).toBe(true)
+        expect(task.approvalRequest?.kind).toBe("workflow_step")
+        // bob (next step) NOT dispatched yet — paused after step 0
+        expect(calls.some(c => c.sessionId === "ses_bob")).toBe(false)
+        expect(team.activeTask).toBeDefined()
+    })
+
+    test("max_output_bytes truncates the captured task step output", async () => {
+        const calls: DispatchCall[] = []
+        const huge = "x".repeat(5000)
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "step 0", maxOutputBytes: 100, completed: false },
+                { kind: "task", member: "bob", task: "step 1", completed: false },
+            ],
+            currentStageIndex: 0,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({ ses_alice: huge }, calls)
+
+        await processIdle(ctx, team, team.members[0], "ses_alice")
+
+        expect(task.steps![0].completed).toBe(true)
+        const captured = task.steps![0].output ?? ""
+        // truncateOutput keeps head+tail within the byte budget plus a small separator overhead
+        expect(Buffer.byteLength(captured, "utf8")).toBeLessThan(5000)
+        expect(captured).toContain("truncated")
+    })
+})
