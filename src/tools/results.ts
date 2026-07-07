@@ -27,6 +27,14 @@ function workflowTargetLabel(step: WorkflowRunStep): string {
     return step.targetStep === undefined ? "nearest task" : `step ${step.targetStep}`
 }
 
+function workflowVerdictMetrics(step: WorkflowRunStep): string {
+    const metrics: string[] = []
+    if (step.score !== undefined) metrics.push(`score=${step.score}`)
+    if (step.confidence !== undefined) metrics.push(`confidence=${step.confidence}`)
+    if (step.issues !== undefined && step.issues.length > 0) metrics.push(`issues=${step.issues.length}`)
+    return metrics.length > 0 ? ` [${metrics.join(", ")}]` : ""
+}
+
 function formatWorkflowStepLine(step: WorkflowRunStep): string {
     const idTag = step.id ? ` (${step.id})` : ""
     if (step.kind === "task") {
@@ -38,7 +46,7 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
     const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
     const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
     const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
-    return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${attempts}${invalidTag}${jumpTag}`
+    return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${jumpTag}`
 }
 
 function formatRunLine(r: RunRecord): string {

@@ -12,7 +12,8 @@
  *     signal at all (absent tag = solve directly = leaf).
  */
 
-import type { ActiveTask, DecisionRecord, Verdict } from "../core/types.js"
+import type { ActiveTask, DecisionRecord, Verdict, WorkflowIssue } from "../core/types.js"
+import { isWorkflowIssueSeverity } from "../core/workflow-conditions.js"
 
 // Structured, i18n-consistent "no issues" signal for loop read_only stages. A
 // read_only stage emits <no_issues/> (or the Chinese <无问题/>) to declare clean.
@@ -132,7 +133,7 @@ export function parseArbitrationDecision(
  */
 export function parseVerdict(
     rawText: string,
-): { verdict?: Verdict; rationale: string; diff: string; parseFailed?: boolean } {
+): { verdict?: Verdict; rationale: string; diff: string; score?: number; confidence?: number; issues?: WorkflowIssue[]; parseFailed?: boolean } {
     const p = extractTaggedJSON(rawText, "verdict", "判定")
     if (!p) return { rationale: "", diff: "", parseFailed: true }
     const raw = typeof p.result === "string" ? p.result.toUpperCase() : ""
@@ -143,7 +144,23 @@ export function parseVerdict(
         verdict: raw as Verdict,
         rationale: typeof p.rationale === "string" ? p.rationale : "",
         diff: typeof p.diff === "string" ? p.diff : "",
+        score: typeof p.score === "number" && Number.isFinite(p.score) ? p.score : undefined,
+        confidence: typeof p.confidence === "number" && Number.isFinite(p.confidence) ? p.confidence : undefined,
+        issues: parseWorkflowIssues(p.issues),
     }
+}
+
+function parseWorkflowIssues(raw: unknown): WorkflowIssue[] | undefined {
+    if (!Array.isArray(raw)) return undefined
+    const issues: WorkflowIssue[] = []
+    for (const item of raw) {
+        if (typeof item !== "object" || item === null || Array.isArray(item)) continue
+        if (!("severity" in item) || !isWorkflowIssueSeverity(item.severity)) continue
+        const issue: WorkflowIssue = { severity: item.severity }
+        if ("message" in item && typeof item.message === "string") issue.message = item.message
+        issues.push(issue)
+    }
+    return issues.length > 0 ? issues : undefined
 }
 
 /**

@@ -113,6 +113,19 @@ export type ApprovalTimeoutAction = "fail" | "approve" | "reject"
 // tollgate: three-valued verification verdict emitted by a gate's verifier.
 export type Verdict = "PASS" | "FAIL" | "INVALID"
 
+export type WorkflowIssueSeverity = "low" | "medium" | "high" | "critical"
+
+export type WorkflowIssue = {
+    severity: WorkflowIssueSeverity
+    message?: string
+}
+
+export type WorkflowCondition =
+    | { kind: "score_gte"; value: number }
+    | { kind: "score_lt"; value: number }
+    | { kind: "confidence_gte"; value: number }
+    | { kind: "has_issue_severity"; value: WorkflowIssueSeverity }
+
 /**
  * ActiveTask is a discriminated union: a shared ActiveTaskBase plus one
  * variant per OrchestrationType. TS narrows to the variant inside `switch`
@@ -302,12 +315,16 @@ export type WorkflowStep = {
     maxInvalidRetries?: number          // retry_verifier cap for INVALID verdicts (gate steps; default 0)
     invalidAttempts?: number            // retry_verifier attempt count so far (gate steps)
     verdict?: Verdict                   // last verdict rendered (gate steps)
+    score?: number                      // optional structured score from the last verdict (gate steps)
+    confidence?: number                 // optional structured confidence from the last verdict (gate steps)
+    issues?: WorkflowIssue[]            // optional structured issues from the last verdict (gate steps)
     // conditional jumps: verdict-gated goto targets (0-based internal index,
     // resolved at build time from a 1-based number or step id). Omitted = the
     // verdict's default behavior (PASS: advance; FAIL/INVALID: terminate).
     onPassGoto?: number                 // after PASS: jump here instead of advancing linearly
     onFailGoto?: number                 // at a FAIL terminal point (on_fail=fail, or retry exhausted): jump instead of failing
     onInvalidGoto?: number             // at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted): jump instead of terminating. NOT applied to escalate.
+    where?: WorkflowCondition           // optional threshold condition gating on_pass_goto/on_fail_goto
     maxJumps?: number                   // per-gate cap on verdict-driven jumps; default 3, max 10
     jumpCount?: number                  // verdict-driven jumps taken so far at this gate
     output?: string                     // task steps: captured output snapshot at completion time (per-step, NOT overwritten by later steps the same member runs)
@@ -355,6 +372,9 @@ export type WorkflowRunStep = {
     targetStep?: number                 // one-based display primary target task step for gate steps
     targetSteps?: number[]              // one-based display multi-target task steps for gate steps
     verdict?: Verdict
+    score?: number
+    confidence?: number
+    issues?: WorkflowIssue[]
     attempts?: number
     onInvalid?: WorkflowOnInvalid
     invalidAttempts?: number

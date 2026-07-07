@@ -11,10 +11,12 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type { WorkflowStep, WorkflowTask } from "../core/types.js"
+import { formatWorkflowCondition, parseWorkflowCondition } from "../core/workflow-conditions.js"
 import { activationError } from "../core/utils.js"
 import { dispatchToMember } from "../orchestration/dispatch.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, type Team } from "../state/store.js"
+import { loadWorkflowFile } from "./workflow-file.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
@@ -26,7 +28,14 @@ import {
     validateSignoff,
 } from "./shared.js"
 
-type WorkflowToolStep = {
+type WorkflowWhere = {
+    score_gte?: number
+    score_lt?: number
+    confidence_gte?: number
+    has_issue_severity?: "low" | "medium" | "high" | "critical"
+}
+
+export type WorkflowToolStep = {
     kind: "task" | "gate"
     id?: string
     member?: string
@@ -42,16 +51,21 @@ type WorkflowToolStep = {
     on_pass_goto?: number | string
     on_fail_goto?: number | string
     on_invalid_goto?: number | string
+    where?: WorkflowWhere
     max_jumps?: number
 }
 
 type WorkflowToolArgs = {
     team_id: string
-    steps: WorkflowToolStep[]
+    steps?: WorkflowToolStep[]
+    workflow_file?: string
+    vars?: Record<string, string>
     dry_run?: boolean
     signoff_policy?: "none" | "decider" | "peer-quorum"
     signoff_decider?: string
 }
+
+type ResolvedWorkflowToolArgs = WorkflowToolArgs & { steps: WorkflowToolStep[] }
 
 /**
  * Resolve a gate target reference (number 1-based or string step id).
@@ -122,7 +136,7 @@ function resolveGotoIndex(steps: WorkflowToolStep[], gateIndex: number, ref: num
  * no self-verification, cross-kind field separation, retry caps required).
  * Returns a user-facing `Error: ...` string or null when the graph is valid.
  */
-function validateWorkflowGraph(args: WorkflowToolArgs, team: Team): string | null {
+function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): string | null {
     if (args.steps.length === 0) {
         return "Error: steps must contain at least one step"
     }
@@ -144,7 +158,7 @@ function validateWorkflowGraph(args: WorkflowToolArgs, team: Team): string | nul
         const s = args.steps[i]
         const displayStep = i + 1
         if (s.kind === "task") {
-            if (s.verifier !== undefined || s.criteria !== undefined || s.target_step !== undefined || s.targets !== undefined || s.on_fail !== undefined || s.max_retries !== undefined || s.on_invalid !== undefined || s.max_invalid_retries !== undefined) {
+            if (s.verifier !== undefined || s.criteria !== undefined || s.target_step !== undefined || s.targets !== undefined || s.on_fail !== undefined || s.max_retries !== undefined || s.on_invalid !== undefined || s.max_invalid_retries !== undefined || s.where !== undefined) {
                 return `Error: step ${displayStep} (task) must not set gate fields`
             }
             if (!s.member) return `Error: step ${displayStep} (task) requires \`member\``
@@ -171,6 +185,13 @@ function validateWorkflowGraph(args: WorkflowToolArgs, team: Team): string | nul
         }
         if (s.max_jumps !== undefined && (s.max_jumps < 0 || s.max_jumps > 10)) {
             return `Error: step ${displayStep} (gate) max_jumps must be between 0 and 10`
+        }
+        if (s.where !== undefined) {
+            if (s.on_pass_goto === undefined && s.on_fail_goto === undefined) {
+                return `Error: step ${displayStep} (gate) where requires on_pass_goto or on_fail_goto`
+            }
+            const parsed = parseWorkflowCondition(s.where)
+            if ("error" in parsed) return `Error: step ${displayStep} (gate) ${parsed.error}`
         }
         // Conditional-jump goto targets must resolve and must not self-jump.
         for (const [field, ref] of [
@@ -231,11 +252,11 @@ function validateWorkflowGraph(args: WorkflowToolArgs, team: Team): string | nul
     return null
 }
 
-function validateWorkflowArgs(args: WorkflowToolArgs, team: Team): string | null {
+function validateWorkflowArgs(args: ResolvedWorkflowToolArgs, team: Team): string | null {
     return validateWorkflowGraph(args, team)
 }
 
-function stepTargetLabel(args: WorkflowToolArgs, gateIndex: number): string {
+function stepTargetLabel(args: ResolvedWorkflowToolArgs, gateIndex: number): string {
     const targetIndices = resolveGateTargetIndices(args.steps, gateIndex)
     if (targetIndices.length === 0) return "?"
     const labels = targetIndices.map(targetIndex => {
@@ -247,7 +268,13 @@ function stepTargetLabel(args: WorkflowToolArgs, gateIndex: number): string {
     return labels.length === 1 ? `step ${first}` : `steps ${labels.join(", ")}`
 }
 
-function formatWorkflowDryRun(args: WorkflowToolArgs): string {
+function whereLabel(where: WorkflowWhere | undefined): string {
+    if (where === undefined) return ""
+    const parsed = parseWorkflowCondition(where)
+    return "condition" in parsed ? ` when ${formatWorkflowCondition(parsed.condition)}` : ""
+}
+
+function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
     const lines = [`Workflow dry run for "${args.team_id}" (${args.steps.length} step(s)):`]
     for (let i = 0; i < args.steps.length; i++) {
         const step = args.steps[i]
@@ -261,14 +288,37 @@ function formatWorkflowDryRun(args: WorkflowToolArgs): string {
                 ? `; on_invalid=${step.on_invalid}${step.on_invalid === "retry_verifier" ? ` max_invalid_retries=${step.max_invalid_retries}` : ""}`
                 : ""
             const jumps: string[] = []
-            if (step.on_pass_goto !== undefined) jumps.push(`on_pass->${gotoRefLabel(args.steps, i, step.on_pass_goto)}`)
-            if (step.on_fail_goto !== undefined) jumps.push(`on_fail->${gotoRefLabel(args.steps, i, step.on_fail_goto)}`)
+            const where = whereLabel(step.where)
+            if (step.on_pass_goto !== undefined) jumps.push(`on_pass->${gotoRefLabel(args.steps, i, step.on_pass_goto)}${where}`)
+            if (step.on_fail_goto !== undefined) jumps.push(`on_fail->${gotoRefLabel(args.steps, i, step.on_fail_goto)}${where}`)
             if (step.on_invalid_goto !== undefined) jumps.push(`on_invalid->${gotoRefLabel(args.steps, i, step.on_invalid_goto)}`)
             const jumpTag = jumps.length > 0 ? `; ${jumps.join(" ")} (max_jumps=${step.max_jumps ?? 3})` : ""
             lines.push(`${i + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target}: ${step.criteria ?? ""}${retry}${invalid}${jumpTag}`)
         }
     }
     return lines.join("\n")
+}
+
+function hasInlineSteps(args: WorkflowToolArgs): boolean {
+    return args.steps !== undefined
+}
+
+function validateWorkflowSource(args: WorkflowToolArgs): string | null {
+    if (hasInlineSteps(args) === (args.workflow_file !== undefined)) {
+        return "Error: team_workflow must set exactly one of steps or workflow_file"
+    }
+    if (args.steps !== undefined && args.steps.length === 0) return "Error: steps must contain at least one step"
+    return null
+}
+
+async function resolveWorkflowArgs(ctx: PluginContext, args: WorkflowToolArgs): Promise<ResolvedWorkflowToolArgs | string> {
+    const sourceError = validateWorkflowSource(args)
+    if (sourceError) return sourceError
+    if (args.steps !== undefined) return { ...args, steps: args.steps }
+    if (args.workflow_file === undefined) return "Error: team_workflow must set exactly one of steps or workflow_file"
+    const loaded = await loadWorkflowFile(ctx.directory, args.workflow_file, args.vars ?? {})
+    if ("error" in loaded) return loaded.error
+    return { ...args, steps: loaded.steps }
 }
 
 function gotoRefLabel(steps: WorkflowToolStep[], gateIndex: number, ref: number | string): string {
@@ -303,11 +353,20 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                         on_pass_goto: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: step to jump to after PASS (1-based number or step id) instead of advancing linearly. Enables skip / redo paths."),
                         on_fail_goto: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: step to jump to at a FAIL terminal point (on_fail=fail, or retry exhausted) instead of failing the run."),
                         on_invalid_goto: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: step to jump to at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted). Incompatible with on_invalid='escalate'."),
+                        where: tool.schema.object({
+                            score_gte: tool.schema.number().optional(),
+                            score_lt: tool.schema.number().optional(),
+                            confidence_gte: tool.schema.number().optional(),
+                            has_issue_severity: tool.schema.enum(["low", "medium", "high", "critical"]).optional(),
+                        }).optional().describe("gate steps: optional threshold condition gating on_pass_goto/on_fail_goto. Exactly one condition key is allowed."),
                         max_jumps: tool.schema.number().int().min(0).max(10).optional().describe("gate steps: per-gate cap on verdict-driven jumps. Default 3. Terminates as workflow_failed:jump_limit when exceeded."),
                     }),
                 )
                 .min(1)
+                .optional()
                 .describe("ordered workflow steps; the first step must be a `task` (a gate verifies a preceding task)"),
+            workflow_file: tool.schema.string().min(1).optional().describe("relative path to a JSON workflow file under the workspace; mutually exclusive with steps"),
+            vars: tool.schema.record(tool.schema.string(), tool.schema.string()).optional().describe("template variables for workflow_file string values, referenced as ${name}"),
             dry_run: tool.schema.boolean().optional().describe("Validate and render the 1-based workflow step ledger without starting orchestration"),
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
@@ -316,26 +375,29 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
         },
         async execute(args, context) {
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
+            if (!caller?.isMaster) return "Error: team_workflow is master-only"
+            const resolvedArgs = await resolveWorkflowArgs(ctx, args)
+            if (typeof resolvedArgs === "string") return resolvedArgs
             if (args.dry_run) {
-                const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
-                if (!caller?.isMaster) return "Error: team_workflow is master-only"
                 const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
                 const gate = activationError(team.teamName, team.activatedAt)
                 if (gate) return gate
-                const validationError = validateWorkflowArgs(args, team)
+                const validationError = validateWorkflowArgs(resolvedArgs, team)
                 if (validationError) return validationError
-                return formatWorkflowDryRun(args)
+                return formatWorkflowDryRun(resolvedArgs)
             }
             return startOrchestration(
                 args.team_id, context, ctx, "team_workflow",
                 // validate
                 (team) => {
-                    return validateWorkflowArgs(args, team)
+                    return validateWorkflowArgs(resolvedArgs, team)
                 },
                 // buildTask
                 async (team) => {
-                    const steps: WorkflowStep[] = args.steps.map((s, index) => {
-                        const targetIndices = s.kind === "gate" ? resolveGateTargetIndices(args.steps, index) : []
+                    const steps: WorkflowStep[] = resolvedArgs.steps.map((s, index) => {
+                        const targetIndices = s.kind === "gate" ? resolveGateTargetIndices(resolvedArgs.steps, index) : []
+                        const where = s.kind === "gate" && s.where !== undefined ? parseWorkflowCondition(s.where) : undefined
                         return {
                             kind: s.kind,
                             id: s.id,
@@ -351,9 +413,10 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                             onInvalid: s.kind === "gate" ? (s.on_invalid ?? "fail") : undefined,
                             maxInvalidRetries: s.kind === "gate" ? s.max_invalid_retries : undefined,
                             invalidAttempts: 0,
-                            onPassGoto: s.kind === "gate" ? resolveGotoIndex(args.steps, index, s.on_pass_goto) : undefined,
-                            onFailGoto: s.kind === "gate" ? resolveGotoIndex(args.steps, index, s.on_fail_goto) : undefined,
-                            onInvalidGoto: s.kind === "gate" ? resolveGotoIndex(args.steps, index, s.on_invalid_goto) : undefined,
+                            onPassGoto: s.kind === "gate" ? resolveGotoIndex(resolvedArgs.steps, index, s.on_pass_goto) : undefined,
+                            onFailGoto: s.kind === "gate" ? resolveGotoIndex(resolvedArgs.steps, index, s.on_fail_goto) : undefined,
+                            onInvalidGoto: s.kind === "gate" ? resolveGotoIndex(resolvedArgs.steps, index, s.on_invalid_goto) : undefined,
+                            where: where !== undefined && "condition" in where ? where.condition : undefined,
                             maxJumps: s.kind === "gate" ? s.max_jumps : undefined,
                             jumpCount: 0,
                             completed: false,
@@ -379,7 +442,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                     await dispatchToMember(ctx, first, step.task, first.worktreePath ?? ctx.directory, team)
                 },
                 // successMessage
-                () => `team_workflow started on "${args.team_id}" with ${args.steps.length} step(s).`,
+                () => `team_workflow started on "${args.team_id}" with ${resolvedArgs.steps.length} step(s).`,
             )
         },
     })

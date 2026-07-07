@@ -264,6 +264,14 @@ function workflowTargetLabel(s: WorkflowStep): string {
     return s.targetStepIndex === undefined ? "nearest task" : `step ${s.targetStepIndex + 1}`
 }
 
+function workflowVerdictMetrics(s: WorkflowStep): string {
+    const metrics: string[] = []
+    if (s.score !== undefined) metrics.push(`score=${s.score}`)
+    if (s.confidence !== undefined) metrics.push(`confidence=${s.confidence}`)
+    if (s.issues !== undefined && s.issues.length > 0) metrics.push(`issues=${s.issues.length}`)
+    return metrics.length > 0 ? ` [${metrics.join(", ")}]` : ""
+}
+
 function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head: string): string {
     const steps = task.steps ?? []
     const rows = steps.map((s, i) => {
@@ -275,7 +283,7 @@ function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head
         const target = workflowTargetLabel(s)
         const invalidTag = s.onInvalid && s.onInvalid !== "fail" ? `, on_invalid=${s.onInvalid}${(s.invalidAttempts ?? 0) > 0 ? ` (${s.invalidAttempts})` : ""}` : ""
         const jumpTag = (s.jumpCount ?? 0) > 0 ? `, jumps=${s.jumpCount}` : ""
-        return `${i + 1}. [gate]${idTag} ${s.verifier ?? "?"} verifies ${target} -> ${s.verdict ?? "pending"}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}${invalidTag}${jumpTag}`
+        return `${i + 1}. [gate]${idTag} ${s.verifier ?? "?"} verifies ${target} -> ${s.verdict ?? "pending"}${workflowVerdictMetrics(s)}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}${invalidTag}${jumpTag}`
     })
     const outputs = steps
         .map((s, i) => {

@@ -25,6 +25,7 @@
 import type { PluginContext } from "../core/context.js"
 import { type Team, saveTeamState } from "../state/store.js"
 import type { MemberState, Verdict, WorkflowStep, WorkflowTask } from "../core/types.js"
+import { matchesWorkflowCondition } from "../core/workflow-conditions.js"
 import { dispatchToMember } from "./dispatch.js"
 import { finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
@@ -146,6 +147,20 @@ function buildJumpContext(transition: WorkflowJumpTransition): string {
     if (transition.rationale !== undefined) lines.push(`Rationale: ${transition.rationale}`)
     if (transition.diff !== undefined) lines.push(`Diff: ${transition.diff}`)
     return lines.join("\n")
+}
+
+function gatedGotoIndex(step: WorkflowStep, gotoIndex: number | undefined): number {
+    if (gotoIndex === undefined || gotoIndex < 0) return -1
+    if (step.where === undefined) return gotoIndex
+    return matchesWorkflowCondition(step.where, {
+        score: step.score,
+        confidence: step.confidence,
+        issues: step.issues,
+    }) ? gotoIndex : -1
+}
+
+function whereReason(step: WorkflowStep, fallback: string): string {
+    return step.where === undefined ? fallback : `when:${step.where.kind}`
 }
 
 function hasLiveSession(member: MemberState | undefined): member is MemberState & { sessionId: string } {
@@ -367,6 +382,9 @@ export async function handleWorkflowIdle(
         return
     }
     step.verdict = v.verdict
+    step.score = v.score
+    step.confidence = v.confidence
+    step.issues = v.issues
 
     if (v.verdict === "INVALID") {
         await handleInvalidVerdict(ctx, team, step, "INVALID", v.rationale, v.diff)
@@ -375,7 +393,7 @@ export async function handleWorkflowIdle(
 
     if (v.verdict === "PASS") {
         step.completed = true
-        const gotoIdx = step.onPassGoto ?? -1
+        const gotoIdx = gatedGotoIndex(step, step.onPassGoto)
         const nextIndex = gotoIdx >= 0 ? gotoIdx : steps.findIndex(s => !s.completed)
         if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
@@ -385,7 +403,7 @@ export async function handleWorkflowIdle(
             return
         }
         if (gotoIdx >= 0) {
-            await gotoWorkflowStep(ctx, team, task.currentStageIndex, gotoIdx, { reason: "on_pass", verdict: "PASS", rationale: v.rationale, diff: v.diff })
+            await gotoWorkflowStep(ctx, team, task.currentStageIndex, gotoIdx, { reason: whereReason(step, "on_pass"), verdict: "PASS", rationale: v.rationale, diff: v.diff })
             return
         }
         await advanceWorkflowStep(ctx, team)
@@ -395,9 +413,9 @@ export async function handleWorkflowIdle(
     // v.verdict === "FAIL"
     const onFail = step.onFail ?? "fail"
     if (onFail === "fail") {
-        const failGoto = step.onFailGoto ?? -1
+        const failGoto = gatedGotoIndex(step, step.onFailGoto)
         if (failGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, { reason: "on_fail", verdict: "FAIL", rationale: v.rationale, diff: v.diff })
+            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, { reason: whereReason(step, "on_fail"), verdict: "FAIL", rationale: v.rationale, diff: v.diff })
             return
         }
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
@@ -407,9 +425,9 @@ export async function handleWorkflowIdle(
     step.attempts = (step.attempts ?? 0) + 1
     const maxR = step.maxRetries ?? 0
     if (step.attempts > maxR) {
-        const failGoto = step.onFailGoto ?? -1
+        const failGoto = gatedGotoIndex(step, step.onFailGoto)
         if (failGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, { reason: "on_fail_retry_exhausted", verdict: "FAIL", rationale: v.rationale, diff: v.diff })
+            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, { reason: whereReason(step, "on_fail_retry_exhausted"), verdict: "FAIL", rationale: v.rationale, diff: v.diff })
             return
         }
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
