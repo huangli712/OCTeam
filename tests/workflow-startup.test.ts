@@ -1394,6 +1394,88 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("Error: fanout step 2 uses member \"bob\" in concurrent branches \"api\" and \"qa\"")
     })
 
+    test("fanout join_policy='quorum' without quorum -> rejected", async () => {
+        const root = tmpRoot("wf-quorum-no-q")
+        const sid = "ses_wf_quorum_no_q"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        join_policy: "quorum",
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] },
+                            { id: "qa", steps: [{ kind: "task", member: "carol", task: "Test" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 join_policy='quorum' requires `quorum`")
+    })
+
+    test("fanout join_policy='required_branches' with unknown branch -> rejected", async () => {
+        const root = tmpRoot("wf-required-unknown")
+        const sid = "ses_wf_required_unknown"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        join_policy: "required_branches",
+                        required_branches: ["missing"],
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] },
+                            { id: "qa", steps: [{ kind: "task", member: "carol", task: "Test" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 required_branches references unknown branch \"missing\"")
+    })
+
+    test("fanout join_policy='reduce' without reducer_member -> rejected", async () => {
+        const root = tmpRoot("wf-reduce-no-red")
+        const sid = "ses_wf_reduce_no_red"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        join_policy: "reduce",
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] },
+                            { id: "qa", steps: [{ kind: "task", member: "carol", task: "Test" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 join_policy='reduce' requires `reducer_member`")
+    })
+
     test("fanout same gate verifier across concurrent branches -> rejected", async () => {
         const root = tmpRoot("wf-fanout-same-verifier")
         const sid = "ses_wf_fanout_same_verifier"

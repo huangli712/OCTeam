@@ -382,4 +382,82 @@ describe("team_fix_workflow", () => {
         // Then
         expect(result).toContain("active task is not a workflow")
     })
+
+    test("reassign swaps an active step's actor to another live member and redispatches", async () => {
+        // Given
+        const root = tmpRoot("fix-wf-reassign")
+        const masterSid = "ses_fix_wf_reassign_master"
+        const aliceSid = "ses_fix_wf_reassign_alice"
+        const bobSid = "ses_fix_wf_reassign_bob"
+        tracked.push(masterSid, aliceSid, bobSid)
+        const task = makeWorkflowTask({
+            activeStepIndices: [0],
+            steps: [{ kind: "task", member: "alice", task: "do work", completed: false }],
+        })
+        await setupTeam(root, masterSid, task, [makeMember("alice", aliceSid), makeMember("bob", bobSid)])
+        const calls: DispatchCall[] = []
+
+        // When
+        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+            { team_id: "alpha", op: "reassign", step: 1, to_member: "bob" },
+            makeToolContext(masterSid),
+        )
+
+        // Then
+        expect(result).toContain("reassigned step 1 to \"bob\"")
+        const after = await loadTeamState(root, "alpha", masterSid)
+        const afterTask = after.activeTask as WorkflowTask
+        expect(afterTask.steps?.[0]?.member).toBe("bob")
+        expect(calls.some(call => call.sessionId === bobSid && call.text.includes("do work"))).toBe(true)
+        expect(checkWorkflowInvariants(afterTask)).toEqual({ ok: true })
+    })
+
+    test("reassign rejects when to_member is already active in a sibling fanout branch", async () => {
+        // Given
+        const root = tmpRoot("fix-wf-reassign-conflict")
+        const masterSid = "ses_fix_wf_reassign_conflict_master"
+        tracked.push(masterSid)
+        const task = makeWorkflowTask({
+            activeStepIndices: [1, 2],
+            steps: [
+                { kind: "fanout", completed: true, fanout: { branchIds: ["api", "qa"], branchRanges: [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }], joinIndex: 3, maxErrored: 0 } },
+                { kind: "task", member: "alice", task: "api", completed: false, branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 3 } },
+                { kind: "task", member: "carol", task: "qa", completed: false, branch: { fanoutIndex: 0, branchId: "qa", branchIndex: 1, joinIndex: 3 } },
+                { kind: "join", completed: false, join: { fanoutIndex: 0, branchTailIndices: [1, 2], maxErrored: 0 } },
+            ],
+        })
+        await setupTeam(root, masterSid, task, [
+            makeMember("alice", "ses_a"), makeMember("carol", "ses_c"), makeMember("bob", "ses_b"),
+        ])
+
+        // When: try to reassign api branch (step 2, index 1) to carol, who is active in qa.
+        const result = await teamFixWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", op: "reassign", step: 2, to_member: "carol" },
+            makeToolContext(masterSid),
+        )
+
+        // Then
+        expect(result).toContain("Error: \"carol\" is already active in branch \"qa\"")
+    })
+
+    test("reassign rejects a non-member target", async () => {
+        // Given
+        const root = tmpRoot("fix-wf-reassign-nonmember")
+        const masterSid = "ses_fix_wf_reassign_nm_master"
+        tracked.push(masterSid)
+        const task = makeWorkflowTask({
+            activeStepIndices: [0],
+            steps: [{ kind: "task", member: "alice", task: "do work", completed: false }],
+        })
+        await setupTeam(root, masterSid, task, [makeMember("alice", "ses_a")])
+
+        // When
+        const result = await teamFixWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", op: "reassign", step: 1, to_member: "ghost" },
+            makeToolContext(masterSid),
+        )
+
+        // Then
+        expect(result).toContain("Error: \"ghost\" is not a team member")
+    })
 })
