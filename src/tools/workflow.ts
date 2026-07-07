@@ -14,6 +14,7 @@ import type { WorkflowStep, WorkflowTask } from "../core/types.js"
 import { formatWorkflowCondition, parseWorkflowCondition } from "../core/workflow-conditions.js"
 import { activationError } from "../core/utils.js"
 import { dispatchToMember } from "../orchestration/dispatch.js"
+import { maybePauseBeforeWorkflowStep } from "../orchestration/workflow.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, type Team } from "../state/store.js"
 import { loadWorkflowFile } from "./workflow-file.js"
@@ -52,6 +53,9 @@ export type WorkflowToolStep = {
     on_fail_goto?: number | string
     on_invalid_goto?: number | string
     where?: WorkflowWhere
+    approval_before?: boolean
+    approval_after?: boolean
+    max_output_bytes?: number
     max_jumps?: number
 }
 
@@ -163,6 +167,9 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
             }
             if (!s.member) return `Error: step ${displayStep} (task) requires \`member\``
             if (!s.task) return `Error: step ${displayStep} (task) requires \`task\``
+            if (s.max_output_bytes !== undefined && (!Number.isInteger(s.max_output_bytes) || s.max_output_bytes <= 0)) {
+                return `Error: step ${displayStep} (task) max_output_bytes must be a positive integer`
+            }
             if (!team.members.some(m => m.name === s.member)) {
                 return `Error: unknown member "${s.member}" in step ${displayStep}`
             }
@@ -171,6 +178,9 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
 
         if (s.member !== undefined || s.task !== undefined) {
             return `Error: step ${displayStep} (gate) must not set task fields`
+        }
+        if (s.max_output_bytes !== undefined) {
+            return `Error: step ${displayStep} (gate) must not set max_output_bytes (task steps only)`
         }
         if (!s.verifier) return `Error: step ${displayStep} (gate) requires \`verifier\``
         if (!s.criteria) return `Error: step ${displayStep} (gate) requires \`criteria\``
@@ -207,6 +217,9 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
             if (s.on_invalid === "escalate" && field === "on_invalid_goto") {
                 return `Error: step ${displayStep} (gate) on_invalid_goto is incompatible with on_invalid='escalate' (escalate uses approve/reject)`
             }
+        }
+        if (s.approval_after !== undefined && s.approval_after && (s.on_pass_goto !== undefined || s.on_fail_goto !== undefined || s.on_invalid_goto !== undefined)) {
+            return `Error: step ${displayStep} (gate) approval_after is incompatible with on_pass_goto/on_fail_goto/on_invalid_goto (team_approve calls advance, which cannot honor a goto jump)`
         }
         const targetIndices: number[] = []
         if (s.targets !== undefined) {
@@ -280,8 +293,17 @@ function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
         const step = args.steps[i]
         const idTag = step.id ? ` (${step.id})` : ""
         if (step.kind === "task") {
-            lines.push(`${i + 1}. [task]${idTag} ${step.member ?? "?"}: ${step.task ?? ""}`)
+            const controls: string[] = []
+            if (step.approval_before) controls.push("approval_before")
+            if (step.approval_after) controls.push("approval_after")
+            if (step.max_output_bytes !== undefined) controls.push(`max_output_bytes=${step.max_output_bytes}`)
+            const ctrlTag = controls.length > 0 ? `  [${controls.join(", ")}]` : ""
+            lines.push(`${i + 1}. [task]${idTag} ${step.member ?? "?"}: ${step.task ?? ""}${ctrlTag}`)
         } else {
+            const controls: string[] = []
+            if (step.approval_before) controls.push("approval_before")
+            if (step.approval_after) controls.push("approval_after")
+            const ctrlTag = controls.length > 0 ? `  [${controls.join(", ")}]` : ""
             const target = stepTargetLabel(args, i)
             const retry = step.on_fail === "retry" ? `; on_fail=retry max_retries=${step.max_retries}` : ""
             const invalid = step.on_invalid && step.on_invalid !== "fail"
@@ -293,7 +315,7 @@ function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
             if (step.on_fail_goto !== undefined) jumps.push(`on_fail->${gotoRefLabel(args.steps, i, step.on_fail_goto)}${where}`)
             if (step.on_invalid_goto !== undefined) jumps.push(`on_invalid->${gotoRefLabel(args.steps, i, step.on_invalid_goto)}`)
             const jumpTag = jumps.length > 0 ? `; ${jumps.join(" ")} (max_jumps=${step.max_jumps ?? 3})` : ""
-            lines.push(`${i + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target}: ${step.criteria ?? ""}${retry}${invalid}${jumpTag}`)
+            lines.push(`${i + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target}: ${step.criteria ?? ""}${retry}${invalid}${jumpTag}${ctrlTag}`)
         }
     }
     return lines.join("\n")
@@ -359,6 +381,9 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                             confidence_gte: tool.schema.number().optional(),
                             has_issue_severity: tool.schema.enum(["low", "medium", "high", "critical"]).optional(),
                         }).optional().describe("gate steps: optional threshold condition gating on_pass_goto/on_fail_goto. Exactly one condition key is allowed."),
+                        approval_before: tool.schema.boolean().optional().describe("task/gate steps: pause for team_approve before dispatching this step. Per-step override of the task-global human_approval flag."),
+                        approval_after: tool.schema.boolean().optional().describe("task/gate steps: pause for team_approve after this step completes, before advancing. On gates, incompatible with on_*_goto (team_approve calls advance, not a goto jump)."),
+                        max_output_bytes: tool.schema.number().int().min(1).optional().describe("task steps: cap the captured output snapshot to N UTF-8 bytes (head+tail preserved). Gate steps may not set this."),
                         max_jumps: tool.schema.number().int().min(0).max(10).optional().describe("gate steps: per-gate cap on verdict-driven jumps. Default 3. Terminates as workflow_failed:jump_limit when exceeded."),
                     }),
                 )
@@ -417,6 +442,9 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                             onFailGoto: s.kind === "gate" ? resolveGotoIndex(resolvedArgs.steps, index, s.on_fail_goto) : undefined,
                             onInvalidGoto: s.kind === "gate" ? resolveGotoIndex(resolvedArgs.steps, index, s.on_invalid_goto) : undefined,
                             where: where !== undefined && "condition" in where ? where.condition : undefined,
+                            approvalBefore: s.approval_before,
+                            approvalAfter: s.approval_after,
+                            maxOutputBytes: s.kind === "task" ? s.max_output_bytes : undefined,
                             maxJumps: s.kind === "gate" ? s.max_jumps : undefined,
                             jumpCount: 0,
                             completed: false,
@@ -437,6 +465,12 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                     if (task.type !== "workflow") return
                     const step = task.steps?.[0]
                     if (!step || step.kind !== "task" || !step.member || !step.task) throw new Error("workflow initial step is invalid")
+                    // Per-step approval_before on the very first step: pause
+                    // before the initial dispatch (advanceWorkflowStep cannot
+                    // run here because activeTask was just committed; the pause
+                    // resume path goes through team_approve -> advanceWorkflowStep
+                    // which finds step 0 still incomplete and dispatches it).
+                    if (await maybePauseBeforeWorkflowStep(ctx, team, 0)) return
                     const first = team.members.find(m => m.name === step.member && !m.isMaster)
                     if (!first?.sessionId || first.status === "errored") throw new Error(`workflow initial member "${step.member}" has no live session`)
                     await dispatchToMember(ctx, first, step.task, first.worktreePath ?? ctx.directory, team)

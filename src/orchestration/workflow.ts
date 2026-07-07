@@ -250,6 +250,10 @@ async function dispatchTaskStep(
     if (!step || step.kind !== "task" || !step.member || !step.task) return false
     const member = team.members.find(m => m.name === step.member && !m.isMaster)
     if (!hasLiveSession(member)) return false
+    // Consume the per-step approval_before grant now that dispatch is actually
+    // happening (re-entry via retry/goto re-requests approval because the reset
+    // loops clear approvalBeforeGranted).
+    step.approvalBeforeGranted = undefined
     const upstream = buildWorkflowUpstream(task.steps ?? [], index)
     const text = upstream ? `${upstream}\n\n[Your task]\n${step.task}` : step.task
     await dispatchToMember(ctx, member, contextPrefix ? `${contextPrefix}\n\n${text}` : text, member.worktreePath ?? ctx.directory, team)
@@ -269,6 +273,7 @@ async function dispatchGateStep(
     if (!hasLiveSession(verifier)) return false
     const targetIndices = gateTargetIndices(task.steps ?? [], index)
     if (targetIndices.length === 0) return false
+    step.approvalBeforeGranted = undefined
     const producerOutput = buildGateProducerOutput(task.steps ?? [], targetIndices)
     await dispatchToMember(
         ctx,
@@ -278,6 +283,63 @@ async function dispatchGateStep(
         team,
     )
     return true
+}
+
+/**
+ * Per-step approval_before: if the step declares it and the current instance
+ * has not yet been granted, force an HITL pause (bypassing the task-global
+ * humanApproval flag). Sets approvalBeforeGranted so the post-approve
+ * advanceWorkflowStep dispatches instead of re-pausing. Returns true when the
+ * step is paused (caller must NOT dispatch).
+ */
+export async function maybePauseBeforeWorkflowStep(
+    ctx: PluginContext,
+    team: Team,
+    index: number,
+): Promise<boolean> {
+    const task = team.activeTask
+    if (!task || task.type !== "workflow") return false
+    const step = task.steps?.[index]
+    if (!step || !step.approvalBefore || step.approvalBeforeGranted) return false
+    step.approvalBeforeGranted = true
+    const paused = await forceApprovalRequest(ctx, team, {
+        kind: "workflow_step",
+        stage: index,
+        summary: `Before ${describeStep(step, index)}. Approve to dispatch this step; reject to fail the run as workflow_human_rejected.`,
+    })
+    if (paused) {
+        await saveTeamState(team)
+        return true
+    }
+    // No escalation handler available -> clear the grant and fall through to dispatch.
+    step.approvalBeforeGranted = undefined
+    return false
+}
+
+/**
+ * Per-step approval_after: if the just-completed step declares it, force an
+ * HITL pause before the workflow advances. team_approve resumes via
+ * advanceWorkflowStep. Returns true when paused (caller must NOT advance).
+ */
+async function maybePauseAfterWorkflowStep(
+    ctx: PluginContext,
+    team: Team,
+    index: number,
+): Promise<boolean> {
+    const task = team.activeTask
+    if (!task || task.type !== "workflow") return false
+    const step = task.steps?.[index]
+    if (!step || !step.approvalAfter) return false
+    const paused = await forceApprovalRequest(ctx, team, {
+        kind: "workflow_step",
+        stage: index,
+        summary: `After ${describeStep(step, index)}. Approve to continue; reject to fail the run as workflow_human_rejected.`,
+    })
+    if (paused) {
+        await saveTeamState(team)
+        return true
+    }
+    return false
 }
 
 /**
@@ -329,6 +391,7 @@ async function gotoWorkflowStep(
             if (!s) continue
             s.completed = false
             s.skipped = false
+            s.approvalBeforeGranted = undefined
             if (s.kind === "task") s.output = undefined
             if (s.kind === "gate") {
                 s.verdict = undefined
@@ -351,6 +414,7 @@ async function gotoWorkflowStep(
     })
 
     task.currentStageIndex = targetIndex
+    if (await maybePauseBeforeWorkflowStep(ctx, team, targetIndex)) return true
     const dispatched = target.kind === "task"
         ? await dispatchTaskStep(ctx, team, task, targetIndex, buildJumpContext(transition))
         : await dispatchGateStep(ctx, team, task, targetIndex)
@@ -383,6 +447,7 @@ export async function advanceWorkflowStep(ctx: PluginContext, team: Team): Promi
     task.currentStageIndex = nextIndex
     const step = steps[nextIndex]
     if (!step) return
+    if (await maybePauseBeforeWorkflowStep(ctx, team, nextIndex)) return
     const dispatched = step.kind === "task"
         ? await dispatchTaskStep(ctx, team, task, nextIndex)
         : await dispatchGateStep(ctx, team, task, nextIndex)
@@ -413,8 +478,12 @@ export async function handleWorkflowIdle(
 
     if (step.kind === "task") {
         if (member.name !== step.member) return              // stray idle
-        step.output = task.responses[member.name] ?? ""
+        const raw = task.responses[member.name] ?? ""
+        // Per-step output cap on the captured snapshot only — the full output
+        // is still persisted to runs/<runId>/<member>.md by captureMemberOutput.
+        step.output = step.maxOutputBytes !== undefined ? truncateOutput(raw, step.maxOutputBytes) : raw
         step.completed = true
+        if (await maybePauseAfterWorkflowStep(ctx, team, task.currentStageIndex)) return
         const nextIndex = steps.findIndex(s => !s.completed)
         if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
@@ -454,6 +523,9 @@ export async function handleWorkflowIdle(
 
     if (v.verdict === "PASS") {
         step.completed = true
+        // approval_after on a gate is validator-guaranteed incompatible with
+        // on_*_goto, so pausing here cannot be bypassed by a goto jump.
+        if (await maybePauseAfterWorkflowStep(ctx, team, task.currentStageIndex)) return
         const gotoIdx = gatedGotoIndex(step, step.onPassGoto)
         const nextIndex = gotoIdx >= 0 ? gotoIdx : steps.findIndex(s => !s.completed)
         if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
@@ -505,6 +577,7 @@ export async function handleWorkflowIdle(
         const retryStep = steps[i]
         if (!retryStep) continue
         retryStep.completed = false
+        retryStep.approvalBeforeGranted = undefined
         if (retryStep.kind === "task") retryStep.output = undefined
         if (retryStep.kind === "gate") {
             retryStep.verdict = undefined

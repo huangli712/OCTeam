@@ -328,6 +328,12 @@ export type WorkflowStep = {
     maxJumps?: number                   // per-gate cap on verdict-driven jumps; default 3, max 10
     jumpCount?: number                  // verdict-driven jumps taken so far at this gate
     output?: string                     // task steps: captured output snapshot at completion time (per-step, NOT overwritten by later steps the same member runs)
+    // step-level controls (workflow P1+): per-step HITL pauses and output cap,
+    // overriding/complementing the task-global humanApproval flag.
+    approvalBefore?: boolean            // pause for team_approve before dispatching this step
+    approvalAfter?: boolean             // pause for team_approve after this step completes, before advancing
+    approvalBeforeGranted?: boolean     // transient: approval_before was requested for the current step instance; consumed on dispatch, reset on re-entry (retry/goto-back)
+    maxOutputBytes?: number             // task steps: cap the captured output snapshot to N UTF-8 bytes (head+tail preserved)
     // shared
     completed: boolean                  // true when the step is done (task produced; gate PASS; or skipped by a forward jump)
     skipped?: boolean                   // true when a forward jump marked this step as skipped (not run)
