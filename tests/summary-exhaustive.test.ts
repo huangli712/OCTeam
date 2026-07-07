@@ -184,4 +184,101 @@ describe("buildSummary: workflow case", () => {
         expect(summary).toContain("1. [task] alice")
         expect(summary).not.toContain("### Step")
     })
+
+    test("renders fanout branch outputs grouped under the fanout", async () => {
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "lead", task: "setup", completed: true, output: "setup output" },
+                {
+                    kind: "fanout",
+                    completed: true,
+                    fanout: {
+                        branchIds: ["api", "docs"],
+                        branchRanges: [{ startIndex: 2, endIndex: 3 }, { startIndex: 4, endIndex: 5 }],
+                        joinIndex: 6,
+                        maxErrored: 1,
+                    },
+                },
+                {
+                    kind: "task",
+                    member: "alice",
+                    task: "api impl",
+                    completed: true,
+                    output: "api output",
+                    branch: { fanoutIndex: 1, branchId: "api", branchIndex: 0, joinIndex: 6 },
+                },
+                {
+                    kind: "gate",
+                    verifier: "bob",
+                    criteria: "api ok",
+                    targetStepIndex: 2,
+                    completed: true,
+                    verdict: "PASS",
+                    branch: { fanoutIndex: 1, branchId: "api", branchIndex: 0, joinIndex: 6 },
+                },
+                {
+                    kind: "task",
+                    member: "carol",
+                    task: "docs impl",
+                    completed: true,
+                    output: "docs output",
+                    branch: { fanoutIndex: 1, branchId: "docs", branchIndex: 1, joinIndex: 6 },
+                },
+                {
+                    kind: "gate",
+                    verifier: "dave",
+                    criteria: "docs ok",
+                    targetStepIndex: 4,
+                    completed: true,
+                    verdict: "FAIL",
+                    branch: { fanoutIndex: 1, branchId: "docs", branchIndex: 1, joinIndex: 6 },
+                },
+                {
+                    kind: "join",
+                    completed: true,
+                    join: {
+                        fanoutIndex: 1,
+                        branchTailIndices: [3, 5],
+                        maxErrored: 1,
+                        survivorBranchIds: ["api"],
+                        erroredBranchIds: ["docs"],
+                        joinedOutput: "api output",
+                    },
+                },
+            ],
+            responses: { lead: "setup output", alice: "api output", carol: "docs output" },
+        })
+        const summary = await buildSummary(mockTeam, task, "workflow_complete")
+
+        expect(summary).toContain("2. [fanout] branches api, docs -> join step 7")
+        expect(summary).toContain("  - Branch api [completed] steps 3-4")
+        expect(summary).toContain("  - Branch docs [errored] steps 5-6")
+        expect(summary).toContain("7. [join] fanout step 2 branches api:completed, docs:errored")
+        expect(summary).toContain("### Fanout Step 2 Branch api [completed]")
+        expect(summary).toContain("#### Step 3 - alice")
+        expect(summary).toContain("api output")
+        expect(summary).toContain("### Fanout Step 2 Branch docs [errored]")
+        expect(summary).toContain("#### Step 5 - carol")
+        expect(summary).toContain("docs output")
+    })
+
+    test("unknown future workflow step kind throws instead of rendering as a gate", async () => {
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "draft", completed: true, output: "draft" },
+                { kind: "future_step_kind", completed: false },
+            ] as unknown as WorkflowTask["steps"],
+        })
+
+        let thrown: unknown
+        try {
+            await buildSummary(mockTeam, task, "workflow_complete")
+        } catch (error) {
+            thrown = error
+        }
+
+        expect(thrown).toBeInstanceOf(Error)
+        if (!(thrown instanceof Error)) throw new Error("expected workflow step kind error")
+        expect(thrown.message).toMatch(/unhandled WorkflowStepKind/i)
+    })
 })

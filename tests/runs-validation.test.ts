@@ -75,6 +75,71 @@ describe("runs.ts zod validation (H3)", () => {
         expect(rec).toBeNull()
     })
 
+    it("readRunRecord accepts pre-P2 flat workflow records", async () => {
+        const root = tmpRoot("runs-workflow-flat")
+        writeRecord(root, "run-flat", JSON.stringify({
+            version: 1,
+            runId: "run-flat",
+            teamRunId: "team-run-1",
+            teamName: "test-team",
+            type: "workflow",
+            reason: "workflow_complete",
+            status: "completed",
+            startedAt: 1000,
+            finishedAt: 5000,
+            tokensUsed: 100,
+            tokensByMember: {},
+            messagesSent: 5,
+            memberOutputs: {},
+            workflow: {
+                steps: [
+                    { index: 0, step: 1, kind: "task", member: "alice", completed: true, output: "draft", outputBytes: 5 },
+                    { index: 1, step: 2, kind: "gate", verifier: "bob", targetStep: 1, completed: true, verdict: "PASS" },
+                ],
+            },
+        }))
+
+        const rec = await readRunRecord(root, "run-flat")
+
+        expect(rec).not.toBeNull()
+        expect(rec?.workflow?.steps.map(step => step.kind)).toEqual(["task", "gate"])
+    })
+
+    it("readRunRecord returns null for invalid branch metadata without matching fanout", async () => {
+        const root = tmpRoot("runs-workflow-invalid-branch")
+        writeRecord(root, "run-invalid-branch", JSON.stringify({
+            version: 1,
+            runId: "run-invalid-branch",
+            teamRunId: "team-run-1",
+            teamName: "test-team",
+            type: "workflow",
+            reason: "workflow_failed",
+            status: "failed",
+            startedAt: 1000,
+            finishedAt: 5000,
+            tokensUsed: 100,
+            tokensByMember: {},
+            messagesSent: 5,
+            memberOutputs: {},
+            workflow: {
+                steps: [
+                    {
+                        index: 0,
+                        step: 1,
+                        kind: "task",
+                        member: "alice",
+                        completed: true,
+                        branch: { fanoutIndex: 99, branchId: "missing", branchIndex: 0, joinIndex: 100 },
+                    },
+                ],
+            },
+        }))
+
+        const rec = await readRunRecord(root, "run-invalid-branch")
+
+        expect(rec).toBeNull()
+    })
+
     it("listRunRecords skips corrupt/invalid runs and returns only valid ones (newest-first)", async () => {
         const root = tmpRoot("runs-mixed")
         writeRecord(root, "run-a", validRecord("run-a", 1000))

@@ -385,6 +385,233 @@ describe("resumeDispatch: workflow all-complete crash edge", () => {
     })
 })
 
+describe("resumeDispatch: workflow fanout active frontier", () => {
+    test("one branch already responded and one active branch is missing -> re-dispatches only the missing branch", async () => {
+        const root = tmpRoot("rdb-wf-fanout-missing")
+        const sid = "ses_rdb_wf_fanout_missing"
+        tracked.push(sid)
+        const task = makeTask({
+            type: "workflow",
+            steps: [
+                {
+                    kind: "fanout",
+                    completed: true,
+                    fanout: {
+                        branchIds: ["api", "tests"],
+                        branchRanges: [
+                            { startIndex: 1, endIndex: 1 },
+                            { startIndex: 2, endIndex: 2 },
+                        ],
+                        joinIndex: 3,
+                        maxErrored: 0,
+                    },
+                },
+                {
+                    kind: "task",
+                    member: "alice",
+                    task: "build api branch",
+                    completed: false,
+                    branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 3 },
+                },
+                {
+                    kind: "task",
+                    member: "bob",
+                    task: "build test branch",
+                    completed: false,
+                    branch: { fanoutIndex: 0, branchId: "tests", branchIndex: 1, joinIndex: 3 },
+                },
+                {
+                    kind: "join",
+                    completed: false,
+                    join: { fanoutIndex: 0, branchTailIndices: [1, 2], maxErrored: 0 },
+                },
+            ],
+            currentStageIndex: 1,
+            activeStepIndices: [1, 2],
+            responses: { alice: "api branch output" },
+        })
+        const team = await setup(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+
+        const dispatched: { id: string; text: string }[] = []
+        const ctx = makeCtx(root, async req => {
+            dispatched.push({ id: req.path.id, text: req.body.parts[0].text })
+        })
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!)
+        })
+
+        const wfTask = team.activeTask as Extract<ActiveTask, { type: "workflow" }>
+        expect(wfTask.steps?.[1].completed).toBe(true)
+        expect(wfTask.steps?.[1].output).toBe("api branch output")
+        expect(wfTask.steps?.[2].completed).toBe(false)
+        expect(dispatched.map(d => d.id)).toEqual(["ses_bob"])
+        expect(dispatched[0].text).toContain("build test branch")
+    })
+
+    test("all active branches already responded -> re-drives the ready join and downstream step", async () => {
+        const root = tmpRoot("rdb-wf-fanout-join")
+        const sid = "ses_rdb_wf_fanout_join"
+        tracked.push(sid)
+        const task = makeTask({
+            type: "workflow",
+            steps: [
+                {
+                    kind: "fanout",
+                    completed: true,
+                    fanout: {
+                        branchIds: ["api", "tests"],
+                        branchRanges: [
+                            { startIndex: 1, endIndex: 1 },
+                            { startIndex: 2, endIndex: 2 },
+                        ],
+                        joinIndex: 3,
+                        maxErrored: 0,
+                    },
+                },
+                {
+                    kind: "task",
+                    member: "alice",
+                    task: "build api branch",
+                    completed: false,
+                    branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 3 },
+                },
+                {
+                    kind: "task",
+                    member: "bob",
+                    task: "build test branch",
+                    completed: false,
+                    branch: { fanoutIndex: 0, branchId: "tests", branchIndex: 1, joinIndex: 3 },
+                },
+                {
+                    kind: "join",
+                    completed: false,
+                    join: { fanoutIndex: 0, branchTailIndices: [1, 2], maxErrored: 0 },
+                },
+                { kind: "task", member: "dave", task: "integrate branch results", completed: false },
+            ],
+            currentStageIndex: 1,
+            activeStepIndices: [1, 2],
+            responses: { alice: "api branch output", bob: "test branch output" },
+        })
+        const team = await setup(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+            makeMember("dave", "ses_dave"),
+        ])
+
+        const dispatched: { id: string; text: string }[] = []
+        const ctx = makeCtx(root, async req => {
+            dispatched.push({ id: req.path.id, text: req.body.parts[0].text })
+        })
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!)
+        })
+
+        const wfTask = team.activeTask as Extract<ActiveTask, { type: "workflow" }>
+        expect(wfTask.steps?.[1].output).toBe("api branch output")
+        expect(wfTask.steps?.[2].output).toBe("test branch output")
+        expect(wfTask.steps?.[3].completed).toBe(true)
+        expect(wfTask.steps?.[3].join?.joinedOutput).toContain("api branch output")
+        expect(wfTask.steps?.[3].join?.joinedOutput).toContain("test branch output")
+        expect(dispatched.map(d => d.id)).toEqual(["ses_dave"])
+        expect(dispatched[0].text).toContain("integrate branch results")
+    })
+
+    test("captured branch gate PASS mid-fanout resumes and re-dispatches only the missing sibling branch", async () => {
+        const root = tmpRoot("rdb-wf-fanout-gate-mid")
+        const sid = "ses_rdb_wf_fanout_gate_mid"
+        tracked.push(sid)
+        const passVerdict = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
+        const task = makeTask({
+            type: "workflow",
+            steps: [
+                {
+                    kind: "fanout",
+                    completed: true,
+                    fanout: {
+                        branchIds: ["api", "tests"],
+                        branchRanges: [
+                            { startIndex: 1, endIndex: 2 },
+                            { startIndex: 3, endIndex: 4 },
+                        ],
+                        joinIndex: 5,
+                        maxErrored: 0,
+                    },
+                },
+                {
+                    kind: "task",
+                    member: "bob",
+                    task: "build api branch",
+                    completed: true,
+                    output: "api branch output",
+                    branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 5 },
+                },
+                {
+                    kind: "gate",
+                    verifier: "erin",
+                    criteria: "api passes",
+                    completed: false,
+                    branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 5 },
+                },
+                {
+                    kind: "task",
+                    member: "carol",
+                    task: "build test branch",
+                    completed: false,
+                    branch: { fanoutIndex: 0, branchId: "tests", branchIndex: 1, joinIndex: 5 },
+                },
+                {
+                    kind: "gate",
+                    verifier: "eve",
+                    criteria: "tests pass",
+                    completed: false,
+                    branch: { fanoutIndex: 0, branchId: "tests", branchIndex: 1, joinIndex: 5 },
+                },
+                {
+                    kind: "join",
+                    completed: false,
+                    join: { fanoutIndex: 0, branchTailIndices: [2, 4], maxErrored: 0 },
+                },
+                { kind: "task", member: "dave", task: "integrate branch results", completed: false },
+            ],
+            currentStageIndex: 2,
+            activeStepIndices: [2, 3],
+            responses: { bob: "api branch output", erin: passVerdict },
+        })
+        const team = await setup(root, sid, task, [
+            makeMember("bob", "ses_bob"),
+            makeMember("erin", "ses_erin"),
+            makeMember("carol", "ses_carol"),
+            makeMember("eve", "ses_eve"),
+            makeMember("dave", "ses_dave"),
+        ])
+
+        const dispatched: { id: string; text: string }[] = []
+        const ctx = makeCtx(root, async req => {
+            dispatched.push({ id: req.path.id, text: req.body.parts[0].text })
+        })
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!)
+        })
+
+        const wfTask = team.activeTask as Extract<ActiveTask, { type: "workflow" }>
+        expect(wfTask.steps?.[2].completed).toBe(true)
+        expect(wfTask.steps?.[2].verdict).toBe("PASS")
+        expect(wfTask.steps?.[5].completed).toBe(false)
+        expect(wfTask.activeStepIndices).toEqual([3])
+        expect(dispatched.map(d => d.id)).toEqual(["ses_carol"])
+        expect(dispatched[0].text).toContain("build test branch")
+        expect(dispatched[0].text).not.toContain("api branch output")
+        expect(dispatched.some(d => d.id === "ses_dave")).toBe(false)
+    })
+})
+
 describe("resumeDispatch: workflow mid-task-step crash", () => {
     test("current task step's actor has no response -> re-dispatched with its task", async () => {
         const root = tmpRoot("rdb-wf-midtask")

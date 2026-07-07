@@ -217,6 +217,105 @@ describe("persistRun", () => {
         expect(rec!.workflow?.steps[2]).toMatchObject({ step: 3, kind: "gate", verifier: "bob", targetStep: 1, targetSteps: [1, 2], verdict: "PASS", score: 9, confidence: 0.8, issues: [{ severity: "medium", message: "minor" }], attempts: 1 })
     })
 
+    test("workflow: persists fanout branch tree metadata without full outputs", async () => {
+        const dir = tmpTeamDir()
+        const joinedOutput = "joined aggregate output"
+        const team = makeTeam({
+            directory: dir,
+            activeTask: {
+                runId: "run-branch",
+                type: "workflow",
+                steps: [
+                    {
+                        kind: "fanout",
+                        id: "fanout-1",
+                        fanout: {
+                            branchIds: ["api", "tests"],
+                            branchRanges: [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }],
+                            joinIndex: 3,
+                            maxErrored: 1,
+                        },
+                        completed: true,
+                    },
+                    {
+                        kind: "task",
+                        member: "alice",
+                        task: "api work",
+                        branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 3 },
+                        completed: true,
+                        output: "api branch output",
+                    },
+                    {
+                        kind: "task",
+                        member: "bob",
+                        task: "test work",
+                        branch: { fanoutIndex: 0, branchId: "tests", branchIndex: 1, joinIndex: 3 },
+                        completed: false,
+                    },
+                    {
+                        kind: "join",
+                        id: "join-1",
+                        join: {
+                            fanoutIndex: 0,
+                            branchTailIndices: [1, 2],
+                            maxErrored: 1,
+                            survivorBranchIds: ["api"],
+                            erroredBranchIds: ["tests"],
+                            joinedOutput,
+                        },
+                        completed: true,
+                    },
+                ],
+            },
+        })
+        await fs.mkdir(runDir(dir, "run-branch"), { recursive: true })
+        await fs.writeFile(runMemberOutputPath(dir, "run-branch", "alice"), "FULL ALICE OUTPUT")
+        await fs.writeFile(runMemberOutputPath(dir, "run-branch", "bob"), "FULL BOB OUTPUT")
+
+        await persistRun(team, "workflow_complete")
+
+        const rec = await readRunRecord(dir, "run-branch")
+        expect(rec).not.toBeNull()
+        expect(rec!.workflow?.steps).toHaveLength(4)
+        expect(rec!.workflow?.steps[0]).toMatchObject({
+            step: 1,
+            kind: "fanout",
+            fanout: {
+                branchIds: ["api", "tests"],
+                branchRanges: [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }],
+                joinIndex: 3,
+                maxErrored: 1,
+            },
+            branchStatuses: { api: "completed", tests: "errored" },
+        })
+        expect(rec!.workflow?.steps[1]).toMatchObject({
+            step: 2,
+            kind: "task",
+            branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 3 },
+            output: "api branch output",
+            outputBytes: Buffer.byteLength("api branch output", "utf8"),
+        })
+        expect(rec!.workflow?.steps[3]).toMatchObject({
+            step: 4,
+            kind: "join",
+            join: {
+                fanoutIndex: 0,
+                branchTailIndices: [1, 2],
+                maxErrored: 1,
+                survivorBranchIds: ["api"],
+                erroredBranchIds: ["tests"],
+            },
+            branchStatuses: { api: "completed", tests: "errored" },
+            joinedOutputBytes: Buffer.byteLength(joinedOutput, "utf8"),
+        })
+        expect(rec!.memberOutputs.alice).toEqual({ bytes: 17, file: "alice.md" })
+        expect(rec!.memberOutputs.bob).toEqual({ bytes: 15, file: "bob.md" })
+        const rawRecord = await fs.readFile(runRecordPath(dir, "run-branch"), "utf8")
+        expect(rawRecord).not.toContain("FULL ALICE OUTPUT")
+        expect(rawRecord).not.toContain("FULL BOB OUTPUT")
+        expect(rawRecord).not.toContain(joinedOutput)
+    })
+
     test("no activeTask → no-op", async () => {
         const dir = tmpTeamDir()
         const team = makeTeam({ directory: dir })

@@ -1125,6 +1125,392 @@ describe("team_workflow startup validation", () => {
         expect(after.status).toBe("live")
     })
 
+    test("fanout dry_run renders branch structure without starting orchestration", async () => {
+        const root = tmpRoot("wf-fanout-dry")
+        const sid = "ses_wf_fanout_dry"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol"), makeMember("dave"), makeMember("erin")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", id: "plan", member: "alice", task: "Plan rollout" },
+                    {
+                        kind: "fanout",
+                        id: "parallel",
+                        max_errored: 1,
+                        branches: [
+                            {
+                                id: "api",
+                                steps: [
+                                    { kind: "task", id: "api-build", member: "bob", task: "Build API" },
+                                    { kind: "gate", id: "api-check", verifier: "carol", criteria: "API passes" },
+                                ],
+                            },
+                            {
+                                id: "docs",
+                                steps: [
+                                    { kind: "task", id: "docs-write", member: "dave", task: "Write docs" },
+                                ],
+                            },
+                        ],
+                    },
+                    { kind: "join", id: "merge" },
+                    { kind: "task", id: "ship", member: "erin", task: "Ship release" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("2. [fanout] (parallel) branches: api, docs -> join step 6 (merge); max_errored=1")
+        expect(result).toContain("  branch api:")
+        expect(result).toContain("  3. [task] (api-build) bob: Build API")
+        expect(result).toContain("  4. [gate] (api-check) carol verifies step 3 (api-build): API passes")
+        expect(result).toContain("  branch docs:")
+        expect(result).toContain("6. [join] (merge) waits for branches: api, docs; max_errored=1")
+        const after = await loadTeamState(root, "alpha", sid)
+        expect(after.activeTask).toBeUndefined()
+        expect(after.status).toBe("live")
+    })
+
+    test("workflow_file fanout dry_run loads branch structure", async () => {
+        const root = tmpRoot("wf-file-fanout-dry")
+        const sid = "ses_wf_file_fanout_dry"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "fanout.json"), JSON.stringify({
+            steps: [
+                { kind: "task", id: "plan", member: "alice", task: "Plan ${area}" },
+                {
+                    kind: "fanout",
+                    id: "parallel",
+                    branches: [
+                        { id: "api", steps: [{ kind: "task", id: "api-build", member: "bob", task: "Build ${area} API" }] },
+                        { id: "qa", steps: [{ kind: "task", id: "qa-run", member: "carol", task: "Test ${area} API" }] },
+                    ],
+                },
+                { kind: "join", id: "merge" },
+            ],
+        }))
+
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/fanout.json", vars: { area: "billing" } },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Plan billing")
+        expect(result).toContain("Build billing API")
+        expect(result).toContain("2. [fanout] (parallel) branches: api, qa -> join step 5 (merge); max_errored=0")
+    })
+
+    test("workflow_file invalid retry fields -> rejected before runtime", async () => {
+        const root = tmpRoot("wf-file-invalid-retry")
+        const sid = "ses_wf_file_invalid_retry"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "invalid-retry.json"), JSON.stringify({
+            steps: [
+                { kind: "task", member: "alice", task: "Plan" },
+                { kind: "gate", verifier: "bob", criteria: "OK", on_invalid: "retry_verifier", max_invalid_retries: "never" },
+            ],
+        }))
+
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/invalid-retry.json" },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: workflow_file \".octeam/workflows/invalid-retry.json\" step 2 max_invalid_retries must be an integer from 0 to 5")
+    })
+
+    test("fanout recursive branch step -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-recursive")
+        const sid = "ses_wf_fanout_recursive"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    { kind: "fanout", branches: [{ id: "api", steps: [{ kind: "fanout", branches: [{ id: "inner", steps: [{ kind: "task", member: "bob", task: "Nested" }] }] }] }] },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 branch \"api\" must not contain recursive fanout")
+    })
+
+    test("fanout missing join -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-missing-join")
+        const sid = "ses_wf_fanout_missing_join"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    { kind: "fanout", branches: [{ id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] }] },
+                    { kind: "task", member: "alice", task: "Ship" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 must be followed by a join step")
+    })
+
+    test("orphan join -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-orphan-join")
+        const sid = "ses_wf_fanout_orphan_join"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "Plan" }, { kind: "join" }] },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: join step 2 has no matching fanout step")
+    })
+
+    test("fanout duplicate branch ids -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-dup-branch")
+        const sid = "ses_wf_fanout_dup_branch"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] },
+                            { id: "api", steps: [{ kind: "task", member: "carol", task: "Test" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: duplicate fanout branch id \"api\" at fanout step 2")
+    })
+
+    test("fanout duplicate step ids -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-dup-step")
+        const sid = "ses_wf_fanout_dup_step"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", id: "build", member: "alice", task: "Plan" },
+                    { kind: "fanout", branches: [{ id: "api", steps: [{ kind: "task", id: "build", member: "bob", task: "Build" }] }] },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: duplicate step id \"build\"")
+    })
+
+    test("fanout unknown branch member -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-unknown")
+        const sid = "ses_wf_fanout_unknown"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    { kind: "fanout", branches: [{ id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] }] },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: unknown member \"bob\" in fanout step 2 branch \"api\" step 1")
+    })
+
+    test("fanout same-member concurrent branches -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-same-member")
+        const sid = "ses_wf_fanout_same_member"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] },
+                            { id: "qa", steps: [{ kind: "task", member: "bob", task: "Test" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 uses member \"bob\" in concurrent branches \"api\" and \"qa\"")
+    })
+
+    test("fanout same gate verifier across concurrent branches -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-same-verifier")
+        const sid = "ses_wf_fanout_same_verifier"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol"), makeMember("dave")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }, { kind: "gate", verifier: "dave", criteria: "API OK" }] },
+                            { id: "qa", steps: [{ kind: "task", member: "carol", task: "Test" }, { kind: "gate", verifier: "dave", criteria: "QA OK" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 uses member \"dave\" in concurrent branches \"api\" and \"qa\"")
+    })
+
+    test("fanout invalid max_errored -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-max-errored")
+        const sid = "ses_wf_fanout_max_errored"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        max_errored: 2,
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] },
+                            { id: "qa", steps: [{ kind: "task", member: "carol", task: "Test" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 max_errored must be an integer from 0 to 1")
+    })
+
+    test("fanout branch approval controls -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-approval")
+        const sid = "ses_wf_fanout_approval"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    { kind: "fanout", branches: [{ id: "api", steps: [{ kind: "task", member: "bob", task: "Build", approval_before: true }] }] },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 branch \"api\" step 1 must not set approval_before/approval_after")
+    })
+
+    test("fanout branch goto crossing boundary -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-goto-cross")
+        const sid = "ses_wf_fanout_goto_cross"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        branches: [{ id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }, { kind: "gate", verifier: "carol", criteria: "OK", on_pass_goto: "ship" }] }],
+                    },
+                    { kind: "join" },
+                    { kind: "task", id: "ship", member: "alice", task: "Ship" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 branch \"api\" step 2 (gate) on_pass_goto \"ship\" must not cross fanout boundaries")
+    })
+
+    test("fanout branch gate self-verification -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-selfverify")
+        const sid = "ses_wf_fanout_selfverify"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    { kind: "fanout", branches: [{ id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }, { kind: "gate", verifier: "bob", criteria: "OK" }] }] },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: fanout step 2 branch \"api\" step 2 (gate) verifier \"bob\" must differ from target step 1 member (no self-verification)")
+    })
+
+    test("fanout marker explicit gate target -> rejected", async () => {
+        const root = tmpRoot("wf-fanout-marker-target")
+        const sid = "ses_wf_fanout_marker_target"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    { kind: "fanout", id: "parallel", branches: [{ id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] }] },
+                    { kind: "join", id: "merge" },
+                    { kind: "gate", verifier: "carol", target_step: "parallel", criteria: "Marker is not valid" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Error: step 5 (gate) target_step \"parallel\" must not reference a fanout/join marker step")
+    })
+
     test("unknown gate verifier -> rejected", async () => {
         const root = tmpRoot("wf-unknownverifier")
         const sid = "ses_wf_uv"
