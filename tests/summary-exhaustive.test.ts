@@ -141,6 +141,39 @@ describe("buildSummary: workflow case", () => {
         expect(summary).toContain("carol polish output")
     })
 
+    test("renders structured verdict issues[] detail per gate step", async () => {
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "impl", completed: true, output: "impl output" },
+                {
+                    kind: "gate",
+                    verifier: "bob",
+                    criteria: "ok",
+                    completed: true,
+                    verdict: "PASS",
+                    score: 7,
+                    confidence: 0.85,
+                    issues: [
+                        { severity: "high", message: "missing edge case for empty input" },
+                        { severity: "low", message: "typo in docstring" },
+                        { severity: "critical" },
+                    ],
+                },
+            ],
+            responses: { alice: "impl output" },
+        })
+        const summary = await buildSummary(mockTeam, task, "workflow_complete")
+
+        // Compact inline metrics preserved.
+        expect(summary).toContain("score=7")
+        expect(summary).toContain("confidence=0.85")
+        expect(summary).toContain("issues=3")
+        // Per-issue detail lines, severity-sorted (critical first, then high, then low).
+        expect(summary).toContain("critical")
+        expect(summary).toContain("missing edge case for empty input")
+        expect(summary).toContain("typo in docstring")
+    })
+
     test("with no completed task steps produces head + ledger only", async () => {
         const task = makeWorkflowTask({
             steps: [{ kind: "task", member: "alice", task: "draft", completed: false }],

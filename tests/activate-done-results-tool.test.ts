@@ -453,6 +453,58 @@ describe("teamResultGetTool.execute", () => {
         expect(result).toContain("Step 3: [gate] bob verifies steps 1, 2 -> PASS")
     })
 
+    test("workflow run renders issues[] detail per gate step", async () => {
+        const root = tmpRoot("res-workflow-issues")
+        const masterSid = "ses_res_master_wf_issues"
+        tracked.push(masterSid)
+        const { directory } = await setupTeam({ root, masterSid, members: [] })
+        await seedRunRecord(directory, {
+            ...SAMPLE_RUN,
+            runId: "run-workflow-issues",
+            type: "workflow",
+            mode: undefined,
+            reason: "workflow_complete",
+            workflow: {
+                steps: [
+                    { index: 0, step: 1, kind: "task", member: "alice", completed: true, output: "impl", outputBytes: 4 },
+                    {
+                        index: 1,
+                        step: 2,
+                        kind: "gate",
+                        verifier: "bob",
+                        targetStep: 1,
+                        verdict: "PASS",
+                        attempts: 1,
+                        completed: true,
+                        score: 7,
+                        confidence: 0.85,
+                        issues: [
+                            { severity: "high", message: "missing edge case for empty input" },
+                            { severity: "low", message: "typo in docstring" },
+                            { severity: "critical" },
+                        ],
+                    },
+                ],
+            },
+        })
+
+        const result = await teamResultGetTool(makeCtx(root)).execute(
+            { team_id: TEAM, run_id: "run-workflow-issues" },
+            { sessionID: masterSid } as never,
+        )
+
+        // Compact inline metrics preserved.
+        expect(result).toContain("score=7")
+        expect(result).toContain("confidence=0.85")
+        expect(result).toContain("issues=3")
+        // Per-issue detail lines, severity-sorted (critical first, then high, then low).
+        expect(result).toContain("critical")
+        expect(result).toContain("missing edge case for empty input")
+        expect(result).toContain("typo in docstring")
+        // critical with no message renders its severity-only line, not a dangling colon.
+        expect(result).toMatch(/critical\b[^\n]*$/m)
+    })
+
     test("omitted run_id returns latest run", async () => {
         const root = tmpRoot("res-latest")
         const masterSid = "ses_res_master_7"

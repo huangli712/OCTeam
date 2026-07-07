@@ -272,6 +272,21 @@ function workflowVerdictMetrics(s: WorkflowStep): string {
     return metrics.length > 0 ? ` [${metrics.join(", ")}]` : ""
 }
 
+/** Per-issue detail lines for a gate step with structured verdict. Severity-sorted
+ * (critical > high > medium > low) so the most actionable issues surface first. */
+const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+
+function formatWorkflowIssueDetail(s: WorkflowStep): string {
+    const issues = s.issues
+    if (!issues || issues.length === 0) return ""
+    const sorted = [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99))
+    const lines = sorted.map(issue => {
+        const msg = issue.message && issue.message.trim() !== "" ? `: ${issue.message}` : ""
+        return `    - [${issue.severity}]${msg}`
+    })
+    return "\n" + lines.join("\n")
+}
+
 function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head: string): string {
     const steps = task.steps ?? []
     const rows = steps.map((s, i) => {
@@ -283,7 +298,7 @@ function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head
         const target = workflowTargetLabel(s)
         const invalidTag = s.onInvalid && s.onInvalid !== "fail" ? `, on_invalid=${s.onInvalid}${(s.invalidAttempts ?? 0) > 0 ? ` (${s.invalidAttempts})` : ""}` : ""
         const jumpTag = (s.jumpCount ?? 0) > 0 ? `, jumps=${s.jumpCount}` : ""
-        return `${i + 1}. [gate]${idTag} ${s.verifier ?? "?"} verifies ${target} -> ${s.verdict ?? "pending"}${workflowVerdictMetrics(s)}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}${invalidTag}${jumpTag}`
+        return `${i + 1}. [gate]${idTag} ${s.verifier ?? "?"} verifies ${target} -> ${s.verdict ?? "pending"}${workflowVerdictMetrics(s)}${(s.attempts ?? 0) > 0 ? ` (${s.attempts} retries)` : ""}${invalidTag}${jumpTag}${formatWorkflowIssueDetail(s)}`
     })
     const outputs = steps
         .map((s, i) => {
