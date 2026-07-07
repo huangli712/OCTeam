@@ -39,6 +39,10 @@ function workflowVerdictMetrics(step: WorkflowRunStep): string {
  * (critical > high > medium > low) so the most actionable issues surface first. */
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
 
+function assertNeverWorkflowStepKind(kind: never): never {
+    throw new Error(`unhandled WorkflowStepKind: ${String(kind)}`)
+}
+
 function formatWorkflowIssueDetail(step: WorkflowRunStep): string {
     const issues = step.issues
     if (!issues || issues.length === 0) return ""
@@ -60,18 +64,110 @@ function workflowStepControlsTag(step: WorkflowRunStep): string {
     return controls.length > 0 ? `  [${controls.join(", ")}]` : ""
 }
 
+function formatBranchStatusList(statuses: Record<string, string> | undefined): string {
+    if (statuses === undefined) return ""
+    const pairs = Object.entries(statuses).map(([branchId, status]) => `${branchId}:${status}`)
+    return pairs.length > 0 ? pairs.join(", ") : ""
+}
+
+function formatWorkflowBranchLine(fanoutStep: WorkflowRunStep, branchId: string, branchIndex: number): string {
+    const range = fanoutStep.fanout?.branchRanges[branchIndex]
+    if (range === undefined) throw new Error(`workflow fanout step ${fanoutStep.step} missing branch range ${branchIndex}`)
+    const status = fanoutStep.branchStatuses?.[branchId] ?? "pending"
+    return `  - Branch ${branchId} [${status}] steps ${range.startIndex + 1}-${range.endIndex + 1}`
+}
+
+function formatIndentedOutput(output: string, indent: string): string {
+    const text = truncateOutput(output, 1024)
+    if (indent === "") return text
+    return text.split("\n").map(line => `${indent}  ${line}`).join("\n")
+}
+
+function appendWorkflowStepLines(lines: string[], step: WorkflowRunStep, indent: string): void {
+    lines.push(`${indent}${formatWorkflowStepLine(step)}`)
+    if (step.kind === "task" && step.output) {
+        lines.push(formatIndentedOutput(step.output, indent))
+    }
+}
+
 function formatWorkflowStepLine(step: WorkflowRunStep): string {
     const idTag = step.id ? ` (${step.id})` : ""
-    if (step.kind === "task") {
-        const bytes = step.outputBytes === undefined ? "" : ` (${step.outputBytes} bytes)`
-        const state = step.skipped ? " (skipped)" : step.completed ? " (done)" : ""
-        return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${state}${bytes}${workflowStepControlsTag(step)}`
+    switch (step.kind) {
+        case "task": {
+            const bytes = step.outputBytes === undefined ? "" : ` (${step.outputBytes} bytes)`
+            const state = step.skipped ? " (skipped)" : step.completed ? " (done)" : ""
+            return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${state}${bytes}${workflowStepControlsTag(step)}`
+        }
+        case "gate": {
+            const target = workflowTargetLabel(step)
+            const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
+            const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
+            const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
+            return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${jumpTag}${formatWorkflowIssueDetail(step)}${workflowStepControlsTag(step)}`
+        }
+        case "fanout": {
+            const fanout = step.fanout
+            if (fanout === undefined) throw new Error(`workflow fanout step ${step.step} missing fanout metadata`)
+            const branchList = fanout.branchIds.length > 0 ? fanout.branchIds.join(", ") : "(none)"
+            return `- Step ${step.step}: [fanout]${idTag} branches ${branchList} -> join step ${fanout.joinIndex + 1}${workflowStepControlsTag(step)}`
+        }
+        case "join": {
+            const join = step.join
+            if (join === undefined) throw new Error(`workflow join step ${step.step} missing join metadata`)
+            const statuses = formatBranchStatusList(step.branchStatuses)
+            const statusTag = statuses === "" ? "" : ` branches ${statuses}`
+            const joinedBytes = step.joinedOutputBytes === undefined ? "" : ` (joined ${step.joinedOutputBytes} bytes)`
+            return `- Step ${step.step}: [join]${idTag} fanout step ${join.fanoutIndex + 1}${statusTag}${joinedBytes}${workflowStepControlsTag(step)}`
+        }
+        default:
+            return assertNeverWorkflowStepKind(step.kind)
     }
-    const target = workflowTargetLabel(step)
-    const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
-    const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
-    const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
-    return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${jumpTag}${formatWorkflowIssueDetail(step)}${workflowStepControlsTag(step)}`
+}
+
+function hasWorkflowBranchTree(steps: readonly WorkflowRunStep[]): boolean {
+    return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
+}
+
+function formatWorkflowStepLines(steps: readonly WorkflowRunStep[]): string[] {
+    if (!hasWorkflowBranchTree(steps)) {
+        const lines: string[] = []
+        for (const step of steps) appendWorkflowStepLines(lines, step, "")
+        return lines
+    }
+
+    const lines: string[] = []
+    const rendered = new Set<number>()
+    for (const step of steps) {
+        if (rendered.has(step.index)) continue
+        switch (step.kind) {
+            case "fanout": {
+                appendWorkflowStepLines(lines, step, "")
+                const fanout = step.fanout
+                if (fanout === undefined) throw new Error(`workflow fanout step ${step.step} missing fanout metadata`)
+                for (let branchIndex = 0; branchIndex < fanout.branchIds.length; branchIndex += 1) {
+                    const branchId = fanout.branchIds[branchIndex]
+                    const range = fanout.branchRanges[branchIndex]
+                    if (branchId === undefined || range === undefined) continue
+                    lines.push(formatWorkflowBranchLine(step, branchId, branchIndex))
+                    for (let branchStepIndex = range.startIndex; branchStepIndex <= range.endIndex; branchStepIndex += 1) {
+                        const branchStep = steps[branchStepIndex]
+                        if (branchStep === undefined) continue
+                        appendWorkflowStepLines(lines, branchStep, "    ")
+                        rendered.add(branchStep.index)
+                    }
+                }
+                break
+            }
+            case "task":
+            case "gate":
+            case "join":
+                appendWorkflowStepLines(lines, step, "")
+                break
+            default:
+                assertNeverWorkflowStepKind(step.kind)
+        }
+    }
+    return lines
 }
 
 function formatRunLine(r: RunRecord): string {
@@ -186,13 +282,7 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
             }
 
             if (record.workflow && record.workflow.steps.length > 0) {
-                const lines: string[] = []
-                for (const step of record.workflow.steps) {
-                    lines.push(formatWorkflowStepLine(step))
-                    if (step.kind === "task" && step.output) {
-                        lines.push(truncateOutput(step.output, 1024))
-                    }
-                }
+                const lines = formatWorkflowStepLines(record.workflow.steps)
                 previews.push(`### workflow steps\n${lines.join("\n")}`)
             }
 

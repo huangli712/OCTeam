@@ -23,7 +23,7 @@ import { handleParallelIdle } from "../orchestration/parallel.js"
 import { handleConsensusIdle } from "../orchestration/consensus.js"
 import { buildRecursePrompt } from "../orchestration/recurse.js"
 import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../orchestration/tollgate.js"
-import { advanceWorkflowStep, handleWorkflowIdle } from "../orchestration/workflow.js"
+import { advanceWorkflowStep, handleWorkflowIdle, redispatchWorkflowStep } from "../orchestration/workflow.js"
 import { handleRouteIdle } from "../orchestration/route.js"
 import { buildArbiterPrompt, buildDebatePrompt, handleArbitrateIdle } from "../orchestration/arbitrate.js"
 import { buildRouterPrompt } from "./router.js"
@@ -31,6 +31,7 @@ import { buildSummary, finishRun } from "../orchestration/summary.js"
 import { buildReducePrompt, buildSignoffReviewPrompt, handleReduceIdle } from "../orchestration/signoff.js"
 import { resumeApprovalStage } from "../orchestration/hitl.js"
 import { listAllTasks, reapStaleClaims, updateTask } from "../state/tasks.js"
+import { getActiveWorkflowStepIndices, readyWorkflowStepIndices, workflowStepActor } from "../core/workflow-dag.js"
 
 /**
  * Reset interrupted task claims: reap stale locks + reset any claimed/in_progress
@@ -251,6 +252,37 @@ async function resumeWorkflowMode(
     task: Extract<ActiveTask, { type: "workflow" }>,
 ): Promise<void> {
     const steps = task.steps ?? []
+    if (task.activeStepIndices !== undefined) {
+        const originalActive = getActiveWorkflowStepIndices(task)
+        const originalActiveSet = new Set(originalActive)
+
+        for (const index of originalActive) {
+            const actorName = workflowStepActor(steps[index])
+            if (actorName === null || !task.responses[actorName]) continue
+            const actor = team.members.find(m => m.name === actorName && !m.isMaster)
+            if (actor === undefined) continue
+            await handleWorkflowIdle(ctx, team, actor)
+            if (team.activeTask !== task || task.approvalStage || task.signoffStage) return
+        }
+
+        let dispatched = 0
+        for (const index of readyWorkflowStepIndices(task)) {
+            if (!originalActiveSet.has(index)) continue
+            const step = steps[index]
+            if (step === undefined || step.completed) continue
+            const actorName = workflowStepActor(step)
+            if (actorName === null || task.responses[actorName]) continue
+            if (!await redispatchWorkflowStep(ctx, team, index)) {
+                await finishRun(ctx, team, `workflow_failed:no_session:${actorName}`, "failed")
+                return
+            }
+            dispatched++
+        }
+
+        if (dispatched === 0) await advanceWorkflowStep(ctx, team)
+        return
+    }
+
     const step = steps[task.currentStageIndex]
     if (step) {
         const actorName = step.kind === "gate" ? step.verifier : step.member

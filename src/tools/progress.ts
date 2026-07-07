@@ -16,8 +16,25 @@ import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState } from "../state/store.js"
 import { listRunRecords, readRunEvents } from "../orchestration/runs.js"
 import { isSafePathSegment } from "../state/paths.js"
-import type { RunEvent } from "../core/types.js"
+import { getActiveWorkflowStepIndices } from "../core/workflow-dag.js"
+import type { RunEvent, WorkflowStep, WorkflowTask } from "../core/types.js"
 import type { Team } from "../state/store.js"
+
+function formatWorkflowFrontierStep(steps: readonly WorkflowStep[], index: number): string {
+    const step = steps[index]
+    const branch = step?.branch
+    const branchTag = branch === undefined ? "" : `${branch.branchId}: `
+    return `${branchTag}step ${index + 1}/${steps.length}`
+}
+
+function formatWorkflowStage(task: WorkflowTask): string {
+    const steps = task.steps ?? []
+    if (steps.length === 0) return ""
+    const activeIndices = getActiveWorkflowStepIndices(task)
+    const hasBranchFrontier = activeIndices.length > 1 || activeIndices.some(index => steps[index]?.branch !== undefined)
+    if (!hasBranchFrontier) return `  step ${task.currentStageIndex + 1}/${steps.length}`
+    return `  frontier ${activeIndices.map(index => formatWorkflowFrontierStep(steps, index)).join(", ")}`
+}
 
 /** One-line-per-member live snapshot (current state, not history). */
 function formatSnapshot(team: Team): string[] {
@@ -25,7 +42,7 @@ function formatSnapshot(team: Team): string[] {
     if (team.activeTask) {
         const t = team.activeTask
         const stage = t.type === "workflow"
-            ? (t.steps && t.steps.length > 0 ? `  step ${t.currentStageIndex + 1}/${t.steps.length}` : "")
+            ? formatWorkflowStage(t)
             : (t.stages.length > 0 ? `  stage ${t.currentStageIndex + 1}/${t.stages.length}` : "")
         const round = t.currentRound !== undefined ? `  round ${t.currentRound}/${t.maxRounds ?? "-"}` : ""
         lines.push(`Active: ${t.type}${t.mode ? `/${t.mode}` : ""}${stage}${round}  tokens ${t.tokensUsed}`)

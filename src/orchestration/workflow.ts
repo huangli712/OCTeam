@@ -24,12 +24,13 @@
 
 import type { PluginContext } from "../core/context.js"
 import { type Team, saveTeamState } from "../state/store.js"
-import type { MemberState, Verdict, WorkflowCondition, WorkflowStep, WorkflowTask } from "../core/types.js"
+import type { MemberState, Verdict, WorkflowBranchMetadata, WorkflowCondition, WorkflowStep, WorkflowTask } from "../core/types.js"
 import { formatWorkflowCondition, matchesWorkflowCondition } from "../core/workflow-conditions.js"
 import { dispatchToMember } from "./dispatch.js"
 import { finishRun } from "./summary.js"
 import { recordEvent } from "./events.js"
 import { truncateOutput } from "../core/utils.js"
+import { findActiveWorkflowStepIndexForMember, getActiveWorkflowStepIndices, readyWorkflowStepIndices } from "../core/workflow-dag.js"
 import { parseVerdict } from "./decisions.js"
 import { maybeTriggerSignoff } from "./signoff.js"
 import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js"
@@ -44,6 +45,11 @@ type WorkflowJumpTransition = {
     rationale?: string
     diff?: string
 }
+
+export type WorkflowFanoutErrorResult =
+    | { readonly kind: "not_fanout" }
+    | { readonly kind: "within_tolerance" }
+    | { readonly kind: "failed"; readonly reason: string }
 
 /**
  * Build the upstream-context prefix for a workflow task step: ALL completed
@@ -60,10 +66,9 @@ function buildWorkflowUpstream(
     let used = 0
     for (let i = 0; i < uptoIndex; i++) {
         const s = steps[i]
-        if (!s?.completed || s.kind !== "task" || !s.member) continue
-        const out = s.output
-        if (!out) continue
-        const block = `[Output from ${s.member}]\n${truncateOutput(out)}`
+        if (!s?.completed) continue
+        const block = workflowUpstreamBlock(steps, uptoIndex, i)
+        if (block === null) continue
         if (used + block.length > UPSTREAM_TOTAL_CAP) {
             blocks.push(`[…upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`)
             break
@@ -72,6 +77,62 @@ function buildWorkflowUpstream(
         used += block.length
     }
     return blocks.join("\n\n")
+}
+
+function workflowUpstreamBlock(steps: WorkflowStep[], uptoIndex: number, candidateIndex: number): string | null {
+    const candidate = steps[candidateIndex]
+    if (candidate === undefined || !candidate.completed) return null
+
+    switch (candidate.kind) {
+        case "task": {
+            if (!candidate.member || !candidate.output) return null
+            if (!shouldIncludeTaskUpstream(steps, uptoIndex, candidateIndex)) return null
+            return `[Output from ${candidate.member}]\n${truncateOutput(candidate.output)}`
+        }
+        case "join": {
+            const joinedOutput = candidate.join?.joinedOutput
+            if (!joinedOutput || !shouldIncludeJoinUpstream(steps, uptoIndex)) return null
+            return `[Joined output from workflow step ${candidateIndex + 1}]\n${truncateOutput(joinedOutput)}`
+        }
+        case "gate":
+        case "fanout":
+            return null
+        default:
+            return assertNeverWorkflowStepKind(candidate.kind)
+    }
+}
+
+function shouldIncludeTaskUpstream(steps: WorkflowStep[], uptoIndex: number, candidateIndex: number): boolean {
+    const current = steps[uptoIndex]
+    const candidate = steps[candidateIndex]
+    if (current === undefined || candidate === undefined) return false
+
+    const currentBranch = current.branch
+    if (currentBranch === undefined) return candidate.branch === undefined
+    return candidateIndex < currentBranch.fanoutIndex || isSameWorkflowBranch(candidate, currentBranch)
+}
+
+function shouldIncludeJoinUpstream(steps: WorkflowStep[], uptoIndex: number): boolean {
+    return steps[uptoIndex]?.branch === undefined
+}
+
+function isSameWorkflowBranch(step: WorkflowStep, branch: WorkflowBranchMetadata): boolean {
+    const stepBranch = step.branch
+    return stepBranch !== undefined && stepBranch.fanoutIndex === branch.fanoutIndex && stepBranch.branchId === branch.branchId
+}
+
+function workflowStepActorName(step: WorkflowStep): string | undefined {
+    switch (step.kind) {
+        case "task":
+            return step.member
+        case "gate":
+            return step.verifier
+        case "fanout":
+        case "join":
+            return undefined
+        default:
+            return assertNeverWorkflowStepKind(step.kind)
+    }
 }
 
 /**
@@ -154,7 +215,7 @@ function buildVerdictSchemaExample(where: WorkflowCondition | undefined): string
  */
 function precedingTaskIndex(steps: WorkflowStep[], gateIndex: number): number {
     for (let i = gateIndex - 1; i >= 0; i--) {
-        if (steps[i]?.kind === "task") return i
+        if (canGateReferenceTask(steps, gateIndex, i)) return i
     }
     return -1
 }
@@ -168,11 +229,25 @@ function gateTargetIndices(steps: WorkflowStep[], gateIndex: number): number[] {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return []
     if (gate.targetStepIndices !== undefined && gate.targetStepIndices.length > 0) {
-        return [...gate.targetStepIndices].sort((a, b) => a - b)
+        return gate.targetStepIndices
+            .filter(targetIndex => canGateReferenceTask(steps, gateIndex, targetIndex))
+            .sort((a, b) => a - b)
     }
-    if (gate.targetStepIndex !== undefined) return [gate.targetStepIndex]
+    if (gate.targetStepIndex !== undefined) {
+        return canGateReferenceTask(steps, gateIndex, gate.targetStepIndex) ? [gate.targetStepIndex] : []
+    }
     const nearest = precedingTaskIndex(steps, gateIndex)
     return nearest < 0 ? [] : [nearest]
+}
+
+function canGateReferenceTask(steps: WorkflowStep[], gateIndex: number, targetIndex: number): boolean {
+    const gate = steps[gateIndex]
+    const target = steps[targetIndex]
+    if (gate?.kind !== "gate" || target?.kind !== "task") return false
+
+    const gateBranch = gate.branch
+    if (gateBranch === undefined) return target.branch === undefined
+    return isSameWorkflowBranch(target, gateBranch)
 }
 
 function stepIndicesLabel(indices: number[]): string {
@@ -205,14 +280,27 @@ function buildJumpContext(transition: WorkflowJumpTransition): string {
     return lines.join("\n")
 }
 
-function gatedGotoIndex(step: WorkflowStep, gotoIndex: number | undefined): number {
+function gatedGotoIndex(steps: WorkflowStep[], gateIndex: number, gotoIndex: number | undefined): number {
+    const step = steps[gateIndex]
+    if (step?.kind !== "gate") return -1
     if (gotoIndex === undefined || gotoIndex < 0) return -1
+    if (!canGateGotoStep(steps, gateIndex, gotoIndex)) return -1
     if (step.where === undefined) return gotoIndex
     return matchesWorkflowCondition(step.where, {
         score: step.score,
         confidence: step.confidence,
         issues: step.issues,
     }) ? gotoIndex : -1
+}
+
+function canGateGotoStep(steps: WorkflowStep[], gateIndex: number, targetIndex: number): boolean {
+    const gate = steps[gateIndex]
+    const target = steps[targetIndex]
+    if (gate?.kind !== "gate" || target === undefined) return false
+
+    const gateBranch = gate.branch
+    if (gateBranch === undefined) return target.branch === undefined
+    return isSameWorkflowBranch(target, gateBranch)
 }
 
 function whereReason(step: WorkflowStep, fallback: string): string {
@@ -224,6 +312,10 @@ function assertNeverWorkflowCondition(value: never): never {
     throw new Error(`unhandled workflow condition: ${String(value)}`)
 }
 
+function assertNeverWorkflowStepKind(value: never): never {
+    throw new Error(`unhandled workflow step kind: ${String(value)}`)
+}
+
 function hasLiveSession(member: MemberState | undefined): member is MemberState & { sessionId: string } {
     return member?.sessionId !== undefined && member.status !== "errored"
 }
@@ -231,11 +323,22 @@ function hasLiveSession(member: MemberState | undefined): member is MemberState 
 function describeStep(step: WorkflowStep | undefined, index: number): string {
     if (!step) return `step ${index + 1}`
     const idTag = step.id ? ` (${step.id})` : ""
-    if (step.kind === "task") return `step ${index + 1}${idTag} (task) by ${step.member ?? "?"}`
-    const target = step.targetStepIndices !== undefined && step.targetStepIndices.length > 0
-        ? stepIndicesLabel(step.targetStepIndices)
-        : step.targetStepIndex === undefined ? "nearest task" : `step ${step.targetStepIndex + 1}`
-    return `step ${index + 1}${idTag} (gate) by ${step.verifier ?? "?"}, verifying ${target}`
+    switch (step.kind) {
+        case "task":
+            return `step ${index + 1}${idTag} (task) by ${step.member ?? "?"}`
+        case "gate": {
+            const target = step.targetStepIndices !== undefined && step.targetStepIndices.length > 0
+                ? stepIndicesLabel(step.targetStepIndices)
+                : step.targetStepIndex === undefined ? "nearest task" : `step ${step.targetStepIndex + 1}`
+            return `step ${index + 1}${idTag} (gate) by ${step.verifier ?? "?"}, verifying ${target}`
+        }
+        case "fanout":
+            return `step ${index + 1}${idTag} (fanout)`
+        case "join":
+            return `step ${index + 1}${idTag} (join)`
+        default:
+            return assertNeverWorkflowStepKind(step.kind)
+    }
 }
 
 /** Dispatch a task step's actor with upstream context prefixed. */
@@ -283,6 +386,225 @@ async function dispatchGateStep(
         team,
     )
     return true
+}
+
+function buildJoinedWorkflowOutput(steps: WorkflowStep[], joinIndex: number): string {
+    const joinStep = steps[joinIndex]
+    const join = joinStep?.join
+    if (join === undefined) return ""
+
+    const fanout = steps[join.fanoutIndex]?.fanout
+    const ranges = fanout?.branchRanges ?? join.branchTailIndices.map(tailIndex => ({ startIndex: tailIndex, endIndex: tailIndex }))
+    const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
+    const blocks: string[] = []
+    let used = 0
+
+    for (let branchIndex = 0; branchIndex < ranges.length; branchIndex += 1) {
+        const range = ranges[branchIndex]
+        if (range === undefined) continue
+        const branchId = fanout?.branchIds[branchIndex] ?? `branch-${branchIndex + 1}`
+        if (erroredBranchIds.has(branchId)) continue
+        const branchBlocks: string[] = []
+
+        for (let stepIndex = range.startIndex; stepIndex <= range.endIndex; stepIndex += 1) {
+            const step = steps[stepIndex]
+            if (step?.kind !== "task" || !step.completed || !step.output) continue
+            branchBlocks.push(`[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n${truncateOutput(step.output)}`)
+        }
+
+        if (branchBlocks.length === 0) continue
+        const block = `[Branch ${branchId}]\n${branchBlocks.join("\n\n")}`
+        if (used + block.length > UPSTREAM_TOTAL_CAP) {
+            blocks.push(`[…joined output truncated at ${UPSTREAM_TOTAL_CAP} bytes]`)
+            break
+        }
+        blocks.push(block)
+        used += block.length
+    }
+
+    return blocks.join("\n\n")
+}
+
+function pushUniqueBranchId(branchIds: string[], branchId: string | undefined): void {
+    if (branchId !== undefined && !branchIds.includes(branchId)) branchIds.push(branchId)
+}
+
+function branchIdsForJoin(steps: WorkflowStep[], join: NonNullable<WorkflowStep["join"]>): readonly string[] {
+    const fanout = steps[join.fanoutIndex]?.fanout
+    if (fanout !== undefined) return fanout.branchIds
+
+    const branchIds: string[] = []
+    for (const tailIndex of join.branchTailIndices) {
+        pushUniqueBranchId(branchIds, steps[tailIndex]?.branch?.branchId)
+    }
+    return branchIds
+}
+
+function survivorBranchIdsForJoin(steps: WorkflowStep[], join: NonNullable<WorkflowStep["join"]>): readonly string[] {
+    const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
+    return branchIdsForJoin(steps, join).filter(branchId => !erroredBranchIds.has(branchId))
+}
+
+function completeWorkflowJoinStep(team: Team, steps: WorkflowStep[], joinIndex: number): boolean {
+    const step = steps[joinIndex]
+    const join = step?.join
+    if (step?.kind !== "join" || join === undefined || step.completed) return false
+
+    const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])]
+    step.join = {
+        ...join,
+        survivorBranchIds: survivorBranchIdsForJoin(steps, join),
+        ...(erroredBranchIds.length > 0 ? { erroredBranchIds } : {}),
+        joinedOutput: buildJoinedWorkflowOutput(steps, joinIndex),
+    }
+    step.completed = true
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "stage_advanced",
+        stage: joinIndex,
+        detail: `workflow join fired: step ${joinIndex + 1}; fanout step ${join.fanoutIndex + 1}`,
+    })
+    return true
+}
+
+function evaluateWorkflowFanoutError(steps: WorkflowStep[], joinIndex: number): WorkflowFanoutErrorResult {
+    const joinStep = steps[joinIndex]
+    const join = joinStep?.join
+    if (joinStep?.kind !== "join" || join === undefined) return { kind: "not_fanout" }
+
+    const branchIds = branchIdsForJoin(steps, join)
+    const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])]
+    const survivorCount = branchIds.filter(branchId => !erroredBranchIds.includes(branchId)).length
+    const fanoutDisplayStep = join.fanoutIndex + 1
+
+    if (survivorCount === 0) {
+        return { kind: "failed", reason: `workflow_failed:fanout:${fanoutDisplayStep}:all_errored` }
+    }
+    if (erroredBranchIds.length > join.maxErrored) {
+        return { kind: "failed", reason: `workflow_failed:fanout:${fanoutDisplayStep}:over_tolerance` }
+    }
+    return { kind: "within_tolerance" }
+}
+
+function markWorkflowBranchStepsSkipped(steps: WorkflowStep[], branch: WorkflowBranchMetadata): void {
+    const fanout = steps[branch.fanoutIndex]?.fanout
+    const range = fanout?.branchRanges[branch.branchIndex]
+    const startIndex = range?.startIndex ?? branch.fanoutIndex + 1
+    const endIndex = range?.endIndex ?? branch.joinIndex - 1
+
+    for (let index = startIndex; index <= endIndex; index += 1) {
+        const step = steps[index]
+        if (step === undefined || !isSameWorkflowBranch(step, branch) || step.completed) continue
+        step.completed = true
+        step.skipped = true
+    }
+}
+
+function removeActiveWorkflowBranch(task: WorkflowTask, branch: WorkflowBranchMetadata): void {
+    const active = getActiveWorkflowStepIndices(task)
+    const next = active.filter(index => {
+        const step = task.steps?.[index]
+        return step === undefined || !isSameWorkflowBranch(step, branch)
+    })
+    task.activeStepIndices = sortedWorkflowIndices(next.length > 0 ? next : [branch.joinIndex])
+    task.currentStageIndex = task.activeStepIndices[0] ?? branch.joinIndex
+}
+
+function recordedErroredBranchForMember(steps: WorkflowStep[], memberName: string): WorkflowBranchMetadata | null {
+    for (const step of steps) {
+        if (step.branch === undefined || workflowStepActorName(step) !== memberName) continue
+        const join = steps[step.branch.joinIndex]?.join
+        if (join?.erroredBranchIds?.includes(step.branch.branchId) === true) return step.branch
+    }
+    return null
+}
+
+export function markWorkflowFanoutBranchErrored(task: WorkflowTask, memberName: string): WorkflowFanoutErrorResult {
+    const steps = task.steps ?? []
+    const activeIndex = findActiveWorkflowStepIndexForMember(task, memberName)
+    const activeBranch = activeIndex === null ? null : (steps[activeIndex]?.branch ?? null)
+    const branch = activeBranch ?? recordedErroredBranchForMember(steps, memberName)
+    if (branch === null) return { kind: "not_fanout" }
+
+    const joinStep = steps[branch.joinIndex]
+    const join = joinStep?.join
+    if (joinStep?.kind !== "join" || join === undefined) return { kind: "not_fanout" }
+
+    const erroredBranchIds = [...new Set([...(join.erroredBranchIds ?? []), branch.branchId])]
+    joinStep.join = {
+        ...join,
+        erroredBranchIds,
+        survivorBranchIds: branchIdsForJoin(steps, join).filter(branchId => !erroredBranchIds.includes(branchId)),
+    }
+    markWorkflowBranchStepsSkipped(steps, branch)
+    removeActiveWorkflowBranch(task, branch)
+    return evaluateWorkflowFanoutError(steps, branch.joinIndex)
+}
+
+function sortedWorkflowIndices(indices: readonly number[]): number[] {
+    return [...indices].sort((left, right) => left - right)
+}
+
+function moveActiveWorkflowStep(task: WorkflowTask, fromIndex: number, toIndex: number): void {
+    if (task.activeStepIndices === undefined) {
+        task.currentStageIndex = toIndex
+        return
+    }
+
+    const next: number[] = []
+    let replaced = false
+    for (const index of getActiveWorkflowStepIndices(task)) {
+        const candidate = index === fromIndex ? toIndex : index
+        if (index === fromIndex) replaced = true
+        if (!next.includes(candidate)) next.push(candidate)
+    }
+    if (!replaced && !next.includes(toIndex)) next.push(toIndex)
+    task.activeStepIndices = sortedWorkflowIndices(next)
+    task.currentStageIndex = task.activeStepIndices[0] ?? toIndex
+}
+
+function hasWaitingActiveWorkflowActor(steps: WorkflowStep[], previousActive: ReadonlySet<number>, ready: readonly number[]): boolean {
+    for (const index of ready) {
+        const step = steps[index]
+        if (step === undefined || !previousActive.has(index)) continue
+
+        switch (step.kind) {
+            case "task":
+            case "gate":
+                if (!step.completed) return true
+                break
+            case "fanout":
+            case "join":
+                break
+            default:
+                return assertNeverWorkflowStepKind(step.kind)
+        }
+    }
+
+    return false
+}
+
+function completeExpandedFanoutMarkers(steps: WorkflowStep[], readyIndices: readonly number[]): void {
+    for (let index = 0; index < steps.length; index += 1) {
+        const step = steps[index]
+        if (step === undefined || step.completed) continue
+
+        switch (step.kind) {
+            case "fanout": {
+                const fanout = step.fanout
+                if (fanout !== undefined && readyIndices.some(readyIndex => readyIndex === fanout.joinIndex || fanout.branchRanges.some(range => range.startIndex <= readyIndex && readyIndex <= range.endIndex))) {
+                    step.completed = true
+                }
+                break
+            }
+            case "task":
+            case "gate":
+            case "join":
+                break
+            default:
+                assertNeverWorkflowStepKind(step.kind)
+        }
+    }
 }
 
 /**
@@ -413,7 +735,7 @@ async function gotoWorkflowStep(
         detail: `workflow jump: step ${gateIndex + 1} -> step ${targetIndex + 1} (${transition.reason}${transition.verdict ? ` ${transition.verdict}` : ""}); jump ${gate.jumpCount}/${maxJ}`,
     })
 
-    task.currentStageIndex = targetIndex
+    moveActiveWorkflowStep(task, gateIndex, targetIndex)
     if (await maybePauseBeforeWorkflowStep(ctx, team, targetIndex)) return true
     const dispatched = target.kind === "task"
         ? await dispatchTaskStep(ctx, team, task, targetIndex, buildJumpContext(transition))
@@ -438,6 +760,75 @@ export async function advanceWorkflowStep(ctx: PluginContext, team: Team): Promi
     if (!task || task.type !== "workflow") return
     const steps = task.steps ?? []
 
+    if (task.activeStepIndices !== undefined) {
+        let previousActive = new Set(getActiveWorkflowStepIndices(task))
+
+        for (;;) {
+            const ready = sortedWorkflowIndices(readyWorkflowStepIndices(task))
+            if (ready.length === 0) {
+                if (steps.findIndex(s => !s.completed) === -1) {
+                    if (await maybeTriggerSignoff(ctx, team)) return
+                    await finishRun(ctx, team, "workflow_complete", "idle")
+                    return
+                }
+                task.activeStepIndices = []
+                await saveTeamState(team)
+                return
+            }
+
+            completeExpandedFanoutMarkers(steps, ready)
+            task.activeStepIndices = ready
+            task.currentStageIndex = ready[0] ?? task.currentStageIndex
+            let dispatched = false
+
+            for (const index of ready) {
+                const step = steps[index]
+                if (step === undefined) continue
+
+                switch (step.kind) {
+                    case "task": {
+                        if (previousActive.has(index)) break
+                        if (await maybePauseBeforeWorkflowStep(ctx, team, index)) return
+                        if (!await dispatchTaskStep(ctx, team, task, index)) {
+                            await finishRun(ctx, team, `workflow_failed:no_session:${step.member ?? "unknown"}`, "failed")
+                            return
+                        }
+                        dispatched = true
+                        break
+                    }
+                    case "gate": {
+                        if (previousActive.has(index)) break
+                        if (await maybePauseBeforeWorkflowStep(ctx, team, index)) return
+                        if (!await dispatchGateStep(ctx, team, task, index)) {
+                            await finishRun(ctx, team, `workflow_failed:no_session:${step.verifier ?? "unknown"}`, "failed")
+                            return
+                        }
+                        dispatched = true
+                        break
+                    }
+                    case "fanout":
+                        step.completed = true
+                        break
+                    case "join":
+                        completeWorkflowJoinStep(team, steps, index)
+                        break
+                    default:
+                        assertNeverWorkflowStepKind(step.kind)
+                }
+            }
+
+            if (dispatched) {
+                await saveTeamState(team)
+                return
+            }
+            if (hasWaitingActiveWorkflowActor(steps, previousActive, ready)) {
+                await saveTeamState(team)
+                return
+            }
+            previousActive = new Set(getActiveWorkflowStepIndices(task))
+        }
+    }
+
     const nextIndex = steps.findIndex(s => !s.completed)
     if (nextIndex === -1) {
         if (await maybeTriggerSignoff(ctx, team)) return
@@ -459,11 +850,29 @@ export async function advanceWorkflowStep(ctx: PluginContext, team: Team): Promi
     await saveTeamState(team)
 }
 
+export async function redispatchWorkflowStep(ctx: PluginContext, team: Team, index: number): Promise<boolean> {
+    const task = team.activeTask
+    if (!task || task.type !== "workflow") return false
+    const step = task.steps?.[index]
+    if (!step || step.completed) return false
+
+    switch (step.kind) {
+        case "task":
+            return await dispatchTaskStep(ctx, team, task, index)
+        case "gate":
+            return await dispatchGateStep(ctx, team, task, index)
+        case "fanout":
+        case "join":
+            return false
+        default:
+            return assertNeverWorkflowStepKind(step.kind)
+    }
+}
+
 /**
- * Workflow core state machine. processIdle has already validated the idle
- * member's identity (getExpectedMember returns the current step's actor) and
- * captured its output into task.responses, so this function only advances the
- * state machine.
+ * Workflow core state machine. processIdle captures the idle member's current
+ * turn; this function validates that the member belongs to the active frontier
+ * and advances only that matching step.
  */
 export async function handleWorkflowIdle(
     ctx: PluginContext,
@@ -473,22 +882,27 @@ export async function handleWorkflowIdle(
     const task = team.activeTask
     if (!task || task.type !== "workflow") return
     const steps = task.steps ?? []
-    const step = steps[task.currentStageIndex]
+    const activeStepIndex = findActiveWorkflowStepIndexForMember(task, member.name)
+    if (activeStepIndex === null) return
+    const step = steps[activeStepIndex]
     if (!step) return
 
     if (step.kind === "task") {
-        if (member.name !== step.member) return              // stray idle
-        const raw = task.responses[member.name] ?? ""
+        const raw = step.output ?? task.responses[member.name] ?? ""
         // Per-step output cap on the captured snapshot only — the full output
         // is still persisted to runs/<runId>/<member>.md by captureMemberOutput.
-        step.output = step.maxOutputBytes !== undefined ? truncateOutput(raw, step.maxOutputBytes) : raw
+        if (step.output === undefined) {
+            step.output = step.maxOutputBytes !== undefined ? truncateOutput(raw, step.maxOutputBytes) : raw
+        }
         step.completed = true
-        if (await maybePauseAfterWorkflowStep(ctx, team, task.currentStageIndex)) return
-        const nextIndex = steps.findIndex(s => !s.completed)
-        if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
+        if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex)) return
+        const nextIndex = task.activeStepIndices === undefined
+            ? steps.findIndex(s => !s.completed)
+            : (readyWorkflowStepIndices(task)[0] ?? -1)
+        if (step.branch === undefined && nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
-            stage: task.currentStageIndex,
-            summary: `Completed ${describeStep(step, task.currentStageIndex)}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
+            stage: activeStepIndex,
+            summary: `Completed ${describeStep(step, activeStepIndex)}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
         })) {
             return
         }
@@ -497,18 +911,18 @@ export async function handleWorkflowIdle(
     }
 
     // gate step
-    if (member.name !== step.verifier) return                // stray idle
-    const v = parseVerdict(task.responses[step.verifier] ?? "")
+    if (step.kind !== "gate" || step.verifier === undefined) return
+    const v = parseVerdict(step.output ?? task.responses[step.verifier] ?? "")
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "verdict",
         member: step.verifier,
-        stage: task.currentStageIndex,
+        stage: activeStepIndex,
         detail: v.verdict ?? "parse_fail",
     })
 
     if (v.parseFailed || !v.verdict) {
-        await handleInvalidVerdict(ctx, team, step, "parse_failure", v.rationale, v.diff)
+        await handleInvalidVerdict(ctx, team, step, activeStepIndex, "parse_failure", v.rationale, v.diff)
         return
     }
     step.verdict = v.verdict
@@ -517,7 +931,7 @@ export async function handleWorkflowIdle(
     step.issues = v.issues
 
     if (v.verdict === "INVALID") {
-        await handleInvalidVerdict(ctx, team, step, "INVALID", v.rationale, v.diff)
+        await handleInvalidVerdict(ctx, team, step, activeStepIndex, "INVALID", v.rationale, v.diff)
         return
     }
 
@@ -525,18 +939,18 @@ export async function handleWorkflowIdle(
         step.completed = true
         // approval_after on a gate is validator-guaranteed incompatible with
         // on_*_goto, so pausing here cannot be bypassed by a goto jump.
-        if (await maybePauseAfterWorkflowStep(ctx, team, task.currentStageIndex)) return
-        const gotoIdx = gatedGotoIndex(step, step.onPassGoto)
+        if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex)) return
+        const gotoIdx = gatedGotoIndex(steps, activeStepIndex, step.onPassGoto)
         const nextIndex = gotoIdx >= 0 ? gotoIdx : steps.findIndex(s => !s.completed)
-        if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
+        if (step.branch === undefined && nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
-            stage: task.currentStageIndex,
-            summary: `Completed ${describeStep(step, task.currentStageIndex)} with PASS from ${step.verifier}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
+            stage: activeStepIndex,
+            summary: `Completed ${describeStep(step, activeStepIndex)} with PASS from ${step.verifier}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
         })) {
             return
         }
         if (gotoIdx >= 0) {
-            await gotoWorkflowStep(ctx, team, task.currentStageIndex, gotoIdx, { reason: whereReason(step, "on_pass"), verdict: "PASS", rationale: v.rationale, diff: v.diff })
+            await gotoWorkflowStep(ctx, team, activeStepIndex, gotoIdx, { reason: whereReason(step, "on_pass"), verdict: "PASS", rationale: v.rationale, diff: v.diff })
             return
         }
         await advanceWorkflowStep(ctx, team)
@@ -546,9 +960,9 @@ export async function handleWorkflowIdle(
     // v.verdict === "FAIL"
     const onFail = step.onFail ?? "fail"
     if (onFail === "fail") {
-        const failGoto = gatedGotoIndex(step, step.onFailGoto)
+        const failGoto = gatedGotoIndex(steps, activeStepIndex, step.onFailGoto)
         if (failGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, { reason: whereReason(step, "on_fail"), verdict: "FAIL", rationale: v.rationale, diff: v.diff })
+            await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, { reason: whereReason(step, "on_fail"), verdict: "FAIL", rationale: v.rationale, diff: v.diff })
             return
         }
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
@@ -558,15 +972,15 @@ export async function handleWorkflowIdle(
     step.attempts = (step.attempts ?? 0) + 1
     const maxR = step.maxRetries ?? 0
     if (step.attempts > maxR) {
-        const failGoto = gatedGotoIndex(step, step.onFailGoto)
+        const failGoto = gatedGotoIndex(steps, activeStepIndex, step.onFailGoto)
         if (failGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, task.currentStageIndex, failGoto, { reason: whereReason(step, "on_fail_retry_exhausted"), verdict: "FAIL", rationale: v.rationale, diff: v.diff })
+            await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, { reason: whereReason(step, "on_fail_retry_exhausted"), verdict: "FAIL", rationale: v.rationale, diff: v.diff })
             return
         }
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
         return
     }
-    const gateIndex = task.currentStageIndex
+    const gateIndex = activeStepIndex
     const producerIdx = gateTargetIndex(steps, gateIndex)
     if (producerIdx === -1) {
         // No preceding task to retry -> fail (defensive; tool layer rejects gate-first).
@@ -589,7 +1003,7 @@ export async function handleWorkflowIdle(
         await finishRun(ctx, team, `workflow_failed:${step.verifier}`, "failed")
         return
     }
-    task.currentStageIndex = producerIdx
+    moveActiveWorkflowStep(task, gateIndex, producerIdx)
     // Honor producer approval_before on retry re-dispatch (parity with goto
     // backward jump and the initial advance path). Without this, a FAIL retry
     // silently bypassed the leader gate that the step declared.
@@ -633,13 +1047,13 @@ async function handleInvalidVerdict(
     ctx: PluginContext,
     team: Team,
     step: WorkflowStep,
+    gateIndex: number,
     reason: "INVALID" | "parse_failure",
     rationale: string,
     diff: string,
 ): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "workflow") return
-    const gateIndex = task.currentStageIndex
     const policy = step.onInvalid ?? "fail"
 
     if (policy === "retry_verifier") {

@@ -8,6 +8,7 @@
 import type { PluginContext } from "../core/context.js"
 import type { Team } from "../state/store.js"
 import { finishRun } from "./summary.js"
+import { markWorkflowFanoutBranchErrored } from "./workflow.js"
 
 /**
  * Check the active task's termination conditions and, if met, deliver a summary
@@ -47,6 +48,24 @@ export async function checkTermination(ctx: PluginContext, team: Team): Promise<
     // (pipeline/loop/consensus) get tolerance 0 — one active member, no survivors.
     const erroredMembers = team.members.filter(m => !m.isMaster && m.status === "errored")
     if (erroredMembers.length > 0) {
+        if (task.type === "workflow") {
+            for (const member of erroredMembers) {
+                const result = markWorkflowFanoutBranchErrored(task, member.name)
+                switch (result.kind) {
+                    case "within_tolerance":
+                        continue
+                    case "failed":
+                        await finishRun(ctx, team, result.reason, "failed")
+                        return
+                    case "not_fanout":
+                        await finishRun(ctx, team, `member_error:${member.name}:${member.error ?? "unknown"}`, "failed")
+                        return
+                    default:
+                        result satisfies never
+                }
+            }
+            return
+        }
         const concurrent = task.type === "parallel" || task.type === "delegate" || task.type === "recurse"
         const tolerance = concurrent ? (task.maxErroredMembers ?? 0) : 0
         const survivors = team.members.filter(m => !m.isMaster).length - erroredMembers.length

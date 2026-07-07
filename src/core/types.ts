@@ -288,14 +288,40 @@ export interface TollgateTask extends ActiveTaskBase {
     maxInvalidCycles?: number                // cap on INVALID/escalate ping-pong per gate (default 3); beyond it the run fails with tollgate_invalid:exhausted instead of looping to wall-clock
 }
 
-// workflow: deterministic, declaratively-composed linear step engine. Each step
-// is either a `task` (one member produces output) or a `gate` (a verifier
-// renders a PASS/FAIL verdict over the preceding task's output). The engine --
-// not the master LLM -- drives every step transition, keeping intermediate
-// results out of master context. MVP is linear with gate-driven retry only.
-export type WorkflowStepKind = "task" | "gate"
+// workflow: deterministic, declaratively-composed step engine. Linear workflows
+// remain the degenerate case; fanout/join marker steps allow a persisted active
+// frontier without introducing a separate orchestration primitive.
+export type WorkflowStepKind = "task" | "gate" | "fanout" | "join"
 
 export type WorkflowOnInvalid = "fail" | "retry_verifier" | "escalate"
+
+export type WorkflowBranchRange = {
+    readonly startIndex: number
+    readonly endIndex: number
+}
+
+export type WorkflowFanoutMetadata = {
+    readonly branchIds: readonly string[]
+    readonly branchRanges: readonly WorkflowBranchRange[]
+    readonly joinIndex: number
+    readonly maxErrored: number
+}
+
+export type WorkflowBranchMetadata = {
+    readonly fanoutIndex: number
+    readonly branchId: string
+    readonly branchIndex: number
+    readonly joinIndex: number
+}
+
+export type WorkflowJoinMetadata = {
+    readonly fanoutIndex: number
+    readonly branchTailIndices: readonly number[]
+    readonly maxErrored: number
+    readonly survivorBranchIds?: readonly string[]
+    readonly erroredBranchIds?: readonly string[]
+    readonly joinedOutput?: string
+}
 
 export type WorkflowStep = {
     kind: WorkflowStepKind
@@ -334,6 +360,11 @@ export type WorkflowStep = {
     approvalAfter?: boolean             // pause for team_approve after this step completes, before advancing
     approvalBeforeGranted?: boolean     // transient: approval_before was requested for the current step instance; consumed on dispatch, reset on re-entry (retry/goto-back)
     maxOutputBytes?: number             // task steps: cap the captured output snapshot to N UTF-8 bytes (head+tail preserved)
+    // fanout/join DAG metadata (workflow P2). Runtime dispatch wiring lands in a
+    // later task; T1 only persists and reads the flat DAG shape.
+    fanout?: WorkflowFanoutMetadata     // fanout marker steps
+    branch?: WorkflowBranchMetadata     // task/gate steps inside a fanout branch
+    join?: WorkflowJoinMetadata         // join marker steps
     // shared
     completed: boolean                  // true when the step is done (task produced; gate PASS; or skipped by a forward jump)
     skipped?: boolean                   // true when a forward jump marked this step as skipped (not run)
@@ -342,6 +373,7 @@ export type WorkflowStep = {
 export interface WorkflowTask extends ActiveTaskBase {
     type: "workflow"
     steps?: WorkflowStep[]              // declarative step list; currentStageIndex is the cursor. Optional to match the codebase convention (all variant-specific fields are optional, like gatedStages?); handlers guard with `task.steps ?? []`.
+    activeStepIndices?: number[]        // persisted active frontier for fanout/join; legacy readers fall back to [currentStageIndex]
 }
 
 export type ActiveTask =
@@ -367,6 +399,7 @@ export type LastModeRecord = {
 // --- RunRecord (persistent per-orchestration result, stored as runs/<runId>/record.json) ---
 
 export type RunStatus = "completed" | "failed"
+export type WorkflowBranchStatus = "pending" | "completed" | "skipped" | "errored"
 
 export type WorkflowRunStep = {
     index: number                       // zero-based internal workflow step index
@@ -389,6 +422,11 @@ export type WorkflowRunStep = {
     completed: boolean
     output?: string                     // bounded task-step snapshot captured at completion
     outputBytes?: number
+    joinedOutputBytes?: number
+    fanout?: WorkflowFanoutMetadata
+    branch?: WorkflowBranchMetadata
+    join?: WorkflowJoinMetadata
+    branchStatuses?: Record<string, WorkflowBranchStatus>
     // Static step-level control config (post-run audit mirror of the runtime
     // declared controls). approvalBeforeGranted is transient and not persisted.
     approvalBefore?: boolean

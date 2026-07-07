@@ -10,7 +10,13 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import type { WorkflowStep, WorkflowTask } from "../core/types.js"
+import type {
+    WorkflowBranchMetadata,
+    WorkflowFanoutMetadata,
+    WorkflowJoinMetadata,
+    WorkflowStep,
+    WorkflowTask,
+} from "../core/types.js"
 import { formatWorkflowCondition, parseWorkflowCondition } from "../core/workflow-conditions.js"
 import { activationError } from "../core/utils.js"
 import { dispatchToMember } from "../orchestration/dispatch.js"
@@ -30,38 +36,95 @@ import {
 } from "./shared.js"
 
 type WorkflowWhere = {
-    score_gte?: number
-    score_lt?: number
-    confidence_gte?: number
-    has_issue_severity?: "low" | "medium" | "high" | "critical"
+    readonly score_gte?: number
+    readonly score_lt?: number
+    readonly confidence_gte?: number
+    readonly has_issue_severity?: "low" | "medium" | "high" | "critical"
 }
 
+type WorkflowStepRef = number | string
+
 export type WorkflowToolStep = {
-    kind: "task" | "gate"
-    id?: string
-    member?: string
-    task?: string
-    verifier?: string
-    criteria?: string
-    target_step?: number | string
-    targets?: Array<number | string>
-    on_fail?: "retry" | "fail"
-    max_retries?: number
-    on_invalid?: "fail" | "retry_verifier" | "escalate"
-    max_invalid_retries?: number
-    on_pass_goto?: number | string
-    on_fail_goto?: number | string
-    on_invalid_goto?: number | string
-    where?: WorkflowWhere
-    approval_before?: boolean
-    approval_after?: boolean
-    max_output_bytes?: number
-    max_jumps?: number
+    readonly kind: "task" | "gate" | "fanout" | "join"
+    readonly id?: string
+    readonly member?: string
+    readonly task?: string
+    readonly verifier?: string
+    readonly criteria?: string
+    readonly target_step?: WorkflowStepRef
+    readonly targets?: readonly WorkflowStepRef[]
+    readonly on_fail?: "retry" | "fail"
+    readonly max_retries?: number
+    readonly on_invalid?: "fail" | "retry_verifier" | "escalate"
+    readonly max_invalid_retries?: number
+    readonly on_pass_goto?: WorkflowStepRef
+    readonly on_fail_goto?: WorkflowStepRef
+    readonly on_invalid_goto?: WorkflowStepRef
+    readonly where?: WorkflowWhere
+    readonly approval_before?: boolean
+    readonly approval_after?: boolean
+    readonly max_output_bytes?: number
+    readonly max_jumps?: number
+    readonly branches?: readonly WorkflowFanoutBranch[]
+    readonly max_errored?: number
+}
+
+type WorkflowLinearToolStep = WorkflowToolStep & { readonly kind: "task" | "gate" }
+
+type WorkflowFanoutBranch = {
+    readonly id: string
+    readonly steps: readonly WorkflowToolStep[]
+}
+
+type WorkflowFanoutToolStep = WorkflowToolStep & { readonly kind: "fanout" }
+
+type WorkflowBranchContext = {
+    readonly fanoutStepNumber: number
+    readonly branchId: string
+    readonly branchStepNumber: number
+}
+
+type LoweredWorkflowLinearStep = WorkflowLinearToolStep & {
+    readonly branch?: WorkflowBranchMetadata
+    readonly branchContext?: WorkflowBranchContext
+}
+
+type LoweredWorkflowFanoutStep = {
+    readonly kind: "fanout"
+    readonly id?: string
+    readonly fanout: WorkflowFanoutMetadata
+}
+
+type LoweredWorkflowJoinStep = {
+    readonly kind: "join"
+    readonly id?: string
+    readonly join: WorkflowJoinMetadata
+}
+
+type LoweredWorkflowStep = LoweredWorkflowLinearStep | LoweredWorkflowFanoutStep | LoweredWorkflowJoinStep
+
+class WorkflowToolInvariantError extends Error {
+    constructor(value: never) {
+        super(`Unexpected workflow tool step kind: ${String(value)}`)
+        this.name = "WorkflowToolInvariantError"
+    }
+}
+
+function assertNever(value: never): never {
+    throw new WorkflowToolInvariantError(value)
+}
+
+function isLinearToolStep(step: WorkflowToolStep): step is WorkflowLinearToolStep {
+    return step.kind === "task" || step.kind === "gate"
+}
+
+function isFanoutToolStep(step: WorkflowToolStep): step is WorkflowFanoutToolStep {
+    return step.kind === "fanout"
 }
 
 type WorkflowToolArgs = {
     team_id: string
-    steps?: WorkflowToolStep[]
+    steps?: readonly WorkflowToolStep[]
     workflow_file?: string
     vars?: Record<string, string>
     dry_run?: boolean
@@ -69,13 +132,13 @@ type WorkflowToolArgs = {
     signoff_decider?: string
 }
 
-type ResolvedWorkflowToolArgs = WorkflowToolArgs & { steps: WorkflowToolStep[] }
+type ResolvedWorkflowToolArgs = Omit<WorkflowToolArgs, "steps"> & { steps: readonly WorkflowToolStep[] }
 
 /**
  * Resolve a gate target reference (number 1-based or string step id).
  * Returns -1 when the target cannot be resolved or points forward/to a gate.
  */
-function resolveGateTargetRef(steps: WorkflowToolStep[], gateIndex: number, target: number | string): number {
+function resolveGateTargetRef(steps: readonly LoweredWorkflowStep[], gateIndex: number, target: WorkflowStepRef): number {
     if (typeof target === "number") {
         const idx = target - 1
         return idx >= 0 && idx < gateIndex && steps[idx]?.kind === "task" ? idx : -1
@@ -85,7 +148,7 @@ function resolveGateTargetRef(steps: WorkflowToolStep[], gateIndex: number, targ
 }
 
 /** Resolve the primary single target, or nearest preceding task when omitted. */
-function resolveGateTargetIndex(steps: WorkflowToolStep[], gateIndex: number): number {
+function resolveGateTargetIndex(steps: readonly LoweredWorkflowStep[], gateIndex: number): number {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return -1
     const target = gate.target_step
@@ -99,7 +162,7 @@ function resolveGateTargetIndex(steps: WorkflowToolStep[], gateIndex: number): n
 }
 
 /** Resolve all gate targets. `targets` wins; otherwise this is the single target. */
-function resolveGateTargetIndices(steps: WorkflowToolStep[], gateIndex: number): number[] {
+function resolveGateTargetIndices(steps: readonly LoweredWorkflowStep[], gateIndex: number): number[] {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return []
     if (gate.targets !== undefined) {
@@ -124,7 +187,7 @@ function primaryTargetIndex(indices: number[]): number | undefined {
  * step index. Unlike gate target_step, a goto may reference ANY step (task or
  * gate) except the gate itself. Returns -1 when unresolvable.
  */
-function resolveGotoIndex(steps: WorkflowToolStep[], gateIndex: number, ref: number | string | undefined): number {
+function resolveGotoIndex(steps: readonly LoweredWorkflowStep[], gateIndex: number, ref: WorkflowStepRef | undefined): number {
     if (ref === undefined) return -1
     if (typeof ref === "number") {
         const idx = ref - 1
@@ -132,6 +195,459 @@ function resolveGotoIndex(steps: WorkflowToolStep[], gateIndex: number, ref: num
     }
     const idx = steps.findIndex((s, i) => i !== gateIndex && s.id === ref)
     return idx
+}
+
+function resolvesToMarkerStep(steps: readonly LoweredWorkflowStep[], gateIndex: number, ref: WorkflowStepRef): boolean {
+    const idx = typeof ref === "number"
+        ? ref - 1
+        : steps.findIndex((s, i) => i < gateIndex && s.id === ref)
+    if (idx < 0 || idx >= gateIndex) return false
+    const target = steps[idx]
+    if (target === undefined) return false
+
+    switch (target.kind) {
+        case "fanout":
+        case "join":
+            return true
+        case "task":
+        case "gate":
+            return false
+        default:
+            return assertNever(target)
+    }
+}
+
+function isTeamMember(team: Team, name: string): boolean {
+    return team.members.some(member => member.name === name)
+}
+
+function convertTopLevelRef(ref: WorkflowStepRef, publicToFlat: readonly number[]): WorkflowStepRef {
+    if (typeof ref === "string") return ref
+    const flatIndex = publicToFlat[ref - 1]
+    return flatIndex === undefined ? ref : flatIndex + 1
+}
+
+function convertBranchRef(ref: WorkflowStepRef, branchStartIndex: number, branchStepCount: number): WorkflowStepRef {
+    if (typeof ref === "string") return ref
+    const localIndex = ref - 1
+    return localIndex >= 0 && localIndex < branchStepCount ? branchStartIndex + localIndex + 1 : ref
+}
+
+function resolvePublicTaskRef(steps: readonly WorkflowToolStep[], gateIndex: number, target: WorkflowStepRef): number {
+    if (typeof target === "number") {
+        const idx = target - 1
+        return idx >= 0 && idx < gateIndex && steps[idx]?.kind === "task" ? idx : -1
+    }
+    return steps.findIndex((step, index) => index < gateIndex && step.kind === "task" && step.id === target)
+}
+
+function resolvePublicGateTargetIndex(steps: readonly WorkflowToolStep[], gateIndex: number): number {
+    const gate = steps[gateIndex]
+    if (gate?.kind !== "gate") return -1
+    if (gate.target_step !== undefined) return resolvePublicTaskRef(steps, gateIndex, gate.target_step)
+    for (let index = gateIndex - 1; index >= 0; index -= 1) {
+        if (steps[index]?.kind === "task") return index
+    }
+    return -1
+}
+
+function resolvePublicGotoRef(steps: readonly WorkflowToolStep[], gateIndex: number, ref: WorkflowStepRef): number {
+    if (typeof ref === "number") {
+        const idx = ref - 1
+        return idx >= 0 && idx < steps.length && idx !== gateIndex ? idx : -1
+    }
+    return steps.findIndex((step, index) => index !== gateIndex && step.id === ref)
+}
+
+function lowerLinearStep(
+    step: WorkflowLinearToolStep,
+    convertRef: (ref: WorkflowStepRef) => WorkflowStepRef,
+    branch: WorkflowBranchMetadata | undefined,
+    branchContext: WorkflowBranchContext | undefined,
+): LoweredWorkflowLinearStep {
+    if (step.kind === "task") {
+        return branch === undefined || branchContext === undefined ? step : { ...step, branch, branchContext }
+    }
+    const lowered: WorkflowLinearToolStep = {
+        ...step,
+        target_step: step.target_step === undefined ? undefined : convertRef(step.target_step),
+        targets: step.targets?.map(target => convertRef(target)),
+        on_pass_goto: step.on_pass_goto === undefined ? undefined : convertRef(step.on_pass_goto),
+        on_fail_goto: step.on_fail_goto === undefined ? undefined : convertRef(step.on_fail_goto),
+        on_invalid_goto: step.on_invalid_goto === undefined ? undefined : convertRef(step.on_invalid_goto),
+    }
+    return branch === undefined || branchContext === undefined ? lowered : { ...lowered, branch, branchContext }
+}
+
+function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly LoweredWorkflowStep[] {
+    const loweredSteps: LoweredWorkflowStep[] = []
+    const publicToFlat: number[] = []
+
+    for (let publicIndex = 0; publicIndex < steps.length; publicIndex += 1) {
+        const step = steps[publicIndex]
+        if (step === undefined) continue
+
+        switch (step.kind) {
+            case "task":
+            case "gate":
+                if (!isLinearToolStep(step)) break
+                publicToFlat[publicIndex] = loweredSteps.length
+                loweredSteps.push(lowerLinearStep(step, ref => convertTopLevelRef(ref, publicToFlat), undefined, undefined))
+                break
+            case "join":
+                publicToFlat[publicIndex] = loweredSteps.length
+                loweredSteps.push({ kind: "join", id: step.id, join: { fanoutIndex: -1, branchTailIndices: [], maxErrored: 0 } })
+                break
+            case "fanout": {
+                const joinStep = steps[publicIndex + 1]
+                const branches = step.branches ?? []
+                const fanoutIndex = loweredSteps.length
+                const totalBranchSteps = branches.reduce((sum, branch) => sum + branch.steps.length, 0)
+                const joinIndex = fanoutIndex + totalBranchSteps + 1
+                const branchRanges = branches.map((branch, branchIndex) => {
+                    const previousLength = branches
+                        .slice(0, branchIndex)
+                        .reduce((sum, previousBranch) => sum + previousBranch.steps.length, 0)
+                    return {
+                        startIndex: fanoutIndex + previousLength + 1,
+                        endIndex: fanoutIndex + previousLength + branch.steps.length,
+                    }
+                })
+                const branchIds = branches.map(branch => branch.id)
+                const maxErrored = step.max_errored ?? 0
+                publicToFlat[publicIndex] = fanoutIndex
+                if (joinStep !== undefined) publicToFlat[publicIndex + 1] = joinIndex
+                loweredSteps.push({
+                    kind: "fanout",
+                    id: step.id,
+                    fanout: { branchIds, branchRanges, joinIndex, maxErrored },
+                })
+                for (let branchIndex = 0; branchIndex < branches.length; branchIndex += 1) {
+                    const branch = branches[branchIndex]
+                    const range = branchRanges[branchIndex]
+                    if (branch === undefined || range === undefined) continue
+                    for (let branchStepIndex = 0; branchStepIndex < branch.steps.length; branchStepIndex += 1) {
+                        const branchStep = branch.steps[branchStepIndex]
+                        if (branchStep === undefined) continue
+                        switch (branchStep.kind) {
+                            case "task":
+                            case "gate": {
+                                if (!isLinearToolStep(branchStep)) break
+                                const branchMetadata: WorkflowBranchMetadata = {
+                                    fanoutIndex,
+                                    branchId: branch.id,
+                                    branchIndex,
+                                    joinIndex,
+                                }
+                                const branchContext: WorkflowBranchContext = {
+                                    fanoutStepNumber: publicIndex + 1,
+                                    branchId: branch.id,
+                                    branchStepNumber: branchStepIndex + 1,
+                                }
+                                loweredSteps.push(lowerLinearStep(
+                                    branchStep,
+                                    ref => convertBranchRef(ref, range.startIndex, branch.steps.length),
+                                    branchMetadata,
+                                    branchContext,
+                                ))
+                                break
+                            }
+                            case "fanout":
+                            case "join":
+                                break
+                            default:
+                                assertNever(branchStep.kind)
+                        }
+                    }
+                }
+                loweredSteps.push({
+                    kind: "join",
+                    id: joinStep?.kind === "join" ? joinStep.id : undefined,
+                    join: {
+                        fanoutIndex,
+                        branchTailIndices: branchRanges.map(range => range.endIndex),
+                        maxErrored,
+                    },
+                })
+                publicIndex += 1
+                break
+            }
+            default:
+                assertNever(step.kind)
+        }
+    }
+
+    return loweredSteps
+}
+
+function validateDuplicateStepIds(steps: readonly WorkflowToolStep[]): string | null {
+    const ids = new Map<string, number>()
+
+    for (let publicIndex = 0; publicIndex < steps.length; publicIndex += 1) {
+        const step = steps[publicIndex]
+        if (step === undefined) continue
+        const displayStep = publicIndex + 1
+        const duplicate = validateStepId(ids, step.id, displayStep)
+        if (duplicate !== null) return duplicate
+        if (step.kind !== "fanout") continue
+        for (const branch of step.branches ?? []) {
+            for (let branchStepIndex = 0; branchStepIndex < branch.steps.length; branchStepIndex += 1) {
+                const branchStep = branch.steps[branchStepIndex]
+                if (branchStep === undefined) continue
+                const branchDuplicate = validateStepId(ids, branchStep.id, displayStep)
+                if (branchDuplicate !== null) return branchDuplicate
+            }
+        }
+    }
+
+    return null
+}
+
+function validateStepId(ids: Map<string, number>, id: string | undefined, displayStep: number): string | null {
+    if (id === undefined) return null
+    const previous = ids.get(id)
+    if (previous !== undefined) return `Error: duplicate step id "${id}" at steps ${previous} and ${displayStep}`
+    ids.set(id, displayStep)
+    return null
+}
+
+function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]): string | null {
+    const duplicateStepId = validateDuplicateStepIds(steps)
+    if (duplicateStepId !== null) return duplicateStepId
+
+    for (let index = 0; index < steps.length; index += 1) {
+        const step = steps[index]
+        if (step === undefined) continue
+        switch (step.kind) {
+            case "task":
+            case "gate":
+                break
+            case "join":
+                if (steps[index - 1]?.kind !== "fanout") {
+                    return `Error: join step ${index + 1} has no matching fanout step`
+                }
+                break
+            case "fanout": {
+                if (steps[index + 1]?.kind !== "join") {
+                    return `Error: fanout step ${index + 1} must be followed by a join step`
+                }
+                if (!isFanoutToolStep(step)) break
+                const branchError = validateFanoutBranches(step, index + 1)
+                if (branchError !== null) return branchError
+                break
+            }
+            default:
+                assertNever(step.kind)
+        }
+    }
+
+    return null
+}
+
+function validateFanoutBranches(step: WorkflowFanoutToolStep, displayStep: number): string | null {
+    const branches = step.branches ?? []
+    if (branches.length === 0) return `Error: fanout step ${displayStep} requires at least one branch`
+    const maxErrored = step.max_errored ?? 0
+    const maxAllowed = branches.length - 1
+    if (!Number.isInteger(maxErrored) || maxErrored < 0 || maxErrored > maxAllowed) {
+        return `Error: fanout step ${displayStep} max_errored must be an integer from 0 to ${maxAllowed}`
+    }
+
+    const branchIds = new Set<string>()
+    const branchByMember = new Map<string, string>()
+    for (const branch of branches) {
+        if (branchIds.has(branch.id)) return `Error: duplicate fanout branch id "${branch.id}" at fanout step ${displayStep}`
+        branchIds.add(branch.id)
+        if (branch.steps.length === 0) return `Error: fanout step ${displayStep} branch "${branch.id}" must contain at least one step`
+
+        const branchError = validateBranchSteps(branch, displayStep, branchByMember)
+        if (branchError !== null) return branchError
+    }
+
+    return null
+}
+
+function registerFanoutBranchActor(
+    branchByMember: Map<string, string>,
+    member: string | undefined,
+    fanoutDisplayStep: number,
+    branchId: string,
+): string | null {
+    if (member === undefined) return null
+    const existingBranch = branchByMember.get(member)
+    if (existingBranch !== undefined && existingBranch !== branchId) {
+        return `Error: fanout step ${fanoutDisplayStep} uses member "${member}" in concurrent branches "${existingBranch}" and "${branchId}"`
+    }
+    branchByMember.set(member, branchId)
+    return null
+}
+
+function validateBranchSteps(
+    branch: WorkflowFanoutBranch,
+    fanoutDisplayStep: number,
+    branchByMember: Map<string, string>,
+): string | null {
+    for (let index = 0; index < branch.steps.length; index += 1) {
+        const step = branch.steps[index]
+        if (step === undefined) continue
+        const displayStep = index + 1
+        switch (step.kind) {
+            case "fanout":
+                return `Error: fanout step ${fanoutDisplayStep} branch "${branch.id}" must not contain recursive fanout`
+            case "join":
+                return `Error: fanout step ${fanoutDisplayStep} branch "${branch.id}" must not contain join`
+            case "task":
+                if (step.approval_before === true || step.approval_after === true) {
+                    return `Error: fanout step ${fanoutDisplayStep} branch "${branch.id}" step ${displayStep} must not set approval_before/approval_after`
+                }
+                {
+                    const actorError = registerFanoutBranchActor(branchByMember, step.member, fanoutDisplayStep, branch.id)
+                    if (actorError !== null) return actorError
+                }
+                break
+            case "gate": {
+                if (step.approval_before === true || step.approval_after === true) {
+                    return `Error: fanout step ${fanoutDisplayStep} branch "${branch.id}" step ${displayStep} must not set approval_before/approval_after`
+                }
+                const actorError = registerFanoutBranchActor(branchByMember, step.verifier, fanoutDisplayStep, branch.id)
+                if (actorError !== null) return actorError
+                const targetError = validateBranchGateTargets(branch.steps, index, fanoutDisplayStep, branch.id)
+                if (targetError !== null) return targetError
+                const gotoError = validateBranchGateGotos(branch.steps, index, fanoutDisplayStep, branch.id)
+                if (gotoError !== null) return gotoError
+                break
+            }
+            default:
+                assertNever(step.kind)
+        }
+    }
+
+    return null
+}
+
+function validateBranchGateTargets(
+    steps: readonly WorkflowToolStep[],
+    gateIndex: number,
+    fanoutDisplayStep: number,
+    branchId: string,
+): string | null {
+    const gate = steps[gateIndex]
+    if (gate?.kind !== "gate") return null
+    const location = `fanout step ${fanoutDisplayStep} branch "${branchId}" step ${gateIndex + 1} (gate)`
+    if (gate.target_step !== undefined && gate.targets !== undefined) {
+        return `Error: ${location} must not set both target_step and targets`
+    }
+    if (gate.targets !== undefined) {
+        for (let index = 0; index < gate.targets.length; index += 1) {
+            const targetRef = gate.targets[index]
+            if (targetRef === undefined || resolvePublicTaskRef(steps, gateIndex, targetRef) < 0) {
+                return `Error: ${location} targets[${index}] "${String(targetRef)}" must reference a previous task step in the same branch`
+            }
+        }
+        return null
+    }
+    const targetIndex = resolvePublicGateTargetIndex(steps, gateIndex)
+    if (targetIndex >= 0) return null
+    const targetRef = gate.target_step
+    if (targetRef === undefined) {
+        return `Error: ${location} has no preceding task step to verify in the same branch`
+    }
+    return `Error: ${location} target_step "${String(targetRef)}" must reference a previous task step in the same branch`
+}
+
+function validateBranchGateGotos(
+    steps: readonly WorkflowToolStep[],
+    gateIndex: number,
+    fanoutDisplayStep: number,
+    branchId: string,
+): string | null {
+    const gate = steps[gateIndex]
+    if (gate?.kind !== "gate") return null
+    for (const [field, ref] of [
+        ["on_pass_goto", gate.on_pass_goto],
+        ["on_fail_goto", gate.on_fail_goto],
+        ["on_invalid_goto", gate.on_invalid_goto],
+    ] as const) {
+        if (ref === undefined) continue
+        if (resolvePublicGotoRef(steps, gateIndex, ref) < 0) {
+            return `Error: fanout step ${fanoutDisplayStep} branch "${branchId}" step ${gateIndex + 1} (gate) ${field} "${String(ref)}" must not cross fanout boundaries`
+        }
+    }
+    return null
+}
+
+function stepLocation(step: LoweredWorkflowStep, displayStep: number, includeKind: boolean): string {
+    switch (step.kind) {
+        case "task":
+        case "gate": {
+            const branchContext = step.branchContext
+            if (branchContext !== undefined) {
+                const kindTag = includeKind ? ` (${step.kind})` : ""
+                return `fanout step ${branchContext.fanoutStepNumber} branch "${branchContext.branchId}" step ${branchContext.branchStepNumber}${kindTag}`
+            }
+            return includeKind ? `step ${displayStep} (${step.kind})` : `step ${displayStep}`
+        }
+        case "fanout":
+        case "join":
+            return includeKind ? `step ${displayStep} (${step.kind})` : `step ${displayStep}`
+        default:
+            return assertNever(step)
+    }
+}
+
+function targetStepErrorLabel(step: LoweredWorkflowStep, targetIndex: number): string {
+    switch (step.kind) {
+        case "task":
+        case "gate":
+            return step.branchContext === undefined ? `target step ${targetIndex + 1}` : `target step ${step.branchContext.branchStepNumber}`
+        case "fanout":
+        case "join":
+            return `target step ${targetIndex + 1}`
+        default:
+            return assertNever(step)
+    }
+}
+
+function resolveAndValidateGateTargets(
+    steps: readonly LoweredWorkflowStep[],
+    gate: LoweredWorkflowLinearStep,
+    gateIndex: number,
+    displayStep: number,
+): { readonly indices: readonly number[] } | { readonly error: string } {
+    const location = stepLocation(gate, displayStep, true)
+    const targetIndices: number[] = []
+    if (gate.targets !== undefined) {
+        for (let index = 0; index < gate.targets.length; index += 1) {
+            const targetRef = gate.targets[index]
+            if (targetRef === undefined) {
+                return { error: `Error: ${location} targets[${index}] "undefined" must reference a previous task step` }
+            }
+            if (resolvesToMarkerStep(steps, gateIndex, targetRef)) {
+                return { error: `Error: ${location} targets[${index}] "${String(targetRef)}" must not reference a fanout/join marker step` }
+            }
+            const targetIndex = resolveGateTargetRef(steps, gateIndex, targetRef)
+            if (targetIndex < 0) {
+                return { error: `Error: ${location} targets[${index}] "${String(targetRef)}" must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}` }
+            }
+            if (!targetIndices.includes(targetIndex)) targetIndices.push(targetIndex)
+        }
+        targetIndices.sort((a, b) => a - b)
+        return { indices: targetIndices }
+    }
+
+    const targetRef = gate.target_step
+    if (targetRef !== undefined && resolvesToMarkerStep(steps, gateIndex, targetRef)) {
+        return { error: `Error: ${location} target_step "${String(targetRef)}" must not reference a fanout/join marker step` }
+    }
+    const targetIndex = resolveGateTargetIndex(steps, gateIndex)
+    if (targetIndex < 0) {
+        if (targetRef === undefined) {
+            return { error: `Error: ${location} has no preceding task step to verify` }
+        }
+        return { error: `Error: ${location} target_step "${String(targetRef)}" must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}` }
+    }
+    targetIndices.push(targetIndex)
+    return { indices: targetIndices }
 }
 
 /**
@@ -147,120 +663,103 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
     if (args.steps[0]?.kind !== "task") {
         return "Error: step 1 must be a task; a gate has no preceding task step to verify"
     }
-    // Unique step ids (when declared).
-    const ids = new Map<string, number>()
-    for (let i = 0; i < args.steps.length; i++) {
-        const s = args.steps[i]
-        if (s.id === undefined) continue
-        const prev = ids.get(s.id)
-        if (prev !== undefined) {
-            return `Error: duplicate step id "${s.id}" at steps ${prev + 1} and ${i + 1}`
-        }
-        ids.set(s.id, i)
-    }
-    for (let i = 0; i < args.steps.length; i++) {
-        const s = args.steps[i]
+    const publicShapeError = validatePublicWorkflowShape(args.steps)
+    if (publicShapeError !== null) return publicShapeError
+    const loweredSteps = lowerWorkflowSteps(args.steps)
+    for (let i = 0; i < loweredSteps.length; i++) {
+        const s = loweredSteps[i]
+        if (s === undefined) continue
         const displayStep = i + 1
-        if (s.kind === "task") {
-            if (s.verifier !== undefined || s.criteria !== undefined || s.target_step !== undefined || s.targets !== undefined || s.on_fail !== undefined || s.max_retries !== undefined || s.on_invalid !== undefined || s.max_invalid_retries !== undefined || s.where !== undefined) {
-                return `Error: step ${displayStep} (task) must not set gate fields`
-            }
-            if (!s.member) return `Error: step ${displayStep} (task) requires \`member\``
-            if (!s.task) return `Error: step ${displayStep} (task) requires \`task\``
-            if (s.max_output_bytes !== undefined && (!Number.isInteger(s.max_output_bytes) || s.max_output_bytes <= 0)) {
-                return `Error: step ${displayStep} (task) max_output_bytes must be a positive integer`
-            }
-            if (!team.members.some(m => m.name === s.member)) {
-                return `Error: unknown member "${s.member}" in step ${displayStep}`
-            }
-            continue
-        }
-
-        if (s.member !== undefined || s.task !== undefined) {
-            return `Error: step ${displayStep} (gate) must not set task fields`
-        }
-        if (s.max_output_bytes !== undefined) {
-            return `Error: step ${displayStep} (gate) must not set max_output_bytes (task steps only)`
-        }
-        if (!s.verifier) return `Error: step ${displayStep} (gate) requires \`verifier\``
-        if (!s.criteria) return `Error: step ${displayStep} (gate) requires \`criteria\``
-        if (s.target_step !== undefined && s.targets !== undefined) {
-            return `Error: step ${displayStep} (gate) must not set both target_step and targets`
-        }
-        if (s.on_fail === "retry" && s.max_retries === undefined) {
-            return `Error: step ${displayStep} (gate) with on_fail='retry' requires \`max_retries\``
-        }
-        if (s.on_invalid === "retry_verifier" && s.max_invalid_retries === undefined) {
-            return `Error: step ${displayStep} (gate) with on_invalid='retry_verifier' requires \`max_invalid_retries\``
-        }
-        if (s.max_jumps !== undefined && (s.max_jumps < 0 || s.max_jumps > 10)) {
-            return `Error: step ${displayStep} (gate) max_jumps must be between 0 and 10`
-        }
-        if (s.max_jumps !== undefined && s.on_pass_goto === undefined && s.on_fail_goto === undefined && s.on_invalid_goto === undefined) {
-            return `Error: step ${displayStep} (gate) max_jumps requires on_pass_goto/on_fail_goto/on_invalid_goto (no goto to bound)`
-        }
-        if (s.where !== undefined) {
-            if (s.on_pass_goto === undefined && s.on_fail_goto === undefined) {
-                return `Error: step ${displayStep} (gate) where requires on_pass_goto or on_fail_goto`
-            }
-            const parsed = parseWorkflowCondition(s.where)
-            if ("error" in parsed) return `Error: step ${displayStep} (gate) ${parsed.error}`
-        }
-        // Conditional-jump goto targets must resolve and must not self-jump.
-        for (const [field, ref] of [
-            ["on_pass_goto", s.on_pass_goto],
-            ["on_fail_goto", s.on_fail_goto],
-            ["on_invalid_goto", s.on_invalid_goto],
-        ] as const) {
-            if (ref === undefined) continue
-            const gotoIdx = resolveGotoIndex(args.steps, i, ref)
-            if (gotoIdx < 0) {
-                return `Error: step ${displayStep} (gate) ${field} "${String(ref)}" must reference an existing step${typeof ref === "string" ? " by id" : ""} and must not self-jump`
-            }
-            if (s.on_invalid === "escalate" && field === "on_invalid_goto") {
-                return `Error: step ${displayStep} (gate) on_invalid_goto is incompatible with on_invalid='escalate' (escalate uses approve/reject)`
-            }
-        }
-        if (s.approval_after !== undefined && s.approval_after && (s.on_pass_goto !== undefined || s.on_fail_goto !== undefined || s.on_invalid_goto !== undefined)) {
-            return `Error: step ${displayStep} (gate) approval_after is incompatible with on_pass_goto/on_fail_goto/on_invalid_goto (team_approve calls advance, which cannot honor a goto jump)`
-        }
-        const targetIndices: number[] = []
-        if (s.targets !== undefined) {
-            for (let j = 0; j < s.targets.length; j++) {
-                const targetRef = s.targets[j]
-                const idx = targetRef === undefined ? -1 : resolveGateTargetRef(args.steps, i, targetRef)
-                if (idx < 0) {
-                    return `Error: step ${displayStep} (gate) targets[${j}] "${String(targetRef)}" must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}`
+        switch (s.kind) {
+            case "task": {
+                const location = stepLocation(s, displayStep, true)
+                if (s.verifier !== undefined || s.criteria !== undefined || s.target_step !== undefined || s.targets !== undefined || s.on_fail !== undefined || s.max_retries !== undefined || s.on_invalid !== undefined || s.max_invalid_retries !== undefined || s.where !== undefined) {
+                    return `Error: ${location} must not set gate fields`
                 }
-                if (!targetIndices.includes(idx)) targetIndices.push(idx)
-            }
-            targetIndices.sort((a, b) => a - b)
-        } else {
-            const targetIndex = resolveGateTargetIndex(args.steps, i)
-            if (targetIndex < 0) {
-                const t = s.target_step
-                if (t === undefined) {
-                    return `Error: step ${displayStep} (gate) has no preceding task step to verify`
+                if (!s.member) return `Error: ${location} requires \`member\``
+                if (!s.task) return `Error: ${location} requires \`task\``
+                if (s.max_output_bytes !== undefined && (!Number.isInteger(s.max_output_bytes) || s.max_output_bytes <= 0)) {
+                    return `Error: ${location} max_output_bytes must be a positive integer`
                 }
-                return `Error: step ${displayStep} (gate) target_step "${String(t)}" must reference a previous task step${typeof t === "string" ? " by id" : ""}`
+                if (!isTeamMember(team, s.member)) {
+                    return `Error: unknown member "${s.member}" in ${stepLocation(s, displayStep, false)}`
+                }
+                break
             }
-            targetIndices.push(targetIndex)
-        }
-        for (const targetIndex of targetIndices) {
-            const target = args.steps[targetIndex]
-            if (!target?.member) return `Error: step ${targetIndex + 1} (task) requires \`member\``
-            if (s.verifier === target.member) {
-                return `Error: step ${displayStep} (gate) verifier "${s.verifier}" must differ from target step ${targetIndex + 1} member (no self-verification)`
+            case "gate": {
+                const location = stepLocation(s, displayStep, true)
+                if (s.member !== undefined || s.task !== undefined) {
+                    return `Error: ${location} must not set task fields`
+                }
+                if (s.max_output_bytes !== undefined) {
+                    return `Error: ${location} must not set max_output_bytes (task steps only)`
+                }
+                if (!s.verifier) return `Error: ${location} requires \`verifier\``
+                if (!s.criteria) return `Error: ${location} requires \`criteria\``
+                if (s.target_step !== undefined && s.targets !== undefined) {
+                    return `Error: ${location} must not set both target_step and targets`
+                }
+                if (s.on_fail === "retry" && s.max_retries === undefined) {
+                    return `Error: ${location} with on_fail='retry' requires \`max_retries\``
+                }
+                if (s.on_invalid === "retry_verifier" && s.max_invalid_retries === undefined) {
+                    return `Error: ${location} with on_invalid='retry_verifier' requires \`max_invalid_retries\``
+                }
+                if (s.max_jumps !== undefined && (s.max_jumps < 0 || s.max_jumps > 10)) {
+                    return `Error: ${location} max_jumps must be between 0 and 10`
+                }
+                if (s.max_jumps !== undefined && s.on_pass_goto === undefined && s.on_fail_goto === undefined && s.on_invalid_goto === undefined) {
+                    return `Error: ${location} max_jumps requires on_pass_goto/on_fail_goto/on_invalid_goto (no goto to bound)`
+                }
+                if (s.where !== undefined) {
+                    if (s.on_pass_goto === undefined && s.on_fail_goto === undefined) {
+                        return `Error: ${location} where requires on_pass_goto or on_fail_goto`
+                    }
+                    const parsed = parseWorkflowCondition(s.where)
+                    if ("error" in parsed) return `Error: ${location} ${parsed.error}`
+                }
+                for (const [field, ref] of [
+                    ["on_pass_goto", s.on_pass_goto],
+                    ["on_fail_goto", s.on_fail_goto],
+                    ["on_invalid_goto", s.on_invalid_goto],
+                ] as const) {
+                    if (ref === undefined) continue
+                    const gotoIdx = resolveGotoIndex(loweredSteps, i, ref)
+                    if (gotoIdx < 0) {
+                        return `Error: ${location} ${field} "${String(ref)}" must reference an existing step${typeof ref === "string" ? " by id" : ""} and must not self-jump`
+                    }
+                    if (s.on_invalid === "escalate" && field === "on_invalid_goto") {
+                        return `Error: ${location} on_invalid_goto is incompatible with on_invalid='escalate' (escalate uses approve/reject)`
+                    }
+                }
+                if (s.approval_after === true && (s.on_pass_goto !== undefined || s.on_fail_goto !== undefined || s.on_invalid_goto !== undefined)) {
+                    return `Error: ${location} approval_after is incompatible with on_pass_goto/on_fail_goto/on_invalid_goto (team_approve calls advance, which cannot honor a goto jump)`
+                }
+                const targetIndices = resolveAndValidateGateTargets(loweredSteps, s, i, displayStep)
+                if ("error" in targetIndices) return targetIndices.error
+                for (const targetIndex of targetIndices.indices) {
+                    const target = loweredSteps[targetIndex]
+                    if (target?.kind !== "task" || !target.member) return `Error: step ${targetIndex + 1} (task) requires \`member\``
+                    if (s.verifier === target.member) {
+                        return `Error: ${location} verifier "${s.verifier}" must differ from ${targetStepErrorLabel(target, targetIndex)} member (no self-verification)`
+                    }
+                }
+                if (targetIndices.indices.length === 0) {
+                    if (s.targets === undefined) {
+                        return `Error: ${location} has no preceding task step to verify`
+                    }
+                    return `Error: ${location} targets must reference at least one previous task step`
+                }
+                if (!isTeamMember(team, s.verifier)) {
+                    return `Error: unknown member "${s.verifier}" in ${location} verifier`
+                }
+                break
             }
-        }
-        if (targetIndices.length === 0) {
-            if (s.targets === undefined) {
-                return `Error: step ${displayStep} (gate) has no preceding task step to verify`
-            }
-            return `Error: step ${displayStep} (gate) targets must reference at least one previous task step`
-        }
-        if (!team.members.some(m => m.name === s.verifier)) {
-            return `Error: unknown member "${s.verifier}" in step ${displayStep} (gate verifier)`
+            case "fanout":
+            case "join":
+                break
+            default:
+                assertNever(s)
         }
     }
     const signoffErr = validateSignoff(args, team)
@@ -272,11 +771,11 @@ function validateWorkflowArgs(args: ResolvedWorkflowToolArgs, team: Team): strin
     return validateWorkflowGraph(args, team)
 }
 
-function stepTargetLabel(args: ResolvedWorkflowToolArgs, gateIndex: number): string {
-    const targetIndices = resolveGateTargetIndices(args.steps, gateIndex)
+function stepTargetLabel(steps: readonly LoweredWorkflowStep[], gateIndex: number): string {
+    const targetIndices = resolveGateTargetIndices(steps, gateIndex)
     if (targetIndices.length === 0) return "?"
     const labels = targetIndices.map(targetIndex => {
-        const targetId = args.steps[targetIndex]?.id
+        const targetId = steps[targetIndex]?.id
         return targetId ? `${targetIndex + 1} (${targetId})` : `${targetIndex + 1}`
     })
     const first = labels[0]
@@ -291,37 +790,76 @@ function whereLabel(where: WorkflowWhere | undefined): string {
 }
 
 function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
-    const lines = [`Workflow dry run for "${args.team_id}" (${args.steps.length} step(s)):`]
-    for (let i = 0; i < args.steps.length; i++) {
-        const step = args.steps[i]
+    const loweredSteps = lowerWorkflowSteps(args.steps)
+    const lines = [`Workflow dry run for "${args.team_id}" (${loweredSteps.length} step(s)):`]
+    let activeBranchId: string | undefined
+    for (let i = 0; i < loweredSteps.length; i++) {
+        const step = loweredSteps[i]
+        if (step === undefined) continue
         const idTag = step.id ? ` (${step.id})` : ""
-        if (step.kind === "task") {
-            const controls: string[] = []
-            if (step.approval_before) controls.push("approval_before")
-            if (step.approval_after) controls.push("approval_after")
-            if (step.max_output_bytes !== undefined) controls.push(`max_output_bytes=${step.max_output_bytes}`)
-            const ctrlTag = controls.length > 0 ? `  [${controls.join(", ")}]` : ""
-            lines.push(`${i + 1}. [task]${idTag} ${step.member ?? "?"}: ${step.task ?? ""}${ctrlTag}`)
-        } else {
-            const controls: string[] = []
-            if (step.approval_before) controls.push("approval_before")
-            if (step.approval_after) controls.push("approval_after")
-            const ctrlTag = controls.length > 0 ? `  [${controls.join(", ")}]` : ""
-            const target = stepTargetLabel(args, i)
-            const retry = step.on_fail === "retry" ? `; on_fail=retry max_retries=${step.max_retries}` : ""
-            const invalid = step.on_invalid && step.on_invalid !== "fail"
-                ? `; on_invalid=${step.on_invalid}${step.on_invalid === "retry_verifier" ? ` max_invalid_retries=${step.max_invalid_retries}` : ""}`
-                : ""
-            const jumps: string[] = []
-            const where = whereLabel(step.where)
-            if (step.on_pass_goto !== undefined) jumps.push(`on_pass->${gotoRefLabel(args.steps, i, step.on_pass_goto)}${where}`)
-            if (step.on_fail_goto !== undefined) jumps.push(`on_fail->${gotoRefLabel(args.steps, i, step.on_fail_goto)}${where}`)
-            if (step.on_invalid_goto !== undefined) jumps.push(`on_invalid->${gotoRefLabel(args.steps, i, step.on_invalid_goto)}`)
-            const jumpTag = jumps.length > 0 ? `; ${jumps.join(" ")} (max_jumps=${step.max_jumps ?? 3})` : ""
-            lines.push(`${i + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target}: ${step.criteria ?? ""}${retry}${invalid}${jumpTag}${ctrlTag}`)
+        switch (step.kind) {
+            case "task": {
+                const branchPrefix = branchDryRunPrefix(step, activeBranchId)
+                activeBranchId = branchPrefix.activeBranchId
+                lines.push(...branchPrefix.lines)
+                const controls: string[] = []
+                if (step.approval_before) controls.push("approval_before")
+                if (step.approval_after) controls.push("approval_after")
+                if (step.max_output_bytes !== undefined) controls.push(`max_output_bytes=${step.max_output_bytes}`)
+                const ctrlTag = controls.length > 0 ? `  [${controls.join(", ")}]` : ""
+                const indent = step.branchContext === undefined ? "" : "  "
+                lines.push(`${indent}${i + 1}. [task]${idTag} ${step.member ?? "?"}: ${step.task ?? ""}${ctrlTag}`)
+                break
+            }
+            case "gate": {
+                const branchPrefix = branchDryRunPrefix(step, activeBranchId)
+                activeBranchId = branchPrefix.activeBranchId
+                lines.push(...branchPrefix.lines)
+                const controls: string[] = []
+                if (step.approval_before) controls.push("approval_before")
+                if (step.approval_after) controls.push("approval_after")
+                const ctrlTag = controls.length > 0 ? `  [${controls.join(", ")}]` : ""
+                const target = stepTargetLabel(loweredSteps, i)
+                const retry = step.on_fail === "retry" ? `; on_fail=retry max_retries=${step.max_retries}` : ""
+                const invalid = step.on_invalid && step.on_invalid !== "fail"
+                    ? `; on_invalid=${step.on_invalid}${step.on_invalid === "retry_verifier" ? ` max_invalid_retries=${step.max_invalid_retries}` : ""}`
+                    : ""
+                const jumps: string[] = []
+                const where = whereLabel(step.where)
+                if (step.on_pass_goto !== undefined) jumps.push(`on_pass->${gotoRefLabel(loweredSteps, i, step.on_pass_goto)}${where}`)
+                if (step.on_fail_goto !== undefined) jumps.push(`on_fail->${gotoRefLabel(loweredSteps, i, step.on_fail_goto)}${where}`)
+                if (step.on_invalid_goto !== undefined) jumps.push(`on_invalid->${gotoRefLabel(loweredSteps, i, step.on_invalid_goto)}`)
+                const jumpTag = jumps.length > 0 ? `; ${jumps.join(" ")} (max_jumps=${step.max_jumps ?? 3})` : ""
+                const indent = step.branchContext === undefined ? "" : "  "
+                lines.push(`${indent}${i + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target}: ${step.criteria ?? ""}${retry}${invalid}${jumpTag}${ctrlTag}`)
+                break
+            }
+            case "fanout": {
+                activeBranchId = undefined
+                const join = loweredSteps[step.fanout.joinIndex]
+                const joinIdTag = join?.id ? ` (${join.id})` : ""
+                lines.push(`${i + 1}. [fanout]${idTag} branches: ${step.fanout.branchIds.join(", ")} -> join step ${step.fanout.joinIndex + 1}${joinIdTag}; max_errored=${step.fanout.maxErrored}`)
+                break
+            }
+            case "join": {
+                activeBranchId = undefined
+                const fanout = loweredSteps[step.join.fanoutIndex]
+                const branchIds = fanout?.kind === "fanout" ? fanout.fanout.branchIds : []
+                lines.push(`${i + 1}. [join]${idTag} waits for branches: ${branchIds.join(", ")}; max_errored=${step.join.maxErrored}`)
+                break
+            }
+            default:
+                assertNever(step)
         }
     }
     return lines.join("\n")
+}
+
+function branchDryRunPrefix(step: LoweredWorkflowLinearStep, activeBranchId: string | undefined): { readonly lines: readonly string[]; readonly activeBranchId: string | undefined } {
+    const branchId = step.branchContext?.branchId
+    if (branchId === undefined) return { lines: [], activeBranchId: undefined }
+    if (branchId === activeBranchId) return { lines: [], activeBranchId }
+    return { lines: [`  branch ${branchId}:`], activeBranchId: branchId }
 }
 
 function hasInlineSteps(args: WorkflowToolArgs): boolean {
@@ -346,53 +884,132 @@ async function resolveWorkflowArgs(ctx: PluginContext, args: WorkflowToolArgs): 
     return { ...args, steps: loaded.steps }
 }
 
-function gotoRefLabel(steps: WorkflowToolStep[], gateIndex: number, ref: number | string): string {
+function gotoRefLabel(steps: readonly LoweredWorkflowStep[], gateIndex: number, ref: WorkflowStepRef): string {
     const idx = resolveGotoIndex(steps, gateIndex, ref)
     const id = idx >= 0 ? steps[idx]?.id : undefined
     return id ? `step ${idx + 1} (${id})` : idx >= 0 ? `step ${idx + 1}` : "?"
 }
 
+function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkflowStep[], index: number): WorkflowStep {
+    switch (step.kind) {
+        case "task":
+            return {
+                kind: "task",
+                id: step.id,
+                member: step.member,
+                task: step.task,
+                approvalBefore: step.approval_before,
+                approvalAfter: step.approval_after,
+                maxOutputBytes: step.max_output_bytes,
+                branch: step.branch,
+                completed: false,
+            }
+        case "gate": {
+            const targetIndices = resolveGateTargetIndices(steps, index)
+            const where = step.where === undefined ? undefined : parseWorkflowCondition(step.where)
+            return {
+                kind: "gate",
+                id: step.id,
+                verifier: step.verifier,
+                criteria: step.criteria,
+                targetStepIndex: primaryTargetIndex(targetIndices),
+                targetStepIndices: step.targets !== undefined ? targetIndices : undefined,
+                onFail: step.on_fail ?? "fail",
+                maxRetries: step.max_retries,
+                attempts: 0,
+                onInvalid: step.on_invalid ?? "fail",
+                maxInvalidRetries: step.max_invalid_retries,
+                invalidAttempts: 0,
+                onPassGoto: resolveGotoIndex(steps, index, step.on_pass_goto),
+                onFailGoto: resolveGotoIndex(steps, index, step.on_fail_goto),
+                onInvalidGoto: resolveGotoIndex(steps, index, step.on_invalid_goto),
+                where: where !== undefined && "condition" in where ? where.condition : undefined,
+                approvalBefore: step.approval_before,
+                approvalAfter: step.approval_after,
+                maxJumps: step.max_jumps,
+                jumpCount: 0,
+                branch: step.branch,
+                completed: false,
+            }
+        }
+        case "fanout":
+            return {
+                kind: "fanout",
+                id: step.id,
+                fanout: step.fanout,
+                completed: false,
+            }
+        case "join":
+            return {
+                kind: "join",
+                id: step.id,
+                join: step.join,
+                completed: false,
+            }
+        default:
+            return assertNever(step)
+    }
+}
+
 export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
+    const workflowStepRefSchema = tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)])
+    const workflowStepSchemaFields = {
+        id: tool.schema.string().min(1).max(64).optional().describe("optional stable step identifier; gates may reference a task step by this id via target_step or targets"),
+        member: tool.schema.string().min(1).optional().describe("task steps: the actor member name"),
+        task: tool.schema.string().min(1).max(8192).optional().describe("task steps: the task text"),
+        verifier: tool.schema.string().min(1).optional().describe("gate steps: the verifier member name (must differ from the target task member)"),
+        criteria: tool.schema.string().min(1).max(8192).optional().describe("gate steps: verification criteria"),
+        target_step: workflowStepRefSchema.optional().describe("gate steps: one target task step to verify, using a 1-based number or step id; branch gate references are branch-local. Mutually exclusive with targets."),
+        targets: tool.schema.array(workflowStepRefSchema).min(1).optional().describe("gate steps: multiple prior task steps to verify together. Mutually exclusive with target_step."),
+        on_fail: tool.schema.enum(["retry", "fail"]).optional().describe("gate steps: FAIL control. 'fail' (default) fails the run; 'retry' re-dispatches the target task up to max_retries."),
+        max_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: FAIL retry cap when on_fail='retry'. Default 0."),
+        on_invalid: tool.schema.enum(["fail", "retry_verifier", "escalate"]).optional().describe("gate steps: INVALID control. 'fail' (default) terminates producer-neutral as workflow_invalid; 'retry_verifier' re-dispatches this gate's verifier up to max_invalid_retries; 'escalate' pauses for human approval (approve=advance, reject=workflow_invalid)."),
+        max_invalid_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: retry_verifier cap when on_invalid='retry_verifier'. Default 0. Required when on_invalid='retry_verifier'."),
+        on_pass_goto: workflowStepRefSchema.optional().describe("gate steps: step to jump to after PASS (1-based number or step id) instead of advancing linearly. Branch gotos are branch-local."),
+        on_fail_goto: workflowStepRefSchema.optional().describe("gate steps: step to jump to at a FAIL terminal point (on_fail=fail, or retry exhausted) instead of failing the run."),
+        on_invalid_goto: workflowStepRefSchema.optional().describe("gate steps: step to jump to at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted). Incompatible with on_invalid='escalate'."),
+        where: tool.schema.object({
+            score_gte: tool.schema.number().optional(),
+            score_lt: tool.schema.number().optional(),
+            confidence_gte: tool.schema.number().optional(),
+            has_issue_severity: tool.schema.enum(["low", "medium", "high", "critical"]).optional(),
+        }).optional().describe("gate steps: optional threshold condition gating on_pass_goto/on_fail_goto. Exactly one condition key is allowed."),
+        approval_before: tool.schema.boolean().optional().describe("task/gate steps: pause for team_approve before dispatching this step. Disallowed inside fanout branches."),
+        approval_after: tool.schema.boolean().optional().describe("task/gate steps: pause for team_approve after this step completes, before advancing. Disallowed inside fanout branches."),
+        max_output_bytes: tool.schema.number().int().min(1).optional().describe("task steps: cap the captured output snapshot to N UTF-8 bytes (head+tail preserved). Gate steps may not set this."),
+        max_jumps: tool.schema.number().int().min(0).max(10).optional().describe("gate steps: per-gate cap on verdict-driven jumps. Default 3. Terminates as workflow_failed:jump_limit when exceeded."),
+    }
+    const workflowBranchStepSchema = tool.schema.object({
+        kind: tool.schema.enum(["task", "gate", "fanout", "join"]),
+        ...workflowStepSchemaFields,
+        branches: tool.schema.array(tool.schema.object({
+            id: tool.schema.string().min(1).max(64),
+            steps: tool.schema.array(tool.schema.object({
+                kind: tool.schema.enum(["task", "gate", "fanout", "join"]),
+                ...workflowStepSchemaFields,
+            })).min(1),
+        })).optional(),
+        max_errored: tool.schema.number().int().min(0).optional(),
+    })
+    const workflowStepSchema = tool.schema.object({
+        kind: tool.schema.enum(["task", "gate", "fanout", "join"]),
+        ...workflowStepSchemaFields,
+        branches: tool.schema.array(tool.schema.object({
+            id: tool.schema.string().min(1).max(64),
+            steps: tool.schema.array(workflowBranchStepSchema).min(1),
+        })).optional().describe("fanout steps: branch objects with stable ids and branch-local task/gate steps"),
+        max_errored: tool.schema.number().int().min(0).optional().describe("fanout steps: maximum errored branches tolerated; must leave at least one surviving branch"),
+    })
     return tool({
         description:
             "Run a deterministic, declaratively-composed workflow. Each step is either a `task` (one member produces output) or a `gate` (a verifier renders a PASS/FAIL/INVALID verdict over one or more prior task outputs). The engine drives transitions, retry, INVALID handling, and verdict-gated jumps while keeping intermediate results out of the leader's context.",
         args: {
             team_id: tool.schema.string().min(1),
             steps: tool.schema
-                .array(
-                    tool.schema.object({
-                        kind: tool.schema.enum(["task", "gate"]),
-                        id: tool.schema.string().min(1).max(64).optional().describe("optional stable step identifier; gates may reference a task step by this id via target_step or targets"),
-                        // task step
-                        member: tool.schema.string().min(1).optional().describe("task steps: the actor member name"),
-                        task: tool.schema.string().min(1).max(8192).optional().describe("task steps: the task text"),
-                        // gate step
-                        verifier: tool.schema.string().min(1).optional().describe("gate steps: the verifier member name (must differ from the target task member)"),
-                        criteria: tool.schema.string().min(1).max(8192).optional().describe("gate steps: verification criteria"),
-                        target_step: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: one target task step to verify — a 1-based number or a step id string; omitted means nearest preceding task. Mutually exclusive with targets."),
-                        targets: tool.schema.array(tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)])).min(1).optional().describe("gate steps: multiple prior task steps to verify together — 1-based numbers or step id strings. Mutually exclusive with target_step."),
-                        on_fail: tool.schema.enum(["retry", "fail"]).optional().describe("gate steps: FAIL control. 'fail' (default) fails the run; 'retry' re-dispatches the target task up to max_retries."),
-                        max_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: FAIL retry cap when on_fail='retry'. Default 0."),
-                        on_invalid: tool.schema.enum(["fail", "retry_verifier", "escalate"]).optional().describe("gate steps: INVALID control. 'fail' (default) terminates producer-neutral as workflow_invalid; 'retry_verifier' re-dispatches this gate's verifier up to max_invalid_retries; 'escalate' pauses for human approval (approve=advance, reject=workflow_invalid)."),
-                        max_invalid_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: retry_verifier cap when on_invalid='retry_verifier'. Default 0. Required when on_invalid='retry_verifier'."),
-                        on_pass_goto: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: step to jump to after PASS (1-based number or step id) instead of advancing linearly. Enables skip / redo paths."),
-                        on_fail_goto: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: step to jump to at a FAIL terminal point (on_fail=fail, or retry exhausted) instead of failing the run."),
-                        on_invalid_goto: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("gate steps: step to jump to at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted). Incompatible with on_invalid='escalate'."),
-                        where: tool.schema.object({
-                            score_gte: tool.schema.number().optional(),
-                            score_lt: tool.schema.number().optional(),
-                            confidence_gte: tool.schema.number().optional(),
-                            has_issue_severity: tool.schema.enum(["low", "medium", "high", "critical"]).optional(),
-                        }).optional().describe("gate steps: optional threshold condition gating on_pass_goto/on_fail_goto. Exactly one condition key is allowed."),
-                        approval_before: tool.schema.boolean().optional().describe("task/gate steps: pause for team_approve before dispatching this step. Per-step override of the task-global human_approval flag."),
-                        approval_after: tool.schema.boolean().optional().describe("task/gate steps: pause for team_approve after this step completes, before advancing. On gates, incompatible with on_*_goto (team_approve calls advance, not a goto jump)."),
-                        max_output_bytes: tool.schema.number().int().min(1).optional().describe("task steps: cap the captured output snapshot to N UTF-8 bytes (head+tail preserved). Gate steps may not set this."),
-                        max_jumps: tool.schema.number().int().min(0).max(10).optional().describe("gate steps: per-gate cap on verdict-driven jumps. Default 3. Terminates as workflow_failed:jump_limit when exceeded."),
-                    }),
-                )
+                .array(workflowStepSchema)
                 .min(1)
                 .optional()
-                .describe("ordered workflow steps; the first step must be a `task` (a gate verifies a preceding task)"),
+                .describe("ordered workflow steps; fanout must be immediately followed by a join marker"),
             workflow_file: tool.schema.string().min(1).optional().describe("relative path to a JSON workflow file under the workspace; mutually exclusive with steps"),
             vars: tool.schema.record(tool.schema.string(), tool.schema.string()).optional().describe("template variables for workflow_file string values, referenced as ${name}"),
             dry_run: tool.schema.boolean().optional().describe("Validate and render the 1-based workflow step ledger without starting orchestration"),
@@ -423,41 +1040,14 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                 },
                 // buildTask
                 async (team) => {
-                    const steps: WorkflowStep[] = resolvedArgs.steps.map((s, index) => {
-                        const targetIndices = s.kind === "gate" ? resolveGateTargetIndices(resolvedArgs.steps, index) : []
-                        const where = s.kind === "gate" && s.where !== undefined ? parseWorkflowCondition(s.where) : undefined
-                        return {
-                            kind: s.kind,
-                            id: s.id,
-                            member: s.kind === "task" ? s.member : undefined,
-                            task: s.kind === "task" ? s.task : undefined,
-                            verifier: s.kind === "gate" ? s.verifier : undefined,
-                            criteria: s.kind === "gate" ? s.criteria : undefined,
-                            targetStepIndex: s.kind === "gate" ? primaryTargetIndex(targetIndices) : undefined,
-                            targetStepIndices: s.kind === "gate" && s.targets !== undefined ? targetIndices : undefined,
-                            onFail: s.kind === "gate" ? (s.on_fail ?? "fail") : undefined,
-                            maxRetries: s.kind === "gate" ? s.max_retries : undefined,
-                            attempts: 0,
-                            onInvalid: s.kind === "gate" ? (s.on_invalid ?? "fail") : undefined,
-                            maxInvalidRetries: s.kind === "gate" ? s.max_invalid_retries : undefined,
-                            invalidAttempts: 0,
-                            onPassGoto: s.kind === "gate" ? resolveGotoIndex(resolvedArgs.steps, index, s.on_pass_goto) : undefined,
-                            onFailGoto: s.kind === "gate" ? resolveGotoIndex(resolvedArgs.steps, index, s.on_fail_goto) : undefined,
-                            onInvalidGoto: s.kind === "gate" ? resolveGotoIndex(resolvedArgs.steps, index, s.on_invalid_goto) : undefined,
-                            where: where !== undefined && "condition" in where ? where.condition : undefined,
-                            approvalBefore: s.approval_before,
-                            approvalAfter: s.approval_after,
-                            maxOutputBytes: s.kind === "task" ? s.max_output_bytes : undefined,
-                            maxJumps: s.kind === "gate" ? s.max_jumps : undefined,
-                            jumpCount: 0,
-                            completed: false,
-                        }
-                    })
+                    const loweredSteps = lowerWorkflowSteps(resolvedArgs.steps)
+                    const steps: WorkflowStep[] = loweredSteps.map((s, index) => toWorkflowStep(s, loweredSteps, index))
                     const wfTask: WorkflowTask = {
                         type: "workflow",
                         ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                         stages: [],
                         steps,
+                        ...(steps.some(step => step.kind === "fanout") ? { activeStepIndices: [0] } : {}),
                         ...humanApprovalTaskFields(args),
                         ...signoffTaskFields(args),
                     }
@@ -479,7 +1069,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                     await dispatchToMember(ctx, first, step.task, first.worktreePath ?? ctx.directory, team)
                 },
                 // successMessage
-                () => `team_workflow started on "${args.team_id}" with ${resolvedArgs.steps.length} step(s).`,
+                () => `team_workflow started on "${args.team_id}" with ${lowerWorkflowSteps(resolvedArgs.steps).length} step(s).`,
             )
         },
     })

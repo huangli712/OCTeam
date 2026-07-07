@@ -28,6 +28,7 @@ import { type Team, loadTeamState, saveTeamState } from '../state/store.js';
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"
 import { extractOutputFromParts, isEnoent, sumMemberTokens, truncateOutput } from '../core/utils.js';
+import { findActiveWorkflowStepIndexForMember, getActiveWorkflowStepActors } from "../core/workflow-dag.js"
 import { resolveTeamMember } from "../state/resolve.js"
 import { safeMemberAgent } from "../core/role.js"
 import { atomicWrite } from "../state/locks.js"
@@ -46,7 +47,7 @@ import { handleRecurseIdle } from "./recurse.js"
 import { handleTollgateIdle } from "./tollgate.js"
 import { handleRouteIdle } from "./route.js"
 import { handleArbitrateIdle } from "./arbitrate.js"
-import { handleWorkflowIdle } from "./workflow.js"
+import { advanceWorkflowStep, handleWorkflowIdle } from "./workflow.js"
 
 // --- helpers ---
 
@@ -72,13 +73,10 @@ export function getExpectedMember(task: ActiveTask): string | null {
     }
     if (task.type === "recurse") return null   // same as delegate: any member advances
     if (task.type === "workflow") {
-        // workflow: only the current step's actor may advance. A task step's
-        // actor is its member; a gate step's actor is its verifier. Without this
-        // explicit branch the trailing stages[] fallthrough (workflow keeps
-        // stages empty) would return null and let ANY member's idle advance.
-        const s = task.steps?.[task.currentStageIndex]
-        if (!s) return null
-        return (s.kind === "gate" ? s.verifier : s.member) ?? null
+        // workflow: linear state expects one actor; fanout frontiers can have
+        // several active branch actors and are rejected inside handleWorkflowIdle.
+        const actors = getActiveWorkflowStepActors(task)
+        return actors.length === 1 ? (actors[0] ?? null) : null
     }
     // tollgate: a single gate is active at a time. Only the phase-appropriate
     // member may advance — the producer (produce), the verifier (verify), or the
@@ -349,7 +347,21 @@ export async function captureMemberOutput(
     // and injected into prompts; handleReduceIdle reads reducedResult from here).
     // The FULL accumulated output is persisted separately to runs/<runId>/*.md
     // so #2 retrieval can recover it losslessly across ALL turns.
-    task.responses[member.name] = truncateOutput(full)
+    const captured = truncateOutput(full)
+    if (task.type === "workflow" && !task.signoffStage) {
+        const activeStepIndex = findActiveWorkflowStepIndexForMember(task, member.name)
+        if (activeStepIndex === null) return
+        const activeStep = task.steps?.[activeStepIndex]
+        if (activeStep?.kind === "task") {
+            activeStep.output = activeStep.maxOutputBytes !== undefined
+                ? truncateOutput(captured, activeStep.maxOutputBytes)
+                : captured
+        }
+        if (activeStep?.kind === "gate") {
+            activeStep.output = captured
+        }
+    }
+    task.responses[member.name] = captured
     const runId = (task.runId ??= crypto.randomUUID())
 
     // Reduce-stage reducer output is a run-level artifact, not the reducer's own
@@ -470,6 +482,9 @@ export async function handleStatusEvent(
                                 break
                             case "recurse":
                                 await handleRecurseIdle(ctx, team, live)
+                                break
+                            case "workflow":
+                                await advanceWorkflowStep(ctx, team)
                                 break
                             // Sequential modes (pipeline/loop/consensus/route/
                             // arbitrate/tollgate) have tolerance 0, so the
