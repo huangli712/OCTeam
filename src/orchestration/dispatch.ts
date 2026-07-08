@@ -183,6 +183,7 @@ export async function ensureMembersReady(
                 {
                   type: "text",
                   text: `${rolePrompt}\n<!-- OMO_INTERNAL_INITIATOR -->`,
+                  synthetic: true,
                 },
               ],
               agent: safeMemberAgent(member.agent),
