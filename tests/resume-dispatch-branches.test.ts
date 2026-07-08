@@ -508,6 +508,90 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         expect(dispatched[0].text).toContain("build test branch");
     });
 
+    test("missing branch actor during resume degrades that branch and advances survivors", async () => {
+        const root = tmpRoot("rdb-wf-fanout-missing-actor");
+        const sid = "ses_rdb_wf_fanout_missing_actor";
+        tracked.push(sid);
+        const task = makeTask({
+            type: "workflow",
+            steps: [
+                {
+                    kind: "fanout",
+                    completed: true,
+                    fanout: {
+                        branchIds: ["api", "tests"],
+                        branchRanges: [
+                            { startIndex: 1, endIndex: 1 },
+                            { startIndex: 2, endIndex: 2 },
+                        ],
+                        joinIndex: 3,
+                        maxErrored: 1,
+                    },
+                },
+                {
+                    kind: "task",
+                    member: "alice",
+                    task: "build api branch",
+                    completed: false,
+                    branch: {
+                        fanoutIndex: 0,
+                        branchId: "api",
+                        branchIndex: 0,
+                        joinIndex: 3,
+                    },
+                },
+                {
+                    kind: "task",
+                    member: "bob",
+                    task: "build test branch",
+                    completed: false,
+                    branch: {
+                        fanoutIndex: 0,
+                        branchId: "tests",
+                        branchIndex: 1,
+                        joinIndex: 3,
+                    },
+                },
+                {
+                    kind: "join",
+                    completed: false,
+                    join: {
+                        fanoutIndex: 0,
+                        branchTailIndices: [1, 2],
+                        maxErrored: 1,
+                    },
+                },
+            ],
+            currentStageIndex: 1,
+            activeStepIndices: [1, 2],
+            responses: {},
+        });
+        const team = await setup(root, sid, task, [
+            makeMember("alice"),
+            makeMember("bob", "ses_bob"),
+        ]);
+
+        const dispatched: { id: string; text: string }[] = [];
+        const ctx = makeCtx(root, async (req) => {
+            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+        });
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!);
+        });
+
+        const wfTask = team.activeTask as Extract<
+            ActiveTask,
+            { type: "workflow" }
+        >;
+        // api branch degraded (alice has no live session)
+        expect(wfTask.steps?.[1].skipped).toBe(true);
+        expect(wfTask.steps?.[3].join?.erroredBranchIds).toEqual(["api"]);
+        // tests branch actor still dispatched (resume continued past degradation)
+        expect(dispatched.map((d) => d.id)).toEqual(["ses_bob"]);
+        expect(dispatched[0].text).toContain("build test branch");
+    });
+
     test("all active branches already responded -> re-drives the ready join and downstream step", async () => {
         const root = tmpRoot("rdb-wf-fanout-join");
         const sid = "ses_rdb_wf_fanout_join";

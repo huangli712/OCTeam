@@ -200,4 +200,41 @@ describe("workflow step timeout policy", () => {
         expect(task.steps?.[3]?.join?.erroredBranchIds).toEqual(["api"])
         expect(task.steps?.[3]?.completed).toBe(true)
     })
+
+    test("uses the dispatched fallback actor when a fanout branch times out", async () => {
+        // Given: the api branch was dispatched to bob as alice's fallback.
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask({
+            activeStepIndices: [1, 2],
+            steps: [
+                {
+                    kind: "fanout",
+                    completed: true,
+                    fanout: {
+                        branchIds: ["api", "tests"],
+                        branchRanges: [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }],
+                        joinIndex: 3,
+                        maxErrored: 1,
+                    },
+                },
+                { kind: "task", member: "alice", fallbackMember: "bob", task: "api", completed: false, timeoutMs: 1000, dispatchedAt: NOW - 2000, dispatchedActor: "bob", branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 3 } },
+                { kind: "task", member: "carol", task: "tests", completed: false, branch: { fanoutIndex: 0, branchId: "tests", branchIndex: 1, joinIndex: 3 } },
+                { kind: "join", completed: false, join: { fanoutIndex: 0, branchTailIndices: [1, 2], maxErrored: 1 } },
+                { kind: "task", member: "dave", task: "integrate survivors", completed: false },
+            ],
+        })
+        const team = makeTeam(task, [{ name: "alice" }, { name: "bob", sessionId: "ses_bob" }, { name: "carol", sessionId: "ses_carol" }, { name: "dave", sessionId: "ses_dave" }])
+        const ctx = makeCtx({ ses_carol: "tests output", ses_dave: "downstream output" }, calls)
+
+        // When: the fallback-dispatched branch times out.
+        await checkTermination(ctx, team, NOW)
+        await processIdle(ctx, team, member(team, "carol"), "ses_carol")
+
+        // Then: the api branch is degraded, not the workflow as a whole.
+        expect(team.status).toBe("busy")
+        expect(task.steps?.[1]?.skipped).toBe(true)
+        expect(task.steps?.[3]?.join?.erroredBranchIds).toEqual(["api"])
+        expect(task.steps?.[3]?.completed).toBe(true)
+        expect(calls.some(call => call.sessionId === "ses_dave")).toBe(true)
+    })
 })

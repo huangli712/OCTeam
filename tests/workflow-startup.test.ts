@@ -383,6 +383,96 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("unknown member")
     })
 
+    test("task fallback_member must be a team member", async () => {
+        // Given: a task declares an unknown fallback actor.
+        const root = tmpRoot("wf-fallback-unknown")
+        const sid = "ses_wf_fallback_unknown"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice")], Date.now())
+
+        // When: the workflow is validated.
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", fallback_member: "bob", task: "do x" }] },
+            makeToolContext(sid),
+        )
+
+        // Then: the unknown fallback is rejected before dispatch.
+        expect(result).toContain("fallback_member")
+        expect(result).toContain("not a team member")
+    })
+
+    test("gate fallback_verifier must not self-verify any target", async () => {
+        // Given: a gate fallback verifier matches one of two target task members.
+        const root = tmpRoot("wf-fallback-selfverify")
+        const sid = "ses_wf_fallback_selfverify"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+
+        // When: the workflow is validated.
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "api" },
+                    { kind: "task", member: "carol", task: "tests" },
+                    { kind: "gate", verifier: "bob", fallback_verifier: "carol", targets: [1, 2], criteria: "both ok" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        // Then: fallback self-verification is rejected against every target.
+        expect(result).toContain("fallback_verifier")
+        expect(result).toContain("target step 2")
+        expect(result).toContain("self-verification")
+    })
+
+    test("gate verifier must not self-verify a target fallback_member", async () => {
+        // Given: a task fallback actor could become the actual producer at runtime.
+        const root = tmpRoot("wf-fallback-target-selfverify")
+        const sid = "ses_wf_fallback_target_selfverify"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+
+        // When: the gate verifier matches the target task fallback actor.
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", fallback_member: "bob", task: "produce" },
+                    { kind: "gate", verifier: "bob", target_step: 1, criteria: "review output" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        // Then: the workflow is rejected before runtime can self-verify.
+        expect(result).toContain("verifier")
+        expect(result).toContain("fallback_member")
+        expect(result).toContain("self-verification")
+    })
+
+    test("initial task dispatch uses fallback_member when the primary actor has no live session", async () => {
+        // Given: the first task's primary member is errored but its fallback is live.
+        const root = tmpRoot("wf-fallback-runtime")
+        const sid = "ses_wf_fallback_runtime"
+        const aliceSid = "ses_wf_fallback_runtime_alice"
+        const bobSid = "ses_wf_fallback_runtime_bob"
+        tracked.push(sid, aliceSid, bobSid)
+        await setupTeam(root, sid, [{ ...makeMember("alice", aliceSid), status: "errored" }, makeMember("bob", bobSid)], Date.now())
+        const calls: DispatchCall[] = []
+
+        // When: the workflow starts.
+        const result = await teamWorkflowTool(makeCtx(root, calls)).execute(
+            { team_id: "alpha", steps: [{ kind: "task", member: "alice", fallback_member: "bob", task: "do x" }] },
+            makeToolContext(sid),
+        )
+
+        // Then: the task is dispatched to the fallback session.
+        expect(result).toContain("team_workflow started")
+        expect(calls).toContainEqual({ sessionId: bobSid, text: "do x" })
+    })
+
     test("gate-first (no preceding task) -> rejected", async () => {
         const root = tmpRoot("wf-gatefirst")
         const sid = "ses_wf_gf"
@@ -1628,6 +1718,37 @@ describe("team_workflow startup validation", () => {
         )
 
         expect(result).toContain("Error: fanout step 2 join_policy='reduce' requires `reducer_member`")
+    })
+
+    test("fanout join_policy='select' without reducer_member -> rejected", async () => {
+        // Given: select join policy without a selector member.
+        const root = tmpRoot("wf-select-no-selector")
+        const sid = "ses_wf_select_no_selector"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+
+        // When: the workflow is validated.
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        join_policy: "select",
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] },
+                            { id: "qa", steps: [{ kind: "task", member: "carol", task: "Test" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        // Then: select requires reducer_member as the selector.
+        expect(result).toContain("Error: fanout step 2 join_policy='select' requires `reducer_member`")
     })
 
     test("fanout same gate verifier across concurrent branches -> rejected", async () => {

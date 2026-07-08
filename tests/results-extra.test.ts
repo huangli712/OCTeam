@@ -402,4 +402,118 @@ describe("team_result_get: workflow branch tree rendering", () => {
         unindexSession(sid)
         unindexSession(memberSid)
     })
+
+    test("format=mermaid renders persisted workflow structure", async () => {
+        const root = tmpRoot("res-workflow-mermaid")
+        const sid = "ses_res_workflow_mermaid"
+        const memberSid = "ses_res_workflow_mermaid_alice"
+        const team = await setupTeam(root, sid, memberSid)
+        const tdir = teamDir(root, "alpha", sid)
+        await writeRunRecord(tdir, {
+            version: 1,
+            runId: "run-workflow-mermaid",
+            teamRunId: "run-alpha-sid",
+            teamName: "alpha",
+            type: "workflow",
+            status: "completed",
+            reason: "workflow_complete",
+            startedAt: Date.now(),
+            finishedAt: Date.now(),
+            tokensUsed: 0,
+            tokensByMember: {},
+            messagesSent: 0,
+            memberOutputs: {},
+            workflow: {
+                steps: [
+                    { index: 0, step: 1, kind: "task", member: "lead", completed: true, output: "setup", outputBytes: 5 },
+                    {
+                        index: 1,
+                        step: 2,
+                        kind: "fanout",
+                        completed: true,
+                        fanout: {
+                            branchIds: ["api", "docs"],
+                            branchRanges: [{ startIndex: 2, endIndex: 3 }, { startIndex: 4, endIndex: 4 }],
+                            joinIndex: 5,
+                            maxErrored: 0,
+                            joinPolicy: "select",
+                            reducerMember: "dave",
+                        },
+                    },
+                    { index: 2, step: 3, kind: "task", member: "alice", completed: true, branch: { fanoutIndex: 1, branchId: "api", branchIndex: 0, joinIndex: 5 } },
+                    { index: 3, step: 4, kind: "gate", verifier: "bob", targetStep: 3, completed: true, verdict: "PASS", branch: { fanoutIndex: 1, branchId: "api", branchIndex: 0, joinIndex: 5 } },
+                    { index: 4, step: 5, kind: "task", member: "carol", completed: true, branch: { fanoutIndex: 1, branchId: "docs", branchIndex: 1, joinIndex: 5 } },
+                    { index: 5, step: 6, kind: "join", completed: true, join: { fanoutIndex: 1, branchTailIndices: [3, 4], maxErrored: 0, joinPolicy: "select", reducerMember: "dave", selectedBranchId: "api", selectionRationale: "best" } },
+                ],
+            },
+        } as RunRecord)
+
+        const result = await teamResultGetTool(makeCtx(root)).execute(
+            { team_id: "alpha", run_id: "run-workflow-mermaid", format: "mermaid" },
+            makeToolContext(memberSid),
+        )
+
+        expect(result).toContain("flowchart TD")
+        expect(result).toContain("subgraph branch_1_0_api")
+        expect(result).toContain("s2 --> s3")
+        expect(result).toContain("s3 -. verifies .-> s4")
+        expect(result).toContain("s3 --> s4")
+        expect(result).toContain("s4 --> s6")
+        expect(result).toContain("selected api")
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+        unindexSession(memberSid)
+    })
+
+    test("dispatchedActor overrides declared member/verifier in both text and mermaid output", async () => {
+        const root = tmpRoot("res-workflow-dispatched-actor")
+        const sid = "ses_res_workflow_dispatched_actor"
+        const memberSid = "ses_res_workflow_dispatched_actor_lead"
+        const team = await setupTeam(root, sid, memberSid)
+        const tdir = teamDir(root, "alpha", sid)
+        await writeRunRecord(tdir, {
+            version: 1,
+            runId: "run-dispatched-actor",
+            teamRunId: "run-alpha-sid",
+            teamName: "alpha",
+            type: "workflow",
+            status: "completed",
+            reason: "workflow_complete",
+            startedAt: Date.now(),
+            finishedAt: Date.now(),
+            tokensUsed: 0,
+            tokensByMember: {},
+            messagesSent: 0,
+            memberOutputs: {},
+            workflow: {
+                steps: [
+                    { index: 0, step: 1, kind: "task", member: "alice", dispatchedActor: "bob", completed: true, output: "ran by fallback", outputBytes: 14 },
+                    { index: 1, step: 2, kind: "gate", verifier: "carol", dispatchedActor: "dave", targetStep: 1, completed: true, verdict: "PASS" },
+                ],
+            },
+        } as RunRecord)
+
+        const textResult = await teamResultGetTool(makeCtx(root)).execute(
+            { team_id: "alpha", run_id: "run-dispatched-actor" },
+            makeToolContext(memberSid),
+        )
+        // text format shows the actual dispatched actor, not the declared primary
+        expect(textResult).toContain("[task] bob")
+        expect(textResult).not.toContain("[task] alice")
+        expect(textResult).toContain("[gate] dave")
+        expect(textResult).not.toContain("[gate] carol")
+
+        const mermaidResult = await teamResultGetTool(makeCtx(root)).execute(
+            { team_id: "alpha", run_id: "run-dispatched-actor", format: "mermaid" },
+            makeToolContext(memberSid),
+        )
+        expect(mermaidResult).toContain("task: bob")
+        expect(mermaidResult).not.toContain("task: alice")
+        expect(mermaidResult).toContain("gate: dave")
+        expect(mermaidResult).not.toContain("gate: carol")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+        unindexSession(memberSid)
+    })
 })
