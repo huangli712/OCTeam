@@ -94,7 +94,34 @@ describe("team_resume", () => {
             makeToolContext(sid),
         )
         expect(res).toContain("Resumed parallel")
+        expect(res).not.toContain("team_fix_workflow")
         expect(calls).toEqual(["ses_bob"])
+    })
+
+    test("workflow resume message points to progress and repair tools", async () => {
+        const root = tmpRoot("resume-workflow-guidance")
+        const sid = "ses_resume_workflow_guidance"
+        tracked.push(sid)
+        const task = makeTask({
+            type: "workflow",
+            activeStepIndices: [0],
+            steps: [{ kind: "task", id: "impl", member: "alice", task: "resume workflow", completed: false }],
+        })
+        await setupFailed(root, sid, task, [makeMember("alice", "ses_alice")])
+        const calls: string[] = []
+        const ctx = makeCtx(root, async (req: any) => {
+            calls.push(req.path.id)
+        })
+
+        const res = await teamResumeTool(ctx).execute(
+            { team_id: "alpha" },
+            makeToolContext(sid),
+        )
+
+        expect(res).toContain("Resumed workflow")
+        expect(res).toContain("team_progress")
+        expect(res).toContain("team_fix_workflow")
+        expect(calls).toEqual(["ses_alice"])
     })
 
     test("(c) errored member reset then re-dispatched", async () => {

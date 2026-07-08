@@ -253,7 +253,57 @@ describe("teamProgressTool.execute", () => {
         )
 
         expect(result).toContain("Active: workflow  frontier api: step 3/7, docs: step 5/7")
+        expect(result).not.toContain("join_policy=")
         expect(result).not.toContain("Active: workflow  step 2/7")
+    })
+
+    test("active workflow fanout displays the active join policy", async () => {
+        const root = tmpRoot("prog-workflow-frontier-policy")
+        const masterSid = "ses_prog_master_frontier_policy"
+        tracked.push(masterSid)
+        const workflowTask: ActiveTask = {
+            ...makeActiveTask(),
+            type: "workflow",
+            mode: undefined,
+            currentStageIndex: 1,
+            activeStepIndices: [2, 4],
+            steps: [
+                { kind: "task", member: "lead", task: "setup", completed: true, output: "setup" },
+                {
+                    kind: "fanout",
+                    completed: true,
+                    fanout: {
+                        branchIds: ["api", "docs"],
+                        branchRanges: [{ startIndex: 2, endIndex: 3 }, { startIndex: 4, endIndex: 5 }],
+                        joinIndex: 6,
+                        maxErrored: 0,
+                        joinPolicy: "quorum",
+                        quorum: 0.5,
+                    },
+                },
+                { kind: "task", member: "alice", task: "api impl", completed: false, branch: { fanoutIndex: 1, branchId: "api", branchIndex: 0, joinIndex: 6 } },
+                { kind: "gate", verifier: "bob", criteria: "api ok", completed: false, branch: { fanoutIndex: 1, branchId: "api", branchIndex: 0, joinIndex: 6 } },
+                { kind: "task", member: "carol", task: "docs impl", completed: false, branch: { fanoutIndex: 1, branchId: "docs", branchIndex: 1, joinIndex: 6 } },
+                { kind: "gate", verifier: "dave", criteria: "docs ok", completed: false, branch: { fanoutIndex: 1, branchId: "docs", branchIndex: 1, joinIndex: 6 } },
+                { kind: "join", completed: false, join: { fanoutIndex: 1, branchTailIndices: [3, 5], maxErrored: 0, joinPolicy: "quorum", quorum: 0.5 } },
+            ],
+        } as ActiveTask
+        const dir = await setup({
+            root,
+            masterSid,
+            members: [makeMember("alice", "ses_prog_alice_policy"), makeMember("carol", "ses_prog_carol_policy")],
+            activeTask: workflowTask,
+        })
+        await seedEvents(dir, "run-active-1", [
+            { timestamp: Date.now(), kind: "dispatched", member: "alice", stage: 2 },
+        ])
+
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM },
+            { sessionID: masterSid } as never,
+        )
+
+        expect(result).toContain("Active: workflow  frontier api: step 3/7, docs: step 5/7 join_policy=quorum")
     })
 
     test("since filter excludes events at or before the timestamp", async () => {

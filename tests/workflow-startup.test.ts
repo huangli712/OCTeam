@@ -14,8 +14,22 @@ import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project", directory: storageRoot } as unknown as PluginContext
+type DispatchCall = { readonly sessionId: string; readonly text: string }
+
+function makeCtx(storageRoot: string, calls?: DispatchCall[]): PluginContext {
+    return {
+        storageRoot,
+        scope: "project",
+        directory: storageRoot,
+        client: calls === undefined ? undefined : {
+            session: {
+                promptAsync: async (args: { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }) => {
+                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
+                    return { data: {} }
+                },
+            },
+        },
+    } as unknown as PluginContext
 }
 
 const tracked: string[] = []
@@ -1222,10 +1236,41 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("  3. [task] (api-build) bob: Build API")
         expect(result).toContain("  4. [gate] (api-check) carol verifies step 3 (api-build): API passes")
         expect(result).toContain("  branch docs:")
-        expect(result).toContain("6. [join] (merge) waits for branches: api, docs; max_errored=1")
+        expect(result).toContain("6. [join] (merge) waits for all branches to reach a terminal state before applying join policy; branches: api, docs; max_errored=1")
         const after = await loadTeamState(root, "alpha", sid)
         expect(after.activeTask).toBeUndefined()
         expect(after.status).toBe("live")
+    })
+
+    test("fanout dry_run explains all-terminal join policy semantics", async () => {
+        const root = tmpRoot("wf-fanout-policy-dry")
+        const sid = "ses_wf_fanout_policy_dry"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", member: "alice", task: "Plan" },
+                    {
+                        kind: "fanout",
+                        join_policy: "quorum",
+                        quorum: 0.5,
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "bob", task: "Build" }] },
+                            { id: "qa", steps: [{ kind: "task", member: "carol", task: "Test" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("waits for all branches to reach a terminal state before applying join policy")
+        expect(result).toContain("join_policy=quorum")
+        expect(result).toContain("quorum=0.5")
     })
 
     test("workflow_file fanout dry_run loads branch structure", async () => {
@@ -1301,6 +1346,61 @@ describe("team_workflow startup validation", () => {
         )
 
         expect(result).toContain("Error: workflow_file \".octeam/workflows/invalid-timeout.json\" step 1 timeout_ms must be an integer >= 1000")
+    })
+
+    test("workflow_file runtime dispatches the first templated task", async () => {
+        const root = tmpRoot("wf-file-runtime")
+        const sid = "ses_wf_file_runtime"
+        const aliceSid = "ses_wf_file_runtime_alice"
+        const bobSid = "ses_wf_file_runtime_bob"
+        tracked.push(sid, aliceSid, bobSid)
+        await setupTeam(root, sid, [makeMember("alice", aliceSid), makeMember("bob", bobSid)], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "register.json"), JSON.stringify({
+            version: 1,
+            strict_vars: true,
+            steps: [
+                { kind: "task", id: "impl", member: "alice", task: "Implement ${handler}" },
+                { kind: "gate", id: "verify", verifier: "bob", target_step: "impl", criteria: "${handler} passes" },
+            ],
+        }))
+        const calls: DispatchCall[] = []
+
+        const result = await teamWorkflowTool(makeCtx(root, calls)).execute(
+            { team_id: "alpha", workflow_file: ".octeam/workflows/register.json", vars: { handler: "register-handler" } },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("team_workflow started")
+        expect(calls).toContainEqual({ sessionId: aliceSid, text: "Implement register-handler" })
+        const after = await loadTeamState(root, "alpha", sid)
+        expect(after.status).toBe("busy")
+        expect(after.activeTask?.type).toBe("workflow")
+    })
+
+    test("workflow_file runtime rejects missing strict vars before dispatch", async () => {
+        const root = tmpRoot("wf-file-runtime-strict-missing")
+        const sid = "ses_wf_file_runtime_strict_missing"
+        const aliceSid = "ses_wf_file_runtime_strict_missing_alice"
+        tracked.push(sid, aliceSid)
+        await setupTeam(root, sid, [makeMember("alice", aliceSid)], Date.now())
+        const dir = join(root, ".octeam", "workflows")
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, "missing-var.json"), JSON.stringify({
+            version: 1,
+            strict_vars: true,
+            steps: [{ kind: "task", member: "alice", task: "Implement ${handler}" }],
+        }))
+        const calls: DispatchCall[] = []
+
+        const result = await teamWorkflowTool(makeCtx(root, calls)).execute(
+            { team_id: "alpha", workflow_file: ".octeam/workflows/missing-var.json" },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("unknown template variable \"handler\"")
+        expect(calls).toEqual([])
     })
 
     test("fanout recursive branch step -> rejected", async () => {

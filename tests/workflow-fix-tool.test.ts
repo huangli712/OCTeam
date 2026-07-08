@@ -92,6 +92,56 @@ describe("team_fix_workflow", () => {
         expect(check).toEqual({ ok: true })
     })
 
+    test("redispatches an active workflow step selected by id", async () => {
+        // Given
+        const root = tmpRoot("fix-wf-redispatch-id")
+        const masterSid = "ses_fix_wf_master_id"
+        const aliceSid = "ses_fix_wf_alice_id"
+        tracked.push(masterSid, aliceSid)
+        const task = makeWorkflowTask({
+            activeStepIndices: [0],
+            steps: [{ kind: "task", id: "impl", member: "alice", task: "retry by id", completed: false, dispatchedAt: 1 }],
+        })
+        await setupTeam(root, masterSid, task, [makeMember("alice", aliceSid)])
+        const calls: DispatchCall[] = []
+
+        // When
+        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+            { team_id: "alpha", op: "redispatch", step: "impl" },
+            makeToolContext(masterSid),
+        )
+
+        // Then
+        expect(result).toContain("redispatched step 1")
+        expect(calls).toContainEqual({ sessionId: aliceSid, text: "retry by id" })
+        const after = await loadTeamState(root, "alpha", masterSid)
+        expect(checkWorkflowInvariants(after.activeTask as WorkflowTask)).toEqual({ ok: true })
+    })
+
+    test("rejects an unknown workflow step id without dispatching", async () => {
+        // Given
+        const root = tmpRoot("fix-wf-redispatch-unknown-id")
+        const masterSid = "ses_fix_wf_master_unknown_id"
+        const aliceSid = "ses_fix_wf_alice_unknown_id"
+        tracked.push(masterSid, aliceSid)
+        const task = makeWorkflowTask({
+            activeStepIndices: [0],
+            steps: [{ kind: "task", id: "impl", member: "alice", task: "retry me", completed: false }],
+        })
+        await setupTeam(root, masterSid, task, [makeMember("alice", aliceSid)])
+        const calls: DispatchCall[] = []
+
+        // When
+        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+            { team_id: "alpha", op: "redispatch", step: "ghost" },
+            makeToolContext(masterSid),
+        )
+
+        // Then
+        expect(result).toContain("Error:")
+        expect(calls).toEqual([])
+    })
+
     test("redispatches an active fanout branch workflow step without touching sibling branches", async () => {
         // Given
         const root = tmpRoot("fix-wf-redispatch-branch")

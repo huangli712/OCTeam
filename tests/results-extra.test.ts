@@ -291,6 +291,80 @@ describe("team_result_get: workflow branch tree rendering", () => {
         unindexSession(memberSid)
     })
 
+    test("renders fanout join policy metadata when persisted", async () => {
+        const root = tmpRoot("res-workflow-policy")
+        const sid = "ses_res_workflow_policy"
+        const memberSid = "ses_res_workflow_policy_alice"
+        const team = await setupTeam(root, sid, memberSid)
+        const tdir = teamDir(root, "alpha", sid)
+        await writeRunRecord(tdir, {
+            version: 1,
+            runId: "run-workflow-policy",
+            teamRunId: "run-alpha-sid",
+            teamName: "alpha",
+            type: "workflow",
+            status: "completed",
+            reason: "workflow_complete",
+            startedAt: Date.now(),
+            finishedAt: Date.now(),
+            tokensUsed: 0,
+            tokensByMember: {},
+            messagesSent: 0,
+            memberOutputs: {},
+            workflow: {
+                steps: [
+                    {
+                        index: 0,
+                        step: 1,
+                        kind: "fanout",
+                        completed: true,
+                        fanout: {
+                            branchIds: ["api", "docs"],
+                            branchRanges: [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }],
+                            joinIndex: 3,
+                            maxErrored: 0,
+                            joinPolicy: "reduce",
+                            reducerMember: "dave",
+                        },
+                    },
+                    { index: 1, step: 2, kind: "task", member: "alice", completed: true, branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 3 } },
+                    { index: 2, step: 3, kind: "task", member: "carol", completed: true, branch: { fanoutIndex: 0, branchId: "docs", branchIndex: 1, joinIndex: 3 } },
+                    { index: 3, step: 4, kind: "join", completed: true, join: { fanoutIndex: 0, branchTailIndices: [1, 2], maxErrored: 0, survivorBranchIds: ["api", "docs"] } },
+                    {
+                        index: 4,
+                        step: 5,
+                        kind: "fanout",
+                        completed: true,
+                        fanout: {
+                            branchIds: ["linux", "mac"],
+                            branchRanges: [{ startIndex: 5, endIndex: 5 }, { startIndex: 6, endIndex: 6 }],
+                            joinIndex: 7,
+                            maxErrored: 0,
+                            joinPolicy: "quorum",
+                            quorum: 0.5,
+                        },
+                    },
+                    { index: 5, step: 6, kind: "task", member: "alice", completed: true, branch: { fanoutIndex: 4, branchId: "linux", branchIndex: 0, joinIndex: 7 } },
+                    { index: 6, step: 7, kind: "task", member: "carol", completed: true, branch: { fanoutIndex: 4, branchId: "mac", branchIndex: 1, joinIndex: 7 } },
+                    { index: 7, step: 8, kind: "join", completed: true, join: { fanoutIndex: 4, branchTailIndices: [5, 6], maxErrored: 0, survivorBranchIds: ["linux", "mac"] } },
+                ],
+            },
+        } as RunRecord)
+
+        const result = await teamResultGetTool(makeCtx(root)).execute(
+            { team_id: "alpha", run_id: "run-workflow-policy" },
+            makeToolContext(memberSid),
+        )
+
+        expect(result).toContain("join_policy=reduce")
+        expect(result).toContain("reducer_member=dave")
+        expect(result).toContain("join_policy=quorum")
+        expect(result).toContain("quorum=0.5")
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+        unindexSession(memberSid)
+    })
+
     test("renders workflow step duration when persisted", async () => {
         const root = tmpRoot("res-workflow-duration")
         const sid = "ses_res_workflow_duration"
