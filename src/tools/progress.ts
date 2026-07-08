@@ -12,12 +12,13 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
+import { formatWorkflowMermaid, type MermaidStepStatus } from "../core/workflow-mermaid.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState } from "../state/store.js"
 import { listRunRecords, readRunEvents } from "../orchestration/runs.js"
 import { isSafePathSegment } from "../state/paths.js"
 import { getActiveWorkflowStepIndices } from "../core/workflow-dag.js"
-import type { RunEvent, WorkflowStep, WorkflowTask } from "../core/types.js"
+import type { RunEvent, WorkflowRunStep, WorkflowStep, WorkflowTask } from "../core/types.js"
 import type { Team } from "../state/store.js"
 
 function formatWorkflowStepElapsed(step: WorkflowStep | undefined): string {
@@ -107,15 +108,80 @@ function formatTimeline(events: RunEvent[], runId: string, totalBefore: number):
     return [header, ...lines]
 }
 
+function liveStepsToRunSteps(steps: readonly WorkflowStep[]): WorkflowRunStep[] {
+    return steps.map((step, index) => ({
+        index,
+        step: index + 1,
+        kind: step.kind,
+        id: step.id,
+        member: step.member,
+        verifier: step.verifier,
+        dispatchedActor: step.dispatchedActor,
+        targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
+        targetSteps: step.targetStepIndices?.map(targetIndex => targetIndex + 1),
+        verdict: step.verdict,
+        score: step.score,
+        confidence: step.confidence,
+        issues: step.issues,
+        attempts: step.attempts,
+        onInvalid: step.onInvalid,
+        invalidAttempts: step.invalidAttempts,
+        jumpCount: step.jumpCount,
+        skipped: step.skipped,
+        completed: step.completed,
+        output: step.output,
+        startedAt: step.startedAt,
+        completedAt: step.completedAt,
+        durationMs: step.durationMs,
+        inputs: step.inputs,
+        exposeOutput: step.exposeOutput,
+        fanout: step.fanout,
+        branch: step.branch,
+        join: step.join,
+        approvalBefore: step.approvalBefore,
+        approvalAfter: step.approvalAfter,
+        maxOutputBytes: step.maxOutputBytes,
+    }))
+}
+
+function liveStatusByIndex(task: WorkflowTask): Map<number, MermaidStepStatus> {
+    const active = new Set(getActiveWorkflowStepIndices(task))
+    const statuses = new Map<number, MermaidStepStatus>()
+    const steps = task.steps ?? []
+    for (let index = 0; index < steps.length; index += 1) {
+        const step = steps[index]
+        if (step === undefined) continue
+        if (step.skipped === true) {
+            statuses.set(index, "skipped")
+        } else if (step.completed) {
+            statuses.set(index, "done")
+        } else if (active.has(index)) {
+            statuses.set(index, "active")
+        } else {
+            statuses.set(index, "pending")
+        }
+    }
+    return statuses
+}
+
+function formatLiveWorkflowMermaid(team: Team): string | null {
+    const task = team.activeTask
+    if (task?.type !== "workflow") return null
+    const steps = task.steps ?? []
+    if (steps.length === 0) return null
+    return formatWorkflowMermaid(liveStepsToRunSteps(steps), liveStatusByIndex(task))
+}
+
 export function teamProgressTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Show a team's live progress: current member states PLUS the run's event timeline (dispatched/captured/errored/retry/stage/round/signoff/terminated). Use mid-run to see where an orchestration is, or after to review how it unfolded. Omit run_id for the active (or latest) run.",
+            "Show a team's live progress: current member states PLUS the run's event timeline (dispatched/captured/errored/retry/stage/round/signoff/terminated). Use mid-run to see where an orchestration is, or after to review how it unfolded. Omit run_id for the active (or latest) run. Use format='mermaid' for a live team_workflow graph.",
         args: {
             team_id: tool.schema.string().min(1),
             limit: tool.schema.number().int().min(1).max(200).optional().describe("max events, most-recent kept (default 40)"),
             since: tool.schema.number().int().optional().describe("epoch ms; only events strictly after this (incremental polling)"),
             run_id: tool.schema.string().optional().describe("a specific finished run; omit for the active or latest run"),
+            format: tool.schema.enum(["text", "mermaid"]).optional().describe("output format; default text"),
         },
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, {
@@ -134,6 +200,14 @@ export function teamProgressTool(ctx: PluginContext): ToolDefinition {
                 team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
             } catch {
                 return `Error: team "${args.team_id}" not found`
+            }
+
+            if ((args.format ?? "text") === "mermaid") {
+                const mermaid = formatLiveWorkflowMermaid(team)
+                if (mermaid === null) {
+                    return `Error: team_progress format=mermaid requires an in-progress team_workflow (no active workflow on team "${args.team_id}")`
+                }
+                return mermaid
             }
 
             // Resolve which run's timeline to read.

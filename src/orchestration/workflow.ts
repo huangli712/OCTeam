@@ -505,6 +505,8 @@ export async function dispatchTaskStep(
     // happening (re-entry via retry/goto re-requests approval because the reset
     // loops clear approvalBeforeGranted).
     step.approvalBeforeGranted = undefined;
+    step.output = undefined;
+    delete task.responses[member.name];
     const upstream = buildWorkflowUpstream(task.steps ?? [], index);
     const text = upstream
         ? `${upstream}\n\n[Your task]\n${step.task}`
@@ -542,6 +544,8 @@ async function dispatchGateStep(
     const targetIndices = gateTargetIndices(task.steps ?? [], index);
     if (targetIndices.length === 0) return false;
     step.approvalBeforeGranted = undefined;
+    step.output = undefined;
+    delete task.responses[verifier.name];
     const producerOutput = buildGateProducerOutput(
         task.steps ?? [],
         targetIndices,
@@ -702,7 +706,7 @@ async function dispatchWorkflowJoinReducer(
     if (reducer === undefined) return false;
     // Clear any stale response the reducer left from an earlier workflow step so a
     // crash during the reduce wait cannot be mistaken for a fresh reduce turn on resume.
-    delete task.responses[reducerMember];
+    delete task.responses[reducer.name];
     step.dispatchedActor = reducer.name;
     step.correlationId = crypto.randomUUID();
     await dispatchToMember(
@@ -870,6 +874,7 @@ function fanoutPolicyImpossible(
     remainingSurvivors: number,
     total: number,
 ): boolean {
+    if (join.useSurvivors === true) return remainingSurvivors === 0;
     const erroredSet = new Set(erroredBranchIds);
     switch (join.joinPolicy) {
         case undefined:
@@ -1631,7 +1636,27 @@ export async function handleWorkflowIdle(
         );
         return;
     }
+    if (onFail === "skip") {
+        delete task.responses[verifierName];
+        markWorkflowStepCompleted(step);
+        step.completed = true;
+        step.skipped = true;
+        step.dispatchedAt = undefined;
+        step.dispatchedActor = undefined;
+        step.correlationId = undefined;
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "stage_advanced",
+            member: verifierName,
+            stage: activeStepIndex,
+            stepIndex: activeStepIndex,
+            detail: `workflow gate step ${activeStepIndex + 1} skipped after FAIL from ${verifierName}`,
+        });
+        await advanceWorkflowStep(ctx, team);
+        return;
+    }
     // onFail === "retry": bounded retry of the preceding task.
+    delete task.responses[verifierName];
     step.attempts = (step.attempts ?? 0) + 1;
     const maxR = step.maxRetries ?? 0;
     if (step.attempts > maxR) {

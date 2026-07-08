@@ -112,6 +112,7 @@ const WorkflowFanoutMetadataSchema = z.object({
     quorum: z.number().optional(),
     requiredBranchIds: z.array(z.string().min(1)).optional(),
     reducerMember: z.string().min(1).optional(),
+    useSurvivors: z.boolean().optional(),
 }).refine(fanout => fanout.branchIds.length === fanout.branchRanges.length, "fanout branchIds and branchRanges length mismatch")
 const WorkflowBranchMetadataSchema = z.object({
     fanoutIndex: z.number().int().nonnegative(),
@@ -127,6 +128,7 @@ const WorkflowJoinMetadataSchema = z.object({
     quorum: z.number().optional(),
     requiredBranchIds: z.array(z.string().min(1)).optional(),
     reducerMember: z.string().min(1).optional(),
+    useSurvivors: z.boolean().optional(),
     survivorBranchIds: z.array(z.string().min(1)).optional(),
     erroredBranchIds: z.array(z.string().min(1)).optional(),
     selectedBranchId: z.string().min(1).optional(),
@@ -362,6 +364,7 @@ function runJoinMetadata(join: WorkflowStep["join"]): WorkflowRunStep["join"] {
         ...(join.quorum === undefined ? {} : { quorum: join.quorum }),
         ...(join.requiredBranchIds === undefined ? {} : { requiredBranchIds: join.requiredBranchIds }),
         ...(join.reducerMember === undefined ? {} : { reducerMember: join.reducerMember }),
+        ...(join.useSurvivors === undefined ? {} : { useSurvivors: join.useSurvivors }),
         ...(join.survivorBranchIds === undefined ? {} : { survivorBranchIds: join.survivorBranchIds }),
         ...(join.erroredBranchIds === undefined ? {} : { erroredBranchIds: join.erroredBranchIds }),
         ...(join.selectedBranchId === undefined ? {} : { selectedBranchId: join.selectedBranchId }),

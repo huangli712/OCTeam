@@ -80,7 +80,7 @@ orchestration. Only one orchestration can be active per team at a time.
 | `team_done` | Member-side done acknowledgement (require_done_ack barrier) |
 | `team_results` | List recent orchestration run records |
 | `team_result_get` | Fetch a specific run's full record and member outputs |
-| `team_progress` | Show live progress and event timeline |
+| `team_progress` | Show live progress and event timeline; `format="mermaid"` renders a live team_workflow graph |
 | `team_intervene` | Inject a directive into a member's mailbox mid-run |
 | `team_approve` | Approve a pending human-in-the-loop pause and resume the run |
 | `team_reject` | Reject a pending human-in-the-loop pause and apply the mode-specific rejection path |

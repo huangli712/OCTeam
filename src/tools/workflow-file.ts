@@ -148,8 +148,8 @@ function validateWorkflowStepFields(step: Record<string, unknown>, location: Ste
     if (step.expose_output !== undefined && typeof step.expose_output !== "boolean") {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} expose_output must be boolean`
     }
-    if (step.on_fail !== undefined && step.on_fail !== "retry" && step.on_fail !== "fail") {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} on_fail must be retry or fail`
+    if (step.on_fail !== undefined && step.on_fail !== "retry" && step.on_fail !== "fail" && step.on_fail !== "skip") {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix} on_fail must be retry, fail, or skip`
     }
     if (step.max_retries !== undefined && !isIntegerInRange(step.max_retries, 0, 5)) {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} max_retries must be an integer from 0 to 5`
@@ -182,6 +182,9 @@ function validateWorkflowStepFields(step: Record<string, unknown>, location: Ste
     }
     if (step.max_errored !== undefined && !isIntegerAtLeast(step.max_errored, 0)) {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} max_errored must be a non-negative integer`
+    }
+    if (step.use_survivors !== undefined && typeof step.use_survivors !== "boolean") {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix} use_survivors must be boolean`
     }
     if (step.join_policy !== undefined && step.join_policy !== "all" && step.join_policy !== "quorum" && step.join_policy !== "any_success" && step.join_policy !== "required_branches" && step.join_policy !== "reduce" && step.join_policy !== "select") {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} join_policy must be all, quorum, any_success, required_branches, reduce, or select`

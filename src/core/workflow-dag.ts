@@ -230,6 +230,7 @@ function joinPolicySatisfied(
 ): boolean {
     const total = join.branchTailIndices.length
     const survivors = survivorBranchIds.length
+    if (join.useSurvivors === true) return survivors >= 1
     switch (join.joinPolicy) {
         case undefined:
         case "tolerance":

@@ -311,6 +311,7 @@ export type WorkflowFanoutMetadata = {
     readonly quorum?: number                  // fraction of branches that must succeed (join_policy='quorum'), 0 < quorum <= 1
     readonly requiredBranchIds?: readonly string[]  // branch ids that must succeed (join_policy='required_branches')
     readonly reducerMember?: string           // member who aggregates branch outputs at join (join_policy='reduce' or 'select')
+    readonly useSurvivors?: boolean           // when true, strict join policies continue with surviving branches instead of failing on branch errors
 }
 
 export type WorkflowBranchMetadata = {
@@ -328,6 +329,7 @@ export type WorkflowJoinMetadata = {
     readonly quorum?: number
     readonly requiredBranchIds?: readonly string[]
     readonly reducerMember?: string
+    readonly useSurvivors?: boolean
     readonly survivorBranchIds?: readonly string[]
     readonly erroredBranchIds?: readonly string[]
     readonly selectedBranchId?: string
@@ -348,7 +350,7 @@ export type WorkflowStep = {
     criteria?: string                   // verification criteria (gate steps)
     targetStepIndex?: number            // gate steps: zero-based primary task step being verified; omitted means nearest preceding task
     targetStepIndices?: number[]        // gate steps: zero-based multi-target task steps; targetStepIndex remains the primary/legacy target
-    onFail?: "retry" | "fail"           // FAIL control: retry the preceding task, or fail the run (gate steps; default "fail")
+    onFail?: "retry" | "fail" | "skip"  // FAIL control: retry the preceding task, fail the run, or skip this gate (gate steps; default "fail")
     maxRetries?: number                 // FAIL retry cap, distinct from provider-retry maxRetries (gate steps; default 0)
     attempts?: number                   // FAIL retry count so far (gate steps)
     onInvalid?: WorkflowOnInvalid       // INVALID control: fail the run, re-dispatch the verifier, or escalate to the leader (gate steps; default "fail")

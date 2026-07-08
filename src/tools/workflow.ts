@@ -56,7 +56,7 @@ export type WorkflowToolStep = {
     readonly targets?: readonly WorkflowStepRef[]
     readonly inputs?: readonly WorkflowStepRef[]
     readonly expose_output?: boolean
-    readonly on_fail?: "retry" | "fail"
+    readonly on_fail?: "retry" | "fail" | "skip"
     readonly max_retries?: number
     readonly on_invalid?: "fail" | "retry_verifier" | "escalate"
     readonly max_invalid_retries?: number
@@ -77,6 +77,7 @@ export type WorkflowToolStep = {
     readonly quorum?: number
     readonly required_branches?: readonly string[]
     readonly reducer_member?: string
+    readonly use_survivors?: boolean
     readonly matrix?: Readonly<Record<string, readonly string[]>>
     readonly foreach?: readonly string[]
     readonly as?: string
@@ -371,6 +372,7 @@ function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly Lowere
                         ...(step.quorum !== undefined ? { quorum: step.quorum } : {}),
                         ...(step.required_branches !== undefined ? { requiredBranchIds: step.required_branches } : {}),
                         ...(step.reducer_member !== undefined ? { reducerMember: step.reducer_member } : {}),
+                        ...(step.use_survivors === true ? { useSurvivors: true } : {}),
                     },
                 })
                 for (let branchIndex = 0; branchIndex < branches.length; branchIndex += 1) {
@@ -422,6 +424,7 @@ function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly Lowere
                         ...(step.quorum !== undefined ? { quorum: step.quorum } : {}),
                         ...(step.required_branches !== undefined ? { requiredBranchIds: step.required_branches } : {}),
                         ...(step.reducer_member !== undefined ? { reducerMember: step.reducer_member } : {}),
+                        ...(step.use_survivors === true ? { useSurvivors: true } : {}),
                     },
                 })
                 publicIndex += 1
@@ -872,6 +875,9 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 if (s.on_fail === "retry" && s.max_retries === undefined) {
                     return `Error: ${location} with on_fail='retry' requires \`max_retries\``
                 }
+                if (s.on_fail === "skip" && s.on_fail_goto !== undefined) {
+                    return `Error: ${location} on_fail_goto is incompatible with on_fail='skip'`
+                }
                 if (s.on_invalid === "retry_verifier" && s.max_invalid_retries === undefined) {
                     return `Error: ${location} with on_invalid='retry_verifier' requires \`max_invalid_retries\``
                 }
@@ -1026,7 +1032,7 @@ function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 if (step.fallback_verifier !== undefined) controls.push(`fallback_verifier=${step.fallback_verifier}`)
                 const ctrlTag = controls.length > 0 ? `  [${controls.join(", ")}]` : ""
                 const target = stepTargetLabel(loweredSteps, i)
-                const retry = step.on_fail === "retry" ? `; on_fail=retry max_retries=${step.max_retries}` : ""
+                const retry = step.on_fail === "retry" ? `; on_fail=retry max_retries=${step.max_retries}` : step.on_fail === "skip" ? "; on_fail=skip" : ""
                 const invalid = step.on_invalid && step.on_invalid !== "fail"
                     ? `; on_invalid=${step.on_invalid}${step.on_invalid === "retry_verifier" ? ` max_invalid_retries=${step.max_invalid_retries}` : ""}`
                     : ""
@@ -1049,6 +1055,7 @@ function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 if (step.fanout.quorum !== undefined) controls.push(`quorum=${step.fanout.quorum}`)
                 if (step.fanout.requiredBranchIds !== undefined) controls.push(`required_branches=${step.fanout.requiredBranchIds.join(",")}`)
                 if (step.fanout.reducerMember !== undefined) controls.push(`reducer_member=${step.fanout.reducerMember}`)
+                if (step.fanout.useSurvivors === true) controls.push("use_survivors=true")
                 lines.push(`${i + 1}. [fanout]${idTag} branches: ${step.fanout.branchIds.join(", ")} -> join step ${step.fanout.joinIndex + 1}${joinIdTag}; ${controls.join("; ")}`)
                 break
             }
@@ -1059,6 +1066,7 @@ function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 const controls = [`max_errored=${step.join.maxErrored}`]
                 if (step.join.joinPolicy !== undefined) controls.push(`join_policy=${step.join.joinPolicy}`)
                 if (step.join.reducerMember !== undefined) controls.push(`reducer_member=${step.join.reducerMember}`)
+                if (step.join.useSurvivors === true) controls.push("use_survivors=true")
                 lines.push(`${i + 1}. [join]${idTag} waits for all branches to reach a terminal state before applying join policy; branches: ${branchIds.join(", ")}; ${controls.join("; ")}`)
                 break
             }
@@ -1273,7 +1281,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         targets: tool.schema.array(workflowStepRefSchema).min(1).optional().describe("gate steps: multiple prior task steps to verify together. Mutually exclusive with target_step."),
         inputs: tool.schema.array(workflowStepRefSchema).min(1).optional().describe("task steps: explicit upstream task/join steps to include, using 1-based numbers or step ids. Overrides implicit upstream selection."),
         expose_output: tool.schema.boolean().optional().describe("task steps: when false, suppress this task output from implicit downstream upstream context. Explicit inputs may still reference it."),
-        on_fail: tool.schema.enum(["retry", "fail"]).optional().describe("gate steps: FAIL control. 'fail' (default) fails the run; 'retry' re-dispatches the target task up to max_retries."),
+        on_fail: tool.schema.enum(["retry", "fail", "skip"]).optional().describe("gate steps: FAIL control. 'fail' (default) fails the run; 'retry' re-dispatches the target task up to max_retries; 'skip' marks the gate skipped and advances."),
         max_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: FAIL retry cap when on_fail='retry'. Default 0."),
         on_invalid: tool.schema.enum(["fail", "retry_verifier", "escalate"]).optional().describe("gate steps: INVALID control. 'fail' (default) terminates producer-neutral as workflow_invalid; 'retry_verifier' re-dispatches this gate's verifier up to max_invalid_retries; 'escalate' pauses for human approval (approve=advance, reject=workflow_invalid)."),
         max_invalid_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: retry_verifier cap when on_invalid='retry_verifier'. Default 0. Required when on_invalid='retry_verifier'."),
@@ -1297,6 +1305,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         quorum: tool.schema.number().min(0).max(1).optional().describe("fanout steps: survivor fraction required by join_policy='quorum' (0 < quorum <= 1)."),
         required_branches: tool.schema.array(tool.schema.string().min(1)).min(1).optional().describe("fanout steps: branch ids that must succeed under join_policy='required_branches'."),
         reducer_member: tool.schema.string().min(1).optional().describe("fanout steps: member who aggregates branch outputs under join_policy='reduce' or selects a winning branch under join_policy='select'."),
+        use_survivors: tool.schema.boolean().optional().describe("fanout steps: when true, strict join policies continue with surviving branch outputs instead of failing on branch errors."),
         matrix: tool.schema.record(tool.schema.string(), tool.schema.array(tool.schema.string().min(1))).optional().describe("fanout steps: expand into the cartesian product of named value arrays, substituting ${name} in each branch step's text fields. Mutually exclusive with branches/foreach."),
         foreach: tool.schema.array(tool.schema.string().min(1)).optional().describe("fanout steps: single-dimension value list; one branch per value, substituting ${as} in each branch step. Mutually exclusive with branches/matrix."),
         as: tool.schema.string().min(1).optional().describe("fanout steps: variable name bound to the current foreach value (default 'item')."),
