@@ -68,6 +68,15 @@ function workflowStepDurationTag(step: WorkflowRunStep): string {
     return step.durationMs === undefined ? "" : ` duration=${step.durationMs}ms`
 }
 
+function workflowFanoutPolicyTag(fanout: NonNullable<WorkflowRunStep["fanout"]>): string {
+    const controls: string[] = []
+    if (fanout.joinPolicy !== undefined) controls.push(`join_policy=${fanout.joinPolicy}`)
+    if (fanout.quorum !== undefined) controls.push(`quorum=${fanout.quorum}`)
+    if (fanout.requiredBranchIds !== undefined) controls.push(`required_branches=${fanout.requiredBranchIds.join(",")}`)
+    if (fanout.reducerMember !== undefined) controls.push(`reducer_member=${fanout.reducerMember}`)
+    return controls.length > 0 ? `  [${controls.join(", ")}]` : ""
+}
+
 function formatBranchStatusList(statuses: Record<string, string> | undefined): string {
     if (statuses === undefined) return ""
     const pairs = Object.entries(statuses).map(([branchId, status]) => `${branchId}:${status}`)
@@ -113,7 +122,7 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
             const fanout = step.fanout
             if (fanout === undefined) throw new Error(`workflow fanout step ${step.step} missing fanout metadata`)
             const branchList = fanout.branchIds.length > 0 ? fanout.branchIds.join(", ") : "(none)"
-            return `- Step ${step.step}: [fanout]${idTag} branches ${branchList} -> join step ${fanout.joinIndex + 1}${workflowStepDurationTag(step)}${workflowStepControlsTag(step)}`
+            return `- Step ${step.step}: [fanout]${idTag} branches ${branchList} -> join step ${fanout.joinIndex + 1}${workflowStepDurationTag(step)}${workflowFanoutPolicyTag(fanout)}${workflowStepControlsTag(step)}`
         }
         case "join": {
             const join = step.join

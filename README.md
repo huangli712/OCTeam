@@ -2,7 +2,7 @@
 
 Persistent multi-agent teams for OpenCode. OCTeam is an OpenCode plugin that
 lets you create long-lived teams of up to 8 OpenCode sessions and orchestrate
-them with nine workflow primitives.
+them with ten workflow primitives.
 
 **Version:** 0.10.7  
 **License:** MIT  
@@ -55,7 +55,7 @@ plugin host.
 | `team_task_update` | Update a task's status (claim, progress, complete, delete) |
 | `team_task_get` | Get full details of a single task |
 
-### Orchestration (9 primitives)
+### Orchestration (10 primitives)
 
 | Tool | Description |
 |------|-------------|
@@ -68,8 +68,9 @@ plugin host.
 | `team_arbitrate` | Debaters argue, an arbiter issues a binding ruling |
 | `team_recurse` | Hierarchical recursive decomposition with blockedBy DAG |
 | `team_tollgate` | Verdict-gated pipeline (PASS/FAIL/INVALID gates between stages) |
+| `team_workflow` | Deterministic declarative workflow: task/gate/fanout/join steps with engine-driven retry, recovery, and join policies |
 
-All nine are master-only: only the team's leader session may start an
+All ten are master-only: only the team's leader session may start an
 orchestration. Only one orchestration can be active per team at a time.
 
 ### Observability and recovery

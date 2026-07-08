@@ -1031,7 +1031,7 @@ function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 const controls = [`max_errored=${step.join.maxErrored}`]
                 if (step.join.joinPolicy !== undefined) controls.push(`join_policy=${step.join.joinPolicy}`)
                 if (step.join.reducerMember !== undefined) controls.push(`reducer_member=${step.join.reducerMember}`)
-                lines.push(`${i + 1}. [join]${idTag} waits for branches: ${branchIds.join(", ")}; ${controls.join("; ")}`)
+                lines.push(`${i + 1}. [join]${idTag} waits for all branches to reach a terminal state before applying join policy; branches: ${branchIds.join(", ")}; ${controls.join("; ")}`)
                 break
             }
             default:

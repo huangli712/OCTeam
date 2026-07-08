@@ -127,7 +127,10 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     await saveTeamState(team)
                 })
                 if (resumeRaced) return "Error: team already resumed or state changed"
-                return `Resumed ${restored.type} orchestration for team "${team_id}".`
+                const workflowHint = restored.type === "workflow"
+                    ? " Use team_progress to inspect the frontier and team_fix_workflow to repair a stuck step."
+                    : ""
+                return `Resumed ${restored.type} orchestration for team "${team_id}".${workflowHint}`
             } catch (e) {
                 // --- Rollback (MAJOR-B: ACTIVE reset, not passive). ---
                 // A post-commit throw (e.g. dispatchToMember rejecting on a dead

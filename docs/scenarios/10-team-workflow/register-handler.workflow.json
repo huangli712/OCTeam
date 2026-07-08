@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "strict_vars": true,
+  "steps": [
+    {
+      "kind": "task",
+      "id": "impl",
+      "member": "alice",
+      "task": "Implement ${handler} for the ${resource}. Return the complete TypeScript code in one fenced block."
+    },
+    {
+      "kind": "gate",
+      "id": "verify-impl",
+      "verifier": "bob",
+      "target_step": "impl",
+      "criteria": "Verify ${handler} handles invalid input, valid input, and error responses for the ${resource}. Emit PASS only if every case holds.",
+      "on_fail": "retry",
+      "max_retries": 1
+    },
+    {
+      "kind": "task",
+      "id": "refactor",
+      "member": "alice",
+      "task": "Refactor the verified ${handler} implementation without changing behavior. Keep the complete TypeScript code in one fenced block."
+    },
+    {
+      "kind": "gate",
+      "id": "verify-refactor",
+      "verifier": "bob",
+      "target_step": "refactor",
+      "criteria": "Re-verify the refactored ${handler}; behavior must match the implementation gate and the refactor must improve readability.",
+      "on_fail": "retry",
+      "max_retries": 1
+    }
+  ]
+}

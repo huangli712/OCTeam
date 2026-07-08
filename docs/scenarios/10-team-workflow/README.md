@@ -82,7 +82,7 @@ id 在整条 workflow 内必须唯一（否则 `dry_run`/启动校验报 `duplic
 
 ### fanout / join 与数据流控制
 
-`fanout` 必须紧跟一个 `join` marker。默认 join 使用 `max_errored` 容忍度；也可以声明 `join_policy` 为 `all`、`quorum`、`any_success`、`required_branches` 或 `reduce`。`join_policy="reduce"` 要求设置 `reducer_member`：所有分支成功后，engine 会先把分支产出派发给 reducer，由 reducer 输出单一 `joinedOutput`，再继续下游步骤。
+`fanout` 必须紧跟一个 `join` marker。join 会先等待所有分支进入 terminal 状态（completed / skipped / errored），再应用策略判断是否继续。默认 join 使用 `max_errored` 容忍度；也可以声明 `join_policy` 为 `all`、`quorum`、`any_success`、`required_branches` 或 `reduce`。`join_policy="reduce"` 要求设置 `reducer_member`：所有分支成功后，engine 会先把分支产出派发给 reducer，由 reducer 输出单一 `joinedOutput`，再继续下游步骤。
 
 task step 默认接收之前已完成且可见的上游 task/join 产出。若只想传入指定上游，使用 `inputs`（1-based step 编号或 step id）；若某个 task 的产出不应进入后续隐式上游，设置 `expose_output: false`。显式 `inputs` 仍可引用该产出，适合“默认隐藏，但允许指定消费者读取”的场景。
 
@@ -242,6 +242,28 @@ Workflow dry run for "register-handler-flow" (4 step(s)):
 ```
 
 校验失败（如 `on_fail="retry"` 缺 `max_retries`、task/gate 跨字段、`target_step` 指向 gate）也会在此阶段报错，避免半启动的 run。
+
+### 1.7 可选：workflow_file 模板
+
+复杂 workflow 可以放进仓库内的 JSON 文件，再用 `vars` 进行模板替换。文件必须是相对工作区路径并以 `.json` 结尾；推荐设置 `version: 1` 和 `strict_vars: true`，让变量拼写错误在启动前失败。
+
+本目录提供了可直接预演或启动的模板：[`register-handler.workflow.json`](./register-handler.workflow.json)。启动方式：
+
+```json
+{
+  "tool": "team_workflow",
+  "args": {
+    "team_id": "register-handler-flow",
+    "workflow_file": "docs/scenarios/10-team-workflow/register-handler.workflow.json",
+    "vars": {
+      "handler": "handleRegister",
+      "resource": "register handler"
+    }
+  }
+}
+```
+
+先加 `dry_run: true` 可以查看变量替换后的 step ledger，确认成员、gate、join policy 和数据流都符合预期，再启动真实编排。
 
 ## 恢复与检查点粒度
 

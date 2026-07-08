@@ -32,13 +32,24 @@ function formatWorkflowFrontierStep(steps: readonly WorkflowStep[], index: numbe
     return `${branchTag}step ${index + 1}/${steps.length}${formatWorkflowStepElapsed(step)}`
 }
 
+function activeFanoutJoinPolicy(task: WorkflowTask): string {
+    const steps = task.steps ?? []
+    for (const index of getActiveWorkflowStepIndices(task)) {
+        const branch = steps[index]?.branch
+        if (branch === undefined) continue
+        const joinPolicy = steps[branch.fanoutIndex]?.fanout?.joinPolicy
+        if (joinPolicy !== undefined) return ` join_policy=${joinPolicy}`
+    }
+    return ""
+}
+
 function formatWorkflowStage(task: WorkflowTask): string {
     const steps = task.steps ?? []
     if (steps.length === 0) return ""
     const activeIndices = getActiveWorkflowStepIndices(task)
     const hasBranchFrontier = activeIndices.length > 1 || activeIndices.some(index => steps[index]?.branch !== undefined)
     if (!hasBranchFrontier) return `  step ${task.currentStageIndex + 1}/${steps.length}${formatWorkflowStepElapsed(steps[task.currentStageIndex])}`
-    return `  frontier ${activeIndices.map(index => formatWorkflowFrontierStep(steps, index)).join(", ")}`
+    return `  frontier ${activeIndices.map(index => formatWorkflowFrontierStep(steps, index)).join(", ")}${activeFanoutJoinPolicy(task)}`
 }
 
 /** One-line-per-member live snapshot (current state, not history). */
