@@ -17,7 +17,6 @@
 
 import type { PluginContext } from "../core/context.js";
 import type { ActiveTask } from "../core/types.js";
-import { workflowNoSessionReason } from "../core/workflow-reasons.js";
 import { type Team } from "../state/store.js";
 import { advanceToStage, dispatchToMember } from "../orchestration/dispatch.js";
 import { handleParallelIdle } from "../orchestration/parallel.js";
