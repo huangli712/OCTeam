@@ -63,8 +63,12 @@ function checkStep(context: WorkflowInvariantContext, index: number, step: Workf
     if (step.branch !== undefined) checkBranchMetadata(context, index, step.branch)
 
     switch (step.kind) {
-        case "task":
+        case "task": {
+            if (step.taskAttempts !== undefined && step.taskAttempts > (step.maxTaskRetries ?? 0)) {
+                context.violations.push(`step ${index}: taskAttempts ${step.taskAttempts} exceeds cap ${step.maxTaskRetries ?? 0}`)
+            }
             return
+        }
         case "gate":
             checkGateStep(context, index, step)
             return
@@ -92,12 +96,20 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
         if (step.verifier !== undefined && target.member !== undefined && step.verifier === target.member) {
             context.violations.push(`step ${index}: verifier matches target ${targetIndex} member`)
         }
+        if (step.verifiers !== undefined && target.member !== undefined && step.verifiers.includes(target.member)) {
+            context.violations.push(`step ${index}: ensemble verifier matches target ${targetIndex} member`)
+        }
+    }
+    if (step.verifier !== undefined && step.verifiers !== undefined) {
+        context.violations.push(`step ${index}: verifier and verifiers are mutually exclusive`)
     }
     for (const counter of [
         { field: "attempts", value: step.attempts, cap: step.maxRetries ?? 0 },
         { field: "invalidAttempts", value: step.invalidAttempts, cap: step.maxInvalidRetries ?? 0 },
+        { field: "malformedAttempts", value: step.malformedAttempts, cap: step.maxMalformedRetries ?? 0 },
         { field: "timeoutAttempts", value: step.timeoutAttempts, cap: step.maxTimeoutRetries ?? 0 },
         { field: "jumpCount", value: step.jumpCount, cap: step.maxJumps ?? 3 },
+        { field: "loopIterations", value: step.loopIterations, cap: step.loop?.maxIterations ?? 0 },
     ] as const) {
         if (counter.value !== undefined && counter.value > counter.cap + 1) {
             context.violations.push(`step ${index}: ${counter.field} ${counter.value} exceeds cap ${counter.cap}`)

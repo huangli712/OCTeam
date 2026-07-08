@@ -295,6 +295,31 @@ export type WorkflowStepKind = "task" | "gate" | "fanout" | "join"
 
 export type WorkflowOnInvalid = "fail" | "retry_verifier" | "escalate"
 
+export type WorkflowOnMalformed = "fail" | "retry_verifier" | "skip" | "escalate"
+
+export type WorkflowRetryCondition =
+    | { kind: "empty" }
+    | { kind: "output_contains"; pattern: string }
+    | { kind: "output_not_contains"; pattern: string }
+    | { kind: "regex"; pattern: string }
+
+export type WorkflowLoopConfig = {
+    readonly maxIterations: number
+    readonly onExhaust: "fail" | "continue"
+}
+
+export type WorkflowEnsemblePolicy = "majority" | "quorum" | "unanimous"
+
+export type WorkflowEnsembleResult = {
+    verdict: Verdict
+    score?: number
+    confidence?: number
+    issues?: WorkflowIssue[]
+    rationale?: string
+    diff?: string
+    parseFailed?: boolean
+}
+
 export type WorkflowBranchRange = {
     readonly startIndex: number
     readonly endIndex: number
@@ -347,6 +372,10 @@ export type WorkflowStep = {
     // gate step
     verifier?: string                   // the verifier member name (gate steps; NOT the preceding task's member)
     fallbackVerifier?: string
+    verifiers?: readonly string[]            // gate steps: multiple verifiers for ensemble verdict (mutually exclusive with verifier)
+    ensemblePolicy?: WorkflowEnsemblePolicy  // gate steps: aggregation policy for ensemble verdict
+    ensembleQuorum?: number                  // gate steps: quorum fraction (0 < quorum <= 1) for ensemble_policy='quorum'
+    ensembleResults?: Record<string, WorkflowEnsembleResult>  // gate steps: per-verifier results (runtime)
     criteria?: string                   // verification criteria (gate steps)
     targetStepIndex?: number            // gate steps: zero-based primary task step being verified; omitted means nearest preceding task
     targetStepIndices?: number[]        // gate steps: zero-based multi-target task steps; targetStepIndex remains the primary/legacy target
@@ -356,12 +385,18 @@ export type WorkflowStep = {
     onInvalid?: WorkflowOnInvalid       // INVALID control: fail the run, re-dispatch the verifier, or escalate to the leader (gate steps; default "fail")
     maxInvalidRetries?: number          // retry_verifier cap for INVALID verdicts (gate steps; default 0)
     invalidAttempts?: number            // retry_verifier attempt count so far (gate steps)
+    onMalformed?: WorkflowOnMalformed       // parse_failure control: fail, retry_verifier, skip, or escalate. Falls back to onInvalid when unset (gate steps)
+    maxMalformedRetries?: number            // retry_verifier cap for malformed verdicts (gate steps; default 0)
+    malformedAttempts?: number              // retry_verifier attempt count for malformed verdicts (gate steps)
     verdict?: Verdict                   // last verdict rendered (gate steps)
     score?: number                      // optional structured score from the last verdict (gate steps)
     confidence?: number                 // optional structured confidence from the last verdict (gate steps)
     issues?: WorkflowIssue[]            // optional structured issues from the last verdict (gate steps)
     inputs?: number[]
     exposeOutput?: boolean
+    retryOn?: WorkflowRetryCondition       // task steps: auto-retry condition (empty output, output contains/missing pattern, regex match)
+    maxTaskRetries?: number                // task steps: max auto-retry attempts (default 0)
+    taskAttempts?: number                  // task steps: auto-retry attempt count so far
     // conditional jumps: verdict-gated goto targets (0-based internal index,
     // resolved at build time from a 1-based number or step id). Omitted = the
     // verdict's default behavior (PASS: advance; FAIL/INVALID: terminate).
@@ -371,6 +406,8 @@ export type WorkflowStep = {
     where?: WorkflowCondition           // optional threshold condition gating on_pass_goto/on_fail_goto
     maxJumps?: number                   // per-gate cap on verdict-driven jumps; default 3, max 10
     jumpCount?: number                  // verdict-driven jumps taken so far at this gate
+    loop?: WorkflowLoopConfig              // gate steps: loop control for on_fail_goto (bounds iterations + exhaust behavior)
+    loopIterations?: number                // gate steps: loop iteration count so far (runtime)
     output?: string                     // task steps: captured output snapshot at completion time (per-step, NOT overwritten by later steps the same member runs)
     // step-level controls (workflow P1+): per-step HITL pauses and output cap,
     // overriding/complementing the task-global humanApproval flag.
@@ -436,6 +473,10 @@ export type WorkflowRunStep = {
     id?: string                          // stable step identifier when declared
     member?: string
     verifier?: string
+    verifiers?: readonly string[]
+    ensemblePolicy?: WorkflowEnsemblePolicy
+    ensembleQuorum?: number
+    ensembleResults?: Record<string, WorkflowEnsembleResult>
     dispatchedActor?: string              // the actor (primary or fallback) that actually executed the step
     targetStep?: number                 // one-based display primary target task step for gate steps
     targetSteps?: number[]              // one-based display multi-target task steps for gate steps
@@ -445,8 +486,13 @@ export type WorkflowRunStep = {
     issues?: WorkflowIssue[]
     attempts?: number
     onInvalid?: WorkflowOnInvalid
+    onMalformed?: WorkflowOnMalformed
+    maxMalformedRetries?: number
+    malformedAttempts?: number
     invalidAttempts?: number
     jumpCount?: number
+    loop?: WorkflowLoopConfig
+    loopIterations?: number
     skipped?: boolean
     completed: boolean
     output?: string                     // bounded task-step snapshot captured at completion
@@ -457,6 +503,9 @@ export type WorkflowRunStep = {
     durationMs?: number
     inputs?: number[]
     exposeOutput?: boolean
+    retryOn?: WorkflowRetryCondition
+    maxTaskRetries?: number
+    taskAttempts?: number
     fanout?: WorkflowFanoutMetadata
     branch?: WorkflowBranchMetadata
     join?: WorkflowJoinMetadata

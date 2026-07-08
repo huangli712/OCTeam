@@ -61,9 +61,15 @@ export function findActiveWorkflowStepIndexForMember(
     for (const index of getActiveWorkflowStepIndices(task)) {
         const step = steps[index]
         if (step === undefined || step.completed) continue
+        // ensemble gate: check if member is one of the verifiers with pending results
+        if (step.kind === "gate" && step.verifiers !== undefined) {
+            if (step.verifiers.includes(memberName) && step.ensembleResults?.[memberName] === undefined) {
+                return index
+            }
+            continue
+        }
         if (workflowStepActor(step) === memberName) return index
     }
-
     return null
 }
 

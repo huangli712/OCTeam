@@ -116,8 +116,9 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
             const target = workflowTargetLabel(step)
             const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
             const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
+            const malformedTag = step.onMalformed && step.onMalformed !== "fail" ? `, on_malformed=${step.onMalformed}${(step.malformedAttempts ?? 0) > 0 ? ` (${step.malformedAttempts})` : ""}` : ""
             const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
-            return `- Step ${step.step}: [gate]${idTag} ${step.dispatchedActor ?? step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${jumpTag}${workflowStepDurationTag(step)}${formatWorkflowIssueDetail(step)}${workflowStepControlsTag(step)}`
+            return `- Step ${step.step}: [gate]${idTag} ${step.dispatchedActor ?? step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${malformedTag}${jumpTag}${workflowStepDurationTag(step)}${formatWorkflowIssueDetail(step)}${workflowStepControlsTag(step)}`
         }
         case "fanout": {
             const fanout = step.fanout

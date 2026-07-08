@@ -51,14 +51,21 @@ export type WorkflowToolStep = {
     readonly task?: string
     readonly verifier?: string
     readonly fallback_verifier?: string
+    readonly verifiers?: readonly string[]
+    readonly ensemble_policy?: "majority" | "quorum" | "unanimous"
+    readonly ensemble_quorum?: number
     readonly criteria?: string
     readonly target_step?: WorkflowStepRef
     readonly targets?: readonly WorkflowStepRef[]
     readonly inputs?: readonly WorkflowStepRef[]
     readonly expose_output?: boolean
+    readonly retry_on?: { readonly empty?: boolean; readonly output_contains?: string; readonly output_not_contains?: string; readonly regex?: string }
+    readonly max_task_retries?: number
     readonly on_fail?: "retry" | "fail" | "skip"
     readonly max_retries?: number
     readonly on_invalid?: "fail" | "retry_verifier" | "escalate"
+    readonly on_malformed?: "fail" | "retry_verifier" | "skip" | "escalate"
+    readonly max_malformed_retries?: number
     readonly max_invalid_retries?: number
     readonly on_pass_goto?: WorkflowStepRef
     readonly on_fail_goto?: WorkflowStepRef
@@ -71,6 +78,7 @@ export type WorkflowToolStep = {
     readonly on_timeout?: "fail" | "retry" | "skip"
     readonly max_timeout_retries?: number
     readonly max_jumps?: number
+    readonly loop?: { readonly max_iterations: number; readonly on_exhaust?: "fail" | "continue" }
     readonly branches?: readonly WorkflowFanoutBranch[]
     readonly max_errored?: number
     readonly join_policy?: "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
@@ -833,6 +841,15 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 if (!s.task) return `Error: ${location} requires \`task\``
                 const inputsError = validateTaskInputs(loweredSteps, s, i, displayStep)
                 if (inputsError !== null) return inputsError
+                if (s.retry_on !== undefined) {
+                    const condCount = [s.retry_on.empty, s.retry_on.output_contains, s.retry_on.output_not_contains, s.retry_on.regex].filter(v => v !== undefined).length
+                    if (condCount === 0) return `Error: ${location} retry_on must set exactly one of empty, output_contains, output_not_contains, or regex`
+                    if (condCount > 1) return `Error: ${location} retry_on must set exactly one condition (found ${condCount})`
+                    if (s.max_task_retries === undefined) return `Error: ${location} with retry_on requires \`max_task_retries\``
+                }
+                if (s.max_task_retries !== undefined && s.retry_on === undefined) {
+                    return `Error: ${location} max_task_retries requires \`retry_on\``
+                }
                 if (s.max_output_bytes !== undefined && (!Number.isInteger(s.max_output_bytes) || s.max_output_bytes <= 0)) {
                     return `Error: ${location} max_output_bytes must be a positive integer`
                 }
@@ -867,7 +884,7 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 if (s.on_timeout === "retry" && s.max_timeout_retries === undefined) {
                     return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
                 }
-                if (!s.verifier) return `Error: ${location} requires \`verifier\``
+                if (!s.verifier && !s.verifiers) return `Error: ${location} requires \`verifier\` or \`verifiers\``
                 if (!s.criteria) return `Error: ${location} requires \`criteria\``
                 if (s.target_step !== undefined && s.targets !== undefined) {
                     return `Error: ${location} must not set both target_step and targets`
@@ -881,11 +898,19 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 if (s.on_invalid === "retry_verifier" && s.max_invalid_retries === undefined) {
                     return `Error: ${location} with on_invalid='retry_verifier' requires \`max_invalid_retries\``
                 }
+                if (s.on_malformed === "retry_verifier" && s.max_malformed_retries === undefined) {
+                    return `Error: ${location} with on_malformed='retry_verifier' requires \`max_malformed_retries\``
+                }
                 if (s.max_jumps !== undefined && (s.max_jumps < 0 || s.max_jumps > 10)) {
                     return `Error: ${location} max_jumps must be between 0 and 10`
                 }
                 if (s.max_jumps !== undefined && s.on_pass_goto === undefined && s.on_fail_goto === undefined && s.on_invalid_goto === undefined) {
                     return `Error: ${location} max_jumps requires on_pass_goto/on_fail_goto/on_invalid_goto (no goto to bound)`
+                }
+                if (s.loop !== undefined) {
+                    if (s.on_fail_goto === undefined) return `Error: ${location} loop requires \`on_fail_goto\` (no backward jump target)`
+                    if (s.on_fail === "retry") return `Error: ${location} loop is incompatible with on_fail='retry' (use on_fail='fail' with on_fail_goto)`
+                    if (s.on_fail === "skip") return `Error: ${location} loop is incompatible with on_fail='skip'`
                 }
                 if (s.where !== undefined) {
                     if (s.on_pass_goto === undefined && s.on_fail_goto === undefined) {
@@ -938,12 +963,29 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                     }
                     return `Error: ${location} targets must reference at least one previous task step`
                 }
-                if (!isTeamMember(team, s.verifier)) {
+                if (s.verifier !== undefined && !isTeamMember(team, s.verifier)) {
                     return `Error: unknown member "${s.verifier}" in ${location} verifier`
                 }
                 if (s.fallback_verifier !== undefined && !isTeamMember(team, s.fallback_verifier)) {
                     return `Error: ${location} fallback_verifier "${s.fallback_verifier}" is not a team member`
                 }
+                if (s.verifiers !== undefined) {
+                    if (s.verifier !== undefined) return `Error: ${location} verifiers is mutually exclusive with verifier`
+                    if (s.fallback_verifier !== undefined) return `Error: ${location} verifiers is mutually exclusive with fallback_verifier`
+                    if (s.ensemble_policy === undefined) return `Error: ${location} with verifiers requires \`ensemble_policy\``
+                    if (s.ensemble_policy === "quorum" && s.ensemble_quorum === undefined) return `Error: ${location} with ensemble_policy='quorum' requires \`ensemble_quorum\``
+                    for (const vName of s.verifiers) {
+                        if (!isTeamMember(team, vName)) return `Error: ${location} verifiers entry "${vName}" is not a team member`
+                        for (const targetIndex of targetIndices.indices) {
+                            const target = loweredSteps[targetIndex]
+                            if (target?.kind === "task" && (target.member === vName || target.fallback_member === vName)) {
+                                return `Error: ${location} verifiers entry "${vName}" must differ from ${targetStepErrorLabel(target, targetIndex)} member (no self-verification)`
+                            }
+                        }
+                    }
+                }
+                if (s.ensemble_policy !== undefined && s.verifiers === undefined) return `Error: ${location} ensemble_policy requires \`verifiers\``
+                if (s.ensemble_quorum !== undefined && s.ensemble_policy !== "quorum") return `Error: ${location} ensemble_quorum requires ensemble_policy='quorum'`
                 break
             }
             case "fanout": {
@@ -1205,6 +1247,19 @@ function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkfl
                 task: step.task,
                 inputs: resolveWorkflowInputIndices(steps, index),
                 exposeOutput: step.expose_output,
+                retryOn: step.retry_on === undefined
+                    ? undefined
+                    : step.retry_on.empty
+                      ? { kind: "empty" }
+                      : step.retry_on.output_contains !== undefined
+                        ? { kind: "output_contains", pattern: step.retry_on.output_contains }
+                        : step.retry_on.output_not_contains !== undefined
+                          ? { kind: "output_not_contains", pattern: step.retry_on.output_not_contains }
+                          : step.retry_on.regex !== undefined
+                            ? { kind: "regex", pattern: step.retry_on.regex }
+                            : undefined,
+                maxTaskRetries: step.max_task_retries,
+                taskAttempts: 0,
                 approvalBefore: step.approval_before,
                 approvalAfter: step.approval_after,
                 maxOutputBytes: step.max_output_bytes,
@@ -1223,6 +1278,9 @@ function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkfl
                 id: step.id,
                 verifier: step.verifier,
                 fallbackVerifier: step.fallback_verifier,
+                verifiers: step.verifiers,
+                ensemblePolicy: step.ensemble_policy,
+                ensembleQuorum: step.ensemble_quorum,
                 criteria: step.criteria,
                 targetStepIndex: primaryTargetIndex(targetIndices),
                 targetStepIndices: step.targets !== undefined ? targetIndices : undefined,
@@ -1232,6 +1290,9 @@ function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkfl
                 onInvalid: step.on_invalid ?? "fail",
                 maxInvalidRetries: step.max_invalid_retries,
                 invalidAttempts: 0,
+                onMalformed: step.on_malformed,
+                maxMalformedRetries: step.max_malformed_retries,
+                malformedAttempts: 0,
                 onPassGoto: resolveGotoIndex(steps, index, step.on_pass_goto),
                 onFailGoto: resolveGotoIndex(steps, index, step.on_fail_goto),
                 onInvalidGoto: resolveGotoIndex(steps, index, step.on_invalid_goto),
@@ -1240,6 +1301,11 @@ function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkfl
                 approvalAfter: step.approval_after,
                 maxJumps: step.max_jumps,
                 jumpCount: 0,
+                loop: step.loop === undefined ? undefined : {
+                    maxIterations: step.loop.max_iterations,
+                    onExhaust: step.loop.on_exhaust ?? "fail",
+                },
+                loopIterations: 0,
                 timeoutMs: step.timeout_ms,
                 onTimeout: step.on_timeout ?? "fail",
                 maxTimeoutRetries: step.max_timeout_retries,
@@ -1276,15 +1342,27 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         task: tool.schema.string().min(1).max(8192).optional().describe("task steps: the task text"),
         verifier: tool.schema.string().min(1).optional().describe("gate steps: the verifier member name (must differ from the target task member)"),
         fallback_verifier: tool.schema.string().min(1).optional().describe("gate steps: fallback verifier used only when verifier has no live session; must differ from every target task member"),
+        verifiers: tool.schema.array(tool.schema.string().min(1)).min(2).optional().describe("gate steps: multiple verifiers for ensemble verdict. Mutually exclusive with verifier/fallback_verifier. When set, ensemble_policy is required."),
+        ensemble_policy: tool.schema.enum(["majority", "quorum", "unanimous"]).optional().describe("gate steps: aggregation policy for ensemble verdict. Required when verifiers is set. majority = >50% agreement; quorum = ensemble_quorum fraction agreement; unanimous = all agree."),
+        ensemble_quorum: tool.schema.number().min(0).max(1).optional().describe("gate steps: quorum fraction (0 < quorum <= 1) for ensemble_policy='quorum'. Required when ensemble_policy='quorum'."),
         criteria: tool.schema.string().min(1).max(8192).optional().describe("gate steps: verification criteria"),
         target_step: workflowStepRefSchema.optional().describe("gate steps: one target task step to verify, using a 1-based number or step id; branch gate references are branch-local. Mutually exclusive with targets."),
         targets: tool.schema.array(workflowStepRefSchema).min(1).optional().describe("gate steps: multiple prior task steps to verify together. Mutually exclusive with target_step."),
         inputs: tool.schema.array(workflowStepRefSchema).min(1).optional().describe("task steps: explicit upstream task/join steps to include, using 1-based numbers or step ids. Overrides implicit upstream selection."),
         expose_output: tool.schema.boolean().optional().describe("task steps: when false, suppress this task output from implicit downstream upstream context. Explicit inputs may still reference it."),
+        retry_on: tool.schema.object({
+            empty: tool.schema.boolean().optional(),
+            output_contains: tool.schema.string().min(1).optional(),
+            output_not_contains: tool.schema.string().min(1).optional(),
+            regex: tool.schema.string().min(1).optional(),
+        }).optional().describe("task steps: auto-retry condition. Exactly one key: empty (retry on empty/whitespace-only output), output_contains (retry when output contains pattern), output_not_contains (retry when output does NOT contain pattern), regex (retry when output matches regex). Requires max_task_retries."),
+        max_task_retries: tool.schema.number().int().min(0).max(5).optional().describe("task steps: max auto-retry attempts when retry_on condition matches. Default 0. Required when retry_on is set."),
         on_fail: tool.schema.enum(["retry", "fail", "skip"]).optional().describe("gate steps: FAIL control. 'fail' (default) fails the run; 'retry' re-dispatches the target task up to max_retries; 'skip' marks the gate skipped and advances."),
         max_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: FAIL retry cap when on_fail='retry'. Default 0."),
         on_invalid: tool.schema.enum(["fail", "retry_verifier", "escalate"]).optional().describe("gate steps: INVALID control. 'fail' (default) terminates producer-neutral as workflow_invalid; 'retry_verifier' re-dispatches this gate's verifier up to max_invalid_retries; 'escalate' pauses for human approval (approve=advance, reject=workflow_invalid)."),
         max_invalid_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: retry_verifier cap when on_invalid='retry_verifier'. Default 0. Required when on_invalid='retry_verifier'."),
+        on_malformed: tool.schema.enum(["fail", "retry_verifier", "skip", "escalate"]).optional().describe("gate steps: parse_failure control. 'fail' (default, falls back to on_invalid) terminates; 'retry_verifier' re-dispatches verifier up to max_malformed_retries; 'skip' marks gate skipped and advances; 'escalate' pauses for human approval."),
+        max_malformed_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: retry_verifier cap for malformed verdicts when on_malformed='retry_verifier'. Default 0. Required when on_malformed='retry_verifier'."),
         on_pass_goto: workflowStepRefSchema.optional().describe("gate steps: step to jump to after PASS (1-based number or step id) instead of advancing linearly. Branch gotos are branch-local."),
         on_fail_goto: workflowStepRefSchema.optional().describe("gate steps: step to jump to at a FAIL terminal point (on_fail=fail, or retry exhausted) instead of failing the run."),
         on_invalid_goto: workflowStepRefSchema.optional().describe("gate steps: step to jump to at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted). Incompatible with on_invalid='escalate'."),
@@ -1301,6 +1379,10 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         on_timeout: tool.schema.enum(["fail", "retry", "skip"]).optional().describe("task/gate steps: timeout control. 'fail' (default) fails the workflow; 'retry' re-dispatches up to max_timeout_retries; 'skip' marks the step skipped and advances."),
         max_timeout_retries: tool.schema.number().int().min(0).max(5).optional().describe("task/gate steps: timeout retry cap when on_timeout='retry'. Required when on_timeout='retry'."),
         max_jumps: tool.schema.number().int().min(0).max(10).optional().describe("gate steps: per-gate cap on verdict-driven jumps. Default 3. Terminates as workflow_failed:jump_limit when exceeded."),
+        loop: tool.schema.object({
+            max_iterations: tool.schema.number().int().min(1).max(20),
+            on_exhaust: tool.schema.enum(["fail", "continue"]).optional(),
+        }).optional().describe("gate steps: loop control for on_fail_goto. Bounds backward iterations via on_fail_goto and defines exhaust behavior. Requires on_fail_goto. Incompatible with on_fail='retry' or on_fail='skip'."),
         join_policy: tool.schema.enum(["all", "quorum", "any_success", "required_branches", "reduce", "select"]).optional().describe("fanout steps: join semantics. Default (unset) uses max_errored tolerance. 'all' requires every branch to succeed; 'quorum' requires quorum fraction of survivors; 'any_success' joins once any branch succeeds; 'required_branches' requires the listed branches to succeed; 'reduce' requires all then dispatches reducer_member to aggregate; 'select' requires all then dispatches reducer_member to choose one winning branch."),
         quorum: tool.schema.number().min(0).max(1).optional().describe("fanout steps: survivor fraction required by join_policy='quorum' (0 < quorum <= 1)."),
         required_branches: tool.schema.array(tool.schema.string().min(1)).min(1).optional().describe("fanout steps: branch ids that must succeed under join_policy='required_branches'."),

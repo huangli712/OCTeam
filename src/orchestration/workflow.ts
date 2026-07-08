@@ -488,6 +488,27 @@ function describeStep(step: WorkflowStep | undefined, index: number): string {
     }
 }
 
+/** Check whether a task step's output matches its retry_on condition. */
+function shouldRetryTask(step: WorkflowStep, output: string): boolean {
+    if (step.retryOn === undefined) return false;
+    switch (step.retryOn.kind) {
+        case "empty":
+            return output.trim().length === 0;
+        case "output_contains":
+            return output.includes(step.retryOn.pattern);
+        case "output_not_contains":
+            return !output.includes(step.retryOn.pattern);
+        case "regex":
+            try {
+                return new RegExp(step.retryOn.pattern).test(output);
+            } catch {
+                return false;
+            }
+        default:
+            return false;
+    }
+}
+
 /** Dispatch a task step's actor with upstream context prefixed. */
 export async function dispatchTaskStep(
     ctx: PluginContext,
@@ -525,6 +546,54 @@ export async function dispatchTaskStep(
     return true;
 }
 
+/** Dispatch an ensemble gate's verifiers in parallel. */
+async function dispatchEnsembleGate(
+    ctx: PluginContext,
+    team: Team,
+    task: WorkflowTask,
+    index: number,
+    contextPrefix?: string,
+): Promise<boolean> {
+    const step = task.steps?.[index];
+    if (!step || step.kind !== "gate" || !step.verifiers) return false;
+    const targetIndices = gateTargetIndices(task.steps ?? [], index);
+    if (targetIndices.length === 0) return false;
+    step.approvalBeforeGranted = undefined;
+    step.output = undefined;
+    const producerOutput = buildGateProducerOutput(task.steps ?? [], targetIndices);
+    const prompt = buildGateVerifierPrompt(
+        step,
+        producerOutput,
+        workflowTargetLabel(targetIndices),
+        targetIndices.length,
+    );
+    let dispatchedAny = false;
+    for (const verifierName of step.verifiers) {
+        // skip verifiers that already have results (e.g., on partial retry)
+        if (step.ensembleResults?.[verifierName] !== undefined) continue;
+        const verifier = team.members.find(
+            (m) => m.name === verifierName && !m.isMaster,
+        );
+        if (!hasLiveSession(verifier)) continue;
+        delete task.responses[verifier.name];
+        step.dispatchedActor = verifier.name;
+        if (step.correlationId === undefined) {
+            step.correlationId = crypto.randomUUID();
+        }
+        await dispatchToMember(
+            ctx,
+            verifier,
+            contextPrefix ? `${contextPrefix}\n\n${prompt}` : prompt,
+            verifier.worktreePath ?? ctx.directory,
+            team,
+            { stepIndex: index, correlationId: step.correlationId },
+        );
+        dispatchedAny = true;
+    }
+    if (dispatchedAny) markWorkflowStepDispatched(step);
+    return dispatchedAny;
+}
+
 /** Dispatch a gate step's verifier with the preceding task's output + criteria. */
 async function dispatchGateStep(
     ctx: PluginContext,
@@ -534,7 +603,12 @@ async function dispatchGateStep(
     contextPrefix?: string,
 ): Promise<boolean> {
     const step = task.steps?.[index];
-    if (!step || step.kind !== "gate" || !step.verifier) return false;
+    if (!step || step.kind !== "gate") return false;
+    // ensemble gate: dispatch all verifiers
+    if (step.verifiers !== undefined && step.verifiers.length > 0) {
+        return await dispatchEnsembleGate(ctx, team, task, index, contextPrefix);
+    }
+    if (!step.verifier) return false;
     const verifier = liveWorkflowActor(
         team,
         step.verifier,
@@ -1182,16 +1256,20 @@ async function gotoWorkflowStep(
     const target = steps[targetIndex];
     if (!gate || gate.kind !== "gate" || !target) return false;
 
-    gate.jumpCount = (gate.jumpCount ?? 0) + 1;
+    // Loop-controlled backward gotos use loopIterations instead of jumpCount.
+    const isLoopGoto = gate.loop !== undefined && targetIndex <= gateIndex && transition.reason.startsWith("on_fail");
     const maxJ = gate.maxJumps ?? 3;
-    if (gate.jumpCount > maxJ) {
-        await finishRun(
-            ctx,
-            team,
-            workflowJumpLimitReason(gate.verifier),
-            "failed",
-        );
-        return false;
+    if (!isLoopGoto) {
+        gate.jumpCount = (gate.jumpCount ?? 0) + 1;
+        if (gate.jumpCount > maxJ) {
+            await finishRun(
+                ctx,
+                team,
+                workflowJumpLimitReason(gate.verifier),
+                "failed",
+            );
+            return false;
+        }
     }
 
     if (targetIndex > gateIndex) {
@@ -1441,6 +1519,32 @@ export async function handleWorkflowIdle(
                     ? truncateOutput(raw, step.maxOutputBytes)
                     : raw;
         }
+        if (shouldRetryTask(step, step.output)) {
+            step.taskAttempts = (step.taskAttempts ?? 0) + 1;
+            const maxR = step.maxTaskRetries ?? 0;
+            if (step.taskAttempts <= maxR) {
+                const nudge = `[Auto-retry attempt ${step.taskAttempts}/${maxR}] Previous output triggered retry_on condition. Please try again.`;
+                step.output = undefined;
+                step.dispatchedAt = undefined;
+                step.dispatchedActor = undefined;
+                step.correlationId = undefined;
+                recordEvent(team, {
+                    timestamp: Date.now(),
+                    kind: "retry",
+                    member: member.name,
+                    stage: activeStepIndex,
+                    stepIndex: activeStepIndex,
+                    detail: `workflow task step ${activeStepIndex + 1} auto-retry ${step.taskAttempts}/${maxR}; retry_on condition matched`,
+                });
+                if (!(await dispatchTaskStep(ctx, team, task, activeStepIndex, nudge))) {
+                    await handleWorkflowDispatchUnavailable(ctx, team, task, step);
+                    return;
+                }
+                await saveTeamState(team);
+                return;
+            }
+            // exhausted: fall through to normal completion
+        }
         markWorkflowStepCompleted(step);
         step.dispatchedAt = undefined;
         step.dispatchedActor = undefined;
@@ -1529,18 +1633,73 @@ export async function handleWorkflowIdle(
     }
 
     // gate step
-    if (step.kind !== "gate" || step.verifier === undefined) return;
+    if (step.kind !== "gate") return;
+    if (step.verifier === undefined && step.verifiers === undefined) return;
     const verifierName = member.name;
-    const v = parseVerdict(step.output ?? task.responses[verifierName] ?? "");
-    recordEvent(team, {
-        timestamp: Date.now(),
-        kind: "verdict",
-        member: verifierName,
-        stage: activeStepIndex,
-        stepIndex: activeStepIndex,
-        correlationId: step.correlationId,
-        detail: v.verdict ?? "parse_fail",
-    });
+    let v = parseVerdict(step.output ?? task.responses[verifierName] ?? "");
+    // ensemble gate: collect per-verifier results before aggregation
+    if (step.verifiers !== undefined) {
+        if (!step.verifiers.includes(verifierName)) return;
+        if (step.ensembleResults === undefined) step.ensembleResults = {};
+        step.ensembleResults[verifierName] = {
+            verdict: v.verdict ?? "INVALID",
+            score: v.score,
+            confidence: v.confidence,
+            issues: v.issues,
+            rationale: v.rationale,
+            diff: v.diff,
+            parseFailed: v.parseFailed,
+        };
+        delete task.responses[verifierName];
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "verdict",
+            member: verifierName,
+            stage: activeStepIndex,
+            stepIndex: activeStepIndex,
+            correlationId: step.correlationId,
+            detail: v.verdict ?? "parse_fail",
+        });
+        // wait for more verifiers
+        const total = step.verifiers.length;
+        const completed = Object.keys(step.ensembleResults).length;
+        if (completed < total) return;
+        // all verifiers done: aggregate
+        const aggregated = aggregateEnsembleVerdict(step);
+        v = {
+            verdict: aggregated.verdict,
+            rationale: aggregated.rationale,
+            diff: aggregated.diff,
+            parseFailed: aggregated.parseFailed,
+            score: undefined,
+            confidence: undefined,
+            issues: undefined,
+        };
+        // record aggregated verdict
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "verdict",
+            member: "ensemble",
+            stage: activeStepIndex,
+            stepIndex: activeStepIndex,
+            detail: `${aggregated.verdict} (${aggregated.rationale})`,
+        });
+    } else {
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "verdict",
+            member: verifierName,
+            stage: activeStepIndex,
+            stepIndex: activeStepIndex,
+            correlationId: step.correlationId,
+            detail: v.verdict ?? "parse_fail",
+        });
+    }
+
+    step.verdict = v.verdict;
+    step.score = v.score;
+    step.confidence = v.confidence;
+    step.issues = v.issues;
 
     if (v.parseFailed || !v.verdict) {
         await handleInvalidVerdict(
@@ -1555,10 +1714,6 @@ export async function handleWorkflowIdle(
         );
         return;
     }
-    step.verdict = v.verdict;
-    step.score = v.score;
-    step.confidence = v.confidence;
-    step.issues = v.issues;
 
     if (v.verdict === "INVALID") {
         await handleInvalidVerdict(
@@ -1620,6 +1775,36 @@ export async function handleWorkflowIdle(
             step.onFailGoto,
         );
         if (failGoto >= 0) {
+            if (step.loop !== undefined) {
+                step.loopIterations = (step.loopIterations ?? 0) + 1;
+                if (step.loopIterations > step.loop.maxIterations) {
+                    if (step.loop.onExhaust === "continue") {
+                        delete task.responses[verifierName];
+                        markWorkflowStepCompleted(step);
+                        step.completed = true;
+                        step.dispatchedAt = undefined;
+                        step.dispatchedActor = undefined;
+                        step.correlationId = undefined;
+                        recordEvent(team, {
+                            timestamp: Date.now(),
+                            kind: "stage_advanced",
+                            member: verifierName,
+                            stage: activeStepIndex,
+                            stepIndex: activeStepIndex,
+                            detail: `workflow loop step ${activeStepIndex + 1} exhausted after ${step.loop.maxIterations} iterations; on_exhaust=continue`,
+                        });
+                        await advanceWorkflowStep(ctx, team);
+                        return;
+                    }
+                    await finishRun(
+                        ctx,
+                        team,
+                        workflowGateFailReason(verifierName),
+                        "failed",
+                    );
+                    return;
+                }
+            }
             await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, {
                 reason: whereReason(step, "on_fail"),
                 verdict: "FAIL",
@@ -1741,14 +1926,69 @@ export async function handleWorkflowIdle(
 }
 
 /**
+ * Aggregate per-verifier results into a single verdict using the ensemble policy.
+ * Returns the aggregated verdict plus a parseFailed flag so the downstream
+ * PASS/FAIL/INVALID handling routes malformed ensembles through on_malformed.
+ */
+function aggregateEnsembleVerdict(step: WorkflowStep): {
+    verdict: Verdict
+    parseFailed: boolean
+    rationale: string
+    diff: string
+} {
+    const results = Object.values(step.ensembleResults ?? {});
+    const parseFailures = results.filter(r => r.parseFailed).length;
+    if (parseFailures > 0) {
+        return {
+            verdict: "INVALID",
+            parseFailed: true,
+            rationale: `${parseFailures} verifier(s) produced malformed verdicts`,
+            diff: "",
+        };
+    }
+    const verdicts = results.map(r => r.verdict).filter(v => v !== undefined) as Verdict[];
+    const passCount = verdicts.filter(v => v === "PASS").length;
+    const failCount = verdicts.filter(v => v === "FAIL").length;
+    const invalidCount = verdicts.filter(v => v === "INVALID").length;
+    const total = verdicts.length;
+    switch (step.ensemblePolicy) {
+        case "majority":
+            if (passCount > total / 2) return { verdict: "PASS", parseFailed: false, rationale: `Majority PASS (${passCount}/${total})`, diff: "" };
+            if (failCount > total / 2) return { verdict: "FAIL", parseFailed: false, rationale: `Majority FAIL (${failCount}/${total})`, diff: "" };
+            return { verdict: "INVALID", parseFailed: false, rationale: `No majority (${passCount}P/${failCount}F/${invalidCount}I)`, diff: "" };
+        case "quorum": {
+            const threshold = step.ensembleQuorum ?? 0.5;
+            if (passCount / total >= threshold) return { verdict: "PASS", parseFailed: false, rationale: `Quorum PASS (${passCount}/${total} >= ${threshold})`, diff: "" };
+            if (failCount / total >= threshold) return { verdict: "FAIL", parseFailed: false, rationale: `Quorum FAIL (${failCount}/${total} >= ${threshold})`, diff: "" };
+            return { verdict: "INVALID", parseFailed: false, rationale: `No quorum (${passCount}P/${failCount}F/${invalidCount}I)`, diff: "" };
+        }
+        case "unanimous":
+            if (passCount === total) return { verdict: "PASS", parseFailed: false, rationale: `Unanimous PASS (${passCount}/${total})`, diff: "" };
+            if (failCount === total) return { verdict: "FAIL", parseFailed: false, rationale: `Unanimous FAIL (${failCount}/${total})`, diff: "" };
+            return { verdict: "INVALID", parseFailed: false, rationale: `Not unanimous (${passCount}P/${failCount}F/${invalidCount}I)`, diff: "" };
+        default:
+            return { verdict: "INVALID", parseFailed: false, rationale: `Unknown ensemble policy`, diff: "" };
+    }
+}
+
+/**
  * Handle an unevaluable gate verdict (INVALID or parse failure) according to
- * the gate's onInvalid policy. Producer-neutral in all cases: the target task
- * is never retried on INVALID (only the verifier may be re-dispatched).
- *   fail          -> terminate as workflow_invalid:<reason>:<verifier>
- *   retry_verifier-> re-dispatch THIS gate's verifier (bounded by
- *                    maxInvalidRetries), then on exhaust terminate.
- *   escalate      -> force a human-approval pause; approve marks the gate
- *                    complete and advances, reject terminates.
+ * the gate's on_invalid / on_malformed policy. Producer-neutral in all cases:
+ * the target task is never retried on INVALID or parse_failure (only the
+ * verifier may be re-dispatched).
+ *
+ *   parse_failure -> routes through on_malformed (with fallback to on_invalid):
+ *     fail          -> terminate as workflow_invalid:<reason>:<verifier>
+ *     retry_verifier-> re-dispatch THIS gate's verifier (bounded by
+ *                      max_malformed_retries, falling back to max_invalid_retries)
+ *     skip          -> mark the gate skipped and advance (on_malformed only)
+ *     escalate      -> force a human-approval pause
+ *   INVALID       -> routes through on_invalid:
+ *     fail          -> terminate as workflow_invalid:<reason>:<verifier>
+ *     retry_verifier-> re-dispatch THIS gate's verifier (bounded by
+ *                      max_invalid_retries), then on exhaust terminate.
+ *     escalate      -> force a human-approval pause; approve marks the gate
+ *                      complete and advances, reject terminates.
  */
 async function handleInvalidVerdict(
     ctx: PluginContext,
@@ -1762,16 +2002,57 @@ async function handleInvalidVerdict(
 ): Promise<void> {
     const task = team.activeTask;
     if (!task || task.type !== "workflow") return;
-    const policy = step.onInvalid ?? "fail";
+    const isMalformed = reason === "parse_failure";
+    // When on_malformed is set, parse_failure uses its own policy and counters.
+    // When on_malformed is unset, parse_failure falls back to on_invalid (same
+    // policy and counters as INVALID).
+    const useMalformedPolicy = isMalformed && step.onMalformed !== undefined;
+    const policy = isMalformed
+        ? (step.onMalformed ?? step.onInvalid ?? "fail")
+        : (step.onInvalid ?? "fail");
+
+    // "skip" is only available via on_malformed (not on_invalid).
+    if (policy === "skip") {
+        delete task.responses[verifierName];
+        markWorkflowStepCompleted(step);
+        step.completed = true;
+        step.skipped = true;
+        step.dispatchedAt = undefined;
+        step.dispatchedActor = undefined;
+        step.correlationId = undefined;
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "stage_advanced",
+            member: verifierName,
+            stage: gateIndex,
+            stepIndex: gateIndex,
+            detail: `workflow gate step ${gateIndex + 1} skipped after malformed verdict from ${verifierName}: ${rationale}`,
+        });
+        await advanceWorkflowStep(ctx, team);
+        return;
+    }
 
     if (policy === "retry_verifier") {
-        step.invalidAttempts = (step.invalidAttempts ?? 0) + 1;
-        const maxIR = step.maxInvalidRetries ?? 0;
-        if (step.invalidAttempts > maxIR) {
+        if (useMalformedPolicy) {
+            step.malformedAttempts = (step.malformedAttempts ?? 0) + 1;
+        } else {
+            step.invalidAttempts = (step.invalidAttempts ?? 0) + 1;
+        }
+        // For ensemble gates, clear results so all verifiers are re-dispatched
+        if (step.verifiers !== undefined) {
+            step.ensembleResults = undefined;
+        }
+        const attempts = useMalformedPolicy
+            ? (step.malformedAttempts ?? 0)
+            : (step.invalidAttempts ?? 0);
+        const maxIR = useMalformedPolicy
+            ? (step.maxMalformedRetries ?? 0)
+            : (step.maxInvalidRetries ?? 0);
+        if (attempts > maxIR) {
             const invGoto = step.onInvalidGoto ?? -1;
             if (invGoto >= 0) {
                 await gotoWorkflowStep(ctx, team, gateIndex, invGoto, {
-                    reason: "on_invalid_retry_exhausted",
+                    reason: isMalformed ? "on_malformed_retry_exhausted" : "on_invalid_retry_exhausted",
                     verdict: reason === "INVALID" ? "INVALID" : undefined,
                     rationale,
                     diff,
@@ -1792,7 +2073,7 @@ async function handleInvalidVerdict(
         resetWorkflowStepTiming(step);
         if (await maybePauseBeforeWorkflowStep(ctx, team, gateIndex)) return;
         const nudge =
-            `[Verification could not be evaluated — invalid attempt ${step.invalidAttempts}/${maxIR}]\n` +
+            `[Verification could not be evaluated — ${isMalformed ? "malformed" : "invalid"} attempt ${attempts}/${maxIR}]\n` +
             `Reason: ${reason}. Rationale: ${rationale}. Diff: ${diff}.\n` +
             `Re-evaluate the target output and emit a fresh verdict.`;
         if (!(await dispatchGateStep(ctx, team, task, gateIndex, nudge))) {
@@ -1805,7 +2086,7 @@ async function handleInvalidVerdict(
             member: step.dispatchedActor ?? step.verifier,
             stage: gateIndex,
             stepIndex: gateIndex,
-            detail: `workflow step ${gateIndex + 1} invalid retry ${step.invalidAttempts}/${maxIR}; verifier ${step.dispatchedActor ?? verifierName}; reason ${reason}: ${rationale}`,
+            detail: `workflow step ${gateIndex + 1} ${isMalformed ? "malformed" : "invalid"} retry ${attempts}/${maxIR}; verifier ${step.dispatchedActor ?? verifierName}; reason ${reason}: ${rationale}`,
         });
         await saveTeamState(team);
         return;
@@ -1830,12 +2111,13 @@ async function handleInvalidVerdict(
     }
 
     // on_invalid_goto (incompatible with escalate per validator) jumps instead
-    // of terminating at the INVALID terminal point.
+    // of terminating at the INVALID terminal point. Shared by both on_invalid
+    // and on_malformed terminal paths.
     if (policy !== "escalate") {
         const invGoto = step.onInvalidGoto ?? -1;
         if (invGoto >= 0) {
             await gotoWorkflowStep(ctx, team, gateIndex, invGoto, {
-                reason: `on_invalid:${reason}`,
+                reason: isMalformed ? `on_malformed:${reason}` : `on_invalid:${reason}`,
                 verdict: reason === "INVALID" ? "INVALID" : undefined,
                 rationale,
                 diff,
