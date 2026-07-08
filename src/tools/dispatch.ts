@@ -30,6 +30,7 @@ import {
 } from "../orchestration/tollgate.js";
 import {
     advanceWorkflowStep,
+    handleWorkflowDispatchUnavailable,
     handleWorkflowIdle,
     redispatchWorkflowStep,
 } from "../orchestration/workflow.js";
@@ -420,19 +421,14 @@ async function resumeWorkflowMode(
         }
 
         let dispatched = 0;
+        let degraded = false;
         for (const index of readyWorkflowStepIndices(task)) {
             if (!originalActiveSet.has(index)) continue;
             const step = steps[index];
             if (step === undefined || step.completed) continue;
             if (step.kind === "join") {
                 if (!(await redispatchWorkflowStep(ctx, team, index))) {
-                    const reducerMember = step.join?.reducerMember ?? "unknown";
-                    await finishRun(
-                        ctx,
-                        team,
-                        workflowNoSessionReason(reducerMember),
-                        "failed",
-                    );
+                    await handleWorkflowDispatchUnavailable(ctx, team, task, step);
                     return;
                 }
                 dispatched++;
@@ -441,18 +437,20 @@ async function resumeWorkflowMode(
             const actorName = workflowStepActor(step);
             if (actorName === null || task.responses[actorName]) continue;
             if (!(await redispatchWorkflowStep(ctx, team, index))) {
-                await finishRun(
+                const unavailability = await handleWorkflowDispatchUnavailable(
                     ctx,
                     team,
-                    workflowNoSessionReason(actorName),
-                    "failed",
+                    task,
+                    step,
                 );
-                return;
+                if (unavailability === "failed") return;
+                degraded = true;
+                continue;
             }
             dispatched++;
         }
 
-        if (dispatched === 0) await advanceWorkflowStep(ctx, team);
+        if (degraded || dispatched === 0) await advanceWorkflowStep(ctx, team);
         return;
     }
 

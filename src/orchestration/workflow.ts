@@ -55,7 +55,7 @@ import {
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
 } from "../core/workflow-dag.js";
-import { parseVerdict } from "./decisions.js";
+import { parseSelection, parseVerdict } from "./decisions.js";
 import { maybeTriggerSignoff } from "./signoff.js";
 import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js";
 
@@ -192,9 +192,9 @@ function isSameWorkflowBranch(
 function workflowStepActorName(step: WorkflowStep): string | undefined {
     switch (step.kind) {
         case "task":
-            return step.member;
+            return step.dispatchedActor ?? step.member;
         case "gate":
-            return step.verifier;
+            return step.dispatchedActor ?? step.verifier;
         case "fanout":
         case "join":
             return undefined;
@@ -217,12 +217,17 @@ function buildGateVerifierPrompt(
     step: WorkflowStep,
     producerOutput: string,
     targetLabel: string,
+    targetCount: number,
 ): string {
     const structuredHint = buildStructuredVerdictHint(step.where);
+    const aggregationHint = targetCount > 1
+        ? `This gate verifies an aggregate of multiple target outputs. Emit one verdict for the complete target set; PASS only when every target satisfies the criteria and the targets are mutually consistent.`
+        : "";
     return (
         `[Verification gate] Verify ${targetLabel} output below against the criteria.\n` +
         `Criteria: ${step.criteria ?? ""}\n\n` +
         `Producer output:\n${producerOutput}\n\n` +
+        (aggregationHint ? `${aggregationHint}\n\n` : "") +
         (structuredHint ? `${structuredHint}\n\n` : "") +
         `Emit EXACTLY one:\n` +
         `<verdict>${buildVerdictSchemaExample(step.where)}</verdict>\n` +
@@ -428,6 +433,36 @@ function hasLiveSession(
     return member?.sessionId !== undefined && member.status !== "errored";
 }
 
+function liveWorkflowActor(
+    team: Team,
+    primaryName: string | undefined,
+    fallbackName: string | undefined,
+): (MemberState & { sessionId: string }) | undefined {
+    const primary = team.members.find(
+        (m) => m.name === primaryName && !m.isMaster,
+    );
+    if (hasLiveSession(primary)) return primary;
+    const fallback = team.members.find(
+        (m) => m.name === fallbackName && !m.isMaster,
+    );
+    return hasLiveSession(fallback) ? fallback : undefined;
+}
+
+function dispatchFailureActorName(step: WorkflowStep): string | undefined {
+    switch (step.kind) {
+        case "task":
+            return step.member;
+        case "gate":
+            return step.verifier;
+        case "join":
+            return step.join?.reducerMember;
+        case "fanout":
+            return undefined;
+        default:
+            return assertNeverWorkflowStepKind(step.kind);
+    }
+}
+
 function describeStep(step: WorkflowStep | undefined, index: number): string {
     if (!step) return `step ${index + 1}`;
     const idTag = step.id ? ` (${step.id})` : "";
@@ -454,7 +489,7 @@ function describeStep(step: WorkflowStep | undefined, index: number): string {
 }
 
 /** Dispatch a task step's actor with upstream context prefixed. */
-async function dispatchTaskStep(
+export async function dispatchTaskStep(
     ctx: PluginContext,
     team: Team,
     task: WorkflowTask,
@@ -464,10 +499,8 @@ async function dispatchTaskStep(
     const step = task.steps?.[index];
     if (!step || step.kind !== "task" || !step.member || !step.task)
         return false;
-    const member = team.members.find(
-        (m) => m.name === step.member && !m.isMaster,
-    );
-    if (!hasLiveSession(member)) return false;
+    const member = liveWorkflowActor(team, step.member, step.fallbackMember);
+    if (member === undefined) return false;
     // Consume the per-step approval_before grant now that dispatch is actually
     // happening (re-entry via retry/goto re-requests approval because the reset
     // loops clear approvalBeforeGranted).
@@ -476,6 +509,7 @@ async function dispatchTaskStep(
     const text = upstream
         ? `${upstream}\n\n[Your task]\n${step.task}`
         : step.task;
+    step.dispatchedActor = member.name;
     step.correlationId = crypto.randomUUID();
     await dispatchToMember(
         ctx,
@@ -495,13 +529,16 @@ async function dispatchGateStep(
     team: Team,
     task: WorkflowTask,
     index: number,
+    contextPrefix?: string,
 ): Promise<boolean> {
     const step = task.steps?.[index];
     if (!step || step.kind !== "gate" || !step.verifier) return false;
-    const verifier = team.members.find(
-        (m) => m.name === step.verifier && !m.isMaster,
+    const verifier = liveWorkflowActor(
+        team,
+        step.verifier,
+        step.fallbackVerifier,
     );
-    if (!hasLiveSession(verifier)) return false;
+    if (verifier === undefined) return false;
     const targetIndices = gateTargetIndices(task.steps ?? [], index);
     if (targetIndices.length === 0) return false;
     step.approvalBeforeGranted = undefined;
@@ -509,15 +546,18 @@ async function dispatchGateStep(
         task.steps ?? [],
         targetIndices,
     );
+    const prompt = buildGateVerifierPrompt(
+        step,
+        producerOutput,
+        workflowTargetLabel(targetIndices),
+        targetIndices.length,
+    );
+    step.dispatchedActor = verifier.name;
     step.correlationId = crypto.randomUUID();
     await dispatchToMember(
         ctx,
         verifier,
-        buildGateVerifierPrompt(
-            step,
-            producerOutput,
-            workflowTargetLabel(targetIndices),
-        ),
+        contextPrefix ? `${contextPrefix}\n\n${prompt}` : prompt,
         verifier.worktreePath ?? ctx.directory,
         team,
         { stepIndex: index, correlationId: step.correlationId },
@@ -582,11 +622,45 @@ function buildJoinedWorkflowOutput(
     return blocks.join("\n\n");
 }
 
+function buildBranchWorkflowOutput(
+    steps: WorkflowStep[],
+    joinIndex: number,
+    branchId: string,
+): string {
+    const join = steps[joinIndex]?.join;
+    const fanout = join === undefined ? undefined : steps[join.fanoutIndex]?.fanout;
+    if (join === undefined || fanout === undefined) return "";
+    const branchIndex = fanout.branchIds.indexOf(branchId);
+    const range = branchIndex < 0 ? undefined : fanout.branchRanges[branchIndex];
+    if (range === undefined) return "";
+
+    const branchBlocks: string[] = [];
+    for (let stepIndex = range.startIndex; stepIndex <= range.endIndex; stepIndex += 1) {
+        const step = steps[stepIndex];
+        if (step?.kind !== "task" || !step.completed || !step.output) continue;
+        if (step.exposeOutput === false) continue;
+        branchBlocks.push(
+            `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n${truncateOutput(step.output)}`,
+        );
+    }
+
+    return branchBlocks.length === 0 ? "" : `[Branch ${branchId}]\n${branchBlocks.join("\n\n")}`;
+}
+
 function buildWorkflowReducePrompt(
     steps: WorkflowStep[],
     joinIndex: number,
 ): string {
     return `[Workflow reduce task] You are the reducer for workflow join step ${joinIndex + 1}. Combine the branch outputs below into ONE joined result. Output ONLY the final result, with no preamble.\n\n${buildJoinedWorkflowOutput(steps, joinIndex)}`;
+}
+
+function buildWorkflowSelectPrompt(
+    steps: WorkflowStep[],
+    joinIndex: number,
+): string {
+    const step = steps[joinIndex];
+    const branchIds = step?.join === undefined ? [] : branchIdsForJoin(steps, step.join);
+    return `[Workflow select task] You are the selector for workflow join step ${joinIndex + 1}. Choose exactly one winning branch id from: ${branchIds.join(", ")}. Emit ONLY <selection>{"winner":"branch_id","rationale":"..."}</selection>.\n\n${buildJoinedWorkflowOutput(steps, joinIndex)}`;
 }
 
 function markWorkflowStepDispatched(step: WorkflowStep): void {
@@ -607,6 +681,7 @@ function resetWorkflowStepTiming(step: WorkflowStep): void {
     step.completedAt = undefined;
     step.durationMs = undefined;
     step.dispatchedAt = undefined;
+    step.dispatchedActor = undefined;
 }
 
 async function dispatchWorkflowJoinReducer(
@@ -616,20 +691,26 @@ async function dispatchWorkflowJoinReducer(
     index: number,
 ): Promise<boolean> {
     const step = task.steps?.[index];
+    const joinPolicy = step?.join?.joinPolicy;
     const reducerMember = step?.join?.reducerMember;
-    if (step?.kind !== "join" || reducerMember === undefined) return false;
-    const reducer = team.members.find(
-        (m) => m.name === reducerMember && !m.isMaster,
-    );
-    if (!hasLiveSession(reducer)) return false;
+    if (
+        step?.kind !== "join" ||
+        (joinPolicy !== "reduce" && joinPolicy !== "select") ||
+        reducerMember === undefined
+    ) return false;
+    const reducer = liveWorkflowActor(team, reducerMember, undefined);
+    if (reducer === undefined) return false;
     // Clear any stale response the reducer left from an earlier workflow step so a
     // crash during the reduce wait cannot be mistaken for a fresh reduce turn on resume.
     delete task.responses[reducerMember];
+    step.dispatchedActor = reducer.name;
     step.correlationId = crypto.randomUUID();
     await dispatchToMember(
         ctx,
         reducer,
-        buildWorkflowReducePrompt(task.steps ?? [], index),
+        joinPolicy === "select"
+            ? buildWorkflowSelectPrompt(task.steps ?? [], index)
+            : buildWorkflowReducePrompt(task.steps ?? [], index),
         reducer.worktreePath ?? ctx.directory,
         team,
         { stepIndex: index, correlationId: step.correlationId },
@@ -703,7 +784,7 @@ async function completeWorkflowJoinStep(
 
     const baseJoin = joinWithBranchStatus(steps, join);
     if (
-        baseJoin.joinPolicy === "reduce" &&
+        (baseJoin.joinPolicy === "reduce" || baseJoin.joinPolicy === "select") &&
         baseJoin.joinedOutput === undefined
     ) {
         step.join = baseJoin;
@@ -799,6 +880,7 @@ function fanoutPolicyImpossible(
             );
         case "all":
         case "reduce":
+        case "select":
             return erroredBranchIds.length > 0;
         case "quorum": {
             const threshold = join.quorum ?? 0;
@@ -903,6 +985,25 @@ export function markWorkflowFanoutBranchErrored(
     markWorkflowBranchStepsSkipped(steps, branch);
     removeActiveWorkflowBranch(task, branch);
     return evaluateWorkflowFanoutError(steps, branch.joinIndex);
+}
+
+export async function handleWorkflowDispatchUnavailable(
+    ctx: PluginContext,
+    team: Team,
+    task: WorkflowTask,
+    step: WorkflowStep,
+): Promise<"degraded" | "failed"> {
+    const actorName = dispatchFailureActorName(step);
+    if (step.branch === undefined || actorName === undefined) {
+        await finishRun(ctx, team, workflowNoSessionReason(actorName), "failed");
+        return "failed";
+    }
+    const result = markWorkflowFanoutBranchErrored(task, actorName);
+    if (result.kind === "failed") {
+        await finishRun(ctx, team, result.reason, "failed");
+        return "failed";
+    }
+    return "degraded";
 }
 
 function sortedWorkflowIndices(indices: readonly number[]): number[] {
@@ -1121,6 +1222,7 @@ async function gotoWorkflowStep(
     // Mark the triggering gate complete so find-next-incomplete does not loop
     // back to it after a forward jump, and so approval resume advances past it.
     gate.completed = true;
+    gate.dispatchedActor = undefined;
 
     recordEvent(team, {
         timestamp: Date.now(),
@@ -1142,8 +1244,8 @@ async function gotoWorkflowStep(
               )
             : await dispatchGateStep(ctx, team, task, targetIndex);
     if (!dispatched) {
-        const actor = target.kind === "task" ? target.member : target.verifier;
-        await finishRun(ctx, team, workflowNoSessionReason(actor), "failed");
+        const result = await handleWorkflowDispatchUnavailable(ctx, team, task, target);
+        if (result === "degraded") await advanceWorkflowStep(ctx, team);
         return false;
     }
     await saveTeamState(team);
@@ -1202,13 +1304,9 @@ export async function advanceWorkflowStep(
                         )
                             return;
                         if (!(await dispatchTaskStep(ctx, team, task, index))) {
-                            await finishRun(
-                                ctx,
-                                team,
-                                workflowNoSessionReason(step.member),
-                                "failed",
-                            );
-                            return;
+                            const result = await handleWorkflowDispatchUnavailable(ctx, team, task, step);
+                            if (result === "failed") return;
+                            break;
                         }
                         dispatched = true;
                         break;
@@ -1220,13 +1318,9 @@ export async function advanceWorkflowStep(
                         )
                             return;
                         if (!(await dispatchGateStep(ctx, team, task, index))) {
-                            await finishRun(
-                                ctx,
-                                team,
-                                workflowNoSessionReason(step.verifier),
-                                "failed",
-                            );
-                            return;
+                            const result = await handleWorkflowDispatchUnavailable(ctx, team, task, step);
+                            if (result === "failed") return;
+                            break;
                         }
                         dispatched = true;
                         break;
@@ -1279,8 +1373,7 @@ export async function advanceWorkflowStep(
             ? await dispatchTaskStep(ctx, team, task, nextIndex)
             : await dispatchGateStep(ctx, team, task, nextIndex);
     if (!dispatched) {
-        const actor = step.kind === "task" ? step.member : step.verifier;
-        await finishRun(ctx, team, workflowNoSessionReason(actor), "failed");
+        await handleWorkflowDispatchUnavailable(ctx, team, task, step);
         return;
     }
     await saveTeamState(team);
@@ -1302,7 +1395,7 @@ export async function redispatchWorkflowStep(
         case "gate":
             return await dispatchGateStep(ctx, team, task, index);
         case "join":
-            return step.join?.joinPolicy === "reduce"
+            return step.join?.joinPolicy === "reduce" || step.join?.joinPolicy === "select"
                 ? await dispatchWorkflowJoinReducer(ctx, team, task, index)
                 : false;
         case "fanout":
@@ -1345,6 +1438,7 @@ export async function handleWorkflowIdle(
         }
         markWorkflowStepCompleted(step);
         step.dispatchedAt = undefined;
+        step.dispatchedActor = undefined;
         step.completed = true;
         recordEvent(team, {
             timestamp: Date.now(),
@@ -1355,6 +1449,7 @@ export async function handleWorkflowIdle(
             bytes: step.output?.length,
             detail: `workflow step ${activeStepIndex + 1} captured`,
         });
+        step.dispatchedActor = undefined;
         step.correlationId = undefined;
         if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex))
             return;
@@ -1378,16 +1473,42 @@ export async function handleWorkflowIdle(
     }
 
     if (step.kind === "join") {
-        const reducerMember = step.join?.reducerMember;
-        if (step.join?.joinPolicy !== "reduce" || reducerMember !== member.name)
+        const join = step.join;
+        if (join === undefined) return;
+        const reducerMember = join.reducerMember;
+        const joinPolicy = join.joinPolicy;
+        const joinActor = step.dispatchedActor ?? reducerMember;
+        if ((joinPolicy !== "reduce" && joinPolicy !== "select") || joinActor !== member.name)
             return;
         const correlationId = step.correlationId;
-        step.join = {
-            ...step.join,
-            joinedOutput: task.responses[member.name] ?? "",
-        };
+        const response = task.responses[member.name] ?? "";
+        if (joinPolicy === "select") {
+            const selection = parseSelection(response);
+            const branchIds = branchIdsForJoin(steps, join);
+            if (selection.parseFailed || !branchIds.includes(selection.winner)) {
+                await finishRun(ctx, team, workflowInvalidReason("parse_failure", member.name), "failed");
+                return;
+            }
+            const joinedOutput = buildBranchWorkflowOutput(steps, activeStepIndex, selection.winner);
+            if (joinedOutput === "") {
+                await finishRun(ctx, team, workflowInvalidReason("parse_failure", member.name), "failed");
+                return;
+            }
+            step.join = {
+                ...join,
+                selectedBranchId: selection.winner,
+                selectionRationale: selection.rationale,
+                joinedOutput,
+            };
+        } else {
+            step.join = {
+                ...join,
+                joinedOutput: response,
+            };
+        }
         markWorkflowStepCompleted(step);
         step.dispatchedAt = undefined;
+        step.dispatchedActor = undefined;
         step.correlationId = undefined;
         recordEvent(team, {
             timestamp: Date.now(),
@@ -1395,8 +1516,8 @@ export async function handleWorkflowIdle(
             member: member.name,
             stepIndex: activeStepIndex,
             correlationId,
-            bytes: step.join.joinedOutput?.length,
-            detail: `workflow reduce join step ${activeStepIndex + 1} captured`,
+            bytes: step.join?.joinedOutput?.length,
+            detail: `workflow ${joinPolicy} join step ${activeStepIndex + 1} captured`,
         });
         await advanceWorkflowStep(ctx, team);
         return;
@@ -1404,11 +1525,12 @@ export async function handleWorkflowIdle(
 
     // gate step
     if (step.kind !== "gate" || step.verifier === undefined) return;
-    const v = parseVerdict(step.output ?? task.responses[step.verifier] ?? "");
+    const verifierName = member.name;
+    const v = parseVerdict(step.output ?? task.responses[verifierName] ?? "");
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "verdict",
-        member: step.verifier,
+        member: verifierName,
         stage: activeStepIndex,
         stepIndex: activeStepIndex,
         correlationId: step.correlationId,
@@ -1421,6 +1543,7 @@ export async function handleWorkflowIdle(
             team,
             step,
             activeStepIndex,
+            verifierName,
             "parse_failure",
             v.rationale,
             v.diff,
@@ -1438,6 +1561,7 @@ export async function handleWorkflowIdle(
             team,
             step,
             activeStepIndex,
+            verifierName,
             "INVALID",
             v.rationale,
             v.diff,
@@ -1448,6 +1572,8 @@ export async function handleWorkflowIdle(
     if (v.verdict === "PASS") {
         markWorkflowStepCompleted(step);
         step.dispatchedAt = undefined;
+        step.dispatchedActor = undefined;
+        step.correlationId = undefined;
         step.completed = true;
         // approval_after on a gate is validator-guaranteed incompatible with
         // on_*_goto, so pausing here cannot be bypassed by a goto jump.
@@ -1462,7 +1588,7 @@ export async function handleWorkflowIdle(
             (await maybeRequestApproval(ctx, team, {
                 kind: "workflow_step",
                 stage: activeStepIndex,
-                summary: `Completed ${describeStep(step, activeStepIndex)} with PASS from ${step.verifier}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
+                summary: `Completed ${describeStep(step, activeStepIndex)} with PASS from ${verifierName}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
             }))
         ) {
             return;
@@ -1500,7 +1626,7 @@ export async function handleWorkflowIdle(
         await finishRun(
             ctx,
             team,
-            workflowGateFailReason(step.verifier),
+            workflowGateFailReason(verifierName),
             "failed",
         );
         return;
@@ -1526,7 +1652,7 @@ export async function handleWorkflowIdle(
         await finishRun(
             ctx,
             team,
-            workflowGateFailReason(step.verifier),
+            workflowGateFailReason(verifierName),
             "failed",
         );
         return;
@@ -1538,7 +1664,7 @@ export async function handleWorkflowIdle(
         await finishRun(
             ctx,
             team,
-            workflowGateFailReason(step.verifier),
+            workflowGateFailReason(verifierName),
             "failed",
         );
         return;
@@ -1560,7 +1686,7 @@ export async function handleWorkflowIdle(
         await finishRun(
             ctx,
             team,
-            workflowGateFailReason(step.verifier),
+            workflowGateFailReason(verifierName),
             "failed",
         );
         return;
@@ -1570,39 +1696,22 @@ export async function handleWorkflowIdle(
     // backward jump and the initial advance path). Without this, a FAIL retry
     // silently bypassed the leader gate that the step declared.
     if (await maybePauseBeforeWorkflowStep(ctx, team, producerIdx)) return;
-    const producer = team.members.find(
-        (m) => m.name === producerStep.member && !m.isMaster,
-    );
-    if (!hasLiveSession(producer)) {
-        await finishRun(
-            ctx,
-            team,
-            workflowNoSessionReason(producerStep.member),
-            "failed",
-        );
+    const feedback =
+        `[Gate FAILED - attempt ${step.attempts}/${maxR}]\n` +
+        `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`;
+    step.dispatchedActor = undefined;
+    if (!(await dispatchTaskStep(ctx, team, task, producerIdx, feedback))) {
+        await handleWorkflowDispatchUnavailable(ctx, team, task, producerStep);
         return;
     }
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "retry",
-        member: producerStep.member,
+        member: producerStep.dispatchedActor ?? producerStep.member,
         stage: gateIndex,
         stepIndex: producerIdx,
-        detail: `workflow step ${gateIndex + 1} attempt ${step.attempts}/${maxR}; retry target ${stepIndicesLabel(gateTargetIndices(steps, gateIndex))}; retry anchor step ${producerIdx + 1}; verifier ${step.verifier}; diff: ${v.diff}`,
+        detail: `workflow step ${gateIndex + 1} attempt ${step.attempts}/${maxR}; retry target ${stepIndicesLabel(gateTargetIndices(steps, gateIndex))}; retry anchor step ${producerIdx + 1}; verifier ${verifierName}; diff: ${v.diff}`,
     });
-    const feedback =
-        `[Gate FAILED - attempt ${step.attempts}/${maxR}]\n` +
-        `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`;
-    producerStep.correlationId = crypto.randomUUID();
-    await dispatchToMember(
-        ctx,
-        producer,
-        `${feedback}\n\n[Your task]\n${producerStep.task ?? ""}`,
-        producer.worktreePath ?? ctx.directory,
-        team,
-        { stepIndex: producerIdx, correlationId: producerStep.correlationId },
-    );
-    markWorkflowStepDispatched(producerStep);
     await saveTeamState(team);
 }
 
@@ -1621,6 +1730,7 @@ async function handleInvalidVerdict(
     team: Team,
     step: WorkflowStep,
     gateIndex: number,
+    verifierName: string,
     reason: "INVALID" | "parse_failure",
     rationale: string,
     diff: string,
@@ -1646,19 +1756,7 @@ async function handleInvalidVerdict(
             await finishRun(
                 ctx,
                 team,
-                workflowInvalidReason(reason, step.verifier),
-                "failed",
-            );
-            return;
-        }
-        const verifier = team.members.find(
-            (m) => m.name === step.verifier && !m.isMaster,
-        );
-        if (!hasLiveSession(verifier)) {
-            await finishRun(
-                ctx,
-                team,
-                workflowNoSessionReason(step.verifier),
+                workflowInvalidReason(reason, verifierName),
                 "failed",
             );
             return;
@@ -1668,33 +1766,22 @@ async function handleInvalidVerdict(
         // so a pause-then-resume does not preserve the prior attempt's startedAt.
         resetWorkflowStepTiming(step);
         if (await maybePauseBeforeWorkflowStep(ctx, team, gateIndex)) return;
-        recordEvent(team, {
-            timestamp: Date.now(),
-            kind: "retry",
-            member: step.verifier,
-            stage: gateIndex,
-            stepIndex: gateIndex,
-            detail: `workflow step ${gateIndex + 1} invalid retry ${step.invalidAttempts}/${maxIR}; verifier ${step.verifier}; reason ${reason}: ${rationale}`,
-        });
         const nudge =
             `[Verification could not be evaluated — invalid attempt ${step.invalidAttempts}/${maxIR}]\n` +
             `Reason: ${reason}. Rationale: ${rationale}. Diff: ${diff}.\n` +
             `Re-evaluate the target output and emit a fresh verdict.`;
-        const targetIndices = gateTargetIndices(task.steps ?? [], gateIndex);
-        const producerOutput = buildGateProducerOutput(
-            task.steps ?? [],
-            targetIndices,
-        );
-        step.correlationId = crypto.randomUUID();
-        await dispatchToMember(
-            ctx,
-            verifier,
-            `${nudge}\n\n${buildGateVerifierPrompt(step, producerOutput, workflowTargetLabel(targetIndices))}`,
-            verifier.worktreePath ?? ctx.directory,
-            team,
-            { stepIndex: gateIndex, correlationId: step.correlationId },
-        );
-        markWorkflowStepDispatched(step);
+        if (!(await dispatchGateStep(ctx, team, task, gateIndex, nudge))) {
+            await handleWorkflowDispatchUnavailable(ctx, team, task, step);
+            return;
+        }
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "retry",
+            member: step.dispatchedActor ?? step.verifier,
+            stage: gateIndex,
+            stepIndex: gateIndex,
+            detail: `workflow step ${gateIndex + 1} invalid retry ${step.invalidAttempts}/${maxIR}; verifier ${step.dispatchedActor ?? verifierName}; reason ${reason}: ${rationale}`,
+        });
         await saveTeamState(team);
         return;
     }
@@ -1704,12 +1791,13 @@ async function handleInvalidVerdict(
         const escalated = await forceApprovalRequest(ctx, team, {
             kind: "workflow_step",
             stage: gateIndex,
-            summary: `Step ${gateIndex + 1} (gate) by ${step.verifier ?? "?"} could not be evaluated (${reason}). Rationale: ${rationale}. Approve to override and continue${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""}; reject to fail as workflow_invalid.`,
+            summary: `Step ${gateIndex + 1} (gate) by ${verifierName} could not be evaluated (${reason}). Rationale: ${rationale}. Approve to override and continue${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""}; reject to fail as workflow_invalid.`,
         });
         if (escalated) {
             // Mark the gate complete so that on team_approve (which calls
             // advanceWorkflowStep) the workflow proceeds past this gate.
             step.completed = true;
+            step.dispatchedActor = undefined;
             await saveTeamState(team);
             return;
         }
@@ -1733,7 +1821,7 @@ async function handleInvalidVerdict(
     await finishRun(
         ctx,
         team,
-        workflowInvalidReason(reason, step.verifier),
+        workflowInvalidReason(reason, verifierName),
         "failed",
     );
 }

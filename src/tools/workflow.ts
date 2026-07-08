@@ -19,8 +19,7 @@ import type {
 } from "../core/types.js"
 import { formatWorkflowCondition, parseWorkflowCondition } from "../core/workflow-conditions.js"
 import { activationError } from "../core/utils.js"
-import { dispatchToMember } from "../orchestration/dispatch.js"
-import { maybePauseBeforeWorkflowStep } from "../orchestration/workflow.js"
+import { dispatchTaskStep, maybePauseBeforeWorkflowStep } from "../orchestration/workflow.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, type Team } from "../state/store.js"
 import { loadWorkflowFile } from "./workflow-file.js"
@@ -48,8 +47,10 @@ export type WorkflowToolStep = {
     readonly kind: "task" | "gate" | "fanout" | "join"
     readonly id?: string
     readonly member?: string
+    readonly fallback_member?: string
     readonly task?: string
     readonly verifier?: string
+    readonly fallback_verifier?: string
     readonly criteria?: string
     readonly target_step?: WorkflowStepRef
     readonly targets?: readonly WorkflowStepRef[]
@@ -72,7 +73,7 @@ export type WorkflowToolStep = {
     readonly max_jumps?: number
     readonly branches?: readonly WorkflowFanoutBranch[]
     readonly max_errored?: number
-    readonly join_policy?: "all" | "quorum" | "any_success" | "required_branches" | "reduce"
+    readonly join_policy?: "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
     readonly quorum?: number
     readonly required_branches?: readonly string[]
     readonly reducer_member?: string
@@ -531,6 +532,7 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
         case "all":
         case "any_success":
         case "reduce":
+        case "select":
             break
         case "quorum": {
             if (step.quorum === undefined) return `Error: fanout step ${displayStep} join_policy='quorum' requires \`quorum\``
@@ -551,8 +553,8 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
         default:
             return `Error: fanout step ${displayStep} unknown join_policy "${String(policy)}"`
     }
-    if (policy === "reduce" && step.reducer_member === undefined) {
-        return `Error: fanout step ${displayStep} join_policy='reduce' requires \`reducer_member\``
+    if ((policy === "reduce" || policy === "select") && step.reducer_member === undefined) {
+        return `Error: fanout step ${displayStep} join_policy='${policy}' requires \`reducer_member\``
     }
     return null
 }
@@ -631,6 +633,10 @@ function validateBranchSteps(
                     const actorError = registerFanoutBranchActor(branchByMember, step.member, fanoutDisplayStep, branch.id)
                     if (actorError !== null) return actorError
                 }
+                {
+                    const actorError = registerFanoutBranchActor(branchByMember, step.fallback_member, fanoutDisplayStep, branch.id)
+                    if (actorError !== null) return actorError
+                }
                 break
             case "gate": {
                 if (step.approval_before === true || step.approval_after === true) {
@@ -640,6 +646,8 @@ function validateBranchSteps(
                 if (timeoutError !== null) return timeoutError
                 const actorError = registerFanoutBranchActor(branchByMember, step.verifier, fanoutDisplayStep, branch.id)
                 if (actorError !== null) return actorError
+                const fallbackActorError = registerFanoutBranchActor(branchByMember, step.fallback_verifier, fanoutDisplayStep, branch.id)
+                if (fallbackActorError !== null) return fallbackActorError
                 const targetError = validateBranchGateTargets(branch.steps, index, fanoutDisplayStep, branch.id)
                 if (targetError !== null) return targetError
                 const gotoError = validateBranchGateGotos(branch.steps, index, fanoutDisplayStep, branch.id)
@@ -815,7 +823,7 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
         switch (s.kind) {
             case "task": {
                 const location = stepLocation(s, displayStep, true)
-                if (s.verifier !== undefined || s.criteria !== undefined || s.target_step !== undefined || s.targets !== undefined || s.on_fail !== undefined || s.max_retries !== undefined || s.on_invalid !== undefined || s.max_invalid_retries !== undefined || s.where !== undefined) {
+                if (s.verifier !== undefined || s.fallback_verifier !== undefined || s.criteria !== undefined || s.target_step !== undefined || s.targets !== undefined || s.on_fail !== undefined || s.max_retries !== undefined || s.on_invalid !== undefined || s.max_invalid_retries !== undefined || s.where !== undefined) {
                     return `Error: ${location} must not set gate fields`
                 }
                 if (!s.member) return `Error: ${location} requires \`member\``
@@ -834,11 +842,14 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 if (!isTeamMember(team, s.member)) {
                     return `Error: unknown member "${s.member}" in ${stepLocation(s, displayStep, false)}`
                 }
+                if (s.fallback_member !== undefined && !isTeamMember(team, s.fallback_member)) {
+                    return `Error: ${location} fallback_member "${s.fallback_member}" is not a team member`
+                }
                 break
             }
             case "gate": {
                 const location = stepLocation(s, displayStep, true)
-                if (s.member !== undefined || s.task !== undefined) {
+                if (s.member !== undefined || s.fallback_member !== undefined || s.task !== undefined) {
                     return `Error: ${location} must not set task fields`
                 }
                 if (s.inputs !== undefined || s.expose_output !== undefined) {
@@ -899,8 +910,20 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 for (const targetIndex of targetIndices.indices) {
                     const target = loweredSteps[targetIndex]
                     if (target?.kind !== "task" || !target.member) return `Error: step ${targetIndex + 1} (task) requires \`member\``
-                    if (s.verifier === target.member) {
-                        return `Error: ${location} verifier "${s.verifier}" must differ from ${targetStepErrorLabel(target, targetIndex)} member (no self-verification)`
+                    const targetActors = [
+                        { field: "member", name: target.member },
+                        { field: "fallback_member", name: target.fallback_member },
+                    ]
+                    const verifierActors = [
+                        { field: "verifier", name: s.verifier },
+                        { field: "fallback_verifier", name: s.fallback_verifier },
+                    ]
+                    for (const verifierActor of verifierActors) {
+                        if (verifierActor.name === undefined) continue
+                        const matchingTarget = targetActors.find(targetActor => targetActor.name === verifierActor.name)
+                        if (matchingTarget !== undefined) {
+                            return `Error: ${location} ${verifierActor.field} "${verifierActor.name}" must differ from ${targetStepErrorLabel(target, targetIndex)} ${matchingTarget.field} (no self-verification)`
+                        }
                     }
                 }
                 if (targetIndices.indices.length === 0) {
@@ -912,10 +935,13 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 if (!isTeamMember(team, s.verifier)) {
                     return `Error: unknown member "${s.verifier}" in ${location} verifier`
                 }
+                if (s.fallback_verifier !== undefined && !isTeamMember(team, s.fallback_verifier)) {
+                    return `Error: ${location} fallback_verifier "${s.fallback_verifier}" is not a team member`
+                }
                 break
             }
             case "fanout": {
-                if (s.fanout.joinPolicy === "reduce" && s.fanout.reducerMember !== undefined && !isTeamMember(team, s.fanout.reducerMember)) {
+                if ((s.fanout.joinPolicy === "reduce" || s.fanout.joinPolicy === "select") && s.fanout.reducerMember !== undefined && !isTeamMember(team, s.fanout.reducerMember)) {
                     return `Error: fanout step ${displayStep} reducer_member "${s.fanout.reducerMember}" is not a team member`
                 }
                 break
@@ -980,6 +1006,7 @@ function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 const controls: string[] = []
                 if (step.approval_before) controls.push("approval_before")
                 if (step.approval_after) controls.push("approval_after")
+                if (step.fallback_member !== undefined) controls.push(`fallback_member=${step.fallback_member}`)
                 if (step.max_output_bytes !== undefined) controls.push(`max_output_bytes=${step.max_output_bytes}`)
                 if (step.expose_output === false) controls.push("expose_output=false")
                 const inputs = taskInputsLabel(loweredSteps, i)
@@ -996,6 +1023,7 @@ function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 const controls: string[] = []
                 if (step.approval_before) controls.push("approval_before")
                 if (step.approval_after) controls.push("approval_after")
+                if (step.fallback_verifier !== undefined) controls.push(`fallback_verifier=${step.fallback_verifier}`)
                 const ctrlTag = controls.length > 0 ? `  [${controls.join(", ")}]` : ""
                 const target = stepTargetLabel(loweredSteps, i)
                 const retry = step.on_fail === "retry" ? `; on_fail=retry max_retries=${step.max_retries}` : ""
@@ -1137,7 +1165,10 @@ function substituteVarsInStep(step: WorkflowToolStep, vars: Record<string, strin
         ...(typeof step.task === "string" ? { task: substituteVars(step.task, vars) } : {}),
         ...(typeof step.criteria === "string" ? { criteria: substituteVars(step.criteria, vars) } : {}),
         ...(typeof step.member === "string" ? { member: substituteVars(step.member, vars) } : {}),
+        ...(typeof step.fallback_member === "string" ? { fallback_member: substituteVars(step.fallback_member, vars) } : {}),
         ...(typeof step.verifier === "string" ? { verifier: substituteVars(step.verifier, vars) } : {}),
+        ...(typeof step.fallback_verifier === "string" ? { fallback_verifier: substituteVars(step.fallback_verifier, vars) } : {}),
+        ...(typeof step.reducer_member === "string" ? { reducer_member: substituteVars(step.reducer_member, vars) } : {}),
     }
 }
 
@@ -1162,6 +1193,7 @@ function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkfl
                 kind: "task",
                 id: step.id,
                 member: step.member,
+                fallbackMember: step.fallback_member,
                 task: step.task,
                 inputs: resolveWorkflowInputIndices(steps, index),
                 exposeOutput: step.expose_output,
@@ -1182,6 +1214,7 @@ function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkfl
                 kind: "gate",
                 id: step.id,
                 verifier: step.verifier,
+                fallbackVerifier: step.fallback_verifier,
                 criteria: step.criteria,
                 targetStepIndex: primaryTargetIndex(targetIndices),
                 targetStepIndices: step.targets !== undefined ? targetIndices : undefined,
@@ -1231,8 +1264,10 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
     const workflowStepSchemaFields = {
         id: tool.schema.string().min(1).max(64).optional().describe("optional stable step identifier; gates may reference a task step by this id via target_step or targets"),
         member: tool.schema.string().min(1).optional().describe("task steps: the actor member name"),
+        fallback_member: tool.schema.string().min(1).optional().describe("task steps: fallback actor used only when member has no live session"),
         task: tool.schema.string().min(1).max(8192).optional().describe("task steps: the task text"),
         verifier: tool.schema.string().min(1).optional().describe("gate steps: the verifier member name (must differ from the target task member)"),
+        fallback_verifier: tool.schema.string().min(1).optional().describe("gate steps: fallback verifier used only when verifier has no live session; must differ from every target task member"),
         criteria: tool.schema.string().min(1).max(8192).optional().describe("gate steps: verification criteria"),
         target_step: workflowStepRefSchema.optional().describe("gate steps: one target task step to verify, using a 1-based number or step id; branch gate references are branch-local. Mutually exclusive with targets."),
         targets: tool.schema.array(workflowStepRefSchema).min(1).optional().describe("gate steps: multiple prior task steps to verify together. Mutually exclusive with target_step."),
@@ -1258,10 +1293,10 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         on_timeout: tool.schema.enum(["fail", "retry", "skip"]).optional().describe("task/gate steps: timeout control. 'fail' (default) fails the workflow; 'retry' re-dispatches up to max_timeout_retries; 'skip' marks the step skipped and advances."),
         max_timeout_retries: tool.schema.number().int().min(0).max(5).optional().describe("task/gate steps: timeout retry cap when on_timeout='retry'. Required when on_timeout='retry'."),
         max_jumps: tool.schema.number().int().min(0).max(10).optional().describe("gate steps: per-gate cap on verdict-driven jumps. Default 3. Terminates as workflow_failed:jump_limit when exceeded."),
-        join_policy: tool.schema.enum(["all", "quorum", "any_success", "required_branches", "reduce"]).optional().describe("fanout steps: join semantics. Default (unset) uses max_errored tolerance. 'all' requires every branch to succeed; 'quorum' requires quorum fraction of survivors; 'any_success' joins once any branch succeeds; 'required_branches' requires the listed branches to succeed; 'reduce' requires all then dispatches reducer_member to aggregate."),
+        join_policy: tool.schema.enum(["all", "quorum", "any_success", "required_branches", "reduce", "select"]).optional().describe("fanout steps: join semantics. Default (unset) uses max_errored tolerance. 'all' requires every branch to succeed; 'quorum' requires quorum fraction of survivors; 'any_success' joins once any branch succeeds; 'required_branches' requires the listed branches to succeed; 'reduce' requires all then dispatches reducer_member to aggregate; 'select' requires all then dispatches reducer_member to choose one winning branch."),
         quorum: tool.schema.number().min(0).max(1).optional().describe("fanout steps: survivor fraction required by join_policy='quorum' (0 < quorum <= 1)."),
         required_branches: tool.schema.array(tool.schema.string().min(1)).min(1).optional().describe("fanout steps: branch ids that must succeed under join_policy='required_branches'."),
-        reducer_member: tool.schema.string().min(1).optional().describe("fanout steps: member who aggregates branch outputs at join under join_policy='reduce'."),
+        reducer_member: tool.schema.string().min(1).optional().describe("fanout steps: member who aggregates branch outputs under join_policy='reduce' or selects a winning branch under join_policy='select'."),
         matrix: tool.schema.record(tool.schema.string(), tool.schema.array(tool.schema.string().min(1))).optional().describe("fanout steps: expand into the cartesian product of named value arrays, substituting ${name} in each branch step's text fields. Mutually exclusive with branches/foreach."),
         foreach: tool.schema.array(tool.schema.string().min(1)).optional().describe("fanout steps: single-dimension value list; one branch per value, substituting ${as} in each branch step. Mutually exclusive with branches/matrix."),
         as: tool.schema.string().min(1).optional().describe("fanout steps: variable name bound to the current foreach value (default 'item')."),
@@ -1351,12 +1386,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                     // resume path goes through team_approve -> advanceWorkflowStep
                     // which finds step 0 still incomplete and dispatches it).
                     if (await maybePauseBeforeWorkflowStep(ctx, team, 0)) return
-                    const first = team.members.find(m => m.name === step.member && !m.isMaster)
-                    if (!first?.sessionId || first.status === "errored") throw new Error(`workflow initial member "${step.member}" has no live session`)
-                    await dispatchToMember(ctx, first, step.task, first.worktreePath ?? ctx.directory, team)
-                    const now = Date.now()
-                    step.startedAt ??= now
-                    step.dispatchedAt = now
+                    if (!(await dispatchTaskStep(ctx, team, task, 0))) throw new Error(`workflow initial member "${step.member}" has no live session`)
                 },
                 // successMessage
                 () => `team_workflow started on "${args.team_id}" with ${lowerWorkflowSteps(resolvedArgs.steps).length} step(s).`,

@@ -14,7 +14,7 @@
 
 `team_workflow` 的价值在于：把"先做两个普通 task，再对第三步 gate，再继续普通 task"这类异构链一次性声明、可重复执行，且所有推进逻辑落在可持久化的 engine 里，而非占用 master 的上下文预算。
 
-**已落地强化项**：内部 `currentStageIndex` 保持 0-based，所有用户可见文本（summary / progress / approval prompt / result ledger）统一 1-based；`RunRecord` 新增 `workflow.steps` 快照，`team_result_get` 可重建完整 step ledger；同一成员跑多个 task step 时，下游/gate 注入的是该 step 自身产出快照，而非成员最新响应；`gate` 支持显式 `target_step` / `targets`；`gate` FAIL retry 记录结构化 `retry` 事件；task/gate 步骤演员缺失 live session 时 run 以 `workflow_failed:no_session:*` 显式终止；`fanout` / `join` 支持 tolerance、all、quorum、any_success、required_branches 和 reduce 汇合策略；workflow step 持久化 `startedAt` / `completedAt` / `durationMs`；task step 支持 `inputs` 显式选择上游和 `expose_output=false` 抑制隐式上游；`dry_run: true` 渲染 1-based step 计划，不启动编排。
+**已落地强化项**：内部 `currentStageIndex` 保持 0-based，所有用户可见文本（summary / progress / approval prompt / result ledger）统一 1-based；`RunRecord` 新增 `workflow.steps` 快照，`team_result_get` 可重建完整 step ledger，支持 `format: "mermaid"` 导出 Mermaid flowchart（task→矩形、gate→菱形、fanout→subgraph、goto→标签虚线、join→注释）；同一成员跑多个 task step 时，下游/gate 注入的是该 step 自身产出快照，而非成员最新响应；`gate` 支持显式 `target_step` / `targets`；`gate` FAIL retry 记录结构化 `retry` 事件；task/gate 步骤支持 `fallback_member` / `fallback_verifier`——当主演员没有 live session 时自动切换到 fallback 演员；演员缺失 live session 时，fanout 分支内步骤降级为 errored 分支（受 `max_errored` / `join_policy` 约束），顶层步骤仍以 `workflow_failed:no_session:*` 显式终止；`fanout` / `join` 支持 tolerance、all、quorum、any_success、required_branches、reduce 和 select 汇合策略；workflow step 持久化 `startedAt` / `completedAt` / `durationMs` 和 `dispatchedActor`（实际执行者，含 fallback 归属）；task step 支持 `inputs` 显式选择上游和 `expose_output=false` 抑制隐式上游；`dry_run: true` 渲染 1-based step 计划，不启动编排。
 
 ### gate 三值语义（PASS / FAIL / INVALID）
 
@@ -82,7 +82,7 @@ id 在整条 workflow 内必须唯一（否则 `dry_run`/启动校验报 `duplic
 
 ### fanout / join 与数据流控制
 
-`fanout` 必须紧跟一个 `join` marker。join 会先等待所有分支进入 terminal 状态（completed / skipped / errored），再应用策略判断是否继续。默认 join 使用 `max_errored` 容忍度；也可以声明 `join_policy` 为 `all`、`quorum`、`any_success`、`required_branches` 或 `reduce`。`join_policy="reduce"` 要求设置 `reducer_member`：所有分支成功后，engine 会先把分支产出派发给 reducer，由 reducer 输出单一 `joinedOutput`，再继续下游步骤。
+`fanout` 必须紧跟一个 `join` marker。join 会先等待所有分支进入 terminal 状态（completed / skipped / errored），再应用策略判断是否继续。默认 join 使用 `max_errored` 容忍度；也可以声明 `join_policy` 为 `all`、`quorum`、`any_success`、`required_branches`、`reduce` 或 `select`。`join_policy="reduce"` 要求设置 `reducer_member`：所有分支成功后，engine 会先把分支产出派发给 reducer，由 reducer 输出单一 `joinedOutput`，再继续下游步骤。`join_policy="select"` 同样要求 `reducer_member`（此处充当 selector）：所有分支成功后，selector 收到所有分支产出，输出结构化 `<selection>{winner, rationale}</selection>`，engine 将获胜分支的原始产出提升为 `joinedOutput`，并持久化 `selectedBranchId` / `selectionRationale`。
 
 task step 默认接收之前已完成且可见的上游 task/join 产出。若只想传入指定上游，使用 `inputs`（1-based step 编号或 step id）；若某个 task 的产出不应进入后续隐式上游，设置 `expose_output: false`。显式 `inputs` 仍可引用该产出，适合“默认隐藏，但允许指定消费者读取”的场景。
 
@@ -206,7 +206,7 @@ T+12~16m bob 再判定 → <verdict>
 T+16m    workflow_complete，汇总交付 master（含四步账本 + task 产出）
 ```
 
-> 期间任意 task/gate 演员缺失 live session（session 未创建或成员已 errored），engine 立即终止为 `workflow_failed:no_session:<member>`，并把 `workflow.steps` 快照写入 `RunRecord`（每步 kind / member / verifier / targetStep / verdict / attempts / completed / output / outputBytes）。`team_result_get` 读取该 run 时会渲染 `### workflow steps` 分组，按 Step N 展示账本 + 各 task 产出快照。
+> 期间任意 task/gate 演员缺失 live session（session 未创建或成员已 errored）时：若声明了 `fallback_member` / `fallback_verifier`，engine 自动切换到 fallback 演员继续；若 fallback 也不可用，**fanout 分支内**的步骤降级为 errored 分支（受 `max_errored` / `join_policy` 约束），**顶层**步骤仍以 `workflow_failed:no_session:<member>` 显式终止。engine 把 `workflow.steps` 快照写入 `RunRecord`（每步 kind / member / verifier / dispatchedActor / targetStep / verdict / attempts / completed / output / outputBytes）。`team_result_get` 读取该 run 时会渲染 `### workflow steps` 分组，按 Step N 展示账本 + 各 task 产出快照；`format: "mermaid"` 导出 Mermaid flowchart 图。
 
 ### 1.5 可选：人工审批（HITL）
 

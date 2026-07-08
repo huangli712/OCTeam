@@ -300,7 +300,7 @@ export type WorkflowBranchRange = {
     readonly endIndex: number
 }
 
-export type WorkflowJoinPolicy = "tolerance" | "all" | "quorum" | "any_success" | "required_branches" | "reduce"
+export type WorkflowJoinPolicy = "tolerance" | "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
 
 export type WorkflowFanoutMetadata = {
     readonly branchIds: readonly string[]
@@ -310,7 +310,7 @@ export type WorkflowFanoutMetadata = {
     readonly joinPolicy?: WorkflowJoinPolicy
     readonly quorum?: number                  // fraction of branches that must succeed (join_policy='quorum'), 0 < quorum <= 1
     readonly requiredBranchIds?: readonly string[]  // branch ids that must succeed (join_policy='required_branches')
-    readonly reducerMember?: string           // member who aggregates branch outputs at join (join_policy='reduce')
+    readonly reducerMember?: string           // member who aggregates branch outputs at join (join_policy='reduce' or 'select')
 }
 
 export type WorkflowBranchMetadata = {
@@ -330,6 +330,8 @@ export type WorkflowJoinMetadata = {
     readonly reducerMember?: string
     readonly survivorBranchIds?: readonly string[]
     readonly erroredBranchIds?: readonly string[]
+    readonly selectedBranchId?: string
+    readonly selectionRationale?: string
     readonly joinedOutput?: string
 }
 
@@ -338,9 +340,11 @@ export type WorkflowStep = {
     id?: string                          // stable step identifier (optional); when set, gates may reference it via targetStepId
     // task step
     member?: string                     // the actor member name (task steps)
+    fallbackMember?: string
     task?: string                       // the task text (task steps)
     // gate step
     verifier?: string                   // the verifier member name (gate steps; NOT the preceding task's member)
+    fallbackVerifier?: string
     criteria?: string                   // verification criteria (gate steps)
     targetStepIndex?: number            // gate steps: zero-based primary task step being verified; omitted means nearest preceding task
     targetStepIndices?: number[]        // gate steps: zero-based multi-target task steps; targetStepIndex remains the primary/legacy target
@@ -380,6 +384,7 @@ export type WorkflowStep = {
           completedAt?: number
           durationMs?: number
           dispatchedAt?: number               // epoch ms when this step was last dispatched
+          dispatchedActor?: string
           correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl
     // fanout/join DAG metadata (workflow P2). Runtime dispatch wiring lands in a
     // later task; T1 only persists and reads the flat DAG shape.
@@ -429,6 +434,7 @@ export type WorkflowRunStep = {
     id?: string                          // stable step identifier when declared
     member?: string
     verifier?: string
+    dispatchedActor?: string              // the actor (primary or fallback) that actually executed the step
     targetStep?: number                 // one-based display primary target task step for gate steps
     targetSteps?: number[]              // one-based display multi-target task steps for gate steps
     verdict?: Verdict

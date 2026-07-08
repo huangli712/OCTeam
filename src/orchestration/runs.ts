@@ -102,7 +102,7 @@ const WorkflowBranchRangeSchema = z.object({
     startIndex: z.number().int().nonnegative(),
     endIndex: z.number().int().nonnegative(),
 }).refine(range => range.endIndex >= range.startIndex, "branch range endIndex must be >= startIndex")
-const WorkflowJoinPolicySchema = z.enum(["tolerance", "all", "quorum", "any_success", "required_branches", "reduce"])
+const WorkflowJoinPolicySchema = z.enum(["tolerance", "all", "quorum", "any_success", "required_branches", "reduce", "select"])
 const WorkflowFanoutMetadataSchema = z.object({
     branchIds: z.array(z.string().min(1)),
     branchRanges: z.array(WorkflowBranchRangeSchema),
@@ -129,6 +129,8 @@ const WorkflowJoinMetadataSchema = z.object({
     reducerMember: z.string().min(1).optional(),
     survivorBranchIds: z.array(z.string().min(1)).optional(),
     erroredBranchIds: z.array(z.string().min(1)).optional(),
+    selectedBranchId: z.string().min(1).optional(),
+    selectionRationale: z.string().optional(),
 })
 const WorkflowRunStepSchema = z.object({
     index: z.number(),
@@ -137,6 +139,7 @@ const WorkflowRunStepSchema = z.object({
     id: z.string().optional(),
     member: z.string().optional(),
     verifier: z.string().optional(),
+    dispatchedActor: z.string().optional(),
     targetStep: z.number().optional(),
     targetSteps: z.array(z.number()).optional(),
     verdict: VerdictSchema.optional(),
@@ -355,8 +358,14 @@ function runJoinMetadata(join: WorkflowStep["join"]): WorkflowRunStep["join"] {
         fanoutIndex: join.fanoutIndex,
         branchTailIndices: join.branchTailIndices,
         maxErrored: join.maxErrored,
+        ...(join.joinPolicy === undefined ? {} : { joinPolicy: join.joinPolicy }),
+        ...(join.quorum === undefined ? {} : { quorum: join.quorum }),
+        ...(join.requiredBranchIds === undefined ? {} : { requiredBranchIds: join.requiredBranchIds }),
+        ...(join.reducerMember === undefined ? {} : { reducerMember: join.reducerMember }),
         ...(join.survivorBranchIds === undefined ? {} : { survivorBranchIds: join.survivorBranchIds }),
         ...(join.erroredBranchIds === undefined ? {} : { erroredBranchIds: join.erroredBranchIds }),
+        ...(join.selectedBranchId === undefined ? {} : { selectedBranchId: join.selectedBranchId }),
+        ...(join.selectionRationale === undefined ? {} : { selectionRationale: join.selectionRationale }),
     }
 }
 
@@ -491,6 +500,7 @@ export async function persistRun(team: Team, reason: string): Promise<void> {
                 id: step.id,
                 member: step.member,
                 verifier: step.verifier,
+                dispatchedActor: step.dispatchedActor,
                 targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
                 targetSteps: step.targetStepIndices?.map(index => index + 1),
                 verdict: step.verdict,

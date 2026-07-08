@@ -7,6 +7,7 @@
 
 import type { PluginContext } from "../core/context.js"
 import type { WorkflowStep, WorkflowTask } from "../core/types.js"
+import { getActiveWorkflowStepActors } from "../core/workflow-dag.js"
 import type { Team } from "../state/store.js"
 import { finishRun } from "./summary.js"
 import { advanceWorkflowStep, markWorkflowFanoutBranchErrored, redispatchWorkflowStep } from "./workflow.js"
@@ -56,7 +57,9 @@ export async function checkTermination(ctx: PluginContext, team: Team, now = Dat
     const erroredMembers = team.members.filter(m => !m.isMaster && m.status === "errored")
     if (erroredMembers.length > 0) {
         if (task.type === "workflow") {
+            const activeActors = new Set(getActiveWorkflowStepActors(task))
             for (const member of erroredMembers) {
+                if (!activeActors.has(member.name)) continue
                 const result = markWorkflowFanoutBranchErrored(task, member.name)
                 switch (result.kind) {
                     case "within_tolerance":
@@ -153,9 +156,9 @@ async function handleWorkflowStepTimeout(ctx: PluginContext, team: Team, task: W
 function workflowStepActor(step: WorkflowStep): string | undefined {
     switch (step.kind) {
         case "task":
-            return step.member
+            return step.dispatchedActor ?? step.member
         case "gate":
-            return step.verifier
+            return step.dispatchedActor ?? step.verifier
         case "fanout":
         case "join":
             return undefined

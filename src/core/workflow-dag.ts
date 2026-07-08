@@ -26,11 +26,11 @@ export function workflowStepActor(step: WorkflowStep | undefined): string | null
 
     switch (step.kind) {
         case "task":
-            return step.member ?? null
+            return step.dispatchedActor ?? step.member ?? null
         case "gate":
-            return step.verifier ?? null
+            return step.dispatchedActor ?? step.verifier ?? null
         case "join":
-            return step.dispatchedAt === undefined ? null : (step.join?.joinPolicy === "reduce" ? step.join.reducerMember ?? null : null)
+            return step.dispatchedAt === undefined || (step.join?.joinPolicy !== "reduce" && step.join?.joinPolicy !== "select") ? null : step.dispatchedActor ?? step.join?.reducerMember ?? null
         case "fanout":
             return null
         default:
@@ -236,6 +236,7 @@ function joinPolicySatisfied(
             return survivors > 0 && errors <= join.maxErrored
         case "all":
         case "reduce":
+        case "select":
             return errors === 0
         case "quorum": {
             const threshold = join.quorum ?? 0

@@ -109,14 +109,14 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
         case "task": {
             const bytes = step.outputBytes === undefined ? "" : ` (${step.outputBytes} bytes)`
             const state = step.skipped ? " (skipped)" : step.completed ? " (done)" : ""
-            return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${state}${bytes}${workflowStepDurationTag(step)}${workflowStepControlsTag(step)}`
+            return `- Step ${step.step}: [task]${idTag} ${step.dispatchedActor ?? step.member ?? "?"}${state}${bytes}${workflowStepDurationTag(step)}${workflowStepControlsTag(step)}`
         }
         case "gate": {
             const target = workflowTargetLabel(step)
             const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
             const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
             const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
-            return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${jumpTag}${workflowStepDurationTag(step)}${formatWorkflowIssueDetail(step)}${workflowStepControlsTag(step)}`
+            return `- Step ${step.step}: [gate]${idTag} ${step.dispatchedActor ?? step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${jumpTag}${workflowStepDurationTag(step)}${formatWorkflowIssueDetail(step)}${workflowStepControlsTag(step)}`
         }
         case "fanout": {
             const fanout = step.fanout
@@ -183,6 +183,96 @@ function formatWorkflowStepLines(steps: readonly WorkflowRunStep[]): string[] {
     return lines
 }
 
+function mermaidNodeId(step: WorkflowRunStep): string {
+    return `s${step.step}`
+}
+
+function mermaidSafeId(value: string): string {
+    return value.replace(/[^A-Za-z0-9_]/g, "_") || "branch"
+}
+
+function mermaidLabel(value: string): string {
+    return value.replace(/\\/g, "\\\\").replace(/"/g, "'").replace(/[\r\n]+/g, " ")
+}
+
+function mermaidStepLabel(step: WorkflowRunStep): string {
+    const idTag = step.id ? ` (${step.id})` : ""
+    switch (step.kind) {
+        case "task":
+            return `${step.step}. task${idTag}: ${step.dispatchedActor ?? step.member ?? "?"}`
+        case "gate":
+            return `${step.step}. gate${idTag}: ${step.dispatchedActor ?? step.verifier ?? "?"}`
+        case "fanout":
+            return `${step.step}. fanout${idTag}`
+        case "join": {
+            const selected = step.join?.selectedBranchId === undefined ? "" : ` selected ${step.join.selectedBranchId}`
+            return `${step.step}. join${idTag}${selected}`
+        }
+        default:
+            return assertNeverWorkflowStepKind(step.kind)
+    }
+}
+
+function appendMermaidNode(lines: string[], step: WorkflowRunStep, indent: string): void {
+    lines.push(`${indent}${mermaidNodeId(step)}["${mermaidLabel(mermaidStepLabel(step))}"]`)
+}
+
+function formatWorkflowMermaid(steps: readonly WorkflowRunStep[]): string {
+    const lines = ["flowchart TD"]
+    const grouped = new Set<number>()
+    for (const step of steps) {
+        if (step.kind !== "fanout" || step.fanout === undefined) continue
+        lines.push(`  subgraph fanout_${step.step}["fanout step ${step.step}"]`)
+        for (let branchIndex = 0; branchIndex < step.fanout.branchIds.length; branchIndex += 1) {
+            const branchId = step.fanout.branchIds[branchIndex]
+            const range = step.fanout.branchRanges[branchIndex]
+            if (branchId === undefined || range === undefined) continue
+            lines.push(`    subgraph branch_${step.index}_${branchIndex}_${mermaidSafeId(branchId)}["branch ${mermaidLabel(branchId)}"]`)
+            for (let index = range.startIndex; index <= range.endIndex; index += 1) {
+                const branchStep = steps[index]
+                if (branchStep === undefined) continue
+                appendMermaidNode(lines, branchStep, "      ")
+                grouped.add(branchStep.index)
+            }
+            lines.push("    end")
+        }
+        lines.push("  end")
+    }
+    for (const step of steps) {
+        if (grouped.has(step.index)) continue
+        appendMermaidNode(lines, step, "  ")
+    }
+    for (const step of steps) {
+        if (step.kind === "fanout" && step.fanout !== undefined) {
+            for (const range of step.fanout.branchRanges) {
+                const head = steps[range.startIndex]
+                const tail = steps[range.endIndex]
+                const join = steps[step.fanout.joinIndex]
+                if (head !== undefined) lines.push(`  ${mermaidNodeId(step)} --> ${mermaidNodeId(head)}`)
+                for (let index = range.startIndex; index < range.endIndex; index += 1) {
+                    const current = steps[index]
+                    const next = steps[index + 1]
+                    if (current !== undefined && next !== undefined) lines.push(`  ${mermaidNodeId(current)} --> ${mermaidNodeId(next)}`)
+                }
+                if (tail !== undefined && join !== undefined) lines.push(`  ${mermaidNodeId(tail)} --> ${mermaidNodeId(join)}`)
+            }
+            continue
+        }
+        if (step.kind === "gate") {
+            const targets = step.targetSteps ?? (step.targetStep === undefined ? [] : [step.targetStep])
+            for (const targetStep of targets) {
+                const target = steps[targetStep - 1]
+                if (target !== undefined) lines.push(`  ${mermaidNodeId(target)} -. verifies .-> ${mermaidNodeId(step)}`)
+            }
+        }
+        const next = steps[step.index + 1]
+        if (step.branch === undefined && next !== undefined && next.branch === undefined && step.kind !== "fanout") {
+            lines.push(`  ${mermaidNodeId(step)} --> ${mermaidNodeId(next)}`)
+        }
+    }
+    return lines.join("\n")
+}
+
 function formatRunLine(r: RunRecord): string {
     const mode = r.mode ? `/${r.mode}` : ""
     const when = new Date(r.finishedAt).toISOString()
@@ -220,6 +310,7 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
             team_id: tool.schema.string().min(1),
             run_id: tool.schema.string().optional().describe("run id; omit for the most recent run"),
             member: tool.schema.string().optional().describe("return this member's full output verbatim"),
+            format: tool.schema.enum(["text", "mermaid"]).optional().describe("output format; default text"),
         },
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, {
@@ -257,6 +348,13 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                 } catch {
                     return `Error: output file for "${args.member}" is missing in run ${record.runId}`
                 }
+            }
+
+            if ((args.format ?? "text") === "mermaid") {
+                if (record.workflow === undefined || record.workflow.steps.length === 0) {
+                    return `Error: run ${record.runId} has no persisted workflow steps`
+                }
+                return formatWorkflowMermaid(record.workflow.steps)
             }
 
             // Otherwise: metadata + bounded per-member previews.

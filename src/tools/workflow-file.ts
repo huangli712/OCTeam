@@ -124,7 +124,7 @@ function validateWorkflowBranches(value: unknown, location: StepLocation): { bra
 }
 
 function validateWorkflowStepFields(step: Record<string, unknown>, location: StepLocation): string | null {
-    for (const field of ["id", "member", "verifier"] as const) {
+    for (const field of ["id", "member", "fallback_member", "verifier", "fallback_verifier", "reducer_member"] as const) {
         if (step[field] !== undefined && (!isNonEmptyString(step[field]) || step[field].length > 64)) {
             return `Error: workflow_file "${location.filePath}" ${location.prefix} ${field} must be a non-empty string up to 64 characters`
         }
@@ -182,6 +182,9 @@ function validateWorkflowStepFields(step: Record<string, unknown>, location: Ste
     }
     if (step.max_errored !== undefined && !isIntegerAtLeast(step.max_errored, 0)) {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} max_errored must be a non-negative integer`
+    }
+    if (step.join_policy !== undefined && step.join_policy !== "all" && step.join_policy !== "quorum" && step.join_policy !== "any_success" && step.join_policy !== "required_branches" && step.join_policy !== "reduce" && step.join_policy !== "select") {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix} join_policy must be all, quorum, any_success, required_branches, reduce, or select`
     }
     if (step.where !== undefined && !isValidWhere(step.where)) {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} where must contain numeric thresholds or a valid issue severity`

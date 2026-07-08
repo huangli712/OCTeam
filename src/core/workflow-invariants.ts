@@ -225,6 +225,7 @@ function joinPolicyInvariantOk(
             return survivorBranchIds.length > 0 && errors <= join.maxErrored
         case "all":
         case "reduce":
+        case "select":
             return errors === 0
         case "quorum":
             return survivorBranchIds.length / total >= (join.quorum ?? 0)
@@ -251,15 +252,15 @@ function isJoinSatisfied(steps: readonly WorkflowStep[], joinIndex: number, join
     const fanout = fanoutAt(steps, join.fanoutIndex)
     if (fanout === null || fanout.joinIndex !== joinIndex) return false
     const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
-    let survivorCount = 0
+    const survivorBranchIds: string[] = []
     for (let branchIndex = 0; branchIndex < fanout.branchIds.length; branchIndex += 1) {
         const branchId = fanout.branchIds[branchIndex]
         if (branchId === undefined || erroredBranchIds.has(branchId)) continue
         const tailIndex = join.branchTailIndices[branchIndex]
         if (tailIndex === undefined || !isTerminalStep(steps[tailIndex])) return false
-        survivorCount += 1
+        survivorBranchIds.push(branchId)
     }
-    return survivorCount > 0 && erroredBranchIds.size <= join.maxErrored
+    return joinPolicyInvariantOk(join, survivorBranchIds, erroredBranchIds.size)
 }
 
 function fanoutAt(steps: readonly WorkflowStep[], index: number): WorkflowFanoutMetadata | null {

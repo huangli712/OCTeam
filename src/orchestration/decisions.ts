@@ -150,6 +150,19 @@ export function parseVerdict(
     }
 }
 
+export function parseSelection(
+    rawText: string,
+): { winner: string; rationale: string; parseFailed?: boolean } {
+    const p = extractTaggedJSON(rawText, "selection")
+    if (!p || typeof p.winner !== "string" || p.winner.length === 0) {
+        return { winner: "", rationale: "", parseFailed: true }
+    }
+    return {
+        winner: p.winner,
+        rationale: typeof p.rationale === "string" ? p.rationale : "",
+    }
+}
+
 function parseWorkflowIssues(raw: unknown): WorkflowIssue[] | undefined {
     if (!Array.isArray(raw)) return undefined
     const issues: WorkflowIssue[] = []
