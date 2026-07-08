@@ -1781,6 +1781,8 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
 
         expect(task.steps![1].attempts).toBe(1);
         expect(task.steps![0].completed).toBe(false);
+        expect(task.responses.alice).toBeUndefined();
+        expect(task.responses.bob).toBeUndefined();
         expect(task.currentStageIndex).toBe(0);
         const retryCall = calls.find((c) => c.sessionId === "ses_alice");
         expect(retryCall).toBeDefined();
@@ -1807,6 +1809,55 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         const leaderCall = calls.find((c) => c.sessionId === "ses_lead");
         expect(leaderCall).toBeDefined();
         expect(leaderCall!.text).toContain("workflow_failed");
+    });
+
+    test("a gate FAIL with onFail='skip' skips the gate and dispatches the next task", async () => {
+        const calls: DispatchCall[] = [];
+        const task = makeWorkflowTask({
+            steps: [
+                {
+                    kind: "task",
+                    member: "alice",
+                    task: "do work",
+                    completed: true,
+                    output: "usable producer output",
+                },
+                {
+                    kind: "gate",
+                    verifier: "bob",
+                    criteria: "optional check",
+                    onFail: "skip",
+                    completed: false,
+                },
+                {
+                    kind: "task",
+                    member: "carol",
+                    task: "continue",
+                    completed: false,
+                },
+            ],
+            currentStageIndex: 1,
+        });
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+            ],
+        });
+        const ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls);
+
+        await processIdle(ctx, team, team.members[1], "ses_bob");
+
+        expect(task.steps![1].completed).toBe(true);
+        expect(task.steps![1].skipped).toBe(true);
+        expect(task.currentStageIndex).toBe(2);
+        const carolCall = calls.find((c) => c.sessionId === "ses_carol");
+        expect(carolCall).toBeDefined();
+        expect(carolCall!.text).toContain("continue");
+        expect(carolCall!.text).toContain("usable producer output");
+        expect(team.activeTask).toBeDefined();
     });
 
     test("a gate INVALID with onInvalid='retry_verifier' refreshes the verifier step dispatchedAt on each retry", async () => {
@@ -1848,6 +1899,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         expect(task.steps![1].invalidAttempts).toBe(1);
+        expect(task.responses.bob).toBeUndefined();
         expect(task.steps![1].dispatchedAt).toBeNumber();
         expect(task.steps![1].startedAt).toBe(task.steps![1].dispatchedAt);
     });

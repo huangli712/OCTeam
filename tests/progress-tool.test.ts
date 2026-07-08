@@ -179,6 +179,42 @@ describe("teamProgressTool.execute", () => {
         expect(result).toContain("stage 2")
     })
 
+    test("active workflow renders live mermaid with active step status", async () => {
+        const root = tmpRoot("prog-workflow-mermaid")
+        const masterSid = "ses_prog_master_wf_mermaid"
+        tracked.push(masterSid)
+        const workflowTask: ActiveTask = {
+            ...makeActiveTask(),
+            type: "workflow",
+            mode: undefined,
+            currentStageIndex: 1,
+            steps: [
+                { kind: "task", member: "alice", task: "draft", completed: true, output: "draft" },
+                { kind: "gate", verifier: "bob", criteria: "ok", targetStepIndex: 0, completed: false },
+                { kind: "task", member: "carol", task: "ship", completed: false },
+            ],
+        } as ActiveTask
+        await setup({
+            root,
+            masterSid,
+            members: [makeMember("alice", "ses_prog_alice_wfm"), makeMember("bob", "ses_prog_bob_wfm")],
+            activeTask: workflowTask,
+        })
+
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM, format: "mermaid" },
+            { sessionID: masterSid } as never,
+        )
+
+        expect(result).toContain("flowchart TD")
+        expect(result).toContain("s1 -. verifies .-> s2")
+        expect(result).toContain("class s1 done;")
+        expect(result).toContain("class s2 active;")
+        expect(result).toContain("class s3 pending;")
+        expect(result).not.toContain("Timeline:")
+        expect(result).not.toContain("Members:")
+    })
+
     test("active workflow fanout displays branch frontier instead of the fanout marker", async () => {
         const root = tmpRoot("prog-workflow-frontier")
         const masterSid = "ses_prog_master_frontier"
@@ -257,6 +293,55 @@ describe("teamProgressTool.execute", () => {
         expect(result).not.toContain("Active: workflow  step 2/7")
     })
 
+    test("active workflow fanout renders live mermaid branch frontier statuses", async () => {
+        const root = tmpRoot("prog-workflow-frontier-mermaid")
+        const masterSid = "ses_prog_master_frontier_mermaid"
+        tracked.push(masterSid)
+        const workflowTask: ActiveTask = {
+            ...makeActiveTask(),
+            type: "workflow",
+            mode: undefined,
+            currentStageIndex: 1,
+            activeStepIndices: [2, 4],
+            steps: [
+                { kind: "task", member: "lead", task: "setup", completed: true, output: "setup" },
+                {
+                    kind: "fanout",
+                    completed: true,
+                    fanout: {
+                        branchIds: ["api", "docs"],
+                        branchRanges: [{ startIndex: 2, endIndex: 3 }, { startIndex: 4, endIndex: 5 }],
+                        joinIndex: 6,
+                        maxErrored: 1,
+                    },
+                },
+                { kind: "task", member: "alice", task: "api impl", completed: false, branch: { fanoutIndex: 1, branchId: "api", branchIndex: 0, joinIndex: 6 } },
+                { kind: "gate", verifier: "bob", criteria: "api ok", completed: false, branch: { fanoutIndex: 1, branchId: "api", branchIndex: 0, joinIndex: 6 } },
+                { kind: "task", member: "carol", task: "docs impl", completed: false, branch: { fanoutIndex: 1, branchId: "docs", branchIndex: 1, joinIndex: 6 } },
+                { kind: "gate", verifier: "dave", criteria: "docs ok", completed: false, branch: { fanoutIndex: 1, branchId: "docs", branchIndex: 1, joinIndex: 6 } },
+                { kind: "join", completed: false, join: { fanoutIndex: 1, branchTailIndices: [3, 5], maxErrored: 1 } },
+            ],
+        } as ActiveTask
+        await setup({
+            root,
+            masterSid,
+            members: [makeMember("alice", "ses_prog_alice_wffm"), makeMember("carol", "ses_prog_carol_wffm")],
+            activeTask: workflowTask,
+        })
+
+        const result = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM, format: "mermaid" },
+            { sessionID: masterSid } as never,
+        )
+
+        expect(result).toContain("subgraph branch_1_0_api")
+        expect(result).toContain("subgraph branch_1_1_docs")
+        expect(result).toContain("class s1,s2 done;")
+        expect(result).toContain("class s3,s5 active;")
+        expect(result).toContain("class s4,s6,s7 pending;")
+        expect(result).not.toContain("Timeline:")
+    })
+
     test("active workflow fanout displays the active join policy", async () => {
         const root = tmpRoot("prog-workflow-frontier-policy")
         const masterSid = "ses_prog_master_frontier_policy"
@@ -304,6 +389,35 @@ describe("teamProgressTool.execute", () => {
         )
 
         expect(result).toContain("Active: workflow  frontier api: step 3/7, docs: step 5/7 join_policy=quorum")
+    })
+
+    test("format=mermaid requires an active workflow", async () => {
+        const root = tmpRoot("prog-mermaid-no-workflow")
+        const masterSid = "ses_prog_master_mermaid_no_workflow"
+        tracked.push(masterSid)
+        await setup({ root, masterSid, members: [] })
+
+        const idleResult = await teamProgressTool(makeCtx(root)).execute(
+            { team_id: TEAM, format: "mermaid" },
+            { sessionID: masterSid } as never,
+        )
+        expect(idleResult).toContain("requires an in-progress team_workflow")
+
+        const activeRoot = tmpRoot("prog-mermaid-parallel")
+        const activeMasterSid = "ses_prog_master_mermaid_parallel"
+        tracked.push(activeMasterSid)
+        await setup({
+            root: activeRoot,
+            masterSid: activeMasterSid,
+            members: [makeMember("alice", "ses_prog_alice_parallel")],
+            activeTask: makeActiveTask(),
+        })
+
+        const parallelResult = await teamProgressTool(makeCtx(activeRoot)).execute(
+            { team_id: TEAM, format: "mermaid" },
+            { sessionID: activeMasterSid } as never,
+        )
+        expect(parallelResult).toContain("requires an in-progress team_workflow")
     })
 
     test("since filter excludes events at or before the timestamp", async () => {

@@ -150,6 +150,39 @@ describe("workflow join policy runtime semantics", () => {
         expect(team.activeTask).toBeUndefined()
     })
 
+    test("useSurvivors lets join_policy='all' continue with surviving branch outputs", async () => {
+        // Given: strict all policy with an explicit survivor override.
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask(
+            [
+                { kind: "fanout", completed: true, fanout: { branchIds: ["api", "qa"], branchRanges: [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }], joinIndex: 3, maxErrored: 0, joinPolicy: "all", useSurvivors: true } },
+                { kind: "task", member: "alice", task: "api", completed: false, branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 3 } },
+                { kind: "task", member: "bob", task: "qa", completed: false, branch: { fanoutIndex: 0, branchId: "qa", branchIndex: 1, joinIndex: 3 } },
+                { kind: "join", completed: false, join: { fanoutIndex: 0, branchTailIndices: [1, 2], maxErrored: 0, joinPolicy: "all", useSurvivors: true } },
+                { kind: "task", member: "carol", task: "ship", completed: false },
+            ],
+            [1, 2],
+        )
+        const team = makeTeam(task, [
+            { name: "alice", sessionId: "ses_alice" },
+            { name: "bob", sessionId: "ses_bob" },
+            { name: "carol", sessionId: "ses_carol" },
+        ])
+        const ctx = makeCtx({ ses_alice: "api output" }, calls)
+
+        // When: qa errors but api succeeds.
+        member(team, "bob").status = "errored"
+        await checkTermination(ctx, team)
+        await processIdle(ctx, team, member(team, "alice"), "ses_alice")
+
+        // Then: all would normally fail on the error, but useSurvivors joins api only.
+        expect(task.steps?.[3]?.completed).toBe(true)
+        expect(task.steps?.[3]?.join?.erroredBranchIds).toEqual(["qa"])
+        expect(task.steps?.[3]?.join?.joinedOutput).toContain("api output")
+        expect(task.steps?.[3]?.join?.joinedOutput).not.toContain("qa")
+        expect(calls.some(c => c.sessionId === "ses_carol")).toBe(true)
+    })
+
     test("join_policy='quorum' joins once the quorum threshold of branches survives", async () => {
         // Given: 3 branches, quorum 0.5 => need 2 survivors.
         const calls: DispatchCall[] = []

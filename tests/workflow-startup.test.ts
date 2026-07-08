@@ -811,6 +811,38 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("reducer_member=dave")
     })
 
+    test("dry_run renders on_fail skip and survivor join controls", async () => {
+        const root = tmpRoot("wf-dry-skip-survivors")
+        const sid = "ses_wf_dry_skip_survivors"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", member: "alice", task: "build" },
+                    { kind: "gate", verifier: "bob", criteria: "optional", on_fail: "skip" },
+                    {
+                        kind: "fanout",
+                        join_policy: "all",
+                        use_survivors: true,
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "alice", task: "api" }] },
+                            { id: "qa", steps: [{ kind: "task", member: "carol", task: "qa" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("on_fail=skip")
+        expect(result).toContain("join_policy=all")
+        expect(result).toContain("use_survivors=true")
+    })
+
     test("conditional jumps: goto unknown id -> rejected", async () => {
         const root = tmpRoot("wf-goto-unknown")
         const sid = "ses_wf_gu"
