@@ -614,6 +614,26 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("must reference a previous task step by id")
     })
 
+    test("task inputs must reference previous task or join steps", async () => {
+        const root = tmpRoot("wf-input-forward")
+        const sid = "ses_wf_input_forward"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    { kind: "task", member: "alice", task: "draft" },
+                    { kind: "task", member: "bob", task: "consume future", inputs: [3] },
+                    { kind: "task", member: "alice", task: "future" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("inputs[0]")
+        expect(result).toContain("must reference a previous task or join step")
+    })
+
     test("on_invalid retry_verifier requires max_invalid_retries", async () => {
         const root = tmpRoot("wf-invalid-no-max")
         const sid = "ses_wf_inm"
@@ -651,6 +671,40 @@ describe("team_workflow startup validation", () => {
         expect(result).toContain("1. [task] (impl) alice")
         expect(result).toContain("2. [gate] (verify) bob verifies step 1 (impl)")
         expect(result).toContain("on_invalid=escalate")
+    })
+
+    test("dry_run renders data-flow controls and reduce reducer metadata", async () => {
+        const root = tmpRoot("wf-dry-dataflow-reduce")
+        const sid = "ses_wf_dry_dataflow_reduce"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol"), makeMember("dave")], Date.now())
+        const result = await teamWorkflowTool(makeCtx(root)).execute(
+            {
+                team_id: "alpha",
+                dry_run: true,
+                steps: [
+                    { kind: "task", id: "draft", member: "alice", task: "draft" },
+                    { kind: "task", id: "hidden", member: "bob", task: "hidden", expose_output: false },
+                    { kind: "task", member: "carol", task: "consume selected", inputs: ["hidden"] },
+                    {
+                        kind: "fanout",
+                        join_policy: "reduce",
+                        reducer_member: "dave",
+                        branches: [
+                            { id: "api", steps: [{ kind: "task", member: "alice", task: "api" }] },
+                            { id: "docs", steps: [{ kind: "task", member: "bob", task: "docs" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("expose_output=false")
+        expect(result).toContain("inputs=step 2 (hidden)")
+        expect(result).toContain("join_policy=reduce")
+        expect(result).toContain("reducer_member=dave")
     })
 
     test("conditional jumps: goto unknown id -> rejected", async () => {

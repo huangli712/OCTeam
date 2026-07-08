@@ -290,4 +290,42 @@ describe("team_result_get: workflow branch tree rendering", () => {
         unindexSession(sid)
         unindexSession(memberSid)
     })
+
+    test("renders workflow step duration when persisted", async () => {
+        const root = tmpRoot("res-workflow-duration")
+        const sid = "ses_res_workflow_duration"
+        const memberSid = "ses_res_workflow_duration_alice"
+        const team = await setupTeam(root, sid, memberSid)
+        const tdir = teamDir(root, "alpha", sid)
+        await writeRunRecord(tdir, {
+            version: 1,
+            runId: "run-workflow-duration",
+            teamRunId: "run-alpha-sid",
+            teamName: "alpha",
+            type: "workflow",
+            status: "completed",
+            reason: "workflow_complete",
+            startedAt: Date.now(),
+            finishedAt: Date.now(),
+            tokensUsed: 0,
+            tokensByMember: {},
+            messagesSent: 0,
+            memberOutputs: {},
+            workflow: {
+                steps: [
+                    { index: 0, step: 1, kind: "task", member: "alice", completed: true, output: "done", outputBytes: 4, startedAt: 1000, completedAt: 1025, durationMs: 25 },
+                ],
+            },
+        } as RunRecord)
+
+        const result = await teamResultGetTool(makeCtx(root)).execute(
+            { team_id: "alpha", run_id: "run-workflow-duration" },
+            makeToolContext(memberSid),
+        )
+
+        expect(result).toContain("duration=25ms")
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+        unindexSession(memberSid)
+    })
 })

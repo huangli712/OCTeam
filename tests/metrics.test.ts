@@ -149,4 +149,29 @@ describe("team_metrics", () => {
         expect(result).toContain("3000")
         expect(result).toContain("consensus: count=1")
     })
+
+    test("workflow step durations are aggregated across run records", async () => {
+        const root = tmpRoot("metrics-workflow-duration")
+        const sid = "ses_metrics_workflow_duration"
+        tracked.push(sid)
+        const dir = await setupTeam(root, sid)
+        await writeRun(dir, {
+            runId: "r-workflow-duration",
+            type: "workflow",
+            finishedAt: 1,
+            workflow: {
+                steps: [
+                    { index: 0, step: 1, kind: "task", member: "alice", completed: true, durationMs: 10 },
+                    { index: 1, step: 2, kind: "task", member: "bob", completed: true, durationMs: 30 },
+                ],
+            },
+        })
+
+        const result = await teamMetricsTool(makeCtx(root)).execute(
+            { team_id: "alpha" },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("Workflow step durations: count=2  total=40ms  avg=20ms")
+    })
 })

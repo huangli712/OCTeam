@@ -156,7 +156,7 @@ describe("teamProgressTool.execute", () => {
             currentStageIndex: 1,
             steps: [
                 { kind: "task", member: "alice", task: "draft", completed: true, output: "draft" },
-                { kind: "gate", verifier: "bob", criteria: "ok", completed: false },
+                { kind: "gate", verifier: "bob", criteria: "ok", completed: false, startedAt: Date.now() - 1000 },
             ],
         } as ActiveTask
         const dir = await setup({
@@ -175,6 +175,7 @@ describe("teamProgressTool.execute", () => {
         )
 
         expect(result).toContain("Active: workflow  step 2/2")
+        expect(result).toContain("elapsed=")
         expect(result).toContain("stage 2")
     })
 
