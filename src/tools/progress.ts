@@ -20,11 +20,16 @@ import { getActiveWorkflowStepIndices } from "../core/workflow-dag.js"
 import type { RunEvent, WorkflowStep, WorkflowTask } from "../core/types.js"
 import type { Team } from "../state/store.js"
 
+function formatWorkflowStepElapsed(step: WorkflowStep | undefined): string {
+    if (step?.startedAt === undefined) return ""
+    return ` elapsed=${Math.max(0, Date.now() - step.startedAt)}ms`
+}
+
 function formatWorkflowFrontierStep(steps: readonly WorkflowStep[], index: number): string {
     const step = steps[index]
     const branch = step?.branch
     const branchTag = branch === undefined ? "" : `${branch.branchId}: `
-    return `${branchTag}step ${index + 1}/${steps.length}`
+    return `${branchTag}step ${index + 1}/${steps.length}${formatWorkflowStepElapsed(step)}`
 }
 
 function formatWorkflowStage(task: WorkflowTask): string {
@@ -32,7 +37,7 @@ function formatWorkflowStage(task: WorkflowTask): string {
     if (steps.length === 0) return ""
     const activeIndices = getActiveWorkflowStepIndices(task)
     const hasBranchFrontier = activeIndices.length > 1 || activeIndices.some(index => steps[index]?.branch !== undefined)
-    if (!hasBranchFrontier) return `  step ${task.currentStageIndex + 1}/${steps.length}`
+    if (!hasBranchFrontier) return `  step ${task.currentStageIndex + 1}/${steps.length}${formatWorkflowStepElapsed(steps[task.currentStageIndex])}`
     return `  frontier ${activeIndices.map(index => formatWorkflowFrontierStep(steps, index)).join(", ")}`
 }
 

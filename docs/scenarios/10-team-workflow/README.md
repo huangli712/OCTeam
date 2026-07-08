@@ -1,7 +1,6 @@
 # team_workflow 编排场景设计
 
-> **模式**：`team_workflow` — 声明式、确定性线性步骤引擎（GAP-2）。每个 step 是 `task`（一个成员产出）或 `gate`（验证者对前一个 task 的产出给出 PASS/FAIL 判定）。引擎——而非 master LLM——驱动每一步推进，中间结果不进 master 上下文。`gate` FAIL 且 `on_fail="retry"` 时把前一个 task 连同 diff 重派（最多 `max_retries` 次），否则失败整条 run。MVP：线性推进 + 门控重试；无 fanout / route / 循环节点。
-> **模式**：`team_workflow` — 声明式、确定性线性步骤引擎。每个 step 是 `task`（一个成员产出）或 `gate`（验证者对指定前导 task 的产出给出 PASS / FAIL / INVALID 三值判定）。引擎——而非 master LLM——驱动每一步推进，中间结果不进 master 上下文。`gate` FAIL 且 `on_fail="retry"` 时把目标 task 连同 diff 重派（最多 `max_retries` 次）；`gate` 输出 INVALID 或无法解析时，run 以 `workflow_invalid:*` 终止，不惩罚 producer（与 tollgate 一致）。MVP：线性推进 + 门控重试；无 fanout / route / 循环节点。
+> **模式**：`team_workflow` — 声明式、确定性步骤引擎。每个 step 可以是 `task`（一个成员产出）、`gate`（验证者对指定前导 task 给出 PASS / FAIL / INVALID 三值判定）、`fanout` 或 `join`。引擎——而非 master LLM——驱动推进、重试、分支汇合、reduce 聚合和恢复；中间结果默认只进入下游成员上下文，不进 master 上下文。
 > **源码**：[`src/tools/workflow.ts`](../../../src/tools/workflow.ts) / [`src/orchestration/workflow.ts`](../../../src/orchestration/workflow.ts)
 > **控时设计**：4 步链（task → gate → task → gate）、2 成员，每步 3-5 min，串行 ≈ 14-18 min（远低于 30 min 上限）。
 
@@ -15,7 +14,7 @@
 
 `team_workflow` 的价值在于：把"先做两个普通 task，再对第三步 gate，再继续普通 task"这类异构链一次性声明、可重复执行，且所有推进逻辑落在可持久化的 engine 里，而非占用 master 的上下文预算。
 
-**phase 1-3 强化项**（已落地）：内部 `currentStageIndex` 保持 0-based，所有用户可见文本（summary / progress / approval prompt / result ledger）统一 1-based；`RunRecord` 新增 `workflow.steps` 快照，`team_result_get` 可重建完整 step ledger；同一成员跑多个 task step 时，下游/gate 注入的是该 step 自身产出快照，而非成员最新响应；`gate` 支持显式 `target_step`（1-based，省略则验证最近前导 task）；`gate` FAIL retry 记录结构化 `retry` 事件（含 display step / attempts / verifier / diff）；task/gate 步骤演员缺失 live session 时 run 以 `workflow_failed:no_session:*` 显式终止，不再静默卡到 timeout；`team_workflow` 启动校验拒绝跨类字段、`on_fail="retry"` 必须显式 `max_retries`；`dry_run: true` 只渲染 1-based step 计划，不启动编排。
+**已落地强化项**：内部 `currentStageIndex` 保持 0-based，所有用户可见文本（summary / progress / approval prompt / result ledger）统一 1-based；`RunRecord` 新增 `workflow.steps` 快照，`team_result_get` 可重建完整 step ledger；同一成员跑多个 task step 时，下游/gate 注入的是该 step 自身产出快照，而非成员最新响应；`gate` 支持显式 `target_step` / `targets`；`gate` FAIL retry 记录结构化 `retry` 事件；task/gate 步骤演员缺失 live session 时 run 以 `workflow_failed:no_session:*` 显式终止；`fanout` / `join` 支持 tolerance、all、quorum、any_success、required_branches 和 reduce 汇合策略；workflow step 持久化 `startedAt` / `completedAt` / `durationMs`；task step 支持 `inputs` 显式选择上游和 `expose_output=false` 抑制隐式上游；`dry_run: true` 渲染 1-based step 计划，不启动编排。
 
 ### gate 三值语义（PASS / FAIL / INVALID）
 
@@ -80,6 +79,12 @@ id 在整条 workflow 内必须唯一（否则 `dry_run`/启动校验报 `duplic
 - verifier / member 必须是团队成员
 
 这些检查集中在新 `validateWorkflowGraph`，`team_workflow` 的 `dry_run` 和真实启动共用同一份校验，保证预演和执行一致。
+
+### fanout / join 与数据流控制
+
+`fanout` 必须紧跟一个 `join` marker。默认 join 使用 `max_errored` 容忍度；也可以声明 `join_policy` 为 `all`、`quorum`、`any_success`、`required_branches` 或 `reduce`。`join_policy="reduce"` 要求设置 `reducer_member`：所有分支成功后，engine 会先把分支产出派发给 reducer，由 reducer 输出单一 `joinedOutput`，再继续下游步骤。
+
+task step 默认接收之前已完成且可见的上游 task/join 产出。若只想传入指定上游，使用 `inputs`（1-based step 编号或 step id）；若某个 task 的产出不应进入后续隐式上游，设置 `expose_output: false`。显式 `inputs` 仍可引用该产出，适合“默认隐藏，但允许指定消费者读取”的场景。
 
 ## 场景一览
 

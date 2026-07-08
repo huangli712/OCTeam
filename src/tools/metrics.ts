@@ -64,6 +64,8 @@ export function teamMetricsTool(ctx: PluginContext): ToolDefinition {
             let noTokenDataRuns = 0
             let completed = 0
             let failed = 0
+            let workflowStepDurationCount = 0
+            let workflowStepDurationTotal = 0
             const perMember: Record<string, number> = {}
             const perType: Record<string, { count: number; totalTokens: number }> = {}
 
@@ -81,6 +83,12 @@ export function teamMetricsTool(ctx: PluginContext): ToolDefinition {
                 const bucket = (perType[r.type] ??= { count: 0, totalTokens: 0 })
                 bucket.count++
                 bucket.totalTokens += r.tokensUsed
+
+                for (const step of r.workflow?.steps ?? []) {
+                    if (step.durationMs === undefined) continue
+                    workflowStepDurationCount++
+                    workflowStepDurationTotal += step.durationMs
+                }
             }
 
             const successRate = Math.round((completed / shown) * 100)
@@ -97,6 +105,13 @@ export function teamMetricsTool(ctx: PluginContext): ToolDefinition {
                 .sort((a, b) => b[1].totalTokens - a[1].totalTokens)
                 .map(([type, s]) => `- ${type}: count=${s.count}  tokens=${s.totalTokens}`)
             if (typeLines.length > 0) lines.push("", "Per-type:", ...typeLines)
+
+            if (workflowStepDurationCount > 0) {
+                lines.push(
+                    "",
+                    `Workflow step durations: count=${workflowStepDurationCount}  total=${workflowStepDurationTotal}ms  avg=${Math.round(workflowStepDurationTotal / workflowStepDurationCount)}ms`,
+                )
+            }
 
             const memberLines = Object.entries(perMember)
                 .sort((a, b) => b[1] - a[1])

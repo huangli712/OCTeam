@@ -22,44 +22,58 @@
  * buildWorkflowUpstream includes only completed task-step outputs.
  */
 
-import type { PluginContext } from "../core/context.js"
-import crypto from "node:crypto"
-import { type Team, saveTeamState } from "../state/store.js"
-import type { MemberState, Verdict, WorkflowBranchMetadata, WorkflowCondition, WorkflowStep, WorkflowTask } from "../core/types.js"
-import { formatWorkflowCondition, matchesWorkflowCondition } from "../core/workflow-conditions.js"
+import type { PluginContext } from "../core/context.js";
+import crypto from "node:crypto";
+import { type Team, saveTeamState } from "../state/store.js";
+import type {
+  MemberState,
+  Verdict,
+  WorkflowBranchMetadata,
+  WorkflowCondition,
+  WorkflowStep,
+  WorkflowTask,
+} from "../core/types.js";
 import {
-    workflowCompleteReason,
-    workflowFanoutAllErroredReason,
-    workflowFanoutOverToleranceReason,
-    workflowGateFailReason,
-    workflowInvalidReason,
-    workflowJumpLimitReason,
-    workflowNoSessionReason,
-} from "../core/workflow-reasons.js"
-import { dispatchToMember } from "./dispatch.js"
-import { finishRun } from "./summary.js"
-import { recordEvent } from "./events.js"
-import { truncateOutput } from "../core/utils.js"
-import { findActiveWorkflowStepIndexForMember, getActiveWorkflowStepIndices, readyWorkflowStepIndices } from "../core/workflow-dag.js"
-import { parseVerdict } from "./decisions.js"
-import { maybeTriggerSignoff } from "./signoff.js"
-import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js"
+  formatWorkflowCondition,
+  matchesWorkflowCondition,
+} from "../core/workflow-conditions.js";
+import {
+  workflowCompleteReason,
+  workflowFanoutAllErroredReason,
+  workflowFanoutOverToleranceReason,
+  workflowGateFailReason,
+  workflowInvalidReason,
+  workflowJumpLimitReason,
+  workflowNoSessionReason,
+} from "../core/workflow-reasons.js";
+import { dispatchToMember } from "./dispatch.js";
+import { finishRun } from "./summary.js";
+import { recordEvent } from "./events.js";
+import { truncateOutput } from "../core/utils.js";
+import {
+  findActiveWorkflowStepIndexForMember,
+  getActiveWorkflowStepIndices,
+  readyWorkflowStepIndices,
+} from "../core/workflow-dag.js";
+import { parseVerdict } from "./decisions.js";
+import { maybeTriggerSignoff } from "./signoff.js";
+import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js";
 
 // Total byte budget for injected upstream context (mirrors dispatch.ts). Caps
 // prompt growth so a long workflow does not bloat the actor's prompt linearly.
-const UPSTREAM_TOTAL_CAP = 65_536
+const UPSTREAM_TOTAL_CAP = 65_536;
 
 type WorkflowJumpTransition = {
-    reason: string
-    verdict?: Verdict
-    rationale?: string
-    diff?: string
-}
+  reason: string;
+  verdict?: Verdict;
+  rationale?: string;
+  diff?: string;
+};
 
 export type WorkflowFanoutErrorResult =
-    | { readonly kind: "not_fanout" }
-    | { readonly kind: "within_tolerance" }
-    | { readonly kind: "failed"; readonly reason: string }
+  | { readonly kind: "not_fanout" }
+  | { readonly kind: "within_tolerance" }
+  | { readonly kind: "failed"; readonly reason: string };
 
 /**
  * Build the upstream-context prefix for a workflow task step: ALL completed
@@ -69,80 +83,118 @@ export type WorkflowFanoutErrorResult =
  * there is no completed task-step upstream.
  */
 function buildWorkflowUpstream(
-    steps: WorkflowStep[],
-    uptoIndex: number,
+  steps: WorkflowStep[],
+  uptoIndex: number,
 ): string {
-    const blocks: string[] = []
-    let used = 0
-    for (let i = 0; i < uptoIndex; i++) {
-        const s = steps[i]
-        if (!s?.completed) continue
-        const block = workflowUpstreamBlock(steps, uptoIndex, i)
-        if (block === null) continue
-        if (used + block.length > UPSTREAM_TOTAL_CAP) {
-            blocks.push(`[…upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`)
-            break
-        }
-        blocks.push(block)
-        used += block.length
+  const blocks: string[] = [];
+  let used = 0;
+  const explicitInputs = steps[uptoIndex]?.inputs;
+  const inputIndices =
+    explicitInputs ?? Array.from({ length: uptoIndex }, (_, index) => index);
+  for (const i of inputIndices) {
+    const s = steps[i];
+    if (!s?.completed) continue;
+    const block = workflowUpstreamBlock(
+      steps,
+      uptoIndex,
+      i,
+      explicitInputs !== undefined,
+    );
+    if (block === null) continue;
+    if (used + block.length > UPSTREAM_TOTAL_CAP) {
+      blocks.push(
+        `[…upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`,
+      );
+      break;
     }
-    return blocks.join("\n\n")
+    blocks.push(block);
+    used += block.length;
+  }
+  return blocks.join("\n\n");
 }
 
-function workflowUpstreamBlock(steps: WorkflowStep[], uptoIndex: number, candidateIndex: number): string | null {
-    const candidate = steps[candidateIndex]
-    if (candidate === undefined || !candidate.completed) return null
+function workflowUpstreamBlock(
+  steps: WorkflowStep[],
+  uptoIndex: number,
+  candidateIndex: number,
+  explicit: boolean,
+): string | null {
+  const candidate = steps[candidateIndex];
+  if (candidate === undefined || !candidate.completed) return null;
 
-    switch (candidate.kind) {
-        case "task": {
-            if (!candidate.member || !candidate.output) return null
-            if (!shouldIncludeTaskUpstream(steps, uptoIndex, candidateIndex)) return null
-            return `[Output from ${candidate.member}]\n${truncateOutput(candidate.output)}`
-        }
-        case "join": {
-            const joinedOutput = candidate.join?.joinedOutput
-            if (!joinedOutput || !shouldIncludeJoinUpstream(steps, uptoIndex)) return null
-            return `[Joined output from workflow step ${candidateIndex + 1}]\n${truncateOutput(joinedOutput)}`
-        }
-        case "gate":
-        case "fanout":
-            return null
-        default:
-            return assertNeverWorkflowStepKind(candidate.kind)
+  switch (candidate.kind) {
+    case "task": {
+      if (!candidate.member || !candidate.output) return null;
+      if (
+        !shouldIncludeTaskUpstream(steps, uptoIndex, candidateIndex, explicit)
+      )
+        return null;
+      return `[Output from ${candidate.member}]\n${truncateOutput(candidate.output)}`;
     }
+    case "join": {
+      const joinedOutput = candidate.join?.joinedOutput;
+      if (!joinedOutput || !shouldIncludeJoinUpstream(steps, uptoIndex))
+        return null;
+      return `[Joined output from workflow step ${candidateIndex + 1}]\n${truncateOutput(joinedOutput)}`;
+    }
+    case "gate":
+    case "fanout":
+      return null;
+    default:
+      return assertNeverWorkflowStepKind(candidate.kind);
+  }
 }
 
-function shouldIncludeTaskUpstream(steps: WorkflowStep[], uptoIndex: number, candidateIndex: number): boolean {
-    const current = steps[uptoIndex]
-    const candidate = steps[candidateIndex]
-    if (current === undefined || candidate === undefined) return false
+function shouldIncludeTaskUpstream(
+  steps: WorkflowStep[],
+  uptoIndex: number,
+  candidateIndex: number,
+  explicit: boolean,
+): boolean {
+  const current = steps[uptoIndex];
+  const candidate = steps[candidateIndex];
+  if (current === undefined || candidate === undefined) return false;
+  if (!explicit && candidate.exposeOutput === false) return false;
 
-    const currentBranch = current.branch
-    if (currentBranch === undefined) return candidate.branch === undefined
-    return candidateIndex < currentBranch.fanoutIndex || isSameWorkflowBranch(candidate, currentBranch)
+  const currentBranch = current.branch;
+  if (currentBranch === undefined) return candidate.branch === undefined;
+  return (
+    candidateIndex < currentBranch.fanoutIndex ||
+    isSameWorkflowBranch(candidate, currentBranch)
+  );
 }
 
-function shouldIncludeJoinUpstream(steps: WorkflowStep[], uptoIndex: number): boolean {
-    return steps[uptoIndex]?.branch === undefined
+function shouldIncludeJoinUpstream(
+  steps: WorkflowStep[],
+  uptoIndex: number,
+): boolean {
+  return steps[uptoIndex]?.branch === undefined;
 }
 
-function isSameWorkflowBranch(step: WorkflowStep, branch: WorkflowBranchMetadata): boolean {
-    const stepBranch = step.branch
-    return stepBranch !== undefined && stepBranch.fanoutIndex === branch.fanoutIndex && stepBranch.branchId === branch.branchId
+function isSameWorkflowBranch(
+  step: WorkflowStep,
+  branch: WorkflowBranchMetadata,
+): boolean {
+  const stepBranch = step.branch;
+  return (
+    stepBranch !== undefined &&
+    stepBranch.fanoutIndex === branch.fanoutIndex &&
+    stepBranch.branchId === branch.branchId
+  );
 }
 
 function workflowStepActorName(step: WorkflowStep): string | undefined {
-    switch (step.kind) {
-        case "task":
-            return step.member
-        case "gate":
-            return step.verifier
-        case "fanout":
-        case "join":
-            return undefined
-        default:
-            return assertNeverWorkflowStepKind(step.kind)
-    }
+  switch (step.kind) {
+    case "task":
+      return step.member;
+    case "gate":
+      return step.verifier;
+    case "fanout":
+    case "join":
+      return undefined;
+    default:
+      return assertNeverWorkflowStepKind(step.kind);
+  }
 }
 
 /**
@@ -155,18 +207,22 @@ function workflowStepActorName(step: WorkflowStep): string | undefined {
  * against (score / confidence / issues), so the threshold can actually match
  * in practice.
  */
-function buildGateVerifierPrompt(step: WorkflowStep, producerOutput: string, targetLabel: string): string {
-    const structuredHint = buildStructuredVerdictHint(step.where)
-    return (
-        `[Verification gate] Verify ${targetLabel} output below against the criteria.\n`
-        + `Criteria: ${step.criteria ?? ""}\n\n`
-        + `Producer output:\n${producerOutput}\n\n`
-        + (structuredHint ? `${structuredHint}\n\n` : "")
-        + `Emit EXACTLY one:\n`
-        + `<verdict>${buildVerdictSchemaExample(step.where)}</verdict>\n`
-        + `PASS = the output meets the criteria. FAIL = it does not (give rationale + diff). `
-        + `INVALID = you cannot evaluate the output or criteria; this is not a producer failure.`
-    )
+function buildGateVerifierPrompt(
+  step: WorkflowStep,
+  producerOutput: string,
+  targetLabel: string,
+): string {
+  const structuredHint = buildStructuredVerdictHint(step.where);
+  return (
+    `[Verification gate] Verify ${targetLabel} output below against the criteria.\n` +
+    `Criteria: ${step.criteria ?? ""}\n\n` +
+    `Producer output:\n${producerOutput}\n\n` +
+    (structuredHint ? `${structuredHint}\n\n` : "") +
+    `Emit EXACTLY one:\n` +
+    `<verdict>${buildVerdictSchemaExample(step.where)}</verdict>\n` +
+    `PASS = the output meets the criteria. FAIL = it does not (give rationale + diff). ` +
+    `INVALID = you cannot evaluate the output or criteria; this is not a producer failure.`
+  );
 }
 
 /**
@@ -175,47 +231,53 @@ function buildGateVerifierPrompt(step: WorkflowStep, producerOutput: string, tar
  * result/rationale/diff triple, keeping prompts minimal for gates that do not
  * gate on thresholds.
  */
-function buildStructuredVerdictHint(where: WorkflowCondition | undefined): string {
-    if (where === undefined) return ""
-    const fields: string[] = []
-    switch (where.kind) {
-        case "score_gte":
-        case "score_lt":
-            fields.push("score: a numeric quality score on a 0-10 scale")
-            fields.push("confidence: a 0-1 confidence in your verdict")
-            break
-        case "confidence_gte":
-            fields.push("confidence: a 0-1 confidence in your verdict")
-            break
-        case "has_issue_severity":
-            fields.push("issues: an array of { severity: low|medium|high|critical, message?: string } for every issue you found, ordered by severity")
-            break
-        default:
-            return assertNeverWorkflowCondition(where)
-    }
-    return `This gate gates a downstream step on a threshold condition (${formatWorkflowCondition(where)}). Also emit structured fields so the condition can be evaluated:\n- ${fields.join("\n- ")}`
+function buildStructuredVerdictHint(
+  where: WorkflowCondition | undefined,
+): string {
+  if (where === undefined) return "";
+  const fields: string[] = [];
+  switch (where.kind) {
+    case "score_gte":
+    case "score_lt":
+      fields.push("score: a numeric quality score on a 0-10 scale");
+      fields.push("confidence: a 0-1 confidence in your verdict");
+      break;
+    case "confidence_gte":
+      fields.push("confidence: a 0-1 confidence in your verdict");
+      break;
+    case "has_issue_severity":
+      fields.push(
+        "issues: an array of { severity: low|medium|high|critical, message?: string } for every issue you found, ordered by severity",
+      );
+      break;
+    default:
+      return assertNeverWorkflowCondition(where);
+  }
+  return `This gate gates a downstream step on a threshold condition (${formatWorkflowCondition(where)}). Also emit structured fields so the condition can be evaluated:\n- ${fields.join("\n- ")}`;
 }
 
-function buildVerdictSchemaExample(where: WorkflowCondition | undefined): string {
-    const base = `"result":"PASS|FAIL|INVALID","rationale":"...","diff":"..."`
-    if (where === undefined) return `{${base}}`
-    const extras: string[] = []
-    switch (where.kind) {
-        case "score_gte":
-        case "score_lt":
-            extras.push(`"score":8`)
-            extras.push(`"confidence":0.9`)
-            break
-        case "confidence_gte":
-            extras.push(`"confidence":0.9`)
-            break
-        case "has_issue_severity":
-            extras.push(`"issues":[{"severity":"high","message":"..."}]`)
-            break
-        default:
-            return assertNeverWorkflowCondition(where)
-    }
-    return `{${base},${extras.join(",")}}`
+function buildVerdictSchemaExample(
+  where: WorkflowCondition | undefined,
+): string {
+  const base = `"result":"PASS|FAIL|INVALID","rationale":"...","diff":"..."`;
+  if (where === undefined) return `{${base}}`;
+  const extras: string[] = [];
+  switch (where.kind) {
+    case "score_gte":
+    case "score_lt":
+      extras.push(`"score":8`);
+      extras.push(`"confidence":0.9`);
+      break;
+    case "confidence_gte":
+      extras.push(`"confidence":0.9`);
+      break;
+    case "has_issue_severity":
+      extras.push(`"issues":[{"severity":"high","message":"..."}]`);
+      break;
+    default:
+      return assertNeverWorkflowCondition(where);
+  }
+  return `{${base},${extras.join(",")}}`;
 }
 
 /**
@@ -224,289 +286,482 @@ function buildVerdictSchemaExample(where: WorkflowCondition | undefined): string
  * workflow is rejected at the tool layer; the handler guards defensively).
  */
 function precedingTaskIndex(steps: WorkflowStep[], gateIndex: number): number {
-    for (let i = gateIndex - 1; i >= 0; i--) {
-        if (canGateReferenceTask(steps, gateIndex, i)) return i
-    }
-    return -1
+  for (let i = gateIndex - 1; i >= 0; i--) {
+    if (canGateReferenceTask(steps, gateIndex, i)) return i;
+  }
+  return -1;
 }
 
 function gateTargetIndex(steps: WorkflowStep[], gateIndex: number): number {
-    const targets = gateTargetIndices(steps, gateIndex)
-    return targets[0] ?? -1
+  const targets = gateTargetIndices(steps, gateIndex);
+  return targets[0] ?? -1;
 }
 
 function gateTargetIndices(steps: WorkflowStep[], gateIndex: number): number[] {
-    const gate = steps[gateIndex]
-    if (gate?.kind !== "gate") return []
-    if (gate.targetStepIndices !== undefined && gate.targetStepIndices.length > 0) {
-        return gate.targetStepIndices
-            .filter(targetIndex => canGateReferenceTask(steps, gateIndex, targetIndex))
-            .sort((a, b) => a - b)
-    }
-    if (gate.targetStepIndex !== undefined) {
-        return canGateReferenceTask(steps, gateIndex, gate.targetStepIndex) ? [gate.targetStepIndex] : []
-    }
-    const nearest = precedingTaskIndex(steps, gateIndex)
-    return nearest < 0 ? [] : [nearest]
+  const gate = steps[gateIndex];
+  if (gate?.kind !== "gate") return [];
+  if (
+    gate.targetStepIndices !== undefined &&
+    gate.targetStepIndices.length > 0
+  ) {
+    return gate.targetStepIndices
+      .filter((targetIndex) =>
+        canGateReferenceTask(steps, gateIndex, targetIndex),
+      )
+      .sort((a, b) => a - b);
+  }
+  if (gate.targetStepIndex !== undefined) {
+    return canGateReferenceTask(steps, gateIndex, gate.targetStepIndex)
+      ? [gate.targetStepIndex]
+      : [];
+  }
+  const nearest = precedingTaskIndex(steps, gateIndex);
+  return nearest < 0 ? [] : [nearest];
 }
 
-function canGateReferenceTask(steps: WorkflowStep[], gateIndex: number, targetIndex: number): boolean {
-    const gate = steps[gateIndex]
-    const target = steps[targetIndex]
-    if (gate?.kind !== "gate" || target?.kind !== "task") return false
+function canGateReferenceTask(
+  steps: WorkflowStep[],
+  gateIndex: number,
+  targetIndex: number,
+): boolean {
+  const gate = steps[gateIndex];
+  const target = steps[targetIndex];
+  if (gate?.kind !== "gate" || target?.kind !== "task") return false;
 
-    const gateBranch = gate.branch
-    if (gateBranch === undefined) return target.branch === undefined
-    return isSameWorkflowBranch(target, gateBranch)
+  const gateBranch = gate.branch;
+  if (gateBranch === undefined) return target.branch === undefined;
+  return isSameWorkflowBranch(target, gateBranch);
 }
 
 function stepIndicesLabel(indices: number[]): string {
-    if (indices.length === 0) return "nearest task"
-    const labels = indices.map(index => String(index + 1))
-    const first = labels[0]
-    if (first === undefined) return "nearest task"
-    return labels.length === 1 ? `step ${first}` : `steps ${labels.join(", ")}`
+  if (indices.length === 0) return "nearest task";
+  const labels = indices.map((index) => String(index + 1));
+  const first = labels[0];
+  if (first === undefined) return "nearest task";
+  return labels.length === 1 ? `step ${first}` : `steps ${labels.join(", ")}`;
 }
 
 function workflowTargetLabel(indices: number[]): string {
-    return `workflow ${stepIndicesLabel(indices)}`
+  return `workflow ${stepIndicesLabel(indices)}`;
 }
 
-function buildGateProducerOutput(steps: WorkflowStep[], targetIndices: number[]): string {
-    const blocks: string[] = []
-    for (const targetIndex of targetIndices) {
-        const producerStep = steps[targetIndex]
-        if (!producerStep || producerStep.kind !== "task") continue
-        blocks.push(`[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n${truncateOutput(producerStep.output ?? "")}`)
-    }
-    return blocks.join("\n\n")
+function buildGateProducerOutput(
+  steps: WorkflowStep[],
+  targetIndices: number[],
+): string {
+  const blocks: string[] = [];
+  for (const targetIndex of targetIndices) {
+    const producerStep = steps[targetIndex];
+    if (!producerStep || producerStep.kind !== "task") continue;
+    blocks.push(
+      `[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n${truncateOutput(producerStep.output ?? "")}`,
+    );
+  }
+  return blocks.join("\n\n");
 }
 
 function buildJumpContext(transition: WorkflowJumpTransition): string {
-    const lines = [`[Workflow jump: ${transition.reason}]`]
-    if (transition.verdict !== undefined) lines.push(`Verdict: ${transition.verdict}`)
-    if (transition.rationale !== undefined) lines.push(`Rationale: ${transition.rationale}`)
-    if (transition.diff !== undefined) lines.push(`Diff: ${transition.diff}`)
-    return lines.join("\n")
+  const lines = [`[Workflow jump: ${transition.reason}]`];
+  if (transition.verdict !== undefined)
+    lines.push(`Verdict: ${transition.verdict}`);
+  if (transition.rationale !== undefined)
+    lines.push(`Rationale: ${transition.rationale}`);
+  if (transition.diff !== undefined) lines.push(`Diff: ${transition.diff}`);
+  return lines.join("\n");
 }
 
-function gatedGotoIndex(steps: WorkflowStep[], gateIndex: number, gotoIndex: number | undefined): number {
-    const step = steps[gateIndex]
-    if (step?.kind !== "gate") return -1
-    if (gotoIndex === undefined || gotoIndex < 0) return -1
-    if (!canGateGotoStep(steps, gateIndex, gotoIndex)) return -1
-    if (step.where === undefined) return gotoIndex
-    return matchesWorkflowCondition(step.where, {
-        score: step.score,
-        confidence: step.confidence,
-        issues: step.issues,
-    }) ? gotoIndex : -1
+function gatedGotoIndex(
+  steps: WorkflowStep[],
+  gateIndex: number,
+  gotoIndex: number | undefined,
+): number {
+  const step = steps[gateIndex];
+  if (step?.kind !== "gate") return -1;
+  if (gotoIndex === undefined || gotoIndex < 0) return -1;
+  if (!canGateGotoStep(steps, gateIndex, gotoIndex)) return -1;
+  if (step.where === undefined) return gotoIndex;
+  return matchesWorkflowCondition(step.where, {
+    score: step.score,
+    confidence: step.confidence,
+    issues: step.issues,
+  })
+    ? gotoIndex
+    : -1;
 }
 
-function canGateGotoStep(steps: WorkflowStep[], gateIndex: number, targetIndex: number): boolean {
-    const gate = steps[gateIndex]
-    const target = steps[targetIndex]
-    if (gate?.kind !== "gate" || target === undefined) return false
+function canGateGotoStep(
+  steps: WorkflowStep[],
+  gateIndex: number,
+  targetIndex: number,
+): boolean {
+  const gate = steps[gateIndex];
+  const target = steps[targetIndex];
+  if (gate?.kind !== "gate" || target === undefined) return false;
 
-    const gateBranch = gate.branch
-    if (gateBranch === undefined) return target.branch === undefined
-    return isSameWorkflowBranch(target, gateBranch)
+  const gateBranch = gate.branch;
+  if (gateBranch === undefined) return target.branch === undefined;
+  return isSameWorkflowBranch(target, gateBranch);
 }
 
 function whereReason(step: WorkflowStep, fallback: string): string {
-    return step.where === undefined ? fallback : `when:${step.where.kind}`
+  return step.where === undefined ? fallback : `when:${step.where.kind}`;
 }
 
 /** Local exhaustive guard for WorkflowCondition, mirroring workflow-conditions.ts. */
 function assertNeverWorkflowCondition(value: never): never {
-    throw new Error(`unhandled workflow condition: ${String(value)}`)
+  throw new Error(`unhandled workflow condition: ${String(value)}`);
 }
 
 function assertNeverWorkflowStepKind(value: never): never {
-    throw new Error(`unhandled workflow step kind: ${String(value)}`)
+  throw new Error(`unhandled workflow step kind: ${String(value)}`);
 }
 
-function hasLiveSession(member: MemberState | undefined): member is MemberState & { sessionId: string } {
-    return member?.sessionId !== undefined && member.status !== "errored"
+function hasLiveSession(
+  member: MemberState | undefined,
+): member is MemberState & { sessionId: string } {
+  return member?.sessionId !== undefined && member.status !== "errored";
 }
 
 function describeStep(step: WorkflowStep | undefined, index: number): string {
-    if (!step) return `step ${index + 1}`
-    const idTag = step.id ? ` (${step.id})` : ""
-    switch (step.kind) {
-        case "task":
-            return `step ${index + 1}${idTag} (task) by ${step.member ?? "?"}`
-        case "gate": {
-            const target = step.targetStepIndices !== undefined && step.targetStepIndices.length > 0
-                ? stepIndicesLabel(step.targetStepIndices)
-                : step.targetStepIndex === undefined ? "nearest task" : `step ${step.targetStepIndex + 1}`
-            return `step ${index + 1}${idTag} (gate) by ${step.verifier ?? "?"}, verifying ${target}`
-        }
-        case "fanout":
-            return `step ${index + 1}${idTag} (fanout)`
-        case "join":
-            return `step ${index + 1}${idTag} (join)`
-        default:
-            return assertNeverWorkflowStepKind(step.kind)
+  if (!step) return `step ${index + 1}`;
+  const idTag = step.id ? ` (${step.id})` : "";
+  switch (step.kind) {
+    case "task":
+      return `step ${index + 1}${idTag} (task) by ${step.member ?? "?"}`;
+    case "gate": {
+      const target =
+        step.targetStepIndices !== undefined &&
+        step.targetStepIndices.length > 0
+          ? stepIndicesLabel(step.targetStepIndices)
+          : step.targetStepIndex === undefined
+            ? "nearest task"
+            : `step ${step.targetStepIndex + 1}`;
+      return `step ${index + 1}${idTag} (gate) by ${step.verifier ?? "?"}, verifying ${target}`;
     }
+    case "fanout":
+      return `step ${index + 1}${idTag} (fanout)`;
+    case "join":
+      return `step ${index + 1}${idTag} (join)`;
+    default:
+      return assertNeverWorkflowStepKind(step.kind);
+  }
 }
 
 /** Dispatch a task step's actor with upstream context prefixed. */
 async function dispatchTaskStep(
-    ctx: PluginContext,
-    team: Team,
-    task: WorkflowTask,
-    index: number,
-    contextPrefix?: string,
+  ctx: PluginContext,
+  team: Team,
+  task: WorkflowTask,
+  index: number,
+  contextPrefix?: string,
 ): Promise<boolean> {
-    const step = task.steps?.[index]
-    if (!step || step.kind !== "task" || !step.member || !step.task) return false
-    const member = team.members.find(m => m.name === step.member && !m.isMaster)
-    if (!hasLiveSession(member)) return false
-    // Consume the per-step approval_before grant now that dispatch is actually
-    // happening (re-entry via retry/goto re-requests approval because the reset
-    // loops clear approvalBeforeGranted).
-    step.approvalBeforeGranted = undefined
-    const upstream = buildWorkflowUpstream(task.steps ?? [], index)
-    const text = upstream ? `${upstream}\n\n[Your task]\n${step.task}` : step.task
-    step.correlationId = crypto.randomUUID()
-    await dispatchToMember(ctx, member, contextPrefix ? `${contextPrefix}\n\n${text}` : text, member.worktreePath ?? ctx.directory, team, { stepIndex: index, correlationId: step.correlationId })
-    step.dispatchedAt = Date.now()
-    return true
+  const step = task.steps?.[index];
+  if (!step || step.kind !== "task" || !step.member || !step.task) return false;
+  const member = team.members.find(
+    (m) => m.name === step.member && !m.isMaster,
+  );
+  if (!hasLiveSession(member)) return false;
+  // Consume the per-step approval_before grant now that dispatch is actually
+  // happening (re-entry via retry/goto re-requests approval because the reset
+  // loops clear approvalBeforeGranted).
+  step.approvalBeforeGranted = undefined;
+  const upstream = buildWorkflowUpstream(task.steps ?? [], index);
+  const text = upstream
+    ? `${upstream}\n\n[Your task]\n${step.task}`
+    : step.task;
+  step.correlationId = crypto.randomUUID();
+  await dispatchToMember(
+    ctx,
+    member,
+    contextPrefix ? `${contextPrefix}\n\n${text}` : text,
+    member.worktreePath ?? ctx.directory,
+    team,
+    { stepIndex: index, correlationId: step.correlationId },
+  );
+  markWorkflowStepDispatched(step);
+  return true;
 }
 
 /** Dispatch a gate step's verifier with the preceding task's output + criteria. */
 async function dispatchGateStep(
-    ctx: PluginContext,
-    team: Team,
-    task: WorkflowTask,
-    index: number,
+  ctx: PluginContext,
+  team: Team,
+  task: WorkflowTask,
+  index: number,
 ): Promise<boolean> {
-    const step = task.steps?.[index]
-    if (!step || step.kind !== "gate" || !step.verifier) return false
-    const verifier = team.members.find(m => m.name === step.verifier && !m.isMaster)
-    if (!hasLiveSession(verifier)) return false
-    const targetIndices = gateTargetIndices(task.steps ?? [], index)
-    if (targetIndices.length === 0) return false
-    step.approvalBeforeGranted = undefined
-    const producerOutput = buildGateProducerOutput(task.steps ?? [], targetIndices)
-    step.correlationId = crypto.randomUUID()
-    await dispatchToMember(
+  const step = task.steps?.[index];
+  if (!step || step.kind !== "gate" || !step.verifier) return false;
+  const verifier = team.members.find(
+    (m) => m.name === step.verifier && !m.isMaster,
+  );
+  if (!hasLiveSession(verifier)) return false;
+  const targetIndices = gateTargetIndices(task.steps ?? [], index);
+  if (targetIndices.length === 0) return false;
+  step.approvalBeforeGranted = undefined;
+  const producerOutput = buildGateProducerOutput(
+    task.steps ?? [],
+    targetIndices,
+  );
+  step.correlationId = crypto.randomUUID();
+  await dispatchToMember(
+    ctx,
+    verifier,
+    buildGateVerifierPrompt(
+      step,
+      producerOutput,
+      workflowTargetLabel(targetIndices),
+    ),
+    verifier.worktreePath ?? ctx.directory,
+    team,
+    { stepIndex: index, correlationId: step.correlationId },
+  );
+  markWorkflowStepDispatched(step);
+  return true;
+}
+
+function buildJoinedWorkflowOutput(
+  steps: WorkflowStep[],
+  joinIndex: number,
+): string {
+  const joinStep = steps[joinIndex];
+  const join = joinStep?.join;
+  if (join === undefined) return "";
+
+  const fanout = steps[join.fanoutIndex]?.fanout;
+  const ranges =
+    fanout?.branchRanges ??
+    join.branchTailIndices.map((tailIndex) => ({
+      startIndex: tailIndex,
+      endIndex: tailIndex,
+    }));
+  const erroredBranchIds = new Set(join.erroredBranchIds ?? []);
+  const blocks: string[] = [];
+  let used = 0;
+
+  for (let branchIndex = 0; branchIndex < ranges.length; branchIndex += 1) {
+    const range = ranges[branchIndex];
+    if (range === undefined) continue;
+    const branchId =
+      fanout?.branchIds[branchIndex] ?? `branch-${branchIndex + 1}`;
+    if (erroredBranchIds.has(branchId)) continue;
+    const branchBlocks: string[] = [];
+
+    for (
+      let stepIndex = range.startIndex;
+      stepIndex <= range.endIndex;
+      stepIndex += 1
+    ) {
+      const step = steps[stepIndex];
+      if (step?.kind !== "task" || !step.completed || !step.output) continue;
+      if (step.exposeOutput === false) continue;
+      branchBlocks.push(
+        `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n${truncateOutput(step.output)}`,
+      );
+    }
+
+    if (branchBlocks.length === 0) continue;
+    const block = `[Branch ${branchId}]\n${branchBlocks.join("\n\n")}`;
+    if (used + block.length > UPSTREAM_TOTAL_CAP) {
+      blocks.push(`[…joined output truncated at ${UPSTREAM_TOTAL_CAP} bytes]`);
+      break;
+    }
+    blocks.push(block);
+    used += block.length;
+  }
+
+  return blocks.join("\n\n");
+}
+
+function buildWorkflowReducePrompt(
+  steps: WorkflowStep[],
+  joinIndex: number,
+): string {
+  return `[Workflow reduce task] You are the reducer for workflow join step ${joinIndex + 1}. Combine the branch outputs below into ONE joined result. Output ONLY the final result, with no preamble.\n\n${buildJoinedWorkflowOutput(steps, joinIndex)}`;
+}
+
+function markWorkflowStepDispatched(step: WorkflowStep): void {
+  const now = Date.now();
+  step.startedAt ??= now;
+  step.dispatchedAt = now;
+}
+
+function markWorkflowStepCompleted(step: WorkflowStep): void {
+  const now = Date.now();
+  step.startedAt ??= step.dispatchedAt ?? now;
+  step.completedAt = now;
+  step.durationMs = Math.max(0, now - step.startedAt);
+}
+
+function resetWorkflowStepTiming(step: WorkflowStep): void {
+  step.startedAt = undefined;
+  step.completedAt = undefined;
+  step.durationMs = undefined;
+  step.dispatchedAt = undefined;
+}
+
+async function dispatchWorkflowJoinReducer(
+  ctx: PluginContext,
+  team: Team,
+  task: WorkflowTask,
+  index: number,
+): Promise<boolean> {
+  const step = task.steps?.[index];
+  const reducerMember = step?.join?.reducerMember;
+  if (step?.kind !== "join" || reducerMember === undefined) return false;
+  const reducer = team.members.find(
+    (m) => m.name === reducerMember && !m.isMaster,
+  );
+  if (!hasLiveSession(reducer)) return false;
+  // Clear any stale response the reducer left from an earlier workflow step so a
+  // crash during the reduce wait cannot be mistaken for a fresh reduce turn on resume.
+  delete task.responses[reducerMember];
+  step.correlationId = crypto.randomUUID();
+  await dispatchToMember(
+    ctx,
+    reducer,
+    buildWorkflowReducePrompt(task.steps ?? [], index),
+    reducer.worktreePath ?? ctx.directory,
+    team,
+    { stepIndex: index, correlationId: step.correlationId },
+  );
+  markWorkflowStepDispatched(step);
+  return true;
+}
+
+function pushUniqueBranchId(
+  branchIds: string[],
+  branchId: string | undefined,
+): void {
+  if (branchId !== undefined && !branchIds.includes(branchId))
+    branchIds.push(branchId);
+}
+
+function branchIdsForJoin(
+  steps: WorkflowStep[],
+  join: NonNullable<WorkflowStep["join"]>,
+): readonly string[] {
+  const fanout = steps[join.fanoutIndex]?.fanout;
+  if (fanout !== undefined) return fanout.branchIds;
+
+  const branchIds: string[] = [];
+  for (const tailIndex of join.branchTailIndices) {
+    pushUniqueBranchId(branchIds, steps[tailIndex]?.branch?.branchId);
+  }
+  return branchIds;
+}
+
+function survivorBranchIdsForJoin(
+  steps: WorkflowStep[],
+  join: NonNullable<WorkflowStep["join"]>,
+): readonly string[] {
+  const erroredBranchIds = new Set(join.erroredBranchIds ?? []);
+  return branchIdsForJoin(steps, join).filter(
+    (branchId) => !erroredBranchIds.has(branchId),
+  );
+}
+
+function joinWithBranchStatus(
+  steps: WorkflowStep[],
+  join: NonNullable<WorkflowStep["join"]>,
+): NonNullable<WorkflowStep["join"]> {
+  const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])];
+  return {
+    ...join,
+    survivorBranchIds: survivorBranchIdsForJoin(steps, join),
+    ...(erroredBranchIds.length > 0 ? { erroredBranchIds } : {}),
+  };
+}
+
+type WorkflowJoinAdvanceResult =
+  | "completed"
+  | "dispatched"
+  | "waiting"
+  | "failed"
+  | "noop";
+
+async function completeWorkflowJoinStep(
+  ctx: PluginContext,
+  team: Team,
+  task: WorkflowTask,
+  steps: WorkflowStep[],
+  joinIndex: number,
+): Promise<WorkflowJoinAdvanceResult> {
+  const step = steps[joinIndex];
+  const join = step?.join;
+  if (step?.kind !== "join" || join === undefined || step.completed)
+    return "noop";
+
+  const baseJoin = joinWithBranchStatus(steps, join);
+  if (baseJoin.joinPolicy === "reduce" && baseJoin.joinedOutput === undefined) {
+    step.join = baseJoin;
+    if (step.dispatchedAt !== undefined) return "waiting";
+    if (!(await dispatchWorkflowJoinReducer(ctx, team, task, joinIndex))) {
+      await finishRun(
         ctx,
-        verifier,
-        buildGateVerifierPrompt(step, producerOutput, workflowTargetLabel(targetIndices)),
-        verifier.worktreePath ?? ctx.directory,
         team,
-        { stepIndex: index, correlationId: step.correlationId },
-    )
-    step.dispatchedAt = Date.now()
-    return true
+        workflowNoSessionReason(baseJoin.reducerMember),
+        "failed",
+      );
+      return "failed";
+    }
+    return "dispatched";
+  }
+
+  step.join = {
+    ...baseJoin,
+    joinedOutput:
+      baseJoin.joinedOutput ?? buildJoinedWorkflowOutput(steps, joinIndex),
+  };
+  markWorkflowStepCompleted(step);
+  step.dispatchedAt = undefined;
+  step.correlationId = undefined;
+  step.completed = true;
+  recordEvent(team, {
+    timestamp: Date.now(),
+    kind: "stage_advanced",
+    stage: joinIndex,
+    detail: `workflow join fired: step ${joinIndex + 1}; fanout step ${join.fanoutIndex + 1}`,
+  });
+  return "completed";
 }
 
-function buildJoinedWorkflowOutput(steps: WorkflowStep[], joinIndex: number): string {
-    const joinStep = steps[joinIndex]
-    const join = joinStep?.join
-    if (join === undefined) return ""
+function evaluateWorkflowFanoutError(
+  steps: WorkflowStep[],
+  joinIndex: number,
+): WorkflowFanoutErrorResult {
+  const joinStep = steps[joinIndex];
+  const join = joinStep?.join;
+  if (joinStep?.kind !== "join" || join === undefined)
+    return { kind: "not_fanout" };
 
-    const fanout = steps[join.fanoutIndex]?.fanout
-    const ranges = fanout?.branchRanges ?? join.branchTailIndices.map(tailIndex => ({ startIndex: tailIndex, endIndex: tailIndex }))
-    const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
-    const blocks: string[] = []
-    let used = 0
+  const branchIds = branchIdsForJoin(steps, join);
+  const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])];
+  const erroredSet = new Set(erroredBranchIds);
+  const remainingSurvivors = branchIds.filter(
+    (branchId) => !erroredSet.has(branchId),
+  ).length;
+  const total = branchIds.length;
+  const fanoutDisplayStep = join.fanoutIndex + 1;
 
-    for (let branchIndex = 0; branchIndex < ranges.length; branchIndex += 1) {
-        const range = ranges[branchIndex]
-        if (range === undefined) continue
-        const branchId = fanout?.branchIds[branchIndex] ?? `branch-${branchIndex + 1}`
-        if (erroredBranchIds.has(branchId)) continue
-        const branchBlocks: string[] = []
-
-        for (let stepIndex = range.startIndex; stepIndex <= range.endIndex; stepIndex += 1) {
-            const step = steps[stepIndex]
-            if (step?.kind !== "task" || !step.completed || !step.output) continue
-            branchBlocks.push(`[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n${truncateOutput(step.output)}`)
+  // Fail-fast: can the join policy still be satisfied given current errors?
+  const impossible = fanoutPolicyImpossible(
+    join,
+    erroredBranchIds,
+    remainingSurvivors,
+    total,
+  );
+  if (impossible) {
+    return remainingSurvivors === 0
+      ? {
+          kind: "failed",
+          reason: workflowFanoutAllErroredReason(fanoutDisplayStep),
         }
-
-        if (branchBlocks.length === 0) continue
-        const block = `[Branch ${branchId}]\n${branchBlocks.join("\n\n")}`
-        if (used + block.length > UPSTREAM_TOTAL_CAP) {
-            blocks.push(`[…joined output truncated at ${UPSTREAM_TOTAL_CAP} bytes]`)
-            break
-        }
-        blocks.push(block)
-        used += block.length
-    }
-
-    return blocks.join("\n\n")
-}
-
-function pushUniqueBranchId(branchIds: string[], branchId: string | undefined): void {
-    if (branchId !== undefined && !branchIds.includes(branchId)) branchIds.push(branchId)
-}
-
-function branchIdsForJoin(steps: WorkflowStep[], join: NonNullable<WorkflowStep["join"]>): readonly string[] {
-    const fanout = steps[join.fanoutIndex]?.fanout
-    if (fanout !== undefined) return fanout.branchIds
-
-    const branchIds: string[] = []
-    for (const tailIndex of join.branchTailIndices) {
-        pushUniqueBranchId(branchIds, steps[tailIndex]?.branch?.branchId)
-    }
-    return branchIds
-}
-
-function survivorBranchIdsForJoin(steps: WorkflowStep[], join: NonNullable<WorkflowStep["join"]>): readonly string[] {
-    const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
-    return branchIdsForJoin(steps, join).filter(branchId => !erroredBranchIds.has(branchId))
-}
-
-function completeWorkflowJoinStep(team: Team, steps: WorkflowStep[], joinIndex: number): boolean {
-    const step = steps[joinIndex]
-    const join = step?.join
-    if (step?.kind !== "join" || join === undefined || step.completed) return false
-
-    // join_policy='reduce' requires all branches to succeed (same as 'all'). The
-    // reducer_member is validated upstream but a dedicated reduce dispatch at
-    // join (replacing joinedOutput with the reducer's aggregate) is deferred to
-    // a follow-up: it needs the reducer's idle to be handled as a join sub-state.
-    // For now reduce concatenates survivor outputs like the default policy.
-    const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])]
-    step.join = {
-        ...join,
-        survivorBranchIds: survivorBranchIdsForJoin(steps, join),
-        ...(erroredBranchIds.length > 0 ? { erroredBranchIds } : {}),
-        joinedOutput: buildJoinedWorkflowOutput(steps, joinIndex),
-    }
-    step.completed = true
-    recordEvent(team, {
-        timestamp: Date.now(),
-        kind: "stage_advanced",
-        stage: joinIndex,
-        detail: `workflow join fired: step ${joinIndex + 1}; fanout step ${join.fanoutIndex + 1}`,
-    })
-    return true
-}
-
-function evaluateWorkflowFanoutError(steps: WorkflowStep[], joinIndex: number): WorkflowFanoutErrorResult {
-    const joinStep = steps[joinIndex]
-    const join = joinStep?.join
-    if (joinStep?.kind !== "join" || join === undefined) return { kind: "not_fanout" }
-
-    const branchIds = branchIdsForJoin(steps, join)
-    const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])]
-    const erroredSet = new Set(erroredBranchIds)
-    const remainingSurvivors = branchIds.filter(branchId => !erroredSet.has(branchId)).length
-    const total = branchIds.length
-    const fanoutDisplayStep = join.fanoutIndex + 1
-
-    // Fail-fast: can the join policy still be satisfied given current errors?
-    const impossible = fanoutPolicyImpossible(join, erroredBranchIds, remainingSurvivors, total)
-    if (impossible) {
-        return remainingSurvivors === 0
-            ? { kind: "failed", reason: workflowFanoutAllErroredReason(fanoutDisplayStep) }
-            : { kind: "failed", reason: workflowFanoutOverToleranceReason(fanoutDisplayStep) }
-    }
-    return { kind: "within_tolerance" }
+      : {
+          kind: "failed",
+          reason: workflowFanoutOverToleranceReason(fanoutDisplayStep),
+        };
+  }
+  return { kind: "within_tolerance" };
 }
 
 /**
@@ -515,154 +770,208 @@ function evaluateWorkflowFanoutError(steps: WorkflowStep[], joinIndex: number): 
  * Used for fail-fast termination when a branch error makes success impossible.
  */
 function fanoutPolicyImpossible(
-    join: NonNullable<WorkflowStep["join"]>,
-    erroredBranchIds: readonly string[],
-    remainingSurvivors: number,
-    total: number,
+  join: NonNullable<WorkflowStep["join"]>,
+  erroredBranchIds: readonly string[],
+  remainingSurvivors: number,
+  total: number,
 ): boolean {
-    const erroredSet = new Set(erroredBranchIds)
-    switch (join.joinPolicy) {
-        case undefined:
-        case "tolerance":
-            return remainingSurvivors === 0 || erroredBranchIds.length > join.maxErrored
-        case "all":
-        case "reduce":
-            return erroredBranchIds.length > 0
-        case "quorum": {
-            const threshold = join.quorum ?? 0
-            const required = Math.ceil(threshold * total)
-            return remainingSurvivors < required
-        }
-        case "any_success":
-            return remainingSurvivors === 0
-        case "required_branches": {
-            const required = join.requiredBranchIds ?? []
-            return required.some(branchId => erroredSet.has(branchId))
-        }
-        default:
-            return remainingSurvivors === 0 || erroredBranchIds.length > join.maxErrored
+  const erroredSet = new Set(erroredBranchIds);
+  switch (join.joinPolicy) {
+    case undefined:
+    case "tolerance":
+      return (
+        remainingSurvivors === 0 || erroredBranchIds.length > join.maxErrored
+      );
+    case "all":
+    case "reduce":
+      return erroredBranchIds.length > 0;
+    case "quorum": {
+      const threshold = join.quorum ?? 0;
+      const required = Math.ceil(threshold * total);
+      return remainingSurvivors < required;
     }
+    case "any_success":
+      return remainingSurvivors === 0;
+    case "required_branches": {
+      const required = join.requiredBranchIds ?? [];
+      return required.some((branchId) => erroredSet.has(branchId));
+    }
+    default:
+      return (
+        remainingSurvivors === 0 || erroredBranchIds.length > join.maxErrored
+      );
+  }
 }
 
-function markWorkflowBranchStepsSkipped(steps: WorkflowStep[], branch: WorkflowBranchMetadata): void {
-    const fanout = steps[branch.fanoutIndex]?.fanout
-    const range = fanout?.branchRanges[branch.branchIndex]
-    const startIndex = range?.startIndex ?? branch.fanoutIndex + 1
-    const endIndex = range?.endIndex ?? branch.joinIndex - 1
+function markWorkflowBranchStepsSkipped(
+  steps: WorkflowStep[],
+  branch: WorkflowBranchMetadata,
+): void {
+  const fanout = steps[branch.fanoutIndex]?.fanout;
+  const range = fanout?.branchRanges[branch.branchIndex];
+  const startIndex = range?.startIndex ?? branch.fanoutIndex + 1;
+  const endIndex = range?.endIndex ?? branch.joinIndex - 1;
 
-    for (let index = startIndex; index <= endIndex; index += 1) {
-        const step = steps[index]
-        if (step === undefined || !isSameWorkflowBranch(step, branch) || step.completed) continue
-        step.completed = true
-        step.skipped = true
-    }
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    const step = steps[index];
+    if (
+      step === undefined ||
+      !isSameWorkflowBranch(step, branch) ||
+      step.completed
+    )
+      continue;
+    step.completed = true;
+    step.skipped = true;
+  }
 }
 
-function removeActiveWorkflowBranch(task: WorkflowTask, branch: WorkflowBranchMetadata): void {
-    const active = getActiveWorkflowStepIndices(task)
-    const next = active.filter(index => {
-        const step = task.steps?.[index]
-        return step === undefined || !isSameWorkflowBranch(step, branch)
-    })
-    task.activeStepIndices = sortedWorkflowIndices(next.length > 0 ? next : [branch.joinIndex])
-    task.currentStageIndex = task.activeStepIndices[0] ?? branch.joinIndex
+function removeActiveWorkflowBranch(
+  task: WorkflowTask,
+  branch: WorkflowBranchMetadata,
+): void {
+  const active = getActiveWorkflowStepIndices(task);
+  const next = active.filter((index) => {
+    const step = task.steps?.[index];
+    return step === undefined || !isSameWorkflowBranch(step, branch);
+  });
+  task.activeStepIndices = sortedWorkflowIndices(
+    next.length > 0 ? next : [branch.joinIndex],
+  );
+  task.currentStageIndex = task.activeStepIndices[0] ?? branch.joinIndex;
 }
 
-function recordedErroredBranchForMember(steps: WorkflowStep[], memberName: string): WorkflowBranchMetadata | null {
-    for (const step of steps) {
-        if (step.branch === undefined || workflowStepActorName(step) !== memberName) continue
-        const join = steps[step.branch.joinIndex]?.join
-        if (join?.erroredBranchIds?.includes(step.branch.branchId) === true) return step.branch
-    }
-    return null
+function recordedErroredBranchForMember(
+  steps: WorkflowStep[],
+  memberName: string,
+): WorkflowBranchMetadata | null {
+  for (const step of steps) {
+    if (step.branch === undefined || workflowStepActorName(step) !== memberName)
+      continue;
+    const join = steps[step.branch.joinIndex]?.join;
+    if (join?.erroredBranchIds?.includes(step.branch.branchId) === true)
+      return step.branch;
+  }
+  return null;
 }
 
-export function markWorkflowFanoutBranchErrored(task: WorkflowTask, memberName: string): WorkflowFanoutErrorResult {
-    const steps = task.steps ?? []
-    const activeIndex = findActiveWorkflowStepIndexForMember(task, memberName)
-    const activeBranch = activeIndex === null ? null : (steps[activeIndex]?.branch ?? null)
-    const branch = activeBranch ?? recordedErroredBranchForMember(steps, memberName)
-    if (branch === null) return { kind: "not_fanout" }
+export function markWorkflowFanoutBranchErrored(
+  task: WorkflowTask,
+  memberName: string,
+): WorkflowFanoutErrorResult {
+  const steps = task.steps ?? [];
+  const activeIndex = findActiveWorkflowStepIndexForMember(task, memberName);
+  const activeBranch =
+    activeIndex === null ? null : (steps[activeIndex]?.branch ?? null);
+  const branch =
+    activeBranch ?? recordedErroredBranchForMember(steps, memberName);
+  if (branch === null) return { kind: "not_fanout" };
 
-    const joinStep = steps[branch.joinIndex]
-    const join = joinStep?.join
-    if (joinStep?.kind !== "join" || join === undefined) return { kind: "not_fanout" }
+  const joinStep = steps[branch.joinIndex];
+  const join = joinStep?.join;
+  if (joinStep?.kind !== "join" || join === undefined)
+    return { kind: "not_fanout" };
 
-    const erroredBranchIds = [...new Set([...(join.erroredBranchIds ?? []), branch.branchId])]
-    joinStep.join = {
-        ...join,
-        erroredBranchIds,
-        survivorBranchIds: branchIdsForJoin(steps, join).filter(branchId => !erroredBranchIds.includes(branchId)),
-    }
-    markWorkflowBranchStepsSkipped(steps, branch)
-    removeActiveWorkflowBranch(task, branch)
-    return evaluateWorkflowFanoutError(steps, branch.joinIndex)
+  const erroredBranchIds = [
+    ...new Set([...(join.erroredBranchIds ?? []), branch.branchId]),
+  ];
+  joinStep.join = {
+    ...join,
+    erroredBranchIds,
+    survivorBranchIds: branchIdsForJoin(steps, join).filter(
+      (branchId) => !erroredBranchIds.includes(branchId),
+    ),
+  };
+  markWorkflowBranchStepsSkipped(steps, branch);
+  removeActiveWorkflowBranch(task, branch);
+  return evaluateWorkflowFanoutError(steps, branch.joinIndex);
 }
 
 function sortedWorkflowIndices(indices: readonly number[]): number[] {
-    return [...indices].sort((left, right) => left - right)
+  return [...indices].sort((left, right) => left - right);
 }
 
-function moveActiveWorkflowStep(task: WorkflowTask, fromIndex: number, toIndex: number): void {
-    if (task.activeStepIndices === undefined) {
-        task.currentStageIndex = toIndex
-        return
-    }
+function moveActiveWorkflowStep(
+  task: WorkflowTask,
+  fromIndex: number,
+  toIndex: number,
+): void {
+  if (task.activeStepIndices === undefined) {
+    task.currentStageIndex = toIndex;
+    return;
+  }
 
-    const next: number[] = []
-    let replaced = false
-    for (const index of getActiveWorkflowStepIndices(task)) {
-        const candidate = index === fromIndex ? toIndex : index
-        if (index === fromIndex) replaced = true
-        if (!next.includes(candidate)) next.push(candidate)
-    }
-    if (!replaced && !next.includes(toIndex)) next.push(toIndex)
-    task.activeStepIndices = sortedWorkflowIndices(next)
-    task.currentStageIndex = task.activeStepIndices[0] ?? toIndex
+  const next: number[] = [];
+  let replaced = false;
+  for (const index of getActiveWorkflowStepIndices(task)) {
+    const candidate = index === fromIndex ? toIndex : index;
+    if (index === fromIndex) replaced = true;
+    if (!next.includes(candidate)) next.push(candidate);
+  }
+  if (!replaced && !next.includes(toIndex)) next.push(toIndex);
+  task.activeStepIndices = sortedWorkflowIndices(next);
+  task.currentStageIndex = task.activeStepIndices[0] ?? toIndex;
 }
 
-function hasWaitingActiveWorkflowActor(steps: WorkflowStep[], previousActive: ReadonlySet<number>, ready: readonly number[]): boolean {
-    for (const index of ready) {
-        const step = steps[index]
-        if (step === undefined || !previousActive.has(index)) continue
+function hasWaitingActiveWorkflowActor(
+  steps: WorkflowStep[],
+  previousActive: ReadonlySet<number>,
+  ready: readonly number[],
+): boolean {
+  for (const index of ready) {
+    const step = steps[index];
+    if (step === undefined || !previousActive.has(index)) continue;
 
-        switch (step.kind) {
-            case "task":
-            case "gate":
-                if (!step.completed) return true
-                break
-            case "fanout":
-            case "join":
-                break
-            default:
-                return assertNeverWorkflowStepKind(step.kind)
+    switch (step.kind) {
+      case "task":
+      case "gate":
+        if (!step.completed) return true;
+        break;
+      case "fanout":
+      case "join":
+        break;
+      default:
+        return assertNeverWorkflowStepKind(step.kind);
+    }
+  }
+
+  return false;
+}
+
+function completeExpandedFanoutMarkers(
+  steps: WorkflowStep[],
+  readyIndices: readonly number[],
+): void {
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index];
+    if (step === undefined || step.completed) continue;
+
+    switch (step.kind) {
+      case "fanout": {
+        const fanout = step.fanout;
+        if (
+          fanout !== undefined &&
+          readyIndices.some(
+            (readyIndex) =>
+              readyIndex === fanout.joinIndex ||
+              fanout.branchRanges.some(
+                (range) =>
+                  range.startIndex <= readyIndex &&
+                  readyIndex <= range.endIndex,
+              ),
+          )
+        ) {
+          step.completed = true;
         }
+        break;
+      }
+      case "task":
+      case "gate":
+      case "join":
+        break;
+      default:
+        assertNeverWorkflowStepKind(step.kind);
     }
-
-    return false
-}
-
-function completeExpandedFanoutMarkers(steps: WorkflowStep[], readyIndices: readonly number[]): void {
-    for (let index = 0; index < steps.length; index += 1) {
-        const step = steps[index]
-        if (step === undefined || step.completed) continue
-
-        switch (step.kind) {
-            case "fanout": {
-                const fanout = step.fanout
-                if (fanout !== undefined && readyIndices.some(readyIndex => readyIndex === fanout.joinIndex || fanout.branchRanges.some(range => range.startIndex <= readyIndex && readyIndex <= range.endIndex))) {
-                    step.completed = true
-                }
-                break
-            }
-            case "task":
-            case "gate":
-            case "join":
-                break
-            default:
-                assertNeverWorkflowStepKind(step.kind)
-        }
-    }
+  }
 }
 
 /**
@@ -673,27 +982,27 @@ function completeExpandedFanoutMarkers(steps: WorkflowStep[], readyIndices: read
  * step is paused (caller must NOT dispatch).
  */
 export async function maybePauseBeforeWorkflowStep(
-    ctx: PluginContext,
-    team: Team,
-    index: number,
+  ctx: PluginContext,
+  team: Team,
+  index: number,
 ): Promise<boolean> {
-    const task = team.activeTask
-    if (!task || task.type !== "workflow") return false
-    const step = task.steps?.[index]
-    if (!step || !step.approvalBefore || step.approvalBeforeGranted) return false
-    step.approvalBeforeGranted = true
-    const paused = await forceApprovalRequest(ctx, team, {
-        kind: "workflow_step",
-        stage: index,
-        summary: `Before ${describeStep(step, index)}. Approve to dispatch this step; reject to fail the run as workflow_human_rejected.`,
-    })
-    if (paused) {
-        await saveTeamState(team)
-        return true
-    }
-    // No escalation handler available -> clear the grant and fall through to dispatch.
-    step.approvalBeforeGranted = undefined
-    return false
+  const task = team.activeTask;
+  if (!task || task.type !== "workflow") return false;
+  const step = task.steps?.[index];
+  if (!step || !step.approvalBefore || step.approvalBeforeGranted) return false;
+  step.approvalBeforeGranted = true;
+  const paused = await forceApprovalRequest(ctx, team, {
+    kind: "workflow_step",
+    stage: index,
+    summary: `Before ${describeStep(step, index)}. Approve to dispatch this step; reject to fail the run as workflow_human_rejected.`,
+  });
+  if (paused) {
+    await saveTeamState(team);
+    return true;
+  }
+  // No escalation handler available -> clear the grant and fall through to dispatch.
+  step.approvalBeforeGranted = undefined;
+  return false;
 }
 
 /**
@@ -702,24 +1011,24 @@ export async function maybePauseBeforeWorkflowStep(
  * advanceWorkflowStep. Returns true when paused (caller must NOT advance).
  */
 async function maybePauseAfterWorkflowStep(
-    ctx: PluginContext,
-    team: Team,
-    index: number,
+  ctx: PluginContext,
+  team: Team,
+  index: number,
 ): Promise<boolean> {
-    const task = team.activeTask
-    if (!task || task.type !== "workflow") return false
-    const step = task.steps?.[index]
-    if (!step || !step.approvalAfter) return false
-    const paused = await forceApprovalRequest(ctx, team, {
-        kind: "workflow_step",
-        stage: index,
-        summary: `After ${describeStep(step, index)}. Approve to continue; reject to fail the run as workflow_human_rejected.`,
-    })
-    if (paused) {
-        await saveTeamState(team)
-        return true
-    }
-    return false
+  const task = team.activeTask;
+  if (!task || task.type !== "workflow") return false;
+  const step = task.steps?.[index];
+  if (!step || !step.approvalAfter) return false;
+  const paused = await forceApprovalRequest(ctx, team, {
+    kind: "workflow_step",
+    stage: index,
+    summary: `After ${describeStep(step, index)}. Approve to continue; reject to fail the run as workflow_human_rejected.`,
+  });
+  if (paused) {
+    await saveTeamState(team);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -734,77 +1043,91 @@ async function maybePauseAfterWorkflowStep(
  * when the jump cap was exceeded and the run terminated.
  */
 async function gotoWorkflowStep(
-    ctx: PluginContext,
-    team: Team,
-    gateIndex: number,
-    targetIndex: number,
-    transition: WorkflowJumpTransition,
+  ctx: PluginContext,
+  team: Team,
+  gateIndex: number,
+  targetIndex: number,
+  transition: WorkflowJumpTransition,
 ): Promise<boolean> {
-    const task = team.activeTask
-    if (!task || task.type !== "workflow") return false
-    const steps = task.steps ?? []
-    const gate = steps[gateIndex]
-    const target = steps[targetIndex]
-    if (!gate || gate.kind !== "gate" || !target) return false
+  const task = team.activeTask;
+  if (!task || task.type !== "workflow") return false;
+  const steps = task.steps ?? [];
+  const gate = steps[gateIndex];
+  const target = steps[targetIndex];
+  if (!gate || gate.kind !== "gate" || !target) return false;
 
-    gate.jumpCount = (gate.jumpCount ?? 0) + 1
-    const maxJ = gate.maxJumps ?? 3
-    if (gate.jumpCount > maxJ) {
-        await finishRun(ctx, team, workflowJumpLimitReason(gate.verifier), "failed")
-        return false
+  gate.jumpCount = (gate.jumpCount ?? 0) + 1;
+  const maxJ = gate.maxJumps ?? 3;
+  if (gate.jumpCount > maxJ) {
+    await finishRun(
+      ctx,
+      team,
+      workflowJumpLimitReason(gate.verifier),
+      "failed",
+    );
+    return false;
+  }
+
+  if (targetIndex > gateIndex) {
+    // Forward jump: mark intermediate steps as skipped.
+    for (let i = gateIndex + 1; i < targetIndex; i++) {
+      const s = steps[i];
+      if (!s) continue;
+      if (!s.completed) {
+        s.completed = true;
+        s.skipped = true;
+        markWorkflowStepCompleted(s);
+      }
     }
-
-    if (targetIndex > gateIndex) {
-        // Forward jump: mark intermediate steps as skipped.
-        for (let i = gateIndex + 1; i < targetIndex; i++) {
-            const s = steps[i]
-            if (!s) continue
-            if (!s.completed) {
-                s.completed = true
-                s.skipped = true
-            }
+  } else if (targetIndex < gateIndex) {
+    // Backward jump: reset steps[target..gate] so the path re-runs.
+    for (let i = targetIndex; i <= gateIndex; i++) {
+      const s = steps[i];
+      if (!s) continue;
+      s.completed = false;
+      s.skipped = false;
+      s.approvalBeforeGranted = undefined;
+      resetWorkflowStepTiming(s);
+      if (s.kind === "task") s.output = undefined;
+      if (s.kind === "gate") {
+        s.verdict = undefined;
+        if (i !== gateIndex) {
+          s.attempts = 0;
+          s.invalidAttempts = 0;
         }
-    } else if (targetIndex < gateIndex) {
-        // Backward jump: reset steps[target..gate] so the path re-runs.
-        for (let i = targetIndex; i <= gateIndex; i++) {
-            const s = steps[i]
-            if (!s) continue
-            s.completed = false
-            s.skipped = false
-            s.approvalBeforeGranted = undefined
-            if (s.kind === "task") s.output = undefined
-            if (s.kind === "gate") {
-                s.verdict = undefined
-                if (i !== gateIndex) {
-                    s.attempts = 0
-                    s.invalidAttempts = 0
-                }
-            }
-        }
+      }
     }
-    // Mark the triggering gate complete so find-next-incomplete does not loop
-    // back to it after a forward jump, and so approval resume advances past it.
-    gate.completed = true
+  }
+  // Mark the triggering gate complete so find-next-incomplete does not loop
+  // back to it after a forward jump, and so approval resume advances past it.
+  gate.completed = true;
 
-    recordEvent(team, {
-        timestamp: Date.now(),
-        kind: "stage_advanced",
-        stage: targetIndex,
-        detail: `workflow jump: step ${gateIndex + 1} -> step ${targetIndex + 1} (${transition.reason}${transition.verdict ? ` ${transition.verdict}` : ""}); jump ${gate.jumpCount}/${maxJ}`,
-    })
+  recordEvent(team, {
+    timestamp: Date.now(),
+    kind: "stage_advanced",
+    stage: targetIndex,
+    detail: `workflow jump: step ${gateIndex + 1} -> step ${targetIndex + 1} (${transition.reason}${transition.verdict ? ` ${transition.verdict}` : ""}); jump ${gate.jumpCount}/${maxJ}`,
+  });
 
-    moveActiveWorkflowStep(task, gateIndex, targetIndex)
-    if (await maybePauseBeforeWorkflowStep(ctx, team, targetIndex)) return true
-    const dispatched = target.kind === "task"
-        ? await dispatchTaskStep(ctx, team, task, targetIndex, buildJumpContext(transition))
-        : await dispatchGateStep(ctx, team, task, targetIndex)
-    if (!dispatched) {
-        const actor = target.kind === "task" ? target.member : target.verifier
-        await finishRun(ctx, team, workflowNoSessionReason(actor), "failed")
-        return false
-    }
-    await saveTeamState(team)
-    return true
+  moveActiveWorkflowStep(task, gateIndex, targetIndex);
+  if (await maybePauseBeforeWorkflowStep(ctx, team, targetIndex)) return true;
+  const dispatched =
+    target.kind === "task"
+      ? await dispatchTaskStep(
+          ctx,
+          team,
+          task,
+          targetIndex,
+          buildJumpContext(transition),
+        )
+      : await dispatchGateStep(ctx, team, task, targetIndex);
+  if (!dispatched) {
+    const actor = target.kind === "task" ? target.member : target.verifier;
+    await finishRun(ctx, team, workflowNoSessionReason(actor), "failed");
+    return false;
+  }
+  await saveTeamState(team);
+  return true;
 }
 
 /**
@@ -813,118 +1136,149 @@ async function gotoWorkflowStep(
  * (workflow_complete). Shared by the task-step completion path and the
  * gate-PASS path, and by resumeWorkflowMode / approval resume.
  */
-export async function advanceWorkflowStep(ctx: PluginContext, team: Team): Promise<void> {
-    const task = team.activeTask
-    if (!task || task.type !== "workflow") return
-    const steps = task.steps ?? []
+export async function advanceWorkflowStep(
+  ctx: PluginContext,
+  team: Team,
+): Promise<void> {
+  const task = team.activeTask;
+  if (!task || task.type !== "workflow") return;
+  const steps = task.steps ?? [];
 
-    if (task.activeStepIndices !== undefined) {
-        let previousActive = new Set(getActiveWorkflowStepIndices(task))
+  if (task.activeStepIndices !== undefined) {
+    let previousActive = new Set(getActiveWorkflowStepIndices(task));
 
-        for (;;) {
-            const ready = sortedWorkflowIndices(readyWorkflowStepIndices(task))
-            if (ready.length === 0) {
-                if (steps.findIndex(s => !s.completed) === -1) {
-                    if (await maybeTriggerSignoff(ctx, team)) return
-                    await finishRun(ctx, team, workflowCompleteReason(), "idle")
-                    return
-                }
-                task.activeStepIndices = []
-                await saveTeamState(team)
-                return
-            }
-
-            completeExpandedFanoutMarkers(steps, ready)
-            task.activeStepIndices = ready
-            task.currentStageIndex = ready[0] ?? task.currentStageIndex
-            let dispatched = false
-
-            for (const index of ready) {
-                const step = steps[index]
-                if (step === undefined) continue
-
-                switch (step.kind) {
-                    case "task": {
-                        if (previousActive.has(index)) break
-                        if (await maybePauseBeforeWorkflowStep(ctx, team, index)) return
-                        if (!await dispatchTaskStep(ctx, team, task, index)) {
-                            await finishRun(ctx, team, workflowNoSessionReason(step.member), "failed")
-                            return
-                        }
-                        dispatched = true
-                        break
-                    }
-                    case "gate": {
-                        if (previousActive.has(index)) break
-                        if (await maybePauseBeforeWorkflowStep(ctx, team, index)) return
-                        if (!await dispatchGateStep(ctx, team, task, index)) {
-                            await finishRun(ctx, team, workflowNoSessionReason(step.verifier), "failed")
-                            return
-                        }
-                        dispatched = true
-                        break
-                    }
-                    case "fanout":
-                        step.completed = true
-                        break
-                    case "join":
-                        completeWorkflowJoinStep(team, steps, index)
-                        break
-                    default:
-                        assertNeverWorkflowStepKind(step.kind)
-                }
-            }
-
-            if (dispatched) {
-                await saveTeamState(team)
-                return
-            }
-            if (hasWaitingActiveWorkflowActor(steps, previousActive, ready)) {
-                await saveTeamState(team)
-                return
-            }
-            previousActive = new Set(getActiveWorkflowStepIndices(task))
+    for (;;) {
+      const ready = sortedWorkflowIndices(readyWorkflowStepIndices(task));
+      if (ready.length === 0) {
+        if (steps.findIndex((s) => !s.completed) === -1) {
+          if (await maybeTriggerSignoff(ctx, team)) return;
+          await finishRun(ctx, team, workflowCompleteReason(), "idle");
+          return;
         }
-    }
+        task.activeStepIndices = [];
+        await saveTeamState(team);
+        return;
+      }
 
-    const nextIndex = steps.findIndex(s => !s.completed)
-    if (nextIndex === -1) {
-        if (await maybeTriggerSignoff(ctx, team)) return
-        await finishRun(ctx, team, workflowCompleteReason(), "idle")
-        return
+      completeExpandedFanoutMarkers(steps, ready);
+      task.activeStepIndices = ready;
+      task.currentStageIndex = ready[0] ?? task.currentStageIndex;
+      let dispatched = false;
+
+      for (const index of ready) {
+        const step = steps[index];
+        if (step === undefined) continue;
+
+        switch (step.kind) {
+          case "task": {
+            if (previousActive.has(index)) break;
+            if (await maybePauseBeforeWorkflowStep(ctx, team, index)) return;
+            if (!(await dispatchTaskStep(ctx, team, task, index))) {
+              await finishRun(
+                ctx,
+                team,
+                workflowNoSessionReason(step.member),
+                "failed",
+              );
+              return;
+            }
+            dispatched = true;
+            break;
+          }
+          case "gate": {
+            if (previousActive.has(index)) break;
+            if (await maybePauseBeforeWorkflowStep(ctx, team, index)) return;
+            if (!(await dispatchGateStep(ctx, team, task, index))) {
+              await finishRun(
+                ctx,
+                team,
+                workflowNoSessionReason(step.verifier),
+                "failed",
+              );
+              return;
+            }
+            dispatched = true;
+            break;
+          }
+          case "fanout":
+            step.completed = true;
+            break;
+          case "join": {
+            const result = await completeWorkflowJoinStep(
+              ctx,
+              team,
+              task,
+              steps,
+              index,
+            );
+            if (result === "failed") return;
+            if (result === "dispatched" || result === "waiting")
+              dispatched = true;
+            break;
+          }
+          default:
+            assertNeverWorkflowStepKind(step.kind);
+        }
+      }
+
+      if (dispatched) {
+        await saveTeamState(team);
+        return;
+      }
+      if (hasWaitingActiveWorkflowActor(steps, previousActive, ready)) {
+        await saveTeamState(team);
+        return;
+      }
+      previousActive = new Set(getActiveWorkflowStepIndices(task));
     }
-    task.currentStageIndex = nextIndex
-    const step = steps[nextIndex]
-    if (!step) return
-    if (await maybePauseBeforeWorkflowStep(ctx, team, nextIndex)) return
-    const dispatched = step.kind === "task"
-        ? await dispatchTaskStep(ctx, team, task, nextIndex)
-        : await dispatchGateStep(ctx, team, task, nextIndex)
-    if (!dispatched) {
-        const actor = step.kind === "task" ? step.member : step.verifier
-        await finishRun(ctx, team, workflowNoSessionReason(actor), "failed")
-        return
-    }
-    await saveTeamState(team)
+  }
+
+  const nextIndex = steps.findIndex((s) => !s.completed);
+  if (nextIndex === -1) {
+    if (await maybeTriggerSignoff(ctx, team)) return;
+    await finishRun(ctx, team, workflowCompleteReason(), "idle");
+    return;
+  }
+  task.currentStageIndex = nextIndex;
+  const step = steps[nextIndex];
+  if (!step) return;
+  if (await maybePauseBeforeWorkflowStep(ctx, team, nextIndex)) return;
+  const dispatched =
+    step.kind === "task"
+      ? await dispatchTaskStep(ctx, team, task, nextIndex)
+      : await dispatchGateStep(ctx, team, task, nextIndex);
+  if (!dispatched) {
+    const actor = step.kind === "task" ? step.member : step.verifier;
+    await finishRun(ctx, team, workflowNoSessionReason(actor), "failed");
+    return;
+  }
+  await saveTeamState(team);
 }
 
-export async function redispatchWorkflowStep(ctx: PluginContext, team: Team, index: number): Promise<boolean> {
-    const task = team.activeTask
-    if (!task || task.type !== "workflow") return false
-    const step = task.steps?.[index]
-    if (!step || step.completed) return false
+export async function redispatchWorkflowStep(
+  ctx: PluginContext,
+  team: Team,
+  index: number,
+): Promise<boolean> {
+  const task = team.activeTask;
+  if (!task || task.type !== "workflow") return false;
+  const step = task.steps?.[index];
+  if (!step || step.completed) return false;
 
-    switch (step.kind) {
-        case "task":
-            return await dispatchTaskStep(ctx, team, task, index)
-        case "gate":
-            return await dispatchGateStep(ctx, team, task, index)
-        case "fanout":
-        case "join":
-            return false
-        default:
-            return assertNeverWorkflowStepKind(step.kind)
-    }
+  switch (step.kind) {
+    case "task":
+      return await dispatchTaskStep(ctx, team, task, index);
+    case "gate":
+      return await dispatchGateStep(ctx, team, task, index);
+    case "join":
+      return step.join?.joinPolicy === "reduce"
+        ? await dispatchWorkflowJoinReducer(ctx, team, task, index)
+        : false;
+    case "fanout":
+      return false;
+    default:
+      return assertNeverWorkflowStepKind(step.kind);
+  }
 }
 
 /**
@@ -933,180 +1287,262 @@ export async function redispatchWorkflowStep(ctx: PluginContext, team: Team, ind
  * and advances only that matching step.
  */
 export async function handleWorkflowIdle(
-    ctx: PluginContext,
-    team: Team,
-    member: MemberState,
+  ctx: PluginContext,
+  team: Team,
+  member: MemberState,
 ): Promise<void> {
-    const task = team.activeTask
-    if (!task || task.type !== "workflow") return
-    const steps = task.steps ?? []
-    const activeStepIndex = findActiveWorkflowStepIndexForMember(task, member.name)
-    if (activeStepIndex === null) return
-    const step = steps[activeStepIndex]
-    if (!step) return
+  const task = team.activeTask;
+  if (!task || task.type !== "workflow") return;
+  const steps = task.steps ?? [];
+  const activeStepIndex = findActiveWorkflowStepIndexForMember(
+    task,
+    member.name,
+  );
+  if (activeStepIndex === null) return;
+  const step = steps[activeStepIndex];
+  if (!step) return;
 
-    if (step.kind === "task") {
-        const raw = step.output ?? task.responses[member.name] ?? ""
-        // Per-step output cap on the captured snapshot only — the full output
-        // is still persisted to runs/<runId>/<member>.md by captureMemberOutput.
-        if (step.output === undefined) {
-            step.output = step.maxOutputBytes !== undefined ? truncateOutput(raw, step.maxOutputBytes) : raw
-        }
-        step.dispatchedAt = undefined
-        step.completed = true
-        recordEvent(team, {
-            timestamp: Date.now(),
-            kind: "captured",
-            member: member.name,
-            stepIndex: activeStepIndex,
-            correlationId: step.correlationId,
-            bytes: step.output?.length,
-            detail: `workflow step ${activeStepIndex + 1} captured`,
-        })
-        step.correlationId = undefined
-        if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex)) return
-        const nextIndex = task.activeStepIndices === undefined
-            ? steps.findIndex(s => !s.completed)
-            : (readyWorkflowStepIndices(task)[0] ?? -1)
-        if (step.branch === undefined && nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
-            kind: "workflow_step",
-            stage: activeStepIndex,
-            summary: `Completed ${describeStep(step, activeStepIndex)}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
-        })) {
-            return
-        }
-        await advanceWorkflowStep(ctx, team)
-        return
+  if (step.kind === "task") {
+    const raw = step.output ?? task.responses[member.name] ?? "";
+    // Per-step output cap on the captured snapshot only — the full output
+    // is still persisted to runs/<runId>/<member>.md by captureMemberOutput.
+    if (step.output === undefined) {
+      step.output =
+        step.maxOutputBytes !== undefined
+          ? truncateOutput(raw, step.maxOutputBytes)
+          : raw;
     }
-
-    // gate step
-    if (step.kind !== "gate" || step.verifier === undefined) return
-    const v = parseVerdict(step.output ?? task.responses[step.verifier] ?? "")
+    markWorkflowStepCompleted(step);
+    step.dispatchedAt = undefined;
+    step.completed = true;
     recordEvent(team, {
-        timestamp: Date.now(),
-        kind: "verdict",
-        member: step.verifier,
+      timestamp: Date.now(),
+      kind: "captured",
+      member: member.name,
+      stepIndex: activeStepIndex,
+      correlationId: step.correlationId,
+      bytes: step.output?.length,
+      detail: `workflow step ${activeStepIndex + 1} captured`,
+    });
+    step.correlationId = undefined;
+    if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex)) return;
+    const nextIndex =
+      task.activeStepIndices === undefined
+        ? steps.findIndex((s) => !s.completed)
+        : (readyWorkflowStepIndices(task)[0] ?? -1);
+    if (
+      step.branch === undefined &&
+      nextIndex !== -1 &&
+      (await maybeRequestApproval(ctx, team, {
+        kind: "workflow_step",
         stage: activeStepIndex,
-        stepIndex: activeStepIndex,
-        correlationId: step.correlationId,
-        detail: v.verdict ?? "parse_fail",
-    })
+        summary: `Completed ${describeStep(step, activeStepIndex)}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
+      }))
+    ) {
+      return;
+    }
+    await advanceWorkflowStep(ctx, team);
+    return;
+  }
 
-    if (v.parseFailed || !v.verdict) {
-        await handleInvalidVerdict(ctx, team, step, activeStepIndex, "parse_failure", v.rationale, v.diff)
-        return
-    }
-    step.verdict = v.verdict
-    step.score = v.score
-    step.confidence = v.confidence
-    step.issues = v.issues
-
-    if (v.verdict === "INVALID") {
-        await handleInvalidVerdict(ctx, team, step, activeStepIndex, "INVALID", v.rationale, v.diff)
-        return
-    }
-
-    if (v.verdict === "PASS") {
-        step.dispatchedAt = undefined
-        step.completed = true
-        // approval_after on a gate is validator-guaranteed incompatible with
-        // on_*_goto, so pausing here cannot be bypassed by a goto jump.
-        if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex)) return
-        const gotoIdx = gatedGotoIndex(steps, activeStepIndex, step.onPassGoto)
-        const nextIndex = gotoIdx >= 0 ? gotoIdx : steps.findIndex(s => !s.completed)
-        if (step.branch === undefined && nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
-            kind: "workflow_step",
-            stage: activeStepIndex,
-            summary: `Completed ${describeStep(step, activeStepIndex)} with PASS from ${step.verifier}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
-        })) {
-            return
-        }
-        if (gotoIdx >= 0) {
-            await gotoWorkflowStep(ctx, team, activeStepIndex, gotoIdx, { reason: whereReason(step, "on_pass"), verdict: "PASS", rationale: v.rationale, diff: v.diff })
-            return
-        }
-        await advanceWorkflowStep(ctx, team)
-        return
-    }
-
-    // v.verdict === "FAIL"
-    const onFail = step.onFail ?? "fail"
-    if (onFail === "fail") {
-        const failGoto = gatedGotoIndex(steps, activeStepIndex, step.onFailGoto)
-        if (failGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, { reason: whereReason(step, "on_fail"), verdict: "FAIL", rationale: v.rationale, diff: v.diff })
-            return
-        }
-        await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed")
-        return
-    }
-    // onFail === "retry": bounded retry of the preceding task.
-    step.attempts = (step.attempts ?? 0) + 1
-    const maxR = step.maxRetries ?? 0
-    if (step.attempts > maxR) {
-        const failGoto = gatedGotoIndex(steps, activeStepIndex, step.onFailGoto)
-        if (failGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, { reason: whereReason(step, "on_fail_retry_exhausted"), verdict: "FAIL", rationale: v.rationale, diff: v.diff })
-            return
-        }
-        await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed")
-        return
-    }
-    const gateIndex = activeStepIndex
-    const producerIdx = gateTargetIndex(steps, gateIndex)
-    if (producerIdx === -1) {
-        // No preceding task to retry -> fail (defensive; tool layer rejects gate-first).
-        await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed")
-        return
-    }
-    for (let i = producerIdx; i <= gateIndex; i++) {
-        const retryStep = steps[i]
-        if (!retryStep) continue
-        retryStep.completed = false
-        retryStep.approvalBeforeGranted = undefined
-        if (retryStep.kind === "task") retryStep.output = undefined
-        if (retryStep.kind === "gate") {
-            retryStep.verdict = undefined
-            if (i !== gateIndex) retryStep.attempts = 0
-        }
-    }
-    const producerStep = steps[producerIdx]
-    if (!producerStep || producerStep.kind !== "task") {
-        await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed")
-        return
-    }
-    moveActiveWorkflowStep(task, gateIndex, producerIdx)
-    // Honor producer approval_before on retry re-dispatch (parity with goto
-    // backward jump and the initial advance path). Without this, a FAIL retry
-    // silently bypassed the leader gate that the step declared.
-    if (await maybePauseBeforeWorkflowStep(ctx, team, producerIdx)) return
-    const producer = team.members.find(m => m.name === producerStep.member && !m.isMaster)
-    if (!hasLiveSession(producer)) {
-        await finishRun(ctx, team, workflowNoSessionReason(producerStep.member), "failed")
-        return
-    }
+  if (step.kind === "join") {
+    const reducerMember = step.join?.reducerMember;
+    if (step.join?.joinPolicy !== "reduce" || reducerMember !== member.name)
+      return;
+    const correlationId = step.correlationId;
+    step.join = {
+      ...step.join,
+      joinedOutput: task.responses[member.name] ?? "",
+    };
+    markWorkflowStepCompleted(step);
+    step.dispatchedAt = undefined;
+    step.correlationId = undefined;
     recordEvent(team, {
-        timestamp: Date.now(),
-        kind: "retry",
-        member: producerStep.member,
-        stage: gateIndex,
-        stepIndex: producerIdx,
-        detail: `workflow step ${gateIndex + 1} attempt ${step.attempts}/${maxR}; retry target ${stepIndicesLabel(gateTargetIndices(steps, gateIndex))}; retry anchor step ${producerIdx + 1}; verifier ${step.verifier}; diff: ${v.diff}`,
-    })
-    const feedback =
-        `[Gate FAILED - attempt ${step.attempts}/${maxR}]\n`
-        + `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`
-    producerStep.correlationId = crypto.randomUUID()
-    await dispatchToMember(
-        ctx,
-        producer,
-        `${feedback}\n\n[Your task]\n${producerStep.task ?? ""}`,
-        producer.worktreePath ?? ctx.directory,
-        team,
-        { stepIndex: producerIdx, correlationId: producerStep.correlationId },
-    )
-    producerStep.dispatchedAt = Date.now()
-    await saveTeamState(team)
+      timestamp: Date.now(),
+      kind: "captured",
+      member: member.name,
+      stepIndex: activeStepIndex,
+      correlationId,
+      bytes: step.join.joinedOutput?.length,
+      detail: `workflow reduce join step ${activeStepIndex + 1} captured`,
+    });
+    await advanceWorkflowStep(ctx, team);
+    return;
+  }
+
+  // gate step
+  if (step.kind !== "gate" || step.verifier === undefined) return;
+  const v = parseVerdict(step.output ?? task.responses[step.verifier] ?? "");
+  recordEvent(team, {
+    timestamp: Date.now(),
+    kind: "verdict",
+    member: step.verifier,
+    stage: activeStepIndex,
+    stepIndex: activeStepIndex,
+    correlationId: step.correlationId,
+    detail: v.verdict ?? "parse_fail",
+  });
+
+  if (v.parseFailed || !v.verdict) {
+    await handleInvalidVerdict(
+      ctx,
+      team,
+      step,
+      activeStepIndex,
+      "parse_failure",
+      v.rationale,
+      v.diff,
+    );
+    return;
+  }
+  step.verdict = v.verdict;
+  step.score = v.score;
+  step.confidence = v.confidence;
+  step.issues = v.issues;
+
+  if (v.verdict === "INVALID") {
+    await handleInvalidVerdict(
+      ctx,
+      team,
+      step,
+      activeStepIndex,
+      "INVALID",
+      v.rationale,
+      v.diff,
+    );
+    return;
+  }
+
+  if (v.verdict === "PASS") {
+    markWorkflowStepCompleted(step);
+    step.dispatchedAt = undefined;
+    step.completed = true;
+    // approval_after on a gate is validator-guaranteed incompatible with
+    // on_*_goto, so pausing here cannot be bypassed by a goto jump.
+    if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex)) return;
+    const gotoIdx = gatedGotoIndex(steps, activeStepIndex, step.onPassGoto);
+    const nextIndex =
+      gotoIdx >= 0 ? gotoIdx : steps.findIndex((s) => !s.completed);
+    if (
+      step.branch === undefined &&
+      nextIndex !== -1 &&
+      (await maybeRequestApproval(ctx, team, {
+        kind: "workflow_step",
+        stage: activeStepIndex,
+        summary: `Completed ${describeStep(step, activeStepIndex)} with PASS from ${step.verifier}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
+      }))
+    ) {
+      return;
+    }
+    if (gotoIdx >= 0) {
+      await gotoWorkflowStep(ctx, team, activeStepIndex, gotoIdx, {
+        reason: whereReason(step, "on_pass"),
+        verdict: "PASS",
+        rationale: v.rationale,
+        diff: v.diff,
+      });
+      return;
+    }
+    await advanceWorkflowStep(ctx, team);
+    return;
+  }
+
+  // v.verdict === "FAIL"
+  const onFail = step.onFail ?? "fail";
+  if (onFail === "fail") {
+    const failGoto = gatedGotoIndex(steps, activeStepIndex, step.onFailGoto);
+    if (failGoto >= 0) {
+      await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, {
+        reason: whereReason(step, "on_fail"),
+        verdict: "FAIL",
+        rationale: v.rationale,
+        diff: v.diff,
+      });
+      return;
+    }
+    await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed");
+    return;
+  }
+  // onFail === "retry": bounded retry of the preceding task.
+  step.attempts = (step.attempts ?? 0) + 1;
+  const maxR = step.maxRetries ?? 0;
+  if (step.attempts > maxR) {
+    const failGoto = gatedGotoIndex(steps, activeStepIndex, step.onFailGoto);
+    if (failGoto >= 0) {
+      await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, {
+        reason: whereReason(step, "on_fail_retry_exhausted"),
+        verdict: "FAIL",
+        rationale: v.rationale,
+        diff: v.diff,
+      });
+      return;
+    }
+    await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed");
+    return;
+  }
+  const gateIndex = activeStepIndex;
+  const producerIdx = gateTargetIndex(steps, gateIndex);
+  if (producerIdx === -1) {
+    // No preceding task to retry -> fail (defensive; tool layer rejects gate-first).
+    await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed");
+    return;
+  }
+  for (let i = producerIdx; i <= gateIndex; i++) {
+    const retryStep = steps[i];
+    if (!retryStep) continue;
+    retryStep.completed = false;
+    retryStep.approvalBeforeGranted = undefined;
+    resetWorkflowStepTiming(retryStep);
+    if (retryStep.kind === "task") retryStep.output = undefined;
+    if (retryStep.kind === "gate") {
+      retryStep.verdict = undefined;
+      if (i !== gateIndex) retryStep.attempts = 0;
+    }
+  }
+  const producerStep = steps[producerIdx];
+  if (!producerStep || producerStep.kind !== "task") {
+    await finishRun(ctx, team, workflowGateFailReason(step.verifier), "failed");
+    return;
+  }
+  moveActiveWorkflowStep(task, gateIndex, producerIdx);
+  // Honor producer approval_before on retry re-dispatch (parity with goto
+  // backward jump and the initial advance path). Without this, a FAIL retry
+  // silently bypassed the leader gate that the step declared.
+  if (await maybePauseBeforeWorkflowStep(ctx, team, producerIdx)) return;
+  const producer = team.members.find(
+    (m) => m.name === producerStep.member && !m.isMaster,
+  );
+  if (!hasLiveSession(producer)) {
+    await finishRun(
+      ctx,
+      team,
+      workflowNoSessionReason(producerStep.member),
+      "failed",
+    );
+    return;
+  }
+  recordEvent(team, {
+    timestamp: Date.now(),
+    kind: "retry",
+    member: producerStep.member,
+    stage: gateIndex,
+    stepIndex: producerIdx,
+    detail: `workflow step ${gateIndex + 1} attempt ${step.attempts}/${maxR}; retry target ${stepIndicesLabel(gateTargetIndices(steps, gateIndex))}; retry anchor step ${producerIdx + 1}; verifier ${step.verifier}; diff: ${v.diff}`,
+  });
+  const feedback =
+    `[Gate FAILED - attempt ${step.attempts}/${maxR}]\n` +
+    `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`;
+  producerStep.correlationId = crypto.randomUUID();
+  await dispatchToMember(
+    ctx,
+    producer,
+    `${feedback}\n\n[Your task]\n${producerStep.task ?? ""}`,
+    producer.worktreePath ?? ctx.directory,
+    team,
+    { stepIndex: producerIdx, correlationId: producerStep.correlationId },
+  );
+  markWorkflowStepDispatched(producerStep);
+  await saveTeamState(team);
 }
 
 /**
@@ -1120,91 +1556,123 @@ export async function handleWorkflowIdle(
  *                    complete and advances, reject terminates.
  */
 async function handleInvalidVerdict(
-    ctx: PluginContext,
-    team: Team,
-    step: WorkflowStep,
-    gateIndex: number,
-    reason: "INVALID" | "parse_failure",
-    rationale: string,
-    diff: string,
+  ctx: PluginContext,
+  team: Team,
+  step: WorkflowStep,
+  gateIndex: number,
+  reason: "INVALID" | "parse_failure",
+  rationale: string,
+  diff: string,
 ): Promise<void> {
-    const task = team.activeTask
-    if (!task || task.type !== "workflow") return
-    const policy = step.onInvalid ?? "fail"
+  const task = team.activeTask;
+  if (!task || task.type !== "workflow") return;
+  const policy = step.onInvalid ?? "fail";
 
-    if (policy === "retry_verifier") {
-        step.invalidAttempts = (step.invalidAttempts ?? 0) + 1
-        const maxIR = step.maxInvalidRetries ?? 0
-        if (step.invalidAttempts > maxIR) {
-            const invGoto = step.onInvalidGoto ?? -1
-            if (invGoto >= 0) {
-                await gotoWorkflowStep(ctx, team, gateIndex, invGoto, { reason: "on_invalid_retry_exhausted", verdict: reason === "INVALID" ? "INVALID" : undefined, rationale, diff })
-                return
-            }
-            await finishRun(ctx, team, workflowInvalidReason(reason, step.verifier), "failed")
-            return
-        }
-        const verifier = team.members.find(m => m.name === step.verifier && !m.isMaster)
-        if (!hasLiveSession(verifier)) {
-            await finishRun(ctx, team, workflowNoSessionReason(step.verifier), "failed")
-            return
-        }
-        // Honor gate approval_before on invalid-verifier retry re-dispatch
-        // (parity with FAIL retry and the initial advance path).
-        if (await maybePauseBeforeWorkflowStep(ctx, team, gateIndex)) return
-        recordEvent(team, {
-            timestamp: Date.now(),
-            kind: "retry",
-            member: step.verifier,
-            stage: gateIndex,
-            stepIndex: gateIndex,
-            detail: `workflow step ${gateIndex + 1} invalid retry ${step.invalidAttempts}/${maxIR}; verifier ${step.verifier}; reason ${reason}: ${rationale}`,
-        })
-        const nudge =
-            `[Verification could not be evaluated — invalid attempt ${step.invalidAttempts}/${maxIR}]\n`
-            + `Reason: ${reason}. Rationale: ${rationale}. Diff: ${diff}.\n`
-            + `Re-evaluate the target output and emit a fresh verdict.`
-        const targetIndices = gateTargetIndices(task.steps ?? [], gateIndex)
-        const producerOutput = buildGateProducerOutput(task.steps ?? [], targetIndices)
-        step.correlationId = crypto.randomUUID()
-        await dispatchToMember(
-            ctx,
-            verifier,
-            `${nudge}\n\n${buildGateVerifierPrompt(step, producerOutput, workflowTargetLabel(targetIndices))}`,
-            verifier.worktreePath ?? ctx.directory,
-            team,
-            { stepIndex: gateIndex, correlationId: step.correlationId },
-        )
-        step.dispatchedAt = Date.now()
-        await saveTeamState(team)
-        return
+  if (policy === "retry_verifier") {
+    step.invalidAttempts = (step.invalidAttempts ?? 0) + 1;
+    const maxIR = step.maxInvalidRetries ?? 0;
+    if (step.invalidAttempts > maxIR) {
+      const invGoto = step.onInvalidGoto ?? -1;
+      if (invGoto >= 0) {
+        await gotoWorkflowStep(ctx, team, gateIndex, invGoto, {
+          reason: "on_invalid_retry_exhausted",
+          verdict: reason === "INVALID" ? "INVALID" : undefined,
+          rationale,
+          diff,
+        });
+        return;
+      }
+      await finishRun(
+        ctx,
+        team,
+        workflowInvalidReason(reason, step.verifier),
+        "failed",
+      );
+      return;
     }
+    const verifier = team.members.find(
+      (m) => m.name === step.verifier && !m.isMaster,
+    );
+    if (!hasLiveSession(verifier)) {
+      await finishRun(
+        ctx,
+        team,
+        workflowNoSessionReason(step.verifier),
+        "failed",
+      );
+      return;
+    }
+    // Honor gate approval_before on invalid-verifier retry re-dispatch
+    // (parity with FAIL retry and the initial advance path). Reset timing first
+    // so a pause-then-resume does not preserve the prior attempt's startedAt.
+    resetWorkflowStepTiming(step);
+    if (await maybePauseBeforeWorkflowStep(ctx, team, gateIndex)) return;
+    recordEvent(team, {
+      timestamp: Date.now(),
+      kind: "retry",
+      member: step.verifier,
+      stage: gateIndex,
+      stepIndex: gateIndex,
+      detail: `workflow step ${gateIndex + 1} invalid retry ${step.invalidAttempts}/${maxIR}; verifier ${step.verifier}; reason ${reason}: ${rationale}`,
+    });
+    const nudge =
+      `[Verification could not be evaluated — invalid attempt ${step.invalidAttempts}/${maxIR}]\n` +
+      `Reason: ${reason}. Rationale: ${rationale}. Diff: ${diff}.\n` +
+      `Re-evaluate the target output and emit a fresh verdict.`;
+    const targetIndices = gateTargetIndices(task.steps ?? [], gateIndex);
+    const producerOutput = buildGateProducerOutput(
+      task.steps ?? [],
+      targetIndices,
+    );
+    step.correlationId = crypto.randomUUID();
+    await dispatchToMember(
+      ctx,
+      verifier,
+      `${nudge}\n\n${buildGateVerifierPrompt(step, producerOutput, workflowTargetLabel(targetIndices))}`,
+      verifier.worktreePath ?? ctx.directory,
+      team,
+      { stepIndex: gateIndex, correlationId: step.correlationId },
+    );
+    markWorkflowStepDispatched(step);
+    await saveTeamState(team);
+    return;
+  }
 
-    if (policy === "escalate") {
-        const nextIndex = (task.steps ?? []).findIndex(s => !s.completed)
-        const escalated = await forceApprovalRequest(ctx, team, {
-            kind: "workflow_step",
-            stage: gateIndex,
-            summary: `Step ${gateIndex + 1} (gate) by ${step.verifier ?? "?"} could not be evaluated (${reason}). Rationale: ${rationale}. Approve to override and continue${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""}; reject to fail as workflow_invalid.`,
-        })
-        if (escalated) {
-            // Mark the gate complete so that on team_approve (which calls
-            // advanceWorkflowStep) the workflow proceeds past this gate.
-            step.completed = true
-            await saveTeamState(team)
-            return
-        }
-        // No escalation handler available -> fall through to terminal fail.
+  if (policy === "escalate") {
+    const nextIndex = (task.steps ?? []).findIndex((s) => !s.completed);
+    const escalated = await forceApprovalRequest(ctx, team, {
+      kind: "workflow_step",
+      stage: gateIndex,
+      summary: `Step ${gateIndex + 1} (gate) by ${step.verifier ?? "?"} could not be evaluated (${reason}). Rationale: ${rationale}. Approve to override and continue${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""}; reject to fail as workflow_invalid.`,
+    });
+    if (escalated) {
+      // Mark the gate complete so that on team_approve (which calls
+      // advanceWorkflowStep) the workflow proceeds past this gate.
+      step.completed = true;
+      await saveTeamState(team);
+      return;
     }
+    // No escalation handler available -> fall through to terminal fail.
+  }
 
-    // on_invalid_goto (incompatible with escalate per validator) jumps instead
-    // of terminating at the INVALID terminal point.
-    if (policy !== "escalate") {
-        const invGoto = step.onInvalidGoto ?? -1
-        if (invGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, gateIndex, invGoto, { reason: `on_invalid:${reason}`, verdict: reason === "INVALID" ? "INVALID" : undefined, rationale, diff })
-            return
-        }
+  // on_invalid_goto (incompatible with escalate per validator) jumps instead
+  // of terminating at the INVALID terminal point.
+  if (policy !== "escalate") {
+    const invGoto = step.onInvalidGoto ?? -1;
+    if (invGoto >= 0) {
+      await gotoWorkflowStep(ctx, team, gateIndex, invGoto, {
+        reason: `on_invalid:${reason}`,
+        verdict: reason === "INVALID" ? "INVALID" : undefined,
+        rationale,
+        diff,
+      });
+      return;
     }
-    await finishRun(ctx, team, workflowInvalidReason(reason, step.verifier), "failed")
+  }
+  await finishRun(
+    ctx,
+    team,
+    workflowInvalidReason(reason, step.verifier),
+    "failed",
+  );
 }

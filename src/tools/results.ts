@@ -64,6 +64,10 @@ function workflowStepControlsTag(step: WorkflowRunStep): string {
     return controls.length > 0 ? `  [${controls.join(", ")}]` : ""
 }
 
+function workflowStepDurationTag(step: WorkflowRunStep): string {
+    return step.durationMs === undefined ? "" : ` duration=${step.durationMs}ms`
+}
+
 function formatBranchStatusList(statuses: Record<string, string> | undefined): string {
     if (statuses === undefined) return ""
     const pairs = Object.entries(statuses).map(([branchId, status]) => `${branchId}:${status}`)
@@ -96,20 +100,20 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
         case "task": {
             const bytes = step.outputBytes === undefined ? "" : ` (${step.outputBytes} bytes)`
             const state = step.skipped ? " (skipped)" : step.completed ? " (done)" : ""
-            return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${state}${bytes}${workflowStepControlsTag(step)}`
+            return `- Step ${step.step}: [task]${idTag} ${step.member ?? "?"}${state}${bytes}${workflowStepDurationTag(step)}${workflowStepControlsTag(step)}`
         }
         case "gate": {
             const target = workflowTargetLabel(step)
             const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
             const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
             const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
-            return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${jumpTag}${formatWorkflowIssueDetail(step)}${workflowStepControlsTag(step)}`
+            return `- Step ${step.step}: [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${jumpTag}${workflowStepDurationTag(step)}${formatWorkflowIssueDetail(step)}${workflowStepControlsTag(step)}`
         }
         case "fanout": {
             const fanout = step.fanout
             if (fanout === undefined) throw new Error(`workflow fanout step ${step.step} missing fanout metadata`)
             const branchList = fanout.branchIds.length > 0 ? fanout.branchIds.join(", ") : "(none)"
-            return `- Step ${step.step}: [fanout]${idTag} branches ${branchList} -> join step ${fanout.joinIndex + 1}${workflowStepControlsTag(step)}`
+            return `- Step ${step.step}: [fanout]${idTag} branches ${branchList} -> join step ${fanout.joinIndex + 1}${workflowStepDurationTag(step)}${workflowStepControlsTag(step)}`
         }
         case "join": {
             const join = step.join
@@ -117,7 +121,7 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
             const statuses = formatBranchStatusList(step.branchStatuses)
             const statusTag = statuses === "" ? "" : ` branches ${statuses}`
             const joinedBytes = step.joinedOutputBytes === undefined ? "" : ` (joined ${step.joinedOutputBytes} bytes)`
-            return `- Step ${step.step}: [join]${idTag} fanout step ${join.fanoutIndex + 1}${statusTag}${joinedBytes}${workflowStepControlsTag(step)}`
+            return `- Step ${step.step}: [join]${idTag} fanout step ${join.fanoutIndex + 1}${statusTag}${joinedBytes}${workflowStepDurationTag(step)}${workflowStepControlsTag(step)}`
         }
         default:
             return assertNeverWorkflowStepKind(step.kind)

@@ -53,6 +53,8 @@ export type WorkflowToolStep = {
     readonly criteria?: string
     readonly target_step?: WorkflowStepRef
     readonly targets?: readonly WorkflowStepRef[]
+    readonly inputs?: readonly WorkflowStepRef[]
+    readonly expose_output?: boolean
     readonly on_fail?: "retry" | "fail"
     readonly max_retries?: number
     readonly on_invalid?: "fail" | "retry_verifier" | "escalate"
@@ -189,6 +191,33 @@ function resolveGateTargetIndices(steps: readonly LoweredWorkflowStep[], gateInd
     return target < 0 ? [] : [target]
 }
 
+function resolveWorkflowInputRef(steps: readonly LoweredWorkflowStep[], consumerIndex: number, ref: WorkflowStepRef): number {
+    const idx = typeof ref === "number"
+        ? ref - 1
+        : steps.findIndex((step, index) => index < consumerIndex && step.id === ref)
+    const input = steps[idx]
+    if (idx < 0 || idx >= consumerIndex || (input?.kind !== "task" && input?.kind !== "join")) return -1
+    return idx
+}
+
+function resolveWorkflowInputIndices(steps: readonly LoweredWorkflowStep[], consumerIndex: number): number[] | undefined {
+    const step = steps[consumerIndex]
+    if (step?.kind !== "task" || step.inputs === undefined) return undefined
+    return step.inputs.map(input => resolveWorkflowInputRef(steps, consumerIndex, input))
+}
+
+function canConsumeWorkflowInput(steps: readonly LoweredWorkflowStep[], consumerIndex: number, inputIndex: number): boolean {
+    const consumer = steps[consumerIndex]
+    const input = steps[inputIndex]
+    if (consumer?.kind !== "task" || input === undefined) return false
+    if (input.kind !== "task" && input.kind !== "join") return false
+    const consumerBranch = consumer.branch
+    const inputBranch = input.kind === "task" ? input.branch : undefined
+    if (consumerBranch === undefined) return inputBranch === undefined
+    if (inputBranch === undefined) return inputIndex < consumerBranch.fanoutIndex
+    return inputBranch.fanoutIndex === consumerBranch.fanoutIndex && inputBranch.branchId === consumerBranch.branchId
+}
+
 function primaryTargetIndex(indices: number[]): number | undefined {
     return indices.length === 0 ? undefined : indices[0]
 }
@@ -276,11 +305,12 @@ function lowerLinearStep(
     branch: WorkflowBranchMetadata | undefined,
     branchContext: WorkflowBranchContext | undefined,
 ): LoweredWorkflowLinearStep {
+    const inputLowered = step.inputs === undefined ? step : { ...step, inputs: step.inputs.map(input => convertRef(input)) }
     if (step.kind === "task") {
-        return branch === undefined || branchContext === undefined ? step : { ...step, branch, branchContext }
+        return branch === undefined || branchContext === undefined ? inputLowered : { ...inputLowered, branch, branchContext }
     }
     const lowered: WorkflowLinearToolStep = {
-        ...step,
+        ...inputLowered,
         target_step: step.target_step === undefined ? undefined : convertRef(step.target_step),
         targets: step.targets?.map(target => convertRef(target)),
         on_pass_goto: step.on_pass_goto === undefined ? undefined : convertRef(step.on_pass_goto),
@@ -749,6 +779,19 @@ function resolveAndValidateGateTargets(
     return { indices: targetIndices }
 }
 
+function validateTaskInputs(steps: readonly LoweredWorkflowStep[], task: LoweredWorkflowLinearStep, index: number, displayStep: number): string | null {
+    if (task.kind !== "task" || task.inputs === undefined) return null
+    const location = stepLocation(task, displayStep, true)
+    const inputIndices = resolveWorkflowInputIndices(steps, index) ?? []
+    for (let inputPosition = 0; inputPosition < task.inputs.length; inputPosition += 1) {
+        const inputIndex = inputIndices[inputPosition]
+        if (inputIndex === undefined || inputIndex < 0 || !canConsumeWorkflowInput(steps, index, inputIndex)) {
+            return `Error: ${location} inputs[${inputPosition}] must reference a previous task or join step in the same workflow scope`
+        }
+    }
+    return null
+}
+
 /**
  * Graph validator: structural + semantic checks over the declared step list.
  * Centralizes the linear-engine invariants (unique ids, target resolution,
@@ -777,6 +820,8 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 }
                 if (!s.member) return `Error: ${location} requires \`member\``
                 if (!s.task) return `Error: ${location} requires \`task\``
+                const inputsError = validateTaskInputs(loweredSteps, s, i, displayStep)
+                if (inputsError !== null) return inputsError
                 if (s.max_output_bytes !== undefined && (!Number.isInteger(s.max_output_bytes) || s.max_output_bytes <= 0)) {
                     return `Error: ${location} max_output_bytes must be a positive integer`
                 }
@@ -795,6 +840,9 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
                 const location = stepLocation(s, displayStep, true)
                 if (s.member !== undefined || s.task !== undefined) {
                     return `Error: ${location} must not set task fields`
+                }
+                if (s.inputs !== undefined || s.expose_output !== undefined) {
+                    return `Error: ${location} must not set task data-flow fields`
                 }
                 if (s.max_output_bytes !== undefined) {
                     return `Error: ${location} must not set max_output_bytes (task steps only)`
@@ -899,6 +947,17 @@ function stepTargetLabel(steps: readonly LoweredWorkflowStep[], gateIndex: numbe
     return labels.length === 1 ? `step ${first}` : `steps ${labels.join(", ")}`
 }
 
+function workflowStepLabel(steps: readonly LoweredWorkflowStep[], index: number): string {
+    const id = steps[index]?.id
+    return id ? `step ${index + 1} (${id})` : `step ${index + 1}`
+}
+
+function taskInputsLabel(steps: readonly LoweredWorkflowStep[], taskIndex: number): string | null {
+    const inputIndices = resolveWorkflowInputIndices(steps, taskIndex)
+    if (inputIndices === undefined) return null
+    return `inputs=${inputIndices.map(index => workflowStepLabel(steps, index)).join(", ")}`
+}
+
 function whereLabel(where: WorkflowWhere | undefined): string {
     if (where === undefined) return ""
     const parsed = parseWorkflowCondition(where)
@@ -922,6 +981,9 @@ function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 if (step.approval_before) controls.push("approval_before")
                 if (step.approval_after) controls.push("approval_after")
                 if (step.max_output_bytes !== undefined) controls.push(`max_output_bytes=${step.max_output_bytes}`)
+                if (step.expose_output === false) controls.push("expose_output=false")
+                const inputs = taskInputsLabel(loweredSteps, i)
+                if (inputs !== null) controls.push(inputs)
                 const ctrlTag = controls.length > 0 ? `  [${controls.join(", ")}]` : ""
                 const indent = step.branchContext === undefined ? "" : "  "
                 lines.push(`${indent}${i + 1}. [task]${idTag} ${step.member ?? "?"}: ${step.task ?? ""}${ctrlTag}`)
@@ -954,14 +1016,22 @@ function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 activeBranchId = undefined
                 const join = loweredSteps[step.fanout.joinIndex]
                 const joinIdTag = join?.id ? ` (${join.id})` : ""
-                lines.push(`${i + 1}. [fanout]${idTag} branches: ${step.fanout.branchIds.join(", ")} -> join step ${step.fanout.joinIndex + 1}${joinIdTag}; max_errored=${step.fanout.maxErrored}`)
+                const controls = [`max_errored=${step.fanout.maxErrored}`]
+                if (step.fanout.joinPolicy !== undefined) controls.push(`join_policy=${step.fanout.joinPolicy}`)
+                if (step.fanout.quorum !== undefined) controls.push(`quorum=${step.fanout.quorum}`)
+                if (step.fanout.requiredBranchIds !== undefined) controls.push(`required_branches=${step.fanout.requiredBranchIds.join(",")}`)
+                if (step.fanout.reducerMember !== undefined) controls.push(`reducer_member=${step.fanout.reducerMember}`)
+                lines.push(`${i + 1}. [fanout]${idTag} branches: ${step.fanout.branchIds.join(", ")} -> join step ${step.fanout.joinIndex + 1}${joinIdTag}; ${controls.join("; ")}`)
                 break
             }
             case "join": {
                 activeBranchId = undefined
                 const fanout = loweredSteps[step.join.fanoutIndex]
                 const branchIds = fanout?.kind === "fanout" ? fanout.fanout.branchIds : []
-                lines.push(`${i + 1}. [join]${idTag} waits for branches: ${branchIds.join(", ")}; max_errored=${step.join.maxErrored}`)
+                const controls = [`max_errored=${step.join.maxErrored}`]
+                if (step.join.joinPolicy !== undefined) controls.push(`join_policy=${step.join.joinPolicy}`)
+                if (step.join.reducerMember !== undefined) controls.push(`reducer_member=${step.join.reducerMember}`)
+                lines.push(`${i + 1}. [join]${idTag} waits for branches: ${branchIds.join(", ")}; ${controls.join("; ")}`)
                 break
             }
             default:
@@ -993,7 +1063,6 @@ function validateWorkflowSource(args: WorkflowToolArgs): string | null {
 async function resolveWorkflowArgs(ctx: PluginContext, args: WorkflowToolArgs): Promise<ResolvedWorkflowToolArgs | string> {
     const sourceError = validateWorkflowSource(args)
     if (sourceError) return sourceError
-    const baseSteps = args.steps ?? ((args.workflow_file === undefined) ? [] : (await loadWorkflowFile(ctx.directory, args.workflow_file, args.vars ?? {})) satisfies { steps: WorkflowToolStep[] } | { error: string } | undefined)
     if (args.steps !== undefined) {
         const shapeError = validateMatrixForeachShapeInSteps(args.steps)
         if (shapeError !== null) return shapeError
@@ -1094,6 +1163,8 @@ function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkfl
                 id: step.id,
                 member: step.member,
                 task: step.task,
+                inputs: resolveWorkflowInputIndices(steps, index),
+                exposeOutput: step.expose_output,
                 approvalBefore: step.approval_before,
                 approvalAfter: step.approval_after,
                 maxOutputBytes: step.max_output_bytes,
@@ -1165,6 +1236,8 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         criteria: tool.schema.string().min(1).max(8192).optional().describe("gate steps: verification criteria"),
         target_step: workflowStepRefSchema.optional().describe("gate steps: one target task step to verify, using a 1-based number or step id; branch gate references are branch-local. Mutually exclusive with targets."),
         targets: tool.schema.array(workflowStepRefSchema).min(1).optional().describe("gate steps: multiple prior task steps to verify together. Mutually exclusive with target_step."),
+        inputs: tool.schema.array(workflowStepRefSchema).min(1).optional().describe("task steps: explicit upstream task/join steps to include, using 1-based numbers or step ids. Overrides implicit upstream selection."),
+        expose_output: tool.schema.boolean().optional().describe("task steps: when false, suppress this task output from implicit downstream upstream context. Explicit inputs may still reference it."),
         on_fail: tool.schema.enum(["retry", "fail"]).optional().describe("gate steps: FAIL control. 'fail' (default) fails the run; 'retry' re-dispatches the target task up to max_retries."),
         max_retries: tool.schema.number().int().min(0).max(5).optional().describe("gate steps: FAIL retry cap when on_fail='retry'. Default 0."),
         on_invalid: tool.schema.enum(["fail", "retry_verifier", "escalate"]).optional().describe("gate steps: INVALID control. 'fail' (default) terminates producer-neutral as workflow_invalid; 'retry_verifier' re-dispatches this gate's verifier up to max_invalid_retries; 'escalate' pauses for human approval (approve=advance, reject=workflow_invalid)."),
@@ -1281,7 +1354,9 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                     const first = team.members.find(m => m.name === step.member && !m.isMaster)
                     if (!first?.sessionId || first.status === "errored") throw new Error(`workflow initial member "${step.member}" has no live session`)
                     await dispatchToMember(ctx, first, step.task, first.worktreePath ?? ctx.directory, team)
-                    step.dispatchedAt = Date.now()
+                    const now = Date.now()
+                    step.startedAt ??= now
+                    step.dispatchedAt = now
                 },
                 // successMessage
                 () => `team_workflow started on "${args.team_id}" with ${lowerWorkflowSteps(resolvedArgs.steps).length} step(s).`,

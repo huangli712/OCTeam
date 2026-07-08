@@ -354,6 +354,8 @@ export type WorkflowStep = {
     score?: number                      // optional structured score from the last verdict (gate steps)
     confidence?: number                 // optional structured confidence from the last verdict (gate steps)
     issues?: WorkflowIssue[]            // optional structured issues from the last verdict (gate steps)
+    inputs?: number[]
+    exposeOutput?: boolean
     // conditional jumps: verdict-gated goto targets (0-based internal index,
     // resolved at build time from a 1-based number or step id). Omitted = the
     // verdict's default behavior (PASS: advance; FAIL/INVALID: terminate).
@@ -373,9 +375,12 @@ export type WorkflowStep = {
     timeoutMs?: number                  // task/gate steps: wall-clock deadline from dispatch time
     onTimeout?: "fail" | "retry" | "skip" // timeout control; default fail
     maxTimeoutRetries?: number          // timeout retry cap when onTimeout=retry
-    timeoutAttempts?: number            // timeout retry attempts so far
-    dispatchedAt?: number               // epoch ms when this step was last dispatched
-    correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl
+          timeoutAttempts?: number            // timeout retry attempts so far
+          startedAt?: number
+          completedAt?: number
+          durationMs?: number
+          dispatchedAt?: number               // epoch ms when this step was last dispatched
+          correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl
     // fanout/join DAG metadata (workflow P2). Runtime dispatch wiring lands in a
     // later task; T1 only persists and reads the flat DAG shape.
     fanout?: WorkflowFanoutMetadata     // fanout marker steps
@@ -439,6 +444,11 @@ export type WorkflowRunStep = {
     output?: string                     // bounded task-step snapshot captured at completion
     outputBytes?: number
     joinedOutputBytes?: number
+    startedAt?: number
+    completedAt?: number
+    durationMs?: number
+    inputs?: number[]
+    exposeOutput?: boolean
     fanout?: WorkflowFanoutMetadata
     branch?: WorkflowBranchMetadata
     join?: WorkflowJoinMetadata

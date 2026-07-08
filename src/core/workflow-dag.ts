@@ -29,8 +29,9 @@ export function workflowStepActor(step: WorkflowStep | undefined): string | null
             return step.member ?? null
         case "gate":
             return step.verifier ?? null
-        case "fanout":
         case "join":
+            return step.dispatchedAt === undefined ? null : (step.join?.joinPolicy === "reduce" ? step.join.reducerMember ?? null : null)
+        case "fanout":
             return null
         default:
             return assertNever(step.kind)

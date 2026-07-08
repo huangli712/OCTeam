@@ -142,6 +142,12 @@ function validateWorkflowStepFields(step: Record<string, unknown>, location: Ste
     if (step.targets !== undefined && (!Array.isArray(step.targets) || step.targets.length === 0 || !step.targets.every(isWorkflowStepRef))) {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} targets must be a non-empty array of positive integers or non-empty strings`
     }
+    if (step.inputs !== undefined && (!Array.isArray(step.inputs) || step.inputs.length === 0 || !step.inputs.every(isWorkflowStepRef))) {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix} inputs must be a non-empty array of positive integers or non-empty strings`
+    }
+    if (step.expose_output !== undefined && typeof step.expose_output !== "boolean") {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix} expose_output must be boolean`
+    }
     if (step.on_fail !== undefined && step.on_fail !== "retry" && step.on_fail !== "fail") {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} on_fail must be retry or fail`
     }
