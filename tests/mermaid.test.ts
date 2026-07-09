@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { formatWorkflowMermaid } from "../src/orchestration/workflow-mermaid.js"
+import { formatWorkflowMermaid } from "../src/orchestration/mermaid.js"
 import type { WorkflowRunStep } from "../src/core/types.js"
 
 const WORKFLOW_STEPS: WorkflowRunStep[] = [

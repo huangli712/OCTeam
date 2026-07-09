@@ -12,7 +12,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { formatWorkflowMermaid, type MermaidStepStatus } from "../orchestration/workflow-mermaid.js"
+import { formatWorkflowMermaid, type MermaidStepStatus } from "../orchestration/mermaid.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState } from "../state/store.js"
 import { listRunRecords, readRunEvents } from "../orchestration/runs.js"

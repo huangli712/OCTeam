@@ -15,7 +15,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { truncateOutput } from "../core/utils.js"
-import { formatWorkflowMermaid } from "../orchestration/workflow-mermaid.js"
+import { formatWorkflowMermaid } from "../orchestration/mermaid.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { listRunRecords, readRunRecord } from "../orchestration/runs.js"
 import { runMemberOutputPath, isSafePathSegment } from "../state/paths.js"
