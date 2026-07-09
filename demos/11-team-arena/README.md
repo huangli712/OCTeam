@@ -71,7 +71,7 @@
     },
     {
       "name": "dave",
-      "role": "benchmarker",
+      "role": "reviewer",
       "worktree": true,
       "prompt": "You are a benchmark evaluator. You run the same objective benchmark command against each candidate's worktree and emit a scoreboard. Run the eval command for EVERY candidate at the absolute worktree path shown. Write the benchmark wrapper script yourself based on the eval command, run it per candidate, and produce the score. Emit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{...},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
@@ -79,7 +79,7 @@
 }
 ```
 
-**Role 选择理由**：前三名候选统一用 `coder`（`oct-junior` agent，可写码+跑测试）在独立 worktree 中实现各自的排序方案；evaluator 用 `benchmarker`（只读 agent，专注跑客观基准并产出结构化比分）。
+**Role 选择理由**：前三名候选统一用 `coder`（`oct-junior` agent，可写码+跑测试）在独立 worktree 中实现各自的排序方案；evaluator 用 `reviewer`（只读 agent，专注跑客观基准并产出结构化比分）。
 
 ### 1.3 Master 启动调用
 
@@ -116,7 +116,7 @@ T+0m     implement 阶段: 并行 dispatch alice, bob, carol (各在独立 workt
 T+0~8m   三名候选各自实现排序算法 → 输出 IMPL 标记 → idle
 T+8m     barrier: 所有候选 idle → arena 阶段切换至 evaluate
 T+8m     evaluator prompt 构建: 列出候选人名 + 绝对 worktree 路径 + eval_command + winner_metric
-T+8m     dispatch evaluator (dave, benchmarker)
+T+8m     dispatch evaluator (dave, reviewer)
 T+8~11m  dave 为每名候选跑 `bun run benchmark.bun.ts` → 收集吞吐量 → 产出 <scoreboard> JSON
 T+11m    引擎解析 scoreboard → selectArenaWinner → 结果交付 master
 ```
@@ -495,7 +495,7 @@ evaluator（frank）在跑完五份基准后应产出如下格式的 scoreboard�
 执行 demos/11-team-arena/README.md「场景 1」的完整闭环并自动评分。
 
 步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（3 名候选 coder + 1 名 evaluator benchmarker，每名候选 worktree: true，evaluator 也设 worktree: true）
+1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（3 名候选 coder + 1 名 evaluator reviewer，每名候选 worktree: true，evaluator 也设 worktree: true）
 2. team_activate 激活
 3. 读 README「1.3 Master 启动调用」，按 team_arena JSON 启动擂台（implement → evaluate，eval_command 跑基准脚本）
 4. team_results 轮询至 master 收到汇总（所有候选 idle 后 evaluator 跑基准、出 scoreboard；引擎自动选胜者）
