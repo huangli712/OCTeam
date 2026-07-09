@@ -62,7 +62,22 @@ const PROCESSED_MAX_LINES = 1000
 // in the host plugin, can), so the only forged line that passes is a VERBATIM
 // copy of a legitimate directive — which merely re-delivers identical content
 // (harmless, bounded by pollMailbox's exactly-once delivery).
-const authenticatedDirectives = new Map<string, { from: string; body: string }>()
+// Cap on tracked directive authentications. When exceeded, the oldest
+// entries are evicted to bound memory growth for long-lived hosts.
+// Directives are authenticated at write time and checked at poll time
+// (typically seconds later); 64 is far above any realistic in-flight count.
+const AUTH_DIRECTIVE_MAP_CAP = 64
+const authenticatedDirectives = new Map<string, { from: string; body: string; ts: number }>()
+
+/** Evict the oldest auth entries once the map exceeds the cap. */
+function evictStaleAuthDirectives(): void {
+    if (authenticatedDirectives.size <= AUTH_DIRECTIVE_MAP_CAP) return
+    const sorted = [...authenticatedDirectives.entries()].sort((a, b) => a[1].ts - b[1].ts)
+    const toRemove = sorted.length - AUTH_DIRECTIVE_MAP_CAP
+    for (let i = 0; i < toRemove; i++) {
+        authenticatedDirectives.delete(sorted[i]![0])
+    }
+}
 
 /**
  * Register a directive's authenticated content (called by writeMailboxMessage
@@ -70,7 +85,8 @@ const authenticatedDirectives = new Map<string, { from: string; body: string }>(
  * from replaying a legitimate id with forged content.
  */
 export function authenticateDirective(msg: Message): void {
-    authenticatedDirectives.set(msg.id, { from: msg.from, body: msg.body })
+    authenticatedDirectives.set(msg.id, { from: msg.from, body: msg.body, ts: Date.now() })
+    evictStaleAuthDirectives()
 }
 
 /** True iff `msg` is a directive whose (id, from, body) match a registered
@@ -82,6 +98,11 @@ function isAuthenticatedDirective(msg: Message): boolean {
     return registered !== undefined
         && registered.from === msg.from
         && registered.body === msg.body
+}
+
+/** Test-only: current number of tracked authentications (bounds-check regression). */
+export function _authDirectiveMapSizeForTests(): number {
+    return authenticatedDirectives.size
 }
 
 // --- low-level jsonl helpers ---

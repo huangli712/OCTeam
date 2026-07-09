@@ -9,7 +9,22 @@
 import type { PluginContext } from "../core/context.js"
 
 const WAKE_HINT_THROTTLE_MS = 30_000
+// Cap on tracked sessions. When exceeded, the oldest entries are evicted to
+// bound memory growth for long-lived hosts where sessions end without a
+// team_delete (the only path that calls clearWakeHint).
+const WAKE_HINT_MAP_CAP = 64
 const wakeHintLastSent = new Map<string, number>()
+
+/** Evict the oldest throttle entries once the map exceeds the cap. */
+function evictStaleWakeHints(): void {
+    if (wakeHintLastSent.size <= WAKE_HINT_MAP_CAP) return
+    // Oldest first by stored timestamp.
+    const sorted = [...wakeHintLastSent.entries()].sort((a, b) => a[1] - b[1])
+    const toRemove = sorted.length - WAKE_HINT_MAP_CAP
+    for (let i = 0; i < toRemove; i++) {
+        wakeHintLastSent.delete(sorted[i]![0])
+    }
+}
 
 /**
  * Send a wake hint to an idle session that has unread messages. Best-effort:
@@ -25,6 +40,7 @@ export async function sendWakeHint(
     const last = wakeHintLastSent.get(sessionID) ?? 0
     if (now - last < WAKE_HINT_THROTTLE_MS) return
     wakeHintLastSent.set(sessionID, now)
+    evictStaleWakeHints()
     await ctx.client.session
         .promptAsync({
             path: { id: sessionID },
@@ -46,4 +62,9 @@ export async function sendWakeHint(
 /** Drop a session's throttle entry (L1) — called on team_delete to bound the map. */
 export function clearWakeHint(sessionID: string): void {
     wakeHintLastSent.delete(sessionID)
+}
+
+/** Test-only: current number of tracked sessions (bounds-check regression). */
+export function _wakeHintMapSizeForTests(): number {
+    return wakeHintLastSent.size
 }
