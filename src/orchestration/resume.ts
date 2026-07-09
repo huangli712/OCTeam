@@ -54,6 +54,38 @@ import {
     workflowStepActor,
 } from "./dag.js";
 
+type TeamMember = Team["members"][number];
+
+/**
+ * Shared concurrent re-dispatch pattern: for each non-master non-running
+ * member passing the mode-specific `shouldDispatch` predicate, dispatch with
+ * the mode-specific `text`, count real dispatches, and re-drive `barrier` when
+ * zero members were dispatched (prevents a no-op resume from stalling the run).
+ *
+ * Used by parallel, consensus, route Phase B, arbitrate Phase A, and arena
+ * implement phase. Modes with fundamentally different shapes (sequential stage
+ * advance, delegate/recurse unconditional fan-out, tollgate multi-phase,
+ * workflow multi-step) keep their own handlers.
+ */
+async function resumeConcurrentDispatch(
+    ctx: PluginContext,
+    team: Team,
+    members: readonly TeamMember[],
+    shouldDispatch: (m: TeamMember) => boolean,
+    text: (m: TeamMember) => string,
+    barrier: () => Promise<void>,
+): Promise<void> {
+    let dispatched = 0;
+    for (const m of members) {
+        if (m.isMaster || m.status === "running") continue;
+        if (shouldDispatch(m)) {
+            await dispatchToMember(ctx, m, text(m), m.worktreePath ?? ctx.directory, team);
+            dispatched++;
+        }
+    }
+    if (dispatched === 0) await barrier();
+}
+
 /**
  * Reset interrupted task claims: reap stale locks + reset any claimed/in_progress
  * tasks back to pending so idle members can re-claim them. Shared by the
@@ -140,27 +172,13 @@ async function resumeParallelMode(
     team: Team,
     task: Extract<ActiveTask, { type: "parallel" }>,
 ): Promise<void> {
-    let dispatched = 0;
-    for (const m of team.members) {
-        if (m.isMaster || m.status === "running") continue;
-        // MAJOR-C: mode-dependent completion criterion.
-        const incomplete = task.requireDoneAck
-            ? !m.declaredDone
-            : !task.responses[m.name];
-        if (incomplete) {
-            const text = task.tasks?.[m.name] ?? task.task ?? "";
-            await dispatchToMember(
-                ctx,
-                m,
-                text,
-                m.worktreePath ?? ctx.directory,
-                team,
-            );
-            dispatched++;
-        }
-    }
-    // MAJOR-A: zero-dispatch -> re-drive barrier immediately.
-    if (dispatched === 0) await handleParallelIdle(ctx, team);
+    // MAJOR-C: mode-dependent completion criterion. MAJOR-A: zero-dispatch re-drives barrier.
+    await resumeConcurrentDispatch(
+        ctx, team, team.members,
+        (m) => task.requireDoneAck ? !m.declaredDone : !task.responses[m.name],
+        (m) => task.tasks?.[m.name] ?? task.task ?? "",
+        () => handleParallelIdle(ctx, team),
+    );
 }
 
 async function resumeConsensusMode(
@@ -168,27 +186,18 @@ async function resumeConsensusMode(
     team: Team,
     task: Extract<ActiveTask, { type: "consensus" }>,
 ): Promise<void> {
-    let dispatched = 0;
-    if ((task.currentRound ?? 0) < (task.maxRounds ?? 0)) {
-        for (const m of team.members) {
-            if (m.isMaster || m.status === "running") continue;
-            if (!task.responses[m.name]) {
-                const text =
-                    `[Consensus Round ${task.currentRound ?? 0}] ${task.topic}\n\n` +
-                    "Respond, then emit " +
-                    '<consensus>{"agreed": true|false}</consensus>.';
-                await dispatchToMember(
-                    ctx,
-                    m,
-                    text,
-                    m.worktreePath ?? ctx.directory,
-                    team,
-                );
-                dispatched++;
-            }
-        }
+    if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
+        await handleConsensusIdle(ctx, team);
+        return;
     }
-    if (dispatched === 0) await handleConsensusIdle(ctx, team);
+    await resumeConcurrentDispatch(
+        ctx, team, team.members,
+        (m) => !task.responses[m.name],
+        () =>
+            `[Consensus Round ${task.currentRound ?? 0}] ${task.topic}\n\n` +
+            'Respond, then emit <consensus>{"agreed": true|false}</consensus>.',
+        () => handleConsensusIdle(ctx, team),
+    );
 }
 
 async function resumeSequentialMode(
@@ -231,7 +240,6 @@ async function resumeRouteMode(
     team: Team,
     task: Extract<ActiveTask, { type: "route" }>,
 ): Promise<void> {
-    let dispatched = 0;
     if (!task.routeStage) {
         // Phase A: router hadn't transitioned to targets. If its
         // output is captured, re-run Phase A (parse -> dispatch
@@ -255,31 +263,18 @@ async function resumeRouteMode(
                     router.worktreePath ?? ctx.directory,
                     team,
                 );
-                dispatched++;
             }
         }
-    } else {
-        // Phase B: re-dispatch targets without responses; else re-drive the barrier.
-        for (const m of team.members) {
-            if (m.isMaster || m.status === "running") continue;
-            const isTarget = task.routeTargets?.includes(m.name) ?? false;
-            if (isTarget && !task.responses[m.name]) {
-                const branch = task.routeBranches?.find(
-                    (b) => b.member === m.name,
-                );
-                const text = branch?.task ?? task.task ?? "";
-                await dispatchToMember(
-                    ctx,
-                    m,
-                    text,
-                    m.worktreePath ?? ctx.directory,
-                    team,
-                );
-                dispatched++;
-            }
-        }
-        if (dispatched === 0) await handleRouteIdle(ctx, team);
+        return;
     }
+    // Phase B: re-dispatch targets without responses; else re-drive the barrier.
+    const routeTargets = new Set(task.routeTargets ?? []);
+    await resumeConcurrentDispatch(
+        ctx, team, team.members,
+        (m) => routeTargets.has(m.name) && !task.responses[m.name],
+        (m) => task.routeBranches?.find((b) => b.member === m.name)?.task ?? task.task ?? "",
+        () => handleRouteIdle(ctx, team),
+    );
 }
 
 async function resumeArbitrateMode(
@@ -287,42 +282,34 @@ async function resumeArbitrateMode(
     team: Team,
     task: Extract<ActiveTask, { type: "arbitrate" }>,
 ): Promise<void> {
-    let dispatched = 0;
     if (!task.arbitrationStage) {
         // Phase A: re-dispatch debaters without responses; else re-drive the barrier.
-        for (const name of task.disputants ?? []) {
-            const m = team.members.find((x) => x.name === name && !x.isMaster);
-            if (!m || m.status === "running") continue;
-            if (!task.responses[name]) {
-                await dispatchToMember(
-                    ctx,
-                    m,
-                    buildDebatePrompt(task),
-                    m.worktreePath ?? ctx.directory,
-                    team,
-                );
-                dispatched++;
-            }
-        }
-        if (dispatched === 0) await handleArbitrateIdle(ctx, team);
+        const debaters = (task.disputants ?? [])
+            .map((name) => team.members.find((m) => m.name === name && !m.isMaster))
+            .filter((m): m is TeamMember => m !== undefined);
+        await resumeConcurrentDispatch(
+            ctx, team, debaters,
+            (m) => !task.responses[m.name],
+            () => buildDebatePrompt(task),
+            () => handleArbitrateIdle(ctx, team),
+        );
+        return;
+    }
+    // Phase B: if the arbiter responded, re-run the ruling (parse -> deliver); else re-dispatch the arbiter.
+    if (task.arbiterMember && task.responses[task.arbiterMember]) {
+        await handleArbitrateIdle(ctx, team);
     } else {
-        // Phase B: if the arbiter responded, re-run the ruling (parse -> deliver); else re-dispatch the arbiter.
-        if (task.arbiterMember && task.responses[task.arbiterMember]) {
-            await handleArbitrateIdle(ctx, team);
-        } else {
-            const arbiter = team.members.find(
-                (m) => m.name === task.arbiterMember && !m.isMaster,
+        const arbiter = team.members.find(
+            (m) => m.name === task.arbiterMember && !m.isMaster,
+        );
+        if (arbiter) {
+            await dispatchToMember(
+                ctx,
+                arbiter,
+                buildArbiterPrompt(task),
+                arbiter.worktreePath ?? ctx.directory,
+                team,
             );
-            if (arbiter) {
-                await dispatchToMember(
-                    ctx,
-                    arbiter,
-                    buildArbiterPrompt(task),
-                    arbiter.worktreePath ?? ctx.directory,
-                    team,
-                );
-                dispatched++;
-            }
         }
     }
 }
@@ -526,28 +513,22 @@ async function resumeArenaMode(
     // dispatchToMember is a silent no-op for errored/no-session members, so
     // those are filtered out BEFORE the count — a counted no-op would suppress
     // the zero-dispatch barrier re-drive and hang the run.
-    let dispatched = 0;
-    for (const m of team.members) {
-        if (!task.candidates.includes(m.name)) continue;
-        if (m.status === "running" || m.status === "errored") continue;
-        if (!m.sessionId) continue;
-        if (task.responses[m.name]) continue;
-        await dispatchToMember(
-            ctx,
-            m,
-            task.task,
-            m.worktreePath ?? ctx.directory,
-            team,
-        );
-        dispatched++;
-    }
-    if (dispatched === 0) {
-        // Zero real dispatch -> re-drive the barrier with the FIRST candidate
-        // regardless of status (when all errored there is no live one, but the
-        // barrier counts errored as terminal-ready).
-        const first = team.members.find((m) => task.candidates.includes(m.name));
-        if (first) await handleArenaIdle(ctx, team, first);
-    }
+    const candidateSet = new Set(task.candidates);
+    await resumeConcurrentDispatch(
+        ctx, team, team.members,
+        (m) => candidateSet.has(m.name)
+            && m.status !== "errored"
+            && !!m.sessionId
+            && !task.responses[m.name],
+        () => task.task,
+        async () => {
+            // Zero real dispatch -> re-drive the barrier with the FIRST candidate
+            // regardless of status (when all errored there is no live one, but the
+            // barrier counts errored as terminal-ready).
+            const first = team.members.find((m) => task.candidates.includes(m.name));
+            if (first) await handleArenaIdle(ctx, team, first);
+        },
+    );
 }
 
 /** Per-mode re-dispatch entry for team_resume Phase 3: delegates to each mode's resume handler. */
