@@ -16,7 +16,7 @@ import { findActiveWorkflowStepIndexForMember } from "./dag.js"
 import { atomicWrite } from "../state/locks.js"
 import { runMemberOutputPath, runReduceOutputPath } from "../state/paths.js"
 import { recordEvent } from "./events.js"
-import type { MemberState } from "../core/types.js"
+import type { MemberState, SdkMessage } from "../core/types.js"
 
 /**
  * Build the accumulated run-member output by appending the current turn's
@@ -44,7 +44,7 @@ export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: s
 export async function captureMemberOutput(
     team: Team,
     member: MemberState,
-    messages: Array<{ info?: any; parts?: any }>,
+    messages: SdkMessage[],
 ): Promise<void> {
     const task = team.activeTask
     if (!task) return

@@ -17,7 +17,7 @@ import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent } from "./orchestration/status.js"
 import { processIdle } from "./orchestration/idle.js"
 import { checkTermination } from "./orchestration/termination.js"
-import type { MemberState } from "./core/types.js"
+import type { MemberState, SdkMessage } from "./core/types.js"
 import { logEvent, logSwallowed } from "./core/log.js"
 import { handleSessionDeleted } from "./orchestration/reconcile.js"
 
@@ -166,10 +166,7 @@ export function createTransformHook(
     return async (_input, output) => {
         // Q1: read sessionID from the messages (input is `{}`). All messages in a
         // single transform call share one sessionID.
-        const messages = output.messages as Array<{
-            info?: { sessionID?: string; role?: string }
-            parts?: any[]
-        }>
+        const messages = output.messages as SdkMessage[]
         const sessionID = messages.find(m => m.info?.sessionID)?.info?.sessionID
         if (!sessionID) return
 
