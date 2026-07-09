@@ -14,8 +14,8 @@ import { promisify } from "node:util";
 import type { PluginContext } from "../core/context.js";
 import type { Team } from "../state/store.js";
 import { readTeamSpec, saveTeamState } from "../state/store.js";
-import { worktreePath, worktreesDir } from "../state/paths.js";
-import { cleanWorktree } from "../state/worktrees.js";
+import { worktreesDir } from "../state/paths.js";
+import { cleanWorktree, createWorktree } from "../state/worktrees.js";
 import {
     chunk,
     waitUntil,
@@ -74,29 +74,9 @@ export function buildUpstreamContext(
 }
 
 /**
- * Create an isolated git worktree for a member: `git worktree add <path> -b team/<team>/<member>`.
- * Only called when the member spec has worktree: true. Runs git in the project
- * directory; the worktree path lives under the team's worktrees/ dir.
+ * Create an isolated git worktree for a member. Moved to state/worktrees.ts
+ * (createWorktree) — colocated with cleanWorktree/hasUncommittedChanges.
  */
-async function createWorktree(
-    projectDir: string,
-    teamDirectory: string,
-    teamName: string,
-    memberName: string,
-): Promise<string> {
-    const dest = worktreePath(teamDirectory, memberName);
-    const branch = `team/${teamName}/${memberName}`;
-    // Fail fast if branch/worktree already exists; team_create idempotency is
-    // handled by the caller checking member.worktreePath.
-    await execFileP("git", ["worktree", "add", dest, "-b", branch], {
-        cwd: projectDir,
-    }).catch((err) => {
-        throw new Error(
-            `createWorktree(${memberName}) failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-    });
-    return dest;
-}
 
 /**
  * Spawn (or reuse) member sessions and wait for every spawned member to idle
