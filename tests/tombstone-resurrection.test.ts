@@ -86,7 +86,7 @@ function parallelTask(): ActiveTask {
         currentStageIndex: 0,
         decisionHistory: [],
         decisionParseFailures: 0,
-        runId: "run-c1-test",
+        runId: "run-tomb-test",
     } as ActiveTask
 }
 
@@ -112,14 +112,14 @@ afterEach(() => {
 
 describe("C1 T1: processIdle does not resurrect a just-deleted team dir", () => {
     test("handler holds team ref → delete completes → processIdle no-ops; state.json/runs/events.jsonl absent", async () => {
-        const root = tmpRoot("c1-t1")
+        const root = tmpRoot("tomb-1")
         roots.push(root)
         const sid = "ses_t1_master"
         const memberSession = "ses_t1_alice"
         const ctx = makeCtx(root)
 
         // Live team with one initialized member that has a sessionId (so the
-        // member-idle path would reach saveTeamState at handlers.ts:134 even
+        // member-idle path would reach saveTeamState at idle.ts:134 even
         // without an activeTask; an activeTask is set to also exercise the
         // captureMemberOutput/recordEvent paths).
         const alice = { ...makeMember("alice", memberSession), initialized: true }
@@ -155,8 +155,8 @@ describe("C1 T1: processIdle does not resurrect a just-deleted team dir", () => 
         expect(await absent(statePath(dir))).toBe(true)
         expect(await absent(runsDir(dir))).toBe(true)
         // The specific runId subdir and events file are also gone:
-        expect(await absent(runDir(dir, "run-c1-test"))).toBe(true)
-        expect(await absent(runEventsPath(dir, "run-c1-test"))).toBe(true)
+        expect(await absent(runDir(dir, "run-tomb-test"))).toBe(true)
+        expect(await absent(runEventsPath(dir, "run-tomb-test"))).toBe(true)
         expect(await absent(runMemberOutputPath(dir, "run-c1-test", "alice"))).toBe(true)
     })
 })

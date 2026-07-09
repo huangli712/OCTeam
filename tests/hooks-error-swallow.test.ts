@@ -49,7 +49,7 @@ function ctxFor(root: string, logCalls: LogCall[]): PluginContext {
 
 describe("H1 T1: member-idle for a deleted team -> loadTeamState throws -> swallowed", () => {
     test("handler resolves; logSwallowed called with 'member-idle handler failed'", async () => {
-        const root = tmpRoot("h1-t1")
+        const root = tmpRoot("hooks-err-1")
         const lead = "ses_h1_lead"
         const memberSession = "ses_h1_alice"
 
@@ -85,7 +85,7 @@ describe("H1 T1: member-idle for a deleted team -> loadTeamState throws -> swall
 
 describe("H1 T2: non-member idle -> NO logSwallowed (common case stays silent)", () => {
     test("unknown session -> resolveTeamMember returns null -> handler returns without logging", async () => {
-        const root = tmpRoot("h1-t2")
+        const root = tmpRoot("hooks-err-2")
         const stranger = "ses_h1_stranger"
 
         const logCalls: LogCall[] = []
@@ -106,7 +106,7 @@ describe("H1 T2: non-member idle -> NO logSwallowed (common case stays silent)",
 
 describe("H1 T3: session.status event -> handler resolves (try/catch in place)", () => {
     test("session.status for an unknown session -> handler does not reject", async () => {
-        const root = tmpRoot("h1-t3")
+        const root = tmpRoot("hooks-err-3")
         const logCalls: LogCall[] = []
         const ctx = ctxFor(root, logCalls)
         const handler = createEventHandler(ctx)
@@ -126,7 +126,7 @@ describe("H1 T3: session.status event -> handler resolves (try/catch in place)",
 
 describe("H1 T4: member-idle with a live team does not regress (happy path)", () => {
     test("live team + member idle -> handler resolves normally, no error log", async () => {
-        const root = tmpRoot("h1-t4")
+        const root = tmpRoot("hooks-err-4")
         const lead = "ses_h1_lead4"
         const memberSession = "ses_h1_bob"
 
