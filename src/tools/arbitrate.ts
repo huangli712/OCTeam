@@ -12,12 +12,11 @@ import {
     DEFAULT_ARBITRATE_ROUNDS,
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
-    humanApprovalSchemaFields,
     humanApprovalTaskFields,
-    signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
 } from "../orchestration/start-orchestration.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
 import { validateSignoff } from "../orchestration/shared.js"
 
 /** Run a binding arbitration with structured debate between members and a ruling arbiter. */

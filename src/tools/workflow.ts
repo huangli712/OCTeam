@@ -37,12 +37,11 @@ import { loadTeamState } from "../state/store.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
-    humanApprovalSchemaFields,
     humanApprovalTaskFields,
-    signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
 } from "../orchestration/start-orchestration.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
 import { lowerWorkflowSteps, toWorkflowStep } from "./lower.js"
 import { formatWorkflowDryRun } from "./lower-format.js"
 import {

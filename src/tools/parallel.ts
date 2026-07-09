@@ -11,10 +11,10 @@ import {
     DEFAULT_REDUCE_POLICY,
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
-    signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
 } from "../orchestration/start-orchestration.js"
+import { signoffSchemaFields } from "./shared-schema.js"
 import { assertMember, validateSignoff } from "../orchestration/shared.js"
 
 /** Run a task across all team members in parallel with isolated or cooperative mode. */

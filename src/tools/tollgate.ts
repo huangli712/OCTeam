@@ -11,12 +11,11 @@ import { advanceToGatedStage } from "../orchestration/tollgate.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
-    humanApprovalSchemaFields,
     humanApprovalTaskFields,
-    signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
 } from "../orchestration/start-orchestration.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
 import { validateSignoff } from "../orchestration/shared.js"
 
 /** Run a verdict-gated pipeline where each stage is verified before the next proceeds. */

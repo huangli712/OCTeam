@@ -22,7 +22,6 @@
  */
 
 import crypto from "node:crypto"
-import { tool } from "@opencode-ai/plugin"
 import type { ToolContext } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
@@ -33,44 +32,18 @@ import { resolveCallerInTeam } from "../state/resolve.js"
 import type { ActiveTask, DecisionRecord, ReducePolicy, SignoffPolicy } from "../core/types.js"
 
 // ============================================================
-// Orchestration defaults + schema fields
+// Orchestration defaults
 // ============================================================
+// Schema field builders (signoffSchemaFields, humanApprovalSchemaFields) live
+// in tools/shared-schema.ts — the tool-layer concern. The matching ActiveTask
+// field builders below (signoffTaskFields, humanApprovalTaskFields) are the
+// runtime-layer counterpart; they are intentionally kept here because they
+// depend on runtime types (SignoffPolicy, Team).
 
 /** Default orchestration timeout in milliseconds (10 minutes). */
 export const DEFAULT_TIMEOUT_MS = 600_000
 /** Default loop orchestration timeout in milliseconds (15 minutes). */
 export const DEFAULT_LOOP_TIMEOUT_MS = 900_000
-
-/**
- * The three signoff schema fields shared by every workflow tool that supports
- * post-completion review (7 of 9 tools — all except consensus and loop, which
- * have their own built-in agreement gates). Spread into a tool's
- * tool.schema.object({...}) to single-source the descriptions and constraints.
- */
-export const signoffSchemaFields = {
-    signoff_policy: tool.schema
-        .enum(["none", "decider", "peer-quorum"])
-        .optional()
-        .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
-    signoff_decider: tool.schema
-        .string()
-        .optional()
-        .describe("member name to act as signoff decider (when signoff_policy='decider')"),
-    signoff_quorum: tool.schema
-        .number()
-        .gt(0)
-        .max(1)
-        .optional()
-        .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
-}
-
-/** Schema fields for human approval: a boolean flag to pause at mid-run boundaries. */
-export const humanApprovalSchemaFields = {
-    human_approval: tool.schema
-        .boolean()
-        .optional()
-        .describe("Pause at supported mid-run boundaries and require the leader to call team_approve/team_reject before continuing."),
-}
 
 // Named defaults for orchestration parameters (wf-011). Previously these were
 // scattered as inline `?? N` literals across the Phase-3 commit blocks, which
@@ -114,6 +87,8 @@ export function effectiveTimeoutMs(
  * The three signoff fields shared by every ActiveTask variant that supports
  * post-completion review. Consensus has its own built-in agreement gate, so it
  * hardcodes DEFAULT_SIGNOFF_POLICY and omits decider/quorum.
+ *
+ * Runtime counterpart of signoffSchemaFields (tools/shared-schema.ts).
  */
 export function signoffTaskFields(
     args: { signoff_policy?: SignoffPolicy; signoff_decider?: string; signoff_quorum?: number },
@@ -125,7 +100,12 @@ export function signoffTaskFields(
     }
 }
 
-/** Build human approval task fields (approval flag + empty history) for ActiveTask construction. */
+/**
+ * Build human approval task fields (approval flag + empty history) for
+ * ActiveTask construction.
+ *
+ * Runtime counterpart of humanApprovalSchemaFields (tools/shared-schema.ts).
+ */
 export function humanApprovalTaskFields(
     args: { human_approval?: boolean },
 ): { humanApproval: boolean | undefined; approvalHistory: [] } {

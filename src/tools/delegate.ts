@@ -11,10 +11,10 @@ import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
-    signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
 } from "../orchestration/start-orchestration.js"
+import { signoffSchemaFields } from "./shared-schema.js"
 import { validateSignoff } from "../orchestration/shared.js"
 
 /**

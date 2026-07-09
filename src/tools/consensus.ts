@@ -11,10 +11,10 @@ import {
     DEFAULT_SIGNOFF_POLICY,
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
-    humanApprovalSchemaFields,
     humanApprovalTaskFields,
     startOrchestration,
 } from "../orchestration/start-orchestration.js"
+import { humanApprovalSchemaFields } from "./shared-schema.js"
 
 /** Run a multi-round structured debate until all members reach consensus. */
 export function teamConsensusTool(ctx: PluginContext): ToolDefinition {

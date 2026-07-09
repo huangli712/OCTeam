@@ -15,12 +15,11 @@ import {
     DEFAULT_RECURSE_SUBTASKS,
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
-    humanApprovalSchemaFields,
     humanApprovalTaskFields,
-    signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
 } from "../orchestration/start-orchestration.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
 import { assertMember, validateSignoff } from "../orchestration/shared.js"
 
 /** Hierarchical recursive decomposition of a root task into subtasks. */

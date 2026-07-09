@@ -12,12 +12,11 @@ import { buildRouterPrompt } from "../orchestration/route.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
-    humanApprovalSchemaFields,
     humanApprovalTaskFields,
-    signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
 } from "../orchestration/start-orchestration.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
 import { validateSignoff } from "../orchestration/shared.js"
 
 // Re-export buildRouterPrompt for any external consumers that historically

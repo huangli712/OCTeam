@@ -10,12 +10,11 @@ import { dispatchToMember } from "../orchestration/dispatch.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
-    humanApprovalSchemaFields,
     humanApprovalTaskFields,
-    signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
 } from "../orchestration/start-orchestration.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
 import { validateSignoff } from "../orchestration/shared.js"
 
 /** Run a linear pipeline where each stage passes its output to the next. */

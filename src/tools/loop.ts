@@ -10,10 +10,10 @@ import { dispatchToMember } from "../orchestration/dispatch.js"
 import {
     DEFAULT_LOOP_TIMEOUT_MS,
     baseTaskFields,
-    humanApprovalSchemaFields,
     humanApprovalTaskFields,
     startOrchestration,
 } from "../orchestration/start-orchestration.js"
+import { humanApprovalSchemaFields } from "./shared-schema.js"
 import { assertMember } from "../orchestration/shared.js"
 
 /** Run a corrective loop with a decider that reviews and decides whether to continue. */
