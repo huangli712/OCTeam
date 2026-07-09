@@ -81,8 +81,26 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // (MAJOR-B: clearing here loses the checkpoint if Phase 2/3 throws).
                     // Reset errored members → idle (errored-is-terminal broken ONLY in
                     // this resume path, intentionally — they were interrupted mid-work).
+                    // Arena carve-out (4d): reviving an arena candidate or evaluator
+                    // destroys arena's terminal-error semantics — a tolerated errored
+                    // candidate would be re-dispatched (reviving a competitor changes the
+                    // field, breaking failure isolation) and an errored evaluator would be
+                    // re-dispatched instead of failing closed. Keep those members errored
+                    // in ALL phases so resumeArenaMode / the start-evaluate live-check act
+                    // on the preserved state. Every other member, and ALL non-arena tasks,
+                    // keep the blanket reset unchanged.
+                    const arenaTask = team.lastInterruptedTask.type === "arena"
+                        ? team.lastInterruptedTask
+                        : undefined
                     for (const m of team.members) {
                         if (m.status === "errored") {
+                            if (
+                                arenaTask
+                                && (arenaTask.candidates.includes(m.name)
+                                    || m.name === arenaTask.evaluatorMember)
+                            ) {
+                                continue
+                            }
                             m.status = "idle"
                             m.error = undefined
                             m.declaredDone = false

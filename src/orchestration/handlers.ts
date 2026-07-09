@@ -48,6 +48,7 @@ import { handleTollgateIdle } from "./tollgate.js"
 import { handleRouteIdle } from "./route.js"
 import { handleArbitrateIdle } from "./arbitrate.js"
 import { advanceWorkflowStep, handleWorkflowIdle } from "./workflow.js"
+import { handleArenaIdle } from "./arena.js"
 
 // --- helpers ---
 
@@ -70,6 +71,11 @@ export function getExpectedMember(task: ActiveTask): string | null {
     if (task.type === "arbitrate") {
         // debate phase: any debater advances (null); ruling phase: only the arbiter
         return task.arbitrationStage ? (task.arbiterMember ?? null) : null
+    }
+    if (task.type === "arena") {
+        // implement phase: any candidate advances the barrier (null); evaluate
+        // phase: only the evaluator advances (a stray candidate idle is a no-op).
+        return task.arenaPhase === "evaluate" ? (task.evaluatorMember ?? null) : null
     }
     if (task.type === "recurse") return null   // same as delegate: any member advances
     if (task.type === "workflow") {
@@ -201,6 +207,7 @@ const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, m
     recurse: async (ctx, team, member) => handleRecurseIdle(ctx, team, member),
     tollgate: async (ctx, team, member) => handleTollgateIdle(ctx, team, member),
     workflow: async (ctx, team, member) => handleWorkflowIdle(ctx, team, member),
+    arena: async (ctx, team, member) => handleArenaIdle(ctx, team, member),
 }
 
 export async function processIdle(
@@ -485,6 +492,16 @@ export async function handleStatusEvent(
                                 break
                             case "workflow":
                                 await advanceWorkflowStep(ctx, team)
+                                break
+                            case "arena":
+                                // If this errored member was the LAST candidate to
+                                // reach a terminal state, no further idle event will
+                                // arrive. Re-drive the barrier so it re-evaluates
+                                // (waitForBarrier counts errored as terminal-ready)
+                                // and the run advances to evaluate / fails instead of
+                                // hanging to wall-clock. handleArenaIdle ignores the
+                                // passed member's identity in the implement phase.
+                                await handleArenaIdle(ctx, team, live)
                                 break
                             // Sequential modes (pipeline/loop/consensus/route/
                             // arbitrate/tollgate) have tolerance 0, so the

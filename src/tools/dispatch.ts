@@ -17,7 +17,7 @@
 
 import type { PluginContext } from "../core/context.js";
 import type { ActiveTask } from "../core/types.js";
-import { type Team } from "../state/store.js";
+import { type Team, saveTeamState } from "../state/store.js";
 import { advanceToStage, dispatchToMember } from "../orchestration/dispatch.js";
 import { handleParallelIdle } from "../orchestration/parallel.js";
 import { handleConsensusIdle } from "../orchestration/consensus.js";
@@ -41,6 +41,7 @@ import {
 } from "../orchestration/arbitrate.js";
 import { buildRouterPrompt } from "./router.js";
 import { buildSummary, finishRun } from "../orchestration/summary.js";
+import { buildArenaEvaluatorPrompt, handleArenaIdle } from "../orchestration/arena.js";
 import {
     buildReducePrompt,
     buildSignoffReviewPrompt,
@@ -471,6 +472,85 @@ async function resumeWorkflowMode(
     await advanceWorkflowStep(ctx, team);
 }
 
+/**
+ * Arena resume for BOTH phases. Implement/undefined: re-dispatch only
+ * unfinished LIVE candidates (skip running/errored/no-session/already-
+ * responded); a no-op dispatch is NOT counted (Oracle#4), so a zero real
+ * dispatch re-drives the barrier via handleArenaIdle with the FIRST candidate
+ * regardless of status — errored candidates count as terminal-ready in
+ * waitForBarrier, so termination 3b delivers arena_failed:no_survivors instead
+ * of hanging to wall-clock. Evaluate: an errored evaluator fails closed (its
+ * state is preserved across resume by 4d); a missing evaluator response is
+ * re-dispatched; an already-present response is parsed exactly once (2c deletes
+ * + re-dispatches bad output, so a second resume cannot re-consume it).
+ */
+async function resumeArenaMode(
+    ctx: PluginContext,
+    team: Team,
+    task: Extract<ActiveTask, { type: "arena" }>,
+): Promise<void> {
+    if ((task.arenaPhase ?? "implement") === "evaluate") {
+        const evaluator = team.members.find(
+            (m) => m.name === task.evaluatorMember && !m.isMaster,
+        );
+        // An errored evaluator fails closed; NEVER revive/re-dispatch it.
+        if (evaluator?.status === "errored") {
+            await finishRun(ctx, team, "arena_failed:evaluator_error", "failed");
+            return;
+        }
+        if (evaluator === undefined) return;
+        if (
+            evaluator.status !== "running" &&
+            !task.responses[task.evaluatorMember]
+        ) {
+            // No captured evaluator output -> re-dispatch the scoreboard prompt.
+            await dispatchToMember(
+                ctx,
+                evaluator,
+                buildArenaEvaluatorPrompt(task, team),
+                evaluator.worktreePath ?? ctx.directory,
+                team,
+            );
+            await saveTeamState(team);
+        } else if (
+            task.responses[task.evaluatorMember] &&
+            !task.winner &&
+            !task.scoreboard
+        ) {
+            // A response exists but no winner/scoreboard yet -> parse it once.
+            await handleArenaIdle(ctx, team, evaluator);
+        }
+        return;
+    }
+
+    // implement/undefined phase: re-dispatch only unfinished LIVE candidates.
+    // dispatchToMember is a silent no-op for errored/no-session members, so
+    // those are filtered out BEFORE the count — a counted no-op would suppress
+    // the zero-dispatch barrier re-drive and hang the run (Oracle#4).
+    let dispatched = 0;
+    for (const m of team.members) {
+        if (!task.candidates.includes(m.name)) continue;
+        if (m.status === "running" || m.status === "errored") continue;
+        if (!m.sessionId) continue;
+        if (task.responses[m.name]) continue;
+        await dispatchToMember(
+            ctx,
+            m,
+            task.task,
+            m.worktreePath ?? ctx.directory,
+            team,
+        );
+        dispatched++;
+    }
+    if (dispatched === 0) {
+        // Zero real dispatch -> re-drive the barrier with the FIRST candidate
+        // regardless of status (when all errored there is no live one, but the
+        // barrier counts errored as terminal-ready).
+        const first = team.members.find((m) => task.candidates.includes(m.name));
+        if (first) await handleArenaIdle(ctx, team, first);
+    }
+}
+
 export async function resumeDispatch(
     ctx: PluginContext,
     team: Team,
@@ -500,6 +580,8 @@ export async function resumeDispatch(
             return await resumeTollgateMode(ctx, team, task);
         case "workflow":
             return await resumeWorkflowMode(ctx, team, task);
+        case "arena":
+            return await resumeArenaMode(ctx, team, task);
         default: {
             // Exhaustiveness guard: every OrchestrationType is handled above, so
             // task.type narrows to `never` here. A new type added without a

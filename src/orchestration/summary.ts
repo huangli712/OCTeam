@@ -20,7 +20,7 @@ import { truncateOutput } from "../core/utils.js"
 import { logSwallowed } from "../core/log.js"
 import { persistRun } from "./runs.js"
 import { recordEvent } from "./events.js"
-import type { ActiveTask, WorkflowStep } from "../core/types.js"
+import type { ActiveTask, ArenaCandidateScore, WorkflowStep } from "../core/types.js"
 
 /**
  * Deliver the workflow summary to the leader. Always pushes via promptAsync
@@ -150,6 +150,7 @@ export async function buildSummary(
         case "consensus": return summarizeConsensus(task, head)
         case "parallel": return summarizeParallel(task, head)
         case "workflow": return summarizeWorkflow(task, head)
+        case "arena": return summarizeArena(task, head)
         default: {
             // Exhaustiveness guard for OrchestrationType. Every variant has an
             // explicit case above, so task narrows to `never` here. Adding a new
@@ -539,6 +540,36 @@ function summarizeParallel(task: ActiveTask, head: string): string {
             return `${head}\n${candidates}`
         }
     }
+}
+
+function summarizeArena(task: Extract<ActiveTask, { type: "arena" }>, head: string): string {
+    // Lead with the winner line (name + selection basis), then the
+    // evaluator-attested scoreboard sorted by the winner metric, then a
+    // candidates/evaluator audit note. A failed run (no winner / no
+    // scoreboard) renders a no-winner line without throwing.
+    const basis = `${task.scoreDirection} ${task.winnerMetric}`
+    const winnerLine = task.winner
+        ? `Arena winner: ${task.winner} (${basis})`
+        : `Arena winner: no winner selected (${basis})`
+    const metricValue = (s: ArenaCandidateScore): number | undefined =>
+        task.winnerMetric === "score" ? s.score : s.metrics?.[task.winnerMetric]
+    const rows = [...(task.scoreboard?.scores ?? [])]
+        .sort((a, b) => {
+            const av = metricValue(a)
+            const bv = metricValue(b)
+            if (av === undefined && bv === undefined) return 0
+            if (av === undefined) return 1
+            if (bv === undefined) return -1
+            return task.scoreDirection === "max" ? bv - av : av - bv
+        })
+        .map(s => {
+            const val = metricValue(s)
+            const rationale = s.rationale ? ` — ${s.rationale}` : ""
+            return `- ${s.member}: ${task.winnerMetric}=${val ?? "n/a"} passed=${s.passed ?? false}${rationale}`
+        })
+    const table = rows.length > 0 ? `\nScoreboard:\n${rows.join("\n")}` : ""
+    const note = `\nCandidates: ${task.candidates.join(", ")} | evaluator: ${task.evaluatorMember}`
+    return `${head}\n${winnerLine}${table}${note}`
 }
 
 /** One-line-per-member digest of the current round's outputs (consensus). */

@@ -32,6 +32,7 @@ import { teamParallelTool } from "./parallel.js"
 import { teamPipelineTool } from "./pipeline.js"
 import { teamRouteTool } from "./router.js"
 import { teamArbitrateTool } from "./arbitrate.js"
+import { teamArenaTool } from "./arena.js"
 import { teamRecurseTool } from "./recurse.js"
 import { teamTollgateTool } from "./tollgate.js"
 import { teamWorkflowTool } from "./workflow.js"
@@ -73,6 +74,7 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_arbitrate: teamArbitrateTool(ctx),
         team_recurse: teamRecurseTool(ctx),
         team_tollgate: teamTollgateTool(ctx),
+        team_arena: teamArenaTool(ctx),
         team_workflow: teamWorkflowTool(ctx),
         team_fix_workflow: teamFixWorkflowTool(ctx),
         team_done: teamDoneTool(ctx),

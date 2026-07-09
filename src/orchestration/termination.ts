@@ -76,6 +76,36 @@ export async function checkTermination(ctx: PluginContext, team: Team, now = Dat
             }
             return
         }
+        // Arena scopes errored-member handling per phase (Metis deadlock guard):
+        // erroredMembers is ALL non-master errored members, so a candidate that
+        // errored WITHIN tolerance during implement still lingers here during
+        // evaluate. A naive "any errored → fail" would spuriously kill a healthy
+        // evaluate phase, so each phase is scoped precisely. Return after the arena
+        // branch so the generic concurrent block never runs for arena.
+        if (task.type === "arena") {
+            if (task.arenaPhase === "evaluate") {
+                // Evaluate is evaluator-strict: fail ONLY when the evaluator errored.
+                // Tolerated candidate errors lingering from implement are ignored.
+                if (erroredMembers.some(m => m.name === task.evaluatorMember)) {
+                    await finishRun(ctx, team, "arena_failed:evaluator_error", "failed")
+                }
+                return
+            }
+            // Implement phase: candidate-count tolerance, SAME ordered branching as
+            // the 2b barrier (the two MUST NOT diverge on the reason string). An
+            // errored evaluator during implement is ignored here (it is live-checked
+            // at start-evaluate, 2b).
+            const erroredCandidates = erroredMembers.filter(m => task.candidates.includes(m.name))
+            const tolerance = task.maxErroredMembers ?? 0
+            const survivors = task.candidates.length - erroredCandidates.length
+            if (survivors === 0) {
+                await finishRun(ctx, team, "arena_failed:no_survivors", "failed")
+            } else if (erroredCandidates.length > tolerance) {
+                await finishRun(ctx, team, `arena_failed:member_error:${erroredCandidates[0].name}`, "failed")
+            }
+            // within tolerance with survivors → NO-OP; the barrier delivers survivors.
+            return
+        }
         const concurrent = task.type === "parallel" || task.type === "delegate" || task.type === "recurse"
         const tolerance = concurrent ? (task.maxErroredMembers ?? 0) : 0
         const survivors = team.members.filter(m => !m.isMaster).length - erroredMembers.length

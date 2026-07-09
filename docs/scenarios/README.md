@@ -1,6 +1,6 @@
 # OCTeam 编排场景目录
 
-> 10 种编排原语的真实应用场景设计集。每个场景 **端到端 ≤ 30 分钟** 可完成，含 team 配置、master 调用、执行流程时序、可运行的 TypeScript 评判脚本。
+11 种编排原语的真实应用场景设计集。每个场景 **端到端 ≤ 30 分钟** 可完成，含 team 配置、master 调用、执行流程时序、可运行的 TypeScript 评判脚本。
 >
 > 场景方向覆盖：**数学 / 计算物理 / 编程**。
 
@@ -18,6 +18,7 @@
 | 08 | `team_recurse` | 递归分解 | 复杂任务分层拆解 | [`08-team-recurse/`](./08-team-recurse/) |
 | 09 | `team_tollgate` | 验证门流水线 | 逐关质量把关 | [`09-team-tollgate/`](./09-team-tollgate/) |
 | 10 | `team_workflow` | 声明式线性步骤引擎 | task/gate 确定性串联 | [`10-team-workflow/`](./10-team-workflow/) |
+| 11 | `team_arena` | 竞争擂台：N 候选实现 + evaluator 评分选优 | 多方案竞争、客观基准选优 | [`11-team-arena/`](./11-team-arena/) |
 
 ## 场景矩阵
 
@@ -33,10 +34,11 @@
 | recurse | 错排数 D_n 推导 | 阻尼摆建模 | Markdown→HTML 转换器 | Vandermonde 恒等式多层证明（6 人, ~50min）|
 | tollgate | 快速幂实现+验证 | Verlet 求解器+验证 | 字符串反转+验证 | 二维热传导求解器 V&V 认证（6 人, ~60min）|
 | workflow | task→gate→task 链 | ODE 求解+验证+优化 | API 实现+测试+重构 | —（线性+门控重试，无评判脚本基线）|
+| arena | 排序基准选最快 | 积分器能量漂移选最稳 | — | —（候选三倍并行，evaluator 客观评分选胜者）|
 
 ## 综合场景（多团队多编排）
 
-除上述 10 个单原语场景外，另有一类**综合场景**：多个团队 × 多种编排原语串联，完成一条端到端的真实工作流。与单原语场景不同，综合场景是**可运行的工作流模板（recipe）**——不绑特定靶子、不含评判脚本，结果由使用者自判。
+除上述 11 个单原语场景外，另有一类**综合场景**：多个团队 × 多种编排原语串联，完成一条端到端的真实工作流。与单原语场景不同，综合场景是**可运行的工作流模板（recipe）**——不绑特定靶子、不含评判脚本，结果由使用者自判。
 
 | 场景 | 工作流 | 编排原语 | 目录 |
 |------|--------|---------|------|
@@ -97,7 +99,7 @@
 
 ## 相关文档
 
-- [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) — 10 种编排原语的官方定义与状态持久化模型
+- [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) — 11 种编排原语的官方定义与状态持久化模型
 - parallel / consensus / pipeline / loop 工具源码：[`src/tools/parallel.ts`](../../src/tools/parallel.ts) / [`consensus.ts`](../../src/tools/consensus.ts) / [`pipeline.ts`](../../src/tools/pipeline.ts) / [`loop.ts`](../../src/tools/loop.ts)
-- delegate / route / arbitrate / tollgate / recurse / workflow 工具源码：[`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`recurse.ts`](../../src/tools/recurse.ts) / [`workflow.ts`](../../src/tools/workflow.ts)
+- delegate / route / arbitrate / tollgate / arena / recurse / workflow 工具源码：[`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`arena.ts`](../../src/tools/arena.ts) / [`recurse.ts`](../../src/tools/recurse.ts) / [`workflow.ts`](../../src/tools/workflow.ts)
 - [`src/core/role.ts`](../../src/core/role.ts) — 18 种角色预设及其 agent 映射

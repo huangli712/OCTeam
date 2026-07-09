@@ -12,7 +12,7 @@
  *     signal at all (absent tag = solve directly = leaf).
  */
 
-import type { ActiveTask, DecisionRecord, Verdict, WorkflowIssue } from "../core/types.js"
+import type { ActiveTask, ArenaCandidateScore, DecisionRecord, Verdict, WorkflowIssue } from "../core/types.js"
 import { isWorkflowIssueSeverity } from "../core/workflow-conditions.js"
 
 // Structured, i18n-consistent "no issues" signal for loop read_only stages. A
@@ -159,6 +159,48 @@ export function parseSelection(
     }
     return {
         winner: p.winner,
+        rationale: typeof p.rationale === "string" ? p.rationale : "",
+    }
+}
+
+/**
+ * Parse an evaluator's <scoreboard>{...}</scoreboard> (or <评分板>) block into
+ * the per-candidate scores. Mirrors parseVerdict/parseSelection's tagged-JSON
+ * shape but owns a DISTINCT tag: <scoreboard>/<评分板>. An absent tag or
+ * malformed JSON returns parseFailed. `scores` must be a non-empty array; each
+ * retained entry needs a string `member`; `score` and each `metrics` value are
+ * coerced to FINITE numbers (non-finite values are dropped); `passed` defaults
+ * to false when absent; `rationale` is optional. Invalid entries are dropped;
+ * duplicate `member` entries are PRESERVED (dedup is a selection concern, not a
+ * parse one). Empty or all-invalid `scores` yields parseFailed.
+ */
+export function parseScoreboard(
+    rawText: string,
+): { scores: ArenaCandidateScore[]; rationale: string; parseFailed?: boolean } {
+    const p = extractTaggedJSON(rawText, "scoreboard", "评分板")
+    if (!p || !Array.isArray(p.scores)) return { scores: [], rationale: "", parseFailed: true }
+    const scores: ArenaCandidateScore[] = []
+    for (const item of p.scores) {
+        if (typeof item !== "object" || item === null || Array.isArray(item)) continue
+        if (!("member" in item) || typeof item.member !== "string" || item.member.length === 0) continue
+        const entry: ArenaCandidateScore = {
+            member: item.member,
+            passed: "passed" in item && item.passed === true,
+        }
+        if (typeof item.score === "number" && Number.isFinite(item.score)) entry.score = item.score
+        if (typeof item.metrics === "object" && item.metrics !== null && !Array.isArray(item.metrics)) {
+            const metrics: Record<string, number> = {}
+            for (const [key, value] of Object.entries(item.metrics)) {
+                if (typeof value === "number" && Number.isFinite(value)) metrics[key] = value
+            }
+            if (Object.keys(metrics).length > 0) entry.metrics = metrics
+        }
+        if (typeof item.rationale === "string") entry.rationale = item.rationale
+        scores.push(entry)
+    }
+    if (scores.length === 0) return { scores: [], rationale: "", parseFailed: true }
+    return {
+        scores,
         rationale: typeof p.rationale === "string" ? p.rationale : "",
     }
 }

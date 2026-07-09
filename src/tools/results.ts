@@ -189,7 +189,30 @@ function formatRunLine(r: RunRecord): string {
     const mode = r.mode ? `/${r.mode}` : ""
     const when = new Date(r.finishedAt).toISOString()
     const members = Object.keys(r.memberOutputs).length
-    return `- ${r.runId}  [${r.type}${mode}] ${r.status}  reason=${r.reason}  ${when}  tokens=${r.tokensUsed}  members=${members}`
+    const winner = r.arena?.winner ? `  winner=${r.arena.winner}` : ""
+    return `- ${r.runId}  [${r.type}${mode}] ${r.status}  reason=${r.reason}  ${when}  tokens=${r.tokensUsed}  members=${members}${winner}`
+}
+
+/** Arena winner + evaluator-attested scoreboard audit trail (4e). The winner is
+ * read VERBATIM from record.arena.winner (selection already happened in the
+ * evaluate phase) — never re-derived from the scoreboard here. A scored
+ * candidate absent from survivingCandidates is tagged [ineligible] so an
+ * errored-but-scored competitor is visibly audited as not eligible to win. */
+function formatArenaPreview(arena: NonNullable<RunRecord["arena"]>, reason: string): string {
+    const basis = `${arena.scoreDirection} ${arena.winnerMetric}`
+    const lines = [
+        arena.winner ? `Winner: ${arena.winner} (${basis})` : `Winner: (none) — ${reason} (${basis})`,
+        `Evaluator: ${arena.evaluator}`,
+    ]
+    const surviving = arena.survivingCandidates
+    if (surviving !== undefined) lines.push(`Surviving: ${surviving.join(", ")}`)
+    for (const s of arena.scoreboard?.scores ?? []) {
+        const val = arena.winnerMetric === "score" ? s.score : s.metrics?.[arena.winnerMetric]
+        const ineligible = surviving !== undefined && !surviving.includes(s.member) ? " [ineligible]" : ""
+        const rationale = s.rationale ? ` — ${s.rationale}` : ""
+        lines.push(`- ${s.member}: ${arena.winnerMetric}=${val ?? "n/a"} passed=${s.passed ?? false}${ineligible}${rationale}`)
+    }
+    return `### arena\n${lines.join("\n")}`
 }
 
 export function teamResultsTool(ctx: PluginContext): ToolDefinition {
@@ -307,6 +330,10 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
             if (record.workflow && record.workflow.steps.length > 0) {
                 const lines = formatWorkflowStepLines(record.workflow.steps)
                 previews.push(`### workflow steps\n${lines.join("\n")}`)
+            }
+
+            if (record.arena) {
+                previews.push(formatArenaPreview(record.arena, record.reason))
             }
 
             const body = previews.length > 0 ? previews.join("\n\n") : "(no member outputs captured)"

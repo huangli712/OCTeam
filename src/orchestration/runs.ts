@@ -52,6 +52,7 @@ const FAILED_REASON_MARKERS = [
     "signoff_rejected",           // signoff: decider/reviewer rejected the work
     "signoff_quorum_not_reached", // signoff: peer-quorum did not get enough approvals
     "human_rejected",             // HITL: leader rejected a mid-run approval request
+    "arena_failed",               // arena: every arena_failed:* reason (no_survivors, member_error, evaluator_*, eval_invalid); arena_complete matches no marker and stays completed
 ] as const
 
 /** Derive run status from the verbatim termination reason (heuristic; see set above). */
@@ -66,7 +67,7 @@ export function runStatusFromReason(reason: string): RunStatus {
  * Unknown keys are stripped (zod default); required fields match the types.
  */
 const OrchestrationTypeSchema = z.enum([
-    "parallel", "pipeline", "loop", "delegate", "consensus", "route", "arbitrate", "recurse", "tollgate", "workflow",
+    "parallel", "pipeline", "loop", "delegate", "consensus", "route", "arbitrate", "recurse", "tollgate", "workflow", "arena",
 ])
 const ParallelModeSchema = z.enum(["isolated", "cooperative"])
 const RunStatusSchema = z.enum(["completed", "failed"])
@@ -288,6 +289,18 @@ const WorkflowRunSchema = z.object({
     }
 })
 
+const ArenaCandidateScoreSchema = z.object({
+    member: z.string(),
+    score: z.number().optional(),
+    metrics: z.record(z.string(), z.number()).optional(),
+    passed: z.boolean().optional(),
+    rationale: z.string().optional(),
+})
+const ArenaScoreboardSchema = z.object({
+    scores: z.array(ArenaCandidateScoreSchema),
+    rationale: z.string().optional(),
+})
+
 const RunRecordSchema = z.object({
     version: z.literal(1),
     runId: z.string(),
@@ -316,6 +329,15 @@ const RunRecordSchema = z.object({
         owner: z.string().optional(),
     })).optional(),
     workflow: WorkflowRunSchema.optional(),
+    arena: z.object({
+        candidates: z.array(z.string()),
+        survivingCandidates: z.array(z.string()).optional(),
+        evaluator: z.string(),
+        winner: z.string().optional(),
+        scoreDirection: z.enum(["max", "min"]),
+        winnerMetric: z.string(),
+        scoreboard: ArenaScoreboardSchema.optional(),
+    }).optional(),
 })
 
 const RunEventSchema = z.object({
@@ -532,6 +554,18 @@ export async function persistRun(team: Team, reason: string): Promise<void> {
                 approvalAfter: step.approvalAfter,
                 maxOutputBytes: step.maxOutputBytes,
             })),
+        }
+    }
+
+    if (task.type === "arena") {
+        record.arena = {
+            candidates: task.candidates,
+            survivingCandidates: task.survivingCandidates,
+            evaluator: task.evaluatorMember,
+            winner: task.winner,
+            scoreDirection: task.scoreDirection,
+            winnerMetric: task.winnerMetric,
+            scoreboard: task.scoreboard,
         }
     }
 

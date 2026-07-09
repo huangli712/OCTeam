@@ -103,7 +103,7 @@ export type Bounds = {
 
 // --- ActiveTask ---
 
-export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse" | "tollgate" | "workflow"
+export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse" | "tollgate" | "workflow" | "arena"
 export type ParallelMode = "isolated" | "cooperative"
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
@@ -441,6 +441,41 @@ export interface WorkflowTask extends ActiveTaskBase {
     activeStepIndices?: number[]        // persisted active frontier for fanout/join; legacy readers fall back to [currentStageIndex]
 }
 
+// arena: N candidates implement competing solutions in isolated worktrees
+// (implement phase), then a dedicated evaluator scores every candidate and a
+// deterministic winner is selected over the evaluator-attested scoreboard
+// (evaluate phase). ArenaCandidateScore / ArenaScoreboard are the evaluator's
+// structured report shape.
+export type ArenaCandidateScore = {
+    member: string
+    score?: number
+    metrics?: Record<string, number>
+    passed?: boolean
+    rationale?: string
+}
+
+export type ArenaScoreboard = {
+    scores: ArenaCandidateScore[]
+    rationale?: string
+}
+
+export interface ArenaTask extends ActiveTaskBase {
+    type: "arena"
+    task: string                             // required: shared implement task (narrows the optional Base field)
+    candidates: string[]                     // ORIGINAL full candidate set (kept for audit)
+    survivingCandidates?: string[]           // eligible-to-win subset (candidates that did NOT error), set at implement->evaluate
+    evaluatorMember: string                  // the evaluator member name (scores all candidates)
+    arenaPhase?: "implement" | "evaluate"    // two-phase state machine
+    evalCommand?: string                     // objective command the evaluator runs against each candidate
+    evalCriteria?: string                    // scoring criteria for the evaluator
+    scoreDirection: "max" | "min"            // winner is the max or min of the winner metric
+    winnerMetric: string                     // metric name selected on (e.g. "score")
+    maxEvalRetries: number                   // evaluator re-dispatch cap on parse/selection failure
+    evalAttempts?: number                    // evaluator attempts consumed so far
+    scoreboard?: ArenaScoreboard             // evaluator-attested per-candidate scores
+    winner?: string                          // deterministically selected winner name
+}
+
 export type ActiveTask =
     | ParallelTask
     | PipelineTask
@@ -452,6 +487,7 @@ export type ActiveTask =
     | RecurseTask
     | TollgateTask
     | WorkflowTask
+    | ArenaTask
 
 // --- LastModeRecord (persists after activeTask cleanup, for sidebar display) ---
 
@@ -544,6 +580,16 @@ export type RunRecord = {
     tasks?: Array<{ id: string; subject: string; status: string; owner?: string }>
     // workflow snapshot of the step ledger at completion/failure
     workflow?: { steps: WorkflowRunStep[] }
+    // arena snapshot: winner + evaluator-attested scoreboard audit trail
+    arena?: {
+        candidates: string[]
+        survivingCandidates?: string[]
+        evaluator: string
+        winner?: string
+        scoreDirection: "max" | "min"
+        winnerMetric: string
+        scoreboard?: ArenaScoreboard
+    }
 }
 
 // --- RunEvent (append-only run timeline, stored as runs/<runId>/events.jsonl) ---
