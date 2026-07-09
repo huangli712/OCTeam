@@ -19,7 +19,7 @@ import type {
 import { activationError } from "../state/activation.js"
 import { dispatchTaskStep, maybePauseBeforeWorkflowStep } from "../orchestration/workflow.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
-import { loadTeamState, type Team } from "../state/store.js"
+import { loadTeamState } from "../state/store.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,

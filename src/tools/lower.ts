@@ -12,7 +12,6 @@ import type {
     WorkflowJoinMetadata,
     WorkflowStep,
 } from "../core/types.js"
-import type { Team } from "../state/store.js"
 import { parseWorkflowCondition, formatWorkflowCondition } from "../orchestration/gate.js"
 import type {
     WorkflowFanoutBranch,

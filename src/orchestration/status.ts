@@ -7,7 +7,7 @@
  */
 
 import type { PluginContext } from "../core/context.js"
-import { type Team, loadTeamState, saveTeamState } from "../state/store.js"
+import { loadTeamState, saveTeamState } from "../state/store.js"
 import { resolveTeamMember } from "../state/resolve.js"
 import { recordEvent } from "./events.js"
 import { checkTermination } from "./termination.js"

@@ -26,9 +26,6 @@ import type { PluginContext } from "../core/context.js";
 import { type Team, saveTeamState } from "../state/store.js";
 import type {
     MemberState,
-    Verdict,
-    WorkflowBranchMetadata,
-    WorkflowCondition,
     WorkflowStep,
     WorkflowTask,
 } from "../core/types.js";
@@ -58,10 +55,8 @@ import { truncateOutput } from "./output.js";
 import {
     findActiveWorkflowStepIndexForMember,
     getActiveWorkflowStepIndices,
-    isSameWorkflowBranch,
     readyWorkflowStepIndices,
     sortedWorkflowIndices,
-    workflowStepActorName,
 } from "./dag.js";
 import { parseSelection, parseVerdict } from "./decisions.js";
 import { maybeTriggerSignoff } from "./signoff.js";

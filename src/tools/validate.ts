@@ -7,7 +7,7 @@
  */
 
 import type { MemberState } from "../core/types.js"
-import { formatWorkflowCondition, parseWorkflowCondition } from "../orchestration/gate.js"
+import { parseWorkflowCondition } from "../orchestration/gate.js"
 import { loadWorkflowFile } from "../orchestration/file.js"
 import { defaultBounds, validateSignoff } from "../orchestration/shared.js"
 import { AsyncMutex } from "../state/locks.js"
@@ -16,7 +16,6 @@ import type { PluginContext } from "../core/context.js"
 import type {
     WorkflowFanoutBranch,
     WorkflowFanoutToolStep,
-    WorkflowStepRef,
     WorkflowToolStep,
     WorkflowToolArgs,
     ResolvedWorkflowToolArgs,
@@ -24,7 +23,6 @@ import type {
 import {
     assertNever,
     canConsumeWorkflowInput,
-    isLinearToolStep,
     lowerWorkflowSteps,
     resolvesToMarkerStep,
     resolveGateTargetIndex,
