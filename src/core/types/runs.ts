@@ -17,16 +17,16 @@ import type {
 } from "./active-task.js"
 import type {
     Verdict,
+    WorkflowBranchMetadata,
     WorkflowEnsemblePolicy,
     WorkflowEnsembleResult,
+    WorkflowFanoutMetadata,
+    WorkflowIssue,
     WorkflowJoinMetadata,
     WorkflowLoopConfig,
     WorkflowOnInvalid,
     WorkflowOnMalformed,
     WorkflowRetryCondition,
-    WorkflowBranchMetadata,
-    WorkflowEnsemblePolicy as _WEP,
-    WorkflowFanoutMetadata,
     WorkflowStepKind,
 } from "./workflow.js"
 
