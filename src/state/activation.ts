@@ -1,9 +1,7 @@
 /**
- * Team activation decision logic. Extracted from shared.ts so the activation
- * concern (can this team be activated? is another team blocking it?) is
- * auditable independently from the workflow/task-construction helpers.
- *
- * Used exclusively by tools/activate.ts (the team_activate tool).
+ * Team activation concern: activation decision, master-only interaction gate,
+ * and ordered-lock acquisition. Co-locates all activation-related logic so it
+ * is auditable independently from the workflow/task-construction helpers.
  */
 
 import type { Team } from "./store.js"
@@ -43,4 +41,34 @@ export async function withOrderedLocks(teams: Team[], fn: () => Promise<void>): 
         await ordered[i].mutex.runExclusive(() => run(i + 1))
     }
     await run(0)
+}
+
+// --- interaction gates (moved from core/utils.ts) ---
+
+/**
+ * Master-only activation gate (pure predicate). Members always pass — a member's
+ * team is necessarily active while it is busy (busy ⟹ active), so the gate would
+ * never legitimately block a member. A master may only interact with its active
+ * team, so an inactive target (activatedAt === undefined) is forbidden.
+ */
+export function isInteractionForbidden(
+    callerIsMaster: boolean,
+    targetTeamActivatedAt: number | undefined,
+): boolean {
+    if (!callerIsMaster) return false
+    return targetTeamActivatedAt === undefined
+}
+
+/**
+ * Actionable error string for a master interacting with an inactive team, or
+ * null when the team is active. Centralizes the message used by master-only
+ * mutating tools (workflow / team_fix_member).
+ */
+export function activationError(
+    teamName: string,
+    activatedAt: number | undefined,
+): string | null {
+    return activatedAt === undefined
+        ? `Error: team "${teamName}" is not the active team. Call team_activate(team_id="${teamName}") first.`
+        : null
 }
