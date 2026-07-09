@@ -254,7 +254,7 @@ Workflow dry run for "register-handler-flow" (4 step(s)):
   "tool": "team_workflow",
   "args": {
     "team_id": "register-handler-flow",
-    "workflow_file": "docs/scenarios/10-team-workflow/register-handler.workflow.json",
+    "workflow_file": "src/demos/10-team-workflow/register-handler.workflow.json",
     "vars": {
       "handler": "handleRegister",
       "resource": "register handler"
@@ -279,7 +279,7 @@ Workflow dry run for "register-handler-flow" (4 step(s)):
 ### 场景 1: REST API handler 实现 + 验证 + 重构
 
 ```text
-执行 docs/scenarios/10-team-workflow/README.md「场景 1」的完整闭环。
+执行 src/demos/10-team-workflow/README.md「场景 1」的完整闭环。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（2 名成员：alice=coder、bob=tester）

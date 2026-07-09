@@ -261,7 +261,7 @@ evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard�
 ### 场景 1: 三种排序基准选最快（编程）
 
 ```text
-执行 docs/scenarios/11-team-arena/README.md「场景 1」的完整闭环并自动评分。
+执行 src/demos/11-team-arena/README.md「场景 1」的完整闭环并自动评分。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（3 名候选 coder + 1 名 evaluator benchmarker，每名候选 worktree: true，evaluator 也设 worktree: true）
@@ -277,7 +277,7 @@ evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard�
 ### 场景 2: 三种积分器按能量漂移选最稳（计算物理）
 
 ```text
-执行 docs/scenarios/11-team-arena/README.md「场景 2」的完整闭环并自动评分。
+执行 src/demos/11-team-arena/README.md「场景 2」的完整闭环并自动评分。
 
 步骤：
 1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队（3 名候选 simulator + 1 名 evaluator physicist，每名候选 worktree: true，evaluator 也设 worktree: true）

@@ -468,7 +468,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 ### 场景 1: Monte Carlo π 三方法对比
 
 ```text
-执行 docs/scenarios/01-team-parallel/README.md「场景 1: Monte Carlo π 三方法对比」的完整闭环并自动评判。
+执行 src/demos/01-team-parallel/README.md「场景 1: Monte Carlo π 三方法对比」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按其中的 team_create JSON 创建团队
@@ -477,7 +477,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 4. team_results 轮询，等待编排完成、master 收到汇总
 5. 定位本次 run 的输出目录 <run_dir>（含 alice.md / bob.md / carol.md）
 6. 运行评判：
-   bun docs/scenarios/01-team-parallel/check-math-montecarlo-pi.ts <run_dir>
+   bun src/demos/01-team-parallel/check-math-montecarlo-pi.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：三方法 |π_est − π| < 0.05；且分层抽样误差 ≤ 朴素 Monte Carlo。
@@ -486,7 +486,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 ### 场景 2: 谐振子三积分器能量漂移
 
 ```text
-执行 docs/scenarios/01-team-parallel/README.md「场景 2: 谐振子三积分器能量漂移」的完整闭环并自动评判。
+执行 src/demos/01-team-parallel/README.md「场景 2: 谐振子三积分器能量漂移」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
@@ -494,7 +494,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 3. 读 README「2.3 Master 启动调用」，按 team_parallel JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>（含 alice.md / bob.md / carol.md）
-6. 运行：bun docs/scenarios/01-team-parallel/check-physics-harmonic-integrator.ts <run_dir>
+6. 运行：bun src/demos/01-team-parallel/check-physics-harmonic-integrator.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：显式 Euler 能量漂移 > 1e-3（体现病理）；Verlet 与 RK4 的漂移均 < Euler。
@@ -503,7 +503,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 ### 场景 3: 两数和多解法复杂度对比
 
 ```text
-执行 docs/scenarios/01-team-parallel/README.md「场景 3: 两数和多解法复杂度对比」的完整闭环并自动评判。
+执行 src/demos/01-team-parallel/README.md「场景 3: 两数和多解法复杂度对比」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
@@ -511,7 +511,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 3. 读 README「3.3 Master 启动调用」，按 team_parallel JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>（含 alice.md / bob.md / carol.md）
-6. 运行：bun docs/scenarios/01-team-parallel/check-coding-twosum.ts <run_dir>
+6. 运行：bun src/demos/01-team-parallel/check-coding-twosum.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：3 个测试用例（[2,7,11,15]/9、[3,2,4]/6、[3,3]/6）全通过；复杂度标注正确（alice=O(n²)、bob=O(n)、carol=O(n log n)）。
@@ -520,7 +520,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 ### 场景 4: 8 种排序算法大数据基准（挑战级）
 
 ```text
-执行 docs/scenarios/01-team-parallel/README.md「场景 4: 8 种排序算法大数据基准（挑战级）」的完整闭环并自动评判。
+执行 src/demos/01-team-parallel/README.md「场景 4: 8 种排序算法大数据基准（挑战级）」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「4.2 Team 配置」，按其中的 team_create JSON 创建团队（8 名 coder 成员，alice..henry）
@@ -529,7 +529,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 4. team_results 轮询，等待编排完成、master 收到 merge 汇总（含 8×3 对比表）
 5. 定位本次 run 的输出目录 <run_dir>（含 alice.md ... henry.md，共 8 个）
 6. 运行评判：
-   bun docs/scenarios/01-team-parallel/check-coding-sort-benchmark.ts <run_dir>
+   bun src/demos/01-team-parallel/check-coding-sort-benchmark.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：8 个成员各自 SORT_OK=true（3 个 10^6 数据集均与原生排序一致）；且 24 个 TIME 标记（8 成员 × 3 数据集）全部存在。

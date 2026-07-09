@@ -499,7 +499,7 @@ T+~85  你读取全部输出，裁定结果
 > 整段粘贴给 master 会话。master 会依次跑 5 个团队，每步按 README 的 JSON 配置执行，团队间数据由 master 手递手。
 
 ```text
-按 docs/scenarios/composite/feature-dev/README.md 跑一次 OCTeam 功能增强工作流。
+按 src/demos/composite/feature-dev/README.md 跑一次 OCTeam 功能增强工作流。
 
 执行 5 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
 
@@ -529,8 +529,8 @@ T+~85  你读取全部输出，裁定结果
 
 ## 相关文档
 
-- [`docs/scenarios/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
-- [`docs/scenarios/code-review/README.md`](../../code-review/README.md) — 姊妹综合场景：多团队代码评审（同样 4 编排，可对照）
+- [`src/demos/README.md`](../../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
+- [`src/demos/code-review/README.md`](../../code-review/README.md) — 姊妹综合场景：多团队代码评审（同样 4 编排，可对照）
 - parallel / consensus / pipeline / loop 源码：[`src/tools/parallel.ts`](../../../../src/tools/parallel.ts) / [`consensus.ts`](../../../../src/tools/consensus.ts) / [`pipeline.ts`](../../../../src/tools/pipeline.ts) / [`loop.ts`](../../../../src/tools/loop.ts)
 - delegate / route / arbitrate / tollgate / recurse 源码：[`src/tools/delegate.ts`](../../../../src/tools/delegate.ts) / [`router.ts`](../../../../src/tools/router.ts) / [`arbitrate.ts`](../../../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../../../src/tools/tollgate.ts) / [`recurse.ts`](../../../../src/tools/recurse.ts)
 - [`docs/ARCHITECTURE.md`](../../../../docs/ARCHITECTURE.md) — OCTeam 架构与模块边界（plan/audit 团队需参照）

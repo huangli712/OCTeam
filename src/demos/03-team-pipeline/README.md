@@ -494,7 +494,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 ### 场景 1: 高斯定积分全流程（数学）
 
 ```text
-执行 docs/scenarios/03-team-pipeline/README.md「场景 1」的完整闭环并自动评判。
+执行 src/demos/03-team-pipeline/README.md「场景 1」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队
@@ -502,7 +502,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 3. 读 README「1.3 Master 启动调用」，按 team_pipeline JSON 启动编排（3 阶段顺序）
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>（末阶段成员的 .md 即最终输出）
-6. 运行：bun docs/scenarios/03-team-pipeline/check-math-gaussian-integral.ts <run_dir>
+6. 运行：bun src/demos/03-team-pipeline/check-math-gaussian-integral.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：末阶段（carol）报 ERROR < 1e-8（Gauss-Legendre n=8 对 e^(-x²) 精度极高）。
@@ -511,7 +511,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 ### 场景 2: 单摆小角度仿真（物理）
 
 ```text
-执行 docs/scenarios/03-team-pipeline/README.md「场景 2」的完整闭环并自动评判。
+执行 src/demos/03-team-pipeline/README.md「场景 2」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
@@ -519,7 +519,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 3. 读 README「2.3 Master 启动调用」，按 team_pipeline JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun docs/scenarios/03-team-pipeline/check-physics-pendulum.ts <run_dir>
+6. 运行：bun src/demos/03-team-pipeline/check-physics-pendulum.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：末阶段（carol）报 MAX_ERR < 1e-4（RK4 h=0.001 跑一个周期）。
@@ -528,7 +528,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 ### 场景 3: Fibonacci TDD 线（编程）
 
 ```text
-执行 docs/scenarios/03-team-pipeline/README.md「场景 3」的完整闭环并自动评判。
+执行 src/demos/03-team-pipeline/README.md「场景 3」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
@@ -536,7 +536,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 3. 读 README「3.3 Master 启动调用」，按 team_pipeline JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>（末阶段 carol 成员的 .md）
-6. 运行：bun docs/scenarios/03-team-pipeline/check-coding-fib-tdd.ts <run_dir>
+6. 运行：bun src/demos/03-team-pipeline/check-coding-fib-tdd.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：末阶段（carol）代码通过 4 用例：fib(0)=0、fib(1)=1、fib(10)=55、fib(20)=6765。
@@ -545,7 +545,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 ### 场景 4: Lennard-Jones 分子动力学完整仿真链（挑战级，物理）
 
 ```text
-执行 docs/scenarios/03-team-pipeline/README.md「场景 4」的完整闭环并自动评判（挑战级：8 段串行，约 60 min）。
+执行 src/demos/03-team-pipeline/README.md「场景 4」的完整闭环并自动评判（挑战级：8 段串行，约 60 min）。
 
 步骤：
 1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（8 个 simulator 成员 alice..henry）
@@ -553,7 +553,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 3. 读 README「4.3 Master 启动调用」，按 team_pipeline JSON 启动编排（8 阶段顺序，timeout_ms=5400000）
 4. team_results 轮询至 master 收到汇总（注意耗时较长，可拉长轮询间隔）
 5. 定位 <run_dir>（末阶段成员 henry.md 即最终输出；前 7 段输出已自动拼到 henry 任务前）
-6. 运行：bun docs/scenarios/03-team-pipeline/check-physics-md-pipeline.ts <run_dir>
+6. 运行：bun src/demos/03-team-pipeline/check-physics-md-pipeline.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：末阶段（henry）报 TEMP_K ∈ [100,140] K、RDF_PEAK_A ∈ [3.50,3.80] Å、ENERGY_DRIFT < 0.05。
