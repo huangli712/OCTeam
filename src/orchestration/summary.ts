@@ -24,43 +24,6 @@ import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./ledge
 import type { ActiveTask, ArenaCandidateScore } from "../core/types.js"
 
 /**
- * Deliver the workflow summary to the leader. Always pushes via promptAsync
- * so the host wakes the leader (immediately if idle, or queued if mid-turn).
- */
-export async function deliverSummaryToLeader(
-    ctx: PluginContext,
-    team: Team,
-    reason: string,
-): Promise<void> {
-    if (!team.activeTask) return
-    const summary = await buildSummary(team, team.activeTask, reason)
-
-    // Timeline (#5): emit the terminated event while runId is still on the task
-    // (finishRun at most call sites calls clearActiveTask right after this).
-    recordEvent(team, { timestamp: Date.now(), kind: "terminated", reason })
-
-    // Persist the run record (#2) BEFORE clearing/delivering. Best-effort: a
-    // persistence failure must never block leader delivery. Runs under the
-    // team mutex (every call site holds it), so the runId dir has one writer.
-    await persistRun(team, reason).catch(err =>
-        logSwallowed(ctx, "persist run record failed", err, { team: team.teamName, reason }),
-    )
-
-    await ctx.client.session.promptAsync({
-        path: { id: team.leadSessionId },
-        body: {
-            parts: [
-                {
-                    type: "text",
-                    text: `<team_result team="${team.teamName}">\n${summary}\n</team_result>`,
-                    synthetic: true,
-                },
-            ],
-        },
-    })
-}
-
-/**
  * Deliver the run summary, clear the active task, and set the team status.
  * Consolidates the teardown triplet (deliver -> clear -> status) that was
  * copy-pasted across the orchestration primitives. Sites with intervening
@@ -126,42 +89,40 @@ export async function deliverQueuedResultsToMaster(
 }
 
 /**
- * Mode-aware summary. delegate aggregates from the task list (per-task results
- * were already delivered to master via team_send_message; responses[] is NOT
- * used for delegate). loop uses decisionHistory (structured) rather than
- * the overwritten responses[]. parallel/pipeline concatenate captured outputs.
- *
- * Per-mode formatting lives in the summarize* helpers below; this function is
- * a thin dispatcher with an exhaustiveness guard on OrchestrationType.
+ * Deliver the workflow summary to the leader. Always pushes via promptAsync
+ * so the host wakes the leader (immediately if idle, or queued if mid-turn).
  */
-export async function buildSummary(
+export async function deliverSummaryToLeader(
+    ctx: PluginContext,
     team: Team,
-    task: ActiveTask,
     reason: string,
-): Promise<string> {
-    const head = `mode=${task.type} reason=${reason} tokens=${task.tokensUsed}`
-    switch (task.type) {
-        case "delegate": return await summarizeDelegate(team, head)
-        case "loop": return summarizeLoop(task, head)
-        case "route": return summarizeRoute(task, head)
-        case "arbitrate": return summarizeArbitrate(task, head)
-        case "recurse": return await summarizeRecurse(team, task, head)
-        case "tollgate": return summarizeTollgate(task, head)
-        case "pipeline": return summarizePipeline(task, head)
-        case "consensus": return summarizeConsensus(task, head)
-        case "parallel": return summarizeParallel(task, head)
-        case "workflow": return summarizeWorkflow(task, head)
-        case "arena": return summarizeArena(task, head)
-        default: {
-            // Exhaustiveness guard for OrchestrationType. Every variant has an
-            // explicit case above, so task narrows to `never` here. Adding a new
-            // OrchestrationType without a matching case fails this assignment at
-            // compile time. Runtime throw prevents silent fall-through.
-            const _exhaustive: never = task
-            void _exhaustive
-            throw new Error(`buildSummary: unhandled OrchestrationType: ${String((task as { type: string }).type)}`)
-        }
-    }
+): Promise<void> {
+    if (!team.activeTask) return
+    const summary = await buildSummary(team, team.activeTask, reason)
+
+    // Timeline (#5): emit the terminated event while runId is still on the task
+    // (finishRun at most call sites calls clearActiveTask right after this).
+    recordEvent(team, { timestamp: Date.now(), kind: "terminated", reason })
+
+    // Persist the run record (#2) BEFORE clearing/delivering. Best-effort: a
+    // persistence failure must never block leader delivery. Runs under the
+    // team mutex (every call site holds it), so the runId dir has one writer.
+    await persistRun(team, reason).catch(err =>
+        logSwallowed(ctx, "persist run record failed", err, { team: team.teamName, reason }),
+    )
+
+    await ctx.client.session.promptAsync({
+        path: { id: team.leadSessionId },
+        body: {
+            parts: [
+                {
+                    type: "text",
+                    text: `<team_result team="${team.teamName}">\n${summary}\n</team_result>`,
+                    synthetic: true,
+                },
+            ],
+        },
+    })
 }
 
 // --- per-mode summary builders (extracted from buildSummary) ---
@@ -392,6 +353,45 @@ function summarizeArena(task: Extract<ActiveTask, { type: "arena" }>, head: stri
     const table = rows.length > 0 ? `\nScoreboard:\n${rows.join("\n")}` : ""
     const note = `\nCandidates: ${task.candidates.join(", ")} | evaluator: ${task.evaluatorMember}`
     return `${head}\n${winnerLine}${table}${note}`
+}
+
+/**
+ * Mode-aware summary. delegate aggregates from the task list (per-task results
+ * were already delivered to master via team_send_message; responses[] is NOT
+ * used for delegate). loop uses decisionHistory (structured) rather than
+ * the overwritten responses[]. parallel/pipeline concatenate captured outputs.
+ *
+ * Per-mode formatting lives in the summarize* helpers below; this function is
+ * a thin dispatcher with an exhaustiveness guard on OrchestrationType.
+ */
+export async function buildSummary(
+    team: Team,
+    task: ActiveTask,
+    reason: string,
+): Promise<string> {
+    const head = `mode=${task.type} reason=${reason} tokens=${task.tokensUsed}`
+    switch (task.type) {
+        case "delegate": return await summarizeDelegate(team, head)
+        case "loop": return summarizeLoop(task, head)
+        case "route": return summarizeRoute(task, head)
+        case "arbitrate": return summarizeArbitrate(task, head)
+        case "recurse": return await summarizeRecurse(team, task, head)
+        case "tollgate": return summarizeTollgate(task, head)
+        case "pipeline": return summarizePipeline(task, head)
+        case "consensus": return summarizeConsensus(task, head)
+        case "parallel": return summarizeParallel(task, head)
+        case "workflow": return summarizeWorkflow(task, head)
+        case "arena": return summarizeArena(task, head)
+        default: {
+            // Exhaustiveness guard for OrchestrationType. Every variant has an
+            // explicit case above, so task narrows to `never` here. Adding a new
+            // OrchestrationType without a matching case fails this assignment at
+            // compile time. Runtime throw prevents silent fall-through.
+            const _exhaustive: never = task
+            void _exhaustive
+            throw new Error(`buildSummary: unhandled OrchestrationType: ${String((task as { type: string }).type)}`)
+        }
+    }
 }
 
 /** One-line-per-member digest of the current round's outputs (consensus). */
