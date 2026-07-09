@@ -25,8 +25,8 @@ import type {
 import { AsyncMutex } from "../src/state/locks.js";
 import type { Team } from "../src/state/store.js";
 import type { PluginContext } from "../src/core/context.js";
+import { type DispatchCall } from "./helpers.js";
 
-type DispatchCall = { sessionId: string; text: string };
 
 function makeCtx(
     outputs: Record<string, string>,

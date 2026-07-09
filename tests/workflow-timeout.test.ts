@@ -10,8 +10,8 @@ import { processIdle } from "../src/orchestration/idle.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
 
+import { type DispatchCall } from "./helpers.js"
 const NOW = 1_700_000_000_000
-type DispatchCall = { readonly sessionId: string; readonly text: string }
 
 function makeCtx(outputs: Record<string, string> = {}, calls: DispatchCall[] = []): PluginContext {
     return {

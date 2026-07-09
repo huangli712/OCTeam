@@ -8,11 +8,10 @@ import type { ActiveTask, MemberState, Stage } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
 import type { PluginContext } from "../src/core/context.js"
+import { type DispatchCall } from "./helpers.js"
 
 // --- fixtures (pipeline execution path) ---
 
-/** A recorded promptAsync call: which session got which text. */
-type DispatchCall = { sessionId: string; text: string }
 
 /**
  * Stub PluginContext. `messages` returns a single user+assistant turn whose

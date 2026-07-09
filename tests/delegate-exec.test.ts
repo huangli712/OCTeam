@@ -6,14 +6,12 @@ import type { ActiveTask, MemberState, Task } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
 import type { PluginContext } from "../src/core/context.js"
-import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, tmpRoot, type DispatchCall } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
 // --- fixtures (delegate execution path) ---
 
-/** A recorded promptAsync call: which session got which text. */
-type DispatchCall = { sessionId: string; text: string }
 
 /**
  * Stub PluginContext. delegate does NOT use responses[] (per-task results go to

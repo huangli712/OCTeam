@@ -7,7 +7,7 @@
  * identity validation (getExpectedMember), output capture, and dispatch all run.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,8 +21,8 @@ import type {
     WorkflowStep,
     WorkflowTask,
 } from "../src/core/types.js";
-import { waitUntil } from "../src/core/utils.js";
-import { runEventsPath } from "../src/state/paths.js";
+
+
 import { AsyncMutex } from "../src/state/locks.js";
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js";
 import { initTeamState, loadTeamState } from "../src/state/store.js";
@@ -32,9 +32,7 @@ import {
     type WorkflowToolStep,
 } from "../src/tools/workflow.js";
 import type { PluginContext } from "../src/core/context.js";
-import { makeMember, makeState, makeToolContext } from "./helpers.js";
-
-type DispatchCall = { sessionId: string; text: string };
+import { makeMember, makeState, makeToolContext, type DispatchCall, waitForEvent } from "./helpers.js";
 
 function makeCtx(
     outputs: Record<string, string>,
@@ -170,20 +168,6 @@ const LOW_SCORE_PASS_VERDICT =
     '<verdict>{"result":"PASS","rationale":"barely","diff":"","score":5,"confidence":0.5}</verdict>';
 const HIGH_SEVERITY_FAIL_VERDICT =
     '<verdict>{"result":"FAIL","rationale":"risky","diff":"fix risk","score":4,"issues":[{"severity":"high","message":"risk"}]}</verdict>';
-
-async function waitForEvent(
-    directory: string,
-    runId: string,
-    kind: string,
-): Promise<void> {
-    const p = runEventsPath(directory, runId);
-    await waitUntil(
-        () =>
-            existsSync(p) &&
-            readFileSync(p, "utf8").includes(`"kind":"${kind}"`),
-        { timeoutMs: 2000, pollMs: 10 },
-    );
-}
 
 type FanoutHappyFixture = {
     readonly calls: DispatchCall[];

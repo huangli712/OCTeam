@@ -9,6 +9,7 @@ import { AsyncMutex } from "../src/state/locks.js"
 import type { ActiveTask, MemberState, RecurseTask, Task } from "../src/core/types.js"
 import type { PluginContext } from "../src/core/context.js"
 import type { Team } from "../src/state/store.js"
+import { type DispatchCall } from "./helpers.js"
 
 /**
  * Regression for finding recurse-deleted-tasks-count-against-cap.
@@ -30,7 +31,6 @@ import type { Team } from "../src/state/store.js"
  * root re-queued as a pending aggregator).
  */
 
-type DispatchCall = { sessionId: string; text: string }
 
 function makeCtx(
     outputs: Record<string, string>,

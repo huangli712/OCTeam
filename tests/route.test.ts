@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, readFileSync } from "node:fs"
+import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -9,8 +9,7 @@ import { getExpectedMember } from "../src/orchestration/idle.js"
 import { handleRouteIdle } from "../src/orchestration/route.js"
 import { parseRouteDecision } from "../src/orchestration/decisions.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
-import { runEventsPath } from "../src/state/paths.js"
-import { waitUntil } from "../src/core/utils.js"
+
 import { buildSummary } from "../src/orchestration/summary.js"
 import { checkTermination } from "../src/orchestration/termination.js"
 import { buildRouterPrompt, teamRouteTool } from "../src/tools/router.js"
@@ -20,23 +19,9 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
-
-/** Poll the run events file until an event of `kind` is flushed to disk.
- *  recordEvent is fire-and-forget, so we wait deterministically for the
- *  append to land rather than sleeping a fixed duration (misc-003). */
-async function waitForEvent(directory: string, runId: string, kind: string): Promise<void> {
-    const p = runEventsPath(directory, runId)
-    await waitUntil(
-        () => existsSync(p) && readFileSync(p, "utf8").includes(`"kind":"${kind}"`),
-        { timeoutMs: 2000, pollMs: 10 },
-    )
-}
+import { makeMember, makeState, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js"
 
 // --- fixtures ---
-
-/** A recorded promptAsync call: which session got which text. */
-type DispatchCall = { sessionId: string; text: string }
 
 /**
  * Stub PluginContext: only ctx.client.session.promptAsync is exercised (by

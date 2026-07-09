@@ -10,10 +10,10 @@ import { getActiveWorkflowStepActors } from "../src/orchestration/dag.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
+import { type DispatchCall } from "./helpers.js"
 
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
 
-type DispatchCall = { readonly sessionId: string; readonly text: string }
 
 type GeneratedWorkflow = {
     readonly name: string
