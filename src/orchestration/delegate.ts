@@ -14,7 +14,7 @@
 
 import type { PluginContext } from "../core/context.js"
 import { type Team } from "../state/store.js"
-import type { MemberState } from "../core/types.js"
+import type { MemberState, SdkMessage } from "../core/types.js"
 import { listAllTasks } from "../state/tasks.js"
 import { dispatchToMember } from "./dispatch.js"
 import { finishRun } from "./summary.js"
@@ -53,7 +53,7 @@ export async function runDelegateStyleTail(
         for (const m of team.members) {
             if (m.isMaster || !m.sessionId) continue
             const res = await ctx.client.session.messages({ path: { id: m.sessionId } })
-            const msgs = (res.data ?? []) as Array<{ info?: any; parts?: any }>
+            const msgs = (res.data ?? []) as SdkMessage[]
             await captureMemberOutput(team, m, msgs)
         }
         await finishRun(ctx, team, `${label}_complete`, "idle")

@@ -122,9 +122,9 @@ async function accountAndValidateIdle(
     team: Team,
     member: MemberState,
     sessionID: string,
-): Promise<Array<{ info?: any; parts?: any }> | null> {
+): Promise<SdkMessage[] | null> {
     const msgs = await ctx.client.session.messages({ path: { id: sessionID } })
-    const messages = (msgs.data ?? []) as Array<{ info?: any; parts?: any }>
+    const messages = (msgs.data ?? []) as SdkMessage[]
     if (team.activeTask) {
         // Step 2: Token accounting (recompute from full history, never +=).
         team.activeTask.tokensByMember[member.name] = sumMemberTokens(messages)
