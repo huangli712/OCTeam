@@ -1,48 +1,14 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { MemberState, RecurseTask, Task } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
-
-type PromptRequest = { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
 
 const DECOMPOSE = '<decompose>{"subtasks":[{"subject":"part A","description":"do A"},{"subject":"part B","description":"do B"}]}</decompose>'
-
-function makeCtx(root: string, outputs: Record<string, string>, calls: DispatchCall[] = []): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        project: { id: "project", directory: "/app" },
-        projectStorageRoot: root,
-        userStorageRoot: `${root}__user_unused`,
-        client: {
-            app: { log: mock(async () => ({})) },
-            session: {
-                messages: mock(async ({ path }: { readonly path: { readonly id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }] : []),
-                        ],
-                    }
-                }),
-                promptAsync: mock(async (req: PromptRequest) => {
-                    calls.push({ sessionId: req.path.id, text: req.body.parts[0].text })
-                    return { data: {} }
-                }),
-                abort: mock(async () => ({})),
-                status: mock(async () => ({ data: {} })),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -106,7 +72,7 @@ describe("HITL recurse decomposition approval", () => {
         const claimed = await seedClaimedTask(team, "alice")
         const task = recurseTask(claimed.id)
         await setRecurseTask(team, task)
-        const ctx = makeCtx(root, { ses_alice: DECOMPOSE }, calls)
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: DECOMPOSE }, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await processIdle(ctx, team, team.members[0], "ses_alice")
 
@@ -133,7 +99,7 @@ describe("HITL recurse decomposition approval", () => {
         const claimed = await seedClaimedTask(team, "alice")
         const task = recurseTask(claimed.id)
         await setRecurseTask(team, task)
-        const ctx = makeCtx(root, { ses_alice: DECOMPOSE })
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: DECOMPOSE }, calls: [], abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await processIdle(ctx, team, team.members[0], "ses_alice")
         const result = await teamRejectTool(ctx).execute({ team_id: "alpha", feedback: "solve directly" }, makeToolContext(sid))
@@ -156,7 +122,7 @@ describe("HITL recurse decomposition approval", () => {
         const bobTask = await seedClaimedTask(team, "bob", "finish me")
         const task = recurseTask(aliceTask.id)
         await setRecurseTask(team, task)
-        const ctx = makeCtx(root, { ses_alice: DECOMPOSE, ses_bob: "bob solved it" })
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: DECOMPOSE, ses_bob: "bob solved it" }, calls: [], abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await processIdle(ctx, team, team.members[0], "ses_alice")
         await processIdle(ctx, team, team.members[1], "ses_bob")

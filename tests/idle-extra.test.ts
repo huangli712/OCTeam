@@ -1,52 +1,14 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, MemberStatus } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { handleStatusEvent } from "../src/orchestration/status.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { writeMailboxMessage } from "../src/messaging/mailbox.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 import type { Message } from "../src/core/types.js"
 
-// --- ctx + team fixtures (mirror dispatch-context.test.ts shape) ---
-
-function makeCtx(
-    storageRoot: string,
-    overrides?: {
-        promptAsync?: (req: { body: { parts: Array<{ text: string }> } }) => Promise<unknown>
-        messages?: (req: unknown) => Promise<{ data: unknown[] }>
-        status?: (req: unknown) => Promise<{ data: unknown }>
-        directory?: string
-    },
-): PluginContext {
-    return {
-        storageRoot,
-        scope: "project",
-        directory: overrides?.directory ?? "/app",
-        projectStorageRoot: storageRoot,
-        userStorageRoot: `${storageRoot}__user_unused`,
-        client: {
-            app: { log: mock(async () => ({})) },
-            session: {
-                promptAsync:
-                    overrides?.promptAsync ??
-                    (mock(async () => ({})) as unknown as (req: unknown) => Promise<unknown>),
-                messages:
-                    overrides?.messages ??
-                    (mock(async () => ({ data: [] })) as unknown as (
-                        req: unknown,
-                    ) => Promise<{ data: unknown[] }>),
-                status:
-                    overrides?.status ??
-                    (mock(async () => ({ data: {} })) as unknown as (
-                        req: unknown,
-                    ) => Promise<{ data: unknown }>),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 async function makeTeam(
     root: string,
@@ -117,7 +79,7 @@ describe("processIdle: role-setup barrier (Step 1.5)", () => {
         const sid = "ses_pid_rsb"
         const memberSid = "ses_pid_rsb_alice"
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx(root, { promptAsync })
+        const ctx = makeCtx({ storageRoot: root, promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -153,7 +115,7 @@ describe("processIdle: unread-message wake hint (Step 5)", () => {
         const promptAsync = mock(async (req: { body: { parts: Array<{ text: string }> } }) => {
             captured.push(req.body.parts[0].text)
         })
-        const ctx = makeCtx(root, { promptAsync })
+        const ctx = makeCtx({ storageRoot: root, promptAsync } as any)
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -191,7 +153,7 @@ describe("processIdle: premature-idle re-prompt (require_done_ack recovery)", ()
         const promptAsync = mock(async (req: { body: { parts: Array<{ text: string }> } }) => {
             captured.push(req.body.parts[0].text)
         })
-        const ctx = makeCtx(root, { promptAsync })
+        const ctx = makeCtx({ storageRoot: root, promptAsync } as any)
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -224,7 +186,7 @@ describe("processIdle: premature-idle re-prompt (require_done_ack recovery)", ()
         const sid = "ses_pid_premature_coop"
         const memberSid = "ses_pid_premature_coop_alice"
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx(root, { promptAsync })
+        const ctx = makeCtx({ storageRoot: root, promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -252,7 +214,7 @@ describe("processIdle: premature-idle re-prompt (require_done_ack recovery)", ()
         const sid = "ses_pid_premature_ack"
         const memberSid = "ses_pid_premature_ack_alice"
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx(root, { promptAsync })
+        const ctx = makeCtx({ storageRoot: root, promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -292,7 +254,7 @@ describe("processIdle: reduce-stage priority (Step 6 prefix)", () => {
         const sid = "ses_pid_reduce"
         const memberSid = "ses_pid_reduce_alice"
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx(root, { promptAsync })
+        const ctx = makeCtx({ storageRoot: root, promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -341,7 +303,7 @@ describe("handleStatusEvent: retry escalation", () => {
         const status = mock(async () => ({
             data: { [memberSid]: { type: "retry", message: "rate limited" } },
         }))
-        const ctx = makeCtx(root, { status })
+        const ctx = makeCtx({ storageRoot: root, status, promptAsync: async () => ({}) })
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
         ])
@@ -368,7 +330,7 @@ describe("handleStatusEvent: retry escalation", () => {
         const status = mock(async () => ({
             data: { [memberSid]: { type: "retry", message: "transient" } },
         }))
-        const ctx = makeCtx(root, { status })
+        const ctx = makeCtx({ storageRoot: root, status, promptAsync: async () => ({}) })
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
         ])
@@ -401,7 +363,7 @@ describe("handleStatusEvent: retry escalation", () => {
         const status = mock(async () => ({
             data: { [memberSid]: { type: "idle" } },
         }))
-        const ctx = makeCtx(root, { status })
+        const ctx = makeCtx({ storageRoot: root, status, promptAsync: async () => ({}) })
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
         ])
@@ -422,7 +384,7 @@ describe("handleStatusEvent: retry escalation", () => {
     test("unknown sessionID is silently dropped (no team resolution)", async () => {
         const root = tmpRoot("hse-unknown")
         const sid = "ses_hse_unknown"
-        const ctx = makeCtx(root)
+        const ctx = makeCtx({ storageRoot: root })
         await makeTeam(root, sid, tracked, [
             makeMember("alice", "ses_hse_unknown_a"),
         ])
@@ -439,7 +401,7 @@ describe("handleStatusEvent: retry escalation", () => {
     test("master session is silently dropped (status events are member-only)", async () => {
         const root = tmpRoot("hse-master")
         const sid = "ses_hse_master"
-        const ctx = makeCtx(root)
+        const ctx = makeCtx({ storageRoot: root })
         await makeTeam(root, sid, tracked, [
             makeMember("alice", "ses_hse_master_a"),
         ])

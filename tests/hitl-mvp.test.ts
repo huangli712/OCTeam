@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, GatedStage, LoopTask, MemberState, PipelineTask, Stage, TollgateTask } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { handleTollgateIdle } from "../src/orchestration/tollgate.js"
@@ -8,41 +7,7 @@ import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { teamProgressTool } from "../src/tools/progress.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
-
-type PromptRequest = { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }
-
-function makeCtx(root: string, outputs: Record<string, string>, calls: DispatchCall[] = []): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        projectStorageRoot: root,
-        userStorageRoot: `${root}__user_unused`,
-        client: {
-            app: { log: mock(async () => ({})) },
-            session: {
-                messages: mock(async ({ path }: { readonly path: { readonly id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text
-                                ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }]
-                                : []),
-                        ],
-                    }
-                }),
-                promptAsync: mock(async (req: PromptRequest) => {
-                    calls.push({ sessionId: req.path.id, text: req.body.parts[0].text })
-                    return { data: {} }
-                }),
-                abort: mock(async () => ({})),
-                status: mock(async () => ({ data: {} })),
-            },
-        },
-    } as unknown as PluginContext
-}
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
 
 const tracked: string[] = []
 afterEach(() => {
@@ -144,7 +109,7 @@ describe("HITL MVP: pipeline", () => {
             { member: "bob", task: "review", completed: false },
         ])
         await setActiveTask(team, task)
-        const ctx = makeCtx(root, { ses_alice: "draft output" }, calls)
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: "draft output" }, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await processIdle(ctx, team, team.members[0], "ses_alice")
 
@@ -176,7 +141,7 @@ describe("HITL MVP: pipeline", () => {
             { member: "bob", task: "review", completed: false },
         ])
         await setActiveTask(team, task)
-        const ctx = makeCtx(root, { ses_alice: "bad draft" }, calls)
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: "bad draft" }, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await processIdle(ctx, team, team.members[0], "ses_alice")
         const result = await teamRejectTool(ctx).execute({ team_id: "alpha", feedback: "needs rewrite" }, makeToolContext(sid))
@@ -206,7 +171,7 @@ describe("HITL MVP: tollgate", () => {
         ])
         task.responses = { alice: "artifact", bob: PASS }
         await setActiveTask(team, task)
-        const ctx = makeCtx(root, {}, calls)
+        const ctx = makeCtx({ storageRoot: root, outputs: {}, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await handleTollgateIdle(ctx, team, team.members[1])
 
@@ -237,7 +202,7 @@ describe("HITL MVP: loop", () => {
         ])
         task.currentStageIndex = 1
         await setActiveTask(team, task)
-        const ctx = makeCtx(root, { ses_bob: DONE }, calls)
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_bob: DONE }, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await processIdle(ctx, team, team.members[1], "ses_bob")
 
@@ -265,7 +230,7 @@ describe("HITL MVP: loop", () => {
         ])
         task.currentStageIndex = 1
         await setActiveTask(team, task)
-        const ctx = makeCtx(root, { ses_bob: DONE }, calls)
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_bob: DONE }, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await processIdle(ctx, team, team.members[1], "ses_bob")
         const result = await teamRejectTool(ctx).execute({ team_id: "alpha", feedback: "missing edge case" }, makeToolContext(sid))

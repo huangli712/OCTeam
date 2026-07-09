@@ -21,9 +21,8 @@
  * These drive resumeDispatch directly (mirrors resume-signoff-reduce.test.ts),
  * which is exactly what team_resume Phase 3 calls under the mutex.
  */
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
-import type { PluginContext } from "../src/core/context.js";
 import type { ActiveTask } from "../src/core/types.js";
 import {
     initTeamState,
@@ -32,29 +31,7 @@ import {
 } from "../src/state/store.js";
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js";
 import { resumeDispatch } from "../src/orchestration/resume.js";
-import { makeMember, makeState, tmpRoot } from "./helpers.js";
-
-function makeCtx(
-    root: string,
-    promptAsync: (req: {
-        path: { id: string };
-        body: { parts: { text: string }[] };
-    }) => Promise<void>,
-): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        client: {
-            app: { log: mock(async () => {}) },
-            session: {
-                abort: mock(async () => {}),
-                promptAsync: mock(promptAsync),
-                messages: mock(async () => ({ data: [] })),
-            },
-        },
-    } as unknown as PluginContext;
-}
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js";
 
 function makeTask(overrides: Partial<ActiveTask> = {}): ActiveTask {
     return {
@@ -117,9 +94,9 @@ describe("resumeDispatch: reduce sub-stage where reducer ALREADY responded", () 
         const team = await setup(root, sid, task, [alice, bob, dave]);
 
         const dispatched: string[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push(req.path.id);
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -152,9 +129,9 @@ describe("resumeDispatch: consensus re-dispatch loop", () => {
         const team = await setup(root, sid, task, [alice, bob]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -191,9 +168,9 @@ describe("resumeDispatch: pipeline/loop all-complete crash edge", () => {
         ]);
 
         const dispatched: string[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push(req.path.id);
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -228,9 +205,9 @@ describe("resumeDispatch: pipeline/loop all-complete crash edge", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -268,9 +245,9 @@ describe("resumeDispatch: route Phase A with NO captured router output", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -312,9 +289,9 @@ describe("resumeDispatch: route Phase B target re-dispatch", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -355,9 +332,9 @@ describe("resumeDispatch: route Phase B target re-dispatch", () => {
         ]);
 
         const dispatched: string[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push(req.path.id);
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -409,9 +386,9 @@ describe("resumeDispatch: workflow all-complete crash edge", () => {
         ]);
 
         const dispatched: string[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push(req.path.id);
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -489,9 +466,9 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -572,9 +549,9 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -666,9 +643,9 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -773,9 +750,9 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -881,9 +858,9 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1001,9 +978,9 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1144,9 +1121,9 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         // When: resume re-drives the captured branch gate verdict.
         await team.mutex.runExclusive(async () => {
@@ -1206,9 +1183,9 @@ describe("resumeDispatch: workflow mid-task-step crash", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1248,9 +1225,9 @@ describe("resumeDispatch: workflow mid-task-step crash", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1301,9 +1278,9 @@ describe("resumeDispatch: workflow mid-gate-step crash with captured verdict", (
         ]);
 
         const dispatched: string[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push(req.path.id);
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1371,9 +1348,9 @@ describe("resumeDispatch: workflow mid-gate-step crash with captured verdict", (
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1453,9 +1430,9 @@ describe("resumeDispatch: workflow goto-after-restart", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1516,9 +1493,9 @@ describe("resumeDispatch: workflow goto-after-restart", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1575,9 +1552,9 @@ describe("resumeDispatch: workflow approval-pause-mid-restart", () => {
         ]);
 
         const dispatched: string[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push(req.path.id);
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1636,9 +1613,9 @@ describe("resumeDispatch: workflow approval-pause-mid-restart", () => {
         ]);
 
         const dispatched: string[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push(req.path.id);
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1695,9 +1672,9 @@ describe("resumeDispatch: workflow retry/jump counter recovery", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1753,9 +1730,9 @@ describe("resumeDispatch: workflow retry/jump counter recovery", () => {
         ]);
 
         const dispatched: string[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push(req.path.id);
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);
@@ -1805,9 +1782,9 @@ describe("resumeDispatch: workflow retry/jump counter recovery", () => {
         ]);
 
         const dispatched: { id: string; text: string }[] = [];
-        const ctx = makeCtx(root, async (req) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
             dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
-        });
+        } });
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!);

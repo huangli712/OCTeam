@@ -23,16 +23,13 @@ import { access, readFile } from "node:fs/promises"
 
 import { afterEach, describe, expect, mock, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { runEventsPath, runsDir, runDir, runMemberOutputPath, statePath } from "../src/state/paths.js"
 import { initTeamState, invalidateTeam, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamDir } from "../src/state/paths.js"
 import { teamDeleteTool } from "../src/tools/delete.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
-
-// --- helpers ---
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 /** True iff no entry exists at `p` (resolves ENOENT as absent). */
 async function absent(p: string): Promise<boolean> {
@@ -44,26 +41,6 @@ async function absent(p: string): Promise<boolean> {
     }
 }
 
-function makeCtx(storageRoot: string, overrides?: {
-    directory?: string
-    abort?: (req: unknown) => Promise<void>
-    promptAsync?: (req: unknown) => Promise<void>
-    messages?: (req: unknown) => Promise<{ data: unknown[] }>
-}): PluginContext {
-    return {
-        storageRoot,
-        scope: "project",
-        directory: overrides?.directory ?? "/app",
-        client: {
-            app: { log: mock(async () => {}) },
-            session: {
-                abort: overrides?.abort ?? mock(async () => {}),
-                promptAsync: overrides?.promptAsync ?? mock(async () => {}),
-                messages: overrides?.messages ?? mock(async () => ({ data: [] })),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 /** Synthetic master member (mirrors hooks.ts masterPseudoMember, not exported). */
 function masterMember(): MemberState {
@@ -116,7 +93,7 @@ describe("C1 T1: processIdle does not resurrect a just-deleted team dir", () => 
         roots.push(root)
         const sid = "ses_t1_master"
         const memberSession = "ses_t1_alice"
-        const ctx = makeCtx(root)
+        const ctx = makeCtx({ storageRoot: root })
 
         // Live team with one initialized member that has a sessionId (so the
         // member-idle path would reach saveTeamState at idle.ts:134 even
@@ -226,7 +203,7 @@ describe("C1 T4: force-delete of a busy team → subsequent handler processIdle 
         const sid = "ses_t4_master"
         const memberSession = "ses_t4_alice"
         const abort = mock(async (_req: unknown) => {})
-        const ctx = makeCtx(root, { abort })
+        const ctx = makeCtx({ storageRoot: root, abort })
 
         // Build a BUSY team with an active parallel task and a running member
         // (the force-delete mid-orchestration scenario). The delete tool's busy
@@ -269,7 +246,7 @@ describe("C1 T5: master idle event during master-team delete → processIdle no-
         const root = tmpRoot("c1-t5")
         roots.push(root)
         const sid = "ses_t5_master"
-        const ctx = makeCtx(root)
+        const ctx = makeCtx({ storageRoot: root })
 
         // hooks.ts:85-94 drains every team a master session owns on idle via
         // processIdle(ctx, team, masterPseudoMember(), sessionID). The master

@@ -36,17 +36,13 @@ import { execFile } from "node:child_process"
 import { access } from "node:fs/promises"
 import { promisify } from "node:util"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamDeleteTool } from "../src/tools/delete.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const execFileP = promisify(execFile)
 
-function makeCtx(storageRoot: string, projectDir: string): PluginContext {
-    return { storageRoot, directory: projectDir, scope: "project" } as unknown as PluginContext
-}
 
 async function initGitRepo(dir: string): Promise<void> {
     await execFileP("git", ["init", "-q"], { cwd: dir })
@@ -95,7 +91,7 @@ describe("persisted worktreePath forced-remove (finding: persisted-worktreepath-
         expect(victimPath).not.toContain(`${team.directory}/worktrees/`)
 
         // --- Drive team_delete --force ---
-        const tool = teamDeleteTool(makeCtx(storageRoot, projectDir))
+        const tool = teamDeleteTool(makeCtx({ storageRoot, directory: projectDir }))
         const result = await tool.execute(
             { team_id: "alpha", force: true },
             { sessionID: leadSid } as unknown as ToolContext,

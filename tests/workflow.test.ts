@@ -32,49 +32,8 @@ import {
     type WorkflowToolStep,
 } from "../src/tools/workflow.js";
 import type { PluginContext } from "../src/core/context.js";
-import { makeMember, makeState, makeToolContext, type DispatchCall, waitForEvent } from "./helpers.js";
+import { makeCtx, makeMember, makeState, makeToolContext, type DispatchCall, waitForEvent } from "./helpers.js";
 
-function makeCtx(
-    outputs: Record<string, string>,
-    calls: DispatchCall[] = [],
-    storageRoot = "/tmp",
-): PluginContext {
-    return {
-        storageRoot,
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? "";
-                    return {
-                        data: [
-                            {
-                                info: { role: "user" },
-                                parts: [{ type: "text", text: "go" }],
-                            },
-                            ...(text
-                                ? [
-                                      {
-                                          info: { role: "assistant" },
-                                          parts: [{ type: "text", text }],
-                                      },
-                                  ]
-                                : []),
-                        ],
-                    };
-                },
-                promptAsync: async (args: any) => {
-                    calls.push({
-                        sessionId: args.path.id,
-                        text: args.body.parts[0].text,
-                    });
-                    return { data: {} };
-                },
-            },
-        },
-    } as unknown as PluginContext;
-}
 
 const trackedSessions: string[] = [];
 afterEach(() => {
@@ -240,18 +199,14 @@ async function startToolLoweredFanoutWorkflow(
     };
     trackedSessions.push(...Object.values(sessions));
     const calls: DispatchCall[] = [];
-    const ctx = makeCtx(
-        {
-            [sessions.alice]: "shared pre-fanout output",
-            [sessions.bob]: "api branch output",
-            [sessions.erin]: PASS_VERDICT,
-            [sessions.carol]: "tests branch output",
-            [sessions.eve]: PASS_VERDICT,
-            [sessions.dave]: "downstream integrated output",
-        },
-        calls,
-        root,
-    );
+    const ctx = makeCtx({ outputs: {
+        [sessions.alice]: "shared pre-fanout output",
+        [sessions.bob]: "api branch output",
+        [sessions.erin]: PASS_VERDICT,
+        [sessions.carol]: "tests branch output",
+        [sessions.eve]: PASS_VERDICT,
+        [sessions.dave]: "downstream integrated output",
+    }, calls: calls, storageRoot: root });
     await initTeamState(
         root,
         makeState(
@@ -373,16 +328,13 @@ function makeFanoutHappyFixture(
             { name: "dave", sessionId: "ses_dave" },
         ],
     });
-    const ctx = makeCtx(
-        {
-            ses_alice: "shared pre-fanout output",
-            ses_bob: "api branch output",
-            ses_erin: "api packaged output",
-            ses_carol: "tests branch output",
-            ses_dave: "downstream integrated output",
-        },
-        calls,
-    );
+    const ctx = makeCtx({ outputs: {
+        ses_alice: "shared pre-fanout output",
+        ses_bob: "api branch output",
+        ses_erin: "api packaged output",
+        ses_carol: "tests branch output",
+        ses_dave: "downstream integrated output",
+    }, calls: calls });
 
     return { calls, task, team, ctx };
 }
@@ -415,7 +367,7 @@ describe("handleWorkflowIdle (via processIdle): task steps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_alice: "alice's step-1 result" }, calls);
+        const ctx = makeCtx({ outputs: { ses_alice: "alice's step-1 result" }, calls: calls });
 
         await processIdle(ctx, team, team.members[0], "ses_alice");
 
@@ -452,7 +404,7 @@ describe("handleWorkflowIdle (via processIdle): task steps", () => {
             activeTask: task,
             members: [{ name: "alice", sessionId: "ses_alice" }],
         });
-        const ctx = makeCtx({ ses_alice: "final workflow output" }, calls);
+        const ctx = makeCtx({ outputs: { ses_alice: "final workflow output" }, calls: calls });
 
         await processIdle(ctx, team, team.members[0], "ses_alice");
 
@@ -489,7 +441,7 @@ describe("handleWorkflowIdle (via processIdle): task steps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: "bob jumped ahead" }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: "bob jumped ahead" }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -527,7 +479,7 @@ describe("handleWorkflowIdle (via processIdle): task steps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await advanceWorkflowStep(ctx, team);
 
@@ -576,7 +528,7 @@ describe("handleWorkflowIdle (via processIdle): task steps", () => {
                 { name: "carol", sessionId: "ses_carol" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await advanceWorkflowStep(ctx, team);
 
@@ -612,7 +564,7 @@ describe("handleWorkflowIdle (via processIdle): task steps", () => {
                 { name: "bob" },
             ],
         });
-        const ctx = makeCtx({ ses_alice: "done" }, calls);
+        const ctx = makeCtx({ outputs: { ses_alice: "done" }, calls: calls });
 
         await processIdle(ctx, team, team.members[0], "ses_alice");
 
@@ -901,17 +853,13 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
         };
         trackedSessions.push(...Object.values(sessions));
         const calls: DispatchCall[] = [];
-        const ctx = makeCtx(
-            {
-                [sessions.alice]: "shared pre-fanout output",
-                [sessions.bob]: "api branch output",
-                [sessions.carol]: "tests branch output",
-                [sessions.rachel]: "reduced branch summary",
-                [sessions.dave]: "downstream integrated output",
-            },
-            calls,
-            root,
-        );
+        const ctx = makeCtx({ outputs: {
+            [sessions.alice]: "shared pre-fanout output",
+            [sessions.bob]: "api branch output",
+            [sessions.carol]: "tests branch output",
+            [sessions.rachel]: "reduced branch summary",
+            [sessions.dave]: "downstream integrated output",
+        }, calls: calls, storageRoot: root });
         await initTeamState(
             root,
             makeState(
@@ -1103,7 +1051,7 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
                 { name: "carol", sessionId: "ses_carol" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await advanceWorkflowStep(ctx, team);
 
@@ -1238,11 +1186,7 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
         testsGate.onInvalid = "retry_verifier";
         testsGate.maxInvalidRetries = 1;
 
-        const invalidCtx = makeCtx(
-            { [sessionIdFor(team, "eve")]: INVALID_VERDICT },
-            calls,
-            ctx.storageRoot,
-        );
+        const invalidCtx = makeCtx({ outputs: { [sessionIdFor(team, "eve")]: INVALID_VERDICT }, calls: calls, storageRoot: ctx.storageRoot });
         await processIdle(
             invalidCtx,
             team,
@@ -1328,13 +1272,13 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
         });
 
         await processIdle(
-            makeCtx({ ses_alice: "api branch output" }, calls),
+            makeCtx({ outputs: { ses_alice: "api branch output" }, calls: calls }),
             team,
             findTeamMember(team, "alice"),
             "ses_alice",
         );
         await processIdle(
-            makeCtx({ ses_bob: "tests branch output" }, calls),
+            makeCtx({ outputs: { ses_bob: "tests branch output" }, calls: calls }),
             team,
             findTeamMember(team, "bob"),
             "ses_bob",
@@ -1431,7 +1375,7 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
         });
 
         await processIdle(
-            makeCtx({ ses_carol: "stray output" }, calls),
+            makeCtx({ outputs: { ses_carol: "stray output" }, calls: calls }),
             team,
             findTeamMember(team, "carol"),
             "ses_carol",
@@ -1581,7 +1525,7 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
                 },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         // When: termination evaluates the workflow.
         await checkTermination(ctx, team);
@@ -1634,7 +1578,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "carol", sessionId: "ses_carol" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: PASS_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: PASS_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -1676,7 +1620,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: PASS_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: PASS_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -1717,7 +1661,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: FAIL_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -1760,7 +1704,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         });
 
         // First FAIL: within retries (attempts 0 -> 1, maxRetries 1) -> re-dispatch alice.
-        let ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls);
+        let ctx = makeCtx({ outputs: { ses_bob: FAIL_VERDICT }, calls: calls });
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         expect(task.steps![1].attempts).toBe(1);
@@ -1780,12 +1724,12 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(task.steps![0].dispatchedAt).toBeNumber();
 
         // alice re-runs the task -> completes again -> advances back to the gate.
-        ctx = makeCtx({ ses_alice: "alice's revised output" }, calls);
+        ctx = makeCtx({ outputs: { ses_alice: "alice's revised output" }, calls: calls });
         await processIdle(ctx, team, team.members[0], "ses_alice");
         expect(task.currentStageIndex).toBe(1);
 
         // Second FAIL: attempts 1 -> 2 > maxRetries 1 -> fail the run.
-        ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls);
+        ctx = makeCtx({ outputs: { ses_bob: FAIL_VERDICT }, calls: calls });
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         expect(team.status).toBe("failed");
@@ -1830,7 +1774,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "carol", sessionId: "ses_carol" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: FAIL_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -1878,7 +1822,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: INVALID_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -1918,10 +1862,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx(
-            { ses_bob: "I cannot decide, no verdict tag" },
-            calls,
-        );
+        const ctx = makeCtx({ outputs: { ses_bob: "I cannot decide, no verdict tag" }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -1962,7 +1903,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: INVALID_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -2014,7 +1955,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "carol", sessionId: "ses_carol" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await advanceWorkflowStep(ctx, team);
 
@@ -2059,7 +2000,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         });
 
         // First INVALID: within retries (0 -> 1) -> re-dispatch bob, NOT alice.
-        let ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls);
+        let ctx = makeCtx({ outputs: { ses_bob: INVALID_VERDICT }, calls: calls });
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         expect(task.steps![1].invalidAttempts).toBe(1);
@@ -2072,7 +2013,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(team.activeTask).toBeDefined();
 
         // Second INVALID: 1 -> 2 > maxInvalidRetries 1 -> fail as workflow_invalid.
-        ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls);
+        ctx = makeCtx({ outputs: { ses_bob: INVALID_VERDICT }, calls: calls });
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         expect(team.status).toBe("failed");
@@ -2119,7 +2060,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "carol", sessionId: "ses_carol" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: INVALID_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -2178,7 +2119,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "carol", sessionId: "ses_carol" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await advanceWorkflowStep(ctx, team);
 
@@ -2225,7 +2166,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "carol", sessionId: "ses_carol" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await advanceWorkflowStep(ctx, team);
 
@@ -2262,7 +2203,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await advanceWorkflowStep(ctx, team);
 
@@ -2324,7 +2265,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "dave", sessionId: "ses_dave" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await advanceWorkflowStep(ctx, team);
 
@@ -2386,7 +2327,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
                 { name: "dave", sessionId: "ses_dave" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: FAIL_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -2445,7 +2386,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
                 { name: "dave", sessionId: "ses_dave" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: PASS_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: PASS_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -2493,7 +2434,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: FAIL_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -2548,7 +2489,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
                 { name: "carol", sessionId: "ses_carol" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: INVALID_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: INVALID_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -2596,7 +2537,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: FAIL_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: FAIL_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -2651,7 +2592,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
                 { name: "dave", sessionId: "ses_dave" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: HIGH_SCORE_PASS_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: HIGH_SCORE_PASS_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -2709,7 +2650,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
                 { name: "dave", sessionId: "ses_dave" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: LOW_SCORE_PASS_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: LOW_SCORE_PASS_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -2751,7 +2692,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: HIGH_SEVERITY_FAIL_VERDICT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: HIGH_SEVERITY_FAIL_VERDICT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -2794,7 +2735,7 @@ describe("handleWorkflowIdle (via processIdle): step-level controls", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await advanceWorkflowStep(ctx, team);
 
@@ -2835,7 +2776,7 @@ describe("handleWorkflowIdle (via processIdle): step-level controls", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await advanceWorkflowStep(ctx, team);
 
@@ -2873,7 +2814,7 @@ describe("handleWorkflowIdle (via processIdle): step-level controls", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_alice: "alice output" }, calls);
+        const ctx = makeCtx({ outputs: { ses_alice: "alice output" }, calls: calls });
 
         await processIdle(ctx, team, team.members[0], "ses_alice");
 
@@ -2913,7 +2854,7 @@ describe("handleWorkflowIdle (via processIdle): step-level controls", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_alice: huge }, calls);
+        const ctx = makeCtx({ outputs: { ses_alice: huge }, calls: calls });
 
         await processIdle(ctx, team, team.members[0], "ses_alice");
 
@@ -2968,7 +2909,7 @@ describe("handleWorkflowIdle (via processIdle): approval_before honored on retry
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -3022,7 +2963,7 @@ describe("handleWorkflowIdle (via processIdle): approval_before honored on retry
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({}, calls);
+        const ctx = makeCtx({ outputs: {}, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 

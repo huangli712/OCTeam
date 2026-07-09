@@ -7,9 +7,8 @@ import { processIdle } from "../src/orchestration/idle.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { ActiveTask, MemberState, RecurseTask, Task } from "../src/core/types.js"
-import type { PluginContext } from "../src/core/context.js"
 import type { Team } from "../src/state/store.js"
-import { type DispatchCall } from "./helpers.js"
+import { makeCtx, type DispatchCall } from "./helpers.js"
 
 /**
  * Regression for finding recurse-deleted-tasks-count-against-cap.
@@ -32,36 +31,8 @@ import { type DispatchCall } from "./helpers.js"
  */
 
 
-function makeCtx(
-    outputs: Record<string, string>,
-    calls: DispatchCall[] = [],
-): PluginContext {
-    return {
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text
-                                ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }]
-                                : []),
-                        ],
-                    }
-                },
-                promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-                status: async () => ({
-                    data: Object.fromEntries(
-                        Object.entries(outputs).map(([id]) => [id, { type: "idle" }]),
-                    ),
-                }),
-            },
-        },
-    } as unknown as PluginContext
+function statusIdleFrom(outputs: Record<string, string>) {
+    return async () => ({ data: Object.fromEntries(Object.entries(outputs).map(([id]) => [id, { type: "idle" }])) })
 }
 
 function makeRecurseTask(): RecurseTask {
@@ -155,7 +126,7 @@ describe("recurse maxTasks cap must ignore deleted tasks", () => {
         expect(all.filter(t => t.status !== "deleted")).toHaveLength(1)
 
         await processIdle(
-            makeCtx({ ses_alice: DECOMPOSE_2 }, []),
+            makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls: [], status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }),
             team,
             team.members[0],
             "ses_alice",

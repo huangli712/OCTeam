@@ -1,35 +1,13 @@
 import { describe, expect, mock, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import { dispatchToMember } from "../src/orchestration/dispatch.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { createTask } from "../src/state/tasks.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
-// --- helpers ---
-
-function makeCtx(storageRoot: string, overrides?: {
-    promptAsync?: (req: unknown) => Promise<void>
-    directory?: string
-}): PluginContext {
-    return {
-        storageRoot,
-        scope: "project",
-        directory: overrides?.directory ?? "/app",
-        client: {
-            app: {
-                log: mock(async () => {}),
-            },
-            session: {
-                promptAsync: overrides?.promptAsync ?? mock(async () => {}),
-                messages: mock(async () => ({ data: [] })),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 /** Construct a full Team wrapper (TeamState + mutex + directory). */
 async function makeTeamWithDir(root: string, sid: string, members: MemberState[]): Promise<ReturnType<typeof loadTeamState>> {
@@ -65,7 +43,7 @@ async function setActiveTask(root: string, sid: string, task: Partial<ActiveTask
 describe("dispatchToMember unit", () => {
     test("sets body.agent === member.agent and query.directory", async () => {
         const promptAsync = mock(async (_req: unknown) => {})
-        const ctx = makeCtx("/tmp", { promptAsync })
+        const ctx = makeCtx({ storageRoot: "/tmp", promptAsync })
         const member: MemberState = {
             name: "alice",
             sessionId: "ses_123",
@@ -86,7 +64,7 @@ describe("dispatchToMember unit", () => {
 
     test("falls back to oct-oracle (read-only) when member.agent is undefined (fail-safe)", async () => {
         const promptAsync = mock(async (_req: unknown) => {})
-        const ctx = makeCtx("/tmp", { promptAsync })
+        const ctx = makeCtx({ storageRoot: "/tmp", promptAsync })
         const member: MemberState = {
             name: "bob",
             sessionId: "ses_456",
@@ -105,7 +83,7 @@ describe("dispatchToMember unit", () => {
 
     test("clamps a non-oct-* agent (e.g. tampered 'build') to oct-oracle (fail-safe)", async () => {
         const promptAsync = mock(async (_req: unknown) => {})
-        const ctx = makeCtx("/tmp", { promptAsync })
+        const ctx = makeCtx({ storageRoot: "/tmp", promptAsync })
         const member: MemberState = {
             name: "eve",
             sessionId: "ses_789",
@@ -124,7 +102,7 @@ describe("dispatchToMember unit", () => {
 
     test("no-ops when member.sessionId is absent — no request, no mutation", async () => {
         const promptAsync = mock(async (_req: unknown) => {})
-        const ctx = makeCtx("/tmp", { promptAsync })
+        const ctx = makeCtx({ storageRoot: "/tmp", promptAsync })
         const member: MemberState = {
             name: "carol",
             sessionId: undefined,
@@ -142,7 +120,7 @@ describe("dispatchToMember unit", () => {
 
     test("falls back to ctx.directory when worktreePath is undefined", async () => {
         const promptAsync = mock(async (_req: unknown) => {})
-        const ctx = makeCtx("/tmp", { promptAsync, directory: "/project" })
+        const ctx = makeCtx({ storageRoot: "/tmp", promptAsync, directory: "/project" })
         const member: MemberState = {
             name: "dave",
             sessionId: "ses_789",
@@ -166,7 +144,7 @@ describe("dispatchToMember unit", () => {
         const promptAsync = mock(async (req: any) => {
             captured.push(req.body.parts[0].text)
         })
-        const ctx = makeCtx("/tmp", { promptAsync })
+        const ctx = makeCtx({ storageRoot: "/tmp", promptAsync })
         const member: MemberState = {
             name: "alice",
             sessionId: "ses_prompt",
@@ -197,7 +175,7 @@ describe("dispatchToMember unit", () => {
         const promptAsync = mock(async (req: any) => {
             captured.push(req.body.parts[0].text)
         })
-        const ctx = makeCtx("/tmp", { promptAsync })
+        const ctx = makeCtx({ storageRoot: "/tmp", promptAsync })
         const member: MemberState = {
             name: "alice",
             sessionId: "ses_noprompt",
@@ -248,7 +226,7 @@ describe("processIdle consensus round 2 broadcast", () => {
             responses: { alice: "I disagree for now" },
         })
 
-        const ctx = makeCtx(root, { promptAsync })
+        const ctx = makeCtx({ storageRoot: root, promptAsync })
         const team = await loadTeamState(root, "alpha", leadSid)
         const member = team.members.find(m => m.name === "alice")!
 
@@ -309,7 +287,7 @@ describe("processIdle signoff dispatch", () => {
             signoffDecider: "alice",
         })
 
-        const ctx = makeCtx(root, { promptAsync })
+        const ctx = makeCtx({ storageRoot: root, promptAsync })
         const team = await loadTeamState(root, "alpha", leadSid)
         const bobMember = team.members.find(m => m.name === "bob")!
         const aliceMember = team.members.find(m => m.name === "alice")!
@@ -366,7 +344,7 @@ describe("processIdle signoff dispatch", () => {
             signoffQuorum: 0.5,
         })
 
-        const ctx = makeCtx(root, { promptAsync })
+        const ctx = makeCtx({ storageRoot: root, promptAsync })
         const team = await loadTeamState(root, "alpha", leadSid)
         const aliceMember = team.members.find(m => m.name === "alice")!
         const bobMember = team.members.find(m => m.name === "bob")!
@@ -435,7 +413,7 @@ describe("processIdle delegate re-prompt", () => {
             } as ActiveTask
         })
 
-        const ctx = makeCtx(root, { promptAsync })
+        const ctx = makeCtx({ storageRoot: root, promptAsync })
         const aliceMember = team.members.find(m => m.name === "alice")!
 
         // Set up for re-prompt: member must be idle, have an old lastNotifiedAt

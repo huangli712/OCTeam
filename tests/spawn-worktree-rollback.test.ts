@@ -24,29 +24,15 @@ import { execFile } from "node:child_process"
 import { access } from "node:fs/promises"
 import { promisify } from "node:util"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { TeamSpec } from "../src/core/types.js"
 import { ensureMembersReady } from "../src/orchestration/dispatch.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { worktreePath } from "../src/state/paths.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const execFileP = promisify(execFile)
 
-function makeCtx(storageRoot: string, projectDir: string): PluginContext {
-    return {
-        storageRoot,
-        directory: projectDir,
-        scope: "project",
-        client: {
-            session: {
-                // Fail session.create — the step AFTER createWorktree.
-                create: async () => { throw new Error("session.create boom") },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 /** Init a git repo with an initial commit (git worktree add needs HEAD). */
 async function initGitRepo(dir: string): Promise<void> {
@@ -88,7 +74,7 @@ describe("spawn worktree rollback (finding: spawn-worktree-not-rolled-back)", ()
         await expect(access(wtPath)).rejects.toThrow()
 
         // --- Drive ensureMembersReady; session.create fails ---
-        await expect(ensureMembersReady(makeCtx(storageRoot, projectDir), team))
+        await expect(ensureMembersReady(makeCtx({ storageRoot, directory: projectDir, overrides: { client: { app: { log: async () => ({}) }, session: { create: async () => { throw new Error("session.create boom") } } } } }), team))
             .rejects.toThrow("session.create boom")
 
         // --- ASSERT: the worktree directory must have been cleaned up ---

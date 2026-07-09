@@ -23,40 +23,8 @@ import type {
 } from "../src/core/types.js";
 import { AsyncMutex } from "../src/state/locks.js";
 import type { Team } from "../src/state/store.js";
-import type { PluginContext } from "../src/core/context.js";
-import { type DispatchCall } from "./helpers.js";
+import { makeCtx, type DispatchCall } from "./helpers.js";
 
-
-function makeCtx(
-    outputs: Record<string, string>,
-    calls: DispatchCall[] = [],
-    storageRoot = "/tmp",
-): PluginContext {
-    return {
-        storageRoot,
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? "";
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text
-                                ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }]
-                                : []),
-                        ],
-                    };
-                },
-                promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text });
-                    return { data: {} };
-                },
-            },
-        },
-    } as unknown as PluginContext;
-}
 
 function makeWorkflowTask(
     opts: Partial<WorkflowTask> & { steps: WorkflowStep[] },
@@ -143,7 +111,7 @@ describe("workflow on_malformed gate policy", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: MALFORMED_OUTPUT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: MALFORMED_OUTPUT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -170,7 +138,7 @@ describe("workflow on_malformed gate policy", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: MALFORMED_OUTPUT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: MALFORMED_OUTPUT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -206,7 +174,7 @@ describe("workflow on_malformed gate policy", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: MALFORMED_OUTPUT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: MALFORMED_OUTPUT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -244,7 +212,7 @@ describe("workflow on_malformed gate policy", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: MALFORMED_OUTPUT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: MALFORMED_OUTPUT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -282,7 +250,7 @@ describe("workflow on_malformed gate policy", () => {
                 { name: "carol", sessionId: "ses_carol" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: MALFORMED_OUTPUT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: MALFORMED_OUTPUT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
@@ -319,7 +287,7 @@ describe("workflow on_malformed gate policy", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         });
-        const ctx = makeCtx({ ses_bob: MALFORMED_OUTPUT }, calls);
+        const ctx = makeCtx({ outputs: { ses_bob: MALFORMED_OUTPUT }, calls: calls });
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 

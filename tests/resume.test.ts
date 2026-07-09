@@ -1,35 +1,15 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 import fs from "node:fs/promises"
 import { createTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { processIdle } from "../src/orchestration/idle.js"
 
 // --- helpers ---
-
-function makeCtx(
-    root: string,
-    promptAsync: (req: unknown) => Promise<void>,
-): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        client: {
-            app: { log: mock(async () => {}) },
-            session: {
-                abort: mock(async () => {}),
-                promptAsync: mock(promptAsync),
-                messages: mock(async () => ({ data: [] })),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeTask(overrides: Partial<ActiveTask> = {}): ActiveTask {
     return {
@@ -86,9 +66,9 @@ describe("team_resume", () => {
             makeMember("bob", "ses_bob"),
         ])
         const calls: string[] = []
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             calls.push(req.path.id)
-        })
+        } })
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -109,9 +89,9 @@ describe("team_resume", () => {
         })
         await setupFailed(root, sid, task, [makeMember("alice", "ses_alice")])
         const calls: string[] = []
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             calls.push(req.path.id)
-        })
+        } })
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
@@ -134,9 +114,9 @@ describe("team_resume", () => {
         alice.error = "crashed"
         const team = await setupFailed(root, sid, task, [alice])
         const calls: string[] = []
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             calls.push(req.path.id)
-        })
+        } })
         await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -156,9 +136,9 @@ describe("team_resume", () => {
             makeMember("bob", "ses_bob"),
         ])
         const calls: string[] = []
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             calls.push(req.path.id)
-        })
+        } })
         await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -178,7 +158,7 @@ describe("team_resume", () => {
         const team = await setupFailed(root, sid, task, [
             makeMember("alice"), // no sessionId
         ])
-        const ctx = makeCtx(root, async () => {})
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async () => {} })
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -201,9 +181,9 @@ describe("team_resume", () => {
         alice.declaredDone = false
         await setupFailed(root, sid, task, [alice])
         const calls: string[] = []
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             calls.push(req.path.id)
-        })
+        } })
         await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -230,9 +210,9 @@ describe("team_resume", () => {
             makeMember("bob", "ses_bob"),
         ])
         let bobPrompt = ""
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             if (req.path.id === "ses_bob") bobPrompt = req.body.parts[0].text
-        })
+        } })
         await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(bobPrompt).toContain("ALICE_UPSTREAM_OUTPUT")
     })
@@ -247,11 +227,11 @@ describe("team_resume", () => {
             makeMember("bob", "ses_bob"),
         ])
         let captured: unknown
-        const ctx = makeCtx(root, async () => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async () => {
             // Disk state during Phase 3 dispatch = Phase 1 save (Phase 3 save not yet).
             const raw = await fs.readFile(`${team.directory}/state.json`, "utf8")
             captured = JSON.parse(raw).activeTask
-        })
+        } })
         await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(captured).toBeUndefined()
     })
@@ -262,7 +242,7 @@ describe("team_resume", () => {
         tracked.push(sid)
         const team = await setupFailed(root, sid, null, [makeMember("alice", "ses_alice")])
         let delivered = false
-        const ctx = makeCtx(root, async () => { delivered = true })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async () => { delivered = true } })
         await processIdle(ctx, team, team.members[0], team.members[0].sessionId!)
         expect(delivered).toBe(false)
     })
@@ -273,7 +253,7 @@ describe("team_resume", () => {
         tracked.push(sid)
         const task = makeTask({ tokensUsed: 1000, tokenBudget: 500 })
         const team = await setupFailed(root, sid, task, [makeMember("alice", "ses_alice")])
-        const ctx = makeCtx(root, async () => {})
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async () => {} })
         await teamResumeTool(ctx).execute(
             { team_id: "alpha", token_budget: 5000 },
             makeToolContext(sid),
@@ -293,7 +273,7 @@ describe("team_resume", () => {
         const t3 = await createTask(dir, { subject: "pending", description: "z" })
         await updateTask(dir, t1.id, { status: "claimed", owner: "alice" })
         await updateTask(dir, t2.id, { status: "in_progress", owner: "alice" })
-        const ctx = makeCtx(root, async () => {})
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async () => {} })
         await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         const after = await listAllTasks(dir)
         const byId = (id: string) => after.find(t => t.id === id)!.status
@@ -318,7 +298,7 @@ describe("team_resume", () => {
             makeMember("bob", "ses_bob"),
         ])
         const calls: string[] = []
-        const ctx = makeCtx(root, async (req: any) => { calls.push(req.path.id) })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => { calls.push(req.path.id) } })
         await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(calls).toEqual([sid])
         expect(team.status).toBe("failed")
@@ -330,7 +310,7 @@ describe("team_resume", () => {
         tracked.push(sid)
         const task = makeTask()
         const team = await setupFailed(root, sid, task, [makeMember("alice", "ses_alice")])
-        const ctx = makeCtx(root, async () => { throw new Error("dead session") })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async () => { throw new Error("dead session") } })
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -346,7 +326,7 @@ describe("team_resume", () => {
         const sid = "ses_resume_k"
         tracked.push(sid)
         await setupFailed(root, sid, null, [makeMember("alice", "ses_alice")])
-        const ctx = makeCtx(root, async () => {})
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async () => {} })
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),

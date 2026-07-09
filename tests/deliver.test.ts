@@ -10,9 +10,8 @@
  *
  * Uses a real tmp team directory so mailbox writes hit the real filesystem.
  */
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, beforeEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { Message } from "../src/core/types.js"
 import { deliverToRecipients } from "../src/messaging/deliver.js"
 import { countUnreadMessages } from "../src/messaging/mailbox.js"
@@ -21,7 +20,7 @@ import { initTeamState } from "../src/state/store.js"
 import { inboxPath } from "../src/state/paths.js"
 import type { Team } from "../src/state/store.js"
 import fs from "node:fs/promises"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
@@ -36,19 +35,6 @@ beforeEach(() => {
 /** Captures promptAsync calls (wake hint verification). */
 type HintCall = { sessionId: string }
 
-function makeCtx(hints: HintCall[]): PluginContext {
-    return {
-        client: {
-            app: { log: mock(async () => ({ data: {} })) },
-            session: {
-                promptAsync: mock(async (args: any) => {
-                    hints.push({ sessionId: args.path.id })
-                    return { data: {} }
-                }),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeBase(from: string, body: string): Omit<Message, "to"> {
     return {
@@ -85,7 +71,7 @@ describe("deliverToRecipients", () => {
             { name: "alice", sessionId: "ses_alice" },
             { name: "bob", sessionId: "ses_bob" },
         ])
-        const ctx = makeCtx([])
+        const ctx = makeCtx({ overrides: { client: { app: { log: async () => ({ data: {} }) }, session: { promptAsync: async () => ({ data: {} }) } } } })
 
         await deliverToRecipients(ctx, team, ["alice", "bob"], makeBase("master", "hello"))
 
@@ -101,7 +87,7 @@ describe("deliverToRecipients", () => {
             { name: "carol" }, // no sessionId
         ])
         const hints: HintCall[] = []
-        const ctx = makeCtx(hints)
+        const ctx = makeCtx({ overrides: { client: { app: { log: async () => ({ data: {} }) }, session: { promptAsync: async (args: any) => { hints.push({ sessionId: args.path.id }); return { data: {} } } } } } })
 
         await deliverToRecipients(ctx, team, ["alice", "bob", "carol"], makeBase("master", "hi"))
 
@@ -121,7 +107,7 @@ describe("deliverToRecipients", () => {
         const bobInbox = inboxPath(team.directory, "bob")
         await fs.mkdir(bobInbox, { recursive: true })
 
-        const ctx = makeCtx([])
+        const ctx = makeCtx({ overrides: { client: { app: { log: async () => ({ data: {} }) }, session: { promptAsync: async () => ({ data: {} }) } } } })
 
         // The call throws (bob failed) but alice's write happened first.
         await expect(
@@ -145,7 +131,7 @@ describe("deliverToRecipients", () => {
             await fs.mkdir(inboxPath(team.directory, name), { recursive: true })
         }
 
-        const ctx = makeCtx([])
+        const ctx = makeCtx({ overrides: { client: { app: { log: async () => ({ data: {} }) }, session: { promptAsync: async () => ({ data: {} }) } } } })
 
         await expect(
             deliverToRecipients(ctx, team, ["alice", "bob", "carol"], makeBase("master", "x")),
@@ -157,7 +143,7 @@ describe("deliverToRecipients", () => {
         const { team } = await setupTeam(root, [
             { name: "alice", sessionId: "ses_alice" },
         ])
-        const ctx = makeCtx([])
+        const ctx = makeCtx({ overrides: { client: { app: { log: async () => ({ data: {} }) }, session: { promptAsync: async () => ({ data: {} }) } } } })
         await expect(
             deliverToRecipients(ctx, team, ["alice"], makeBase("master", "ok")),
         ).resolves.toBeUndefined()

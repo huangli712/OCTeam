@@ -17,50 +17,13 @@ import { buildSummary } from "../src/orchestration/summary.js"
 import { teamRecurseTool } from "../src/tools/recurse.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js"
 
 
 // --- fixtures ---
 
-/**
- * Stub PluginContext. `messages` returns a single user+assistant turn whose
- * assistant text is `outputs[sessionId]` (the member's claimed output). Empty
- * output returns an empty assistant turn so processIdle Step 4 captures nothing.
- * `promptAsync` records each dispatch for assertion.
- */
-function makeCtx(
-    outputs: Record<string, string>,
-    calls: DispatchCall[] = [],
-): PluginContext {
-    return {
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text
-                                ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }]
-                                : []),
-                        ],
-                    }
-                },
-                promptAsync: async (args: any) => {
-                    calls.push({
-                        sessionId: args.path.id,
-                        text: args.body.parts[0].text,
-                    })
-                    return { data: {} }
-                },
-                status: async () => ({
-                    data: Object.fromEntries(
-                        Object.entries(outputs).map(([id]) => [id, { type: "idle" }]),
-                    ),
-                }),
-            },
-        },
-    } as unknown as PluginContext
+function statusIdleFrom(outputs: Record<string, string>) {
+    return async () => ({ data: Object.fromEntries(Object.entries(outputs).map(([id]) => [id, { type: "idle" }])) })
 }
 
 function makeRecurseTask(opts: Partial<RecurseTask> = {}): RecurseTask {
@@ -266,7 +229,7 @@ describe("handleRecurseIdle branching: decompose creates children", () => {
             status: "claimed",
         })
 
-        await processIdle(makeCtx({ ses_alice: DECOMPOSE_2 }, calls), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls, status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
 
         const all = await listAllTasks(team.directory)
 
@@ -309,7 +272,7 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
         })
 
         await processIdle(
-            makeCtx({ ses_alice: "Here is the direct solution." }, calls),
+            makeCtx({ outputs: { ses_alice: "Here is the direct solution." }, calls, status: statusIdleFrom({ ses_alice: "Here is the direct solution." }) }),
             team,
             team.members[0],
             "ses_alice",
@@ -334,7 +297,7 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
         })
 
         await processIdle(
-            makeCtx({ ses_alice: '<decompose>{"subtasks":[]}</decompose>' }, []),
+            makeCtx({ outputs: { ses_alice: '<decompose>{"subtasks":[]}</decompose>' }, calls: [], status: statusIdleFrom({ ses_alice: '<decompose>{"subtasks":[]}</decompose>' }) }),
             team,
             team.members[0],
             "ses_alice",
@@ -355,7 +318,7 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
             depth: 2, // at the cap
         })
 
-        await processIdle(makeCtx({ ses_alice: DECOMPOSE_2 }, []), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls: [], status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
 
         const t = await getTask(team.directory, root.id)
         expect(t!.status).toBe("completed")
@@ -383,7 +346,7 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
             blockedBy: [child.id],
         })
 
-        await processIdle(makeCtx({ ses_alice: DECOMPOSE_2 }, []), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls: [], status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
 
         const t = await getTask(team.directory, root.id)
         // Finalized (aggregation), NOT re-decomposed.
@@ -407,7 +370,7 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
             status: "claimed",
         })
 
-        await processIdle(makeCtx({ ses_alice: six }, []), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: six }, calls: [], status: statusIdleFrom({ ses_alice: six }) }), team, team.members[0], "ses_alice")
 
         const t = await getTask(team.directory, root.id)
         expect(t!.status).toBe("completed")
@@ -424,7 +387,7 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
         // No task claimed by alice.
         await seedTask(team, { subject: "untouched", description: "x", status: "pending" })
 
-        await processIdle(makeCtx({ ses_alice: "idle output" }, calls), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: "idle output" }, calls, status: statusIdleFrom({ ses_alice: "idle output" }) }), team, team.members[0], "ses_alice")
 
         // Untouched task remains pending (not finalized by a non-owner).
         const all = await listAllTasks(team.directory)
@@ -443,7 +406,7 @@ describe("recurse tail engine", () => {
         })
         await seedTask(team, { subject: "done", description: "x", status: "completed" })
 
-        await processIdle(makeCtx({}, calls), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: {}, calls, status: statusIdleFrom({}) }), team, team.members[0], "ses_alice")
 
         expect(team.status).toBe("idle")
         expect(team.activeTask).toBeUndefined()
@@ -467,7 +430,7 @@ describe("recurse tail engine", () => {
             blockedBy: [blocker.id],
         })
 
-        await processIdle(makeCtx({}, calls), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: {}, calls, status: statusIdleFrom({}) }), team, team.members[0], "ses_alice")
 
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
@@ -552,7 +515,7 @@ describe("MEDIUM-1: maxTasks cap degrades an over-budget decomposition to a leaf
         team.bounds.maxTasks = 2
         const root = await seedTask(team, { owner: "alice", status: "claimed" })
 
-        await processIdle(makeCtx({ ses_alice: DECOMPOSE_2 }, []), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls: [], status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
 
         const t = await getTask(team.directory, root.id)
         expect(t!.status).toBe("completed")
@@ -570,7 +533,7 @@ describe("MEDIUM-1: maxTasks cap degrades an over-budget decomposition to a leaf
         team.bounds.maxTasks = 3
         const root = await seedTask(team, { owner: "alice", status: "claimed" })
 
-        await processIdle(makeCtx({ ses_alice: DECOMPOSE_2 }, []), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls: [], status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
 
         const all = await listAllTasks(team.directory)
         expect(all.filter(t => t.depth === 1)).toHaveLength(2)
@@ -590,7 +553,7 @@ describe("LOW-4: empty member output finalizes with a placeholder result", () =>
         const root = await seedTask(team, { owner: "alice", status: "claimed" })
 
         // No output entry for ses_alice -> empty assistant turn -> nothing captured.
-        await processIdle(makeCtx({}, []), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: {}, calls: [], status: statusIdleFrom({}) }), team, team.members[0], "ses_alice")
 
         const t = await getTask(team.directory, root.id)
         expect(t!.status).toBe("completed")
@@ -798,7 +761,7 @@ describe("handleRecurseIdle aggregation dispatch (no fake completion)", () => {
         // Alice idles WITHOUT claiming root -- protocol slip. The old fallback
         // would have faked root completion here using her non-empty output.
         await processIdle(
-            makeCtx({ ses_alice: "Waiting for teammate info..." }, calls),
+            makeCtx({ outputs: { ses_alice: "Waiting for teammate info..." }, calls, status: statusIdleFrom({ ses_alice: "Waiting for teammate info..." }) }),
             team,
             team.members[0],
             "ses_alice",
@@ -829,7 +792,7 @@ describe("handleRecurseIdle aggregation dispatch (no fake completion)", () => {
         task.rootTaskId = root.id
 
         await processIdle(
-            makeCtx({ ses_alice: "still not claiming root" }, calls),
+            makeCtx({ outputs: { ses_alice: "still not claiming root" }, calls, status: statusIdleFrom({ ses_alice: "still not claiming root" }) }),
             team,
             team.members[0],
             "ses_alice",
@@ -866,7 +829,7 @@ describe("handleRecurseIdle aggregation dispatch (no fake completion)", () => {
         task.rootTaskId = root.id
 
         await processIdle(
-            makeCtx({ ses_alice: "Synthesized final answer: D4=9 <!-- D4_FINAL: 9 -->" }, calls),
+            makeCtx({ outputs: { ses_alice: "Synthesized final answer: D4=9 <!-- D4_FINAL: 9 -->" }, calls, status: statusIdleFrom({ ses_alice: "Synthesized final answer: D4=9 <!-- D4_FINAL: 9 -->" }) }),
             team,
             team.members[0],
             "ses_alice",

@@ -1,39 +1,13 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ArbitrateTask, MemberState } from "../src/core/types.js"
 import { handleArbitrateIdle } from "../src/orchestration/arbitrate.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
-
-type PromptRequest = { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
 
 const RULING = '<ruling>{"decision":"ship Friday","rationale":"risk is low"}</ruling>'
-
-function makeCtx(root: string, calls: DispatchCall[] = []): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        project: { id: "project", directory: "/app" },
-        projectStorageRoot: root,
-        userStorageRoot: `${root}__user_unused`,
-        client: {
-            app: { log: mock(async () => ({})) },
-            session: {
-                promptAsync: mock(async (req: PromptRequest) => {
-                    calls.push({ sessionId: req.path.id, text: req.body.parts[0].text })
-                    return { data: {} }
-                }),
-                abort: mock(async () => ({})),
-                status: mock(async () => ({ data: {} })),
-                messages: mock(async () => ({ data: [] })),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -96,7 +70,7 @@ describe("HITL arbitrate ruling approval", () => {
         ])
         const task = arbitrateTask()
         await setArbitrateTask(team, task)
-        const ctx = makeCtx(root, calls)
+        const ctx = makeCtx({ storageRoot: root, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await handleArbitrateIdle(ctx, team)
 
@@ -125,7 +99,7 @@ describe("HITL arbitrate ruling approval", () => {
         ])
         const task = arbitrateTask()
         await setArbitrateTask(team, task)
-        const ctx = makeCtx(root, calls)
+        const ctx = makeCtx({ storageRoot: root, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await handleArbitrateIdle(ctx, team)
         const result = await teamRejectTool(ctx).execute({ team_id: "alpha", feedback: "unacceptable" }, makeToolContext(sid))

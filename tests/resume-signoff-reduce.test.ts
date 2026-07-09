@@ -20,35 +20,15 @@
  * resumeDispatch must re-dispatch the decider/reducer, not the mappers.
  */
 
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { resumeDispatch } from "../src/orchestration/resume.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 // --- helpers ---
-
-function makeCtx(
-    root: string,
-    promptAsync: (req: unknown) => Promise<void>,
-): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        client: {
-            app: { log: mock(async () => {}) },
-            session: {
-                abort: mock(async () => {}),
-                promptAsync: mock(promptAsync),
-                messages: mock(async () => ({ data: [] })),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeTask(overrides: Partial<ActiveTask> = {}): ActiveTask {
     return {
@@ -110,9 +90,9 @@ describe("resumeDispatch signoff/reduce sub-stage recovery (P1-1)", () => {
         await rebuildSessionIndex(root, `${root}__unused`)
 
         const dispatched: string[] = []
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             dispatched.push(req.path.id)
-        })
+        } })
 
         // Drive resumeDispatch directly (mirrors what team_resume Phase 3 calls).
         await team.mutex.runExclusive(async () => {
@@ -155,9 +135,9 @@ describe("resumeDispatch signoff/reduce sub-stage recovery (P1-1)", () => {
         await rebuildSessionIndex(root, `${root}__unused`)
 
         const dispatched: string[] = []
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             dispatched.push(req.path.id)
-        })
+        } })
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!)
@@ -196,9 +176,9 @@ describe("resumeDispatch signoff/reduce sub-stage recovery (P1-1)", () => {
         await rebuildSessionIndex(root, `${root}__unused`)
 
         const dispatched: string[] = []
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             dispatched.push(req.path.id)
-        })
+        } })
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!)
@@ -243,9 +223,9 @@ describe("resumeDispatch signoff/reduce sub-stage recovery (P1-1)", () => {
         await rebuildSessionIndex(root, `${root}__unused`)
 
         const dispatched: string[] = []
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             dispatched.push(req.path.id)
-        })
+        } })
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!)
@@ -277,9 +257,9 @@ describe("resumeDispatch signoff/reduce sub-stage recovery (P1-1)", () => {
         await rebuildSessionIndex(root, `${root}__unused`)
 
         const dispatched: string[] = []
-        const ctx = makeCtx(root, async (req: any) => {
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
             dispatched.push(req.path.id)
-        })
+        } })
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!)

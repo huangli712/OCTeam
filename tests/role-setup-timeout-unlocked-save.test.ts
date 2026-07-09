@@ -55,27 +55,13 @@ mock.module("../src/core/utils.js", () => ({
             : realWaitUntil(...args),
 }))
 
-import type { PluginContext } from "../src/core/context.js"
 import type { TeamSpec } from "../src/core/types.js"
 import { ensureMembersReady } from "../src/orchestration/dispatch.js"
 import { initTeamState, loadTeamState, saveTeamState, writeTeamSpec } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
 import { statePath } from "../src/state/paths.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return {
-        storageRoot,
-        directory: "/app",
-        scope: "project",
-        client: {
-            session: {
-                create: mock(async () => ({ data: { id: "ses_mock_alice" } })),
-                promptAsync: mock(async () => {}),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 /** Read state.json directly from disk, bypassing the registry cache. */
 async function readDiskState(directory: string): Promise<{ members: Array<{ status: string; initialized: boolean }> }> {
@@ -140,7 +126,7 @@ describe("role-setup timeout unlocked save (finding: role-setup-timeout-unlocked
         //               Persists "errored" to disk immediately.
         //       FIXED: tries to acquire team.mutex → BLOCKS (behind pre-hold
         //             and the queued idle handler). Does NOT persist yet. ---
-        const ensureResult = ensureMembersReady(makeCtx(root), team).then(
+        const ensureResult = ensureMembersReady(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { create: async () => ({ data: { id: "ses_mock_alice" } }), promptAsync: async () => ({}) } } } }), team).then(
             () => "unexpected-success" as const,
             (err: unknown) => err as Error,
         )

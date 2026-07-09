@@ -1,36 +1,11 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamCancelTool } from "../src/tools/cancel.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
-// --- helpers ---
-
-function makeCtx(storageRoot: string, overrides?: {
-    abort?: (req: unknown) => Promise<void>
-    promptAsync?: (req: unknown) => Promise<void>
-    directory?: string
-    sessionID?: string
-}): PluginContext {
-    return {
-        storageRoot,
-        scope: "project",
-        directory: overrides?.directory ?? "/app",
-        client: {
-            app: {
-                log: mock(async () => {}),
-            },
-            session: {
-                abort: overrides?.abort ?? mock(async () => {}),
-                promptAsync: overrides?.promptAsync ?? mock(async () => {}),
-                messages: mock(async () => ({ data: [] })),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 /** Build a Team wrapper via real disk state, then set busy + activeTask + running members. */
 async function makeBusyTeam(
@@ -84,11 +59,7 @@ describe("teamCancelTool", () => {
         root = tmpRoot("cancel-happy")
         const abort = mock(async (_req: unknown) => {})
         const promptAsync = mock(async (_req: unknown) => {})
-        const ctx = makeCtx(root, {
-            abort,
-            promptAsync,
-            sessionID: "ses_master",
-        })
+        const ctx = makeCtx({ storageRoot: root, abort, promptAsync })
 
         await makeBusyTeam(root, "ses_master", ["alice", "bob"], {
             alice: "running",
@@ -131,11 +102,7 @@ describe("teamCancelTool", () => {
         root = tmpRoot("cancel-notbusy")
         const abort = mock(async (_req: unknown) => {})
         const promptAsync = mock(async (_req: unknown) => {})
-        const ctx = makeCtx(root, {
-            abort,
-            promptAsync,
-            sessionID: "ses_master",
-        })
+        const ctx = makeCtx({ storageRoot: root, abort, promptAsync })
 
         // Build a team that is "busy" but has NO activeTask (simulating
         // a team that was re-loaded or a state edge case where status
@@ -166,11 +133,7 @@ describe("teamCancelTool", () => {
         root = tmpRoot("cancel-masteronly")
         const abort = mock(async (_req: unknown) => {})
         const promptAsync = mock(async (_req: unknown) => {})
-        const ctx = makeCtx(root, {
-            abort,
-            promptAsync,
-            sessionID: "ses_master",
-        })
+        const ctx = makeCtx({ storageRoot: root, abort, promptAsync })
 
         // Store the team under the intruder's directory so loadTeamState finds
         // it, but set leadSessionId to a different session (the real master).
@@ -220,11 +183,7 @@ describe("teamCancelTool", () => {
             if (callCount === 2) throw new Error("abort failed")
         })
         const promptAsync = mock(async (_req: unknown) => {})
-        const ctx = makeCtx(root, {
-            abort,
-            promptAsync,
-            sessionID: "ses_master",
-        })
+        const ctx = makeCtx({ storageRoot: root, abort, promptAsync })
 
         await makeBusyTeam(root, "ses_master", ["alice", "bob"], {
             alice: "running",
@@ -252,11 +211,7 @@ describe("teamCancelTool", () => {
         root = tmpRoot("cancel-lingering")
         const abort = mock(async (_req: unknown) => {})
         const promptAsync = mock(async (_req: unknown) => {})
-        const ctx = makeCtx(root, {
-            abort,
-            promptAsync,
-            sessionID: "ses_master",
-        })
+        const ctx = makeCtx({ storageRoot: root, abort, promptAsync })
 
         await makeBusyTeam(root, "ses_master", ["alice"], { alice: "running" })
 

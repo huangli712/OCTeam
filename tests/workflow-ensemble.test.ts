@@ -24,40 +24,8 @@ import type {
 } from "../src/core/types.js";
 import { AsyncMutex } from "../src/state/locks.js";
 import type { Team } from "../src/state/store.js";
-import type { PluginContext } from "../src/core/context.js";
-import { type DispatchCall } from "./helpers.js";
+import { makeCtx, type DispatchCall } from "./helpers.js";
 
-
-function makeCtx(
-    outputs: Record<string, string>,
-    calls: DispatchCall[] = [],
-    storageRoot = "/tmp",
-): PluginContext {
-    return {
-        storageRoot,
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? "";
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text
-                                ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }]
-                                : []),
-                        ],
-                    };
-                },
-                promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text });
-                    return { data: {} };
-                },
-            },
-        },
-    } as unknown as PluginContext;
-}
 
 function makeWorkflowTask(
     opts: Partial<WorkflowTask> & { steps: WorkflowStep[] },
@@ -164,11 +132,11 @@ describe("workflow ensemble gate", () => {
                 { name: "erin", sessionId: "ses_erin" },
             ],
         });
-        const ctx = makeCtx({
+        const ctx = makeCtx({ outputs: {
             ses_bob: PASS_V,
             ses_carol: PASS_V,
             ses_dave: FAIL_V,
-        }, calls);
+        }, calls: calls });
 
         // process each verifier idle
         await processIdle(ctx, team, memberByName(team, "bob"), "ses_bob");
@@ -199,11 +167,11 @@ describe("workflow ensemble gate", () => {
                 { name: "erin", sessionId: "ses_erin" },
             ],
         });
-        const ctx = makeCtx({
+        const ctx = makeCtx({ outputs: {
             ses_bob: PASS_V,
             ses_carol: FAIL_V,
             ses_dave: FAIL_V,
-        }, calls);
+        }, calls: calls });
 
         await processIdle(ctx, team, memberByName(team, "bob"), "ses_bob");
         await processIdle(ctx, team, memberByName(team, "carol"), "ses_carol");
@@ -230,11 +198,11 @@ describe("workflow ensemble gate", () => {
                 { name: "erin", sessionId: "ses_erin" },
             ],
         });
-        const ctx = makeCtx({
+        const ctx = makeCtx({ outputs: {
             ses_bob: PASS_V,
             ses_carol: PASS_V,
             ses_dave: PASS_V,
-        }, calls);
+        }, calls: calls });
 
         await processIdle(ctx, team, memberByName(team, "bob"), "ses_bob");
         await processIdle(ctx, team, memberByName(team, "carol"), "ses_carol");
@@ -263,11 +231,11 @@ describe("workflow ensemble gate", () => {
                 { name: "erin", sessionId: "ses_erin" },
             ],
         });
-        const ctx = makeCtx({
+        const ctx = makeCtx({ outputs: {
             ses_bob: PASS_V,
             ses_carol: PASS_V,
             ses_dave: FAIL_V,
-        }, calls);
+        }, calls: calls });
 
         await processIdle(ctx, team, memberByName(team, "bob"), "ses_bob");
         await processIdle(ctx, team, memberByName(team, "carol"), "ses_carol");
@@ -295,11 +263,11 @@ describe("workflow ensemble gate", () => {
                 { name: "erin", sessionId: "ses_erin" },
             ],
         });
-        const ctx = makeCtx({
+        const ctx = makeCtx({ outputs: {
             ses_bob: PASS_V,
             ses_carol: PASS_V,
             ses_dave: FAIL_V,
-        }, calls);
+        }, calls: calls });
 
         await processIdle(ctx, team, memberByName(team, "bob"), "ses_bob");
         await processIdle(ctx, team, memberByName(team, "carol"), "ses_carol");
@@ -327,11 +295,11 @@ describe("workflow ensemble gate", () => {
                 { name: "erin", sessionId: "ses_erin" },
             ],
         });
-        const ctx = makeCtx({
+        const ctx = makeCtx({ outputs: {
             ses_bob: PASS_V,
             ses_carol: PASS_V,
             ses_dave: "I cannot decide, no verdict tag",
-        }, calls);
+        }, calls: calls });
 
         await processIdle(ctx, team, memberByName(team, "bob"), "ses_bob");
         await processIdle(ctx, team, memberByName(team, "carol"), "ses_carol");
