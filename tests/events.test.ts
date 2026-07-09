@@ -9,24 +9,12 @@ import { readRunEvents } from "../src/orchestration/runs.js"
 import { runEventsPath } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"
 import type { ActiveTask } from "../src/core/types.js"
-import type { Team } from "../src/state/store.js"
-import { AsyncMutex } from "../src/state/locks.js"
 
+import { makeTeam } from "./helpers.js"
 function tmpTeamDir(): string {
     return mkdtempSync(join(tmpdir(), "octeam-events-"))
 }
 
-function makeTeam(directory: string, runId?: string): Team {
-    const task: ActiveTask | undefined = runId
-        ? ({ type: "parallel", runId, startedAt: 0, responses: {}, stages: [], currentStageIndex: 0 } as unknown as ActiveTask)
-        : undefined
-    return {
-        teamName: "t",
-        activeTask: task,
-        mutex: new AsyncMutex(),
-        directory,
-    } as unknown as Team
-}
 
 describe("recordEvent + readRunEvents", () => {
     test("path helper composes runs/<runId>/events.jsonl", () => {
@@ -35,7 +23,7 @@ describe("recordEvent + readRunEvents", () => {
 
     test("appends one parseable JSON line per call", async () => {
         const dir = tmpTeamDir()
-        const team = makeTeam(dir, "run-1")
+        const team = makeTeam({ directory: dir, activeTask: { type: "parallel", runId: "run-1", startedAt: 0, responses: {}, stages: [], currentStageIndex: 0 } as unknown as ActiveTask })
         recordEvent(team, { timestamp: 1, kind: "dispatched", member: "alice" })
         recordEvent(team, { timestamp: 2, kind: "captured", member: "alice", bytes: 100 })
         // recordEvent is fire-and-forget; wait for both appends to flush
@@ -87,7 +75,7 @@ describe("recordEvent + readRunEvents", () => {
 
     test("recordEvent without runId is a no-op (no crash, no file)", async () => {
         const dir = tmpTeamDir()
-        const team = makeTeam(dir) // no activeTask → no runId
+        const team = makeTeam({ directory: dir })
         recordEvent(team, { timestamp: 1, kind: "dispatched", member: "alice" })
         // recordEvent is a synchronous no-op without an activeTask (no runId);
         // yield once to let pending tasks flush, then the runs directory must

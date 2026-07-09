@@ -1,16 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 
-import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
+import type { MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { checkTermination } from "../src/orchestration/termination.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { advanceWorkflowStep } from "../src/orchestration/workflow.js"
-import { AsyncMutex } from "../src/state/locks.js"
-import type { Team } from "../src/state/store.js"
-import { type DispatchCall, makeCtx } from "./helpers.js"
+import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 
+import type { Team } from "../src/state/store.js"
 
 
 function makeWorkflowTask(steps: WorkflowStep[], activeStepIndices: number[]): WorkflowTask {
@@ -33,28 +29,6 @@ function makeWorkflowTask(steps: WorkflowStep[], activeStepIndices: number[]): W
     } as WorkflowTask
 }
 
-function makeTeam(activeTask: ActiveTask, members: Array<Partial<MemberState> & Pick<MemberState, "name">>): Team {
-    return {
-        version: 1,
-        teamRunId: "joinpol-run",
-        teamName: "joinpol-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members: members.map(m => ({
-            name: m.name, sessionId: m.sessionId, status: m.status ?? "idle",
-            initialized: m.initialized ?? true, turnCount: m.turnCount ?? 0,
-            isMaster: m.isMaster, error: m.error,
-        })),
-        bounds: {
-            maxMembers: 8, maxParallelMembers: 4, maxMessagesPerRun: 100, maxWallClockMinutes: 30,
-            maxMemberTurns: 50, maxTasks: 200, messagePayloadMaxBytes: 32768, messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: Date.now(),
-        activeTask,
-        mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-wf-joinpol-")),
-    } as unknown as Team
-}
 
 function member(team: Team, name: string): MemberState {
     const found = team.members.find(c => c.name === name)
@@ -76,11 +50,11 @@ describe("workflow join policy runtime semantics", () => {
             ],
             [1, 2],
         )
-        const team = makeTeam(task, [
+        const team = makeTeam({ activeTask: task, members: [
             { name: "alice", sessionId: "ses_alice" },
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
-        ])
+        ]})
         const ctx = makeCtx({ outputs: { ses_alice: "api output", ses_carol: "downstream" }, calls })
 
         // When: qa branch errors (optional), api branch succeeds.
@@ -108,10 +82,10 @@ describe("workflow join policy runtime semantics", () => {
             ],
             [1, 2],
         )
-        const team = makeTeam(task, [
+        const team = makeTeam({ activeTask: task, members: [
             { name: "alice", sessionId: "ses_alice" },
             { name: "bob", sessionId: "ses_bob" },
-        ])
+        ]})
         const ctx = makeCtx({ calls })
 
         // When: api (required) errors.
@@ -138,11 +112,11 @@ describe("workflow join policy runtime semantics", () => {
             ],
             [1, 2],
         )
-        const team = makeTeam(task, [
+        const team = makeTeam({ activeTask: task, members: [
             { name: "alice", sessionId: "ses_alice" },
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
-        ])
+        ]})
         const ctx = makeCtx({ outputs: { ses_alice: "api output" }, calls })
 
         // When: qa errors but api succeeds.
@@ -171,11 +145,11 @@ describe("workflow join policy runtime semantics", () => {
             ],
             [1, 2, 3],
         )
-        const team = makeTeam(task, [
+        const team = makeTeam({ activeTask: task, members: [
             { name: "alice", sessionId: "ses_alice" },
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
-        ])
+        ]})
         const ctx = makeCtx({ outputs: { ses_alice: "a out", ses_bob: "b out" }, calls })
 
         // When: 2 of 3 branches survive (c errors), meeting quorum.
@@ -203,11 +177,11 @@ describe("workflow join policy runtime semantics", () => {
             ],
             [1, 2, 3],
         )
-        const team = makeTeam(task, [
+        const team = makeTeam({ activeTask: task, members: [
             { name: "alice", sessionId: "ses_alice" },
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
-        ])
+        ]})
         const ctx = makeCtx({ calls })
 
         // When: 2 of 3 error, leaving only 1 survivor (< threshold).
@@ -233,11 +207,11 @@ describe("workflow join policy runtime semantics", () => {
             ],
             [0],
         )
-        const team = makeTeam(task, [
+        const team = makeTeam({ activeTask: task, members: [
             { name: "alice" },
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
-        ])
+        ]})
         const ctx = makeCtx({ outputs: { ses_bob: "qa output" }, calls })
 
         // When: the fanout advances into both branches.
@@ -261,11 +235,11 @@ describe("workflow join policy runtime semantics", () => {
             ],
             [0],
         )
-        const team = makeTeam(task, [
+        const team = makeTeam({ activeTask: task, members: [
             { name: "alice", sessionId: "ses_alice" },
             { name: "bob" },
             { name: "carol", sessionId: "ses_carol" },
-        ])
+        ]})
         const ctx = makeCtx({ calls })
 
         // When: the gate is dispatched.
@@ -288,11 +262,11 @@ describe("workflow join policy runtime semantics", () => {
             ],
             [0],
         )
-        const team = makeTeam(task, [
+        const team = makeTeam({ activeTask: task, members: [
             { name: "alice", sessionId: "ses_alice" },
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
-        ])
+        ]})
         const ctx = makeCtx({ calls })
 
         // When: the gate is dispatched.
@@ -315,11 +289,11 @@ describe("workflow join policy runtime semantics", () => {
             ],
             [3],
         )
-        const team = makeTeam(task, [
+        const team = makeTeam({ activeTask: task, members: [
             { name: "alice", sessionId: "ses_alice" },
             { name: "bob", sessionId: "ses_bob" },
             { name: "dave", sessionId: "ses_dave" },
-        ])
+        ]})
         const ctx = makeCtx({ outputs: { ses_dave: `<selection>{"winner":"api","rationale":"best"}</selection>` }, calls })
 
         // When: the join dispatches to the selector and captures the selection.

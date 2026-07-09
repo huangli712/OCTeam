@@ -4,25 +4,8 @@ import type { ActiveTask } from "../src/core/types.js"
 import { teamDetailsTool } from "../src/tools/details.js"
 import { initTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeTask, makeToolContext, tmpRoot } from "./helpers.js"
 
-/** Minimal valid ActiveTask with overrides. */
-function makeTask(partial: Partial<ActiveTask>): ActiveTask {
-    return {
-        type: "parallel",
-        startedAt: Date.now(),
-        wallClockTimeoutMs: 300000,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        ...partial,
-    } as ActiveTask
-}
 
 async function setupTeam(
     root: string,

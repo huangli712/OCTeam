@@ -3,9 +3,8 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { processIdle } from "../src/orchestration/idle.js"
 import { createTask, updateTask } from "../src/state/tasks.js"
 import type { ActiveTask, MemberState, Task } from "../src/core/types.js"
-import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
-import { makeCtx, cleanupTmpRoots, tmpRoot, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeTeam, cleanupTmpRoots, type DispatchCall } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
@@ -30,44 +29,6 @@ function makeDelegateTask(opts: Partial<ActiveTask> = {}): ActiveTask {
         signoffPolicy: "none",
         ...opts,
     } as ActiveTask
-}
-
-function makeTeam(opts: {
-    activeTask?: ActiveTask
-    members?: Array<Partial<MemberState> & Pick<MemberState, "name">>
-}): Team {
-    const members: MemberState[] = (opts.members ?? []).map(m => ({
-        name: m.name,
-        status: m.status ?? "idle",
-        initialized: m.initialized ?? true,
-        turnCount: m.turnCount ?? 0,
-        sessionId: m.sessionId,
-        agent: m.agent,
-        isMaster: m.isMaster,
-        lastNotifiedAt: m.lastNotifiedAt,
-    }))
-    return {
-        version: 1,
-        teamRunId: "test-run",
-        teamName: "test-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {
-            maxMembers: 8,
-            maxParallelMembers: 4,
-            maxMessagesPerRun: 100,
-            maxWallClockMinutes: 30,
-            maxMemberTurns: 50,
-            maxTasks: 200,
-            messagePayloadMaxBytes: 32768,
-            messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: 0,
-        activeTask: opts.activeTask,
-        mutex: new AsyncMutex(),
-        directory: tmpRoot("del"),
-    } as unknown as Team
 }
 
 /** Seed a task into the team store, optionally setting owner/status/blockers. */

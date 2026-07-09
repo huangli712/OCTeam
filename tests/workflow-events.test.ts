@@ -12,10 +12,8 @@ import { waitUntil } from "../src/core/utils.js"
 import { runEventsPath } from "../src/state/paths.js"
 import { existsSync, readFileSync } from "node:fs"
 import { rebuildSessionIndex } from "../src/state/resolve.js"
-import { AsyncMutex } from "../src/state/locks.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
-import type { Team } from "../src/state/store.js"
-import { makeCtx, makeMember, makeState, makeToolContext, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, type DispatchCall } from "./helpers.js"
 import { teamFixWorkflowTool } from "../src/tools/fixflow.js"
 
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
@@ -41,24 +39,6 @@ function makeWorkflowTask(steps: WorkflowStep[]): WorkflowTask {
     } as WorkflowTask
 }
 
-function makeTeam(root: string, task: ActiveTask, members: MemberState[]): Team {
-    return {
-        version: 1,
-        teamRunId: "wf-event-run",
-        teamName: "wf-event-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {
-            maxMembers: 8, maxParallelMembers: 4, maxMessagesPerRun: 100, maxWallClockMinutes: 30,
-            maxMemberTurns: 50, maxTasks: 200, messagePayloadMaxBytes: 32768, messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: Date.now(),
-        activeTask: task,
-        mutex: new AsyncMutex(),
-        directory: root,
-    } as unknown as Team
-}
 
 async function waitForEventKind(directory: string, runId: string, kind: string): Promise<void> {
     const path = runEventsPath(directory, runId)
@@ -73,7 +53,7 @@ describe("workflow run event schema + correlation id", () => {
         // Given
         const root = mkdtempSync(join(tmpdir(), "octeam-wf-evroot-"))
         const task = makeWorkflowTask([{ kind: "task", member: "alice", task: "do work", completed: false }])
-        const team = makeTeam(root, task, [{ name: "alice", sessionId: "ses_alice", initialized: true, turnCount: 0, status: "idle" }])
+        const team = makeTeam({ directory: root, activeTask: task, members: [{ name: "alice", sessionId: "ses_alice", initialized: true, turnCount: 0, status: "idle" }] })
         const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: "alice output" }, calls: [] })
 
         // When: advance dispatches step 0 (sets step.correlationId), then alice's idle captures it.
@@ -97,10 +77,10 @@ describe("workflow run event schema + correlation id", () => {
             { kind: "task", member: "alice", task: "produce", completed: false },
             { kind: "gate", verifier: "bob", criteria: "ok", attempts: 0, completed: false },
         ])
-        const team = makeTeam(root, task, [
+        const team = makeTeam({ directory: root, activeTask: task, members: [
             { name: "alice", sessionId: "ses_alice", initialized: true, turnCount: 0, status: "idle" },
             { name: "bob", sessionId: "ses_bob", initialized: true, turnCount: 0, status: "idle" },
-        ])
+        ]})
         const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: "produced", ses_bob: PASS_VERDICT }, calls: [] })
 
         // When: dispatch alice -> alice produces -> dispatch bob gate -> bob verdicts.

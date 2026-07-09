@@ -34,11 +34,9 @@
 import { afterAll, describe, expect, mock, test } from "bun:test"
 
 import { deliverSummaryToLeader } from "../src/orchestration/summary.js"
-import type { ActiveTask, MemberState } from "../src/core/types.js"
+import type { ActiveTask } from "../src/core/types.js"
 import type { PluginContext } from "../src/core/context.js"
-import type { Team } from "../src/state/store.js"
-import { AsyncMutex } from "../src/state/locks.js"
-import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeTeam, tmpRoot } from "./helpers.js"
 
 /** PluginContext whose promptAsync always throws (simulates leader delivery failure). */
 function makeFailingCtx(): PluginContext {
@@ -77,34 +75,6 @@ function makeParallelTask(): ActiveTask {
     } as ActiveTask
 }
 
-function makeTeam(directory: string, activeTask: ActiveTask): Team {
-    const members: MemberState[] = [
-        { name: "alice", status: "idle", initialized: true, turnCount: 1 },
-    ]
-    return {
-        version: 1,
-        teamRunId: "test-run",
-        teamName: "test-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {
-            maxMembers: 8,
-            maxParallelMembers: 4,
-            maxMessagesPerRun: 100,
-            maxWallClockMinutes: 30,
-            maxMemberTurns: 50,
-            maxTasks: 200,
-            messagePayloadMaxBytes: 32768,
-            messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: Date.now(),
-        activatedAt: Date.now(),
-        activeTask,
-        mutex: new AsyncMutex(),
-        directory,
-    } as Team
-}
 
 afterAll(cleanupTmpRoots)
 
@@ -113,7 +83,7 @@ describe("deliverSummaryToLeader failure swallowed (finding: summary-delivery-fa
         const root = tmpRoot("summary-swallowed")
         const teamDir = `${root}/team`
         const task = makeParallelTask()
-        const team = makeTeam(teamDir, task)
+        const team = makeTeam({ directory: teamDir, activeTask: task })
 
         // deliverSummaryToLeader builds the summary, persists the run record
         // (best-effort), records the terminated event, then calls

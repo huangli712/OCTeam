@@ -42,10 +42,8 @@ import { chmod, mkdir } from "node:fs/promises"
 import path from "node:path"
 
 import { captureMemberOutput } from "../src/orchestration/capture.js"
-import type { ActiveTask, MemberState } from "../src/core/types.js"
-import type { Team } from "../src/state/store.js"
-import { AsyncMutex } from "../src/state/locks.js"
-import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
+import type { ActiveTask } from "../src/core/types.js"
+import { cleanupTmpRoots, makeTeam, tmpRoot } from "./helpers.js"
 
 function makeParallelTask(runId: string): ActiveTask {
     return {
@@ -67,34 +65,6 @@ function makeParallelTask(runId: string): ActiveTask {
     } as ActiveTask
 }
 
-function makeTeam(directory: string, activeTask: ActiveTask): Team {
-    const members: MemberState[] = [
-        { name: "alice", status: "idle", initialized: true, turnCount: 1, sessionId: "ses_alice" },
-    ]
-    return {
-        version: 1,
-        teamRunId: "test-run",
-        teamName: "test-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {
-            maxMembers: 8,
-            maxParallelMembers: 4,
-            maxMessagesPerRun: 100,
-            maxWallClockMinutes: 30,
-            maxMemberTurns: 50,
-            maxTasks: 200,
-            messagePayloadMaxBytes: 32768,
-            messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: Date.now(),
-        activatedAt: Date.now(),
-        activeTask,
-        mutex: new AsyncMutex(),
-        directory,
-    } as unknown as Team
-}
 
 // A single user -> assistant turn so captureMemberOutput collects output.
 const messages = [
@@ -111,7 +81,7 @@ describe("captureMemberOutput must not swallow persistence failure (finding: cap
         // Fixed runId (safe path segment) so we can pre-create and sabotage it.
         const runId = "run-cap-fail"
         const task = makeParallelTask(runId)
-        const team = makeTeam(teamDir, task)
+        const team = makeTeam({ directory: teamDir, activeTask: task })
 
         // Pre-create the run directory (atomicWrite's mkdir is then a no-op) and
         // make it READ-ONLY. readFile(outPath) ENOENTs (handled); atomicWrite's

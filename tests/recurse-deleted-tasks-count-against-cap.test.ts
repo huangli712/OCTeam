@@ -1,14 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 
 import { processIdle } from "../src/orchestration/idle.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
-import { AsyncMutex } from "../src/state/locks.js"
-import type { ActiveTask, MemberState, RecurseTask, Task } from "../src/core/types.js"
-import type { Team } from "../src/state/store.js"
-import { makeCtx, type DispatchCall } from "./helpers.js"
+import type { RecurseTask, Task } from "../src/core/types.js"
+import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 
 /**
  * Regression for finding recurse-deleted-tasks-count-against-cap.
@@ -57,33 +52,6 @@ function makeRecurseTask(): RecurseTask {
     } as RecurseTask
 }
 
-function makeTeam(activeTask: ActiveTask): Team {
-    const members: MemberState[] = [
-        { name: "alice", status: "idle", initialized: true, turnCount: 0, sessionId: "ses_alice" },
-    ]
-    return {
-        version: 1,
-        teamRunId: "test-run",
-        teamName: "test-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {
-            maxMembers: 8,
-            maxParallelMembers: 4,
-            maxMessagesPerRun: 100,
-            maxWallClockMinutes: 30,
-            maxMemberTurns: 50,
-            maxTasks: 200,
-            messagePayloadMaxBytes: 32768,
-            messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: 0,
-        activeTask,
-        mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-rec-del-")),
-    } as unknown as Team
-}
 
 const DECOMPOSE_2 = `<decompose>{"subtasks":[
     {"subject":"part A","description":"do A"},
@@ -92,7 +60,7 @@ const DECOMPOSE_2 = `<decompose>{"subtasks":[
 
 describe("recurse maxTasks cap must ignore deleted tasks", () => {
     test("deleted tasks do not consume capacity: live(1) + 2 subtasks <= maxTasks(3) branches", async () => {
-        const team = makeTeam(makeRecurseTask())
+        const team = makeTeam({ activeTask: makeRecurseTask(), members: [{ name: "alice", status: "idle", initialized: true, turnCount: 0, sessionId: "ses_alice" }] })
         // maxTasks=3: live count permits branching (1 live + 2 proposed = 3),
         // but raw count blocks it (3 raw + 2 proposed = 5 > 3).
         team.bounds.maxTasks = 3

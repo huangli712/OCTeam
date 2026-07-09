@@ -5,25 +5,10 @@ import { allReadOnlyStagesReportNoIssues, allMembersAgree } from "../src/orchest
 import { buildUpstreamContext } from "../src/orchestration/dispatch.js"
 import type { ActiveTask, Stage } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
+import { makeTask } from "./helpers.js"
 
 const mockTeam = {} as Team
 
-function makeTask(opts: Partial<ActiveTask> = {}): ActiveTask {
-    return {
-        type: "loop",
-        startedAt: 0,
-        wallClockTimeoutMs: 300000,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        ...opts,
-    } as ActiveTask
-}
 
 // --- bug① loop summary includes member outputs ---
 

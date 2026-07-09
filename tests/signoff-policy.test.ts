@@ -2,25 +2,8 @@ import { describe, expect, test } from "bun:test"
 
 import { getExpectedMember } from "../src/orchestration/idle.js"
 import { isQuorumReached, parseSignoff } from "../src/orchestration/decisions.js"
-import type { ActiveTask } from "../src/core/types.js"
+import { makeTask } from "./helpers.js"
 
-function makeTask(opts: Partial<ActiveTask> = {}): ActiveTask {
-    return {
-        type: "parallel",
-        mode: "isolated",
-        startedAt: 0,
-        wallClockTimeoutMs: 300000,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        ...opts,
-    } as ActiveTask
-}
 
 describe("parseSignoff", () => {
     test("parses approved signoff with rationale", () => {

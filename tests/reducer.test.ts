@@ -4,8 +4,8 @@ import { buildSummary } from "../src/orchestration/summary.js"
 import { maybeTriggerReduce } from "../src/orchestration/signoff.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
-import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
+import { makeTeam } from "./helpers.js"
 
 const mockTeam = {} as Team
 const mockCtx = {} as PluginContext // never touched by the early-return branches
@@ -28,31 +28,7 @@ function makeParallelTask(opts: Partial<ActiveTask> = {}): ActiveTask {
     } as ActiveTask
 }
 
-function makeTeam(opts: {
-    activeTask?: ActiveTask
-    members?: Array<Partial<MemberState> & Pick<MemberState, "name">>
-}): Team {
-    const members: MemberState[] = (opts.members ?? []).map(m => ({
-        name: m.name,
-        status: m.status ?? "idle",
-        initialized: true,
-        turnCount: 0,
-        sessionId: m.sessionId,
-    }))
-    return {
-        version: 1,
-        teamRunId: "r",
-        teamName: "t",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {},
-        createdAt: 0,
-        activeTask: opts.activeTask,
-        mutex: new AsyncMutex(),
-        directory: "/tmp/x",
-    } as unknown as Team
-}
+
 
 // --- buildSummary delivers reducedResult verbatim (#4) ---
 

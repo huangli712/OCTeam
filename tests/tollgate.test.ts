@@ -1,7 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+
 
 import type { ToolContext } from "@opencode-ai/plugin"
 
@@ -14,10 +12,10 @@ import { teamTollgateTool } from "../src/tools/tollgate.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import type { ActiveTask, GatedStage, MemberState, TollgateTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { AsyncMutex } from "../src/state/locks.js"
+
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, tmpRoot, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeTeam, tmpRoot, type DispatchCall } from "./helpers.js"
 
 // --- fixtures ---
 
@@ -59,43 +57,7 @@ function makeTollgateTask(opts: Partial<TollgateTask> = {}): TollgateTask {
     } as TollgateTask
 }
 
-/** Minimal busy Team wrapper with a real tmp directory for file IO. */
-function makeTeam(opts: {
-    activeTask?: ActiveTask
-    members?: Array<Partial<MemberState> & Pick<MemberState, "name">>
-}): Team {
-    const members: MemberState[] = (opts.members ?? []).map(m => ({
-        name: m.name,
-        status: m.status ?? "idle",
-        initialized: m.initialized ?? true,
-        turnCount: m.turnCount ?? 0,
-        sessionId: m.sessionId,
-        agent: m.agent,
-        isMaster: m.isMaster,
-    }))
-    return {
-        version: 1,
-        teamRunId: "test-run",
-        teamName: "test-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {
-            maxMembers: 8,
-            maxParallelMembers: 4,
-            maxMessagesPerRun: 100,
-            maxWallClockMinutes: 30,
-            maxMemberTurns: 50,
-            maxTasks: 200,
-            messagePayloadMaxBytes: 32768,
-            messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: 0,
-        activeTask: opts.activeTask,
-        mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-tg-")),
-    } as unknown as Team
-}
+
 
 /** Simulate processIdle Step 1 (flip a member to idle) and return it. */
 function idle(team: Team, name: string): MemberState {

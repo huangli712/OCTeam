@@ -22,31 +22,11 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { resumeDispatch } from "../src/orchestration/resume.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeTask, tmpRoot } from "./helpers.js"
 
-// --- helpers ---
-
-function makeTask(overrides: Partial<ActiveTask> = {}): ActiveTask {
-    return {
-        type: "parallel",
-        mode: "isolated",
-        startedAt: Date.now(),
-        wallClockTimeoutMs: 300_000,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        ...overrides,
-    } as ActiveTask
-}
 
 const tracked: string[] = []
 afterEach(() => {

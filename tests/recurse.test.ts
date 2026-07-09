@@ -1,7 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 
 import { getExpectedMember, processIdle } from "../src/orchestration/idle.js"
 import { parseDecompose } from "../src/orchestration/decisions.js"
@@ -10,14 +7,13 @@ import { readRunEvents } from "../src/orchestration/runs.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import type { ActiveTask, MemberState, RecurseTask, Task } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { buildSummary } from "../src/orchestration/summary.js"
 import { teamRecurseTool } from "../src/tools/recurse.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js"
+import { makeCtx, makeTeam, makeMember, makeState, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js"
 
 
 // --- fixtures ---
@@ -47,43 +43,6 @@ function makeRecurseTask(opts: Partial<RecurseTask> = {}): RecurseTask {
         signoffPolicy: "none",
         ...opts,
     } as RecurseTask
-}
-
-function makeTeam(opts: {
-    activeTask?: ActiveTask
-    members?: Array<Partial<MemberState> & Pick<MemberState, "name">>
-}): Team {
-    const members: MemberState[] = (opts.members ?? []).map(m => ({
-        name: m.name,
-        status: m.status ?? "idle",
-        initialized: m.initialized ?? true,
-        turnCount: m.turnCount ?? 0,
-        sessionId: m.sessionId,
-        agent: m.agent,
-        isMaster: m.isMaster,
-    }))
-    return {
-        version: 1,
-        teamRunId: "test-run",
-        teamName: "test-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {
-            maxMembers: 8,
-            maxParallelMembers: 4,
-            maxMessagesPerRun: 100,
-            maxWallClockMinutes: 30,
-            maxMemberTurns: 50,
-            maxTasks: 200,
-            messagePayloadMaxBytes: 32768,
-            messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: 0,
-        activeTask: opts.activeTask,
-        mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-rec-")),
-    } as unknown as Team
 }
 
 /**

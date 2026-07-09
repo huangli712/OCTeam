@@ -12,12 +12,10 @@ import { runStatusFromReason, readRunRecord, readRunEvents } from "../src/orches
 import { reconcileCrashedTeams } from "../src/orchestration/reconcile.js"
 import { isSafePathSegment, teamDir, runDir, runMemberOutputPath, runEventsPath, runRecordPath } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"
+import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import type { ActiveTask, MemberState } from "../src/core/types.js"
-import type { Team } from "../src/state/store.js"
-import { AsyncMutex } from "../src/state/locks.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot } from "./helpers.js"
 
 // ============================================================================
 // Fix1 — path-traversal rejection (BLOCKING-1, security)
@@ -93,40 +91,21 @@ describe("Fix1: tools reject traversal in run_id / member", () => {
 
 describe("Fix2: maybeTriggerReduce skips errored reducer", () => {
     const mockCtx = {} as PluginContext // never touched on early-return
-    function makeTeam(members: Array<Partial<MemberState> & Pick<MemberState, "name">>): Team {
-        const ms: MemberState[] = members.map(m => ({
-            name: m.name,
-            status: m.status ?? "idle",
-            initialized: true,
-            turnCount: 0,
-            sessionId: m.sessionId,
-        }))
-        const task = {
-            type: "parallel",
-            mode: "isolated",
-            startedAt: 0,
-            responses: { alice: "1", bob: "2" },
-            stages: [],
-            currentStageIndex: 0,
-            decisionHistory: [],
-            decisionParseFailures: 0,
-            reducePolicy: "select",
-            reducerMember: "alice",
-        } as unknown as ActiveTask
-        return {
-            teamName: "t",
-            members: ms,
-            activeTask: task,
-            mutex: new AsyncMutex(),
-            directory: "/tmp/x",
-        } as unknown as Team
-    }
 
     test("errored reducer → false (legacy delivery, no re-dispatch)", async () => {
-        const team = makeTeam([
-            { name: "alice", sessionId: "s", status: "errored" },
-            { name: "bob", sessionId: "s2", status: "idle" },
-        ])
+        const team = makeTeam({
+            members: [
+                { name: "alice", sessionId: "s", status: "errored" },
+                { name: "bob", sessionId: "s2", status: "idle" },
+            ],
+            activeTask: {
+                type: "parallel", mode: "isolated", startedAt: 0,
+                responses: { alice: "1", bob: "2" },
+                stages: [], currentStageIndex: 0,
+                decisionHistory: [], decisionParseFailures: 0,
+                reducePolicy: "select", reducerMember: "alice",
+            } as any,
+        })
         expect(await maybeTriggerReduce(mockCtx, team)).toBe(false)
         // reducer stays errored — NOT flipped back to running
         expect(team.members.find(m => m.name === "alice")!.status).toBe("errored")

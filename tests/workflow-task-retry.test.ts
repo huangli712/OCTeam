@@ -9,9 +9,6 @@
  *   - non-matching output does not retry
  */
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { processIdle } from "../src/orchestration/idle.js";
 import type {
@@ -20,9 +17,7 @@ import type {
     WorkflowStep,
     WorkflowTask,
 } from "../src/core/types.js";
-import { AsyncMutex } from "../src/state/locks.js";
-import type { Team } from "../src/state/store.js";
-import { makeCtx, type DispatchCall } from "./helpers.js";
+import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js";
 
 
 function makeWorkflowTask(
@@ -46,43 +41,6 @@ function makeWorkflowTask(
     } as WorkflowTask;
 }
 
-function makeTeam(opts: {
-    activeTask?: ActiveTask;
-    members?: Array<Partial<MemberState> & Pick<MemberState, "name">>;
-}): Team {
-    const members: MemberState[] = (opts.members ?? []).map((m) => ({
-        name: m.name,
-        status: m.status ?? "idle",
-        initialized: m.initialized ?? true,
-        turnCount: m.turnCount ?? 0,
-        sessionId: m.sessionId,
-        agent: m.agent,
-        isMaster: m.isMaster,
-        error: m.error,
-    }));
-    return {
-        version: 1,
-        teamRunId: "test-run",
-        teamName: "test-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {
-            maxMembers: 8,
-            maxParallelMembers: 4,
-            maxMessagesPerRun: 100,
-            maxWallClockMinutes: 30,
-            maxMemberTurns: 50,
-            maxTasks: 200,
-            messagePayloadMaxBytes: 32768,
-            messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: 0,
-        activeTask: opts.activeTask,
-        mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-task-retry-")),
-    } as unknown as Team;
-}
 
 describe("workflow task retry_on", () => {
     test("retry_on empty with empty output re-dispatches task and increments taskAttempts", async () => {

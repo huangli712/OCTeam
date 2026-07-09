@@ -1,15 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 
-import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
+import type { MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { checkTermination } from "../src/orchestration/termination.js"
 import { processIdle } from "../src/orchestration/idle.js"
-import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
 
-import { type DispatchCall, makeCtx } from "./helpers.js"
+import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 const NOW = 1_700_000_000_000
 
 
@@ -32,38 +28,6 @@ function makeWorkflowTask(fields: Partial<WorkflowTask> & { readonly steps: Work
     } as WorkflowTask
 }
 
-function makeTeam(activeTask: ActiveTask, members: Array<Partial<MemberState> & Pick<MemberState, "name">>): Team {
-    return {
-        version: 1,
-        teamRunId: "timeout-test-run",
-        teamName: "timeout-test-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members: members.map(member => ({
-            name: member.name,
-            sessionId: member.sessionId,
-            status: member.status ?? "idle",
-            initialized: member.initialized ?? true,
-            turnCount: member.turnCount ?? 0,
-            isMaster: member.isMaster,
-            error: member.error,
-        })),
-        bounds: {
-            maxMembers: 8,
-            maxParallelMembers: 4,
-            maxMessagesPerRun: 100,
-            maxWallClockMinutes: 30,
-            maxMemberTurns: 50,
-            maxTasks: 200,
-            messagePayloadMaxBytes: 32768,
-            messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: NOW,
-        activeTask,
-        mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-wf-timeout-")),
-    } as unknown as Team
-}
 
 function member(team: Team, name: string): MemberState {
     const found = team.members.find(candidate => candidate.name === name)
@@ -78,7 +42,7 @@ describe("workflow step timeout policy", () => {
             activeStepIndices: [0],
             steps: [{ kind: "task", member: "alice", task: "slow", completed: false, timeoutMs: 1000, dispatchedAt: NOW - 2000 }],
         })
-        const team = makeTeam(task, [{ name: "alice", sessionId: "ses_alice" }])
+        const team = makeTeam({ activeTask: task, members: [{ name: "alice", sessionId: "ses_alice" }] })
         const ctx = makeCtx({ calls: [] })
 
         // When
@@ -96,7 +60,7 @@ describe("workflow step timeout policy", () => {
             activeStepIndices: [0],
             steps: [{ kind: "task", member: "alice", task: "retry slow", completed: false, timeoutMs: 1000, onTimeout: "retry", maxTimeoutRetries: 1, timeoutAttempts: 0, dispatchedAt: NOW - 2000 }],
         })
-        const team = makeTeam(task, [{ name: "alice", sessionId: "ses_alice" }])
+        const team = makeTeam({ activeTask: task, members: [{ name: "alice", sessionId: "ses_alice" }] })
         const ctx = makeCtx({ calls })
 
         // When
@@ -127,7 +91,7 @@ describe("workflow step timeout policy", () => {
                 { kind: "task", member: "bob", task: "continue", completed: false },
             ],
         })
-        const team = makeTeam(task, [{ name: "alice", sessionId: "ses_alice" }, { name: "bob", sessionId: "ses_bob" }])
+        const team = makeTeam({ activeTask: task, members: [{ name: "alice", sessionId: "ses_alice" }, { name: "bob", sessionId: "ses_bob" }] })
         const ctx = makeCtx({ calls })
 
         // When
@@ -162,7 +126,7 @@ describe("workflow step timeout policy", () => {
                 { kind: "task", member: "carol", task: "integrate survivors", completed: false },
             ],
         })
-        const team = makeTeam(task, [{ name: "alice", sessionId: "ses_alice" }, { name: "bob", sessionId: "ses_bob" }, { name: "carol", sessionId: "ses_carol" }])
+        const team = makeTeam({ activeTask: task, members: [{ name: "alice", sessionId: "ses_alice" }, { name: "bob", sessionId: "ses_bob" }, { name: "carol", sessionId: "ses_carol" }] })
         const ctx = makeCtx({ outputs: { ses_bob: "tests output", ses_carol: "downstream output" }, calls })
 
         // When
@@ -198,7 +162,7 @@ describe("workflow step timeout policy", () => {
                 { kind: "task", member: "dave", task: "integrate survivors", completed: false },
             ],
         })
-        const team = makeTeam(task, [{ name: "alice" }, { name: "bob", sessionId: "ses_bob" }, { name: "carol", sessionId: "ses_carol" }, { name: "dave", sessionId: "ses_dave" }])
+        const team = makeTeam({ activeTask: task, members: [{ name: "alice" }, { name: "bob", sessionId: "ses_bob" }, { name: "carol", sessionId: "ses_carol" }, { name: "dave", sessionId: "ses_dave" }] })
         const ctx = makeCtx({ outputs: { ses_carol: "tests output", ses_dave: "downstream output" }, calls })
 
         // When: the fallback-dispatched branch times out.

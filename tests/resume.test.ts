@@ -4,30 +4,11 @@ import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeTask, makeToolContext, tmpRoot } from "./helpers.js"
 import fs from "node:fs/promises"
 import { createTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { processIdle } from "../src/orchestration/idle.js"
 
-// --- helpers ---
-
-function makeTask(overrides: Partial<ActiveTask> = {}): ActiveTask {
-    return {
-        type: "parallel",
-        mode: "isolated",
-        startedAt: Date.now(),
-        wallClockTimeoutMs: 300_000,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        ...overrides,
-    } as ActiveTask
-}
 
 /** Build a failed team with lastInterruptedTask, indexed for master resolution. */
 async function setupFailed(
