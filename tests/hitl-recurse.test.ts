@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { MemberState, RecurseTask, Task } from "../src/core/types.js"
-import { processIdle } from "../src/orchestration/handlers.js"
+import { processIdle } from "../src/orchestration/idle.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"

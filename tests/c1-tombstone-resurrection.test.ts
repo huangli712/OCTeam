@@ -25,7 +25,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
-import { processIdle } from "../src/orchestration/handlers.js"
+import { processIdle } from "../src/orchestration/idle.js"
 import { runEventsPath, runsDir, runDir, runMemberOutputPath, statePath } from "../src/state/paths.js"
 import { initTeamState, invalidateTeam, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamDir } from "../src/state/paths.js"

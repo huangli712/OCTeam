@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { processIdle } from "../src/orchestration/handlers.js"
+import { processIdle } from "../src/orchestration/idle.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { ActiveTask, MemberState, RecurseTask, Task } from "../src/core/types.js"

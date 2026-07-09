@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test"
 
-import { processIdle } from "../src/orchestration/handlers.js"
+import { processIdle } from "../src/orchestration/idle.js"
 import { createTask, updateTask } from "../src/state/tasks.js"
 import type { ActiveTask, MemberState, Task } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"

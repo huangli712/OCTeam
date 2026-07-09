@@ -8,7 +8,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
-import { processIdle } from "../src/orchestration/handlers.js"
+import { processIdle } from "../src/orchestration/idle.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { teamProgressTool } from "../src/tools/progress.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"

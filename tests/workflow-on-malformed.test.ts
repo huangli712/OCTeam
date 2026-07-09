@@ -14,7 +14,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { processIdle } from "../src/orchestration/handlers.js";
+import { processIdle } from "../src/orchestration/idle.js";
 import type {
     ActiveTask,
     MemberState,

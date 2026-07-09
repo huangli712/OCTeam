@@ -1,6 +1,6 @@
 /**
  * Invariant test for the three 9-way dispatchers over OrchestrationType:
- *   - processIdle    (src/orchestration/handlers.ts) — Record<OrchestrationType, ...> table
+ *   - processIdle    (src/orchestration/idle.ts) — Record<OrchestrationType, ...> table
  *   - resumeDispatch (src/orchestration/resume.ts) — switch with `_exhaustive: never` guard
  *   - buildSummary   (src/orchestration/summary.ts) — switch with `_exhaustive: never` guard
  *
@@ -75,11 +75,11 @@ async function readSwitchBody(filePath: string, fnName: string): Promise<string>
 }
 
 describe("11-way switch invariant: every OrchestrationType has a case in all three switches", () => {
-    test("processIdle (handlers.ts) covers all 11 OrchestrationTypes via idleDispatch table", async () => {
+    test("processIdle (idle.ts) covers all 11 OrchestrationTypes via idleDispatch table", async () => {
         // After P1-6, processIdle dispatches via a Record<OrchestrationType, ...>
         // table (idleDispatch) instead of a switch. Record enforces compile-time
         // completeness; this test verifies all 11 keys are present in the source.
-        const src = await readFile(path.resolve("src/orchestration/handlers.ts"), "utf8")
+        const src = await readFile(path.resolve("src/orchestration/idle.ts"), "utf8")
         for (const t of ORCHESTRATION_TYPES) {
             // Each type appears as a top-level key: `    parallel: async ...`
             expect(src).toMatch(new RegExp(`^    ${t}:\\s*async`, "m"))

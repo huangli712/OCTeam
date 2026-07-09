@@ -4,7 +4,7 @@ import fs from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { processIdle } from "../src/orchestration/handlers.js"
+import { processIdle } from "../src/orchestration/idle.js"
 import { handleParallelIdle } from "../src/orchestration/parallel.js"
 import { runMemberOutputPath } from "../src/state/paths.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"

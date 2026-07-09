@@ -8,7 +8,7 @@ import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 import fs from "node:fs/promises"
 import { createTask, listAllTasks, updateTask } from "../src/state/tasks.js"
-import { processIdle } from "../src/orchestration/handlers.js"
+import { processIdle } from "../src/orchestration/idle.js"
 
 // --- helpers ---
 

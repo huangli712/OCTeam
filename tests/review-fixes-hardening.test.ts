@@ -12,7 +12,7 @@ import { join } from "node:path"
 
 import { AsyncMutex, withLock } from "../src/state/locks.js"
 import { createTask, listAllTasks, updateTask } from "../src/state/tasks.js"
-import { handleStatusEvent } from "../src/orchestration/handlers.js"
+import { handleStatusEvent } from "../src/orchestration/status.js"
 import { saveTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember } from "../src/state/resolve.js"
 import { resumeDispatch } from "../src/orchestration/resume.js"

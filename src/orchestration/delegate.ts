@@ -19,7 +19,7 @@ import { listAllTasks } from "../state/tasks.js"
 import { dispatchToMember } from "./dispatch.js"
 import { finishRun } from "./summary.js"
 import { maybeTriggerSignoff } from "./signoff.js"
-import { captureMemberOutput } from "./handlers.js"
+import { captureMemberOutput } from "./capture.js"
 
 export const NOTIFY_COOLDOWN_MS = 10_000
 

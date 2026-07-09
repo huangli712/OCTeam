@@ -5,7 +5,7 @@ import { join } from "node:path"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 
-import { getExpectedMember } from "../src/orchestration/handlers.js"
+import { getExpectedMember } from "../src/orchestration/idle.js"
 import { handleArbitrateIdle } from "../src/orchestration/arbitrate.js"
 import { parseArbitrationDecision } from "../src/orchestration/decisions.js"
 import { readRunEvents } from "../src/orchestration/runs.js"

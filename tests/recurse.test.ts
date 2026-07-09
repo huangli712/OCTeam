@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { getExpectedMember, processIdle } from "../src/orchestration/handlers.js"
+import { getExpectedMember, processIdle } from "../src/orchestration/idle.js"
 import { parseDecompose } from "../src/orchestration/decisions.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
 import { runEventsPath } from "../src/state/paths.js"

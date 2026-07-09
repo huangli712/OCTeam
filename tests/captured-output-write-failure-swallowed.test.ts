@@ -41,7 +41,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { chmod, mkdir } from "node:fs/promises"
 import path from "node:path"
 
-import { captureMemberOutput } from "../src/orchestration/handlers.js"
+import { captureMemberOutput } from "../src/orchestration/capture.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
