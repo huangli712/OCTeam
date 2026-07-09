@@ -8,19 +8,8 @@ import { checkTermination } from "../src/orchestration/termination.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
+import { makeCtx } from "./helpers.js"
 import type { PluginContext } from "../src/core/context.js"
-
-/**
- * Stub ctx for checkTermination: only deliverSummaryToLeader's promptAsync is
- * exercised (persistRun best-effort, no other IO). Mirrors failure-isolation's
- * fixture so the new branch tests are visually consistent with the existing
- * member-error tests.
- */
-function makeCtx(): PluginContext {
-    return {
-        client: { session: { promptAsync: mock(async () => ({ data: {} })) } },
-    } as unknown as PluginContext
-}
 
 function makeTeam(opts: {
     startedAt?: number
@@ -113,7 +102,7 @@ describe("checkTermination: token budget exceeded", () => {
             members: [{ name: "alice" }],
         })
 
-        await checkTermination(makeCtx(), team)
+        await checkTermination(makeCtx({ promptAsync: async () => ({ data: {} }) }), team)
 
         expect(team.status).toBe("busy")
         expect(team.activeTask).toBeDefined()
@@ -125,7 +114,7 @@ describe("checkTermination: token budget exceeded", () => {
             members: [{ name: "alice" }],
         })
 
-        await checkTermination(makeCtx(), team)
+        await checkTermination(makeCtx({ promptAsync: async () => ({ data: {} }) }), team)
 
         expect(team.status).toBe("busy")
         expect(team.activeTask).toBeDefined()
@@ -160,7 +149,7 @@ describe("checkTermination: per-member turn limit", () => {
             members: [{ name: "alice", turnCount: 5 }], // equal — boundary
         })
 
-        await checkTermination(makeCtx(), team)
+        await checkTermination(makeCtx({ promptAsync: async () => ({ data: {} }) }), team)
 
         expect(team.status).toBe("busy")
         expect(team.activeTask).toBeDefined()
@@ -172,7 +161,7 @@ describe("checkTermination: per-member turn limit", () => {
             members: [{ name: "master", turnCount: 999, isMaster: true }],
         })
 
-        await checkTermination(makeCtx(), team)
+        await checkTermination(makeCtx({ promptAsync: async () => ({ data: {} }) }), team)
 
         // master's turnCount doesn't count — run continues.
         expect(team.status).toBe("busy")

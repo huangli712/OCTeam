@@ -10,31 +10,11 @@
  */
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
 import { maybeTriggerSignoff } from "../src/orchestration/signoff.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
-
-afterAll(cleanupTmpRoots)
-
-const tracked: string[] = []
-afterEach(() => {
-    for (const sid of tracked.splice(0)) unindexSession(sid)
-})
-
-function makeCtx(root: string): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: root,
-        client: {
-            session: { promptAsync: async () => ({}) },
-            app: { log: async () => ({}) },
-        },
-    } as unknown as PluginContext
-}
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 function makeParallelTask(overrides: Partial<ActiveTask> = {}): ActiveTask {
     return {
@@ -90,7 +70,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
             }),
         })
 
-        const triggered = await maybeTriggerSignoff(makeCtx(root), team)
+        const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(false)
         // Fallback resets signoffStage so a stale stage flag doesn't trap the
         // next idle in handleSignoffIdle's no-op branch.
@@ -115,7 +95,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
             }),
         })
 
-        const triggered = await maybeTriggerSignoff(makeCtx(root), team)
+        const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(false)
         expect(team.activeTask!.signoffStage).toBe(false)
     })
@@ -134,7 +114,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
             }),
         })
 
-        const triggered = await maybeTriggerSignoff(makeCtx(root), team)
+        const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(false)
         expect(team.activeTask!.signoffStage).toBe(false)
     })
@@ -156,7 +136,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
             }),
         })
 
-        const triggered = await maybeTriggerSignoff(makeCtx(root), team)
+        const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(false)
         expect(team.activeTask!.signoffStage).toBe(false)
     })
@@ -175,7 +155,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
             }),
         })
 
-        const triggered = await maybeTriggerSignoff(makeCtx(root), team)
+        const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(false)
         expect(team.activeTask!.signoffStage).toBe(false)
     })
@@ -191,7 +171,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
             task: makeParallelTask({}),  // no signoffPolicy
         })
 
-        const triggered = await maybeTriggerSignoff(makeCtx(root), team)
+        const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(false)
         // signoffStage was never set; still undefined.
         expect(team.activeTask!.signoffStage).toBeUndefined()

@@ -11,7 +11,6 @@
  */
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, RunRecord, TeamState } from "../src/core/types.js"
 import { teamActivateTool } from "../src/tools/activate.js"
 import { teamDoneTool } from "../src/tools/done.js"
@@ -22,7 +21,7 @@ import { setActiveTeam } from "../src/state/resolve.js"
 import { atomicWrite } from "../src/state/locks.js"
 import { runDir, runRecordPath } from "../src/state/paths.js"
 import path from "node:path"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const TEAM = "audit-cov-team"
 const tracked: string[] = []
@@ -32,17 +31,6 @@ afterEach(() => {
 })
 import { afterAll } from "bun:test"
 afterAll(cleanupTmpRoots)
-
-function makeCtx(root: string): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        client: {
-            session: { promptAsync: async () => ({}) },
-            app: { log: async () => ({}) },
-        },
-    } as unknown as PluginContext
-}
 
 function makeActiveParallelTask(opts: { requireDoneAck?: boolean; mode?: "isolated" | "cooperative" } = {}): ActiveTask {
     return {
@@ -93,7 +81,7 @@ describe("teamActivateTool.execute", () => {
         tracked.push(masterSid)
         await setupTeam({ root, masterSid, members: [] })
 
-        const result = await teamActivateTool(makeCtx(root)).execute(
+        const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: "no-such-team" },
             { sessionID: masterSid } as never,
         )
@@ -111,7 +99,7 @@ describe("teamActivateTool.execute", () => {
         })
         expect(state.activatedAt).toBeUndefined()
 
-        const result = await teamActivateTool(makeCtx(root)).execute(
+        const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )
@@ -133,7 +121,7 @@ describe("teamActivateTool.execute", () => {
         })
         setActiveTeam(masterSid, path.join(root, masterSid, "teams", TEAM))
 
-        const result = await teamActivateTool(makeCtx(root)).execute(
+        const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )
@@ -157,7 +145,7 @@ describe("teamActivateTool.execute", () => {
         const otherState = makeState("other-team", masterSid, [], Date.now())
         await initTeamState(root, otherState, masterSid)
 
-        const result = await teamActivateTool(makeCtx(root)).execute(
+        const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: "other-team" },
             { sessionID: masterSid } as never,
         )
@@ -181,7 +169,7 @@ describe("teamDoneTool.execute", () => {
             activeTask: makeActiveParallelTask({ requireDoneAck: true }),
         })
 
-        const result = await teamDoneTool(makeCtx(root)).execute(
+        const result = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: "ses_stranger_done_1" } as never,
         )
@@ -201,7 +189,7 @@ describe("teamDoneTool.execute", () => {
         })
         setActiveTeam(masterSid, path.join(root, masterSid, "teams", TEAM))
 
-        const result = await teamDoneTool(makeCtx(root)).execute(
+        const result = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )
@@ -219,7 +207,7 @@ describe("teamDoneTool.execute", () => {
             members: [makeMember("alice", aliceSid)],
         })
 
-        const result = await teamDoneTool(makeCtx(root)).execute(
+        const result = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: aliceSid } as never,
         )
@@ -240,7 +228,7 @@ describe("teamDoneTool.execute", () => {
             activeTask: task,
         })
 
-        const result = await teamDoneTool(makeCtx(root)).execute(
+        const result = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: aliceSid } as never,
         )
@@ -259,7 +247,7 @@ describe("teamDoneTool.execute", () => {
             activeTask: makeActiveParallelTask({ requireDoneAck: false }),
         })
 
-        const result = await teamDoneTool(makeCtx(root)).execute(
+        const result = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: aliceSid } as never,
         )
@@ -278,7 +266,7 @@ describe("teamDoneTool.execute", () => {
             activeTask: makeActiveParallelTask({ requireDoneAck: true }),
         })
 
-        const result1 = await teamDoneTool(makeCtx(root)).execute(
+        const result1 = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: aliceSid } as never,
         )
@@ -289,7 +277,7 @@ describe("teamDoneTool.execute", () => {
         expect(alice.declaredDone).toBe(true)
 
         // Idempotent: second call returns "already acknowledged" wording.
-        const result2 = await teamDoneTool(makeCtx(root)).execute(
+        const result2 = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: aliceSid } as never,
         )
@@ -341,7 +329,7 @@ describe("teamResultsTool.execute", () => {
         tracked.push(masterSid)
         await setupTeam({ root, masterSid, members: [] })
 
-        const result = await teamResultsTool(makeCtx(root)).execute(
+        const result = await teamResultsTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: "ses_stranger_res" } as never,
         )
@@ -354,7 +342,7 @@ describe("teamResultsTool.execute", () => {
         tracked.push(masterSid)
         await setupTeam({ root, masterSid, members: [] })
 
-        const result = await teamResultsTool(makeCtx(root)).execute(
+        const result = await teamResultsTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )
@@ -368,7 +356,7 @@ describe("teamResultsTool.execute", () => {
         const { directory } = await setupTeam({ root, masterSid, members: [] })
         await seedRunRecord(directory, SAMPLE_RUN)
 
-        const result = await teamResultsTool(makeCtx(root)).execute(
+        const result = await teamResultsTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )
@@ -385,7 +373,7 @@ describe("teamResultGetTool.execute", () => {
         tracked.push(masterSid)
         await setupTeam({ root, masterSid, members: [] })
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "../escape" },
             { sessionID: masterSid } as never,
         )
@@ -398,7 +386,7 @@ describe("teamResultGetTool.execute", () => {
         tracked.push(masterSid)
         await setupTeam({ root, masterSid, members: [] })
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "no-such-run" },
             { sessionID: masterSid } as never,
         )
@@ -412,7 +400,7 @@ describe("teamResultGetTool.execute", () => {
         const { directory } = await setupTeam({ root, masterSid, members: [] })
         await seedRunRecord(directory, SAMPLE_RUN)
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "run-sample-1" },
             { sessionID: masterSid } as never,
         )
@@ -441,7 +429,7 @@ describe("teamResultGetTool.execute", () => {
             },
         })
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "run-workflow-1" },
             { sessionID: masterSid } as never,
         )
@@ -488,7 +476,7 @@ describe("teamResultGetTool.execute", () => {
             },
         })
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "run-workflow-issues" },
             { sessionID: masterSid } as never,
         )
@@ -544,7 +532,7 @@ describe("teamResultGetTool.execute", () => {
             },
         })
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "run-workflow-controls" },
             { sessionID: masterSid } as never,
         )
@@ -565,7 +553,7 @@ describe("teamResultGetTool.execute", () => {
         await seedRunRecord(directory, older)
         await seedRunRecord(directory, newer)
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )

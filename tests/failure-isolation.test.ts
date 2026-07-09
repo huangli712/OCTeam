@@ -7,23 +7,7 @@ import { checkTermination } from "../src/orchestration/termination.js"
 import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
-import type { PluginContext } from "../src/core/context.js"
-
-/**
- * Stub PluginContext: only ctx.client.session.promptAsync is exercised by
- * deliverSummaryToLeader. Everything else is unused by checkTermination's
- * member-error branch (parallel mode → buildSummary concatenates responses,
- * no extra IO).
- */
-function makeCtx(): PluginContext {
-    return {
-        client: {
-            session: {
-                promptAsync: async () => ({ data: {} }),
-            },
-        },
-    } as unknown as PluginContext
-}
+import { makeCtx } from "./helpers.js"
 
 /** Minimal busy parallel Team with the given members + tolerance. */
 function makeTeam(opts: {
@@ -85,7 +69,7 @@ describe("checkTermination: member-error tolerance (failure isolation)", () => {
                 { name: "bob", status: "errored", error: "boom" },
             ],
         })
-        await checkTermination(makeCtx(), team)
+        await checkTermination(makeCtx({ promptAsync: async () => ({ data: {} }) }), team)
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
     })
@@ -98,7 +82,7 @@ describe("checkTermination: member-error tolerance (failure isolation)", () => {
             ],
             maxErroredMembers: 1,
         })
-        await checkTermination(makeCtx(), team)
+        await checkTermination(makeCtx({ promptAsync: async () => ({ data: {} }) }), team)
         expect(team.status).toBe("busy")
         expect(team.activeTask).toBeDefined()
     })
@@ -112,7 +96,7 @@ describe("checkTermination: member-error tolerance (failure isolation)", () => {
             ],
             maxErroredMembers: 1,
         })
-        await checkTermination(makeCtx(), team)
+        await checkTermination(makeCtx({ promptAsync: async () => ({ data: {} }) }), team)
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
     })
@@ -125,7 +109,7 @@ describe("checkTermination: member-error tolerance (failure isolation)", () => {
             ],
             maxErroredMembers: 5,
         })
-        await checkTermination(makeCtx(), team)
+        await checkTermination(makeCtx({ promptAsync: async () => ({ data: {} }) }), team)
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
     })
@@ -139,7 +123,7 @@ describe("checkTermination: member-error tolerance (failure isolation)", () => {
             type: "pipeline",
             maxErroredMembers: 5, // ignored for sequential modes
         })
-        await checkTermination(makeCtx(), team)
+        await checkTermination(makeCtx({ promptAsync: async () => ({ data: {} }) }), team)
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
     })
@@ -152,7 +136,7 @@ describe("checkTermination: member-error tolerance (failure isolation)", () => {
             ],
             maxErroredMembers: 1,
         })
-        await checkTermination(makeCtx(), team)
+        await checkTermination(makeCtx({ promptAsync: async () => ({ data: {} }) }), team)
         expect(team.status).toBe("busy")
         expect(team.activeTask).toBeDefined()
     })

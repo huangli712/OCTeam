@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import fs from "node:fs/promises"
 
-import type { PluginContext } from "../src/core/context.js"
 import { teamInterveneTool } from "../src/tools/intervene.js"
 import { initTeamState } from "../src/state/store.js"
 import { writeMailboxMessage } from "../src/messaging/mailbox.js"
@@ -10,17 +9,7 @@ import { inboxPath, teamDir } from "../src/state/paths.js"
 import { loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { ActiveTask, Message, MemberState, TeamState } from "../src/core/types.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
-
-const TEAM = "intervene-team"
-
-/** Stub ctx: intervene reads storageRoot + client.session.promptAsync (wake hint). */
-function makeCtx(root: string): PluginContext {
-    return {
-        storageRoot: root,
-        client: { session: { promptAsync: async () => ({}) } },
-    } as unknown as PluginContext
-}
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 /** Minimal ActiveTask fixture carrying a runId; overrides for per-test tweaks. */
 function makeActiveTask(runId: string | undefined, overrides: Partial<ActiveTask> = {}): ActiveTask {
@@ -106,7 +95,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
             activeTask: makeActiveTask("R1"),
         })
 
-        const result = await teamInterveneTool(makeCtx(root)).execute(
+        const result = await teamInterveneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "alice", body: "stop and rebase now" },
             makeToolContext(masterSid),
         )
@@ -138,7 +127,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
             activeTask: makeActiveTask("R2"),
         })
 
-        const result = await teamInterveneTool(makeCtx(root)).execute(
+        const result = await teamInterveneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "*", body: "all hands: switch to plan B" },
             makeToolContext(masterSid),
         )
@@ -170,7 +159,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
         // Pre-fill the mailbox so unread*1024 (1024) exceeds the 100-byte cap.
         await writeMailboxMessage(dir, "alice", regularMsg("alice", "pre-existing"))
 
-        const result = await teamInterveneTool(makeCtx(root)).execute(
+        const result = await teamInterveneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "alice", body: "should be rejected" },
             makeToolContext(masterSid),
         )
@@ -195,7 +184,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
             activeTask: makeActiveTask("R4"),
         })
 
-        const result = await teamInterveneTool(makeCtx(root)).execute(
+        const result = await teamInterveneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "alice", body: "member trying to intervene" },
             makeToolContext(memberSid),
         )
@@ -218,7 +207,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
             activeTask: undefined,
         })
 
-        const result = await teamInterveneTool(makeCtx(root)).execute(
+        const result = await teamInterveneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "alice", body: "intervene on idle team" },
             makeToolContext(masterSid),
         )
@@ -242,7 +231,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
             activeTask: makeActiveTask("R5"),
         })
 
-        const result = await teamInterveneTool(makeCtx(root)).execute(
+        const result = await teamInterveneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "alice", body: "intervene on inactive team" },
             makeToolContext(masterSid),
         )
@@ -265,7 +254,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
             activeTask: makeActiveTask("R6", { messagesSent: 5 }),
         })
 
-        const result = await teamInterveneTool(makeCtx(root)).execute(
+        const result = await teamInterveneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "alice", body: "directive does not count" },
             makeToolContext(masterSid),
         )
@@ -288,7 +277,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
             activeTask: makeActiveTask("R7"),
         })
 
-        const result = await teamInterveneTool(makeCtx(root)).execute(
+        const result = await teamInterveneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "nobody", body: "to a ghost" },
             makeToolContext(masterSid),
         )
@@ -308,7 +297,7 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
             activeTask: makeActiveTask(undefined),
         })
 
-        const result = await teamInterveneTool(makeCtx(root)).execute(
+        const result = await teamInterveneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "alice", body: "no runId yet" },
             makeToolContext(masterSid),
         )

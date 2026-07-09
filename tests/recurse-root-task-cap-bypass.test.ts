@@ -23,26 +23,12 @@
 
 import { afterEach, describe, expect, mock, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamRecurseTool } from "../src/tools/recurse.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMasterTeam, indexMember, setActiveTeam, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
-
-function makeCtx(storageRoot: string): PluginContext {
-    return {
-        storageRoot,
-        directory: "/app",
-        scope: "project",
-        client: {
-            session: {
-                promptAsync: mock(async () => {}),
-            },
-        },
-    } as unknown as PluginContext
-}
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const tracked: string[] = []
 afterEach(() => {
@@ -74,7 +60,7 @@ describe("recurse root task cap bypass (finding: recurse-root-task-cap-bypass)",
 
         // --- Start recurse. buildTask (recurse.ts:60) calls createTask for the
         //     root task WITHOUT checking maxTasks. ---
-        const tool = teamRecurseTool(makeCtx(root))
+        const tool = teamRecurseTool(makeCtx({ storageRoot: root, promptAsync: async () => {} }))
         const result = await tool.execute(
             {
                 team_id: "alpha",

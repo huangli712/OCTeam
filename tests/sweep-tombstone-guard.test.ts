@@ -24,38 +24,11 @@ import path from "node:path"
 
 import { afterAll, describe, expect, mock, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import { initTeamState, invalidateTeam, loadTeamState } from "../src/state/store.js"
 import { teamDir } from "../src/state/paths.js"
 import { sweepTeamOnce } from "../src/hooks.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
-
-async function absent(p: string): Promise<boolean> {
-    try {
-        await access(p)
-        return false
-    } catch {
-        return true
-    }
-}
-
-function makeCtx(storageRoot: string): PluginContext {
-    return {
-        storageRoot,
-        scope: "project",
-        directory: "/app",
-        client: {
-            app: { log: mock(async () => {}) },
-            session: {
-                abort: mock(async () => {}),
-                promptAsync: mock(async () => {}),
-                status: mock(async () => ({ data: {} })),
-                messages: mock(async () => ({ data: [] })),
-            },
-        },
-    } as unknown as PluginContext
-}
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 function parallelTask(): ActiveTask {
     return {
@@ -117,7 +90,7 @@ describe("sweep tombstone guard", () => {
         // the top of the runExclusive callback must bail BEFORE
         // releaseStaleReservations -> withLock -> acquireLock -> fs.mkdir can
         // recreate <teamDir>/mailbox/.
-        const ctx = makeCtx(root)
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async () => {}, abort: async () => {}, status: async () => ({ data: {} }) })
         await sweepTeamOnce(ctx, team, {})
 
         // The mailbox subdirectory (which releaseStaleReservations would
@@ -140,7 +113,7 @@ describe("sweep tombstone guard", () => {
         const team = await loadTeamState(root, "beta", leadSid)
         team.activeTask = parallelTask()
 
-        const ctx = makeCtx(root)
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async () => {}, abort: async () => {}, status: async () => ({ data: {} }) })
         // Should complete without throwing and without removing the directory.
         await sweepTeamOnce(ctx, team, {})
 

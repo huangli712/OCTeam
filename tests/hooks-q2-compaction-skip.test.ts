@@ -19,13 +19,12 @@
  */
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { MemberState, Message, TeamState } from "../src/core/types.js"
 import { createCompactingHook, createTransformHook } from "../src/hooks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { writeMailboxMessage } from "../src/messaging/mailbox.js"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const TEAM = "q2-team"
 
@@ -34,17 +33,6 @@ const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
-
-function makeCtx(root: string): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        client: {
-            session: { promptAsync: async () => ({}) },
-            app: { log: async () => ({}) },
-        },
-    } as unknown as PluginContext
-}
 
 function mkMessage(id: string, to: string): Message {
     return {
@@ -116,7 +104,7 @@ describe("Q2 compaction guard: createTransformHook skips injection when flag is 
         await writeMailboxMessage(directory, "alice", mkMessage("m-live", "alice"))
 
         const output = makeOutput(memberSid)
-        await createTransformHook(makeCtx(root))({} as never, output as never)
+        await createTransformHook(makeCtx({ storageRoot: root, promptAsync: async () => ({}) }))({} as never, output as never)
         expect(wasInjected(output)).toBe(true)
     })
 
@@ -137,7 +125,7 @@ describe("Q2 compaction guard: createTransformHook skips injection when flag is 
         await compacting({ sessionID: memberSid } as never, { context: [] } as never)
 
         const output = makeOutput(memberSid)
-        await createTransformHook(makeCtx(root))({} as never, output as never)
+        await createTransformHook(makeCtx({ storageRoot: root, promptAsync: async () => ({}) }))({} as never, output as never)
         expect(wasInjected(output)).toBe(false)
     })
 
@@ -162,7 +150,7 @@ describe("Q2 compaction guard: createTransformHook skips injection when flag is 
         Date.now = () => future
         try {
             const output = makeOutput(memberSid)
-            await createTransformHook(makeCtx(root))({} as never, output as never)
+            await createTransformHook(makeCtx({ storageRoot: root, promptAsync: async () => ({}) }))({} as never, output as never)
             // TTL expired: transform treats it as a live turn and injects.
             expect(wasInjected(output)).toBe(true)
         } finally {
@@ -174,7 +162,7 @@ describe("Q2 compaction guard: createTransformHook skips injection when flag is 
         // suppresses anything even with a normal clock.
         await writeMailboxMessage(directory, "carol", mkMessage("m-after", "carol"))
         const output2 = makeOutput(memberSid)
-        await createTransformHook(makeCtx(root))({} as never, output2 as never)
+        await createTransformHook(makeCtx({ storageRoot: root, promptAsync: async () => ({}) }))({} as never, output2 as never)
         expect(wasInjected(output2)).toBe(true)
     })
 
@@ -197,12 +185,12 @@ describe("Q2 compaction guard: createTransformHook skips injection when flag is 
 
         // First transform consumes the flag and skips. (No injection.)
         const out1 = makeOutput(memberSid)
-        await createTransformHook(makeCtx(root))({} as never, out1 as never)
+        await createTransformHook(makeCtx({ storageRoot: root, promptAsync: async () => ({}) }))({} as never, out1 as never)
         expect(wasInjected(out1)).toBe(false)
 
         // Second transform is a live turn — flag is gone, injection proceeds.
         const out2 = makeOutput(memberSid)
-        await createTransformHook(makeCtx(root))({} as never, out2 as never)
+        await createTransformHook(makeCtx({ storageRoot: root, promptAsync: async () => ({}) }))({} as never, out2 as never)
         expect(wasInjected(out2)).toBe(true)
     })
 })

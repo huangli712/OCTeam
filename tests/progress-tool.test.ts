@@ -7,14 +7,13 @@
  */
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, RunEvent, TeamState } from "../src/core/types.js"
 import { teamProgressTool } from "../src/tools/progress.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { appendJsonl } from "../src/state/locks.js"
 import { runEventsPath } from "../src/state/paths.js"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 const TEAM = "progress-team"
 
@@ -23,17 +22,6 @@ const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
-
-function makeCtx(root: string): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        client: {
-            session: { promptAsync: async () => ({}) },
-            app: { log: async () => ({}) },
-        },
-    } as unknown as PluginContext
-}
 
 function makeActiveTask(): ActiveTask {
     return {
