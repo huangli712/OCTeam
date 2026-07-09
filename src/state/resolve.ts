@@ -193,7 +193,7 @@ async function resolveMemberFromIndex(sessionID: string): Promise<ResolvedMember
  * the active team's master mailbox be drained like any other recipient.
  */
 export async function resolveTeamMember(
-    storageRoot: string,
+    _storageRoot: string,
     sessionID: string,
 ): Promise<ResolvedMember | null> {
     // Member path (1:1) — resolution lives in the shared helper.
@@ -222,7 +222,7 @@ export async function resolveTeamMember(
  * single-active interaction gate. Read-only tools pass `requireActive: false`.
  */
 export async function resolveCallerInTeam(
-    storageRoot: string,
+    _storageRoot: string,
     sessionID: string,
     teamId: string | undefined,
     opts: { requireActive?: boolean } = {},
