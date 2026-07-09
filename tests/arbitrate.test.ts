@@ -1,7 +1,4 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, readFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 
@@ -9,55 +6,24 @@ import { getExpectedMember } from "../src/orchestration/idle.js"
 import { handleArbitrateIdle } from "../src/orchestration/arbitrate.js"
 import { parseArbitrationDecision } from "../src/orchestration/decisions.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
-import { runEventsPath } from "../src/state/paths.js"
-import { waitUntil } from "../src/core/utils.js"
 import { buildSummary } from "../src/orchestration/summary.js"
 import { teamArbitrateTool } from "../src/tools/arbitrate.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import type { ActiveTask, ArbitrateTask, MemberState } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
-
-/** Poll the run events file until an event of `kind` is flushed to disk.
- *  recordEvent is fire-and-forget, so we wait deterministically for the
- *  append to land rather than sleeping a fixed duration (misc-003). */
-async function waitForEvent(directory: string, runId: string, kind: string): Promise<void> {
-    const p = runEventsPath(directory, runId)
-    await waitUntil(
-        () => existsSync(p) && readFileSync(p, "utf8").includes(`"kind":"${kind}"`),
-        { timeoutMs: 2000, pollMs: 10 },
-    )
-}
+import {
+    makeCtx,
+    makeMember,
+    makeState,
+    makeTeam,
+    tmpRoot,
+    waitForEvent,
+    type DispatchCall,
+} from "./helpers.js"
 
 // --- fixtures ---
-
-/** A recorded promptAsync call: which session got which text. */
-type DispatchCall = { sessionId: string; text: string }
-
-/**
- * Stub PluginContext: only ctx.client.session.promptAsync is exercised (by
- * dispatchToMember and deliverSummaryToLeader). Each call is recorded into
- * `calls` so tests can assert debate rounds, arbiter dispatch, and leader
- * delivery.
- */
-function makeCtx(calls: DispatchCall[] = []): PluginContext {
-    return {
-        client: {
-            session: {
-                promptAsync: async (args: any) => {
-                    calls.push({
-                        sessionId: args.path.id,
-                        text: args.body.parts[0].text,
-                    })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 /** Minimal valid arbitrate ActiveTask with sensible defaults. */
 function makeArbitrateTask(opts: Partial<ArbitrateTask> = {}): ArbitrateTask {
@@ -83,44 +49,6 @@ function makeArbitrateTask(opts: Partial<ArbitrateTask> = {}): ArbitrateTask {
         task: "Should we ship on Friday?",
         ...opts,
     } as ArbitrateTask
-}
-
-/** Minimal busy Team wrapper with a real tmp directory for file IO. */
-function makeTeam(opts: {
-    activeTask?: ActiveTask
-    members?: Array<Partial<MemberState> & Pick<MemberState, "name">>
-}): Team {
-    const members: MemberState[] = (opts.members ?? []).map(m => ({
-        name: m.name,
-        status: m.status ?? "idle",
-        initialized: m.initialized ?? true,
-        turnCount: m.turnCount ?? 0,
-        sessionId: m.sessionId,
-        agent: m.agent,
-        isMaster: m.isMaster,
-    }))
-    return {
-        version: 1,
-        teamRunId: "test-run",
-        teamName: "test-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {
-            maxMembers: 8,
-            maxParallelMembers: 4,
-            maxMessagesPerRun: 100,
-            maxWallClockMinutes: 30,
-            maxMemberTurns: 50,
-            maxTasks: 200,
-            messagePayloadMaxBytes: 32768,
-            messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: 0,
-        activeTask: opts.activeTask,
-        mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-arb-")),
-    } as unknown as Team
 }
 
 // --- parseArbitrationDecision (pure function) ---
@@ -219,7 +147,7 @@ describe("getExpectedMember: arbitrate type", () => {
 describe("handleArbitrateIdle Phase A: debate round progression", () => {
     test("single round (maxRounds=1): all debaters idle -> transitions to ruling phase", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeArbitrateTask({
             arbiterMember: "arbiter",
             disputants: ["alice", "bob"],
@@ -253,7 +181,7 @@ describe("handleArbitrateIdle Phase A: debate round progression", () => {
 
     test("multi-round: round 1 barrier advances to round 2 (re-dispatches debaters)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeArbitrateTask({
             arbiterMember: "arbiter",
             disputants: ["alice", "bob"],
@@ -288,7 +216,7 @@ describe("handleArbitrateIdle Phase A: debate round progression", () => {
 
     test("multi-round: round 2 barrier transitions to ruling phase", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeArbitrateTask({
             arbiterMember: "arbiter",
             disputants: ["alice", "bob"],
@@ -312,7 +240,7 @@ describe("handleArbitrateIdle Phase A: debate round progression", () => {
 
     test("not all debaters idle: barrier waits (no dispatch, no transition)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeArbitrateTask({
             arbiterMember: "arbiter",
             disputants: ["alice", "bob"],
@@ -338,7 +266,7 @@ describe("handleArbitrateIdle Phase A: debate round progression", () => {
 
     test("no active task is a safe no-op", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const team = makeTeam({ members: [{ name: "arbiter", sessionId: "s" }] })
         await expect(handleArbitrateIdle(ctx, team)).resolves.toBeUndefined()
         expect(calls).toHaveLength(0)
@@ -350,7 +278,7 @@ describe("handleArbitrateIdle Phase A: debate round progression", () => {
 describe("handleArbitrateIdle Phase B: ruling termination", () => {
     test("valid ruling: delivers summary and clears the task", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeArbitrateTask({
             arbiterMember: "arbiter",
             arbitrationStage: true,
@@ -383,7 +311,7 @@ describe("handleArbitrateIdle Phase B: ruling termination", () => {
 
     test("unparseable ruling: fails the run with decision_parse_failure", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeArbitrateTask({
             arbiterMember: "arbiter",
             arbitrationStage: true,
@@ -415,7 +343,7 @@ describe("handleArbitrateIdle Phase B: ruling termination", () => {
 describe("handleArbitrateIdle boundary: arbiter unavailable", () => {
     test("rounds exhausted but arbiter has no session -> fails with arbiter_unavailable", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeArbitrateTask({
             arbiterMember: "arbiter",
             disputants: ["alice", "bob"],
@@ -453,7 +381,7 @@ describe("handleArbitrateIdle boundary: arbiter unavailable", () => {
 describe("arbitrated event recording", () => {
     test("Phase B records an arbitrated event naming the arbiter and ruling", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const ruling = "delay to Monday"
         const task = makeArbitrateTask({
             arbiterMember: "arbiter",
@@ -487,7 +415,7 @@ describe("arbitrated event recording", () => {
 describe("round event recording", () => {
     test("advancing to round 2 records a round event", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeArbitrateTask({
             arbiterMember: "arbiter",
             disputants: ["alice", "bob"],
