@@ -54,7 +54,7 @@ import {
     findActiveWorkflowStepIndexForMember,
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
-} from "./workflow-dag.js";
+} from "./dag.js";
 import { parseSelection, parseVerdict } from "./decisions.js";
 import { maybeTriggerSignoff } from "./signoff.js";
 import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js";

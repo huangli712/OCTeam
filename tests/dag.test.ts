@@ -6,7 +6,7 @@ import {
     isWorkflowJoinSatisfied,
     readyWorkflowStepIndices,
     validateWorkflowDag,
-} from "../src/orchestration/workflow-dag.js"
+} from "../src/orchestration/dag.js"
 
 function workflowTask(fields: {
     readonly currentStageIndex: number

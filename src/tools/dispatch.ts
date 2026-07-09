@@ -53,7 +53,7 @@ import {
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
     workflowStepActor,
-} from "../orchestration/workflow-dag.js";
+} from "../orchestration/dag.js";
 
 /**
  * Reset interrupted task claims: reap stale locks + reset any claimed/in_progress
