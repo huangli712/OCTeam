@@ -33,8 +33,11 @@ const SAVE_BACKOFF_MS = 100
  *
  * Runs inside the caller's team.mutex.runExclusive block; retries extend the
  * mutex hold by at most ~200ms, acceptable for event-handler and sweep paths.
+ *
+ * @internal Exported for hooks-error-swallow.test.ts. Production code calls
+ * this only from createEventHandler and sweepTeamOnce.
  */
-async function persistTeamState(
+export async function persistTeamState(
     ctx: PluginContext,
     team: Parameters<typeof saveTeamState>[0],
     label: string,

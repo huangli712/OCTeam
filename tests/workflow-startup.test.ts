@@ -51,47 +51,129 @@ async function setBusy(root: string, sid: string, type: string): Promise<void> {
 }
 
 // -----------------------------------------------------------------------
-// team_parallel
+// Shared startup validation: non-master / inactive / busy / signoff_decider
 // -----------------------------------------------------------------------
-describe("team_parallel startup validation", () => {
-    test("non-master → rejected", async () => {
-        const root = tmpRoot("par-nomaster")
-        const masterSid = "ses_par_m"
-        const memberSid = "ses_par_a"
-        tracked.push(masterSid, memberSid)
-        await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
-        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", mode: "isolated", task: "do x" },
-            makeToolContext(memberSid),
-        )
-        expect(result).toContain("master-only")
-    })
 
-    test("inactive team → rejected", async () => {
-        const root = tmpRoot("par-inactive")
-        const sid = "ses_par_inact"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, undefined) // no activatedAt
-        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", mode: "isolated", task: "do x" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("Error")
-    })
+type TeamToolFn = typeof teamParallelTool
 
-    test("already busy → rejected", async () => {
-        const root = tmpRoot("par-busy")
-        const sid = "ses_par_busy"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, Date.now())
-        await setBusy(root, sid, "parallel")
-        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", mode: "isolated", task: "do x" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("already has an active orchestration")
-    })
+interface StartupFixture {
+    name: string
+    tool: TeamToolFn
+    prefix: string
+    busyType: string
+    validArgs: Record<string, unknown>
+    signoff?: boolean
+}
 
+const startupFixtures: StartupFixture[] = [
+    {
+        name: "team_parallel",
+        tool: teamParallelTool,
+        prefix: "par",
+        busyType: "parallel",
+        validArgs: { team_id: "alpha", mode: "isolated", task: "do x" },
+        signoff: true,
+    },
+    {
+        name: "team_consensus",
+        tool: teamConsensusTool,
+        prefix: "con",
+        busyType: "consensus",
+        validArgs: { team_id: "alpha", topic: "use sqlite?" },
+    },
+    {
+        name: "team_pipeline",
+        tool: teamPipelineTool,
+        prefix: "pip",
+        busyType: "pipeline",
+        validArgs: { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
+        signoff: true,
+    },
+    {
+        name: "team_workflow",
+        tool: teamWorkflowTool,
+        prefix: "wf",
+        busyType: "workflow",
+        validArgs: { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
+        signoff: true,
+    },
+    {
+        name: "team_loop",
+        tool: teamLoopTool,
+        prefix: "loop",
+        busyType: "loop",
+        validArgs: { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
+    },
+    {
+        name: "team_delegate",
+        tool: teamDelegateTool,
+        prefix: "del",
+        busyType: "delegate",
+        validArgs: { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
+        signoff: true,
+    },
+]
+
+for (const fx of startupFixtures) {
+    describe(`${fx.name} startup validation`, () => {
+        test("non-master → rejected", async () => {
+            const root = tmpRoot(`${fx.prefix}-nomaster`)
+            const masterSid = `ses_${fx.prefix}_m`
+            const memberSid = `ses_${fx.prefix}_a`
+            tracked.push(masterSid, memberSid)
+            await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
+            const result = await fx.tool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
+                fx.validArgs,
+                makeToolContext(memberSid),
+            )
+            expect(result).toContain("master-only")
+        })
+
+        test("inactive team → rejected", async () => {
+            const root = tmpRoot(`${fx.prefix}-inactive`)
+            const sid = `ses_${fx.prefix}_inact`
+            tracked.push(sid)
+            await setupTeam(root, sid, undefined, undefined)
+            const result = await fx.tool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
+                fx.validArgs,
+                makeToolContext(sid),
+            )
+            expect(result).toContain("Error")
+        })
+
+        test("already busy → rejected", async () => {
+            const root = tmpRoot(`${fx.prefix}-busy`)
+            const sid = `ses_${fx.prefix}_busy`
+            tracked.push(sid)
+            await setupTeam(root, sid, undefined, Date.now())
+            await setBusy(root, sid, fx.busyType)
+            const result = await fx.tool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
+                fx.validArgs,
+                makeToolContext(sid),
+            )
+            expect(result).toContain("already has an active orchestration")
+        })
+
+        if (fx.signoff) {
+            test("signoff_decider not a member → rejected", async () => {
+                const root = tmpRoot(`${fx.prefix}-sd`)
+                const sid = `ses_${fx.prefix}_sd`
+                tracked.push(sid)
+                await setupTeam(root, sid, [makeMember("alice")], Date.now())
+                const result = await fx.tool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
+                    { ...fx.validArgs, signoff_policy: "decider", signoff_decider: "bob" },
+                    makeToolContext(sid),
+                )
+                expect(result).toContain("not a member")
+            })
+        }
+    })
+}
+
+// -----------------------------------------------------------------------
+// team_parallel — type-specific validations
+// -----------------------------------------------------------------------
+describe("team_parallel type-specific validation", () => {
     test("isolated without task → rejected", async () => {
         const root = tmpRoot("par-notask")
         const sid = "ses_par_notask"
@@ -114,18 +196,6 @@ describe("team_parallel startup validation", () => {
             makeToolContext(sid),
         )
         expect(result).toContain("requires `tasks`")
-    })
-
-    test("signoff_decider not a member → rejected", async () => {
-        const root = tmpRoot("par-sd")
-        const sid = "ses_par_sd"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", mode: "isolated", task: "do x", signoff_policy: "decider", signoff_decider: "bob" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("not a member")
     })
 
     test("reduce_policy 'select' without reducer_member → rejected", async () => {
@@ -166,102 +236,9 @@ describe("team_parallel startup validation", () => {
 })
 
 // -----------------------------------------------------------------------
-// team_consensus
+// team_pipeline — type-specific validations
 // -----------------------------------------------------------------------
-describe("team_consensus startup validation", () => {
-    test("non-master → rejected", async () => {
-        const root = tmpRoot("con-nomaster")
-        const masterSid = "ses_con_m"
-        const memberSid = "ses_con_a"
-        tracked.push(masterSid, memberSid)
-        await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
-        const result = await teamConsensusTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", topic: "use sqlite?" },
-            makeToolContext(memberSid),
-        )
-        expect(result).toContain("master-only")
-    })
-
-    test("inactive team → rejected", async () => {
-        const root = tmpRoot("con-inactive")
-        const sid = "ses_con_inact"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, undefined)
-        const result = await teamConsensusTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", topic: "use sqlite?" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("Error")
-    })
-
-    test("already busy → rejected", async () => {
-        const root = tmpRoot("con-busy")
-        const sid = "ses_con_busy"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, Date.now())
-        await setBusy(root, sid, "consensus")
-        const result = await teamConsensusTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", topic: "use sqlite?" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("already has an active orchestration")
-    })
-})
-
-// -----------------------------------------------------------------------
-// team_pipeline
-// -----------------------------------------------------------------------
-describe("team_pipeline startup validation", () => {
-    test("non-master → rejected", async () => {
-        const root = tmpRoot("pip-nomaster")
-        const masterSid = "ses_pip_m"
-        const memberSid = "ses_pip_a"
-        tracked.push(masterSid, memberSid)
-        await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
-        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
-            makeToolContext(memberSid),
-        )
-        expect(result).toContain("master-only")
-    })
-
-    test("inactive team → rejected", async () => {
-        const root = tmpRoot("pip-inactive")
-        const sid = "ses_pip_inact"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, undefined)
-        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("Error")
-    })
-
-    test("already busy → rejected", async () => {
-        const root = tmpRoot("pip-busy")
-        const sid = "ses_pip_busy"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, Date.now())
-        await setBusy(root, sid, "pipeline")
-        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("already has an active orchestration")
-    })
-
-    test("signoff_decider not a member → rejected", async () => {
-        const root = tmpRoot("pip-sd")
-        const sid = "ses_pip_sd"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "alice", task: "do x" }], signoff_policy: "decider", signoff_decider: "bob" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("not a member")
-    })
-
+describe("team_pipeline type-specific validation", () => {
     test("unknown stage member → rejected", async () => {
         const root = tmpRoot("pip-unknown")
         const sid = "ses_pip_unk"
@@ -288,47 +265,9 @@ describe("team_pipeline startup validation", () => {
 })
 
 // -----------------------------------------------------------------------
-// team_workflow
+// team_workflow — type-specific validations
 // -----------------------------------------------------------------------
-describe("team_workflow startup validation", () => {
-    test("non-master -> rejected", async () => {
-        const root = tmpRoot("wf-nomaster")
-        const masterSid = "ses_wf_m"
-        const memberSid = "ses_wf_a"
-        tracked.push(masterSid, memberSid)
-        await setupTeam(root, masterSid, [makeMember("alice", memberSid), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
-            makeToolContext(memberSid),
-        )
-        expect(result).toContain("master-only")
-    })
-
-    test("inactive team -> rejected", async () => {
-        const root = tmpRoot("wf-inactive")
-        const sid = "ses_wf_inact"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, undefined)
-        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("Error")
-    })
-
-    test("already busy -> rejected", async () => {
-        const root = tmpRoot("wf-busy")
-        const sid = "ses_wf_busy"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, Date.now())
-        await setBusy(root, sid, "workflow")
-        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("already has an active orchestration")
-    })
-
+describe("team_workflow type-specific validation", () => {
     test("empty steps -> rejected", async () => {
         const root = tmpRoot("wf-empty")
         const sid = "ses_wf_empty"
@@ -1950,62 +1889,12 @@ describe("team_workflow startup validation", () => {
         )
         expect(result).toContain("unknown member")
     })
-
-    test("signoff_decider not a member -> rejected", async () => {
-        const root = tmpRoot("wf-sd")
-        const sid = "ses_wf_sd"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }], signoff_policy: "decider", signoff_decider: "bob" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("not a member")
-    })
 })
 
 // -----------------------------------------------------------------------
-// team_loop
+// team_loop — type-specific validations
 // -----------------------------------------------------------------------
-describe("team_loop startup validation", () => {
-    test("non-master → rejected", async () => {
-        const root = tmpRoot("loop-nomaster")
-        const masterSid = "ses_loop_m"
-        const memberSid = "ses_loop_a"
-        tracked.push(masterSid, memberSid)
-        await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
-        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
-            makeToolContext(memberSid),
-        )
-        expect(result).toContain("master-only")
-    })
-
-    test("inactive team → rejected", async () => {
-        const root = tmpRoot("loop-inactive")
-        const sid = "ses_loop_inact"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, undefined)
-        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("Error")
-    })
-
-    test("already busy → rejected", async () => {
-        const root = tmpRoot("loop-busy")
-        const sid = "ses_loop_busy"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, Date.now())
-        await setBusy(root, sid, "loop")
-        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("already has an active orchestration")
-    })
-
+describe("team_loop type-specific validation", () => {
     test("decider = 'master' → rejected", async () => {
         const root = tmpRoot("loop-dmaster")
         const sid = "ses_loop_dm"
@@ -2044,47 +1933,9 @@ describe("team_loop startup validation", () => {
 })
 
 // -----------------------------------------------------------------------
-// team_delegate
+// team_delegate — type-specific validations
 // -----------------------------------------------------------------------
-describe("team_delegate startup validation", () => {
-    test("non-master → rejected", async () => {
-        const root = tmpRoot("del-nomaster")
-        const masterSid = "ses_del_m"
-        const memberSid = "ses_del_a"
-        tracked.push(masterSid, memberSid)
-        await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
-        const result = await teamDelegateTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
-            makeToolContext(memberSid),
-        )
-        expect(result).toContain("master-only")
-    })
-
-    test("inactive team → rejected", async () => {
-        const root = tmpRoot("del-inactive")
-        const sid = "ses_del_inact"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, undefined)
-        const result = await teamDelegateTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("Error")
-    })
-
-    test("already busy → rejected", async () => {
-        const root = tmpRoot("del-busy")
-        const sid = "ses_del_busy"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, Date.now())
-        await setBusy(root, sid, "delegate")
-        const result = await teamDelegateTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("already has an active orchestration")
-    })
-
+describe("team_delegate type-specific validation", () => {
     test("unknown blockedBy ref → rejected", async () => {
         const root = tmpRoot("del-ref")
         const sid = "ses_del_ref"
@@ -2101,22 +1952,5 @@ describe("team_delegate startup validation", () => {
         )
         expect(result).toContain("unknown blockedBy")
         expect(result).toContain("t2")
-    })
-
-    test("signoff_decider not a member → rejected", async () => {
-        const root = tmpRoot("del-sd")
-        const sid = "ses_del_sd"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamDelegateTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            {
-                team_id: "alpha",
-                tasks: [{ subject: "s1", description: "d1" }],
-                signoff_policy: "decider",
-                signoff_decider: "bob",
-            },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("not a member")
     })
 })
