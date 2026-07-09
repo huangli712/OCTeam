@@ -17,6 +17,7 @@ export type ActivateDecision =
     | { kind: "ok" }
     | { kind: "error"; message: string }
 
+/** Determine whether team_activate should proceed, be a no-op, or fail. */
 export function decideActivate(opts: {
     targetIsAlreadyActive: boolean
     outgoingExists: boolean

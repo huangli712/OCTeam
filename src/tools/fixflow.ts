@@ -250,6 +250,7 @@ async function dispatchWorkflowFixOp(ctx: PluginContext, team: Team, task: Workf
     }
 }
 
+/** Repair a stuck or interrupted workflow step by redispatch, skip, advance, fail, or reassign. */
 export function teamFixWorkflowTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
@@ -282,3 +283,6 @@ export function teamFixWorkflowTool(ctx: PluginContext): ToolDefinition {
         },
     })
 }
+/**
+ * Workflow repair tools for redispatch, skip, advance, fail, and reassign operations.
+ */

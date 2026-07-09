@@ -15,6 +15,7 @@ import { finishRun } from "./summary.js"
 import { waitForBarrier } from "./barriers.js"
 import { maybeTriggerReduce, maybeTriggerSignoff } from "./signoff.js"
 
+/** Single-barrier fan-in for parallel mode: wait for all members, then maybe reduce, signoff, and deliver. */
 export async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task) return

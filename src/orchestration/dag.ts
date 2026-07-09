@@ -1,9 +1,16 @@
+/**
+ * Workflow DAG traversal: step actor resolution, ready-set calculation,
+ * join satisfaction, fanout validation, and branch identity helpers.
+ */
+
 import type { WorkflowBranchRange, WorkflowStep, WorkflowTask } from "../core/types.js"
 
+/** Outcome of validateWorkflowDag: either ok or a reason string. */
 export type WorkflowDagValidationResult =
     | { readonly ok: true }
     | { readonly ok: false; readonly reason: string }
 
+/** Thrown when a workflow step kind exhausts the never type (compile-time invariant). */
 export class WorkflowDagInvariantError extends Error {
     constructor(value: never) {
         super(`Unexpected workflow step kind: ${String(value)}`)
@@ -15,12 +22,14 @@ function assertNever(value: never): never {
     throw new WorkflowDagInvariantError(value)
 }
 
+/** Return the set of step indices currently active for dispatch. */
 export function getActiveWorkflowStepIndices(
     task: Pick<WorkflowTask, "activeStepIndices" | "currentStageIndex">,
 ): readonly number[] {
     return task.activeStepIndices ?? [task.currentStageIndex]
 }
 
+/** Resolve the dispatched or primary actor name for a workflow step. */
 export function workflowStepActor(step: WorkflowStep | undefined): string | null {
     if (step === undefined) return null
 
@@ -38,6 +47,7 @@ export function workflowStepActor(step: WorkflowStep | undefined): string | null
     }
 }
 
+/** Collect non-null actor names for all active workflow steps. */
 export function getActiveWorkflowStepActors(
     task: Pick<WorkflowTask, "activeStepIndices" | "currentStageIndex" | "steps">,
 ): readonly string[] {
@@ -52,6 +62,7 @@ export function getActiveWorkflowStepActors(
     return actors
 }
 
+/** Find the active step index a member is dispatched to, or null if none. */
 export function findActiveWorkflowStepIndexForMember(
     task: Pick<WorkflowTask, "activeStepIndices" | "currentStageIndex" | "steps">,
     memberName: string,
@@ -73,6 +84,7 @@ export function findActiveWorkflowStepIndexForMember(
     return null
 }
 
+/** Collect step indices whose actors are ready (not yet completed). */
 export function readyWorkflowStepIndices(
     task: Pick<WorkflowTask, "activeStepIndices" | "currentStageIndex" | "steps">,
 ): readonly number[] {
@@ -86,6 +98,7 @@ export function readyWorkflowStepIndices(
     return ready
 }
 
+/** Check whether a join step's fanout branches are all terminal (completed or errored). */
 export function isWorkflowJoinSatisfied(steps: readonly WorkflowStep[], joinStep: WorkflowStep): boolean {
     switch (joinStep.kind) {
         case "join":
@@ -99,6 +112,7 @@ export function isWorkflowJoinSatisfied(steps: readonly WorkflowStep[], joinStep
     }
 }
 
+/** Validate that the workflow step list contains no recursive fanout. */
 export function validateWorkflowDag(steps: readonly WorkflowStep[]): WorkflowDagValidationResult {
     for (let index = 0; index < steps.length; index += 1) {
         const step = steps[index]
@@ -186,6 +200,7 @@ function collectWorkflowSuccessors(
     collectReadyWorkflowStepIndices(steps, index + 1, ready)
 }
 
+/** Check whether a step belongs to the same fanout branch as the given metadata. */
 export function isSameWorkflowBranch(
     step: WorkflowStep,
     branch: NonNullable<WorkflowStep["branch"]>,

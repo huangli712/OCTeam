@@ -18,7 +18,7 @@
  * rendered as a high-priority `[DIRECTIVE]` apparently from the master — a
  * cross-member privilege-escalation vector. The master's own drain path
  * (`deliverQueuedResultsToMaster`) filters such self-directed forgeries as a
- * partial mitigation; see ARCHITECTURE.md "Mailbox authenticity".
+ * partial mitigation.
  *
  * This is an accepted, documented limitation of the shared-process,
  * shared-filesystem architecture: an HMAC key cannot be hidden from a member

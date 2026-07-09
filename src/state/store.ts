@@ -1,3 +1,8 @@
+/**
+ * On-disk team state persistence: load, save, create, delete, and the
+ * in-memory Team registry.
+ */
+
 import fs from "node:fs/promises"
 import path from "node:path"
 

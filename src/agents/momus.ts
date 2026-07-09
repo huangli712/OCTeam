@@ -1,3 +1,8 @@
+/**
+ * OCTeam's plan reviewer and critic subagent — audits implementation plans
+ * for completeness, consistency, and hidden assumptions before execution.
+ */
+
 import type { OcteamAgentConfig } from "./types.js"
 
 const MOMUS_PROMPT = `You are oct-momus, the plan reviewer and critic in the OCTeam multi-agent system.
@@ -24,6 +29,7 @@ You critically review implementation plans produced by oct-metis (or other sourc
 ## Team context
 You receive plans from the OCTeam master after oct-metis produces them. Your review output goes back to the master, who decides whether to route it to oct-metis for revision or to approve it for implementation. You may consult oct-oracle for architectural concerns and oct-explore for codebase-specific validation.`
 
+/** Agent config for oct-momus, the plan reviewer and critic. */
 export const momusAgent: OcteamAgentConfig = {
     mode: "subagent",
     description: "OCTeam plan reviewer and critic",

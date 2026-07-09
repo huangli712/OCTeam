@@ -34,6 +34,7 @@ function validateApproval(team: Team, approvalId: string | undefined): ApprovalR
     return task.approvalRequest
 }
 
+/** Apply an approval decision to the active task, advancing or failing the orchestration. */
 export async function applyApprovalDecision(
     ctx: PluginContext,
     team: Team,
@@ -170,10 +171,12 @@ function approvalTool(ctx: PluginContext, approved: boolean): ToolDefinition {
     })
 }
 
+/** Approve a pending human-approval request for the current orchestration. */
 export function teamApproveTool(ctx: PluginContext): ToolDefinition {
     return approvalTool(ctx, true)
 }
 
+/** Reject a pending human-approval request for the current orchestration. */
 export function teamRejectTool(ctx: PluginContext): ToolDefinition {
     return approvalTool(ctx, false)
 }

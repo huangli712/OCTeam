@@ -23,6 +23,7 @@ import {
  * Build the router member's dispatch prompt: the input to route, the available
  * branches, and the <route> decision format the router must emit.
  */
+/** Build the router prompt text describing branches for content-based routing. */
 export function buildRouterPrompt(teamName: string, input: string, branches: RouteBranch[]): string {
     const list = branches
         .map(b => {
@@ -41,6 +42,7 @@ export function buildRouterPrompt(teamName: string, input: string, branches: Rou
     )
 }
 
+/** Content-based routing: a router inspects input and dispatches to matching branches. */
 export function teamRouteTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

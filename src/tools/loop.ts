@@ -16,6 +16,7 @@ import {
     startOrchestration,
 } from "../orchestration/shared.js"
 
+/** Run a corrective loop with a decider that reviews and decides whether to continue. */
 export function teamLoopTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

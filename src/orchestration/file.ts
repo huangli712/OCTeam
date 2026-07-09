@@ -1,3 +1,9 @@
+/**
+ * Workflow file loader: read, parse, template, and validate a workflow_file
+ * JSON against the supported schema version. Also exports the shared step-array
+ * validator (`validateWorkflowSteps`) used by the pure planner-reuse path.
+ */
+
 import fs from "node:fs/promises"
 import path from "node:path"
 
@@ -236,6 +242,7 @@ function isValidWhere(value: unknown): boolean {
     return true
 }
 
+/** Load, parse, template, and validate a workflow_file JSON from disk. */
 export async function loadWorkflowFile(baseDir: string, relPath: string, vars: Record<string, string>): Promise<WorkflowFileResult> {
     const resolved = resolveWorkflowFilePath(baseDir, relPath)
     if ("error" in resolved) return resolved

@@ -1,5 +1,5 @@
 /**
- * team_results / team_result_get tools (roadmap #2).
+ * team_results / team_result_get tools.
  *
  * Read-only retrieval of persisted run records (runs/<runId>/record.json + the
  * per-member full outputs runs/<runId>/<member>.md). Both are any-member,
@@ -215,6 +215,7 @@ function formatArenaPreview(arena: NonNullable<RunRecord["arena"]>, reason: stri
     return `### arena\n${lines.join("\n")}`
 }
 
+/** List recent run records for a team with formatted summaries. */
 export function teamResultsTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
@@ -237,6 +238,7 @@ export function teamResultsTool(ctx: PluginContext): ToolDefinition {
     })
 }
 
+/** Get detailed output from a single orchestration run by run ID or defaulting to latest. */
 export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

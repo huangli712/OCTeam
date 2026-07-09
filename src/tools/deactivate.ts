@@ -10,6 +10,7 @@ import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { logSwallowed } from "../core/log.js"
 import { clearActiveTeam } from "../state/resolve.js"
 
+/** Deactivate the currently active team for this session. */
 export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

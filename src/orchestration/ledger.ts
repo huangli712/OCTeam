@@ -21,6 +21,7 @@ function hasWorkflowBranchTree(steps: readonly WorkflowStep[]): boolean {
     return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
 }
 
+/** Render the target step label for a gate step (e.g. "step 3" or "nearest task"). */
 export function workflowTargetLabel(s: WorkflowStep): string {
     if (s.targetStepIndices !== undefined && s.targetStepIndices.length > 0) {
         const targets = s.targetStepIndices.map(index => index + 1)
@@ -29,6 +30,7 @@ export function workflowTargetLabel(s: WorkflowStep): string {
     return s.targetStepIndex === undefined ? "nearest task" : `step ${s.targetStepIndex + 1}`
 }
 
+/** Render verdict metrics (score, confidence, issue count) as a bracketed string. */
 export function workflowVerdictMetrics(s: WorkflowStep): string {
     const metrics: string[] = []
     if (s.score !== undefined) metrics.push(`score=${s.score}`)
@@ -37,6 +39,7 @@ export function workflowVerdictMetrics(s: WorkflowStep): string {
     return metrics.length > 0 ? ` [${metrics.join(", ")}]` : ""
 }
 
+/** Classify a fanout branch status: completed, skipped, errored, or pending. */
 export function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
     const fanout = fanoutStep.fanout
     if (fanout === undefined) throw new Error("workflow fanout step missing fanout metadata")
@@ -58,6 +61,7 @@ function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: Wo
         .join(", ")
 }
 
+/** Format the per-issue detail lines for a gate step's structured verdict, severity-sorted. */
 export function formatWorkflowIssueDetail(s: WorkflowStep): string {
     const issues = s.issues
     if (!issues || issues.length === 0) return ""
@@ -78,6 +82,7 @@ function formatWorkflowBranchLine(steps: readonly WorkflowStep[], fanoutStep: Wo
     return `  - Branch ${branchId} [${status}] steps ${range.startIndex + 1}-${range.endIndex + 1}`
 }
 
+/** Format a single workflow step as a 1-based ledger line (task/gate/fanout/join). */
 export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: WorkflowStep, index: number): string {
     const idTag = step.id ? ` (${step.id})` : ""
     switch (step.kind) {
@@ -111,6 +116,7 @@ export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: W
     }
 }
 
+/** Render the full per-step workflow ledger, including branch sub-trees under fanout markers. */
 export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): string[] {
     if (!hasWorkflowBranchTree(steps)) return steps.map((step, index) => formatWorkflowLedgerStep(steps, step, index))
 
@@ -156,6 +162,7 @@ function formatWorkflowTaskOutput(step: WorkflowStep, index: number, headingLeve
     return `${headingLevel} Step ${index + 1} - ${step.member ?? "?"}\n${truncateOutput(step.output ?? "")}`
 }
 
+/** Render completed task-step outputs as a list of sections, with fanout branches grouped under headers. */
 export function formatWorkflowOutputSections(steps: readonly WorkflowStep[]): string[] {
     if (!hasWorkflowBranchTree(steps)) {
         return steps

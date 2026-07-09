@@ -1,3 +1,9 @@
+/**
+ * Construct the shared PluginContext from host-provided PluginInput — the
+ * single context object passed to every tool handler, event handler, and
+ * transform hook.
+ */
+
 import os from "node:os"
 import path from "node:path"
 

@@ -47,6 +47,7 @@ export function stateLockPath(teamDirectory: string): string {
 
 // --- mailbox/ ---
 
+/** Mailbox directory path for a team: `<teamDirectory>/mailbox`. */
 export function mailboxDir(teamDirectory: string): string {
     return path.join(teamDirectory, "mailbox")
 }
@@ -87,15 +88,18 @@ export function mailboxLockPath(teamDirectory: string, recipient: string): strin
 
 // --- tasks/ ---
 
+/** Tasks directory path for a team: `<teamDirectory>/tasks`. */
 export function tasksDir(teamDirectory: string): string {
     return path.join(teamDirectory, "tasks")
 }
 
+/** Path to a single task file: `<teamDirectory>/tasks/<taskId>.json`. */
 export function taskPath(teamDirectory: string, taskId: string): string {
     assertSafeSegment(taskId, "taskPath", "taskId")
     return path.join(tasksDir(teamDirectory), `${taskId}.json`)
 }
 
+/** Claims directory path: `<teamDirectory>/tasks/claims`. */
 export function claimsDir(teamDirectory: string): string {
     return path.join(tasksDir(teamDirectory), "claims")
 }
@@ -121,10 +125,12 @@ export function claimMutexPath(teamDirectory: string): string {
 
 // --- worktrees/ (only when member worktree: true) ---
 
+/** Worktrees directory path for a team: `<teamDirectory>/worktrees`. */
 export function worktreesDir(teamDirectory: string): string {
     return path.join(teamDirectory, "worktrees")
 }
 
+/** Path to a member's worktree directory: `<teamDirectory>/worktrees/<memberName>`. */
 export function worktreePath(teamDirectory: string, memberName: string): string {
     assertSafeSegment(memberName, "worktreePath", "memberName")
     return path.join(worktreesDir(teamDirectory), memberName)
@@ -161,6 +167,7 @@ export function assertSafeSegment(s: string, fn: string, label: string): void {
     }
 }
 
+/** Runs directory path for a team: `<teamDirectory>/runs`. */
 export function runsDir(teamDirectory: string): string {
     return path.join(teamDirectory, "runs")
 }

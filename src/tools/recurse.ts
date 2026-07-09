@@ -24,6 +24,7 @@ import {
     validateSignoff,
 } from "../orchestration/shared.js"
 
+/** Hierarchical recursive decomposition of a root task into subtasks. */
 export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

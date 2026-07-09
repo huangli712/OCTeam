@@ -67,6 +67,7 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
     })
 }
 
+/** Release stale resources for every team left in a non-terminal state after a crash. */
 export async function reconcileCrashedTeams(ctx: PluginContext): Promise<void> {
     // Project scope: teams live under <projectStorageRoot>/<leadSessionId>/teams/.
     for (const { leadSessionId, teamName } of await listAllTeams(ctx.projectStorageRoot, true)) {

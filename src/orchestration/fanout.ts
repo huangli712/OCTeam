@@ -34,6 +34,7 @@ import { workflowFanoutAllErroredReason, workflowFanoutOverToleranceReason, work
 // Total byte budget for joined output (mirrors workflow.ts UPSTREAM_TOTAL_CAP).
 const JOINED_TOTAL_CAP = 65_536;
 
+/** Result of evaluating fanout branch errors against join tolerance policy. */
 export type WorkflowFanoutErrorResult =
     | { readonly kind: "not_fanout" }
     | { readonly kind: "within_tolerance" }
@@ -41,12 +42,14 @@ export type WorkflowFanoutErrorResult =
 
 // --- shared step helpers (used by fanout.ts + workflow.ts) ---
 
+/** Mark a workflow step as dispatched with a timestamp. */
 export function markWorkflowStepDispatched(step: WorkflowStep): void {
     const now = Date.now();
     step.startedAt ??= now;
     step.dispatchedAt = now;
 }
 
+/** Mark a workflow step as completed with a duration computed from startedAt. */
 export function markWorkflowStepCompleted(step: WorkflowStep): void {
     const now = Date.now();
     step.startedAt ??= step.dispatchedAt ?? now;
@@ -60,6 +63,7 @@ function hasLiveSession(
     return member?.sessionId !== undefined && member.status !== "errored";
 }
 
+/** Resolve a live (non-errored, has session) actor from primary or fallback name. */
 export function liveWorkflowActor(
     team: Team,
     primaryName: string | undefined,
@@ -133,6 +137,7 @@ function buildJoinedWorkflowOutput(
     return blocks.join("\n\n");
 }
 
+/** Build joined output for a specific branch within a fanout. */
 export function buildBranchWorkflowOutput(
     steps: WorkflowStep[],
     joinIndex: number,
@@ -176,6 +181,7 @@ function buildWorkflowSelectPrompt(
     return `[Workflow select task] You are the selector for workflow join step ${joinIndex + 1}. Choose exactly one winning branch id from: ${branchIds.join(", ")}. Emit ONLY <selection>{"winner":"branch_id","rationale":"..."}</selection>.\n\n${buildJoinedWorkflowOutput(steps, joinIndex)}`;
 }
 
+/** Dispatch the reducer/selector member for a reduce or select join policy. */
 export async function dispatchWorkflowJoinReducer(
     ctx: PluginContext,
     team: Team,
@@ -221,6 +227,7 @@ function pushUniqueBranchId(
         branchIds.push(branchId);
 }
 
+/** Collect all branch ids belonging to a fanout join. */
 export function branchIdsForJoin(
     steps: WorkflowStep[],
     join: NonNullable<WorkflowStep["join"]>,
@@ -266,6 +273,7 @@ type WorkflowJoinAdvanceResult =
     | "failed"
     | "noop";
 
+/** Complete a join step: dispatch reducer if needed, mark completed, or return waiting. */
 export async function completeWorkflowJoinStep(
     ctx: PluginContext,
     team: Team,
@@ -454,6 +462,7 @@ function recordedErroredBranchForMember(
     return null;
 }
 
+/** Mark a fanout branch as errored: skip its steps, update error sets, evaluate tolerance. */
 export function markWorkflowFanoutBranchErrored(
     task: WorkflowTask,
     memberName: string,
@@ -486,6 +495,7 @@ export function markWorkflowFanoutBranchErrored(
     return evaluateWorkflowFanoutError(steps, branch.joinIndex);
 }
 
+/** Handle a dispatch failure: mark the branch errored or fail the run. */
 export async function handleWorkflowDispatchUnavailable(
     ctx: PluginContext,
     team: Team,

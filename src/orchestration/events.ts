@@ -1,5 +1,5 @@
 /**
- * Append-only run timeline (#5). recordEvent fires at orchestration state-
+ * Append-only run timeline. recordEvent fires at orchestration state-
  * transition sites (dispatch / capture / retry / error / stage / round / signoff
  * / terminated) and appends one RunEvent per line to runs/<runId>/events.jsonl.
  *
@@ -19,11 +19,12 @@ import type { RunEvent } from "../core/types.js"
 import { appendJsonl } from "../state/locks.js"
 import { runEventsPath } from "../state/paths.js"
 
+/** Fire-and-forget: append one RunEvent to the run's events.jsonl timeline. */
 export function recordEvent(team: Team, event: RunEvent): void {
     // Tombstone guard: skip the fire-and-forget appendJsonl when the team has
     // been deleted. appendJsonl's mkdir({recursive:true}) would otherwise
     // recreate runs/<runId>/ as an orphan directory after handleSessionDeleted
-    // / team_delete's recursive fs.rm — the same C1 resurrection class, but
+    // / team_delete's recursive fs.rm — the same directory-resurrection class, but
     // via the one write path here that is NOT awaited and does NOT re-check
     // team.deleted. The tombstone flag is set under the team mutex before
     // fs.rm runs (delete.ts:60 / handleSessionDeleted), so this read is

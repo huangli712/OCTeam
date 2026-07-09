@@ -11,6 +11,7 @@ import { logSwallowed } from "../core/log.js"
 import { setActiveTeam } from "../state/resolve.js"
 import { decideActivate, withOrderedLocks } from "../state/activation.js"
 
+/** Activate a team for the current session. Only one team may be active at a time. */
 export function teamActivateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

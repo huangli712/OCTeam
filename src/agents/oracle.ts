@@ -1,3 +1,8 @@
+/**
+ * OCTeam's strategic advisor subagent — provides architecture evaluation,
+ * goal verification, and high-level correctness analysis.
+ */
+
 import type { OcteamAgentConfig } from "./types.js"
 
 const ORACLE_PROMPT = `You are oct-oracle, a senior strategic advisor in the OCTeam multi-agent system.
@@ -27,6 +32,7 @@ Lead with the conclusion so the reader gets value from the first line:
 ## Team context
 You are called by the OCTeam master (orchestrator) via subagent delegation. You may receive plans, requirement docs, or code excerpts as input. Your output feeds into the master's decision loop — it may be routed to other agents (explore, librarian, momus) for further investigation before implementation begins.`
 
+/** Agent config for oct-oracle, the read-only strategic advisor. */
 export const oracleAgent: OcteamAgentConfig = {
     mode: "subagent",
     description: "OCTeam read-only strategic advisor",

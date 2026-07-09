@@ -13,6 +13,7 @@ import { indexMasterTeam, setActiveTeam, unindexMasterTeam } from "../state/reso
 import { teamDir } from "../state/paths.js"
 import type { TeamSpec } from "../core/types.js"
 
+/** Rename a live team, updating its directory and all stored references. */
 export function teamRenameTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

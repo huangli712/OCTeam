@@ -36,6 +36,7 @@ import { ensureMembersReady } from "../orchestration/dispatch.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
 import { resumeDispatch } from "../orchestration/resume.js"
 
+/** Resume an interrupted orchestration from its preserved checkpoint. */
 export function teamResumeTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

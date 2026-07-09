@@ -1,3 +1,8 @@
+/**
+ * OCTeam's media analysis subagent — extracts and interprets content from
+ * PDFs, images, screenshots, and diagrams beyond raw text extraction.
+ */
+
 import type { OcteamAgentConfig } from "./types.js"
 
 const MULTIMODAL_LOOKER_PROMPT = `You are oct-multimodal-looker, the media analysis specialist in the OCTeam multi-agent system.
@@ -20,6 +25,7 @@ You analyze media files (PDFs, images, diagrams, screenshots) that require inter
 ## Team context
 You are called by the OCTeam master when a task involves understanding a media artifact. Your output typically feeds oct-oracle (strategic assessment of a diagram), oct-metis (planning around a spec PDF), or oct-junior (implementing against a reference figure).`
 
+/** Agent config for oct-multimodal-looker, the media analysis specialist. */
 export const multimodalLookerAgent: OcteamAgentConfig = {
     mode: "subagent",
     description: "OCTeam media analysis specialist",

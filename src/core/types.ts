@@ -1,5 +1,5 @@
 /**
- * OCTeam data model types (see docs/ARCHITECTURE.md).
+ * OCTeam data model types.
  *
  * All types in this file are JSON-serializable — they are persisted to disk
  * (config.json / state.json / mailbox *.jsonl / tasks/*.json). Runtime-only
@@ -9,6 +9,7 @@
 
 // --- TeamSpec (immutable, declarative) — stored as config.json ---
 
+/** Immutable team specification stored as config.json. */
 export type TeamSpec = {
     readonly version: 1
     readonly name: string              // /^[a-z0-9-]+$/, unique within scope
@@ -17,6 +18,7 @@ export type TeamSpec = {
     readonly members: MemberSpec[]     // 1-8 members (maxMembers default)
 }
 
+/** A single member's declarative configuration within a team. */
 export type MemberSpec = {
     name: string                       // unique within team, e.g. "alice" (auto-picked from a name pool if omitted at creation)
     role: string                       // role label, e.g. "coder", "verifier"
@@ -28,18 +30,21 @@ export type MemberSpec = {
 
 // --- TeamState (mutable, persisted) — stored as state.json ---
 
+/** Team lifecycle status: config-only, actively running, idle, or failed. */
 export type TeamStatus =
     | "live"                           // config written, no sessions spawned yet
     | "busy"                           // sessions spawned, workflow running
     | "idle"                           // sessions spawned, idle (workflow completed)
     | "failed"                         // agent error or task incomplete (e.g. loop max rounds w/o done)
 
+/** Per-member session status: not yet created, running, idle, or errored. */
 export type MemberStatus =
     | "pending"                        // session not yet created
     | "running"                        // actively processing a prompt
     | "idle"                           // finished, awaiting work
     | "errored"                        // LLM/tool failure
 
+/** Runtime state for a single team member, persisted in state.json. */
 export type MemberState = {
     name: string
     sessionId?: string                 // set after session.create succeeds
@@ -66,6 +71,7 @@ export type MemberState = {
     promptDelivered?: boolean          // true after prompt has been prepended to a dispatch once
 }
 
+/** Mutable team runtime state persisted as state.json. */
 export type TeamState = {
     version: 1
     teamRunId: string                  // UUID, unique per run
@@ -90,6 +96,7 @@ export type TeamState = {
 
 // --- Bounds (resource limits) ---
 
+/** Resource limits enforced across an orchestration run. */
 export type Bounds = {
     maxMembers: number                 // default 8; effective per-team member cap (enforced in add_member)
     maxParallelMembers: number         // default 4, concurrent spawn limit
@@ -103,23 +110,33 @@ export type Bounds = {
 
 // --- ActiveTask ---
 
+/** Discriminated orchestration mode — one of ten workflow primitives. */
 export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse" | "tollgate" | "workflow" | "arena"
+/** Parallel execution mode: isolated (same task) or cooperative (per-member). */
 export type ParallelMode = "isolated" | "cooperative"
+/** Result reduction policy for parallel member outputs. */
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
+/** Post-completion review gate policy. */
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
+/** Mid-run human approval pause point kind. */
 export type ApprovalKind = "pipeline_stage" | "tollgate_gate" | "loop_done" | "route_decision" | "recurse_decompose" | "arbitrate_ruling" | "consensus_deadlock" | "workflow_step"
+/** Action taken when an approval pause times out. */
 export type ApprovalTimeoutAction = "fail" | "approve" | "reject"
 
 // tollgate: three-valued verification verdict emitted by a gate's verifier.
+/** Three-valued verification verdict: PASS, FAIL, or INVALID. */
 export type Verdict = "PASS" | "FAIL" | "INVALID"
 
+/** Severity label for a workflow gate issue. */
 export type WorkflowIssueSeverity = "low" | "medium" | "high" | "critical"
 
+/** A single issue surfaced by a workflow gate verdict. */
 export type WorkflowIssue = {
     severity: WorkflowIssueSeverity
     message?: string
 }
 
+/** Threshold condition gating a workflow gate's conditional jump. */
 export type WorkflowCondition =
     | { kind: "score_gte"; value: number }
     | { kind: "score_lt"; value: number }
@@ -219,28 +236,33 @@ export interface ActiveTaskBase {
 }
 
 // parallel: fan-out then converge. `tasks` is cooperative per-member work.
+/** Fan-out parallel orchestration — all members work in parallel then converge. */
 export interface ParallelTask extends ActiveTaskBase {
     type: "parallel"
     tasks?: Record<string, string>           // cooperative: { memberName: task }
 }
 
 // pipeline: ordered stages, output prefixed forward.
+/** Linear pipeline — each stage's output feeds the next stage's input. */
 export interface PipelineTask extends ActiveTaskBase {
     type: "pipeline"
 }
 
 // loop: corrective code -> review -> decide cycle.
+/** Corrective loop — code, review, decide, repeat until done. */
 export interface LoopTask extends ActiveTaskBase {
     type: "loop"
     deciderMember?: string                   // member name of decider (NOT "master")
 }
 
 // delegate: shared tasklist, members self-claim.
+/** Delegate mode — publish tasks to a shared tasklist, members self-claim. */
 export interface DelegateTask extends ActiveTaskBase {
     type: "delegate"
 }
 
 // consensus: multi-round debate to agreement.
+/** Multi-round structured debate until all members reach consensus. */
 export interface ConsensusTask extends ActiveTaskBase {
     type: "consensus"
     topic?: string                           // the debate topic
@@ -248,6 +270,7 @@ export interface ConsensusTask extends ActiveTaskBase {
 }
 
 // route: content-based routing to selected branches.
+/** Content-based routing — a router inspects input and selects branch(es). */
 export interface RouteTask extends ActiveTaskBase {
     type: "route"
     routerMember?: string                    // the router member name (NOT master, NOT a branch member)
@@ -258,6 +281,7 @@ export interface RouteTask extends ActiveTaskBase {
 }
 
 // arbitrate: debate then authoritative ruling.
+/** Binding arbitration — debaters argue, an arbiter issues a ruling. */
 export interface ArbitrateTask extends ActiveTaskBase {
     type: "arbitrate"
     arbiterMember?: string                   // the arbiter member name (NOT master, NOT a debater)
@@ -268,6 +292,7 @@ export interface ArbitrateTask extends ActiveTaskBase {
 }
 
 // recurse: hierarchical recursive decomposition.
+/** Hierarchical recursive decomposition with a blockedBy DAG. */
 export interface RecurseTask extends ActiveTaskBase {
     type: "recurse"
     decomposerMember?: string                // the member first dispatched with the root task (NOT master)
@@ -279,6 +304,7 @@ export interface RecurseTask extends ActiveTaskBase {
 
 // tollgate: verdict-gated pipeline (produce -> verify -> escalate). A gated
 // pipeline where advancing depends on a verifier's verdict, not just completion.
+/** Verdict-gated pipeline — advancing depends on a verifier's verdict, not just completion. */
 export interface TollgateTask extends ActiveTaskBase {
     type: "tollgate"
     gatedStages?: GatedStage[]               // linear stages, each with its own verification gate
@@ -291,25 +317,32 @@ export interface TollgateTask extends ActiveTaskBase {
 // workflow: deterministic, declaratively-composed step engine. Linear workflows
 // remain the degenerate case; fanout/join marker steps allow a persisted active
 // frontier without introducing a separate orchestration primitive.
+/** Workflow step kind: task, gate, fanout, or join. */
 export type WorkflowStepKind = "task" | "gate" | "fanout" | "join"
 
+/** Workflow gate INVALID verdict control: fail, retry the verifier, or escalate. */
 export type WorkflowOnInvalid = "fail" | "retry_verifier" | "escalate"
 
+/** Workflow gate malformed-verdict control: fail, retry, skip, or escalate. */
 export type WorkflowOnMalformed = "fail" | "retry_verifier" | "skip" | "escalate"
 
+/** Auto-retry trigger for a workflow task step. */
 export type WorkflowRetryCondition =
     | { kind: "empty" }
     | { kind: "output_contains"; pattern: string }
     | { kind: "output_not_contains"; pattern: string }
     | { kind: "regex"; pattern: string }
 
+/** Loop configuration for a gate's on_fail_goto backward iteration. */
 export type WorkflowLoopConfig = {
     readonly maxIterations: number
     readonly onExhaust: "fail" | "continue"
 }
 
+/** Ensemble verdict aggregation policy: majority, quorum, or unanimous. */
 export type WorkflowEnsemblePolicy = "majority" | "quorum" | "unanimous"
 
+/** Structured result from a single verifier in an ensemble gate. */
 export type WorkflowEnsembleResult = {
     verdict: Verdict
     score?: number
@@ -320,13 +353,16 @@ export type WorkflowEnsembleResult = {
     parseFailed?: boolean
 }
 
+/** Start and end index range for a fanout branch within the step list. */
 export type WorkflowBranchRange = {
     readonly startIndex: number
     readonly endIndex: number
 }
 
+/** Fanout join semantics: tolerance, all, quorum, any_success, required_branches, reduce, or select. */
 export type WorkflowJoinPolicy = "tolerance" | "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
 
+/** Fanout marker metadata — branch ids, ranges, join index, and join policy. */
 export type WorkflowFanoutMetadata = {
     readonly branchIds: readonly string[]
     readonly branchRanges: readonly WorkflowBranchRange[]
@@ -339,6 +375,7 @@ export type WorkflowFanoutMetadata = {
     readonly useSurvivors?: boolean           // when true, strict join policies continue with surviving branches instead of failing on branch errors
 }
 
+/** Per-branch metadata for a task/gate step inside a fanout. */
 export type WorkflowBranchMetadata = {
     readonly fanoutIndex: number
     readonly branchId: string
@@ -346,6 +383,7 @@ export type WorkflowBranchMetadata = {
     readonly joinIndex: number
 }
 
+/** Join marker metadata — collected branch results and survivor/error tracking. */
 export type WorkflowJoinMetadata = {
     readonly fanoutIndex: number
     readonly branchTailIndices: readonly number[]
@@ -362,6 +400,7 @@ export type WorkflowJoinMetadata = {
     readonly joinedOutput?: string
 }
 
+/** A single workflow step — task, gate, fanout marker, or join marker. */
 export type WorkflowStep = {
     kind: WorkflowStepKind
     id?: string                          // stable step identifier (optional); when set, gates may reference it via targetStepId
@@ -409,7 +448,7 @@ export type WorkflowStep = {
     loop?: WorkflowLoopConfig              // gate steps: loop control for on_fail_goto (bounds iterations + exhaust behavior)
     loopIterations?: number                // gate steps: loop iteration count so far (runtime)
     output?: string                     // task steps: captured output snapshot at completion time (per-step, NOT overwritten by later steps the same member runs)
-    // step-level controls (workflow P1+): per-step HITL pauses and output cap,
+    // step-level controls: per-step HITL pauses and output cap,
     // overriding/complementing the task-global humanApproval flag.
     approvalBefore?: boolean            // pause for team_approve before dispatching this step
     approvalAfter?: boolean             // pause for team_approve after this step completes, before advancing
@@ -425,8 +464,8 @@ export type WorkflowStep = {
           dispatchedAt?: number               // epoch ms when this step was last dispatched
           dispatchedActor?: string
           correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl
-    // fanout/join DAG metadata (workflow P2). Runtime dispatch wiring lands in a
-    // later task; T1 only persists and reads the flat DAG shape.
+    // fanout/join DAG metadata. Runtime dispatch wiring lands in a
+    // later task.
     fanout?: WorkflowFanoutMetadata     // fanout marker steps
     branch?: WorkflowBranchMetadata     // task/gate steps inside a fanout branch
     join?: WorkflowJoinMetadata         // join marker steps
@@ -435,6 +474,7 @@ export type WorkflowStep = {
     skipped?: boolean                   // true when a forward jump marked this step as skipped (not run)
 }
 
+/** Declarative workflow orchestration — a task/gate/fanout/join step engine. */
 export interface WorkflowTask extends ActiveTaskBase {
     type: "workflow"
     steps?: WorkflowStep[]              // declarative step list; currentStageIndex is the cursor. Optional to match the codebase convention (all variant-specific fields are optional, like gatedStages?); handlers guard with `task.steps ?? []`.
@@ -446,6 +486,7 @@ export interface WorkflowTask extends ActiveTaskBase {
 // deterministic winner is selected over the evaluator-attested scoreboard
 // (evaluate phase). ArenaCandidateScore / ArenaScoreboard are the evaluator's
 // structured report shape.
+/** Evaluator-attested score for a single arena candidate. */
 export type ArenaCandidateScore = {
     member: string
     score?: number
@@ -454,11 +495,13 @@ export type ArenaCandidateScore = {
     rationale?: string
 }
 
+/** Complete arena scoreboard — per-candidate scores and evaluator rationale. */
 export type ArenaScoreboard = {
     scores: ArenaCandidateScore[]
     rationale?: string
 }
 
+/** Competitive arena — N candidates implement competing solutions, one winner selected. */
 export interface ArenaTask extends ActiveTaskBase {
     type: "arena"
     task: string                             // required: shared implement task (narrows the optional Base field)
@@ -476,6 +519,7 @@ export interface ArenaTask extends ActiveTaskBase {
     winner?: string                          // deterministically selected winner name
 }
 
+/** Discriminated union of all orchestration task variants. */
 export type ActiveTask =
     | ParallelTask
     | PipelineTask
@@ -491,6 +535,7 @@ export type ActiveTask =
 
 // --- LastModeRecord (persists after activeTask cleanup, for sidebar display) ---
 
+/** Persisted record of the most recent orchestration mode, for sidebar display. */
 export type LastModeRecord = {
     type: OrchestrationType
     mode?: ParallelMode                // parallel only
@@ -499,9 +544,12 @@ export type LastModeRecord = {
 
 // --- RunRecord (persistent per-orchestration result, stored as runs/<runId>/record.json) ---
 
+/** Run outcome: completed successfully or failed. */
 export type RunStatus = "completed" | "failed"
+/** Per-branch status within a workflow fanout. */
 export type WorkflowBranchStatus = "pending" | "completed" | "skipped" | "errored"
 
+/** Persisted snapshot of a single workflow step for run records. */
 export type WorkflowRunStep = {
     index: number                       // zero-based internal workflow step index
     step: number                        // one-based display step number
@@ -553,6 +601,7 @@ export type WorkflowRunStep = {
     maxOutputBytes?: number
 }
 
+/** Persistent per-orchestration result record stored as runs/<runId>/record.json. */
 export type RunRecord = {
     version: 1
     runId: string                      // per-orchestration UUID
@@ -594,6 +643,7 @@ export type RunRecord = {
 
 // --- RunEvent (append-only run timeline, stored as runs/<runId>/events.jsonl) ---
 
+/** Append-only run timeline event kind for events.jsonl. */
 export type RunEventKind =
     | "dispatched"      // a member was prompted with a task
     | "captured"        // a member's output was captured
@@ -613,6 +663,7 @@ export type RunEventKind =
     | "verdict"         // a gate produced a PASS/FAIL/INVALID verdict (tollgate mode)
     | "repaired"        // team_fix_workflow performed a surgical repair op
 
+/** A single entry in the append-only run timeline (events.jsonl). */
 export type RunEvent = {
     timestamp: number                  // epoch ms (readers sort by this, not file order)
     kind: RunEventKind
@@ -626,6 +677,7 @@ export type RunEvent = {
     detail?: string                    // free-form (signoff policy, "grace n/max", …)
 }
 
+/** A pipeline or loop stage — member, task, action, and completion flag. */
 export type Stage = {
     member: string                     // member name (validated unique within stages)
     task: string                       // task description
@@ -633,6 +685,7 @@ export type Stage = {
     completed: boolean
 }
 
+/** Pending human-in-the-loop approval request. */
 export type ApprovalRequest = {
     id: string                          // UUID used by team_approve/team_reject
     kind: ApprovalKind                  // mode-specific pause point
@@ -645,11 +698,13 @@ export type ApprovalRequest = {
     subtasks?: ApprovalSubtask[]        // recurse approval: proposed child tasks
 }
 
+/** A proposed child task in a recurse decomposition approval request. */
 export type ApprovalSubtask = {
     subject: string
     description: string
 }
 
+/** Resolved approval decision for audit and history. */
 export type ApprovalDecisionRecord = {
     id: string
     kind: ApprovalKind
@@ -664,6 +719,7 @@ export type ApprovalDecisionRecord = {
 // starts only on PASS. FAIL returns the producer with a diff; INVALID isolates
 // the stage and escalates the verifier side (not the producer). Structurally
 // satisfies Stage so it can be fed to buildUpstreamContext.
+/** A tollgate stage with an associated verification gate and verdict state. */
 export type GatedStage = {
     member: string                     // the producer member name
     task: string                       // the producer's task
@@ -676,6 +732,7 @@ export type GatedStage = {
     invalidAttempts: number            // INVALID/escalate cycle count against maxInvalidCycles
 }
 
+/** A single round decision in a corrective loop: continue or done. */
 export type DecisionRecord = {
     round: number
     decision: "continue" | "done"
@@ -684,6 +741,7 @@ export type DecisionRecord = {
     timestamp: number
 }
 
+/** A route branch — label, target member, and optional per-branch task. */
 export type RouteBranch = {
     name: string                       // branch label the router selects by (unique)
     member: string                     // target member to dispatch to (unique across branches)
@@ -693,6 +751,7 @@ export type RouteBranch = {
 
 // --- Message (file mailbox entry) ---
 
+/** A file mailbox entry — a message, announcement, or directive between members. */
 export type Message = {
     version: 1
     id: string                         // UUID
@@ -709,8 +768,10 @@ export type Message = {
 
 // --- Task (shared task list, for cooperative modes) ---
 
+/** Shared tasklist item status: pending, claimed, in_progress, completed, or deleted. */
 export type TaskStatus = "pending" | "claimed" | "in_progress" | "completed" | "deleted"
 
+/** A task in the shared cooperative tasklist with optional blockedBy dependencies. */
 export type Task = {
     version: 1
     id: string                         // UUID
@@ -728,4 +789,5 @@ export type Task = {
 
 // --- Storage scope (user-scope ~/.octeam vs project-scope <dir>/.octeam) ---
 
+/** Storage scope for team state: user (~/.octeam) or project (<dir>/.octeam). */
 export type StorageScope = "user" | "project"

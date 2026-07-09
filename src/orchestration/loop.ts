@@ -41,6 +41,7 @@ async function continueLoopRound(
     await advanceToStage(ctx, team, task.stages[0], feedback)
 }
 
+/** Approve a loop's completion: parse the decider's decision and deliver with a human-approved reason. */
 export async function approveLoopDone(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "loop") return
@@ -52,6 +53,7 @@ export async function approveLoopDone(ctx: PluginContext, team: Team): Promise<v
     team.status = "idle"
 }
 
+/** Reject a loop's completion: parse the decision, continue to the next round (or fail if max rounds reached). */
 export async function rejectLoopDone(ctx: PluginContext, team: Team, feedback?: string): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "loop") return
@@ -70,6 +72,7 @@ export async function rejectLoopDone(ctx: PluginContext, team: Team, feedback?: 
     )
 }
 
+/** Round-based decider loop: parse the decider's output after all stages complete and advance or deliver. */
 export async function handleLoopIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "loop") return

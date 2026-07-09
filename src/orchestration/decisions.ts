@@ -150,6 +150,7 @@ export function parseVerdict(
     }
 }
 
+/** Parse a reducer's <selection>{"winner":"..."}</selection> block into the winning branch name. */
 export function parseSelection(
     rawText: string,
 ): { winner: string; rationale: string; parseFailed?: boolean } {

@@ -311,6 +311,7 @@ export async function sweepTeamOnce(
     })
 }
 
+/** Start the periodic sweep timer that babysits busy teams for missed-idle reconciliation. */
 export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
     const handle = setInterval(async () => {
         try {

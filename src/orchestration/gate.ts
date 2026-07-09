@@ -16,6 +16,7 @@ import type {
 import { truncateOutput } from "./output.js";
 import { isSameWorkflowBranch } from "./dag.js";
 
+/** Structured jump context produced by a gate's goto evaluation. */
 export type WorkflowJumpTransition = {
     reason: string;
     verdict?: Verdict;
@@ -110,6 +111,7 @@ function buildVerdictSchemaExample(
 /**
  * Find the nearest preceding TASK step index for a gate. Returns -1 when none.
  */
+/** Scan backward from gateIndex for the nearest preceding task step. */
 export function precedingTaskIndex(steps: WorkflowStep[], gateIndex: number): number {
     for (let i = gateIndex - 1; i >= 0; i--) {
         if (canGateReferenceTask(steps, gateIndex, i)) return i;
@@ -117,11 +119,13 @@ export function precedingTaskIndex(steps: WorkflowStep[], gateIndex: number): nu
     return -1;
 }
 
+/** Return the single target task index for a gate (first of multi-target if present). */
 export function gateTargetIndex(steps: WorkflowStep[], gateIndex: number): number {
     const targets = gateTargetIndices(steps, gateIndex);
     return targets[0] ?? -1;
 }
 
+/** Return all target task indices a gate verifies (explicit or inferred). */
 export function gateTargetIndices(steps: WorkflowStep[], gateIndex: number): number[] {
     const gate = steps[gateIndex];
     if (gate?.kind !== "gate") return [];
@@ -160,6 +164,7 @@ function canGateReferenceTask(
 
 // --- labels ---
 
+/** Format a list of 1-based step indices into a human label like "step 3" or "steps 1, 2, 4". */
 export function stepIndicesLabel(indices: number[]): string {
     if (indices.length === 0) return "nearest task";
     const labels = indices.map((index) => String(index + 1));
@@ -168,10 +173,12 @@ export function stepIndicesLabel(indices: number[]): string {
     return labels.length === 1 ? `step ${first}` : `steps ${labels.join(", ")}`;
 }
 
+/** Build a human target label prefixed with "workflow" for verifier prompts. */
 export function workflowTargetLabel(indices: number[]): string {
     return `workflow ${stepIndicesLabel(indices)}`;
 }
 
+/** Concatenate truncated outputs of all target producer steps for a gate. */
 export function buildGateProducerOutput(
     steps: WorkflowStep[],
     targetIndices: number[],
@@ -189,6 +196,7 @@ export function buildGateProducerOutput(
 
 // --- goto resolution ---
 
+/** Build a prefixed jump context string for re-dispatch prompts. */
 export function buildJumpContext(transition: WorkflowJumpTransition): string {
     const lines = [`[Workflow jump: ${transition.reason}]`];
     if (transition.verdict !== undefined)
@@ -199,6 +207,7 @@ export function buildJumpContext(transition: WorkflowJumpTransition): string {
     return lines.join("\n");
 }
 
+/** Resolve a goto target index, valid only when the gate's where condition matches. */
 export function gatedGotoIndex(
     steps: WorkflowStep[],
     gateIndex: number,
@@ -232,6 +241,7 @@ function canGateGotoStep(
     return isSameWorkflowBranch(target, gateBranch);
 }
 
+/** Describe the jump reason prefixed with the where condition kind, or fallback. */
 export function whereReason(step: WorkflowStep, fallback: string): string {
     return step.where === undefined ? fallback : `when:${step.where.kind}`;
 }
@@ -294,6 +304,7 @@ type ParsedCondition =
     | { condition: WorkflowCondition }
     | { error: string }
 
+/** Type guard for valid workflow issue severity literals. */
 export function isWorkflowIssueSeverity(value: unknown): value is WorkflowIssueSeverity {
     return value === "low" || value === "medium" || value === "high" || value === "critical"
 }
@@ -316,6 +327,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+/** Parse a where condition object into a typed WorkflowCondition. */
 export function parseWorkflowCondition(raw: unknown): ParsedCondition {
     if (!isRecord(raw)) return { error: "where must be an object" }
     const conditionKeys = Object.keys(raw).filter(isConditionKey)
@@ -341,6 +353,7 @@ export function parseWorkflowCondition(raw: unknown): ParsedCondition {
     }
 }
 
+/** Evaluate whether a WorkflowCondition holds for the given input values. */
 export function matchesWorkflowCondition(condition: WorkflowCondition, input: ConditionInput): boolean {
     switch (condition.kind) {
         case "score_gte": return input.score !== undefined && input.score >= condition.value
@@ -353,6 +366,7 @@ export function matchesWorkflowCondition(condition: WorkflowCondition, input: Co
     }
 }
 
+/** Format a WorkflowCondition as a human-readable string. */
 export function formatWorkflowCondition(condition: WorkflowCondition): string {
     return `${condition.kind} ${condition.value}`
 }

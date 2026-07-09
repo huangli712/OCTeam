@@ -15,6 +15,7 @@ import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../core/
 import type { TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
 
+/** Modify a team member's name, role, prompt, or agent. */
 export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

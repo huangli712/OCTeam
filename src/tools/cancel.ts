@@ -11,6 +11,7 @@ import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { finishRun } from "../orchestration/summary.js"
 import { abortAndResetMembers } from "../orchestration/shared.js"
 
+/** Cancel the active orchestration on a busy team, resetting it to idle. */
 export function teamCancelTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

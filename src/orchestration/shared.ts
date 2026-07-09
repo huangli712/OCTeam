@@ -94,7 +94,9 @@ export function validateMemberAgent(agent: string): string | null {
 // Workflow helpers (former workflow-shared.ts)
 // ============================================================
 
+/** Default orchestration timeout in milliseconds (10 minutes). */
 export const DEFAULT_TIMEOUT_MS = 600_000
+/** Default loop orchestration timeout in milliseconds (15 minutes). */
 export const DEFAULT_LOOP_TIMEOUT_MS = 900_000
 
 /**
@@ -120,6 +122,7 @@ export const signoffSchemaFields = {
         .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
 }
 
+/** Schema fields for human approval: a boolean flag to pause at mid-run boundaries. */
 export const humanApprovalSchemaFields = {
     human_approval: tool.schema
         .boolean()
@@ -132,13 +135,16 @@ export const humanApprovalSchemaFields = {
 // made the effective defaults hard to audit and easy to drift between tools.
 // The numeric defaults live in orchestration/defaults.ts (single-sourced for
 // both the tool and handler layers); re-exported here for tool-layer callers.
+/** Re-export named orchestration defaults from defaults.ts for tool-layer callers. */
 export {
     DEFAULT_CONSENSUS_ROUNDS,
     DEFAULT_ARBITRATE_ROUNDS,
     DEFAULT_RECURSE_DEPTH,
     DEFAULT_RECURSE_SUBTASKS,
 } from "../orchestration/defaults.js"
+/** Default signoff policy: no post-completion review. */
 export const DEFAULT_SIGNOFF_POLICY: SignoffPolicy = "none"
+/** Default reduce policy: concatenate member outputs with a header summary. */
 export const DEFAULT_REDUCE_POLICY: ReducePolicy = "summarize"
 
 /**
@@ -313,6 +319,7 @@ export function signoffTaskFields(
     }
 }
 
+/** Build human approval task fields (approval flag + empty history) for ActiveTask construction. */
 export function humanApprovalTaskFields(
     args: { human_approval?: boolean },
 ): { humanApproval: boolean | undefined; approvalHistory: [] } {

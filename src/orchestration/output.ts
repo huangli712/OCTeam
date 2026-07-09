@@ -151,7 +151,7 @@ export function buildRolePrompt(
     // task dispatch (see prependStandingInstruction in dispatch.ts). Embedding it
     // in role-setup caused members to execute the full task during the role-setup
     // barrier window, blowing the 120s timeout for any task heavier than ~2 min
-    // (and producing the memory-378 capture-gotcha where the deliverable lands in
+    // (and producing the capture-gotcha where the deliverable lands in
     // the role-setup turn and the later redundant task turn overwrites it with an
     // ack). Role-setup is now identity-only: members ack and idle in seconds.
     lines.push(

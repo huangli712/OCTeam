@@ -1,3 +1,8 @@
+/**
+ * OCTeam's external reference researcher subagent — fetches documentation,
+ * API references, and best-practice guides from authoritative sources.
+ */
+
 import type { OcteamAgentConfig } from "./types.js"
 
 const LIBRARIAN_PROMPT = `You are oct-librarian, the external reference researcher in the OCTeam multi-agent system.
@@ -29,6 +34,7 @@ Classify each request up front (state the type) so the team knows the depth to e
 ## Team context
 You are called by the OCTeam master when the team needs external reference material. Your research output is typically routed to oct-oracle (for strategic evaluation), oct-metis (for planning), or directly to the implementing agent. You collaborate with oct-explore when a question spans both external docs and internal code.`
 
+/** Agent config for oct-librarian, the external reference researcher. */
 export const librarianAgent: OcteamAgentConfig = {
     mode: "subagent",
     description: "OCTeam external reference researcher",

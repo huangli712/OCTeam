@@ -1,6 +1,6 @@
 /**
  * team_workflow tool -- deterministic, declaratively-composed linear step
- * engine (GAP-2). Each step is either a `task` (one member produces output) or
+ * engine. Each step is either a `task` (one member produces output) or
  * a `gate` (a verifier renders a PASS/FAIL verdict over one or more prior task
  * outputs). The engine -- not the master LLM -- drives every step transition,
  * keeping intermediate results out of master context.
@@ -38,6 +38,7 @@ import {
 
 // --- public types (imported by orchestration/file.ts, tests) ---
 
+/** Conditional threshold for gate-step branching (goto control). */
 export type WorkflowWhere = {
     readonly score_gte?: number
     readonly score_lt?: number
@@ -45,8 +46,10 @@ export type WorkflowWhere = {
     readonly has_issue_severity?: "low" | "medium" | "high" | "critical"
 }
 
+/** A step reference: 1-based index or stable step id. */
 export type WorkflowStepRef = number | string
 
+/** A single workflow step (task, gate, fanout, or join marker). */
 export type WorkflowToolStep = {
     readonly kind: "task" | "gate" | "fanout" | "join"
     readonly id?: string
@@ -96,15 +99,19 @@ export type WorkflowToolStep = {
     readonly steps?: readonly WorkflowToolStep[]
 }
 
+/** A linear (non-fanout) workflow step narrowed to kind "task" or "gate". */
 export type WorkflowLinearToolStep = WorkflowToolStep & { readonly kind: "task" | "gate" }
 
+/** A branch inside a fanout step with its own sub-steps. */
 export type WorkflowFanoutBranch = {
     readonly id: string
     readonly steps: readonly WorkflowToolStep[]
 }
 
+/** A fanout workflow step narrowed to kind "fanout". */
 export type WorkflowFanoutToolStep = WorkflowToolStep & { readonly kind: "fanout" }
 
+/** Public args for the team_workflow tool. */
 export type WorkflowToolArgs = {
     team_id: string
     steps?: readonly WorkflowToolStep[]
@@ -115,6 +122,7 @@ export type WorkflowToolArgs = {
     signoff_decider?: string
 }
 
+/** Resolved workflow args after loading steps from file and expanding matrix/foreach. */
 export type ResolvedWorkflowToolArgs = Omit<WorkflowToolArgs, "steps"> & { steps: readonly WorkflowToolStep[] }
 
 // --- re-exports for backward compat ---
@@ -124,6 +132,7 @@ export { expandMatrixForeachFanout } from "./lower.js"
 
 // --- tool definition ---
 
+/** Run a declarative workflow engine with task, gate, fanout, and join steps. */
 export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
     const workflowStepRefSchema = tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)])
     const workflowStepSchemaFields = {

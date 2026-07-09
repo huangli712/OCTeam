@@ -100,6 +100,7 @@ export async function advanceToGatedStage(
     await dispatchToMember(ctx, producer, text, producer.worktreePath ?? ctx.directory, team)
 }
 
+/** Advance to the next gated stage after a PASS verdict, or deliver if all stages are complete. */
 export async function advanceTollgateAfterPass(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "tollgate" || !task.gatedStages) return

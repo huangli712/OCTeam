@@ -1,3 +1,8 @@
+/**
+ * OCTeam's codebase search and navigation subagent — finds implementations,
+ * traces call paths, and maps module dependencies.
+ */
+
 import type { OcteamAgentConfig } from "./types.js"
 
 const EXPLORE_PROMPT = `You are oct-explore, the codebase search and navigation specialist in the OCTeam multi-agent system.
@@ -29,6 +34,7 @@ Structure every answer so downstream agents (oct-metis, oct-junior) can consume 
 ## Team context
 You are called by the OCTeam master for codebase exploration tasks. Your output informs oct-oracle (architecture decisions), oct-metis (implementation planning), oct-momus (plan review), and oct-junior (task execution). You partner with oct-librarian when a question requires both internal code knowledge and external documentation.`
 
+/** Agent config for oct-explore, the codebase search specialist. */
 export const exploreAgent: OcteamAgentConfig = {
     mode: "subagent",
     description: "OCTeam codebase search specialist",

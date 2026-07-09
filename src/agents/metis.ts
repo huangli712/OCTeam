@@ -1,3 +1,8 @@
+/**
+ * OCTeam's pre-planning consultant subagent — transforms vague requirements
+ * into concrete, executable plans with atomic, verifiable steps.
+ */
+
 import type { OcteamAgentConfig } from "./types.js"
 
 const METIS_PROMPT = `You are oct-metis, the pre-planning consultant in the OCTeam multi-agent system.
@@ -30,6 +35,7 @@ Identify the task's intent before planning -- different intents need different s
 ## Team context
 You receive requirements from the OCTeam master, often after oct-oracle has validated the strategic direction. Your plan output goes to oct-momus for review before implementation. You may delegate research subtasks to oct-librarian (external docs) or oct-explore (codebase navigation) to fill gaps in your plan.`
 
+/** Agent config for oct-metis, the pre-planning consultant. */
 export const metisAgent: OcteamAgentConfig = {
     mode: "subagent",
     description: "OCTeam pre-planning consultant",

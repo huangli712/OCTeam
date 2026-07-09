@@ -1,5 +1,5 @@
 /**
- * team_progress tool (roadmap #5).
+ * team_progress tool.
  *
  * Master real-time observability: merges a LIVE snapshot of member states with
  * the run's event TIMELINE (runs/<runId>/events.jsonl). team_details gives a
@@ -172,6 +172,7 @@ function formatLiveWorkflowMermaid(team: Team): string | null {
     return formatWorkflowMermaid(liveStepsToRunSteps(steps), liveStatusByIndex(task))
 }
 
+/** Show live orchestration progress with member states and event timeline. */
 export function teamProgressTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

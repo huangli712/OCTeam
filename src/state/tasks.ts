@@ -21,6 +21,7 @@ import { CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./locks.js"
 import { claimLockPath, claimMutexPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./paths.js"
 import type { Task, TaskStatus } from "../core/types.js"
 
+/** Error thrown when a task is already claimed or not in claimable state. */
 export class TaskAlreadyClaimedError extends Error {
     constructor(taskId: string) {
         super(`Task ${taskId} is already claimed or not claimable`)
@@ -125,6 +126,7 @@ async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task
     }
 }
 
+/** Create a new task with a random UUID id and write it atomically to disk. */
 export async function createTask(
     teamDirectory: string,
     input: { subject: string; description: string; blockedBy?: string[]; depth?: number },
@@ -146,11 +148,13 @@ export async function createTask(
     return task
 }
 
+/** Read a single task by id, returning null when not found. */
 export async function getTask(teamDirectory: string, taskId: string): Promise<Task | null> {
     assertValidTaskId(taskId)
     return readTaskFile(teamDirectory, taskId)
 }
 
+/** List every task under the team's tasks directory, skipping unreadable files. */
 export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
     let entries: import("node:fs").Dirent[]
     try {
@@ -368,4 +372,5 @@ export async function reapStaleClaims(teamDirectory: string): Promise<void> {
     }
 }
 
+/** Task lifecycle status: pending, claimed, in_progress, completed, or deleted. */
 export type { TaskStatus }

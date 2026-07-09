@@ -18,6 +18,7 @@ import { recordEvent } from "./events.js"
 import { maybeTriggerSignoff } from "./signoff.js"
 import { maybeRequestApproval } from "./hitl.js"
 
+/** Dispatch the next incomplete pipeline stage with upstream context from prior stages. */
 export async function advancePipelineAfterStage(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "pipeline") return
@@ -61,6 +62,7 @@ export async function advancePipelineAfterStage(ctx: PluginContext, team: Team):
     })
 }
 
+/** Handle a pipeline member's idle: mark the current stage complete and advance to the next stage. */
 export async function handlePipelineIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
     const task = team.activeTask
     if (!task) return

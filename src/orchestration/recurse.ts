@@ -76,6 +76,7 @@ async function runRecurseTailFromApproval(ctx: PluginContext, team: Team, member
     await runDelegateStyleTail(ctx, team, member, "recurse", () => buildRecursePrompt())
 }
 
+/** Approve a recurse decomposition: create the proposed subtasks and re-queue the parent as an aggregator. */
 export async function approveRecurseDecompose(
     ctx: PluginContext,
     team: Team,
@@ -109,6 +110,7 @@ export async function approveRecurseDecompose(
     await runRecurseTailFromApproval(ctx, team, request.member)
 }
 
+/** Reject a recurse decomposition: finalize the parent task as completed and re-dispatch the member. */
 export async function rejectRecurseDecompose(
     ctx: PluginContext,
     team: Team,

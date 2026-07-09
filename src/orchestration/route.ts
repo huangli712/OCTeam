@@ -23,6 +23,7 @@ import { parseRouteDecision } from "./decisions.js"
 import { maybeTriggerSignoff } from "./signoff.js"
 import { maybeRequestApproval } from "./hitl.js"
 
+/** Dispatch the selected route targets after the router's decision is parsed. */
 export async function advanceRouteAfterDecision(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "route") return

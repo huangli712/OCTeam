@@ -32,6 +32,7 @@ export function isForbiddenLateralMessage(
     return recipients.some(r => r !== "master")
 }
 
+/** Send a message to teammate mailboxes, point-to-point or broadcast. */
 export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

@@ -92,7 +92,7 @@ export async function handleArenaIdle(
         // Only the evaluator's idle drives the evaluate phase; a stray candidate
         // idle (a late implement-phase turn) is ignored.
         if (member.name !== task.evaluatorMember) return
-        // Fail closed on missing/empty survivingCandidates (Oracle#2): it is
+        // Fail closed on missing/empty survivingCandidates: it is
         // always set at the implement->evaluate transition, so absence here means
         // corrupted/edited state. NEVER fall back to task.candidates — that would
         // re-admit an errored candidate to winning.
@@ -106,8 +106,8 @@ export async function handleArenaIdle(
             : selectArenaWinner(task.survivingCandidates, sb, task.scoreDirection, task.winnerMetric)
         if (sb.parseFailed || !sel.winner) {
             // Parse failure or no eligible winner: consume a retry. Past the cap,
-            // fail closed; otherwise delete the stale evaluator response (Oracle-
-            // required — stops a resume re-consuming it) and re-dispatch the same
+            // fail closed; otherwise delete the stale evaluator response
+            // (required — stops a resume re-consuming it) and re-dispatch the same
             // prompt to the evaluator.
             task.evalAttempts = (task.evalAttempts ?? 0) + 1
             if (task.evalAttempts > task.maxEvalRetries) {
@@ -126,7 +126,7 @@ export async function handleArenaIdle(
             return
         }
         // Success: record the deterministic winner + scoreboard, then deliver
-        // directly. v1 has NO signoff gate (Oracle#1, Must-NOT-Have).
+        // directly. v1 has NO signoff gate (Must-NOT-Have).
         task.scoreboard = sb
         task.winner = sel.winner
         await finishRun(ctx, team, "arena_complete", "idle")

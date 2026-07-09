@@ -30,6 +30,7 @@ function formatRunLine(r: RunRecord): string {
     return `- ${r.runId}  [${r.type}] ${r.status}  tokens=${r.tokensUsed}${flag}  ${when}`
 }
 
+/** Aggregate token, message, and success metrics across recent run records. */
 export function teamMetricsTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

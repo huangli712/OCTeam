@@ -1,3 +1,9 @@
+/**
+ * OpenCode team orchestration plugin entry point. Builds the PluginContext,
+ * rebuilds session index from disk, starts the sweep timer, and wires all
+ * tools plus the event/transform hooks into the plugin framework.
+ */
+
 import type { Hooks, PluginInput, PluginModule } from "@opencode-ai/plugin"
 
 import { createPluginContext } from "./core/context.js"

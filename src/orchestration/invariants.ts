@@ -1,5 +1,11 @@
+/**
+ * Workflow step invariant checker: validates the runtime state of a workflow
+ * task's steps against structural constraints (ordering, bounds, branch ranges).
+ */
+
 import type { WorkflowBranchMetadata, WorkflowBranchRange, WorkflowFanoutMetadata, WorkflowJoinMetadata, WorkflowStep, WorkflowTask } from "../core/types.js"
 
+/** Result of a workflow invariant check: either ok or a list of violations. */
 export type WorkflowInvariantCheckResult = { readonly ok: true } | { readonly ok: false; readonly violations: readonly string[] }
 
 type WorkflowInvariantContext = {
@@ -7,6 +13,7 @@ type WorkflowInvariantContext = {
     readonly violations: string[]
 }
 
+/** Validate all runtime invariants on a workflow task's step state. */
 export function checkWorkflowInvariants(task: WorkflowTask): WorkflowInvariantCheckResult {
     const context: WorkflowInvariantContext = { steps: task.steps ?? [], violations: [] }
     checkActiveStepIndices(context, task.activeStepIndices)

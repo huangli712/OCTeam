@@ -7,6 +7,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { listTeamNames, loadTeamState, readTeamSpec } from "../state/store.js"
 
+/** List all teams in the current scope with status and member count. */
 export function teamListTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description: "List all teams in the current scope with their status and member count.",

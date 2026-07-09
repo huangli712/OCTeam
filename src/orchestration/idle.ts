@@ -200,6 +200,7 @@ const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, m
     arena: async (ctx, team, member) => handleArenaIdle(ctx, team, member),
 }
 
+/** Single entry point for the idle state machine, driven by session.idle events. */
 export async function processIdle(
     ctx: PluginContext,
     team: Team,

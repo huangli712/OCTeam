@@ -42,6 +42,7 @@ type MasterIndexEntry = {
 const memberIndex = new Map<string, MemberIndexEntry>()
 const masterIndex = new Map<string, MasterIndexEntry>()
 
+/** Index a member session by its sessionID, mapping it to a specific team. */
 export function indexMember(
     sessionID: string,
     teamName: string,

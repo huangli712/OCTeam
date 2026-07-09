@@ -23,29 +23,34 @@ import type {
 
 // --- lowered types ---
 
+/** Identifies a step's position within a fanout branch for error messages. */
 export type WorkflowBranchContext = {
     readonly fanoutStepNumber: number
     readonly branchId: string
     readonly branchStepNumber: number
 }
 
+/** A linear step in the lowered (flat) representation with optional branch metadata. */
 export type LoweredWorkflowLinearStep = WorkflowLinearToolStep & {
     readonly branch?: WorkflowBranchMetadata
     readonly branchContext?: WorkflowBranchContext
 }
 
+/** A fanout step in the lowered representation with resolved fanout metadata. */
 export type LoweredWorkflowFanoutStep = {
     readonly kind: "fanout"
     readonly id?: string
     readonly fanout: WorkflowFanoutMetadata
 }
 
+/** A join marker step in the lowered representation. */
 export type LoweredWorkflowJoinStep = {
     readonly kind: "join"
     readonly id?: string
     readonly join: WorkflowJoinMetadata
 }
 
+/** Union of all lowered workflow step kinds. */
 export type LoweredWorkflowStep = LoweredWorkflowLinearStep | LoweredWorkflowFanoutStep | LoweredWorkflowJoinStep
 
 // --- invariant guard ---
@@ -57,22 +62,26 @@ class WorkflowToolInvariantError extends Error {
     }
 }
 
+/** Exhaustiveness-check helper: throws on unreachable code paths. */
 export function assertNever(value: never): never {
     throw new WorkflowToolInvariantError(value)
 }
 
 // --- type guards ---
 
+/** Test whether a workflow step is a linear (non-fanout) kind. */
 export function isLinearToolStep(step: WorkflowToolStep): step is WorkflowLinearToolStep {
     return step.kind === "task" || step.kind === "gate"
 }
 
+/** Test whether a workflow step is a fanout kind. */
 export function isFanoutToolStep(step: WorkflowToolStep): step is import("./workflow.js").WorkflowFanoutToolStep {
     return step.kind === "fanout"
 }
 
 // --- ref resolution (lowered) ---
 
+/** Resolve a gate's target_step or targets entry to a lowered step index. */
 export function resolveGateTargetRef(steps: readonly LoweredWorkflowStep[], gateIndex: number, target: WorkflowStepRef): number {
     if (typeof target === "number") {
         const idx = target - 1
@@ -82,6 +91,7 @@ export function resolveGateTargetRef(steps: readonly LoweredWorkflowStep[], gate
     return idx
 }
 
+/** Resolve a gate's implicit or explicit single target to a lowered step index. */
 export function resolveGateTargetIndex(steps: readonly LoweredWorkflowStep[], gateIndex: number): number {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return -1
@@ -95,6 +105,7 @@ export function resolveGateTargetIndex(steps: readonly LoweredWorkflowStep[], ga
     return resolveGateTargetRef(steps, gateIndex, target)
 }
 
+/** Resolve a gate's targets array to a sorted list of lowered step indices. */
 export function resolveGateTargetIndices(steps: readonly LoweredWorkflowStep[], gateIndex: number): number[] {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return []
@@ -111,6 +122,7 @@ export function resolveGateTargetIndices(steps: readonly LoweredWorkflowStep[], 
     return target < 0 ? [] : [target]
 }
 
+/** Resolve a single inputs entry to a lowered step index. */
 export function resolveWorkflowInputRef(steps: readonly LoweredWorkflowStep[], consumerIndex: number, ref: WorkflowStepRef): number {
     const idx = typeof ref === "number"
         ? ref - 1
@@ -120,12 +132,14 @@ export function resolveWorkflowInputRef(steps: readonly LoweredWorkflowStep[], c
     return idx
 }
 
+/** Resolve a task step's inputs array to lowered step indices. */
 export function resolveWorkflowInputIndices(steps: readonly LoweredWorkflowStep[], consumerIndex: number): number[] | undefined {
     const step = steps[consumerIndex]
     if (step?.kind !== "task" || step.inputs === undefined) return undefined
     return step.inputs.map(input => resolveWorkflowInputRef(steps, consumerIndex, input))
 }
 
+/** Check whether a consumer step is allowed to consume output from an input step. */
 export function canConsumeWorkflowInput(steps: readonly LoweredWorkflowStep[], consumerIndex: number, inputIndex: number): boolean {
     const consumer = steps[consumerIndex]
     const input = steps[inputIndex]
@@ -138,10 +152,12 @@ export function canConsumeWorkflowInput(steps: readonly LoweredWorkflowStep[], c
     return inputBranch.fanoutIndex === consumerBranch.fanoutIndex && inputBranch.branchId === consumerBranch.branchId
 }
 
+/** Return the first index from a list, or undefined if empty. */
 export function primaryTargetIndex(indices: number[]): number | undefined {
     return indices.length === 0 ? undefined : indices[0]
 }
 
+/** Resolve a gate's goto reference to a lowered step index. */
 export function resolveGotoIndex(steps: readonly LoweredWorkflowStep[], gateIndex: number, ref: WorkflowStepRef | undefined): number {
     if (ref === undefined) return -1
     if (typeof ref === "number") {
@@ -152,6 +168,7 @@ export function resolveGotoIndex(steps: readonly LoweredWorkflowStep[], gateInde
     return idx
 }
 
+/** Check whether a gate's target ref points to a fanout or join marker. */
 export function resolvesToMarkerStep(steps: readonly LoweredWorkflowStep[], gateIndex: number, ref: WorkflowStepRef): boolean {
     const idx = typeof ref === "number"
         ? ref - 1
@@ -173,18 +190,21 @@ export function resolvesToMarkerStep(steps: readonly LoweredWorkflowStep[], gate
 
 // --- ref conversion (public → flat) ---
 
+/** Convert a public 1-based step ref to a flat lowered index. */
 export function convertTopLevelRef(ref: WorkflowStepRef, publicToFlat: readonly number[]): WorkflowStepRef {
     if (typeof ref === "string") return ref
     const flatIndex = publicToFlat[ref - 1]
     return flatIndex === undefined ? ref : flatIndex + 1
 }
 
+/** Convert a branch-local step ref to a flat lowered index. */
 export function convertBranchRef(ref: WorkflowStepRef, branchStartIndex: number, branchStepCount: number): WorkflowStepRef {
     if (typeof ref === "string") return ref
     const localIndex = ref - 1
     return localIndex >= 0 && localIndex < branchStepCount ? branchStartIndex + localIndex + 1 : ref
 }
 
+/** Resolve a gate's target ref in the public (pre-lowering) step array. */
 export function resolvePublicTaskRef(steps: readonly WorkflowToolStep[], gateIndex: number, target: WorkflowStepRef): number {
     if (typeof target === "number") {
         const idx = target - 1
@@ -193,6 +213,7 @@ export function resolvePublicTaskRef(steps: readonly WorkflowToolStep[], gateInd
     return steps.findIndex((step, index) => index < gateIndex && step.kind === "task" && step.id === target)
 }
 
+/** Resolve a gate's implicit or explicit target in the public step array. */
 export function resolvePublicGateTargetIndex(steps: readonly WorkflowToolStep[], gateIndex: number): number {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return -1
@@ -203,6 +224,7 @@ export function resolvePublicGateTargetIndex(steps: readonly WorkflowToolStep[],
     return -1
 }
 
+/** Resolve a gate's goto ref in the public step array. */
 export function resolvePublicGotoRef(steps: readonly WorkflowToolStep[], gateIndex: number, ref: WorkflowStepRef): number {
     if (typeof ref === "number") {
         const idx = ref - 1
@@ -213,6 +235,7 @@ export function resolvePublicGotoRef(steps: readonly WorkflowToolStep[], gateInd
 
 // --- step lowering ---
 
+/** Lower a single linear (task or gate) step to the flat representation. */
 export function lowerLinearStep(
     step: WorkflowLinearToolStep,
     convertRef: (ref: WorkflowStepRef) => WorkflowStepRef,
@@ -234,6 +257,7 @@ export function lowerLinearStep(
     return branch === undefined || branchContext === undefined ? lowered : { ...lowered, branch, branchContext }
 }
 
+/** Lower a full public WorkflowToolStep array into the flat LoweredWorkflowStep array. */
 export function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly LoweredWorkflowStep[] {
     const loweredSteps: LoweredWorkflowStep[] = []
     const publicToFlat: number[] = []
@@ -350,6 +374,7 @@ export function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly
     return loweredSteps
 }
 
+/** Convert a lowered step to a runtime WorkflowStep with resolved refs and metadata. */
 export function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly LoweredWorkflowStep[], index: number): WorkflowStep {
     switch (step.kind) {
         case "task":
@@ -449,6 +474,7 @@ export function toWorkflowStep(step: LoweredWorkflowStep, steps: readonly Lowere
 
 // --- matrix/foreach expansion ---
 
+/** Expand matrix and foreach template fanout steps into explicit branches. */
 export function expandMatrixForeachFanout(steps: readonly WorkflowToolStep[]): WorkflowToolStep[] {
     return steps.map(step => {
         if (step.kind !== "fanout") return step
@@ -520,6 +546,7 @@ function sanitizeBranchId(value: string): string {
 
 // --- dry-run labels ---
 
+/** Format a human-readable step location string for dry-run or error output. */
 export function stepLocation(step: LoweredWorkflowStep, displayStep: number, includeKind: boolean): string {
     switch (step.kind) {
         case "task":
@@ -539,6 +566,7 @@ export function stepLocation(step: LoweredWorkflowStep, displayStep: number, inc
     }
 }
 
+/** Format a target step label for validation error messages. */
 export function targetStepErrorLabel(step: LoweredWorkflowStep, targetIndex: number): string {
     switch (step.kind) {
         case "task":
@@ -596,6 +624,7 @@ function branchDryRunPrefix(step: LoweredWorkflowLinearStep, activeBranchId: str
     return { lines: [`  branch ${branchId}:`], activeBranchId: branchId }
 }
 
+/** Format a dry-run preview of resolved workflow steps for human review. */
 export function formatWorkflowDryRun(args: import("./workflow.js").ResolvedWorkflowToolArgs): string {
     const loweredSteps = lowerWorkflowSteps(args.steps)
     const lines = [`Workflow dry run for "${args.team_id}" (${loweredSteps.length} step(s)):`]

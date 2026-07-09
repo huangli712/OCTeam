@@ -1,3 +1,8 @@
+/**
+ * OCTeam's focused task executor subagent — implements scoped implementation
+ * tasks exactly as specified, with discipline and precision.
+ */
+
 import type { OcteamAgentConfig } from "./types.js"
 
 const JUNIOR_PROMPT = `You are oct-junior, a focused task executor in the OCTeam multi-agent system.
@@ -21,6 +26,7 @@ You execute well-defined, scoped implementation tasks with precision and discipl
 ## Team context
 You receive implementation tasks from the OCTeam master, sourced from a plan that has been validated by oct-metis and reviewed by oct-momus. You focus on execution — others handle planning, research, and review. You may request clarification from oct-explore for codebase navigation or oct-librarian for external API details if you need context to complete your task.`
 
+/** Agent config for oct-junior, the focused task executor. */
 export const juniorAgent: OcteamAgentConfig = {
     mode: "subagent",
     description: "OCTeam focused task executor",

@@ -77,7 +77,7 @@ export async function checkTermination(ctx: PluginContext, team: Team, now = Dat
             }
             return
         }
-        // Arena scopes errored-member handling per phase (Metis deadlock guard):
+        // Arena scopes errored-member handling per phase:
         // erroredMembers is ALL non-master errored members, so a candidate that
         // errored WITHIN tolerance during implement still lingers here during
         // evaluate. A naive "any errored → fail" would spuriously kill a healthy

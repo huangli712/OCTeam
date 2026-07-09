@@ -15,6 +15,7 @@ import path from "node:path"
 import { configPath, inboxPath, processedPath, statePath, teamDir, teamsDir } from "../state/paths.js"
 import { isValidTeamState } from "../state/store.js"
 
+/** Flat member row for sidebar rendering from on-disk team state. */
 export type TeamMemberRow = {
     name: string
     role?: string
@@ -28,6 +29,7 @@ export type TeamMemberRow = {
     tokens?: number
 }
 
+/** Team summary for sidebar display with member rows and active task info. */
 export type TeamSummary = {
     name: string
     status: string

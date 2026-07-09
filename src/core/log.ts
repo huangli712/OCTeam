@@ -12,12 +12,13 @@
  *      at server startup via initLogger(ctx); before that, logger falls back
  *      to console.warn so unit tests of those modules still see output.
  *
- * Level filtering (P2): a module-level minLevel (default "info", overridable
+ * Level filtering: a module-level minLevel (default "info", overridable
  * via OCTEAM_LOG_LEVEL env var or setLogLevel()) gates every path so noisy
  * debug calls can be silenced in production without code changes.
  */
 import type { PluginContext } from "./context.js"
 
+/** Structured logging severity level, from debug to error. */
 export type LogLevel = "debug" | "info" | "warn" | "error"
 
 const LEVEL_ORDER: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 }
@@ -78,6 +79,10 @@ function sendToSink(
 
 // --- ctx-based API (for code that already holds a PluginContext) ---
 
+/**
+ * Send a structured log event to the host's app.log sink.
+ * Silently drops when the current level filters it out.
+ */
 export function logEvent(
     ctx: PluginContext,
     level: LogLevel,

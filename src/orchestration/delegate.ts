@@ -21,6 +21,7 @@ import { finishRun } from "./summary.js"
 import { maybeTriggerSignoff } from "./signoff.js"
 import { captureMemberOutput } from "./capture.js"
 
+/** Minimum cooldown (ms) between re-prompt notifications in delegate/recurse. */
 export const NOTIFY_COOLDOWN_MS = 10_000
 
 /**
@@ -127,6 +128,7 @@ export async function runDelegateStyleTail(
     }
 }
 
+/** Delegate idle handler: runs the delegate-style tail with "delegate" label. */
 export async function handleDelegateIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
     await runDelegateStyleTail(ctx, team, member, "delegate", n =>
         `[Team Orchestrator] You have completed your task. ${n} task(s) available. `

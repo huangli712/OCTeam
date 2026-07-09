@@ -1,3 +1,8 @@
+/**
+ * Register OCTeam's built-in subagents into the OpenCode agent registry
+ * via the config hook.
+ */
+
 import type { Hooks } from "@opencode-ai/plugin"
 
 import { oracleAgent } from "./oracle.js"

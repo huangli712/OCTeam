@@ -11,6 +11,7 @@ import { resolveCallerInTeam } from "../state/resolve.js"
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { listAllTasks } from "../state/tasks.js"
 
+/** Show a team's current status, orchestration progress, member states, and token usage. */
 export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description: "Show a team's current status: orchestration progress, member states, and token usage.",

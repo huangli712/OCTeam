@@ -427,6 +427,7 @@ function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): string {
     return `Wrote ${teamFileName(args.team_id)} and ${workflowFileName(args.team_id)} under ${ctx.directory}.\n\n${artifact}`
 }
 
+/** Plan and persist team definitions and workflows via a child oct-metis session. */
 export function teamPlannerTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

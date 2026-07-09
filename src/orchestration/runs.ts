@@ -1,5 +1,5 @@
 /**
- * Persistent per-orchestration run records (roadmap #2).
+ * Persistent per-orchestration run records.
  *
  * Full member outputs are written to runs/<runId>/<member>.md at CAPTURE time
  * (handlers.ts Step 4). This module writes the run's record.json — a JSON

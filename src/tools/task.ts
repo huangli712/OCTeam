@@ -28,6 +28,7 @@ import {
 } from "../state/tasks.js"
 import type { TaskStatus } from "../state/tasks.js"
 
+/** Create a new task on the team's shared task list. */
 export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description: "Create a task in the shared team task list. Tasks can declare blockedBy dependencies (other task IDs).",
@@ -108,6 +109,7 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
     })
 }
 
+/** List tasks from the team's shared task list with optional filters. */
 export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description: "List tasks in the shared team task list. Optional filters: status, owner.",
@@ -135,6 +137,7 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
     })
 }
 
+/** Update a task's status or metadata on the shared task list. */
 export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
@@ -211,6 +214,7 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
     })
 }
 
+/** Get a single task's details by its ID. */
 export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description: "Get full details of a single task.",

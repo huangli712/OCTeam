@@ -1,5 +1,11 @@
+/**
+ * Mermaid flowchart renderer for workflow run steps: produces a flowchart TD
+ * diagram with subgraphs for fanout branches and styled status nodes.
+ */
+
 import type { WorkflowRunStep } from "../core/types.js"
 
+/** Visual status classification for a workflow step node in a Mermaid diagram. */
 export type MermaidStepStatus = "done" | "active" | "pending" | "skipped"
 
 const STATUS_ORDER = ["done", "active", "pending", "skipped"] as const
@@ -76,6 +82,7 @@ function appendMermaidStatusClasses(
     }
 }
 
+/** Render workflow run steps as a Mermaid flowchart TD string with optional status styling. */
 export function formatWorkflowMermaid(
     steps: readonly WorkflowRunStep[],
     statusByIndex?: ReadonlyMap<number, MermaidStepStatus>,

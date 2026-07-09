@@ -142,7 +142,7 @@ export async function ensureMembersReady(
                     // prependStandingInstruction). Role-setup no longer embeds it.
                     member.prompt = memberSpec?.prompt;
                     member.promptDelivered = false;
-                    // S1: index the freshly spawned session so its role-setup idle
+                    // Index the freshly spawned session so its role-setup idle
                     // resolves to this member. Without this, resolveTeamMember returns
                     // null in the event handler, member.initialized never flips, and the
                     // role-setup barrier below spins until timeout (every workflow fails).

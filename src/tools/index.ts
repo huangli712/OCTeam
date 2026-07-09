@@ -47,6 +47,7 @@ import { teamResumeTool } from "./resume.js"
 import { teamApproveTool, teamRejectTool } from "./approve.js"
 
 
+/** Build and return all team orchestration tools keyed by name. */
 export function createTools(ctx: PluginContext): Record<string, ToolDefinition> {
     return {
         team_create: teamCreateTool(ctx),

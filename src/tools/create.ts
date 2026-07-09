@@ -71,6 +71,7 @@ async function resolveCreateModel(
     return { modelByAgent, defaultModel, sessionModel }
 }
 
+/** Define a new agent team with preset roles, writing config and state to disk. */
 export function teamCreateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

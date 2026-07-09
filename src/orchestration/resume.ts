@@ -475,7 +475,7 @@ async function resumeWorkflowMode(
 /**
  * Arena resume for BOTH phases. Implement/undefined: re-dispatch only
  * unfinished LIVE candidates (skip running/errored/no-session/already-
- * responded); a no-op dispatch is NOT counted (Oracle#4), so a zero real
+ * responded); a no-op dispatch is NOT counted, so a zero real
  * dispatch re-drives the barrier via handleArenaIdle with the FIRST candidate
  * regardless of status — errored candidates count as terminal-ready in
  * waitForBarrier, so termination 3b delivers arena_failed:no_survivors instead
@@ -526,7 +526,7 @@ async function resumeArenaMode(
     // implement/undefined phase: re-dispatch only unfinished LIVE candidates.
     // dispatchToMember is a silent no-op for errored/no-session members, so
     // those are filtered out BEFORE the count — a counted no-op would suppress
-    // the zero-dispatch barrier re-drive and hang the run (Oracle#4).
+    // the zero-dispatch barrier re-drive and hang the run.
     let dispatched = 0;
     for (const m of team.members) {
         if (!task.candidates.includes(m.name)) continue;
@@ -551,6 +551,7 @@ async function resumeArenaMode(
     }
 }
 
+/** Per-mode re-dispatch entry for team_resume Phase 3: delegates to each mode's resume handler. */
 export async function resumeDispatch(
     ctx: PluginContext,
     team: Team,

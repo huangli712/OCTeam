@@ -12,6 +12,7 @@ const COLOR_ERRORED = "#a855f7"
 const COLOR_ACTIVE = "#22c55e"
 const COLOR_INACTIVE = "#ef4444"
 
+/** SolidJS sidebar component showing session tree and team status. */
 export function SessionNavigatorSidebar(props: {
     api: TuiPluginApi
     sessionID: () => string

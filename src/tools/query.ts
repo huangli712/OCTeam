@@ -9,6 +9,7 @@ import { loadTeamState, readTeamSpec } from "../state/store.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { safeMemberAgent } from "../core/role.js"
 
+/** Query detailed information about a specific team member. */
 export function teamQueryTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description: "Query detailed information about a specific team member by name.",

@@ -51,6 +51,7 @@ function isFanoutToolStep(step: WorkflowToolStep): step is WorkflowFanoutToolSte
 
 // --- duplicate id validation ---
 
+/** Check for duplicate step ids across public steps and fanout branches. */
 export function validateDuplicateStepIds(steps: readonly WorkflowToolStep[]): string | null {
     const ids = new Map<string, number>()
     for (let publicIndex = 0; publicIndex < steps.length; publicIndex += 1) {
@@ -82,6 +83,7 @@ function validateStepId(ids: Map<string, number>, id: string | undefined, displa
 
 // --- public shape validation ---
 
+/** Validate the structural shape of public workflow steps (fanout/join pairing, branch rules). */
 export function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]): string | null {
     const duplicateStepId = validateDuplicateStepIds(steps)
     if (duplicateStepId !== null) return duplicateStepId
@@ -117,6 +119,7 @@ export function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]):
 
 // --- matrix/foreach shape ---
 
+/** Validate matrix/foreach constraints on fanout steps in the public step array. */
 export function validateMatrixForeachShapeInSteps(steps: readonly WorkflowToolStep[]): string | null {
     for (let index = 0; index < steps.length; index += 1) {
         const step = steps[index]
@@ -328,6 +331,7 @@ function validateBranchGateGotos(
 
 // --- gate target resolution+validation (lowered) ---
 
+/** Resolve and validate a gate's targets, returning either resolved indices or an error. */
 export function resolveAndValidateGateTargets(
     steps: readonly LoweredWorkflowStep[],
     gate: LoweredWorkflowLinearStep,
@@ -384,6 +388,7 @@ function validateTaskInputs(steps: readonly LoweredWorkflowStep[], task: Lowered
 
 // --- graph validator ---
 
+/** Full structural and semantic validation of the lowered workflow graph against a team. */
 export function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): string | null {
     if (args.steps.length === 0) {
         return "Error: steps must contain at least one step"
@@ -572,10 +577,12 @@ export function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team
     return null
 }
 
+/** Validate resolved workflow args against a team (delegates to validateWorkflowGraph). */
 export function validateWorkflowArgs(args: ResolvedWorkflowToolArgs, team: Team): string | null {
     return validateWorkflowGraph(args, team)
 }
 
+/** Validate workflow steps against a member name list (used by planner). */
 export function validateWorkflowStepsAgainstMembers(
     steps: readonly WorkflowToolStep[],
     memberNames: readonly string[],
@@ -610,10 +617,12 @@ export function validateWorkflowStepsAgainstMembers(
 
 // --- source validation + arg resolution ---
 
+/** Check whether args include inline steps (vs. a workflow_file). */
 export function hasInlineSteps(args: WorkflowToolArgs): boolean {
     return args.steps !== undefined
 }
 
+/** Validate that exactly one of steps or workflow_file is set. */
 export function validateWorkflowSource(args: WorkflowToolArgs): string | null {
     if (hasInlineSteps(args) === (args.workflow_file !== undefined)) {
         return "Error: team_workflow must set exactly one of steps or workflow_file"
@@ -622,6 +631,7 @@ export function validateWorkflowSource(args: WorkflowToolArgs): string | null {
     return null
 }
 
+/** Resolve workflow args: load file if needed, expand matrix/foreach, validate source. */
 export async function resolveWorkflowArgs(ctx: PluginContext, args: WorkflowToolArgs): Promise<ResolvedWorkflowToolArgs | string> {
     const sourceError = validateWorkflowSource(args)
     if (sourceError) return sourceError

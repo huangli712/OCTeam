@@ -20,6 +20,7 @@ import {
     validateSignoff,
 } from "../orchestration/shared.js"
 
+/** Run a binding arbitration with structured debate between members and a ruling arbiter. */
 export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

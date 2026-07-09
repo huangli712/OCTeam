@@ -22,6 +22,7 @@ import type { PluginContext } from "../core/context.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
 
+/** Acknowledge member completion in a require_done_ack parallel run. */
 export function teamDoneTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:

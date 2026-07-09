@@ -1,5 +1,5 @@
 /**
- * Workflow handler -- deterministic linear step engine (GAP-2).
+ * Workflow handler -- deterministic linear step engine.
  *
  * STATE MACHINE (MVP: linear + gate-driven retry):
  *   steps[i]_dispatch -> steps[i]_idle -> steps[i+1]_dispatch -> ... -> all_complete
@@ -645,6 +645,7 @@ export async function advanceWorkflowStep(
     await saveTeamState(team);
 }
 
+/** Re-dispatch a workflow step at the given index (used by crash-resume and timeout-retry paths). */
 export async function redispatchWorkflowStep(
     ctx: PluginContext,
     team: Team,

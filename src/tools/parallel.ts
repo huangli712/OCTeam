@@ -18,6 +18,7 @@ import {
     validateSignoff,
 } from "../orchestration/shared.js"
 
+/** Run a task across all team members in parallel with isolated or cooperative mode. */
 export function teamParallelTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
