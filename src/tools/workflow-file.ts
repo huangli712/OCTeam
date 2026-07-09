@@ -84,6 +84,23 @@ function validateWorkflowStepArray(value: unknown, location: StepLocation): { st
     return { steps }
 }
 
+/**
+ * Workflow step-array validation shared by the pure planner-reuse path and by
+ * loadWorkflowFile. Both callers delegate to the same private step-array
+ * validation, so they get identical semantics (kind, field ranges, fanout
+ * recursion).
+ *
+ * The one-arg form is pure: it never touches the filesystem and attributes
+ * errors to a stable synthetic `<workflow>` location. loadWorkflowFile passes
+ * the real relative workflow_file path so its error strings keep naming the
+ * actual file.
+ */
+export function validateWorkflowSteps(value: unknown): { steps: WorkflowToolStep[] } | { error: string }
+export function validateWorkflowSteps(value: unknown, sourcePath: string): { steps: WorkflowToolStep[] } | { error: string }
+export function validateWorkflowSteps(value: unknown, sourcePath = "<workflow>"): { steps: WorkflowToolStep[] } | { error: string } {
+    return validateWorkflowStepArray(value, { filePath: sourcePath, prefix: "step" })
+}
+
 function validateWorkflowStep(value: unknown, location: StepLocation): { step: WorkflowToolStep } | { error: string } {
     if (!isRecord(value)) return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} must be an object` }
     const kind = value.kind
@@ -269,7 +286,7 @@ export async function loadWorkflowFile(baseDir: string, relPath: string, vars: R
             return { error: `Error: workflow_file "${relPath}" version ${templated.version} is unsupported (expected one of: ${[...SUPPORTED_WORKFLOW_FILE_VERSIONS].join(", ")})` }
         }
     }
-    const steps = validateWorkflowStepArray(templated.steps, { filePath: relPath, prefix: "step" })
+    const steps = validateWorkflowSteps(templated.steps, relPath)
     if ("error" in steps) return steps
     return steps
 }

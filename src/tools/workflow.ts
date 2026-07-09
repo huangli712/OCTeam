@@ -11,6 +11,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type {
+    MemberState,
     WorkflowBranchMetadata,
     WorkflowFanoutMetadata,
     WorkflowJoinMetadata,
@@ -22,10 +23,12 @@ import { activationError } from "../core/utils.js"
 import { dispatchTaskStep, maybePauseBeforeWorkflowStep } from "../orchestration/workflow.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, type Team } from "../state/store.js"
+import { AsyncMutex } from "../state/locks.js"
 import { loadWorkflowFile } from "./workflow-file.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
+    defaultBounds,
     humanApprovalSchemaFields,
     humanApprovalTaskFields,
     signoffSchemaFields,
@@ -1007,6 +1010,49 @@ function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team): stri
 
 function validateWorkflowArgs(args: ResolvedWorkflowToolArgs, team: Team): string | null {
     return validateWorkflowGraph(args, team)
+}
+
+/**
+ * Member-aware graph validation for a synthetic (never-persisted) team.
+ *
+ * Validates a workflow step list using ONLY the supplied member names: it builds
+ * an in-memory Team from `memberNames` and runs the exact `team_workflow` graph
+ * validator (matrix/foreach expansion + `validateWorkflowGraph`), so unknown
+ * members, unresolved gate targets, and self-verification are caught identically
+ * to the live tool. Reads no disk state and needs no team id or activation, so a
+ * planner can validate generated workflow JSON against generated member names
+ * before any team exists. Returns a user-facing `Error: ...` string or null.
+ */
+export function validateWorkflowStepsAgainstMembers(
+    steps: readonly WorkflowToolStep[],
+    memberNames: readonly string[],
+    teamName: string,
+): string | null {
+    const shapeError = validateMatrixForeachShapeInSteps(steps)
+    if (shapeError !== null) return shapeError
+    const members: MemberState[] = memberNames.map(name => ({
+        name,
+        status: "idle",
+        initialized: true,
+        turnCount: 0,
+    }))
+    const team: Team = {
+        version: 1,
+        teamRunId: `synthetic-${teamName}`,
+        teamName,
+        status: "live",
+        leadSessionId: "synthetic",
+        members,
+        bounds: defaultBounds(),
+        createdAt: Date.now(),
+        mutex: new AsyncMutex(),
+        directory: "",
+    }
+    const resolvedArgs: ResolvedWorkflowToolArgs = {
+        team_id: teamName,
+        steps: expandMatrixForeachFanout(steps),
+    }
+    return validateWorkflowArgs(resolvedArgs, team)
 }
 
 function stepTargetLabel(steps: readonly LoweredWorkflowStep[], gateIndex: number): string {

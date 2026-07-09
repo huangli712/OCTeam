@@ -37,6 +37,7 @@ import { teamRecurseTool } from "./recurse.js"
 import { teamTollgateTool } from "./tollgate.js"
 import { teamWorkflowTool } from "./workflow.js"
 import { teamFixWorkflowTool } from "./workflow-fix.js"
+import { teamPlannerTool } from "./planner.js"
 import { teamDoneTool } from "./done.js"
 import { teamResultsTool, teamResultGetTool } from "./results.js"
 import { teamProgressTool } from "./progress.js"
@@ -77,6 +78,7 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_arena: teamArenaTool(ctx),
         team_workflow: teamWorkflowTool(ctx),
         team_fix_workflow: teamFixWorkflowTool(ctx),
+        team_planner: teamPlannerTool(ctx),
         team_done: teamDoneTool(ctx),
         team_results: teamResultsTool(ctx),
         team_result_get: teamResultGetTool(ctx),
