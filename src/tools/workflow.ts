@@ -129,6 +129,18 @@ type LoweredWorkflowJoinStep = {
 
 type LoweredWorkflowStep = LoweredWorkflowLinearStep | LoweredWorkflowFanoutStep | LoweredWorkflowJoinStep
 
+type WorkflowToolArgs = {
+    team_id: string
+    steps?: readonly WorkflowToolStep[]
+    workflow_file?: string
+    vars?: Record<string, string>
+    dry_run?: boolean
+    signoff_policy?: "none" | "decider" | "peer-quorum"
+    signoff_decider?: string
+}
+
+type ResolvedWorkflowToolArgs = Omit<WorkflowToolArgs, "steps"> & { steps: readonly WorkflowToolStep[] }
+
 class WorkflowToolInvariantError extends Error {
     constructor(value: never) {
         super(`Unexpected workflow tool step kind: ${String(value)}`)
@@ -147,18 +159,6 @@ function isLinearToolStep(step: WorkflowToolStep): step is WorkflowLinearToolSte
 function isFanoutToolStep(step: WorkflowToolStep): step is WorkflowFanoutToolStep {
     return step.kind === "fanout"
 }
-
-type WorkflowToolArgs = {
-    team_id: string
-    steps?: readonly WorkflowToolStep[]
-    workflow_file?: string
-    vars?: Record<string, string>
-    dry_run?: boolean
-    signoff_policy?: "none" | "decider" | "peer-quorum"
-    signoff_decider?: string
-}
-
-type ResolvedWorkflowToolArgs = Omit<WorkflowToolArgs, "steps"> & { steps: readonly WorkflowToolStep[] }
 
 /**
  * Resolve a gate target reference (number 1-based or string step id).
