@@ -643,4 +643,3 @@ export async function redispatchWorkflowStep(
             return assertNeverWorkflowStepKind(step.kind);
     }
 }
-
