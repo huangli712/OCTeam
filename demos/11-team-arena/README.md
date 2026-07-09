@@ -2,7 +2,7 @@
 
 > **模式**：`team_arena` —— 竞争擂台。N 名候选成员在各自的隔离 git worktree 中实现同一任务的竞争方案（implement 阶段）；随后一名独立 evaluator 对每位候选人的输出运行相同的客观评估，产出结构化 `<scoreboard>` 评分；引擎按 `winner_metric` 和 `score_direction` 选出确定性胜者并直接交付（v1 无 signoff 门控）。
 > **源码**：[`src/tools/arena.ts`](../../src/tools/arena.ts)
-> **控时设计**：每场景 3-5 名候选 + 1 名 evaluator，候选实现 5-8 min、evaluator 评估 3-5 min，并行 implement + 串行 evaluate ≈ 10-13 min（远低于 30 min 上限）。
+> **控时设计**：每基线场景 3 名候选 + 1 名 evaluator，候选实现 5-8 min、evaluator 评估 3-5 min，并行 implement + 串行 evaluate ≈ 10-13 min（远低于 30 min 上限）。**场景 4 为挑战级**：5 名候选 + 1 名 evaluator，规模放大至 5 求解器 × 1000×1000 稀疏系统综合擂台，约 40 min，演示 arena 在多候选、高计算密度下的扩展性。
 
 ## 场景一览
 
@@ -10,6 +10,8 @@
 |---|------|------|--------|---------|---------|-----------|
 | 1 | 编程 | 三种排序实现基准选最快 | 3 | `eval_command` 跑基准脚本 | 吞吐量（`score_direction: "max"`） | ~10 min |
 | 2 | 计算物理 | 三种积分器按能量漂移选最稳 | 3 | `eval_criteria` 能量守恒判定 | 能量漂移（`score_direction: "min"`） | ~12 min |
+| 3 | 数学 | 定积分三求积方法精度对决 | 3 | `eval_criteria` 与精确解对比 | 绝对误差（`score_direction: "min"`） | ~12 min |
+| 4 | 计算物理（挑战） | 泊松方程五求解器综合擂台 | 5 | `eval_command` 跑收敛基准 | 收敛迭代数（`score_direction: "min"`） | ~40 min |
 
 ---
 
@@ -242,15 +244,244 @@ evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard�
 
 ---
 
+## 场景 3: 定积分三求积方法精度对决
+
+### 3.1 场景描述
+
+**背景**：数值求积（numerical quadrature）是计算数学的基石。同一个定积分，用不同求积公式（梯形法、辛普森法、高斯-勒让德法）在同样多的函数求值次数下，精度可以差数个数量级。`∫₀¹ 1/(1+x²) dx = π/4 ≈ 0.7853981633974483` 是一个光滑、无奇点的标准测试积分，不同方法的误差差异直观可测。
+
+**目标**：三名候选（`coder` 角色）各实现一种求积方法，在相同的被积函数和区间上计算积分近似值，报告绝对误差 `|I_num - π/4|`；evaluator 按 `eval_criteria` 判定每份实现是否达到所属方法的期望精度阶，按误差打分，引擎选误差最小者为胜。
+
+**成功标准（可机器评判）**：
+- 每位候选输出含 `<!-- QUAD: <数值误差> -->` 标注（绝对误差）
+- evaluator 输出含 `<scoreboard>{...}</scoreboard>` 标签 JSON 块
+- scoreboard 的每项 `score` 为绝对误差值（number），`passed` 依据 `eval_criteria` 判定
+- 引擎按 `score_direction: "min"` 选出误差最小的候选为胜者
+
+### 3.2 Team 配置
+
+```json
+{
+  "name": "quad-arena",
+  "description": "Three quadrature methods on ∫₀¹ 1/(1+x²)dx: trapezoidal vs Simpson vs Gaussian-Legendre — winner by min absolute error",
+  "members": [
+    {
+      "name": "alice",
+      "role": "coder",
+      "worktree": true,
+      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4. Your output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
+    },
+    {
+      "name": "bob",
+      "role": "coder",
+      "worktree": true,
+      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4. Your output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
+    },
+    {
+      "name": "carol",
+      "role": "coder",
+      "worktree": true,
+      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4. Your output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
+    },
+    {
+      "name": "dave",
+      "role": "mathematician",
+      "worktree": true,
+      "prompt": "You are a mathematician. You evaluate each candidate's quadrature implementation by reading their absolute error (QUAD marker), optionally recomputing the integral, and scoring by accuracy. A lower error is better (min direction). An error < 1e-5 demonstrates a well-implemented method (pass). Emit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"error\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+    }
+  ]
+}
+```
+
+**Role 选择理由**：前三名候选统一用 `coder`（`oct-junior` agent，可写码+跑测试）在独立 worktree 中实现各自的求积方法；evaluator 用 `mathematician`（懂数值分析，能识辨不同方法的理论误差阶）。
+
+### 3.3 Master 启动调用
+
+```json
+{
+  "tool": "team_arena",
+  "args": {
+    "team_id": "quad-arena",
+    "task": "Implement a numerical quadrature method to approximate ∫₀¹ 1/(1+x²) dx in TypeScript. Choose ONE method: composite trapezoidal rule (n=100 subintervals), composite Simpson's rule (n=100 subintervals), or 5-point Gaussian-Legendre quadrature on [-1,1] mapped to [0,1]. The exact value is π/4 ≈ 0.7853981633974483. Report the absolute error |I_num - π/4|. Embed code in a ```typescript fenced block and end with <!-- QUAD: <absolute_error> -->.",
+    "evaluator": "dave",
+    "candidates": ["alice", "bob", "carol"],
+    "eval_criteria": "Score based on absolute error |I_num - π/4|. Lower error is better. Error < 1e-5 demonstrates a well-implemented quadrature method (pass=true). Error >= 1e-5 or NaN => pass=false. Report the error as the 'score' field for each candidate.",
+    "winner_metric": "score",
+    "score_direction": "min",
+    "max_eval_retries": 1,
+    "timeout_ms": 900000
+  }
+}
+```
+
+**参数选择**：
+- `eval_criteria` 而非 `eval_command` —— 评估只需核对候选报告的误差是否与所声称的方法的期望精度阶一致，不需跑外部基准
+- `winner_metric` 用默认值 `"score"`，候选的 `score` 即其绝对误差
+- `score_direction: "min"` —— 误差越小越好
+- `max_eval_retries: 1` —— evaluator 评分失败给一次重试
+
+### 3.4 执行流程（时序）
+
+```
+T+0m     master 调用 team_arena (3 candidates + evaluator)
+T+0m     implement 阶段: 并行 dispatch alice, bob, carol (各在独立 worktree)
+T+0~8m   三名候选各自实现求积方法 → 算积分 → 报告 QUAD 标记 → idle
+T+8m     barrier: 所有候选 idle → arena 阶段切换至 evaluate
+T+8m     evaluator prompt 构建: 列出候选人名 + 绝对 worktree 路径 + eval_criteria + winner_metric
+T+8m     dispatch evaluator (dave, mathematician)
+T+8~12m  dave 读每名候选的 QUAD 误差 → 可选复算代码 → 按 eval_criteria 打分 → 产出 <scoreboard> JSON
+T+12m    引擎解析 scoreboard → selectArenaWinner → 按 score_direction: "min" 选最小误差者 → 结果交付 master
+```
+
+### 3.5 评判脚本
+
+> 本场景依托 evaluator 产出的 `<scoreboard>` JSON 和引擎内建选优逻辑。外部验证：读取 `runs/<run_id>/dave.md`，提取 scoreboard JSON，交叉核对每名候选的 `score` 值与其 QUAD 标记一致，且 `score` 最小的候选 `passed` 为 `true`。
+
+### 3.6 评估器 scoreboard 示例
+
+evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard：
+
+```
+<scoreboard>{"scores":[{"member":"alice","score":0.000785,"metrics":{"error":0.000785,"method":"composite trapezoidal (n=100)","exact":0.785398}，"passed":false,"rationale":"Trapezoidal rule: O(h²) convergence, 100 subintervals gives error ~7.85e-4 >> 1e-5. Fails accuracy threshold."},{"member":"bob","score":6.5e-8,"metrics":{"error":6.5e-8,"method":"composite Simpson's (n=100)","exact":0.785398},"passed":true,"rationale":"Simpson's rule: O(h⁴) convergence on this smooth integrand, 100 subintervals yields error ~6.5e-8 < 1e-5. Pass."},{"member":"carol","score":1.1e-16,"metrics":{"error":1.1e-16,"method":"5-point Gaussian-Legendre","exact":0.785398},"passed":true,"rationale":"Gaussian-Legendre (n=5): exact for polynomials up to degree 9, so this smooth integrand is integrated near machine precision. Error ~1.1e-16 < 1e-5. Pass."}],"rationale":"Evaluated absolute error from <!-- QUAD --> markers. Carol's Gaussian-Legendre achieves machine-precision accuracy (1.1e-16); Bob's Simpson's is 8 orders of magnitude worse but still below 1e-5; Alice's trapezoidal is 4 orders above threshold. Winner metric: min error."}</scoreboard>
+```
+
+引擎会按 `score_direction: "min"` 选出 `carol`（误差 1.1e-16）为胜者。
+
+---
+
+## 场景 4: 泊松方程五求解器综合擂台（挑战级）
+
+> **挑战级说明**：本场景突破基线约束（3 候选 / ≤4 成员 / ≤30 min），使用 **5 名候选 + 1 名 evaluator**，各候选在独立 worktree 中实现不同的线性系统求解器，evaluator 运行统一收敛基准脚本，按收敛迭代数打分。约 40 min，演示 arena 在多候选、高计算密度下的扩展性。
+
+### 4.1 场景描述
+
+**背景**：二维泊松方程 `∇²u = -2π²sin(πx)sin(πy)`（精确解 `u = sin(πx)sin(πy)`）在 `(N+1)×(N+1)` 网格上用标准五点差分离散化，得到 `N² × N²` 稀疏线性系统 `Au = f`。求解这类大规模稀疏系统是科学计算的核心：不同迭代法在收敛速度、每步开销、实现复杂度上差异巨大。雅可比迭代收敛极慢，共轭梯度显著加速，多重网格近乎最优。
+
+**目标**：五名候选（`simulator` 角色）各实现一种迭代求解器，在 `N=100`（10000×10000 稀疏矩阵）的统一问题上跑至残差 `||r||₂/||b||₂ < 1e-6`；evaluator 运行收敛基准脚本 `bun run convergence.ts`，对每名候选的求解器测迭代数，按迭代数打分，引擎选迭代数最少者为胜。
+
+**成功标准（可机器评判）**：
+- 每位候选输出含 `<!-- CONV: <迭代数> -->` 标注
+- evaluator 输出含 `<scoreboard>{...}</scoreboard>` 标签 JSON 块
+- scoreboard 的每项 `score` 为收敛所需迭代数（number），`passed` 依据 `eval_criteria` 判定
+- 引擎按 `score_direction: "min"` 选出迭代数最少的候选为胜者
+
+### 4.2 Team 配置
+
+```json
+{
+  "name": "poisson-arena",
+  "description": "Five iterative solvers for the 2D Poisson equation (N=100 grid): Jacobi vs Gauss-Seidel vs SOR vs Conjugate Gradient vs Multigrid V-cycle — winner by min iterations to convergence",
+  "members": [
+    {
+      "name": "alice",
+      "role": "simulator",
+      "worktree": true,
+      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil. Your output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+    },
+    {
+      "name": "bob",
+      "role": "simulator",
+      "worktree": true,
+      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil. Your output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+    },
+    {
+      "name": "carol",
+      "role": "simulator",
+      "worktree": true,
+      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil. Your output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+    },
+    {
+      "name": "dave",
+      "role": "simulator",
+      "worktree": true,
+      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil. Your output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+    },
+    {
+      "name": "erin",
+      "role": "simulator",
+      "worktree": true,
+      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil. Your output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+    },
+    {
+      "name": "frank",
+      "role": "physicist",
+      "worktree": true,
+      "prompt": "You are a physicist. You evaluate each candidate's iterative Poisson solver by running the same convergence benchmark script (bun run convergence.ts) in each candidate's worktree, measuring the number of iterations to reach ||r||₂/||b||₂ < 1e-6 on the N=100 Poisson problem. A lower iteration count is better (min direction). A count > 100,000 is considered non-convergent (pass=false). Emit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"iterations\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+    }
+  ]
+}
+```
+
+**Role 选择理由**：五名候选统一用 `simulator`（数值模拟专用，`oct-junior` agent）在独立 worktree 中实现各自的迭代求解器；evaluator 用 `physicist`（懂 PDE 数值方法，能独立判定收敛性），注意 6 名成员（5 候选 + 1 evaluator）已达 arena v1 的推荐上限。
+
+### 4.3 Master 启动调用
+
+```json
+{
+  "tool": "team_arena",
+  "args": {
+    "team_id": "poisson-arena",
+    "task": "Implement an iterative linear solver for the 2D Poisson equation -∇²u = f on the unit square (Dirichlet BC u=0 on boundary) using 5-point finite-difference stencil on an N=100 grid (interior grid N²=10000 unknowns). Exact solution: u = sin(πx)sin(πy), so f = 2π²sin(πx)sin(πy). Choose ONE method: Jacobi iteration, Gauss-Seidel (lexicographic), SOR (optimal ω≈1.9), Conjugate Gradient, or Multigrid V-cycle (Jacobi smoother + full-weighting restriction + bilinear prolongation, 2 pre/2 post smoothing). Run to convergence: ||r||₂/||b||₂ < 1e-6. Report the number of iterations to convergence. Embed code in a ```typescript fenced block and end with <!-- CONV: <iteration_count> -->.",
+    "evaluator": "frank",
+    "candidates": ["alice", "bob", "carol", "dave", "erin"],
+    "eval_command": "bun run convergence.ts",
+    "eval_criteria": "Score based on number of iterations to reach ||r||₂/||b||₂ < 1e-6 on the N=100 Poisson problem. Fewer iterations is better (min direction). Iterations > 100,000 => non-convergent (pass=false). Report the iteration count as the 'score' field for each candidate.",
+    "winner_metric": "iterations",
+    "score_direction": "min",
+    "max_eval_retries": 1,
+    "timeout_ms": 2400000
+  }
+}
+```
+
+**参数选择**：
+- `evaluator: "frank"` —— 不在 `candidates` 列表中，满足「evaluator ≠ candidate」硬约束
+- `candidates` 显式列出 5 名 —— 刚好覆盖 5 种主流迭代法的代表性对比
+- `eval_command` 与 `eval_criteria` **同时提供** —— 基准脚本确保一致度量，criteria 做阈值判定（迭代 > 100k 视作发散）
+- `winner_metric: "iterations"` + `score_direction: "min"` —— 迭代数越少越好
+- `max_eval_retries: 1` —— evaluator 评分失败给一次重试
+- `timeout_ms: 2400000`（40 min）—— 5 名候选并行 10 min + 评估串行 20 min（每候选的 N=100 收敛需数次迭代，耗时不一），留足余量
+
+### 4.4 执行流程（时序）
+
+```
+T+0m     master 调用 team_arena (5 candidates + evaluator)
+T+0m     implement 阶段: 并行 dispatch alice, bob, carol, dave, erin (各在独立 worktree)
+T+0~10m  五名候选各自实现迭代求解器 → 跑收敛 → 报告 CONV 标记 → idle
+T+10m    barrier: 所有候选 idle → arena 阶段切换至 evaluate
+T+10m    evaluator prompt 构建: 列出候选人名 + 绝对 worktree 路径 + eval_command + eval_criteria + winner_metric
+T+10m    dispatch evaluator (frank, physicist)
+T+10~30m frank 为每名候选跑 `bun run convergence.ts` → 收集各求解器迭代数 → 产出 <scoreboard> JSON
+T+30m    引擎解析 scoreboard → selectArenaWinner → 按 score_direction: "min" 选最少迭代数者 → 结果交付 master
+```
+
+（5 候选并行实现，单一 evaluator 串行评估各候选 worktree；N=100 的 Poisson 问题上 Jacobi ≈ 6000 迭代、Gauss-Seidel ≈ 3000 迭代、SOR(ω=1.9) ≈ 300 迭代、CG ≈ 300 迭代、Multigrid V(2,2) ≈ 10 迭代——收敛速度差距巨大，arena 评分的区分度极高。）
+
+### 4.5 评判脚本
+
+> 本场景依托 evaluator 产出的 `<scoreboard>` JSON 和引擎内建选优逻辑。外部验证：读取 `runs/<run_id>/frank.md`，提取 scoreboard JSON，交叉核对每名候选的迭代数与 CONV 标记一致，物理预期 Multigrid 胜出（≤20 迭代）且 Jacobi 垫底（≥5000 迭代）。
+
+### 4.6 评估器 scoreboard 示例
+
+evaluator（frank）在跑完五份基准后应产出如下格式的 scoreboard：
+
+```
+<scoreboard>{"scores":[{"member":"alice","score":6120,"metrics":{"iterations":6120,"method":"Jacobi","residual":9.87e-7},"passed":true,"rationale":"Jacobi: slow convergence (~6k iterations), typical for simple relaxation on 100x100 grid. < 100k => pass."},{"member":"bob","score":2980,"metrics":{"iterations":2980,"method":"Gauss-Seidel","residual":9.92e-7},"passed":true,"rationale":"Gauss-Seidel: ~2x faster than Jacobi due to immediate use of updated values, ~3k iterations on 100x100. Pass."},{"member":"carol","score":312,"metrics":{"iterations":312,"method":"SOR (ω=1.9)","residual":9.65e-7},"passed":true,"rationale":"SOR with near-optimal ω≈1.9: convergence accelerated ~10x vs GS, ~300 iterations. Excellent for this problem class. Pass."},{"member":"dave","score":295,"metrics":{"iterations":295,"method":"Conjugate Gradient","residual":9.88e-7},"passed":true,"rationale":"CG: Krylov-subspace optimal, ~300 iterations on 100x100 SPD system. Comparable to optimal SOR. Pass."},{"member":"erin","score":9,"metrics":{"iterations":9,"method":"Multigrid V(2,2)","residual":8.73e-7},"passed":true,"rationale":"Multigrid V-cycle (2 pre/2 post smoothing, full-weighting restriction, bilinear prolongation): mesh-independent convergence! Only 9 iterations to reach sub-1e-6 residual. Near-optimal O(N) solver. Pass."}],"rationale":"Convergence benchmark via bun run convergence.ts on N=100 Poisson problem (10000 unknowns). Erin's Multigrid dominates at 9 iterations (O(N) optimal); SOR/CG compete at ~300; Gauss-Seidel trails at ~3k; Jacobi bottom at ~6k. Winner metric: min iterations."}</scoreboard>
+```
+
+引擎会按 `score_direction: "min"` 选出 `erin`（9 次迭代）为胜者——多重网格的近乎最优收敛在 10000 未知数的系统上展现出数量级优势。
+
+---
+
 ## 验收清单
 
 - [ ] 每个 team 配置中所有 candidate 均设置 `worktree: true`（arena 硬性要求）
 - [ ] `evaluator` 不在 `candidates` 列表中（满足「evaluator ≠ candidate」约束）
 - [ ] 每个 master 调用参数符合 `team_arena` schema（`team_id`, `task`, `evaluator`, `candidates`, `eval_command` 或 `eval_criteria`, `winner_metric`, `score_direction` 等）
 - [ ] 至少一种评估基准（`eval_command` 或 `eval_criteria`）已提供
-- [ ] `score_direction` 与场景目标一致（场景 1: `"max"` 吞吐量；场景 2: `"min"` 漂移）
-- [ ] 候选 prompt 与 evaluator 的 scoreboard 字段标记对齐（场景 1: `IMPL` 标记；场景 2: `DRIFT` 标记；evaluator 统一发 `<scoreboard>` JSON）
-- [ ] 场景 1-2 总时长 ≤ 15 min（远低于 30 min 上限）
+- [ ] `score_direction` 与场景目标一致（场景 1: `"max"` 吞吐量；场景 2: `"min"` 漂移；场景 3: `"min"` 误差；场景 4: `"min"` 迭代数）
+- [ ] 候选 prompt 与 evaluator 的 scoreboard 字段标记对齐（场景 1: `IMPL` 标记；场景 2: `DRIFT` 标记；场景 3: `QUAD` 标记；场景 4: `CONV` 标记；evaluator 统一发 `<scoreboard>` JSON）
+- [ ] 场景 1-3 总时长 ≤ 15 min（远低于 30 min 上限）；场景 4 为挑战级约 40 min（5 候选、N=100 大型稀疏系统）
 
 ---
 
@@ -288,4 +519,36 @@ evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard�
 6. 读取 dave.md，提取 <scoreboard> JSON，查看胜者与各候选漂移值
 
 成功标准：evaluator 产出合法 <scoreboard> JSON；引擎按 score min 选出漂移最小的辛格式积分器。Velocity Verlet 候选 passed=true 且 score < 1e-3。
+```
+
+### 场景 3: 定积分三求积方法精度对决（数学）
+
+```text
+执行 demos/11-team-arena/README.md「场景 3」的完整闭环并自动评分。
+
+步骤：
+1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队（3 名候选 coder + 1 名 evaluator mathematician，每名候选 worktree: true，evaluator 也设 worktree: true）
+2. team_activate 激活
+3. 读 README「3.3 Master 启动调用」，按 team_arena JSON 启动擂台（implement → evaluate，eval_criteria 精度判定）
+4. team_results 轮询至 master 收到汇总（所有候选 idle 后 evaluator 审阅 QUAD、出 scoreboard；引擎自动选胜者）
+5. 定位 <run_dir>（含 evaluator dave.md）
+6. 读取 dave.md，提取 <scoreboard> JSON，查看胜者与各候选误差
+
+成功标准：evaluator 产出合法 <scoreboard> JSON；引擎按 score min 选出误差最小的求积方法。Gaussian-Legendre 候选 passed=true 且 score < 1e-10（高斯求积在光滑被积函数上应达机器精度）。
+```
+
+### 场景 4: 泊松方程五求解器综合擂台（挑战级·计算物理）
+
+```text
+执行 demos/11-team-arena/README.md「场景 4」的完整闭环并自动评分（挑战级：5 名候选 + 1 名 evaluator，N=100 大型稀疏系统）。
+
+步骤：
+1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（5 名候选 simulator + 1 名 evaluator physicist，每名候选 worktree: true，evaluator 也设 worktree: true）
+2. team_activate 激活
+3. 读 README「4.3 Master 启动调用」，按 team_arena JSON 启动擂台（implement → evaluate，eval_command + eval_criteria 双基准）
+4. team_results 轮询至 master 收到汇总（所有候选 idle 后 evaluator 跑收敛基准、出 scoreboard；引擎自动选胜者）
+5. 定位 <run_dir>（含 evaluator frank.md）
+6. 读取 frank.md，提取 <scoreboard> JSON，查看胜者与各候选迭代数
+
+成功标准：evaluator 产出合法 <scoreboard> JSON；引擎按 iterations min 选出收敛最快的求解器。Multigrid V 循环候选应 ≤20 迭代、Jacobi 应 ≥5000 迭代（验证收敛速度的数量级区分度）。至少 3 名候选 passed=true。
 ```

@@ -14,6 +14,7 @@
  */
 
 import type { PluginContext } from "../core/context.js"
+import type { RouteBranch } from "../core/types.js"
 import { type Team, saveTeamState } from "../state/store.js"
 import { dispatchToMember } from "./dispatch.js"
 import { finishRun } from "./summary.js"
@@ -22,6 +23,32 @@ import { waitForBarrier } from "./barriers.js"
 import { parseRouteDecision } from "./decisions.js"
 import { maybeTriggerSignoff } from "./signoff.js"
 import { maybeRequestApproval } from "./hitl.js"
+
+/**
+ * Build the router member's dispatch prompt: the input to route, the available
+ * branches, and the <route> decision format the router must emit.
+ *
+ * Lives in the orchestration layer so both the initial dispatch path
+ * (tools/router.ts) and the crash-recovery path (resume.ts) consume the same
+ * source — preventing prompt-format drift between first-run and resume.
+ */
+export function buildRouterPrompt(teamName: string, input: string, branches: RouteBranch[]): string {
+    const list = branches
+        .map(b => {
+            const desc = b.description ? ` — ${b.description}` : ""
+            return `- ${b.name} (-> ${b.member})${desc}`
+        })
+        .join("\n")
+    return (
+        `[Route task] You are the router for team "${teamName}". Analyze the input below and `
+        + `select which branch(es) should handle it. Available branches:\n${list}\n\n`
+        + `Emit your decision as:\n`
+        + `<route>{"branch": "<name>", "rationale": "<why>"}</route>\n`
+        + `For multiple branches: <route>{"branches": ["a","b"], "rationale": "..."}</route>\n`
+        + `The tags must be the literal English <route> and </route> — do NOT use translated tags such as <路由>.\n\n`
+        + `[Input]\n${input}`
+    )
+}
 
 /** Dispatch the selected route targets after the router's decision is parsed. */
 export async function advanceRouteAfterDecision(ctx: PluginContext, team: Team): Promise<void> {

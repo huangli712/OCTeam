@@ -8,6 +8,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import type { RouteBranch } from "../core/types.js"
 import { dispatchToMember } from "../orchestration/dispatch.js"
+import { buildRouterPrompt } from "../orchestration/route.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
@@ -19,28 +20,9 @@ import {
     validateSignoff,
 } from "../orchestration/shared.js"
 
-/**
- * Build the router member's dispatch prompt: the input to route, the available
- * branches, and the <route> decision format the router must emit.
- */
-/** Build the router prompt text describing branches for content-based routing. */
-export function buildRouterPrompt(teamName: string, input: string, branches: RouteBranch[]): string {
-    const list = branches
-        .map(b => {
-            const desc = b.description ? ` — ${b.description}` : ""
-            return `- ${b.name} (-> ${b.member})${desc}`
-        })
-        .join("\n")
-    return (
-        `[Route task] You are the router for team "${teamName}". Analyze the input below and `
-        + `select which branch(es) should handle it. Available branches:\n${list}\n\n`
-        + `Emit your decision as:\n`
-        + `<route>{"branch": "<name>", "rationale": "<why>"}</route>\n`
-        + `For multiple branches: <route>{"branches": ["a","b"], "rationale": "..."}</route>\n`
-        + `The tags must be the literal English <route> and </route> — do NOT use translated tags such as <路由>.\n\n`
-        + `[Input]\n${input}`
-    )
-}
+// Re-export buildRouterPrompt for any external consumers that historically
+// imported it from this module. The canonical home is orchestration/route.ts.
+export { buildRouterPrompt }
 
 /** Content-based routing: a router inspects input and dispatches to matching branches. */
 export function teamRouteTool(ctx: PluginContext): ToolDefinition {

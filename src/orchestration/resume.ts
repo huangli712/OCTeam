@@ -33,13 +33,12 @@ import {
     redispatchWorkflowStep,
 } from "./workflow.js";
 import { handleWorkflowDispatchUnavailable } from "./fanout.js";
-import { handleRouteIdle } from "./route.js";
 import {
     buildArbiterPrompt,
     buildDebatePrompt,
     handleArbitrateIdle,
 } from "./arbitrate.js";
-import { buildRouterPrompt } from "../tools/router.js";
+import { buildRouterPrompt, handleRouteIdle } from "./route.js";
 import { buildSummary, finishRun } from "./summary.js";
 import { buildArenaEvaluatorPrompt, handleArenaIdle } from "./arena.js";
 import {
