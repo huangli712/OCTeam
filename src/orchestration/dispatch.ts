@@ -17,11 +17,10 @@ import { readTeamSpec, saveTeamState } from "../state/store.js";
 import { worktreePath, worktreesDir } from "../state/paths.js";
 import { cleanWorktree } from "../state/worktrees.js";
 import {
-    buildRolePrompt,
     chunk,
-    truncateOutput,
     waitUntil,
 } from "../core/utils.js";
+import { buildRolePrompt, truncateOutput } from "./output.js";
 import { indexMember, unindexSession } from "../state/resolve.js";
 import { safeMemberAgent } from "../core/role.js";
 import type { MemberState, Stage } from "../core/types.js";

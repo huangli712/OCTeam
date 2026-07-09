@@ -11,7 +11,7 @@ import { listAllTeams, loadTeamState } from "./store.js"
 import type { MemberState } from "../core/types.js"
 import type { PluginContext } from "../core/context.js"
 import { logSwallowed } from "../core/log.js"
-import { isInteractionForbidden } from "../core/utils.js"
+import { isInteractionForbidden } from "./activation.js"
 
 // --- sessionID -> team index (process-level, O(1) resolve) ---
 //

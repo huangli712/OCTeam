@@ -8,7 +8,7 @@ import {
     roleAgent,
     rolePreset,
 } from "../src/core/role.js"
-import { buildRolePrompt } from "../src/core/utils.js"
+import { buildRolePrompt } from "../src/orchestration/output.js"
 import { prependStandingInstruction } from "../src/orchestration/dispatch.js"
 import type { MemberState } from "../src/core/types.js"
 

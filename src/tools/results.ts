@@ -14,7 +14,7 @@ import fs from "node:fs/promises"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { truncateOutput } from "../core/utils.js"
+import { truncateOutput } from "../orchestration/output.js"
 import { formatWorkflowMermaid } from "../orchestration/mermaid.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { listRunRecords, readRunRecord } from "../orchestration/runs.js"

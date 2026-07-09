@@ -49,7 +49,7 @@ import {
 import { dispatchToMember } from "./dispatch.js";
 import { finishRun } from "./summary.js";
 import { recordEvent } from "./events.js";
-import { truncateOutput } from "../core/utils.js";
+import { truncateOutput } from "./output.js";
 import {
     findActiveWorkflowStepIndexForMember,
     getActiveWorkflowStepIndices,

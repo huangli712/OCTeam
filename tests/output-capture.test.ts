@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 
-import { extractOutputFromParts, extractTextFromParts } from "../src/core/utils.js"
+import { extractOutputFromParts, extractTextFromParts } from "../src/orchestration/output.js"
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { appendTurnBlock, captureMemberOutput } from "../src/orchestration/handlers.js"

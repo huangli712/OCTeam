@@ -35,7 +35,7 @@ import { OCTEAM_AGENTS, isOCTeamAgent } from "../core/role.js"
 import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
 import { ensureMembersReady } from "./dispatch.js"
-import { activationError } from "../core/utils.js"
+import { activationError } from "../state/activation.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import type { ActiveTask, Bounds, DecisionRecord, ReducePolicy, SignoffPolicy } from "../core/types.js"
 

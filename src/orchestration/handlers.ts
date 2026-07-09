@@ -27,7 +27,8 @@ import type { PluginContext } from "../core/context.js"
 import { type Team, loadTeamState, saveTeamState } from '../state/store.js';
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"
-import { extractOutputFromParts, isEnoent, sumMemberTokens, truncateOutput } from '../core/utils.js';
+import { isEnoent } from '../core/utils.js';
+import { extractOutputFromParts, sumMemberTokens, truncateOutput } from './output.js';
 import { findActiveWorkflowStepIndexForMember, getActiveWorkflowStepActors } from "./dag.js"
 import { resolveTeamMember } from "../state/resolve.js"
 import { safeMemberAgent } from "../core/role.js"

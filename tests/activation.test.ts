@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { activationError, isInteractionForbidden } from "../src/core/utils.js"
+import { activationError, isInteractionForbidden } from "../src/state/activation.js"
 
 describe("isInteractionForbidden (master-only activation gate)", () => {
     test("master + active team → allowed", () => {

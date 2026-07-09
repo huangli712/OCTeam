@@ -30,7 +30,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type { ActiveTask } from "../core/types.js"
-import { activationError } from "../core/utils.js"
+import { activationError } from "../state/activation.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { ensureMembersReady } from "../orchestration/dispatch.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
