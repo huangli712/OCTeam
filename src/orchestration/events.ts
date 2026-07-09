@@ -18,6 +18,7 @@ import type { Team } from "../state/store.js"
 import type { RunEvent } from "../core/types.js"
 import { appendJsonl } from "../state/locks.js"
 import { runEventsPath } from "../state/paths.js"
+import { logger } from "../core/log.js"
 
 /** Fire-and-forget: append one RunEvent to the run's events.jsonl timeline. */
 export function recordEvent(team: Team, event: RunEvent): void {
@@ -33,7 +34,13 @@ export function recordEvent(team: Team, event: RunEvent): void {
     if (team.deleted) return
     const runId = team.activeTask?.runId
     if (!runId) return
-    void appendJsonl(runEventsPath(team.directory, runId), JSON.stringify(event) + "\n").catch(() => {
-        // best-effort telemetry; a write failure must never affect orchestration
+    void appendJsonl(runEventsPath(team.directory, runId), JSON.stringify(event) + "\n").catch((err: unknown) => {
+        // best-effort telemetry; a write failure must never affect orchestration,
+        // but surface it so operators can diagnose missing timeline events.
+        logger.warn("recordEvent append failed", {
+            runId,
+            eventKind: event.kind,
+            error: err instanceof Error ? err.message : String(err),
+        })
     })
 }

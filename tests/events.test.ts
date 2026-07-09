@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, readFileSync } from "node:fs"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import fs from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -9,8 +9,9 @@ import { readRunEvents } from "../src/orchestration/runs.js"
 import { runEventsPath } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"
 import type { ActiveTask } from "../src/core/types.js"
+import { _resetLoggerForTests, initLogger } from "../src/core/log.js"
 
-import { makeTeam } from "./helpers.js"
+import { makeCtx, makeTeam } from "./helpers.js"
 function tmpTeamDir(): string {
     return mkdtempSync(join(tmpdir(), "octeam-events-"))
 }
@@ -82,5 +83,36 @@ describe("recordEvent + readRunEvents", () => {
         // not have been created.
         await new Promise(r => setImmediate(r))
         await expect(fs.readdir(join(dir, "runs"))).rejects.toThrow()
+    })
+})
+
+describe("recordEvent failure logging", () => {
+    beforeEach(() => _resetLoggerForTests())
+    afterEach(() => _resetLoggerForTests())
+
+    test("logs warning when append fails (write failure visible to operators)", async () => {
+        const dir = tmpTeamDir()
+        // Block the runs/ directory path with a regular file so appendJsonl
+        // fails (ENOTDIR when refuseSymlink lstats the nested path).
+        writeFileSync(join(dir, "runs"), "not a directory")
+
+        const cap: { body?: unknown } = {}
+        initLogger(makeCtx({ overrides: { client: { app: { log: mock(async (args: unknown) => { cap.body = (args as { body?: unknown }).body; return { data: {} } }) } } } }))
+
+        const team = makeTeam({ directory: dir, activeTask: { type: "parallel", runId: "run-err", startedAt: 0, responses: {}, stages: [], currentStageIndex: 0 } as unknown as ActiveTask })
+        recordEvent(team, { timestamp: 1, kind: "dispatched", member: "alice" })
+
+        // recordEvent is fire-and-forget; wait for the catch + logger.warn to fire.
+        await waitUntil(
+            () => cap.body !== undefined,
+            { timeoutMs: 2000, pollMs: 10 },
+        )
+
+        const body = cap.body as { message: string; level: string; extra: { runId: string; eventKind: string; error: string } }
+        expect(body.message).toBe("recordEvent append failed")
+        expect(body.level).toBe("warn")
+        expect(body.extra.runId).toBe("run-err")
+        expect(body.extra.eventKind).toBe("dispatched")
+        expect(body.extra.error).toBeDefined()
     })
 })

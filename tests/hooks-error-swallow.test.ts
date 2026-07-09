@@ -9,7 +9,7 @@
  * the master path. resolveTeamMember stays OUTSIDE the try so the common
  * "not a member" case stays silent.
  */
-import { rmSync } from "node:fs"
+import { rmSync, chmodSync } from "node:fs"
 
 import { afterAll, describe, expect, mock, test } from "bun:test"
 
@@ -18,11 +18,13 @@ import { createEventHandler } from "../src/hooks.js"
 import { statePath } from "../src/state/paths.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
 import { initTeamState, invalidateTeam } from "../src/state/store.js"
+import { waitUntil } from "../src/core/utils.js"
 import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
 interface LogCall {
+    level: string
     message: string
     extra: Record<string, unknown>
 }
@@ -34,8 +36,8 @@ function ctxFor(root: string, logCalls: LogCall[]): PluginContext {
         scope: "project",
         client: {
             app: {
-                log: mock(async (req: { body: { message: string; extra?: Record<string, unknown> } }) => {
-                    logCalls.push({ message: req.body.message, extra: req.body.extra ?? {} })
+                log: mock(async (req: { body: { level: string; message: string; extra?: Record<string, unknown> } }) => {
+                    logCalls.push({ level: req.body.level, message: req.body.message, extra: req.body.extra ?? {} })
                 }),
             },
             session: {
@@ -150,6 +152,58 @@ describe("H1 T4: member-idle with a live team does not regress (happy path)", ()
         const failLogs = logCalls.filter(c => c.message === "member-idle handler failed")
         expect(failLogs).toHaveLength(0)
 
+        unindexSession(memberSession)
+    })
+})
+
+/**
+ * P0 fix: saveTeamState failures in hooks.ts were silently swallowed at
+ * "warn" level with no retry. Now persistTeamState retries 3× with 100ms
+ * backoff before logging at "error" level with attempts count.
+ */
+describe("P0: saveTeamState failure → error-level log + retry", () => {
+    test("persist failure logged at 'error' level after 3 retries", async () => {
+        const root = tmpRoot("hooks-p0-retry")
+        const lead = "ses_p0_lead"
+        const memberSession = "ses_p0_alice"
+
+        const team = await initTeamState(
+            root,
+            makeState("gamma", lead, [makeMember("alice", memberSession)], Date.now()),
+            lead,
+        )
+        indexMember(memberSession, "gamma", "alice", lead, root)
+
+        // Make team directory read-only so saveTeamState fails (EACCES on
+        // lock file creation). loadTeamState still succeeds because it reads
+        // the state file without acquiring a write lock.
+        chmodSync(team.directory, 0o555)
+
+        const logCalls: LogCall[] = []
+        const ctx = ctxFor(root, logCalls)
+        const handler = createEventHandler(ctx)
+
+        // Must NOT reject — persistTeamState catches internally.
+        await handler({
+            event: { type: "session.idle", properties: { sessionID: memberSession } },
+        } as never)
+
+        // Wait for retries to complete (3 attempts × 100ms backoff ≈ 200ms)
+        await waitUntil(
+            () => logCalls.some(c => c.message === "persist team state failed (member idle)"),
+            { timeoutMs: 5000, pollMs: 50 },
+        )
+
+        const persistLog = logCalls.find(c => c.message === "persist team state failed (member idle)")
+        expect(persistLog).toBeDefined()
+        expect(persistLog!.level).toBe("error")
+        expect(persistLog!.extra.attempts).toBe(3)
+        expect(persistLog!.extra.team).toBe("gamma")
+        expect(persistLog!.extra.member).toBe("alice")
+        expect(persistLog!.extra.error).toBeDefined()
+
+        // Cleanup: restore write permission so cleanupTmpRoots can remove
+        chmodSync(team.directory, 0o755)
         unindexSession(memberSession)
     })
 })

@@ -22,6 +22,38 @@ import { logEvent, logSwallowed } from "./core/log.js"
 import { handleSessionDeleted } from "./orchestration/reconcile.js"
 
 const SWEEP_INTERVAL_MS = 15_000
+const SAVE_MAX_ATTEMPTS = 3
+const SAVE_BACKOFF_MS = 100
+
+/**
+ * Save team state with bounded retry. Transient disk failures (EIO, ENOSPC)
+ * are retried up to SAVE_MAX_ATTEMPTS times before giving up. On final failure
+ * the error is logged at "error" level (not the default "warn") so operators
+ * notice state drift between memory and disk.
+ *
+ * Runs inside the caller's team.mutex.runExclusive block; retries extend the
+ * mutex hold by at most ~200ms, acceptable for event-handler and sweep paths.
+ */
+async function persistTeamState(
+    ctx: PluginContext,
+    team: Parameters<typeof saveTeamState>[0],
+    label: string,
+    extra: Record<string, unknown>,
+): Promise<void> {
+    let lastErr: unknown
+    for (let attempt = 1; attempt <= SAVE_MAX_ATTEMPTS; attempt++) {
+        try {
+            await saveTeamState(team)
+            return
+        } catch (err) {
+            lastErr = err
+            if (attempt < SAVE_MAX_ATTEMPTS) {
+                await new Promise(r => setTimeout(r, SAVE_BACKOFF_MS))
+            }
+        }
+    }
+    logSwallowed(ctx, label, lastErr, { ...extra, attempts: SAVE_MAX_ATTEMPTS }, "error")
+}
 
 /**
  * Compaction-context suppression (Q2 guard). The `experimental.chat.messages.transform`
@@ -93,9 +125,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                     const team = await loadTeamState(e.storageRoot, e.teamName, e.leadSessionId)
                     await team.mutex.runExclusive(async () => {
                         await processIdle(ctx, team, masterPseudoMember(), sessionID)
-                        await saveTeamState(team).catch((err) =>
-                            logSwallowed(ctx, "persist team state failed (master idle)", err, { team: team.teamName })
-                        )
+                        await persistTeamState(ctx, team, "persist team state failed (master idle)", { team: team.teamName })
                     })
                 } catch (err) {
                     logSwallowed(ctx, "skipped unreadable team state", err, { dir: e.directory })
@@ -125,9 +155,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                 // under the mutex. processIdle's internal save runs before dispatch while
                 // status is still "busy"; without this the idle/failed status never reaches
                 // disk and the sidebar (which reads state.json directly) stays stale.
-                await saveTeamState(team).catch((err) =>
-                    logSwallowed(ctx, "persist team state failed (member idle)", err, { team: team.teamName, member: live.name })
-                )
+                await persistTeamState(ctx, team, "persist team state failed (member idle)", { team: team.teamName, member: live.name })
             })
         } catch (err) {
             logSwallowed(ctx, "member-idle handler failed", err, { sessionID })
@@ -302,9 +330,7 @@ export async function sweepTeamOnce(
                 await processIdle(ctx, team as Parameters<typeof processIdle>[1], member, member.sessionId)
             }
         }
-        await saveTeamState(team as Parameters<typeof saveTeamState>[0]).catch((err) =>
-            logSwallowed(ctx, "persist team state failed (sweep)", err, { team: (team as { teamName?: string }).teamName ?? "(unknown)" })
-        )
+        await persistTeamState(ctx, team as Parameters<typeof saveTeamState>[0], "persist team state failed (sweep)", { team: (team as { teamName?: string }).teamName ?? "(unknown)" })
     })
 }
 
