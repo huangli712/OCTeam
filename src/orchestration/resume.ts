@@ -29,10 +29,10 @@ import {
 } from "./tollgate.js";
 import {
     advanceWorkflowStep,
-    handleWorkflowDispatchUnavailable,
     handleWorkflowIdle,
     redispatchWorkflowStep,
 } from "./workflow.js";
+import { handleWorkflowDispatchUnavailable } from "./fanout.js";
 import { handleRouteIdle } from "./route.js";
 import {
     buildArbiterPrompt,

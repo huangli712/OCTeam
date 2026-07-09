@@ -23,7 +23,6 @@
  */
 
 import type { PluginContext } from "../core/context.js";
-import crypto from "node:crypto";
 import { type Team, saveTeamState } from "../state/store.js";
 import type {
     MemberState,
@@ -39,12 +38,9 @@ import {
 } from "./conditions.js";
 import {
     workflowCompleteReason,
-    workflowFanoutAllErroredReason,
-    workflowFanoutOverToleranceReason,
     workflowGateFailReason,
     workflowInvalidReason,
     workflowJumpLimitReason,
-    workflowNoSessionReason,
 } from "./reasons.js";
 import { dispatchToMember } from "./dispatch.js";
 import { finishRun } from "./summary.js";
@@ -53,11 +49,24 @@ import { truncateOutput } from "./output.js";
 import {
     findActiveWorkflowStepIndexForMember,
     getActiveWorkflowStepIndices,
+    isSameWorkflowBranch,
     readyWorkflowStepIndices,
+    sortedWorkflowIndices,
+    workflowStepActorName,
 } from "./dag.js";
 import { parseSelection, parseVerdict } from "./decisions.js";
 import { maybeTriggerSignoff } from "./signoff.js";
 import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js";
+import {
+    branchIdsForJoin,
+    buildBranchWorkflowOutput,
+    completeWorkflowJoinStep,
+    dispatchWorkflowJoinReducer,
+    handleWorkflowDispatchUnavailable,
+    liveWorkflowActor,
+    markWorkflowStepCompleted,
+    markWorkflowStepDispatched,
+} from "./fanout.js";
 
 // Total byte budget for injected upstream context (mirrors dispatch.ts). Caps
 // prompt growth so a long workflow does not bloat the actor's prompt linearly.
@@ -69,11 +78,6 @@ type WorkflowJumpTransition = {
     rationale?: string;
     diff?: string;
 };
-
-export type WorkflowFanoutErrorResult =
-    | { readonly kind: "not_fanout" }
-    | { readonly kind: "within_tolerance" }
-    | { readonly kind: "failed"; readonly reason: string };
 
 /**
  * Build the upstream-context prefix for a workflow task step: ALL completed
@@ -175,32 +179,6 @@ function shouldIncludeJoinUpstream(
     uptoIndex: number,
 ): boolean {
     return steps[uptoIndex]?.branch === undefined;
-}
-
-function isSameWorkflowBranch(
-    step: WorkflowStep,
-    branch: WorkflowBranchMetadata,
-): boolean {
-    const stepBranch = step.branch;
-    return (
-        stepBranch !== undefined &&
-        stepBranch.fanoutIndex === branch.fanoutIndex &&
-        stepBranch.branchId === branch.branchId
-    );
-}
-
-function workflowStepActorName(step: WorkflowStep): string | undefined {
-    switch (step.kind) {
-        case "task":
-            return step.dispatchedActor ?? step.member;
-        case "gate":
-            return step.dispatchedActor ?? step.verifier;
-        case "fanout":
-        case "join":
-            return undefined;
-        default:
-            return assertNeverWorkflowStepKind(step.kind);
-    }
 }
 
 /**
@@ -427,42 +405,6 @@ function assertNeverWorkflowStepKind(value: never): never {
     throw new Error(`unhandled workflow step kind: ${String(value)}`);
 }
 
-function hasLiveSession(
-    member: MemberState | undefined,
-): member is MemberState & { sessionId: string } {
-    return member?.sessionId !== undefined && member.status !== "errored";
-}
-
-function liveWorkflowActor(
-    team: Team,
-    primaryName: string | undefined,
-    fallbackName: string | undefined,
-): (MemberState & { sessionId: string }) | undefined {
-    const primary = team.members.find(
-        (m) => m.name === primaryName && !m.isMaster,
-    );
-    if (hasLiveSession(primary)) return primary;
-    const fallback = team.members.find(
-        (m) => m.name === fallbackName && !m.isMaster,
-    );
-    return hasLiveSession(fallback) ? fallback : undefined;
-}
-
-function dispatchFailureActorName(step: WorkflowStep): string | undefined {
-    switch (step.kind) {
-        case "task":
-            return step.member;
-        case "gate":
-            return step.verifier;
-        case "join":
-            return step.join?.reducerMember;
-        case "fanout":
-            return undefined;
-        default:
-            return assertNeverWorkflowStepKind(step.kind);
-    }
-}
-
 function describeStep(step: WorkflowStep | undefined, index: number): string {
     if (!step) return `step ${index + 1}`;
     const idTag = step.id ? ` (${step.id})` : "";
@@ -574,7 +516,7 @@ async function dispatchEnsembleGate(
         const verifier = team.members.find(
             (m) => m.name === verifierName && !m.isMaster,
         );
-        if (!hasLiveSession(verifier)) continue;
+        if (!(verifier?.sessionId !== undefined && verifier.status !== "errored")) continue;
         delete task.responses[verifier.name];
         step.dispatchedActor = verifier.name;
         if (step.correlationId === undefined) {
@@ -644,449 +586,12 @@ async function dispatchGateStep(
     return true;
 }
 
-function buildJoinedWorkflowOutput(
-    steps: WorkflowStep[],
-    joinIndex: number,
-): string {
-    const joinStep = steps[joinIndex];
-    const join = joinStep?.join;
-    if (join === undefined) return "";
-
-    const fanout = steps[join.fanoutIndex]?.fanout;
-    const ranges =
-        fanout?.branchRanges ??
-        join.branchTailIndices.map((tailIndex) => ({
-            startIndex: tailIndex,
-            endIndex: tailIndex,
-        }));
-    const erroredBranchIds = new Set(join.erroredBranchIds ?? []);
-    const blocks: string[] = [];
-    let used = 0;
-
-    for (let branchIndex = 0; branchIndex < ranges.length; branchIndex += 1) {
-        const range = ranges[branchIndex];
-        if (range === undefined) continue;
-        const branchId =
-            fanout?.branchIds[branchIndex] ?? `branch-${branchIndex + 1}`;
-        if (erroredBranchIds.has(branchId)) continue;
-        const branchBlocks: string[] = [];
-
-        for (
-            let stepIndex = range.startIndex;
-            stepIndex <= range.endIndex;
-            stepIndex += 1
-        ) {
-            const step = steps[stepIndex];
-            if (step?.kind !== "task" || !step.completed || !step.output)
-                continue;
-            if (step.exposeOutput === false) continue;
-            branchBlocks.push(
-                `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n${truncateOutput(step.output)}`,
-            );
-        }
-
-        if (branchBlocks.length === 0) continue;
-        const block = `[Branch ${branchId}]\n${branchBlocks.join("\n\n")}`;
-        if (used + block.length > UPSTREAM_TOTAL_CAP) {
-            blocks.push(
-                `[…joined output truncated at ${UPSTREAM_TOTAL_CAP} bytes]`,
-            );
-            break;
-        }
-        blocks.push(block);
-        used += block.length;
-    }
-
-    return blocks.join("\n\n");
-}
-
-function buildBranchWorkflowOutput(
-    steps: WorkflowStep[],
-    joinIndex: number,
-    branchId: string,
-): string {
-    const join = steps[joinIndex]?.join;
-    const fanout = join === undefined ? undefined : steps[join.fanoutIndex]?.fanout;
-    if (join === undefined || fanout === undefined) return "";
-    const branchIndex = fanout.branchIds.indexOf(branchId);
-    const range = branchIndex < 0 ? undefined : fanout.branchRanges[branchIndex];
-    if (range === undefined) return "";
-
-    const branchBlocks: string[] = [];
-    for (let stepIndex = range.startIndex; stepIndex <= range.endIndex; stepIndex += 1) {
-        const step = steps[stepIndex];
-        if (step?.kind !== "task" || !step.completed || !step.output) continue;
-        if (step.exposeOutput === false) continue;
-        branchBlocks.push(
-            `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n${truncateOutput(step.output)}`,
-        );
-    }
-
-    return branchBlocks.length === 0 ? "" : `[Branch ${branchId}]\n${branchBlocks.join("\n\n")}`;
-}
-
-function buildWorkflowReducePrompt(
-    steps: WorkflowStep[],
-    joinIndex: number,
-): string {
-    return `[Workflow reduce task] You are the reducer for workflow join step ${joinIndex + 1}. Combine the branch outputs below into ONE joined result. Output ONLY the final result, with no preamble.\n\n${buildJoinedWorkflowOutput(steps, joinIndex)}`;
-}
-
-function buildWorkflowSelectPrompt(
-    steps: WorkflowStep[],
-    joinIndex: number,
-): string {
-    const step = steps[joinIndex];
-    const branchIds = step?.join === undefined ? [] : branchIdsForJoin(steps, step.join);
-    return `[Workflow select task] You are the selector for workflow join step ${joinIndex + 1}. Choose exactly one winning branch id from: ${branchIds.join(", ")}. Emit ONLY <selection>{"winner":"branch_id","rationale":"..."}</selection>.\n\n${buildJoinedWorkflowOutput(steps, joinIndex)}`;
-}
-
-function markWorkflowStepDispatched(step: WorkflowStep): void {
-    const now = Date.now();
-    step.startedAt ??= now;
-    step.dispatchedAt = now;
-}
-
-function markWorkflowStepCompleted(step: WorkflowStep): void {
-    const now = Date.now();
-    step.startedAt ??= step.dispatchedAt ?? now;
-    step.completedAt = now;
-    step.durationMs = Math.max(0, now - step.startedAt);
-}
-
 function resetWorkflowStepTiming(step: WorkflowStep): void {
     step.startedAt = undefined;
     step.completedAt = undefined;
     step.durationMs = undefined;
     step.dispatchedAt = undefined;
     step.dispatchedActor = undefined;
-}
-
-async function dispatchWorkflowJoinReducer(
-    ctx: PluginContext,
-    team: Team,
-    task: WorkflowTask,
-    index: number,
-): Promise<boolean> {
-    const step = task.steps?.[index];
-    const joinPolicy = step?.join?.joinPolicy;
-    const reducerMember = step?.join?.reducerMember;
-    if (
-        step?.kind !== "join" ||
-        (joinPolicy !== "reduce" && joinPolicy !== "select") ||
-        reducerMember === undefined
-    ) return false;
-    const reducer = liveWorkflowActor(team, reducerMember, undefined);
-    if (reducer === undefined) return false;
-    // Clear any stale response the reducer left from an earlier workflow step so a
-    // crash during the reduce wait cannot be mistaken for a fresh reduce turn on resume.
-    delete task.responses[reducer.name];
-    step.dispatchedActor = reducer.name;
-    step.correlationId = crypto.randomUUID();
-    await dispatchToMember(
-        ctx,
-        reducer,
-        joinPolicy === "select"
-            ? buildWorkflowSelectPrompt(task.steps ?? [], index)
-            : buildWorkflowReducePrompt(task.steps ?? [], index),
-        reducer.worktreePath ?? ctx.directory,
-        team,
-        { stepIndex: index, correlationId: step.correlationId },
-    );
-    markWorkflowStepDispatched(step);
-    return true;
-}
-
-function pushUniqueBranchId(
-    branchIds: string[],
-    branchId: string | undefined,
-): void {
-    if (branchId !== undefined && !branchIds.includes(branchId))
-        branchIds.push(branchId);
-}
-
-function branchIdsForJoin(
-    steps: WorkflowStep[],
-    join: NonNullable<WorkflowStep["join"]>,
-): readonly string[] {
-    const fanout = steps[join.fanoutIndex]?.fanout;
-    if (fanout !== undefined) return fanout.branchIds;
-
-    const branchIds: string[] = [];
-    for (const tailIndex of join.branchTailIndices) {
-        pushUniqueBranchId(branchIds, steps[tailIndex]?.branch?.branchId);
-    }
-    return branchIds;
-}
-
-function survivorBranchIdsForJoin(
-    steps: WorkflowStep[],
-    join: NonNullable<WorkflowStep["join"]>,
-): readonly string[] {
-    const erroredBranchIds = new Set(join.erroredBranchIds ?? []);
-    return branchIdsForJoin(steps, join).filter(
-        (branchId) => !erroredBranchIds.has(branchId),
-    );
-}
-
-function joinWithBranchStatus(
-    steps: WorkflowStep[],
-    join: NonNullable<WorkflowStep["join"]>,
-): NonNullable<WorkflowStep["join"]> {
-    const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])];
-    return {
-        ...join,
-        survivorBranchIds: survivorBranchIdsForJoin(steps, join),
-        ...(erroredBranchIds.length > 0 ? { erroredBranchIds } : {}),
-    };
-}
-
-type WorkflowJoinAdvanceResult =
-    | "completed"
-    | "dispatched"
-    | "waiting"
-    | "failed"
-    | "noop";
-
-async function completeWorkflowJoinStep(
-    ctx: PluginContext,
-    team: Team,
-    task: WorkflowTask,
-    steps: WorkflowStep[],
-    joinIndex: number,
-): Promise<WorkflowJoinAdvanceResult> {
-    const step = steps[joinIndex];
-    const join = step?.join;
-    if (step?.kind !== "join" || join === undefined || step.completed)
-        return "noop";
-
-    const baseJoin = joinWithBranchStatus(steps, join);
-    if (
-        (baseJoin.joinPolicy === "reduce" || baseJoin.joinPolicy === "select") &&
-        baseJoin.joinedOutput === undefined
-    ) {
-        step.join = baseJoin;
-        if (step.dispatchedAt !== undefined) return "waiting";
-        if (!(await dispatchWorkflowJoinReducer(ctx, team, task, joinIndex))) {
-            await finishRun(
-                ctx,
-                team,
-                workflowNoSessionReason(baseJoin.reducerMember),
-                "failed",
-            );
-            return "failed";
-        }
-        return "dispatched";
-    }
-
-    step.join = {
-        ...baseJoin,
-        joinedOutput:
-            baseJoin.joinedOutput ??
-            buildJoinedWorkflowOutput(steps, joinIndex),
-    };
-    markWorkflowStepCompleted(step);
-    step.dispatchedAt = undefined;
-    step.correlationId = undefined;
-    step.completed = true;
-    recordEvent(team, {
-        timestamp: Date.now(),
-        kind: "stage_advanced",
-        stage: joinIndex,
-        detail: `workflow join fired: step ${joinIndex + 1}; fanout step ${join.fanoutIndex + 1}`,
-    });
-    return "completed";
-}
-
-function evaluateWorkflowFanoutError(
-    steps: WorkflowStep[],
-    joinIndex: number,
-): WorkflowFanoutErrorResult {
-    const joinStep = steps[joinIndex];
-    const join = joinStep?.join;
-    if (joinStep?.kind !== "join" || join === undefined)
-        return { kind: "not_fanout" };
-
-    const branchIds = branchIdsForJoin(steps, join);
-    const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])];
-    const erroredSet = new Set(erroredBranchIds);
-    const remainingSurvivors = branchIds.filter(
-        (branchId) => !erroredSet.has(branchId),
-    ).length;
-    const total = branchIds.length;
-    const fanoutDisplayStep = join.fanoutIndex + 1;
-
-    // Fail-fast: can the join policy still be satisfied given current errors?
-    const impossible = fanoutPolicyImpossible(
-        join,
-        erroredBranchIds,
-        remainingSurvivors,
-        total,
-    );
-    if (impossible) {
-        return remainingSurvivors === 0
-            ? {
-                  kind: "failed",
-                  reason: workflowFanoutAllErroredReason(fanoutDisplayStep),
-              }
-            : {
-                  kind: "failed",
-                  reason: workflowFanoutOverToleranceReason(fanoutDisplayStep),
-              };
-    }
-    return { kind: "within_tolerance" };
-}
-
-/**
- * Given the branches that have errored so far, can the join policy still be
- * satisfied once the remaining (still-running or pending) branches resolve?
- * Used for fail-fast termination when a branch error makes success impossible.
- */
-function fanoutPolicyImpossible(
-    join: NonNullable<WorkflowStep["join"]>,
-    erroredBranchIds: readonly string[],
-    remainingSurvivors: number,
-    total: number,
-): boolean {
-    if (join.useSurvivors === true) return remainingSurvivors === 0;
-    const erroredSet = new Set(erroredBranchIds);
-    switch (join.joinPolicy) {
-        case undefined:
-        case "tolerance":
-            return (
-                remainingSurvivors === 0 ||
-                erroredBranchIds.length > join.maxErrored
-            );
-        case "all":
-        case "reduce":
-        case "select":
-            return erroredBranchIds.length > 0;
-        case "quorum": {
-            const threshold = join.quorum ?? 0;
-            const required = Math.ceil(threshold * total);
-            return remainingSurvivors < required;
-        }
-        case "any_success":
-            return remainingSurvivors === 0;
-        case "required_branches": {
-            const required = join.requiredBranchIds ?? [];
-            return required.some((branchId) => erroredSet.has(branchId));
-        }
-        default:
-            return (
-                remainingSurvivors === 0 ||
-                erroredBranchIds.length > join.maxErrored
-            );
-    }
-}
-
-function markWorkflowBranchStepsSkipped(
-    steps: WorkflowStep[],
-    branch: WorkflowBranchMetadata,
-): void {
-    const fanout = steps[branch.fanoutIndex]?.fanout;
-    const range = fanout?.branchRanges[branch.branchIndex];
-    const startIndex = range?.startIndex ?? branch.fanoutIndex + 1;
-    const endIndex = range?.endIndex ?? branch.joinIndex - 1;
-
-    for (let index = startIndex; index <= endIndex; index += 1) {
-        const step = steps[index];
-        if (
-            step === undefined ||
-            !isSameWorkflowBranch(step, branch) ||
-            step.completed
-        )
-            continue;
-        step.completed = true;
-        step.skipped = true;
-    }
-}
-
-function removeActiveWorkflowBranch(
-    task: WorkflowTask,
-    branch: WorkflowBranchMetadata,
-): void {
-    const active = getActiveWorkflowStepIndices(task);
-    const next = active.filter((index) => {
-        const step = task.steps?.[index];
-        return step === undefined || !isSameWorkflowBranch(step, branch);
-    });
-    task.activeStepIndices = sortedWorkflowIndices(
-        next.length > 0 ? next : [branch.joinIndex],
-    );
-    task.currentStageIndex = task.activeStepIndices[0] ?? branch.joinIndex;
-}
-
-function recordedErroredBranchForMember(
-    steps: WorkflowStep[],
-    memberName: string,
-): WorkflowBranchMetadata | null {
-    for (const step of steps) {
-        if (
-            step.branch === undefined ||
-            workflowStepActorName(step) !== memberName
-        )
-            continue;
-        const join = steps[step.branch.joinIndex]?.join;
-        if (join?.erroredBranchIds?.includes(step.branch.branchId) === true)
-            return step.branch;
-    }
-    return null;
-}
-
-export function markWorkflowFanoutBranchErrored(
-    task: WorkflowTask,
-    memberName: string,
-): WorkflowFanoutErrorResult {
-    const steps = task.steps ?? [];
-    const activeIndex = findActiveWorkflowStepIndexForMember(task, memberName);
-    const activeBranch =
-        activeIndex === null ? null : (steps[activeIndex]?.branch ?? null);
-    const branch =
-        activeBranch ?? recordedErroredBranchForMember(steps, memberName);
-    if (branch === null) return { kind: "not_fanout" };
-
-    const joinStep = steps[branch.joinIndex];
-    const join = joinStep?.join;
-    if (joinStep?.kind !== "join" || join === undefined)
-        return { kind: "not_fanout" };
-
-    const erroredBranchIds = [
-        ...new Set([...(join.erroredBranchIds ?? []), branch.branchId]),
-    ];
-    joinStep.join = {
-        ...join,
-        erroredBranchIds,
-        survivorBranchIds: branchIdsForJoin(steps, join).filter(
-            (branchId) => !erroredBranchIds.includes(branchId),
-        ),
-    };
-    markWorkflowBranchStepsSkipped(steps, branch);
-    removeActiveWorkflowBranch(task, branch);
-    return evaluateWorkflowFanoutError(steps, branch.joinIndex);
-}
-
-export async function handleWorkflowDispatchUnavailable(
-    ctx: PluginContext,
-    team: Team,
-    task: WorkflowTask,
-    step: WorkflowStep,
-): Promise<"degraded" | "failed"> {
-    const actorName = dispatchFailureActorName(step);
-    if (step.branch === undefined || actorName === undefined) {
-        await finishRun(ctx, team, workflowNoSessionReason(actorName), "failed");
-        return "failed";
-    }
-    const result = markWorkflowFanoutBranchErrored(task, actorName);
-    if (result.kind === "failed") {
-        await finishRun(ctx, team, result.reason, "failed");
-        return "failed";
-    }
-    return "degraded";
-}
-
-function sortedWorkflowIndices(indices: readonly number[]): number[] {
-    return [...indices].sort((left, right) => left - right);
 }
 
 function moveActiveWorkflowStep(

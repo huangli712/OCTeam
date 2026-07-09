@@ -186,12 +186,33 @@ function collectWorkflowSuccessors(
     collectReadyWorkflowStepIndices(steps, index + 1, ready)
 }
 
-function isSameWorkflowBranch(
+export function isSameWorkflowBranch(
     step: WorkflowStep,
     branch: NonNullable<WorkflowStep["branch"]>,
 ): boolean {
     const stepBranch = step.branch
     return stepBranch !== undefined && stepBranch.fanoutIndex === branch.fanoutIndex && stepBranch.branchId === branch.branchId
+}
+
+/** Sort workflow step indices ascending. */
+export function sortedWorkflowIndices(indices: readonly number[]): number[] {
+    return [...indices].sort((left, right) => left - right)
+}
+
+/** Resolve the dispatched or primary actor name for a step. */
+export function workflowStepActorName(step: WorkflowStep): string | undefined {
+    switch (step.kind) {
+        case "task":
+            return step.dispatchedActor ?? step.member
+        case "gate":
+            return step.dispatchedActor ?? step.verifier
+        case "join":
+            return step.dispatchedActor
+        case "fanout":
+            return undefined
+        default:
+            throw new WorkflowDagInvariantError(step.kind)
+    }
 }
 
 function pushUniqueWorkflowIndex(indices: number[], index: number): void {
