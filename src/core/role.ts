@@ -266,6 +266,26 @@ export const DEFAULT_ROLE = "reviewer"
 export const ROLE_NAMES: string[] = Object.keys(ROLES)
 
 /**
+ * All hardened oct-* agent names used by OCTeam roles. Derived from ROLES so
+ * the allowlist stays in sync as new roles/agents are added. This is the single
+ * source of truth for "which agent values may a member legitimately carry" —
+ * used by the tool schemas (create/add/fix), dispatch sanitization, and disk
+ * reload validation to ensure a member's `agent` field can never name a bare
+ * host agent (e.g. "build") that bypasses the hardened oct-* permission maps.
+ */
+export const OCTEAM_AGENTS: readonly string[] = Object.freeze(
+    Array.from(new Set(Object.values(ROLES).map(r => r.agent))).sort(),
+)
+
+/**
+ * The read-only fallback agent used when a member's `agent` is missing or not
+ * in the hardened oct-* allowlist. Equals roleAgent(DEFAULT_ROLE) = "oct-oracle".
+ * Fail-safe: an unrecognized or tampered agent degrades to least privilege,
+ * never escalates to a full-capability host agent.
+ */
+export const SAFE_FALLBACK_AGENT: string = roleAgent(DEFAULT_ROLE)
+
+/**
  * Normalize a role label to a preset role key. Matching is case-insensitive;
  * anything not in ROLES collapses to DEFAULT_ROLE ("reviewer"). Uses an own-
  * property check so inherited Object keys ("toString", "constructor", …) never
@@ -292,18 +312,6 @@ export function rolePreset(role: string): string {
 }
 
 /**
- * All hardened oct-* agent names used by OCTeam roles. Derived from ROLES so
- * the allowlist stays in sync as new roles/agents are added. This is the single
- * source of truth for "which agent values may a member legitimately carry" —
- * used by the tool schemas (create/add/fix), dispatch sanitization, and disk
- * reload validation to ensure a member's `agent` field can never name a bare
- * host agent (e.g. "build") that bypasses the hardened oct-* permission maps.
- */
-export const OCTEAM_AGENTS: readonly string[] = Object.freeze(
-    Array.from(new Set(Object.values(ROLES).map(r => r.agent))).sort(),
-)
-
-/**
  * True iff `agent` is one of OCTeam's hardened oct-* agents. Used at every
  * trust boundary (tool input, disk reload, dispatch) to gate the
  * permission-determining `agent` field.
@@ -311,14 +319,6 @@ export const OCTEAM_AGENTS: readonly string[] = Object.freeze(
 export function isOCTeamAgent(agent: string): boolean {
     return (OCTEAM_AGENTS as readonly string[]).includes(agent)
 }
-
-/**
- * The read-only fallback agent used when a member's `agent` is missing or not
- * in the hardened oct-* allowlist. Equals roleAgent(DEFAULT_ROLE) = "oct-oracle".
- * Fail-safe: an unrecognized or tampered agent degrades to least privilege,
- * never escalates to a full-capability host agent.
- */
-export const SAFE_FALLBACK_AGENT: string = roleAgent(DEFAULT_ROLE)
 
 /**
  * Return `agent` when it is a hardened oct-* agent, else the read-only
