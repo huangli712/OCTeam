@@ -16,6 +16,14 @@ import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
+const tracked: string[] = []
+
+afterAll(cleanupTmpRoots)
+
+afterEach(() => {
+    for (const sid of tracked.splice(0)) unindexSession(sid)
+})
+
 function makeParallelTask(overrides: Partial<ActiveTask> = {}): ActiveTask {
     return {
         type: "parallel",

@@ -11,6 +11,8 @@ import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { ActiveTask, Message, MemberState, TeamState } from "../src/core/types.js"
 import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
+const TEAM = "intervene-team"
+
 /** Minimal ActiveTask fixture carrying a runId; overrides for per-test tweaks. */
 function makeActiveTask(runId: string | undefined, overrides: Partial<ActiveTask> = {}): ActiveTask {
     return {

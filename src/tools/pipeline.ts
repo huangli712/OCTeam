@@ -15,8 +15,8 @@ import {
     signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
-    validateSignoff,
-} from "../orchestration/shared.js"
+} from "../orchestration/start-orchestration.js"
+import { validateSignoff } from "../orchestration/shared.js"
 
 /** Run a linear pipeline where each stage passes its output to the next. */
 export function teamPipelineTool(ctx: PluginContext): ToolDefinition {

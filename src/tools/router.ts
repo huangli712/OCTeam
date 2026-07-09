@@ -17,8 +17,8 @@ import {
     signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
-    validateSignoff,
-} from "../orchestration/shared.js"
+} from "../orchestration/start-orchestration.js"
+import { validateSignoff } from "../orchestration/shared.js"
 
 // Re-export buildRouterPrompt for any external consumers that historically
 // imported it from this module. The canonical home is orchestration/route.ts.

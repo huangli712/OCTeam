@@ -17,8 +17,8 @@ import {
     signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
-    validateSignoff,
-} from "../orchestration/shared.js"
+} from "../orchestration/start-orchestration.js"
+import { validateSignoff } from "../orchestration/shared.js"
 
 /** Run a binding arbitration with structured debate between members and a ruling arbiter. */
 export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {

@@ -30,6 +30,15 @@ import { teamDir } from "../src/state/paths.js"
 import { sweepTeamOnce } from "../src/hooks.js"
 import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
+async function absent(p: string): Promise<boolean> {
+    try {
+        await access(p)
+        return false
+    } catch {
+        return true
+    }
+}
+
 function parallelTask(): ActiveTask {
     return {
         type: "parallel",

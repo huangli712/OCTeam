@@ -14,7 +14,7 @@ import {
     humanApprovalSchemaFields,
     humanApprovalTaskFields,
     startOrchestration,
-} from "../orchestration/shared.js"
+} from "../orchestration/start-orchestration.js"
 
 /** Run a multi-round structured debate until all members reach consensus. */
 export function teamConsensusTool(ctx: PluginContext): ToolDefinition {

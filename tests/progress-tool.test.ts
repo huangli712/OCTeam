@@ -72,7 +72,7 @@ describe("teamProgressTool.execute", () => {
         tracked.push(masterSid)
         await setup({ root, masterSid, members: [] })
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: "ses_stranger_prog" } as never,
         )
@@ -85,7 +85,7 @@ describe("teamProgressTool.execute", () => {
         tracked.push(masterSid)
         await setup({ root, masterSid, members: [] })
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "../escape" },
             { sessionID: masterSid } as never,
         )
@@ -98,7 +98,7 @@ describe("teamProgressTool.execute", () => {
         tracked.push(masterSid)
         await setup({ root, masterSid, members: [] })
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )
@@ -122,7 +122,7 @@ describe("teamProgressTool.execute", () => {
             { timestamp: Date.now(), kind: "captured", member: "alice", bytes: 42 },
         ])
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )
@@ -157,7 +157,7 @@ describe("teamProgressTool.execute", () => {
             { timestamp: Date.now(), kind: "verdict", member: "bob", stage: 1, detail: "PASS" },
         ])
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )
@@ -189,7 +189,7 @@ describe("teamProgressTool.execute", () => {
             activeTask: workflowTask,
         })
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, format: "mermaid" },
             { sessionID: masterSid } as never,
         )
@@ -271,7 +271,7 @@ describe("teamProgressTool.execute", () => {
             { timestamp: Date.now() + 1, kind: "dispatched", member: "carol", stage: 4 },
         ])
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )
@@ -317,7 +317,7 @@ describe("teamProgressTool.execute", () => {
             activeTask: workflowTask,
         })
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, format: "mermaid" },
             { sessionID: masterSid } as never,
         )
@@ -371,7 +371,7 @@ describe("teamProgressTool.execute", () => {
             { timestamp: Date.now(), kind: "dispatched", member: "alice", stage: 2 },
         ])
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
             { sessionID: masterSid } as never,
         )
@@ -385,7 +385,7 @@ describe("teamProgressTool.execute", () => {
         tracked.push(masterSid)
         await setup({ root, masterSid, members: [] })
 
-        const idleResult = await teamProgressTool(makeCtx(root)).execute(
+        const idleResult = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, format: "mermaid" },
             { sessionID: masterSid } as never,
         )
@@ -401,7 +401,7 @@ describe("teamProgressTool.execute", () => {
             activeTask: makeActiveTask(),
         })
 
-        const parallelResult = await teamProgressTool(makeCtx(activeRoot)).execute(
+        const parallelResult = await teamProgressTool(makeCtx({ storageRoot: activeRoot, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, format: "mermaid" },
             { sessionID: activeMasterSid } as never,
         )
@@ -425,7 +425,7 @@ describe("teamProgressTool.execute", () => {
             { timestamp: t0 + 1000, kind: "errored", member: "alice" },
         ])
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, since: t0 + 500 },
             { sessionID: masterSid } as never,
         )
@@ -451,7 +451,7 @@ describe("teamProgressTool.execute", () => {
         }
         await seedEvents(dir, "run-active-1", events)
 
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, limit: 3 },
             { sessionID: masterSid } as never,
         )

@@ -9,12 +9,12 @@ import type { Stage } from "../core/types.js"
 import { dispatchToMember } from "../orchestration/dispatch.js"
 import {
     DEFAULT_LOOP_TIMEOUT_MS,
-    assertMember,
     baseTaskFields,
     humanApprovalSchemaFields,
     humanApprovalTaskFields,
     startOrchestration,
-} from "../orchestration/shared.js"
+} from "../orchestration/start-orchestration.js"
+import { assertMember } from "../orchestration/shared.js"
 
 /** Run a corrective loop with a decider that reviews and decides whether to continue. */
 export function teamLoopTool(ctx: PluginContext): ToolDefinition {

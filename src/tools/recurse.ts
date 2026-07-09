@@ -14,15 +14,14 @@ import {
     DEFAULT_RECURSE_DEPTH,
     DEFAULT_RECURSE_SUBTASKS,
     DEFAULT_TIMEOUT_MS,
-    assertMember,
     baseTaskFields,
     humanApprovalSchemaFields,
     humanApprovalTaskFields,
     signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
-    validateSignoff,
-} from "../orchestration/shared.js"
+} from "../orchestration/start-orchestration.js"
+import { assertMember, validateSignoff } from "../orchestration/shared.js"
 
 /** Hierarchical recursive decomposition of a root task into subtasks. */
 export function teamRecurseTool(ctx: PluginContext): ToolDefinition {

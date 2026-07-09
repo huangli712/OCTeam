@@ -18,6 +18,8 @@ import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { Message } from "../src/core/types.js"
 import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
+const TEAM = "alpha"
+
 function makeActiveTask(mode: "isolated" | "cooperative"): ActiveTask {
     return {
         type: "parallel",

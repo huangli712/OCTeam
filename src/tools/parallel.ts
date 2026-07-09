@@ -10,13 +10,12 @@ import { dispatchToMember } from "../orchestration/dispatch.js"
 import {
     DEFAULT_REDUCE_POLICY,
     DEFAULT_TIMEOUT_MS,
-    assertMember,
     baseTaskFields,
     signoffSchemaFields,
     signoffTaskFields,
     startOrchestration,
-    validateSignoff,
-} from "../orchestration/shared.js"
+} from "../orchestration/start-orchestration.js"
+import { assertMember, validateSignoff } from "../orchestration/shared.js"
 
 /** Run a task across all team members in parallel with isolated or cooperative mode. */
 export function teamParallelTool(ctx: PluginContext): ToolDefinition {
