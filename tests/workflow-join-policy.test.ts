@@ -4,29 +4,18 @@ import type { MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.
 import { checkTermination } from "../src/orchestration/termination.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { advanceWorkflowStep } from "../src/orchestration/workflow.js"
-import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeTeam, makeWorkflowTask as sharedMakeWorkflowTask, type DispatchCall } from "./helpers.js"
 
 import type { Team } from "../src/state/store.js"
 
 
 function makeWorkflowTask(steps: WorkflowStep[], activeStepIndices: number[]): WorkflowTask {
-    return {
-        type: "workflow",
-        startedAt: Date.now(),
-        wallClockTimeoutMs: Number.MAX_SAFE_INTEGER,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: activeStepIndices[0] ?? 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        runId: crypto.randomUUID(),
-        signoffPolicy: "none",
+    return sharedMakeWorkflowTask({
         steps,
         activeStepIndices,
-    } as WorkflowTask
+        currentStageIndex: activeStepIndices[0] ?? 0,
+        wallClockTimeoutMs: Number.MAX_SAFE_INTEGER,
+    })
 }
 
 

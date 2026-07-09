@@ -23,6 +23,7 @@ import { describe, expect, test } from "bun:test"
 import { buildSummary } from "../src/orchestration/summary.js"
 import type { ActiveTask, ConsensusTask, WorkflowTask } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
+import { makeWorkflowTask } from "./helpers.js"
 
 // buildSummary's consensus case does not access team.directory (only delegate
 // and recurse do, via listAllTasks). A minimal cast is sufficient here.
@@ -100,23 +101,6 @@ describe("buildSummary: exhaustive guard throws on unknown type (P2-1)", () => {
 })
 
 describe("buildSummary: workflow case", () => {
-    function makeWorkflowTask(opts: Partial<WorkflowTask> = {}): WorkflowTask {
-        return {
-            type: "workflow",
-            startedAt: 0,
-            wallClockTimeoutMs: 300_000,
-            tokensUsed: 0,
-            tokensByMember: {},
-            messagesSent: 0,
-            responses: {},
-            stages: [],
-            currentStageIndex: 0,
-            decisionHistory: [],
-            decisionParseFailures: 0,
-            ...opts,
-        } as WorkflowTask
-    }
-
     test("renders a per-step ledger plus completed task-step outputs", async () => {
         const task = makeWorkflowTask({
             steps: [

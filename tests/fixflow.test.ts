@@ -6,26 +6,7 @@ import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import type { Team } from "../src/state/store.js"
 import { teamFixWorkflowTool } from "../src/tools/fixflow.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
-
-function makeWorkflowTask(fields: Partial<WorkflowTask> & { readonly steps: WorkflowStep[] }): WorkflowTask {
-    return {
-        type: "workflow",
-        startedAt: Date.now(),
-        wallClockTimeoutMs: 300_000,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        runId: crypto.randomUUID(),
-        signoffPolicy: "none",
-        ...fields,
-    } as WorkflowTask
-}
+import { makeCtx, makeMember, makeState, makeToolContext, makeWorkflowTask, tmpRoot, type DispatchCall } from "./helpers.js"
 
 async function setupTeam(root: string, masterSid: string, task: ActiveTask, members: MemberState[]): Promise<Team> {
     await initTeamState(root, makeState("alpha", masterSid, members, Date.now()), masterSid)

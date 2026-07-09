@@ -3,7 +3,7 @@ import os from "node:os"
 import path from "node:path"
 
 import type { ToolContext } from "@opencode-ai/plugin"
-import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
+import type { ActiveTask, MemberState, TeamState, WorkflowTask } from "../src/core/types.js"
 import type { PluginContext } from "../src/core/context.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
@@ -162,6 +162,31 @@ export function makeTask(overrides: Partial<ActiveTask> = {}): ActiveTask {
         decisionParseFailures: 0,
         ...overrides,
     } as ActiveTask
+}
+
+/**
+ * Minimal valid WorkflowTask with overrides. Defaults match the most common
+ * fixture pattern across 11+ workflow test suites: Date.now() start, 300s
+ * timeout, random runId, signoffPolicy="none". Callers override via opts
+ * (e.g. steps, activeStepIndices, responses, wallClockTimeoutMs).
+ */
+export function makeWorkflowTask(opts: Partial<WorkflowTask> = {}): WorkflowTask {
+    return {
+        type: "workflow",
+        startedAt: Date.now(),
+        wallClockTimeoutMs: 300_000,
+        tokensUsed: 0,
+        tokensByMember: {},
+        messagesSent: 0,
+        responses: {},
+        stages: [],
+        currentStageIndex: 0,
+        decisionHistory: [],
+        decisionParseFailures: 0,
+        runId: crypto.randomUUID(),
+        signoffPolicy: "none",
+        ...opts,
+    } as WorkflowTask
 }
 
 /**

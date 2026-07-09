@@ -21,29 +21,7 @@ import type {
 } from "../src/core/types.js";
 
 
-import { makeTeam, makeCtx, type DispatchCall } from "./helpers.js";
-
-
-function makeWorkflowTask(
-    opts: Partial<WorkflowTask> & { steps: WorkflowStep[] },
-): WorkflowTask {
-    return {
-        type: "workflow",
-        startedAt: Date.now(),
-        wallClockTimeoutMs: 300000,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        runId: crypto.randomUUID(),
-        signoffPolicy: "none",
-        ...opts,
-    } as WorkflowTask;
-}
+import { makeTeam, makeCtx, makeWorkflowTask, type DispatchCall } from "./helpers.js";
 
 
 

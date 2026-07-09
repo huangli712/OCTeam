@@ -31,35 +31,13 @@ import {
     type WorkflowToolStep,
 } from "../src/tools/workflow.js";
 import type { PluginContext } from "../src/core/context.js";
-import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, type DispatchCall, waitForEvent } from "./helpers.js";
+import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, makeWorkflowTask, type DispatchCall, waitForEvent } from "./helpers.js";
 
 
 const trackedSessions: string[] = [];
 afterEach(() => {
     for (const sid of trackedSessions.splice(0)) unindexSession(sid);
 });
-
-function makeWorkflowTask(
-    opts: Partial<WorkflowTask> & { steps: WorkflowStep[] },
-): WorkflowTask {
-    return {
-        type: "workflow",
-        startedAt: Date.now(),
-        wallClockTimeoutMs: 300000,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        runId: crypto.randomUUID(),
-        signoffPolicy: "none",
-        ...opts,
-    } as WorkflowTask;
-}
-
 
 function findTeamMember(team: Team, name: string): MemberState {
     const member = team.members.find((candidate) => candidate.name === name);

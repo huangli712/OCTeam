@@ -5,28 +5,9 @@ import { checkTermination } from "../src/orchestration/termination.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import type { Team } from "../src/state/store.js"
 
-import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js"
 const NOW = 1_700_000_000_000
 
-
-function makeWorkflowTask(fields: Partial<WorkflowTask> & { readonly steps: WorkflowStep[] }): WorkflowTask {
-    return {
-        type: "workflow",
-        startedAt: NOW,
-        wallClockTimeoutMs: Number.MAX_SAFE_INTEGER,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        runId: crypto.randomUUID(),
-        signoffPolicy: "none",
-        ...fields,
-    } as WorkflowTask
-}
 
 
 function member(team: Team, name: string): MemberState {

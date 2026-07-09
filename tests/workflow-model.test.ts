@@ -4,7 +4,7 @@ import type { MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.
 import { checkWorkflowInvariants } from "../src/orchestration/invariants.js"
 import { getActiveWorkflowStepActors } from "../src/orchestration/dag.js"
 import { processIdle } from "../src/orchestration/idle.js"
-import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeTeam, makeWorkflowTask as sharedMakeWorkflowTask, type DispatchCall } from "./helpers.js"
 import type { Team } from "../src/state/store.js"
 
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
@@ -33,23 +33,12 @@ function makeMember(name: string, seed: number): MemberState {
 }
 
 function makeWorkflowTask(seed: number, steps: WorkflowStep[], activeStepIndices?: number[]): WorkflowTask {
-    return {
-        type: "workflow",
-        startedAt: Date.now(),
-        wallClockTimeoutMs: Number.MAX_SAFE_INTEGER,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        runId: `workflow-model-${seed}`,
-        signoffPolicy: "none",
+    return sharedMakeWorkflowTask({
         steps,
-        ...(activeStepIndices === undefined ? {} : { activeStepIndices }),
-    }
+        runId: `workflow-model-${seed}`,
+        wallClockTimeoutMs: Number.MAX_SAFE_INTEGER,
+        ...(activeStepIndices !== undefined ? { activeStepIndices } : {}),
+    })
 }
 
 

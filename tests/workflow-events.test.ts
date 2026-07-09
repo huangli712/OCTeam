@@ -13,7 +13,7 @@ import { runEventsPath } from "../src/state/paths.js"
 import { existsSync, readFileSync } from "node:fs"
 import { rebuildSessionIndex } from "../src/state/resolve.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
-import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, makeWorkflowTask as sharedMakeWorkflowTask, type DispatchCall } from "./helpers.js"
 import { teamFixWorkflowTool } from "../src/tools/fixflow.js"
 
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
@@ -21,22 +21,10 @@ const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</ver
 
 
 function makeWorkflowTask(steps: WorkflowStep[]): WorkflowTask {
-    return {
-        type: "workflow",
-        startedAt: Date.now(),
-        wallClockTimeoutMs: Number.MAX_SAFE_INTEGER,
-        tokensUsed: 0,
-        tokensByMember: {},
-        messagesSent: 0,
-        responses: {},
-        stages: [],
-        currentStageIndex: 0,
-        decisionHistory: [],
-        decisionParseFailures: 0,
-        runId: crypto.randomUUID(),
-        signoffPolicy: "none",
+    return sharedMakeWorkflowTask({
         steps,
-    } as WorkflowTask
+        wallClockTimeoutMs: Number.MAX_SAFE_INTEGER,
+    })
 }
 
 
