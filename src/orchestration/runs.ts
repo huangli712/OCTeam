@@ -54,7 +54,15 @@ const FAILED_REASON_MARKERS = [
     "arena_failed",               // arena: every arena_failed:* reason (no_survivors, member_error, evaluator_*, eval_invalid); arena_complete matches no marker and stays completed
 ] as const
 
-/** Derive run status from the verbatim termination reason (heuristic; see set above). */
+/**
+ * Derive run status from the verbatim termination reason (heuristic fallback).
+ *
+ * Prefer passing an explicit `status` to persistRun when the caller already
+ * knows it (every finishRun call site does). This heuristic is kept as a
+ * fallback for any direct deliverSummaryToLeader caller that does not thread
+ * status, and for backward compatibility with persisted records from older
+ * builds.
+ */
 export function runStatusFromReason(reason: string): RunStatus {
     return FAILED_REASON_MARKERS.some(m => reason.includes(m)) ? "failed" : "completed"
 }
@@ -156,8 +164,13 @@ function workflowBranchStatusesForStep(
  * Persist the active task as a run record. Called from deliverSummaryToLeader
  * BEFORE activeTask is cleared. No-op if there is no active task. Best-effort:
  * the caller wraps this so a persistence failure never blocks delivery.
+ *
+ * @param status Explicit run status from the caller. When provided, this is
+ *               stored directly instead of deriving from `reason` via the
+ *               substring heuristic (runStatusFromReason). Every finishRun call
+ *               site already knows whether the run succeeded or failed.
  */
-export async function persistRun(team: Team, reason: string): Promise<void> {
+export async function persistRun(team: Team, reason: string, status?: RunStatus): Promise<void> {
     const task = team.activeTask
     if (!task) return
 
@@ -193,7 +206,7 @@ export async function persistRun(team: Team, reason: string): Promise<void> {
         type: task.type,
         mode: task.mode,
         reason,
-        status: runStatusFromReason(reason),
+        status: status ?? runStatusFromReason(reason),
         startedAt: task.startedAt,
         finishedAt: Date.now(),
         tokensUsed: task.tokensUsed,

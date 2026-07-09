@@ -19,7 +19,7 @@ import { truncateOutput } from "./output.js"
 import { logSwallowed } from "../core/log.js"
 import { persistRun } from "./runs.js"
 import { recordEvent } from "./events.js"
-import type { ActiveTask } from "../core/types.js"
+import type { ActiveTask, RunStatus } from "../core/types.js"
 import {
     summarizeDelegate,
     summarizeLoop,
@@ -102,11 +102,15 @@ export async function deliverQueuedResultsToMaster(
 /**
  * Deliver the workflow summary to the leader. Always pushes via promptAsync
  * so the host wakes the leader (immediately if idle, or queued if mid-turn).
+ *
+ * @param status Explicit run status for persistRun. When omitted, persistRun
+ *               falls back to the runStatusFromReason heuristic.
  */
 export async function deliverSummaryToLeader(
     ctx: PluginContext,
     team: Team,
     reason: string,
+    status?: RunStatus,
 ): Promise<void> {
     if (!team.activeTask) return
     const summary = await buildSummary(team, team.activeTask, reason)
@@ -118,7 +122,7 @@ export async function deliverSummaryToLeader(
     // Persist the run record (#2) BEFORE clearing/delivering. Best-effort: a
     // persistence failure must never block leader delivery. Runs under the
     // team mutex (every call site holds it), so the runId dir has one writer.
-    await persistRun(team, reason).catch(err =>
+    await persistRun(team, reason, status).catch(err =>
         logSwallowed(ctx, "persist run record failed", err, { team: team.teamName, reason }),
     )
 
