@@ -72,12 +72,6 @@ export function assertNever(value: never): never {
 export function isLinearToolStep(step: WorkflowToolStep): step is WorkflowLinearToolStep {
     return step.kind === "task" || step.kind === "gate"
 }
-
-/** Test whether a workflow step is a fanout kind. */
-export function isFanoutToolStep(step: WorkflowToolStep): step is import("./workflow.js").WorkflowFanoutToolStep {
-    return step.kind === "fanout"
-}
-
 // --- ref resolution (lowered) ---
 
 /** Resolve a gate's target_step or targets entry to a lowered step index. */
