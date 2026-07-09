@@ -20,7 +20,7 @@ import { teamResumeTool } from "../src/tools/resume.js"
 import { teamResultGetTool, teamResultsTool } from "../src/tools/results.js"
 import { getExpectedMember, handleStatusEvent } from "../src/orchestration/handlers.js"
 import { checkTermination } from "../src/orchestration/termination.js"
-import { resumeDispatch } from "../src/tools/dispatch.js"
+import { resumeDispatch } from "../src/orchestration/resume.js"
 
 afterAll(cleanupTmpRoots)
 

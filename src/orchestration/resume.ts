@@ -18,42 +18,42 @@
 import type { PluginContext } from "../core/context.js";
 import type { ActiveTask } from "../core/types.js";
 import { type Team, saveTeamState } from "../state/store.js";
-import { advanceToStage, dispatchToMember } from "../orchestration/dispatch.js";
-import { handleParallelIdle } from "../orchestration/parallel.js";
-import { handleConsensusIdle } from "../orchestration/consensus.js";
-import { buildRecursePrompt } from "../orchestration/recurse.js";
+import { advanceToStage, dispatchToMember } from "./dispatch.js";
+import { handleParallelIdle } from "./parallel.js";
+import { handleConsensusIdle } from "./consensus.js";
+import { buildRecursePrompt } from "./recurse.js";
 import {
     advanceToGatedStage,
     handleTollgateIdle,
     startVerification,
-} from "../orchestration/tollgate.js";
+} from "./tollgate.js";
 import {
     advanceWorkflowStep,
     handleWorkflowDispatchUnavailable,
     handleWorkflowIdle,
     redispatchWorkflowStep,
-} from "../orchestration/workflow.js";
-import { handleRouteIdle } from "../orchestration/route.js";
+} from "./workflow.js";
+import { handleRouteIdle } from "./route.js";
 import {
     buildArbiterPrompt,
     buildDebatePrompt,
     handleArbitrateIdle,
-} from "../orchestration/arbitrate.js";
-import { buildRouterPrompt } from "./router.js";
-import { buildSummary, finishRun } from "../orchestration/summary.js";
-import { buildArenaEvaluatorPrompt, handleArenaIdle } from "../orchestration/arena.js";
+} from "./arbitrate.js";
+import { buildRouterPrompt } from "../tools/router.js";
+import { buildSummary, finishRun } from "./summary.js";
+import { buildArenaEvaluatorPrompt, handleArenaIdle } from "./arena.js";
 import {
     buildReducePrompt,
     buildSignoffReviewPrompt,
     handleReduceIdle,
-} from "../orchestration/signoff.js";
-import { resumeApprovalStage } from "../orchestration/hitl.js";
+} from "./signoff.js";
+import { resumeApprovalStage } from "./hitl.js";
 import { listAllTasks, reapStaleClaims, updateTask } from "../state/tasks.js";
 import {
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
     workflowStepActor,
-} from "../orchestration/dag.js";
+} from "./dag.js";
 
 /**
  * Reset interrupted task claims: reap stale locks + reset any claimed/in_progress

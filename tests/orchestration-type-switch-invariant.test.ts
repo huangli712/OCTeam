@@ -1,7 +1,7 @@
 /**
  * Invariant test for the three 9-way dispatchers over OrchestrationType:
  *   - processIdle    (src/orchestration/handlers.ts) — Record<OrchestrationType, ...> table
- *   - resumeDispatch (src/tools/dispatch.ts) — switch with `_exhaustive: never` guard
+ *   - resumeDispatch (src/orchestration/resume.ts) — switch with `_exhaustive: never` guard
  *   - buildSummary   (src/orchestration/summary.ts) — switch with `_exhaustive: never` guard
  *
  * processIdle was converted from a switch to a Record table in P1-6: the
