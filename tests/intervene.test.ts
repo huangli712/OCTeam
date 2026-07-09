@@ -39,7 +39,7 @@ function makeActiveTask(runId: string | undefined, overrides: Partial<ActiveTask
         decisionParseFailures: 0,
         runId,
         ...overrides,
-    }
+    } as ActiveTask
 }
 
 /** Read a recipient's raw inbox jsonl into Message[]. */

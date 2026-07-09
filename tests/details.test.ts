@@ -26,7 +26,7 @@ function makeTask(partial: Partial<ActiveTask>): ActiveTask {
         decisionHistory: [],
         decisionParseFailures: 0,
         ...partial,
-    }
+    } as ActiveTask
 }
 
 async function setupTeam(

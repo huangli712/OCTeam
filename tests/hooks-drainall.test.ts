@@ -109,7 +109,7 @@ function makeActiveTask(overrides?: Partial<ActiveTask>): ActiveTask {
         decisionHistory: [],
         decisionParseFailures: 0,
         ...overrides,
-    }
+    } as ActiveTask
 }
 
 /**

@@ -53,7 +53,7 @@ function makeTeam(opts: {
         currentStageIndex: 0,
         decisionHistory: [],
         decisionParseFailures: 0,
-    }
+    } as ActiveTask
     return {
         version: 1,
         teamRunId: "term-test-run",

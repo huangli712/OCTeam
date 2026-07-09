@@ -25,7 +25,7 @@ function makeParallelTask(opts: Partial<ActiveTask> = {}): ActiveTask {
         decisionHistory: [],
         decisionParseFailures: 0,
         ...opts,
-    }
+    } as ActiveTask
 }
 
 function makeTeam(opts: {

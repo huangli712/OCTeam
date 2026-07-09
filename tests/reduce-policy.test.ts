@@ -24,7 +24,7 @@ function makeParallelTask(opts: Partial<ActiveTask> = {}): ActiveTask {
         decisionHistory: [],
         decisionParseFailures: 0,
         ...opts,
-    }
+    } as ActiveTask
 }
 
 // NOTE (#4): the [Reduce policy: X] header these tests assert is no longer

@@ -53,7 +53,7 @@ function makeTeam(opts: {
               decisionHistory: [],
               decisionParseFailures: 0,
               ...opts.activeTask,
-          }
+          } as ActiveTask
         : undefined
     return {
         version: 1,

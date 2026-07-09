@@ -22,7 +22,7 @@ function makeTask(opts: Partial<ActiveTask> = {}): ActiveTask {
         decisionHistory: [],
         decisionParseFailures: 0,
         ...opts,
-    }
+    } as ActiveTask
 }
 
 // --- bug① loop summary includes member outputs ---

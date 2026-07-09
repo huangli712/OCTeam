@@ -52,7 +52,7 @@ function makeTeam(opts: {
         decisionHistory: [],
         decisionParseFailures: 0,
         maxErroredMembers: opts.maxErroredMembers,
-    }
+    } as ActiveTask
     return {
         version: 1,
         teamRunId: "test-run",
