@@ -14,7 +14,7 @@ import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     startOrchestration,
-} from "./shared.js"
+} from "../orchestration/shared.js"
 
 export function teamArenaTool(ctx: PluginContext): ToolDefinition {
     return tool({

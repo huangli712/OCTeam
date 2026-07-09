@@ -6,7 +6,7 @@
  * Used exclusively by tools/activate.ts (the team_activate tool).
  */
 
-import type { Team } from "../state/store.js"
+import type { Team } from "./store.js"
 
 /**
  * Pure decision for team_activate (exported for unit tests). Auto-switching

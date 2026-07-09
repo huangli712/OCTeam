@@ -10,7 +10,7 @@ import type { PluginContext } from "../core/context.js"
 import { clearActiveTask, deleteTeamStorage, invalidateTeam, loadTeamState, type Team } from "../state/store.js"
 import { unindexMasterTeam, unindexSession } from "../state/resolve.js"
 import { clearWakeHint } from "../messaging/wake-hint.js"
-import { abortAndResetMembers } from "./shared.js"
+import { abortAndResetMembers } from "../orchestration/shared.js"
 import { cleanWorktree, hasUncommittedChanges } from "../state/worktrees.js"
 import { worktreesDir } from "../state/paths.js"
 

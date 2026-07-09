@@ -35,7 +35,7 @@ import {
     signoffTaskFields,
     startOrchestration,
     validateSignoff,
-} from "./shared.js"
+} from "../orchestration/shared.js"
 
 type WorkflowWhere = {
     readonly score_gte?: number

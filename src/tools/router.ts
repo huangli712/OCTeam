@@ -17,7 +17,7 @@ import {
     signoffTaskFields,
     startOrchestration,
     validateSignoff,
-} from "./shared.js"
+} from "../orchestration/shared.js"
 
 /**
  * Build the router member's dispatch prompt: the input to route, the available

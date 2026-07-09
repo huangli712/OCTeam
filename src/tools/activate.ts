@@ -9,7 +9,7 @@ import type { PluginContext } from "../core/context.js"
 import { listTeamNames, loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { logSwallowed } from "../core/log.js"
 import { setActiveTeam } from "../state/resolve.js"
-import { decideActivate, withOrderedLocks } from "./activation.js"
+import { decideActivate, withOrderedLocks } from "../state/activation.js"
 
 export function teamActivateTool(ctx: PluginContext): ToolDefinition {
     return tool({

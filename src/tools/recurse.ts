@@ -22,7 +22,7 @@ import {
     signoffTaskFields,
     startOrchestration,
     validateSignoff,
-} from "./shared.js"
+} from "../orchestration/shared.js"
 
 export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
     return tool({

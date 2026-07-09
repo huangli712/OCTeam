@@ -9,7 +9,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { finishRun } from "../orchestration/summary.js"
-import { abortAndResetMembers } from "./shared.js"
+import { abortAndResetMembers } from "../orchestration/shared.js"
 
 export function teamCancelTool(ctx: PluginContext): ToolDefinition {
     return tool({

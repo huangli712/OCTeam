@@ -16,7 +16,7 @@ import {
     signoffTaskFields,
     startOrchestration,
     validateSignoff,
-} from "./shared.js"
+} from "../orchestration/shared.js"
 
 export function teamParallelTool(ctx: PluginContext): ToolDefinition {
     return tool({

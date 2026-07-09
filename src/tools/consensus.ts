@@ -14,7 +14,7 @@ import {
     humanApprovalSchemaFields,
     humanApprovalTaskFields,
     startOrchestration,
-} from "./shared.js"
+} from "../orchestration/shared.js"
 
 export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
     return tool({

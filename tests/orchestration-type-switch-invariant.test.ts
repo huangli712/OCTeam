@@ -86,10 +86,10 @@ describe("11-way switch invariant: every OrchestrationType has a case in all thr
         }
     })
 
-    test("resumeDispatch (tools/dispatch.ts) covers all 11 OrchestrationTypes", async () => {
+    test("resumeDispatch (orchestration/resume.ts) covers all 11 OrchestrationTypes", async () => {
         // pipeline and loop share a single case block (`case "pipeline":\ncase "loop": {`),
         // so each must appear as its own label — the test asserts both labels exist.
-        const body = await readSwitchBody("src/tools/dispatch.ts", "resumeDispatch")
+        const body = await readSwitchBody("src/orchestration/resume.ts", "resumeDispatch")
         for (const t of ORCHESTRATION_TYPES) {
             expect(body).toContain(`case "${t}"`)
         }

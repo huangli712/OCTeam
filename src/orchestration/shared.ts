@@ -5,8 +5,8 @@
  * shared module removes a split that no longer reflects a real boundary.
  *
  * Lifecycle helpers: defaultBounds.
- * (Activation logic ActivateDecision/decideActivate/withOrderedLocks moved to
- * tools/activation.ts — used exclusively by the team_activate tool.)
+ * (Activation logic ActivateDecision/decideActivate/withOrderedLocks lives in
+ * state/activation.ts — used exclusively by the team_activate tool.)
  *
  * Workflow helpers: startOrchestration (shared three-phase lock order — see
  * the Phase 1/2/3 contract below), baseTaskFields, validateSignoff,
@@ -34,7 +34,7 @@ import type { PluginContext } from "../core/context.js"
 import { OCTEAM_AGENTS, isOCTeamAgent } from "../core/role.js"
 import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
-import { ensureMembersReady } from "../orchestration/dispatch.js"
+import { ensureMembersReady } from "./dispatch.js"
 import { activationError } from "../core/utils.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import type { ActiveTask, Bounds, DecisionRecord, ReducePolicy, SignoffPolicy } from "../core/types.js"
@@ -88,17 +88,6 @@ export function validateMemberAgent(agent: string): string | null {
         return `Error: agent "${agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'agent' to derive it from the role.`
     }
     return null
-}
-
-/** Run fn while holding every team's mutex, acquired in a deterministic order
- * (by directory string) to prevent deadlock between racing switches. */
-export async function withOrderedLocks(teams: Team[], fn: () => Promise<void>): Promise<void> {
-    const ordered = [...teams].sort((a, b) => a.directory.localeCompare(b.directory))
-    const run = async (i: number): Promise<void> => {
-        if (i >= ordered.length) return fn()
-        await ordered[i].mutex.runExclusive(() => run(i + 1))
-    }
-    await run(0)
 }
 
 // ============================================================

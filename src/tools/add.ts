@@ -9,7 +9,7 @@ import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../st
 import { normalizeRole, roleAgent } from "../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
-import { validateMemberAgent, validateMemberName } from "./shared.js"
+import { validateMemberAgent, validateMemberName } from "../orchestration/shared.js"
 
 export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
     return tool({

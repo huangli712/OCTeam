@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
-import { teamFixMemberTool } from "../src/tools/fix.js"
+import { teamFixMemberTool } from "../src/tools/fixmember.js"
 import { initTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"

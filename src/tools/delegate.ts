@@ -15,7 +15,7 @@ import {
     signoffTaskFields,
     startOrchestration,
     validateSignoff,
-} from "./shared.js"
+} from "../orchestration/shared.js"
 
 /**
  * Detect a cycle in the blocked_by dependency graph declared by a delegate

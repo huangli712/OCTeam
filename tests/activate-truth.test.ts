@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { decideActivate } from "../src/tools/activation.js"
+import { decideActivate } from "../src/state/activation.js"
 
 describe("decideActivate truth table", () => {
     test("target already active → no-op", () => {

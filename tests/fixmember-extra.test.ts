@@ -1,5 +1,5 @@
 /**
- * Coverage-gap tests for src/tools/fix.ts — the activeTask data migration
+ * Coverage-gap tests for src/tools/fixmember.ts — the activeTask data migration
  * during member rename (lines 103-115), which the happy-path tests in
  * tools-extra.test.ts don't exercise.
  *
@@ -12,7 +12,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, TeamSpec } from "../src/core/types.js"
 import { normalizeRole } from "../src/core/role.js"
-import { teamFixMemberTool } from "../src/tools/fix.js"
+import { teamFixMemberTool } from "../src/tools/fixmember.js"
 import { initTeamState, invalidateTeam, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
