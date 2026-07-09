@@ -68,9 +68,7 @@ import {
     markWorkflowStepDispatched,
 } from "./fanout.js";
 
-// Total byte budget for injected upstream context (mirrors dispatch.ts). Caps
-// prompt growth so a long workflow does not bloat the actor's prompt linearly.
-const UPSTREAM_TOTAL_CAP = 65_536;
+import { buildWorkflowUpstream } from "./upstream.js";
 
 type WorkflowJumpTransition = {
     reason: string;
@@ -78,108 +76,6 @@ type WorkflowJumpTransition = {
     rationale?: string;
     diff?: string;
 };
-
-/**
- * Build the upstream-context prefix for a workflow task step: ALL completed
- * prior TASK-step outputs (gate steps are skipped -- their verdicts are
- * control-flow, not work product), each labelled by member and individually
- * truncated, then capped at UPSTREAM_TOTAL_CAP total bytes. Returns "" when
- * there is no completed task-step upstream.
- */
-function buildWorkflowUpstream(
-    steps: WorkflowStep[],
-    uptoIndex: number,
-): string {
-    const blocks: string[] = [];
-    let used = 0;
-    const explicitInputs = steps[uptoIndex]?.inputs;
-    const inputIndices =
-        explicitInputs ??
-        Array.from({ length: uptoIndex }, (_, index) => index);
-    for (const i of inputIndices) {
-        const s = steps[i];
-        if (!s?.completed) continue;
-        const block = workflowUpstreamBlock(
-            steps,
-            uptoIndex,
-            i,
-            explicitInputs !== undefined,
-        );
-        if (block === null) continue;
-        if (used + block.length > UPSTREAM_TOTAL_CAP) {
-            blocks.push(
-                `[…upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`,
-            );
-            break;
-        }
-        blocks.push(block);
-        used += block.length;
-    }
-    return blocks.join("\n\n");
-}
-
-function workflowUpstreamBlock(
-    steps: WorkflowStep[],
-    uptoIndex: number,
-    candidateIndex: number,
-    explicit: boolean,
-): string | null {
-    const candidate = steps[candidateIndex];
-    if (candidate === undefined || !candidate.completed) return null;
-
-    switch (candidate.kind) {
-        case "task": {
-            if (!candidate.member || !candidate.output) return null;
-            if (
-                !shouldIncludeTaskUpstream(
-                    steps,
-                    uptoIndex,
-                    candidateIndex,
-                    explicit,
-                )
-            )
-                return null;
-            return `[Output from ${candidate.member}]\n${truncateOutput(candidate.output)}`;
-        }
-        case "join": {
-            const joinedOutput = candidate.join?.joinedOutput;
-            if (!joinedOutput || !shouldIncludeJoinUpstream(steps, uptoIndex))
-                return null;
-            return `[Joined output from workflow step ${candidateIndex + 1}]\n${truncateOutput(joinedOutput)}`;
-        }
-        case "gate":
-        case "fanout":
-            return null;
-        default:
-            return assertNeverWorkflowStepKind(candidate.kind);
-    }
-}
-
-function shouldIncludeTaskUpstream(
-    steps: WorkflowStep[],
-    uptoIndex: number,
-    candidateIndex: number,
-    explicit: boolean,
-): boolean {
-    const current = steps[uptoIndex];
-    const candidate = steps[candidateIndex];
-    if (current === undefined || candidate === undefined) return false;
-    if (!explicit && candidate.exposeOutput === false) return false;
-
-    const currentBranch = current.branch;
-    if (currentBranch === undefined) return candidate.branch === undefined;
-    return (
-        candidateIndex < currentBranch.fanoutIndex ||
-        isSameWorkflowBranch(candidate, currentBranch)
-    );
-}
-
-function shouldIncludeJoinUpstream(
-    steps: WorkflowStep[],
-    uptoIndex: number,
-): boolean {
-    return steps[uptoIndex]?.branch === undefined;
-}
 
 /**
  * Build the verifier's dispatch prompt: the preceding task's output, the
