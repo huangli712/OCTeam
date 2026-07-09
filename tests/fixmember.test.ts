@@ -1,14 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import { teamFixMemberTool } from "../src/tools/fixmember.js"
 import { initTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
-
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 const tracked: string[] = []
 afterEach(() => {
@@ -29,7 +24,7 @@ describe("team_fix_member constraint (1)", () => {
         )
         await rebuildSessionIndex(root, `${root}__unused`)
 
-        const result = await teamFixMemberTool(makeCtx(root)).execute(
+        const result = await teamFixMemberTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member_name: "alice", new_prompt: "new prompt" },
             makeToolContext(memberSid),
         )
@@ -44,7 +39,7 @@ describe("team_fix_member constraint (1)", () => {
         await initTeamState(root, makeState("alpha", masterSid, [makeMember("alice")]), masterSid)
         await rebuildSessionIndex(root, `${root}__unused`)
 
-        const result = await teamFixMemberTool(makeCtx(root)).execute(
+        const result = await teamFixMemberTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member_name: "alice", new_prompt: "updated prompt" },
             makeToolContext(masterSid),
         )
@@ -59,7 +54,7 @@ describe("team_fix_member constraint (1)", () => {
         await initTeamState(root, makeState("alpha", masterSid, [alice]), masterSid)
         await rebuildSessionIndex(root, `${root}__unused`)
 
-        const result = await teamFixMemberTool(makeCtx(root)).execute(
+        const result = await teamFixMemberTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member_name: "alice", new_prompt: "x" },
             makeToolContext(masterSid),
         )

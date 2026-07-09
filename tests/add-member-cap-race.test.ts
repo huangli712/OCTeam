@@ -24,17 +24,13 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { TeamSpec } from "../src/core/types.js"
 import { teamAddMemberTool } from "../src/tools/add.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -76,7 +72,7 @@ describe("add-member cap race (finding: add-member-cap-race)", () => {
         //   2. pass status==="live"
         //   3. pass members.length(2) >= maxMembers(3) → false (cap not reached)
         //   4. block on team.mutex.runExclusive ---
-        const tool = teamAddMemberTool(makeCtx(root))
+        const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const addCarol = tool.execute(
             { team_id: "alpha", name: "carol", role: "coder", prompt: "p", agent: "oct-junior" },
             { sessionID: leadSid } as unknown as ToolContext,

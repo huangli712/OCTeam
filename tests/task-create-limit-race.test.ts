@@ -25,17 +25,13 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamTaskCreateTool } from "../src/tools/task.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -69,7 +65,7 @@ describe("task-create limit race (finding: task-create-limit-race)", () => {
         //   5. createTask → atomicWrite (async, yields)
         // Neither step 3→5 is under a shared lock, so both proceed past the
         // check before either write lands.
-        const tool = teamTaskCreateTool(makeCtx(root))
+        const tool = teamTaskCreateTool(makeCtx({ storageRoot: root }))
         const [res1, res2] = await Promise.all([
             tool.execute(
                 { team_id: "alpha", subject: "task-A", description: "desc-A" },

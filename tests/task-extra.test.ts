@@ -9,18 +9,13 @@
  */
 import { afterAll, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import { teamTaskCreateTool, teamTaskUpdateTool } from "../src/tools/task.js"
 import { initTeamState, invalidateTeam } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
-import { cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
-
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 async function setupTeam(root: string, sid: string, members = [makeMember("alice", "ses_task_alice")]) {
     const state = makeState("alpha", sid, members, Date.now())
@@ -37,7 +32,7 @@ describe("team_task_create: validation errors", () => {
         // Use a different storage root so resolveCallerInTeam's master lookup
         // succeeds (via the index) but the tool's loadTeamState fails.
         const emptyRoot = tmpRoot("tc-404-empty")
-        const result = await teamTaskCreateTool(makeCtx(emptyRoot)).execute(
+        const result = await teamTaskCreateTool(makeCtx({ storageRoot: emptyRoot })).execute(
             { team_id: "alpha", subject: "test", description: "d" },
             makeToolContext(sid),
         )
@@ -50,7 +45,7 @@ describe("team_task_create: validation errors", () => {
         const root = tmpRoot("tc-bad-id")
         const sid = "ses_tc_bad_id"
         const team = await setupTeam(root, sid)
-        const result = await teamTaskCreateTool(makeCtx(root)).execute(
+        const result = await teamTaskCreateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", subject: "test", description: "d", blocked_by: ["not-a-uuid"] },
             makeToolContext(sid),
         )
@@ -63,7 +58,7 @@ describe("team_task_create: validation errors", () => {
         const root = tmpRoot("tc-noexist")
         const sid = "ses_tc_noexist"
         const team = await setupTeam(root, sid)
-        const result = await teamTaskCreateTool(makeCtx(root)).execute(
+        const result = await teamTaskCreateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", subject: "test", description: "d", blocked_by: ["12345678-1234-1234-1234-123456789abc"] },
             makeToolContext(sid),
         )
@@ -83,12 +78,12 @@ describe("team_task_update: claim errors", () => {
         ])
         // Create a task and have alice claim it.
         const task = await createTask(team.directory, { subject: "s", description: "d" })
-        await teamTaskUpdateTool(makeCtx(root)).execute(
+        await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: task.id, status: "claimed" },
             makeToolContext("ses_tu_a"),
         )
         // Bob tries to claim the same task.
-        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+        const result = await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: task.id, status: "claimed" },
             makeToolContext("ses_tu_b"),
         )
@@ -107,12 +102,12 @@ describe("team_task_update: claim errors", () => {
         const task1 = await createTask(team.directory, { subject: "t1", description: "d" })
         const task2 = await createTask(team.directory, { subject: "t2", description: "d" })
         // Alice claims task1.
-        await teamTaskUpdateTool(makeCtx(root)).execute(
+        await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: task1.id, status: "claimed" },
             makeToolContext("ses_tu_holds_a"),
         )
         // Alice tries to claim task2 without completing task1.
-        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+        const result = await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: task2.id, status: "claimed" },
             makeToolContext("ses_tu_holds_a"),
         )

@@ -26,18 +26,14 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { ParallelTask } from "../src/core/types.js"
 import { teamAddMemberTool } from "../src/tools/add.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 import type { TeamSpec } from "../src/core/types.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 /** Minimal busy parallel task, the shape startOrchestration commits. */
 function makeBusyTask(): ParallelTask {
@@ -91,7 +87,7 @@ describe("live-mutator stale-state check (finding: live-mutators-stale-state-che
         // --- Fire team_add_member (master caller). It reads status==="live"
         //     at add.ts:40 OUTSIDE the mutex, passes the gate, then blocks at
         //     add.ts:104 waiting for the mutex. ---
-        const tool = teamAddMemberTool(makeCtx(root))
+        const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const addPromise = tool.execute(
             { team_id: "alpha", role: "coder", prompt: "p", agent: "oct-junior" },
             { sessionID: leadSid } as unknown as ToolContext,

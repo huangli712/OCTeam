@@ -7,19 +7,14 @@
  */
 import { afterAll, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { TeamSpec } from "../src/core/types.js"
 import { normalizeRole } from "../src/core/role.js"
 import { teamRenameTool } from "../src/tools/rename.js"
 import { initTeamState, invalidateTeam, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { indexMasterTeam, resolveTeamMember, setActiveTeam, unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
-
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 async function setupLiveTeam(
     root: string,
@@ -43,7 +38,7 @@ async function setupLiveTeam(
 describe("team_rename: error paths", () => {
     test("team not found → error", async () => {
         const root = tmpRoot("rn-404")
-        const result = await teamRenameTool(makeCtx(root)).execute(
+        const result = await teamRenameTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "ghost", new_name: "newname" },
             makeToolContext("ses_rn_404"),
         )
@@ -60,7 +55,7 @@ describe("team_rename: error paths", () => {
         // a race-only branch that requires deterministic mutex occupation.
         team.status = "busy"
 
-        const result = await teamRenameTool(makeCtx(root)).execute(
+        const result = await teamRenameTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", new_name: "beta" },
             makeToolContext(sid),
         )
@@ -80,7 +75,7 @@ describe("team_rename: active index update", () => {
         indexMasterTeam(sid, "alpha", sid, root, team.directory)
         setActiveTeam(sid, team.directory)
 
-        const result = await teamRenameTool(makeCtx(root)).execute(
+        const result = await teamRenameTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", new_name: "beta" },
             makeToolContext(sid),
         )

@@ -1,17 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { RunRecord } from "../src/core/types.js"
 import { teamMetricsTool } from "../src/tools/metrics.js"
 import { initTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { teamDir, runDir, runRecordPath } from "../src/state/paths.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 /** Index a fresh "alpha" team owned by `sid` and return its resolved directory. */
 async function setupTeam(root: string, sid: string): Promise<string> {
@@ -56,7 +52,7 @@ describe("team_metrics", () => {
         const sid = "ses_metrics_empty"
         tracked.push(sid)
         await setupTeam(root, sid)
-        const result = await teamMetricsTool(makeCtx(root)).execute(
+        const result = await teamMetricsTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
         )
@@ -73,7 +69,7 @@ describe("team_metrics", () => {
         await writeRun(dir, { runId: "r3", status: "completed", finishedAt: 3, tokensUsed: 3000, messagesSent: 1 })
         await writeRun(dir, { runId: "r4", status: "failed", reason: "timeout", finishedAt: 2, tokensUsed: 500, messagesSent: 4 })
         await writeRun(dir, { runId: "r5", status: "failed", reason: "budget_exceeded", finishedAt: 1, tokensUsed: 500, messagesSent: 0 })
-        const result = await teamMetricsTool(makeCtx(root)).execute(
+        const result = await teamMetricsTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
         )
@@ -94,7 +90,7 @@ describe("team_metrics", () => {
         const dir = await setupTeam(root, sid)
         await writeRun(dir, { runId: "r1", finishedAt: 2, tokensUsed: 1200, tokensByMember: { alice: 1000, bob: 200 } })
         await writeRun(dir, { runId: "r2", finishedAt: 1, tokensUsed: 800, tokensByMember: { alice: 500, carol: 300 } })
-        const result = await teamMetricsTool(makeCtx(root)).execute(
+        const result = await teamMetricsTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
         )
@@ -110,7 +106,7 @@ describe("team_metrics", () => {
         const dir = await setupTeam(root, sid)
         await writeRun(dir, { runId: "r1", finishedAt: 2, tokensUsed: 0, messagesSent: 1 })
         await writeRun(dir, { runId: "r2", finishedAt: 1, tokensUsed: 1000, messagesSent: 1 })
-        const result = await teamMetricsTool(makeCtx(root)).execute(
+        const result = await teamMetricsTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
         )
@@ -126,7 +122,7 @@ describe("team_metrics", () => {
         for (let i = 0; i < 5; i++) {
             await writeRun(dir, { runId: `r${i}`, finishedAt: i, tokensUsed: 100 })
         }
-        const result = await teamMetricsTool(makeCtx(root)).execute(
+        const result = await teamMetricsTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", limit: 2 },
             makeToolContext(sid),
         )
@@ -141,7 +137,7 @@ describe("team_metrics", () => {
         await writeRun(dir, { runId: "r1", type: "parallel", finishedAt: 3, tokensUsed: 1000 })
         await writeRun(dir, { runId: "r2", type: "parallel", finishedAt: 2, tokensUsed: 2000 })
         await writeRun(dir, { runId: "r3", type: "consensus", finishedAt: 1, tokensUsed: 500 })
-        const result = await teamMetricsTool(makeCtx(root)).execute(
+        const result = await teamMetricsTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
         )
@@ -167,7 +163,7 @@ describe("team_metrics", () => {
             },
         })
 
-        const result = await teamMetricsTool(makeCtx(root)).execute(
+        const result = await teamMetricsTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
         )

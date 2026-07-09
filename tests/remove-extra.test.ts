@@ -12,20 +12,15 @@ import fs from "node:fs/promises"
 
 import { afterAll, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { TeamSpec } from "../src/core/types.js"
 import { normalizeRole } from "../src/core/role.js"
 import { teamRemoveMemberTool } from "../src/tools/remove.js"
 import { initTeamState, invalidateTeam, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { configPath } from "../src/state/paths.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
-
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 async function setupLiveTeam(
     root: string,
@@ -49,7 +44,7 @@ async function setupLiveTeam(
 describe("team_remove_member: error paths", () => {
     test("team not found → error", async () => {
         const root = tmpRoot("rm-404")
-        const result = await teamRemoveMemberTool(makeCtx(root)).execute(
+        const result = await teamRemoveMemberTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "ghost", member_name: "alice" },
             makeToolContext("ses_rm_404"),
         )
@@ -67,7 +62,7 @@ describe("team_remove_member: error paths", () => {
         const cfgPath = configPath(team.directory)
         await fs.writeFile(cfgPath, "{ invalid json", "utf8")
 
-        const result = await teamRemoveMemberTool(makeCtx(root)).execute(
+        const result = await teamRemoveMemberTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member_name: "bob" },
             makeToolContext(sid),
         )
@@ -89,7 +84,7 @@ describe("team_remove_member: error paths", () => {
         // Delete config.json so readTeamSpec returns null.
         await fs.unlink(configPath(team.directory))
 
-        const result = await teamRemoveMemberTool(makeCtx(root)).execute(
+        const result = await teamRemoveMemberTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "beta", member_name: "bob" },
             makeToolContext(sid),
         )

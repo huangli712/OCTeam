@@ -19,20 +19,13 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import { teamCreateTool } from "../src/tools/create.js"
 import { teamAddMemberTool } from "../src/tools/add.js"
 import { teamFixMemberTool } from "../src/tools/fixmember.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { indexMasterTeam, setActiveTeam, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 import type { TeamSpec } from "../src/core/types.js"
-
-function makeCtx(storageRoot: string): PluginContext {
-    // team_create/add/fix client.* calls are best-effort; minimal ctx is enough
-    // to exercise the agent-validation rejection paths.
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -64,7 +57,7 @@ describe("team_create: agent must be a hardened oct-* agent (P0-2)", () => {
         const sid = "ses_p02_crt_build"
         tracked.push(sid)
 
-        const tool = teamCreateTool(makeCtx(root))
+        const tool = teamCreateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             {
                 name: "alpha",
@@ -82,7 +75,7 @@ describe("team_create: agent must be a hardened oct-* agent (P0-2)", () => {
         const sid = "ses_p02_crt_oracle"
         tracked.push(sid)
 
-        const tool = teamCreateTool(makeCtx(root))
+        const tool = teamCreateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             {
                 name: "alpha",
@@ -99,7 +92,7 @@ describe("team_create: agent must be a hardened oct-* agent (P0-2)", () => {
         const sid = "ses_p02_crt_ok"
         tracked.push(sid)
 
-        const tool = teamCreateTool(makeCtx(root))
+        const tool = teamCreateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             {
                 name: "alpha",
@@ -118,7 +111,7 @@ describe("team_create: agent must be a hardened oct-* agent (P0-2)", () => {
         const sid = "ses_p02_crt_omit"
         tracked.push(sid)
 
-        const tool = teamCreateTool(makeCtx(root))
+        const tool = teamCreateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             {
                 name: "alpha",
@@ -139,7 +132,7 @@ describe("team_add_member: agent must be a hardened oct-* agent (P0-2)", () => {
         tracked.push(sid)
         await setupLiveTeam(root, sid, [makeMember("alice")])
 
-        const tool = teamAddMemberTool(makeCtx(root))
+        const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             {
                 team_id: "alpha",
@@ -159,7 +152,7 @@ describe("team_add_member: agent must be a hardened oct-* agent (P0-2)", () => {
         tracked.push(sid)
         await setupLiveTeam(root, sid, [makeMember("alice")])
 
-        const tool = teamAddMemberTool(makeCtx(root))
+        const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             {
                 team_id: "alpha",
@@ -189,7 +182,7 @@ describe("team_fix_member: new_agent must be a hardened oct-* agent (P0-2)", () 
         indexMasterTeam(sid, "alpha", sid, root, team.directory)
         setActiveTeam(sid, team.directory)
 
-        const tool = teamFixMemberTool(makeCtx(root))
+        const tool = teamFixMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             {
                 team_id: "alpha",
@@ -211,7 +204,7 @@ describe("team_fix_member: new_agent must be a hardened oct-* agent (P0-2)", () 
         indexMasterTeam(sid, "alpha", sid, root, team.directory)
         setActiveTeam(sid, team.directory)
 
-        const tool = teamFixMemberTool(makeCtx(root))
+        const tool = teamFixMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             {
                 team_id: "alpha",

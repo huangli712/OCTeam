@@ -31,11 +31,10 @@ import { afterAll, afterEach, describe, expect, mock, test } from "bun:test"
 import { createRequire } from "node:module"
 import fs from "node:fs/promises"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamDir } from "../src/state/paths.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, tmpRoot } from "./helpers.js"
 
 // --- Load the REAL store.js BEFORE mock.module registers so every export
 //     except writeTeamSpec keeps its real implementation. mock.module replaces
@@ -63,11 +62,6 @@ mock.module("../src/state/store.js", () => ({
 
 import { teamCreateTool } from "../src/tools/create.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    // team_create's client.* calls are all best-effort (try/catch fallback), so
-    // a minimal ctx without a client is sufficient to exercise the rollback.
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 async function pathExists(p: string): Promise<boolean> {
     try {
@@ -90,7 +84,7 @@ describe("team_create directory rollback (finding: create-team-dir-not-rolled-ba
         const root = tmpRoot("create-rollback-orphan")
         const sid = "ses_rollback_orphan"
         tracked.push(sid)
-        const ctx = makeCtx(root)
+        const ctx = makeCtx({ storageRoot: root })
         const teamName = "orphaned-team"
         const dir = teamDir(root, teamName, sid)
 
@@ -116,7 +110,7 @@ describe("team_create directory rollback (finding: create-team-dir-not-rolled-ba
         const root = tmpRoot("create-rollback-retry")
         const sid = "ses_rollback_retry"
         tracked.push(sid)
-        const ctx = makeCtx(root)
+        const ctx = makeCtx({ storageRoot: root })
         const teamName = "retry-team"
 
         // writeTeamSpec throws on the FIRST call only, then succeeds —

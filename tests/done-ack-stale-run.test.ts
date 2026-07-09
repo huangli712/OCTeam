@@ -29,17 +29,13 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { ParallelTask } from "../src/core/types.js"
 import { teamDoneTool } from "../src/tools/done.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 /** Build a minimal parallel/isolated task with require_done_ack enabled. */
 function makeParallelAckTask(runId: string, taskText: string): ParallelTask {
@@ -93,7 +89,7 @@ describe("stale team_done ack across runs (finding: stale-team-done-ack)", () =>
         const mutexHold = team.mutex.runExclusive(async () => { await gate })
 
         // Start team_done for alice (don't await yet — it will block on mutex).
-        const tool = teamDoneTool(makeCtx(root))
+        const tool = teamDoneTool(makeCtx({ storageRoot: root }))
         const donePromise = tool.execute(
             { team_id: "alpha" },
             { sessionID: aliceSid } as unknown as ToolContext,

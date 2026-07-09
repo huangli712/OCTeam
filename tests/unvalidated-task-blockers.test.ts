@@ -28,17 +28,13 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamTaskCreateTool } from "../src/tools/task.js"
 import { createTask, getTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -63,7 +59,7 @@ describe("unvalidated task blockers (finding: unvalidated-task-blockers)", () =>
         // --- Attempt to create a task with a BOGUS blocker (typo'd UUID that
         //     matches no task). Also mix in the legit one to show the bogus
         //     entry is the problem, not the array itself. ---
-        const tool = teamTaskCreateTool(makeCtx(root))
+        const tool = teamTaskCreateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             {
                 team_id: "alpha",

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import {
     teamTaskCreateTool,
     teamTaskGetTool,
@@ -10,12 +9,9 @@ import {
 import { createTask, getTask, updateTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 import type { RecurseTask } from "../src/core/types.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -42,7 +38,7 @@ describe("team_task_create (tool layer)", () => {
         const sid = "ses_ttc_create"
         tracked.push(sid)
         await setupTeam(root, sid)
-        const result = await teamTaskCreateTool(makeCtx(root)).execute(
+        const result = await teamTaskCreateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", subject: "fix bug", description: "fix the login bug" },
             makeToolContext(sid),
         )
@@ -56,7 +52,7 @@ describe("team_task_create (tool layer)", () => {
         const memberSid = "ses_ttc_member"
         tracked.push(masterSid, memberSid)
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)])
-        const result = await teamTaskCreateTool(makeCtx(root)).execute(
+        const result = await teamTaskCreateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", subject: "fix bug", description: "desc" },
             makeToolContext(memberSid),
         )
@@ -74,7 +70,7 @@ describe("team_task_list (tool layer)", () => {
         const sid = "ses_ttl_empty"
         tracked.push(sid)
         await setupTeam(root, sid)
-        const result = await teamTaskListTool(makeCtx(root)).execute(
+        const result = await teamTaskListTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
         )
@@ -88,7 +84,7 @@ describe("team_task_list (tool layer)", () => {
         const dir = await setupTeamDir(root, sid)
         const t1 = await createTask(dir, { subject: "t1", description: "d1" })
         await createTask(dir, { subject: "t2", description: "d2" })
-        const result = await teamTaskListTool(makeCtx(root)).execute(
+        const result = await teamTaskListTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
         )
@@ -110,7 +106,7 @@ describe("team_task_update (tool layer)", () => {
         tracked.push(masterSid, memberSid)
         const dir = await setupTeamDir(root, masterSid, [makeMember("alice", memberSid)])
         const t = await createTask(dir, { subject: "t1", description: "d" })
-        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+        const result = await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: t.id, status: "claimed" },
             makeToolContext(memberSid),
         )
@@ -129,12 +125,12 @@ describe("team_task_update (tool layer)", () => {
         ])
         const t = await createTask(dir, { subject: "t1", description: "d" })
         // Alice claims the task.
-        await teamTaskUpdateTool(makeCtx(root)).execute(
+        await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: t.id, status: "claimed" },
             makeToolContext(aliceSid),
         )
         // Bob tries to mark it completed → rejected.
-        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+        const result = await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: t.id, status: "completed" },
             makeToolContext(bobSid),
         )
@@ -150,12 +146,12 @@ describe("team_task_update (tool layer)", () => {
         const dir = await setupTeamDir(root, masterSid, [makeMember("alice", aliceSid)])
         const t = await createTask(dir, { subject: "t1", description: "d" })
         // Alice claims it.
-        await teamTaskUpdateTool(makeCtx(root)).execute(
+        await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: t.id, status: "claimed" },
             makeToolContext(aliceSid),
         )
         // Master completes it (bypasses owner check).
-        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+        const result = await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: t.id, status: "completed" },
             makeToolContext(masterSid),
         )
@@ -173,7 +169,7 @@ describe("team_task_get (tool layer)", () => {
         tracked.push(sid)
         const dir = await setupTeamDir(root, sid)
         const t = await createTask(dir, { subject: "t1", description: "desc1" })
-        const result = await teamTaskGetTool(makeCtx(root)).execute(
+        const result = await teamTaskGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: t.id },
             makeToolContext(sid),
         )
@@ -186,7 +182,7 @@ describe("team_task_get (tool layer)", () => {
         const sid = "ses_ttg_404"
         tracked.push(sid)
         await setupTeam(root, sid)
-        const result = await teamTaskGetTool(makeCtx(root)).execute(
+        const result = await teamTaskGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: "00000000-0000-0000-0000-000000000000" },
             makeToolContext(sid),
         )
@@ -222,7 +218,7 @@ describe("team_task_create (recurse-mode guard)", () => {
         } as RecurseTask
         await saveTeamState(team)
 
-        const result = await teamTaskCreateTool(makeCtx(root)).execute(
+        const result = await teamTaskCreateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", subject: "sub-a", description: "do A" },
             makeToolContext(sid),
         )
@@ -243,7 +239,7 @@ describe("team_task_create (recurse-mode guard)", () => {
         tracked.push(sid)
         await setupTeam(root, sid)
         // activeTask is undefined (no orchestration running) — create allowed.
-        const result = await teamTaskCreateTool(makeCtx(root)).execute(
+        const result = await teamTaskCreateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", subject: "freeform", description: "any" },
             makeToolContext(sid),
         )
@@ -282,7 +278,7 @@ describe("team_task_update (recurse-mode completed guard)", () => {
         const t = await createTask(dir, { subject: "leaf", description: "solve" })
         await updateTask(dir, t.id, { status: "claimed", owner: "alice" })
 
-        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+        const result = await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: t.id, status: "completed" },
             makeToolContext(sid),
         )
@@ -302,7 +298,7 @@ describe("team_task_update (recurse-mode completed guard)", () => {
         const t = await createTask(dir, { subject: "leaf", description: "solve" })
         await updateTask(dir, t.id, { status: "claimed", owner: "alice" })
 
-        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+        const result = await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: t.id, status: "completed" },
             makeToolContext(sid),
         )
@@ -333,7 +329,7 @@ describe("team_task_update (recurse-mode completed guard)", () => {
         const t = await createTask(dir, { subject: "cancel", description: "x" })
         await updateTask(dir, t.id, { status: "claimed", owner: "alice" })
 
-        const result = await teamTaskUpdateTool(makeCtx(root)).execute(
+        const result = await teamTaskUpdateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", task_id: t.id, status: "deleted" },
             makeToolContext(sid),
         )

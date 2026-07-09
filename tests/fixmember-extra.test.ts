@@ -9,19 +9,14 @@
  */
 import { afterAll, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, TeamSpec } from "../src/core/types.js"
 import { normalizeRole } from "../src/core/role.js"
 import { teamFixMemberTool } from "../src/tools/fixmember.js"
 import { initTeamState, invalidateTeam, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
-
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 function makeParallelTask(): ActiveTask {
     return {
@@ -89,7 +84,7 @@ describe("team_fix_member: activeTask migration on rename", () => {
         const sid = "ses_fix_par_migrate"
         const team = await setupTeamWithActiveTask(root, sid, makeParallelTask())
 
-        const result = await teamFixMemberTool(makeCtx(root)).execute(
+        const result = await teamFixMemberTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member_name: "alice", new_name: "bob" },
             makeToolContext(sid),
         )
@@ -117,7 +112,7 @@ describe("team_fix_member: activeTask migration on rename", () => {
         const sid = "ses_fix_loop_migrate"
         const team = await setupTeamWithActiveTask(root, sid, makeLoopTask())
 
-        const result = await teamFixMemberTool(makeCtx(root)).execute(
+        const result = await teamFixMemberTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member_name: "alice", new_name: "bob" },
             makeToolContext(sid),
         )

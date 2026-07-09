@@ -8,11 +8,7 @@ import { teamRemoveMemberTool } from "../src/tools/remove.js"
 import { teamRenameTool } from "../src/tools/rename.js"
 import { initTeamState, invalidateTeam, loadTeamState, readTeamSpec, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
-
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 /** Create a live team with both state.json and config.json for testing member add/remove. */
 async function setupLiveTeam(
@@ -47,7 +43,7 @@ describe("team_add_member", () => {
             { name: "bob", role: "tester", prompt: "test" },
         ])
 
-        const tool = teamAddMemberTool(makeCtx(root))
+        const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "alpha", role: "physicist", prompt: "do physics" },
             makeToolContext(sid),
@@ -71,7 +67,7 @@ describe("team_add_member", () => {
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
-        const tool = teamAddMemberTool(makeCtx(root))
+        const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "beta", name: "bob", role: "tester", prompt: "test" },
             makeToolContext(sid),
@@ -92,7 +88,7 @@ describe("team_add_member", () => {
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
-        const tool = teamAddMemberTool(makeCtx(root))
+        const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "gamma", name: "alice", role: "tester", prompt: "test" },
             makeToolContext(sid),
@@ -111,7 +107,7 @@ describe("team_add_member", () => {
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
-        const tool = teamAddMemberTool(makeCtx(root))
+        const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "delta", name: "master", role: "coder", prompt: "c" },
             makeToolContext(sid),
@@ -132,7 +128,7 @@ describe("team_add_member", () => {
         // Force status to idle (simulating post-spawn).
         team.status = "idle"
 
-        const tool = teamAddMemberTool(makeCtx(root))
+        const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "epsilon", role: "coder", prompt: "p" },
             makeToolContext(sid),
@@ -174,7 +170,7 @@ describe("team_remove_member", () => {
             { name: "bob", role: "tester", prompt: "test" },
         ])
 
-        const tool = teamRemoveMemberTool(makeCtx(root))
+        const tool = teamRemoveMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "alpha", member_name: "bob" },
             makeToolContext(sid),
@@ -199,7 +195,7 @@ describe("team_remove_member", () => {
             { name: "solo", role: "coder", prompt: "code" },
         ])
 
-        const tool = teamRemoveMemberTool(makeCtx(root))
+        const tool = teamRemoveMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "beta", member_name: "solo" },
             makeToolContext(sid),
@@ -218,7 +214,7 @@ describe("team_remove_member", () => {
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
-        const tool = teamRemoveMemberTool(makeCtx(root))
+        const tool = teamRemoveMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "gamma", member_name: "ghost" },
             makeToolContext(sid),
@@ -239,7 +235,7 @@ describe("team_remove_member", () => {
         ])
         team.status = "idle"
 
-        const tool = teamRemoveMemberTool(makeCtx(root))
+        const tool = teamRemoveMemberTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "delta", member_name: "bob" },
             makeToolContext(sid),
@@ -281,7 +277,7 @@ describe("team_rename", () => {
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
-        const tool = teamRenameTool(makeCtx(root))
+        const tool = teamRenameTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "old-name", new_name: "new-name" },
             makeToolContext(sid),
@@ -308,7 +304,7 @@ describe("team_rename", () => {
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
-        const tool = teamRenameTool(makeCtx(root))
+        const tool = teamRenameTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "zeta", new_name: "zeta" },
             makeToolContext(sid),
@@ -330,7 +326,7 @@ describe("team_rename", () => {
             { name: "bob", role: "coder", prompt: "code" },
         ])
 
-        const tool = teamRenameTool(makeCtx(root))
+        const tool = teamRenameTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "alpha", new_name: "beta" },
             makeToolContext(sid),
@@ -350,7 +346,7 @@ describe("team_rename", () => {
         ])
         team.status = "idle"
 
-        const tool = teamRenameTool(makeCtx(root))
+        const tool = teamRenameTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "gamma", new_name: "delta" },
             makeToolContext(sid),
@@ -389,7 +385,7 @@ describe("team_rename", () => {
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
-        const tool = teamRenameTool(makeCtx(root))
+        const tool = teamRenameTool(makeCtx({ storageRoot: root }))
         // new_name regex: /^[a-z0-9-]+$/ — uppercase rejected by schema validation.
         try {
             await tool.execute(

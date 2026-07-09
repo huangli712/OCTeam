@@ -7,19 +7,14 @@ import fs from "node:fs/promises"
 
 import { afterAll, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { RunRecord } from "../src/core/types.js"
 import { teamResultGetTool } from "../src/tools/results.js"
 import { initTeamState, invalidateTeam } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { runDir, runRecordPath, teamDir } from "../src/state/paths.js"
-import { cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
-
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 /** Write a RunRecord to disk so results tools can read it. */
 async function writeRunRecord(
@@ -62,7 +57,7 @@ describe("team_result_get: member output paths", () => {
             memberOutputs: { alice: { bytes: 10, file: "alice.md" } },
         } as RunRecord)
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "run-1", member: "ghost" },
             makeToolContext(memberSid),
         )
@@ -96,7 +91,7 @@ describe("team_result_get: member output paths", () => {
         } as RunRecord)
         // Intentionally do NOT create the alice.md output file.
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "run-2", member: "alice" },
             makeToolContext(memberSid),
         )
@@ -131,7 +126,7 @@ describe("team_result_get: tasks rendering", () => {
             tasks: [{ id: "t1", subject: "do thing", status: "completed", owner: "alice" }],
         } as unknown as RunRecord)
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "run-3" },
             makeToolContext(memberSid),
         )
@@ -164,7 +159,7 @@ describe("team_result_get: tasks rendering", () => {
             tasks: [{ id: "t2", subject: "unclaimed work", status: "pending" }],
         } as RunRecord)
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "run-4" },
             makeToolContext(memberSid),
         )
@@ -275,7 +270,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
             },
         } as RunRecord)
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "run-workflow-tree" },
             makeToolContext(memberSid),
         )
@@ -351,7 +346,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
             },
         } as RunRecord)
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "run-workflow-policy" },
             makeToolContext(memberSid),
         )
@@ -392,7 +387,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
             },
         } as RunRecord)
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "run-workflow-duration" },
             makeToolContext(memberSid),
         )
@@ -448,7 +443,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
             },
         } as RunRecord)
 
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "run-workflow-mermaid", format: "mermaid" },
             makeToolContext(memberSid),
         )
@@ -493,7 +488,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
             },
         } as RunRecord)
 
-        const textResult = await teamResultGetTool(makeCtx(root)).execute(
+        const textResult = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "run-dispatched-actor" },
             makeToolContext(memberSid),
         )
@@ -503,7 +498,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
         expect(textResult).toContain("[gate] dave")
         expect(textResult).not.toContain("[gate] carol")
 
-        const mermaidResult = await teamResultGetTool(makeCtx(root)).execute(
+        const mermaidResult = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "run-dispatched-actor", format: "mermaid" },
             makeToolContext(memberSid),
         )

@@ -1,15 +1,10 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { startOrchestration } from "../src/orchestration/shared.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
-
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 const tracked: string[] = []
 afterEach(() => {
@@ -61,7 +56,7 @@ describe("startOrchestration dispatch-failure rollback", () => {
             startOrchestration(
                 "alpha",
                 makeToolContext(sid),
-                makeCtx(root),
+                makeCtx({ storageRoot: root }),
                 "team_test",
                 () => null,
                 async () => minimalTask,

@@ -34,18 +34,14 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { TeamSpec } from "../src/core/types.js"
 import { teamAddMemberTool } from "../src/tools/add.js"
 import { configPath, teamDir } from "../src/state/paths.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 async function readSpecFromDisk(storageRoot: string, teamName: string, sid: string): Promise<TeamSpec> {
     const raw = await readFile(configPath(teamDir(storageRoot, teamName, sid)), "utf8")
@@ -86,7 +82,7 @@ describe("stale team spec overwrite (finding: stale-team-spec-overwrite)", () =>
         //   2. pass status==="live" check
         //   3. readTeamSpec → [alice] (STALE snapshot, same for both)
         //   4. block on team.mutex.runExclusive ---
-        const tool = teamAddMemberTool(makeCtx(root))
+        const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const addBob = tool.execute(
             { team_id: "alpha", name: "bob", role: "coder", prompt: "p", agent: "oct-junior" },
             { sessionID: leadSid } as unknown as ToolContext,

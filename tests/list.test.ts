@@ -1,15 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { TeamSpec } from "../src/core/types.js"
 import { teamListTool } from "../src/tools/list.js"
 import { initTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -38,7 +34,7 @@ async function setupTeam(
 describe("team_list table format", () => {
     test("empty → No teams found", async () => {
         const root = tmpRoot("list-empty")
-        const result = await teamListTool(makeCtx(root)).execute({}, makeToolContext("ses_x"))
+        const result = await teamListTool(makeCtx({ storageRoot: root })).execute({}, makeToolContext("ses_x"))
         expect(result).toBe("No teams found.")
     })
 
@@ -51,7 +47,7 @@ describe("team_list table format", () => {
             activatedAt: Date.now(),
             members: 3,
         })
-        const result = await teamListTool(makeCtx(root)).execute({}, makeToolContext(sid))
+        const result = await teamListTool(makeCtx({ storageRoot: root })).execute({}, makeToolContext(sid))
         // header row
         expect(result).toContain("| Name | Description | Created | Members | Status | Active |")
         // data fields
@@ -67,7 +63,7 @@ describe("team_list table format", () => {
         const sid = "ses_list_inactive"
         tracked.push(sid)
         await setupTeam(root, "beta", sid, { description: "Idle team" })
-        const result = await teamListTool(makeCtx(root)).execute({}, makeToolContext(sid))
+        const result = await teamListTool(makeCtx({ storageRoot: root })).execute({}, makeToolContext(sid))
         expect(result).toContain("| no |")
         expect(result).toContain("beta")
     })
@@ -77,7 +73,7 @@ describe("team_list table format", () => {
         const sid = "ses_list_nodesc"
         tracked.push(sid)
         await setupTeam(root, "gamma", sid, {})
-        const result = await teamListTool(makeCtx(root)).execute({}, makeToolContext(sid))
+        const result = await teamListTool(makeCtx({ storageRoot: root })).execute({}, makeToolContext(sid))
         expect(result).toContain("| - |")
     })
 })

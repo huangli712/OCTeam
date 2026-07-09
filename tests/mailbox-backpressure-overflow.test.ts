@@ -26,19 +26,15 @@
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamSendMessageTool } from "../src/tools/messaging.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
 import { writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { inboxPath } from "../src/state/paths.js"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 import type { Message } from "../src/core/types.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 afterAll(cleanupTmpRoots)
 
@@ -107,7 +103,7 @@ describe("mailbox backpressure overflow (finding: mailbox-backpressure-allows-ov
         // --- Send a message that WILL push the inbox over the cap.
         //     The new message body is large enough that preSize + newLine > 1000.
         //     (preSize is ~900; even a modest body + JSON overhead exceeds 100.) ---
-        const tool = teamSendMessageTool(makeCtx(root))
+        const tool = teamSendMessageTool(makeCtx({ storageRoot: root }))
         const newBody = "y".repeat(200) // 200 bytes body → ~330-byte line
         const result = await tool.execute(
             { team_id: "alpha", to: "bob", body: newBody },

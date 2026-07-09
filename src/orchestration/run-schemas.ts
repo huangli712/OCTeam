@@ -1,0 +1,302 @@
+/**
+ * Zod schemas mirroring the RunRecord / RunEvent types
+ * (src/core/types/runs.ts). Used to validate JSON read back from disk instead
+ * of bare `as` casts: a structurally-invalid record is treated the same as
+ * corrupt JSON (skipped). Unknown keys are stripped (zod default); required
+ * fields match the types.
+ *
+ * Extracted from runs.ts so the persistence/query logic and the (larger)
+ * validation schema tree stay in focused modules.
+ */
+
+import { z } from "zod"
+
+const OrchestrationTypeSchema = z.enum([
+    "parallel", "pipeline", "loop", "delegate", "consensus", "route", "arbitrate", "recurse", "tollgate", "workflow", "arena",
+])
+const ParallelModeSchema = z.enum(["isolated", "cooperative"])
+const RunStatusSchema = z.enum(["completed", "failed"])
+const SignoffPolicySchema = z.enum(["none", "decider", "peer-quorum"])
+
+const DecisionRecordSchema = z.object({
+    round: z.number(),
+    decision: z.enum(["continue", "done"]),
+    rationale: z.string(),
+    nextActions: z.array(z.string()),
+    timestamp: z.number(),
+})
+
+const ApprovalKindSchema = z.enum(["pipeline_stage", "tollgate_gate", "loop_done", "route_decision", "recurse_decompose", "arbitrate_ruling", "consensus_deadlock", "workflow_step"])
+const ApprovalDecisionRecordSchema = z.object({
+    id: z.string(),
+    kind: ApprovalKindSchema,
+    approved: z.boolean(),
+    requestedAt: z.number(),
+    resolvedAt: z.number(),
+    feedback: z.string().optional(),
+})
+
+const WorkflowStepKindSchema = z.enum(["task", "gate", "fanout", "join"])
+const VerdictSchema = z.enum(["PASS", "FAIL", "INVALID"])
+const WorkflowOnInvalidSchema = z.enum(["fail", "retry_verifier", "escalate"])
+const WorkflowBranchStatusSchema = z.enum(["pending", "completed", "skipped", "errored"])
+const WorkflowIssueSchema = z.object({
+    severity: z.enum(["low", "medium", "high", "critical"]),
+    message: z.string().optional(),
+})
+const WorkflowBranchRangeSchema = z.object({
+    startIndex: z.number().int().nonnegative(),
+    endIndex: z.number().int().nonnegative(),
+}).refine(range => range.endIndex >= range.startIndex, "branch range endIndex must be >= startIndex")
+const WorkflowJoinPolicySchema = z.enum(["tolerance", "all", "quorum", "any_success", "required_branches", "reduce", "select"])
+const WorkflowFanoutMetadataSchema = z.object({
+    branchIds: z.array(z.string().min(1)),
+    branchRanges: z.array(WorkflowBranchRangeSchema),
+    joinIndex: z.number().int().nonnegative(),
+    maxErrored: z.number().int().nonnegative(),
+    joinPolicy: WorkflowJoinPolicySchema.optional(),
+    quorum: z.number().optional(),
+    requiredBranchIds: z.array(z.string().min(1)).optional(),
+    reducerMember: z.string().min(1).optional(),
+    useSurvivors: z.boolean().optional(),
+}).refine(fanout => fanout.branchIds.length === fanout.branchRanges.length, "fanout branchIds and branchRanges length mismatch")
+const WorkflowBranchMetadataSchema = z.object({
+    fanoutIndex: z.number().int().nonnegative(),
+    branchId: z.string().min(1),
+    branchIndex: z.number().int().nonnegative(),
+    joinIndex: z.number().int().nonnegative(),
+})
+const WorkflowJoinMetadataSchema = z.object({
+    fanoutIndex: z.number().int().nonnegative(),
+    branchTailIndices: z.array(z.number().int().nonnegative()),
+    maxErrored: z.number().int().nonnegative(),
+    joinPolicy: WorkflowJoinPolicySchema.optional(),
+    quorum: z.number().optional(),
+    requiredBranchIds: z.array(z.string().min(1)).optional(),
+    reducerMember: z.string().min(1).optional(),
+    useSurvivors: z.boolean().optional(),
+    survivorBranchIds: z.array(z.string().min(1)).optional(),
+    erroredBranchIds: z.array(z.string().min(1)).optional(),
+    selectedBranchId: z.string().min(1).optional(),
+    selectionRationale: z.string().optional(),
+})
+const WorkflowRunStepSchema = z.object({
+    index: z.number(),
+    step: z.number(),
+    kind: WorkflowStepKindSchema,
+    id: z.string().optional(),
+    member: z.string().optional(),
+    verifier: z.string().optional(),
+    dispatchedActor: z.string().optional(),
+    targetStep: z.number().optional(),
+    targetSteps: z.array(z.number()).optional(),
+    verdict: VerdictSchema.optional(),
+    score: z.number().optional(),
+    confidence: z.number().optional(),
+    issues: z.array(WorkflowIssueSchema).optional(),
+    attempts: z.number().optional(),
+    onInvalid: WorkflowOnInvalidSchema.optional(),
+    invalidAttempts: z.number().optional(),
+    jumpCount: z.number().optional(),
+    skipped: z.boolean().optional(),
+    completed: z.boolean(),
+    output: z.string().optional(),
+    outputBytes: z.number().optional(),
+    joinedOutputBytes: z.number().optional(),
+    startedAt: z.number().optional(),
+    completedAt: z.number().optional(),
+    durationMs: z.number().optional(),
+    inputs: z.array(z.number()).optional(),
+    exposeOutput: z.boolean().optional(),
+    fanout: WorkflowFanoutMetadataSchema.optional(),
+    branch: WorkflowBranchMetadataSchema.optional(),
+    join: WorkflowJoinMetadataSchema.optional(),
+    branchStatuses: z.record(z.string(), WorkflowBranchStatusSchema).optional(),
+    // Static step-level control config (for post-run audit). Mirrors the
+    // runtime-declared controls; approvalBeforeGranted is transient and NOT
+    // persisted (it only matters mid-run).
+    approvalBefore: z.boolean().optional(),
+    approvalAfter: z.boolean().optional(),
+    maxOutputBytes: z.number().optional(),
+})
+
+const WorkflowRunSchema = z.object({
+    steps: z.array(WorkflowRunStepSchema),
+}).superRefine((workflow, ctx) => {
+    const steps = workflow.steps
+    const addStepIssue = (index: number, message: string, path: Array<string | number> = []): void => {
+        ctx.addIssue({ code: "custom", path: ["steps", index, ...path], message })
+    }
+
+    for (let index = 0; index < steps.length; index += 1) {
+        const step = steps[index]
+        if (step === undefined) continue
+        if (step.index !== index) addStepIssue(index, `workflow step index must equal ${index}`, ["index"])
+        if (step.step !== index + 1) addStepIssue(index, `workflow display step must equal ${index + 1}`, ["step"])
+
+        switch (step.kind) {
+            case "fanout": {
+                if (step.fanout === undefined) {
+                    addStepIssue(index, "fanout step requires fanout metadata", ["fanout"])
+                    break
+                }
+                if (step.branch !== undefined) addStepIssue(index, "fanout step cannot carry branch metadata", ["branch"])
+                if (step.join !== undefined) addStepIssue(index, "fanout step cannot carry join metadata", ["join"])
+                const fanout = step.fanout
+                if (new Set(fanout.branchIds).size !== fanout.branchIds.length) {
+                    addStepIssue(index, "fanout branch ids must be unique", ["fanout", "branchIds"])
+                }
+                const joinStep = steps[fanout.joinIndex]
+                if (joinStep?.kind !== "join" || joinStep.join?.fanoutIndex !== index) {
+                    addStepIssue(index, "fanout joinIndex must point to a matching join step", ["fanout", "joinIndex"])
+                }
+                for (let branchIndex = 0; branchIndex < fanout.branchRanges.length; branchIndex += 1) {
+                    const range = fanout.branchRanges[branchIndex]
+                    const branchId = fanout.branchIds[branchIndex]
+                    if (range === undefined || branchId === undefined) continue
+                    if (range.startIndex <= index || range.endIndex >= fanout.joinIndex || range.endIndex >= steps.length) {
+                        addStepIssue(index, "fanout branch range must be between fanout and join", ["fanout", "branchRanges", branchIndex])
+                        continue
+                    }
+                    if (joinStep?.join?.branchTailIndices[branchIndex] !== range.endIndex) {
+                        addStepIssue(index, "join branchTailIndices must match fanout branch range tails", ["fanout", "branchRanges", branchIndex])
+                    }
+                    for (let branchStepIndex = range.startIndex; branchStepIndex <= range.endIndex; branchStepIndex += 1) {
+                        const branchStep = steps[branchStepIndex]
+                        if (branchStep === undefined) {
+                            addStepIssue(index, "fanout branch range points outside workflow steps", ["fanout", "branchRanges", branchIndex])
+                            continue
+                        }
+                        if (branchStep.kind === "fanout" || branchStep.kind === "join") {
+                            addStepIssue(branchStepIndex, "fanout branch range can only contain task/gate steps")
+                            continue
+                        }
+                        const branch = branchStep.branch
+                        if (branch === undefined) {
+                            addStepIssue(branchStepIndex, "branch step requires branch metadata", ["branch"])
+                            continue
+                        }
+                        if (branch.fanoutIndex !== index || branch.branchId !== branchId || branch.branchIndex !== branchIndex || branch.joinIndex !== fanout.joinIndex) {
+                            addStepIssue(branchStepIndex, "branch metadata must match containing fanout range", ["branch"])
+                        }
+                    }
+                }
+                break
+            }
+            case "join": {
+                if (step.join === undefined) {
+                    addStepIssue(index, "join step requires join metadata", ["join"])
+                    break
+                }
+                if (step.fanout !== undefined) addStepIssue(index, "join step cannot carry fanout metadata", ["fanout"])
+                if (step.branch !== undefined) addStepIssue(index, "join step cannot carry branch metadata", ["branch"])
+                const fanoutStep = steps[step.join.fanoutIndex]
+                if (fanoutStep?.kind !== "fanout" || fanoutStep.fanout?.joinIndex !== index) {
+                    addStepIssue(index, "join fanoutIndex must point to a matching fanout step", ["join", "fanoutIndex"])
+                    break
+                }
+                const fanout = fanoutStep.fanout
+                if (fanout.branchRanges.length !== step.join.branchTailIndices.length) {
+                    addStepIssue(index, "join branchTailIndices length must match fanout branches", ["join", "branchTailIndices"])
+                }
+                const branchIds = new Set(fanout.branchIds)
+                const survivorBranchIds = step.join.survivorBranchIds ?? []
+                const erroredBranchIds = step.join.erroredBranchIds ?? []
+                for (const branchId of survivorBranchIds) {
+                    if (!branchIds.has(branchId)) addStepIssue(index, "join survivorBranchIds must reference known fanout branches", ["join", "survivorBranchIds"])
+                }
+                for (const branchId of erroredBranchIds) {
+                    if (!branchIds.has(branchId)) addStepIssue(index, "join erroredBranchIds must reference known fanout branches", ["join", "erroredBranchIds"])
+                    if (survivorBranchIds.includes(branchId)) addStepIssue(index, "join branch cannot be both survivor and errored", ["join"])
+                }
+                break
+            }
+            case "task":
+            case "gate": {
+                if (step.fanout !== undefined) addStepIssue(index, "task/gate step cannot carry fanout metadata", ["fanout"])
+                if (step.join !== undefined) addStepIssue(index, "task/gate step cannot carry join metadata", ["join"])
+                if (step.branch === undefined) break
+                const fanoutStep = steps[step.branch.fanoutIndex]
+                if (fanoutStep?.kind !== "fanout" || fanoutStep.fanout === undefined) {
+                    addStepIssue(index, "branch fanoutIndex must point to a matching fanout step", ["branch", "fanoutIndex"])
+                    break
+                }
+                const range = fanoutStep.fanout.branchRanges[step.branch.branchIndex]
+                const branchId = fanoutStep.fanout.branchIds[step.branch.branchIndex]
+                if (range === undefined || branchId !== step.branch.branchId || step.branch.joinIndex !== fanoutStep.fanout.joinIndex || index < range.startIndex || index > range.endIndex) {
+                    addStepIssue(index, "branch metadata must match containing fanout range", ["branch"])
+                }
+                break
+            }
+            default:
+                step.kind satisfies never
+        }
+    }
+})
+
+const ArenaCandidateScoreSchema = z.object({
+    member: z.string(),
+    score: z.number().optional(),
+    metrics: z.record(z.string(), z.number()).optional(),
+    passed: z.boolean().optional(),
+    rationale: z.string().optional(),
+})
+const ArenaScoreboardSchema = z.object({
+    scores: z.array(ArenaCandidateScoreSchema),
+    rationale: z.string().optional(),
+})
+
+export const RunRecordSchema = z.object({
+    version: z.literal(1),
+    runId: z.string(),
+    teamRunId: z.string(),
+    teamName: z.string(),
+    type: OrchestrationTypeSchema,
+    mode: ParallelModeSchema.optional(),
+    reason: z.string(),
+    status: RunStatusSchema,
+    startedAt: z.number(),
+    finishedAt: z.number(),
+    tokensUsed: z.number(),
+    tokensByMember: z.record(z.string(), z.number()),
+    messagesSent: z.number(),
+    currentRound: z.number().optional(),
+    decisionHistory: z.array(DecisionRecordSchema).optional(),
+    approvalHistory: z.array(ApprovalDecisionRecordSchema).optional(),
+    consensusReached: z.boolean().optional(),
+    signoffPolicy: SignoffPolicySchema.optional(),
+    signoffApprovals: z.record(z.string(), z.boolean()).optional(),
+    memberOutputs: z.record(z.string(), z.object({ bytes: z.number(), file: z.string() })),
+    tasks: z.array(z.object({
+        id: z.string(),
+        subject: z.string(),
+        status: z.string(),
+        owner: z.string().optional(),
+    })).optional(),
+    workflow: WorkflowRunSchema.optional(),
+    arena: z.object({
+        candidates: z.array(z.string()),
+        survivingCandidates: z.array(z.string()).optional(),
+        evaluator: z.string(),
+        winner: z.string().optional(),
+        scoreDirection: z.enum(["max", "min"]),
+        winnerMetric: z.string(),
+        scoreboard: ArenaScoreboardSchema.optional(),
+    }).optional(),
+})
+
+export const RunEventSchema = z.object({
+    timestamp: z.number(),
+    kind: z.enum([
+        "dispatched", "captured", "retry", "errored", "stage_advanced", "round",
+        "signoff", "approval_requested", "approval_resolved", "terminated", "routed", "arbitrated", "decomposed", "aggregated", "aggregation_stalled", "verdict", "repaired",
+    ]),
+    member: z.string().optional(),
+    stage: z.number().optional(),
+    round: z.number().optional(),
+    stepIndex: z.number().optional(),
+    correlationId: z.string().optional(),
+    reason: z.string().optional(),
+    bytes: z.number().optional(),
+    detail: z.string().optional(),
+})

@@ -75,17 +75,11 @@ mock.module("node:fs/promises", () => ({ ...mockedFs, default: mockedFs }))
 const { teamDeleteTool } = await import("../src/tools/delete.js")
 const { initTeamState } = await import("../src/state/store.js")
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamDir } from "../src/state/paths.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
-function makeCtx(storageRoot: string): PluginContext {
-    // team_delete's client.* calls are absent (no members with sessionId);
-    // cleanWorktree is skipped (no worktree members). A minimal ctx suffices.
-    return { storageRoot, directory: "/app", scope: "project" } as unknown as PluginContext
-}
 
 async function pathExists(p: string): Promise<boolean> {
     try {
@@ -128,7 +122,7 @@ describe("delete storage failure reports success (finding: delete-storage-failur
         //          → resolves → invalidateTeam runs → returns "deleted".
         // FIXED:   EPERM propagates → execute either returns an error string
         //          or throws. Normalize both via .catch.
-        const result = await teamDeleteTool(makeCtx(root)).execute(
+        const result = await teamDeleteTool(makeCtx({ storageRoot: root })).execute(
             { team_id: teamName, force: true },
             { sessionID: sid } as unknown as ToolContext,
         ).catch((err: unknown) => `THREW: ${(err as Error).message}`)

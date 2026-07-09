@@ -11,12 +11,7 @@ import {
     setActiveTeam,
     unindexSession,
 } from "../src/state/resolve.js"
-import { makeState, makeToolContext, tmpRoot } from './helpers.js';
-
-/** Minimal PluginContext stub: teamDeactivateTool only reads storageRoot + scope. */
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
+import { makeCtx, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 /** Minimal ActiveTask for the busy-state fixture. */
 function busyTask(): ActiveTask {
@@ -46,7 +41,7 @@ describe("team_deactivate", () => {
         setActiveTeam(sid, team.directory)
         expect(isMasterSession(sid)).toBe(true)
 
-        const tool = teamDeactivateTool(makeCtx(root))
+        const tool = teamDeactivateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -72,7 +67,7 @@ describe("team_deactivate", () => {
         const sid = "ses_deact_inactive"
         const team = await initTeamState(root, makeState("beta", sid), sid) // no activatedAt
 
-        const tool = teamDeactivateTool(makeCtx(root))
+        const tool = teamDeactivateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "beta" },
             makeToolContext(sid),
@@ -96,7 +91,7 @@ describe("team_deactivate", () => {
         state.activeTask = busyTask()
         const team = await initTeamState(root, state, sid)
 
-        const tool = teamDeactivateTool(makeCtx(root))
+        const tool = teamDeactivateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "gamma" },
             makeToolContext(sid),
@@ -147,7 +142,7 @@ describe("team_deactivate", () => {
         const root = tmpRoot("deact-notfound")
         const sid = "ses_deact_notfound"
 
-        const tool = teamDeactivateTool(makeCtx(root))
+        const tool = teamDeactivateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { team_id: "ghost" },
             makeToolContext(sid),

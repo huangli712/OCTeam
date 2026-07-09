@@ -1,16 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { TeamSpec } from "../src/core/types.js"
 import { teamQueryTool } from "../src/tools/query.js"
 import { initTeamState, writeTeamSpec } from "../src/state/store.js"
 import { teamDir, worktreesDir } from "../src/state/paths.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
-function makeCtx(storageRoot: string): PluginContext {
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -43,7 +39,7 @@ async function setupTeam(
 describe("team_query tool", () => {
     test("team not found → error (caller not a member)", async () => {
         const root = tmpRoot("q-404")
-        const result = await teamQueryTool(makeCtx(root)).execute(
+        const result = await teamQueryTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "nonexistent", member_name: "alice" },
             makeToolContext("ses_x"),
         )
@@ -56,7 +52,7 @@ describe("team_query tool", () => {
         const sid = "ses_q_404"
         tracked.push(sid)
         await setupTeam(root, sid, { activatedAt: Date.now() })
-        const result = await teamQueryTool(makeCtx(root)).execute(
+        const result = await teamQueryTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member_name: "bob" },
             makeToolContext(sid),
         )
@@ -69,7 +65,7 @@ describe("team_query tool", () => {
         tracked.push(sid)
         const alice = { ...makeMember("alice"), model: "anthropic/claude" }
         await setupTeam(root, sid, { members: [alice], activatedAt: Date.now() })
-        const result = await teamQueryTool(makeCtx(root)).execute(
+        const result = await teamQueryTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member_name: "alice" },
             makeToolContext(sid),
         )
@@ -92,7 +88,7 @@ describe("team_query tool", () => {
         const wtPath = `${worktreesDir(teamDir(root, "alpha", sid))}/alice`
         const alice = { ...makeMember("alice"), worktreePath: wtPath }
         await setupTeam(root, sid, { members: [alice], activatedAt: Date.now() })
-        const result = await teamQueryTool(makeCtx(root)).execute(
+        const result = await teamQueryTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member_name: "alice" },
             makeToolContext(sid),
         )
@@ -104,7 +100,7 @@ describe("team_query tool", () => {
         const sid = "ses_q_nomodel"
         tracked.push(sid)
         await setupTeam(root, sid, { members: [makeMember("alice")], activatedAt: Date.now() })
-        const result = await teamQueryTool(makeCtx(root)).execute(
+        const result = await teamQueryTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member_name: "alice" },
             makeToolContext(sid),
         )

@@ -17,7 +17,7 @@ import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 // ============================================================================
 // Fix1 — path-traversal rejection (BLOCKING-1, security)
@@ -45,9 +45,6 @@ describe("Fix1: tools reject traversal in run_id / member", () => {
     afterEach(() => {
         for (const sid of tracked.splice(0)) unindexSession(sid)
     })
-    function makeCtx(storageRoot: string): PluginContext {
-        return { storageRoot, scope: "project" } as unknown as PluginContext
-    }
     async function setup(root: string, sid: string, memberSid: string): Promise<void> {
         await initTeamState(root, makeState("alpha", sid, [makeMember("alice", memberSid)], Date.now()), sid)
         await rebuildSessionIndex(root, `${root}__unused`)
@@ -58,7 +55,7 @@ describe("Fix1: tools reject traversal in run_id / member", () => {
         const sid = "ses_f1_m", memberSid = "ses_f1_a"
         tracked.push(sid, memberSid)
         await setup(root, sid, memberSid)
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "../../../../etc" },
             makeToolContext(memberSid),
         )
@@ -70,7 +67,7 @@ describe("Fix1: tools reject traversal in run_id / member", () => {
         const sid = "ses_f1b_m", memberSid = "ses_f1b_a"
         tracked.push(sid, memberSid)
         await setup(root, sid, memberSid)
-        const result = await teamResultGetTool(makeCtx(root)).execute(
+        const result = await teamResultGetTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", member: "../alice" },
             makeToolContext(memberSid),
         )
@@ -82,7 +79,7 @@ describe("Fix1: tools reject traversal in run_id / member", () => {
         const sid = "ses_f1c_m", memberSid = "ses_f1c_a"
         tracked.push(sid, memberSid)
         await setup(root, sid, memberSid)
-        const result = await teamProgressTool(makeCtx(root)).execute(
+        const result = await teamProgressTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", run_id: "../../other/runs/x" },
             makeToolContext(memberSid),
         )
