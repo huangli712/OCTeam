@@ -1,16 +1,9 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import { teamCreateTool } from "../src/tools/create.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { resolveTeamMember, unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
-
-function makeCtx(storageRoot: string): PluginContext {
-    // team_create's client.* calls are all best-effort (try/catch fallback), so
-    // a minimal ctx without a client is sufficient to exercise the constraints.
-    return { storageRoot, scope: "project" } as unknown as PluginContext
-}
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const tracked: string[] = []
 afterEach(() => {
@@ -25,7 +18,7 @@ describe("team_create constraints", () => {
         tracked.push(sid)
         await initTeamState(root, makeState("alpha", sid, [makeMember("alice")]), sid)
 
-        const tool = teamCreateTool(makeCtx(root))
+        const tool = teamCreateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { name: "alpha", members: [{ role: "coder", prompt: "code" }] },
             makeToolContext(sid),
@@ -39,7 +32,7 @@ describe("team_create constraints", () => {
         const sid = "ses_create_inactive"
         tracked.push(sid)
 
-        const tool = teamCreateTool(makeCtx(root))
+        const tool = teamCreateTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
             { name: "beta", members: [{ role: "coder", prompt: "code" }] },
             makeToolContext(sid),
@@ -58,7 +51,7 @@ describe("team_create constraints", () => {
         const sid = "ses_create_first"
         tracked.push(sid)
 
-        const tool = teamCreateTool(makeCtx(root))
+        const tool = teamCreateTool(makeCtx({ storageRoot: root }))
         await tool.execute(
             { name: "solo", members: [{ role: "coder", prompt: "code" }] },
             makeToolContext(sid),

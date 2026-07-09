@@ -1,10 +1,10 @@
 /**
  * Workflow idle handler + invalid-verdict handler, extracted from workflow.ts
- * to keep each file under ~700 LOC. handleWorkflowIdle is the largest function
- * in the engine (~430 lines): it captures the idle member's current turn,
- * validates that the member belongs to the active frontier, and advances only
- * that matching step. handleInvalidVerdict handles the three-valued
- * PASS/FAIL/INVALID verdict routing plus ensemble aggregation.
+ * to keep each file under ~700 LOC. handleWorkflowIdle captures the idle
+ * member's current turn, validates that the member belongs to the active
+ * frontier, and advances only that matching step. Gate-verdict routing lives
+ * in handleGateVerdict; unevaluable (INVALID / parse_failure) verdict routing
+ * plus ensemble aggregation lives in handleInvalidVerdict.
  */
 
 import type { PluginContext } from "../core/context.js";
@@ -61,6 +61,30 @@ import {
     markWorkflowStepCompleted,
 } from "./fanout.js";
 
+/**
+ * Stamp completion timing on the step via markWorkflowStepCompleted and clear
+ * the transient dispatch/correlation bookkeeping that should not survive past
+ * a step settling. Centralizes the reset sequence that was duplicated across
+ * the task / join / gate-PASS / loop-exhaust / on_fail=skip / on_malformed=skip
+ * completion paths.
+ *
+ * opts.completed flips step.completed (join leaves it false because
+ * advanceWorkflowStep finalizes join state on the next cycle).
+ * opts.skipped additionally marks the step as skipped (on_fail=skip and
+ * on_malformed=skip).
+ */
+function resetStepAfterCompletion(
+    step: WorkflowStep,
+    opts: { completed?: boolean; skipped?: boolean } = {},
+): void {
+    markWorkflowStepCompleted(step);
+    if (opts.completed) step.completed = true;
+    if (opts.skipped) step.skipped = true;
+    step.dispatchedAt = undefined;
+    step.dispatchedActor = undefined;
+    step.correlationId = undefined;
+}
+
 export async function handleWorkflowIdle(
     ctx: PluginContext,
     team: Team,
@@ -113,21 +137,19 @@ export async function handleWorkflowIdle(
             }
             // exhausted: fall through to normal completion
         }
-        markWorkflowStepCompleted(step);
-        step.dispatchedAt = undefined;
-        step.dispatchedActor = undefined;
-        step.completed = true;
+        // Capture correlationId before the reset clears it; the captured event
+        // below still needs to reference the original dispatch correlation.
+        const capturedCorrelationId = step.correlationId;
+        resetStepAfterCompletion(step, { completed: true });
         recordEvent(team, {
             timestamp: Date.now(),
             kind: "captured",
             member: member.name,
             stepIndex: activeStepIndex,
-            correlationId: step.correlationId,
+            correlationId: capturedCorrelationId,
             bytes: step.output?.length,
             detail: `workflow step ${activeStepIndex + 1} captured`,
         });
-        step.dispatchedActor = undefined;
-        step.correlationId = undefined;
         if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex))
             return;
         const nextIndex =
@@ -183,10 +205,9 @@ export async function handleWorkflowIdle(
                 joinedOutput: response,
             };
         }
-        markWorkflowStepCompleted(step);
-        step.dispatchedAt = undefined;
-        step.dispatchedActor = undefined;
-        step.correlationId = undefined;
+        // join intentionally leaves step.completed false; advanceWorkflowStep
+        // finalizes the join state on the next cycle.
+        resetStepAfterCompletion(step);
         recordEvent(team, {
             timestamp: Date.now(),
             kind: "captured",
@@ -201,7 +222,34 @@ export async function handleWorkflowIdle(
     }
 
     // gate step
-    if (step.kind !== "gate") return;
+    if (step.kind === "gate") {
+        await handleGateVerdict(ctx, team, member, step, activeStepIndex);
+    }
+}
+
+/**
+ * Route a gate step's verdict. Handles single-verifier and ensemble gates,
+ * then dispatches on PASS / FAIL / INVALID / parse_failure:
+ *
+ *   PASS            -> mark complete; on_pass_goto jump or advance
+ *   FAIL on_fail=fail -> on_fail_goto (loop-bounded) or terminate
+ *   FAIL on_fail=skip -> mark skipped and advance
+ *   FAIL on_fail=retry -> bounded re-dispatch of the preceding task
+ *   INVALID / parse_failure -> delegated to handleInvalidVerdict
+ *
+ * The gate's activeStepIndex is passed in as gateIndex since FAIL retry
+ * re-dispatches the preceding task and needs a stable name for the gate slot.
+ */
+async function handleGateVerdict(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+    step: WorkflowStep,
+    gateIndex: number,
+): Promise<void> {
+    const task = team.activeTask;
+    if (!task || task.type !== "workflow") return;
+    const steps = task.steps ?? [];
     if (step.verifier === undefined && step.verifiers === undefined) return;
     const verifierName = member.name;
     let v = parseVerdict(step.output ?? task.responses[verifierName] ?? "");
@@ -223,8 +271,8 @@ export async function handleWorkflowIdle(
             timestamp: Date.now(),
             kind: "verdict",
             member: verifierName,
-            stage: activeStepIndex,
-            stepIndex: activeStepIndex,
+            stage: gateIndex,
+            stepIndex: gateIndex,
             correlationId: step.correlationId,
             detail: v.verdict ?? "parse_fail",
         });
@@ -248,8 +296,8 @@ export async function handleWorkflowIdle(
             timestamp: Date.now(),
             kind: "verdict",
             member: "ensemble",
-            stage: activeStepIndex,
-            stepIndex: activeStepIndex,
+            stage: gateIndex,
+            stepIndex: gateIndex,
             detail: `${aggregated.verdict} (${aggregated.rationale})`,
         });
     } else {
@@ -257,8 +305,8 @@ export async function handleWorkflowIdle(
             timestamp: Date.now(),
             kind: "verdict",
             member: verifierName,
-            stage: activeStepIndex,
-            stepIndex: activeStepIndex,
+            stage: gateIndex,
+            stepIndex: gateIndex,
             correlationId: step.correlationId,
             detail: v.verdict ?? "parse_fail",
         });
@@ -274,7 +322,7 @@ export async function handleWorkflowIdle(
             ctx,
             team,
             step,
-            activeStepIndex,
+            gateIndex,
             verifierName,
             "parse_failure",
             v.rationale,
@@ -288,7 +336,7 @@ export async function handleWorkflowIdle(
             ctx,
             team,
             step,
-            activeStepIndex,
+            gateIndex,
             verifierName,
             "INVALID",
             v.rationale,
@@ -298,16 +346,12 @@ export async function handleWorkflowIdle(
     }
 
     if (v.verdict === "PASS") {
-        markWorkflowStepCompleted(step);
-        step.dispatchedAt = undefined;
-        step.dispatchedActor = undefined;
-        step.correlationId = undefined;
-        step.completed = true;
+        resetStepAfterCompletion(step, { completed: true });
         // approval_after on a gate is validator-guaranteed incompatible with
         // on_*_goto, so pausing here cannot be bypassed by a goto jump.
-        if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex))
+        if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
             return;
-        const gotoIdx = gatedGotoIndex(steps, activeStepIndex, step.onPassGoto);
+        const gotoIdx = gatedGotoIndex(steps, gateIndex, step.onPassGoto);
         const nextIndex =
             gotoIdx >= 0 ? gotoIdx : steps.findIndex((s) => !s.completed);
         if (
@@ -315,14 +359,14 @@ export async function handleWorkflowIdle(
             nextIndex !== -1 &&
             (await maybeRequestApproval(ctx, team, {
                 kind: "workflow_step",
-                stage: activeStepIndex,
-                summary: `Completed ${describeStep(step, activeStepIndex)} with PASS from ${verifierName}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
+                stage: gateIndex,
+                summary: `Completed ${describeStep(step, gateIndex)} with PASS from ${verifierName}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
             }))
         ) {
             return;
         }
         if (gotoIdx >= 0) {
-            await gotoWorkflowStep(ctx, team, activeStepIndex, gotoIdx, {
+            await gotoWorkflowStep(ctx, team, gateIndex, gotoIdx, {
                 reason: whereReason(step, "on_pass"),
                 verdict: "PASS",
                 rationale: v.rationale,
@@ -339,7 +383,7 @@ export async function handleWorkflowIdle(
     if (onFail === "fail") {
         const failGoto = gatedGotoIndex(
             steps,
-            activeStepIndex,
+            gateIndex,
             step.onFailGoto,
         );
         if (failGoto >= 0) {
@@ -348,18 +392,14 @@ export async function handleWorkflowIdle(
                 if (step.loopIterations > step.loop.maxIterations) {
                     if (step.loop.onExhaust === "continue") {
                         delete task.responses[verifierName];
-                        markWorkflowStepCompleted(step);
-                        step.completed = true;
-                        step.dispatchedAt = undefined;
-                        step.dispatchedActor = undefined;
-                        step.correlationId = undefined;
+                        resetStepAfterCompletion(step, { completed: true });
                         recordEvent(team, {
                             timestamp: Date.now(),
                             kind: "stage_advanced",
                             member: verifierName,
-                            stage: activeStepIndex,
-                            stepIndex: activeStepIndex,
-                            detail: `workflow loop step ${activeStepIndex + 1} exhausted after ${step.loop.maxIterations} iterations; on_exhaust=continue`,
+                            stage: gateIndex,
+                            stepIndex: gateIndex,
+                            detail: `workflow loop step ${gateIndex + 1} exhausted after ${step.loop.maxIterations} iterations; on_exhaust=continue`,
                         });
                         await advanceWorkflowStep(ctx, team);
                         return;
@@ -373,7 +413,7 @@ export async function handleWorkflowIdle(
                     return;
                 }
             }
-            await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, {
+            await gotoWorkflowStep(ctx, team, gateIndex, failGoto, {
                 reason: whereReason(step, "on_fail"),
                 verdict: "FAIL",
                 rationale: v.rationale,
@@ -391,19 +431,14 @@ export async function handleWorkflowIdle(
     }
     if (onFail === "skip") {
         delete task.responses[verifierName];
-        markWorkflowStepCompleted(step);
-        step.completed = true;
-        step.skipped = true;
-        step.dispatchedAt = undefined;
-        step.dispatchedActor = undefined;
-        step.correlationId = undefined;
+        resetStepAfterCompletion(step, { completed: true, skipped: true });
         recordEvent(team, {
             timestamp: Date.now(),
             kind: "stage_advanced",
             member: verifierName,
-            stage: activeStepIndex,
-            stepIndex: activeStepIndex,
-            detail: `workflow gate step ${activeStepIndex + 1} skipped after FAIL from ${verifierName}`,
+            stage: gateIndex,
+            stepIndex: gateIndex,
+            detail: `workflow gate step ${gateIndex + 1} skipped after FAIL from ${verifierName}`,
         });
         await advanceWorkflowStep(ctx, team);
         return;
@@ -415,11 +450,11 @@ export async function handleWorkflowIdle(
     if (step.attempts > maxR) {
         const failGoto = gatedGotoIndex(
             steps,
-            activeStepIndex,
+            gateIndex,
             step.onFailGoto,
         );
         if (failGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, activeStepIndex, failGoto, {
+            await gotoWorkflowStep(ctx, team, gateIndex, failGoto, {
                 reason: whereReason(step, "on_fail_retry_exhausted"),
                 verdict: "FAIL",
                 rationale: v.rationale,
@@ -435,7 +470,6 @@ export async function handleWorkflowIdle(
         );
         return;
     }
-    const gateIndex = activeStepIndex;
     const producerIdx = gateTargetIndex(steps, gateIndex);
     if (producerIdx === -1) {
         // No preceding task to retry -> fail (defensive; tool layer rejects gate-first).
@@ -536,12 +570,7 @@ async function handleInvalidVerdict(
     // "skip" is only available via on_malformed (not on_invalid).
     if (policy === "skip") {
         delete task.responses[verifierName];
-        markWorkflowStepCompleted(step);
-        step.completed = true;
-        step.skipped = true;
-        step.dispatchedAt = undefined;
-        step.dispatchedActor = undefined;
-        step.correlationId = undefined;
+        resetStepAfterCompletion(step, { completed: true, skipped: true });
         recordEvent(team, {
             timestamp: Date.now(),
             kind: "stage_advanced",

@@ -1,36 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 
 import { handleConsensusIdle } from "../src/orchestration/consensus.js"
-import type { ActiveTask, ConsensusTask, MemberState } from "../src/core/types.js"
-import { AsyncMutex } from "../src/state/locks.js"
-import type { Team } from "../src/state/store.js"
-import type { PluginContext } from "../src/core/context.js"
+import type { ConsensusTask } from "../src/core/types.js"
+import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 
 // --- fixtures (consensus execution path) ---
-
-/** A recorded promptAsync call: which session got which text. */
-type DispatchCall = { sessionId: string; text: string }
-
-/**
- * Stub PluginContext: handleConsensusIdle only exercises promptAsync (via
- * dispatchToMember on a next round, and deliverSummaryToLeader on completion).
- */
-function makeCtx(calls: DispatchCall[] = []): PluginContext {
-    return {
-        directory: "/app",
-        client: {
-            session: {
-                promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeConsensusTask(opts: Partial<ConsensusTask> = {}): ConsensusTask {
     return {
@@ -54,43 +28,6 @@ function makeConsensusTask(opts: Partial<ConsensusTask> = {}): ConsensusTask {
     } as ConsensusTask
 }
 
-function makeTeam(opts: {
-    activeTask?: ActiveTask
-    members?: Array<Partial<MemberState> & Pick<MemberState, "name">>
-}): Team {
-    const members: MemberState[] = (opts.members ?? []).map(m => ({
-        name: m.name,
-        status: m.status ?? "idle",
-        initialized: m.initialized ?? true,
-        turnCount: m.turnCount ?? 0,
-        sessionId: m.sessionId,
-        agent: m.agent,
-        isMaster: m.isMaster,
-    }))
-    return {
-        version: 1,
-        teamRunId: "test-run",
-        teamName: "test-team",
-        status: "busy",
-        leadSessionId: "ses_lead",
-        members,
-        bounds: {
-            maxMembers: 8,
-            maxParallelMembers: 4,
-            maxMessagesPerRun: 100,
-            maxWallClockMinutes: 30,
-            maxMemberTurns: 50,
-            maxTasks: 200,
-            messagePayloadMaxBytes: 32768,
-            messageUnreadMaxBytes: 1048576,
-        },
-        createdAt: 0,
-        activeTask: opts.activeTask,
-        mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-cons-")),
-    } as unknown as Team
-}
-
 const AGREE = '<consensus>{"agreed":true}</consensus>'
 const DISAGREE = '<consensus>{"agreed":false}</consensus>'
 
@@ -99,7 +36,7 @@ const DISAGREE = '<consensus>{"agreed":false}</consensus>'
 describe("handleConsensusIdle: barrier outcomes", () => {
     test("all members agree -> consensus_reached, delivered and idled", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeConsensusTask({
             responses: { alice: `yes ${AGREE}`, bob: `agreed ${AGREE}` },
             currentRound: 1,
@@ -125,7 +62,7 @@ describe("handleConsensusIdle: barrier outcomes", () => {
 
     test("mixed votes with rounds remaining -> advances to the next round", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeConsensusTask({
             responses: { alice: AGREE, bob: DISAGREE },
             currentRound: 1,
@@ -153,7 +90,7 @@ describe("handleConsensusIdle: barrier outcomes", () => {
 
     test("no consensus at max rounds -> fails the run", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeConsensusTask({
             responses: { alice: AGREE, bob: DISAGREE },
             currentRound: 3,

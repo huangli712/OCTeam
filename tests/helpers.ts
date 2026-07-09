@@ -1,9 +1,14 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
 import type { ToolContext } from "@opencode-ai/plugin"
-import type { MemberState, TeamState } from "../src/core/types.js"
+import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
+import type { PluginContext } from "../src/core/context.js"
+import type { Team } from "../src/state/store.js"
+import { AsyncMutex } from "../src/state/locks.js"
+import { waitUntil } from "../src/core/utils.js"
+import { runEventsPath } from "../src/state/paths.js"
 
 // Track every tmp root created in this process. mkdtempSync dirs otherwise
 // leak: most suites only unindexSession in their afterEach and never remove the
@@ -106,4 +111,206 @@ export function makeToolContext(
         ask: (() => ({}) as never) as ToolContext["ask"],
         ...overrides,
     }
+}
+
+// --- Shared orchestration-test fixtures ---
+// These collapse the makeCtx / makeTeam / makeTask / DispatchCall /
+// waitForEvent duplication documented across 100+ test files. See
+// tests/README-FIXTURES.md (or the Phase 1 migration notes) for usage.
+
+/**
+ * A recorded promptAsync call: which session got which text. Shared by
+ * orchestration-handler suites that assert on dispatch order/content.
+ */
+export type DispatchCall = { readonly sessionId: string; readonly text: string }
+
+/**
+ * Poll the run events file until an event of `kind` is flushed to disk.
+ * recordEvent is fire-and-forget, so we wait deterministically for the append
+ * to land rather than sleeping a fixed duration. Verbatim copy across 5 files.
+ */
+export async function waitForEvent(
+    directory: string,
+    runId: string,
+    kind: string,
+): Promise<void> {
+    const p = runEventsPath(directory, runId)
+    await waitUntil(
+        () => existsSync(p) && readFileSync(p, "utf8").includes(`"kind":"${kind}"`),
+        { timeoutMs: 2000, pollMs: 10 },
+    )
+}
+
+/**
+ * Minimal valid ActiveTask with overrides. Defaults to a parallel task; tests
+ * pass `type` and type-specific fields via overrides. Used by suites that only
+ * need the common ActiveTask shape.
+ */
+export function makeTask(overrides: Partial<ActiveTask> = {}): ActiveTask {
+    return {
+        type: "parallel",
+        mode: "isolated",
+        startedAt: Date.now(),
+        wallClockTimeoutMs: 300_000,
+        tokensUsed: 0,
+        tokensByMember: {},
+        messagesSent: 0,
+        responses: {},
+        stages: [],
+        currentStageIndex: 0,
+        decisionHistory: [],
+        decisionParseFailures: 0,
+        ...overrides,
+    } as ActiveTask
+}
+
+/**
+ * Build a stub PluginContext. A single options object covers the four shapes
+ * that recurred across 80+ files:
+ *
+ *   - storage-only (no client):        { storageRoot }
+ *   - calls-recording:                 { calls, outputs? }  / { storageRoot, calls }
+ *   - custom promptAsync:              { storageRoot, promptAsync }
+ *   - overrides object (abort/status): { storageRoot, abort?, messages?, status? }
+ *
+ * Rules:
+ *   - directory defaults to "/app".
+ *   - When storageRoot is set, scope defaults to "project".
+ *   - A client block is built iff any dispatch field (calls, outputs, promptAsync,
+ *     abort, messages, status) is provided OR `client: true`. storageRoot alone
+ *     yields a client-less ctx (matches the storage-only tool suites).
+ *   - When a client is built, app.log defaults to a no-op (logEvent reads it at
+ *     info+ levels; the no-op is strictly additive and never changes behavior).
+ *   - `calls` installs a promptAsync recorder; `outputs` additionally installs a
+ *     messages stub returning per-session assistant text. `promptAsync`/`messages`
+ *     overrides take precedence over the calls/outputs-derived defaults.
+ *   - `overrides` is merged last for any field not modeled above.
+ */
+export interface MakeCtxOptions {
+    storageRoot?: string
+    directory?: string
+    scope?: "project" | "user"
+    calls?: DispatchCall[]
+    outputs?: Record<string, string>
+    promptAsync?: (req: unknown) => Promise<unknown>
+    messages?: (req: unknown) => Promise<{ data: unknown[] }>
+    status?: (req: unknown) => Promise<{ data: unknown }>
+    abort?: (req: unknown) => Promise<unknown>
+    /** Force-build a client block even with no dispatch fields. */
+    client?: boolean
+    /** Force-omit the client block even when dispatch fields are present. */
+    noClient?: boolean
+    /** Extra fields merged last (e.g. projectStorageRoot). */
+    overrides?: Record<string, unknown>
+}
+
+export function makeCtx(opts: MakeCtxOptions = {}): PluginContext {
+    const base: Record<string, unknown> = { directory: opts.directory ?? "/app" }
+    if (opts.storageRoot !== undefined) {
+        base.storageRoot = opts.storageRoot
+        base.scope = opts.scope ?? "project"
+    } else if (opts.scope !== undefined) {
+        base.scope = opts.scope
+    }
+
+    const hasDispatch =
+        opts.calls !== undefined ||
+        opts.outputs !== undefined ||
+        opts.promptAsync !== undefined ||
+        opts.abort !== undefined ||
+        opts.messages !== undefined ||
+        opts.status !== undefined
+    if ((hasDispatch || opts.client === true) && opts.noClient !== true) {
+        const session: Record<string, unknown> = {}
+        if (opts.abort !== undefined) session.abort = opts.abort
+        if (opts.promptAsync !== undefined) {
+            session.promptAsync = opts.promptAsync
+        } else if (opts.calls !== undefined) {
+            const calls = opts.calls
+            session.promptAsync = async (args: any) => {
+                calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
+                return { data: {} }
+            }
+        }
+        if (opts.messages !== undefined) {
+            session.messages = opts.messages
+        } else if (opts.outputs !== undefined) {
+            const outputs = opts.outputs
+            session.messages = async ({ path }: { path: { id: string } }) => {
+                const text = outputs[path.id] ?? ""
+                return {
+                    data: [
+                        { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
+                        ...(text
+                            ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }]
+                            : []),
+                    ],
+                }
+            }
+        } else {
+            session.messages = async () => ({ data: [] })
+        }
+        if (opts.status !== undefined) session.status = opts.status
+        base.client = { app: { log: async () => ({}) }, session }
+    }
+
+    if (opts.overrides) Object.assign(base, opts.overrides)
+    return base as unknown as PluginContext
+}
+
+/**
+ * Minimal in-memory busy Team wrapper for orchestration-handler suites. Builds
+ * a real tmp directory (for file IO) unless `directory` is provided. Members are
+ * normalized with idle/initialized/turnCount defaults plus passthrough of
+ * sessionId/agent/isMaster/error/declaredDone.
+ *
+ * Covers the `makeTeam({ activeTask?, members? })` shape from parallel, consensus,
+ * arbitrate, route, delegate, tollgate, workflow-*, etc. Does NOT cover the
+ * disk-based async makeTeam (real initTeamState) nor the barrier-specialized
+ * variants — those stay local where their semantics differ.
+ */
+export interface MakeTeamOptions {
+    activeTask?: ActiveTask
+    members?: Array<Partial<MemberState> & Pick<MemberState, "name">>
+    /** Fresh tmp dir when omitted; provided directory when set. */
+    directory?: string
+    teamName?: string
+    teamRunId?: string
+    leadSessionId?: string
+}
+
+export function makeTeam(opts: MakeTeamOptions = {}): Team {
+    const members: MemberState[] = (opts.members ?? []).map(m => ({
+        name: m.name,
+        status: m.status ?? "idle",
+        initialized: m.initialized ?? true,
+        turnCount: m.turnCount ?? 0,
+        sessionId: m.sessionId,
+        agent: m.agent,
+        isMaster: m.isMaster,
+        error: m.error,
+        declaredDone: m.declaredDone,
+    }))
+    return {
+        version: 1,
+        teamRunId: opts.teamRunId ?? "test-run",
+        teamName: opts.teamName ?? "test-team",
+        status: "busy",
+        leadSessionId: opts.leadSessionId ?? "ses_lead",
+        members,
+        bounds: {
+            maxMembers: 8,
+            maxParallelMembers: 4,
+            maxMessagesPerRun: 100,
+            maxWallClockMinutes: 30,
+            maxMemberTurns: 50,
+            maxTasks: 200,
+            messagePayloadMaxBytes: 32768,
+            messageUnreadMaxBytes: 1048576,
+        },
+        createdAt: 0,
+        activeTask: opts.activeTask,
+        mutex: new AsyncMutex(),
+        directory: opts.directory ?? mkdtempSync(path.join(os.tmpdir(), "octeam-team-")),
+    } as unknown as Team
 }

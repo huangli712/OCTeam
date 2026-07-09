@@ -236,19 +236,37 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
 }
 
 /**
- * Recursive three-way merge for plain JSON objects (objects + arrays +
- * scalars). For each key: if current != ancestor the caller changed it
- * (current wins); otherwise the caller didn't touch it (disk wins, preserving
- * another process's change). Arrays/objects are recursed so nested concurrent
- * sub-field changes are both preserved. Non-plain values (or when any side is
- * undefined/mismatched) fall back to the top-level rule.
+ * Recursive three-way merge for plain JSON values. For each key: if
+ * current != ancestor the caller changed it (current wins); otherwise the
+ * caller didn't touch it (disk wins, preserving another process's change).
+ * Plain objects recurse key-by-key; equal-length arrays recurse
+ * index-by-index; unequal-length arrays (append/splice) and non-plain values
+ * fall back to the top-level rule.
  */
 function mergeObjects(
     disk: unknown,
     ancestor: unknown,
     current: unknown,
 ): unknown {
-    // Non-object or type mismatch: fall back to top-level rule.
+    // Equal-length arrays on all three sides: merge element-by-element so
+    // concurrent per-index field changes both survive (e.g. pipeline stages[],
+    // workflow steps[] — initialized once then mutated by index). Unequal
+    // lengths (structural change: append/splice) fall through to the
+    // top-level rule below; append-only arrays (decisionHistory,
+    // approvalHistory) are single-writer in practice, so whole-array
+    // replacement is safe there.
+    if (Array.isArray(disk) && Array.isArray(ancestor) && Array.isArray(current)) {
+        if (disk.length === ancestor.length && disk.length === current.length) {
+            const merged: unknown[] = []
+            for (let i = 0; i < disk.length; i++) {
+                merged.push(mergeObjects(disk[i], ancestor[i], current[i]))
+            }
+            return merged
+        }
+        return jsonEqual(current, ancestor) ? disk : current
+    }
+    // Non-plain-object (undefined, null, primitive, partial-array, type
+    // mismatch): fall back to top-level rule.
     if (
         disk === undefined || ancestor === undefined || current === undefined
         || typeof disk !== "object" || typeof ancestor !== "object" || typeof current !== "object"
@@ -263,7 +281,7 @@ function mergeObjects(
     const result: Record<string, unknown> = { ...d }
     const keys = new Set([...Object.keys(d), ...Object.keys(c)])
     for (const key of keys) {
-        if (jsonEqual(c[key], a[key])) continue  // caller didn't touch → keep disk
+        if (jsonEqual(c[key], a[key])) continue  // caller didn't touch -> keep disk
         result[key] = mergeObjects(d[key], a[key], c[key])
     }
     return result
