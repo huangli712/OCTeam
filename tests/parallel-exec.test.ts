@@ -10,8 +10,7 @@ import { runMemberOutputPath } from "../src/state/paths.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
-import type { PluginContext } from "../src/core/context.js"
-import { type DispatchCall } from "./helpers.js"
+import { type DispatchCall, makeCtx } from "./helpers.js"
 
 // --- fixtures (parallel execution path) ---
 
@@ -21,30 +20,6 @@ import { type DispatchCall } from "./helpers.js"
  * assistant text is `outputs[sessionId]` so processIdle Step 4 captures it.
  * `promptAsync` records each dispatch for assertion.
  */
-function makeCtx(outputs: Record<string, string>, calls: DispatchCall[] = []): PluginContext {
-    return {
-        directory: "/app",
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text
-                                ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }]
-                                : []),
-                        ],
-                    }
-                },
-                promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeParallelTask(opts: Partial<ActiveTask> = {}): ActiveTask {
     return {
@@ -110,7 +85,7 @@ function makeTeam(opts: {
 describe("handleParallelIdle: barrier progression", () => {
     test("all participants idle -> barrier fires, delivers summary, clears task", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
         const task = makeParallelTask({ mode: "isolated", responses: { alice: "A", bob: "B" } })
         const team = makeTeam({
             activeTask: task,
@@ -132,7 +107,7 @@ describe("handleParallelIdle: barrier progression", () => {
 
     test("one participant still running -> barrier waits (no delivery, task stays live)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
         const task = makeParallelTask({ mode: "isolated", responses: { alice: "A" } })
         const team = makeTeam({
             activeTask: task,
@@ -166,7 +141,7 @@ describe("parallel output capture (processIdle)", () => {
                 { name: "bob", sessionId: "ses_bob", status: "running" },
             ],
         })
-        const ctx = makeCtx({ ses_alice: "alice produced this artifact" }, calls)
+        const ctx = makeCtx({ outputs: { ses_alice: "alice produced this artifact" }, calls })
 
         await processIdle(ctx, team, team.members[0], "ses_alice")
 
@@ -191,7 +166,7 @@ describe("parallel output capture (processIdle)", () => {
 describe("handleParallelIdle: onBarrier failure isolation", () => {
     test("all participants errored, tolerance 0 → fails with member_error (parallel.ts:26-30)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
         const task = makeParallelTask({ mode: "isolated", maxErroredMembers: 0 })
         const team = makeTeam({
             activeTask: task,
@@ -212,7 +187,7 @@ describe("handleParallelIdle: onBarrier failure isolation", () => {
 
     test("errored over tolerance with survivors → fails (parallel.ts:26-30)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
         const task = makeParallelTask({ mode: "isolated", maxErroredMembers: 1 })
         const team = makeTeam({
             activeTask: task,
@@ -234,7 +209,7 @@ describe("handleParallelIdle: onBarrier failure isolation", () => {
 
     test("within tolerance with survivors → partial delivery (not failure)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
         const task = makeParallelTask({
             mode: "isolated",
             maxErroredMembers: 1,
@@ -261,7 +236,7 @@ describe("handleParallelIdle: onBarrier failure isolation", () => {
 describe("handleParallelIdle: reduceStage re-entry fallback (parallel.ts:37-38)", () => {
     test("reduceStage still set at barrier → cleared, falls back to non-reduced delivery", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
         // reduceStage=true simulates: the reducer was dispatched but reached a
         // terminal state (errored) without idling through handleReduceIdle, so
         // reduceStage was never cleared. The barrier fallback clears it and

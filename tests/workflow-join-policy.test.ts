@@ -3,40 +3,15 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { checkTermination } from "../src/orchestration/termination.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { advanceWorkflowStep } from "../src/orchestration/workflow.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
-import { type DispatchCall } from "./helpers.js"
+import { type DispatchCall, makeCtx } from "./helpers.js"
 
 
-function makeCtx(outputs: Record<string, string> = {}, calls: DispatchCall[] = []): PluginContext {
-    return {
-        storageRoot: mkdtempSync(join(tmpdir(), "octeam-wf-joinpol-root-")),
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }] : []),
-                        ],
-                    }
-                },
-                promptAsync: async (args: { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeWorkflowTask(steps: WorkflowStep[], activeStepIndices: number[]): WorkflowTask {
     return {
@@ -106,7 +81,7 @@ describe("workflow join policy runtime semantics", () => {
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
         ])
-        const ctx = makeCtx({ ses_alice: "api output", ses_carol: "downstream" }, calls)
+        const ctx = makeCtx({ outputs: { ses_alice: "api output", ses_carol: "downstream" }, calls })
 
         // When: qa branch errors (optional), api branch succeeds.
         const qaMember = member(team, "bob")
@@ -137,7 +112,7 @@ describe("workflow join policy runtime semantics", () => {
             { name: "alice", sessionId: "ses_alice" },
             { name: "bob", sessionId: "ses_bob" },
         ])
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
 
         // When: api (required) errors.
         const apiMember = member(team, "alice")
@@ -168,7 +143,7 @@ describe("workflow join policy runtime semantics", () => {
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
         ])
-        const ctx = makeCtx({ ses_alice: "api output" }, calls)
+        const ctx = makeCtx({ outputs: { ses_alice: "api output" }, calls })
 
         // When: qa errors but api succeeds.
         member(team, "bob").status = "errored"
@@ -201,7 +176,7 @@ describe("workflow join policy runtime semantics", () => {
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
         ])
-        const ctx = makeCtx({ ses_alice: "a out", ses_bob: "b out" }, calls)
+        const ctx = makeCtx({ outputs: { ses_alice: "a out", ses_bob: "b out" }, calls })
 
         // When: 2 of 3 branches survive (c errors), meeting quorum.
         const cMember = member(team, "carol")
@@ -233,7 +208,7 @@ describe("workflow join policy runtime semantics", () => {
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
         ])
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
 
         // When: 2 of 3 error, leaving only 1 survivor (< threshold).
         member(team, "bob").status = "errored"
@@ -263,7 +238,7 @@ describe("workflow join policy runtime semantics", () => {
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
         ])
-        const ctx = makeCtx({ ses_bob: "qa output" }, calls)
+        const ctx = makeCtx({ outputs: { ses_bob: "qa output" }, calls })
 
         // When: the fanout advances into both branches.
         await advanceWorkflowStep(ctx, team)
@@ -291,7 +266,7 @@ describe("workflow join policy runtime semantics", () => {
             { name: "bob" },
             { name: "carol", sessionId: "ses_carol" },
         ])
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
 
         // When: the gate is dispatched.
         await advanceWorkflowStep(ctx, team)
@@ -318,7 +293,7 @@ describe("workflow join policy runtime semantics", () => {
             { name: "bob", sessionId: "ses_bob" },
             { name: "carol", sessionId: "ses_carol" },
         ])
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
 
         // When: the gate is dispatched.
         await advanceWorkflowStep(ctx, team)
@@ -345,7 +320,7 @@ describe("workflow join policy runtime semantics", () => {
             { name: "bob", sessionId: "ses_bob" },
             { name: "dave", sessionId: "ses_dave" },
         ])
-        const ctx = makeCtx({ ses_dave: `<selection>{"winner":"api","rationale":"best"}</selection>` }, calls)
+        const ctx = makeCtx({ outputs: { ses_dave: `<selection>{"winner":"api","rationale":"best"}</selection>` }, calls })
 
         // When: the join dispatches to the selector and captures the selection.
         await advanceWorkflowStep(ctx, team)

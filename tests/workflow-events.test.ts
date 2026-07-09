@@ -3,7 +3,6 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { advanceWorkflowStep } from '../src/orchestration/workflow.js';
 import { handleWorkflowIdle } from '../src/orchestration/workflow-handler';
@@ -16,36 +15,12 @@ import { rebuildSessionIndex } from "../src/state/resolve.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import type { Team } from "../src/state/store.js"
-import { makeMember, makeState, makeToolContext, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, type DispatchCall } from "./helpers.js"
 import { teamFixWorkflowTool } from "../src/tools/fixflow.js"
 
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
 
 
-function makeCtx(root: string, outputs: Record<string, string> = {}, calls: DispatchCall[] = []): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }] : []),
-                        ],
-                    }
-                },
-                promptAsync: async (args: { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeWorkflowTask(steps: WorkflowStep[]): WorkflowTask {
     return {
@@ -99,7 +74,7 @@ describe("workflow run event schema + correlation id", () => {
         const root = mkdtempSync(join(tmpdir(), "octeam-wf-evroot-"))
         const task = makeWorkflowTask([{ kind: "task", member: "alice", task: "do work", completed: false }])
         const team = makeTeam(root, task, [{ name: "alice", sessionId: "ses_alice", initialized: true, turnCount: 0, status: "idle" }])
-        const ctx = makeCtx(root, { ses_alice: "alice output" })
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: "alice output" }, calls: [] })
 
         // When: advance dispatches step 0 (sets step.correlationId), then alice's idle captures it.
         await advanceWorkflowStep(ctx, team)
@@ -126,7 +101,7 @@ describe("workflow run event schema + correlation id", () => {
             { name: "alice", sessionId: "ses_alice", initialized: true, turnCount: 0, status: "idle" },
             { name: "bob", sessionId: "ses_bob", initialized: true, turnCount: 0, status: "idle" },
         ])
-        const ctx = makeCtx(root, { ses_alice: "produced", ses_bob: PASS_VERDICT })
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: "produced", ses_bob: PASS_VERDICT }, calls: [] })
 
         // When: dispatch alice -> alice produces -> dispatch bob gate -> bob verdicts.
         await advanceWorkflowStep(ctx, team)
@@ -166,7 +141,7 @@ describe("workflow run event schema + correlation id", () => {
         const calls: DispatchCall[] = []
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root, {}, calls)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
             { team_id: "alpha", op: "skip", step: 1 },
             makeToolContext(masterSid),
         )

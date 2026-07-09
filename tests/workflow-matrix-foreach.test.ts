@@ -4,37 +4,12 @@ import { processIdle } from "../src/orchestration/idle.js"
 import { checkTermination } from "../src/orchestration/termination.js"
 import { teamWorkflowTool } from "../src/tools/workflow.js"
 import { expandMatrixForeachFanout } from "../src/tools/workflow.js"
-import { makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import type { PluginContext } from "../src/core/context.js"
 import type { WorkflowToolStep } from "../src/tools/workflow.js"
 
 
-function makeCtx(root: string, outputs: Record<string, string> = {}, calls: DispatchCall[] = []): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: root,
-        client: {
-            session: {
-                messages: async ({ path }: { readonly path: { readonly id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }] : []),
-                        ],
-                    }
-                },
-                promptAsync: async (args: { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -85,7 +60,7 @@ describe("team_workflow matrix/foreach startup validation", () => {
         const sid = "ses_wf_foreach_dry"
         tracked.push(sid)
         await setup(root, sid, [makeMember("alice"), makeMember("api"), makeMember("docs")])
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -108,7 +83,7 @@ describe("team_workflow matrix/foreach startup validation", () => {
         const sid = "ses_wf_matrix_foreach_both"
         tracked.push(sid)
         await setup(root, sid, [makeMember("alice"), makeMember("bob")])
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -129,7 +104,7 @@ describe("team_workflow matrix/foreach startup validation", () => {
         const sid = "ses_wf_matrix_branches"
         tracked.push(sid)
         await setup(root, sid, [makeMember("alice"), makeMember("bob")])
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -150,7 +125,7 @@ describe("team_workflow matrix/foreach startup validation", () => {
         const sid = "ses_wf_matrix_no_template"
         tracked.push(sid)
         await setup(root, sid, [makeMember("alice"), makeMember("bob")])
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -178,11 +153,11 @@ describe("team_workflow matrix/foreach end-to-end execution", () => {
         const daveSid = "ses_wf_foreach_required_dave"
         tracked.push(masterSid, aliceSid, apiSid, docsSid, daveSid)
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(root, {
+        const ctx = makeCtx({ storageRoot: root, outputs: {
             [aliceSid]: "plan output",
             [apiSid]: "api branch output",
             [daveSid]: "downstream output",
-        }, calls)
+        }, calls })
         await setup(root, masterSid, [
             makeMember("alice", aliceSid),
             makeMember("api", apiSid),

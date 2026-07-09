@@ -7,47 +7,11 @@ import { processIdle } from "../src/orchestration/idle.js"
 import type { ActiveTask, MemberState, Stage } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
-import type { PluginContext } from "../src/core/context.js"
-import { type DispatchCall } from "./helpers.js"
+import { type DispatchCall, makeCtx } from "./helpers.js"
 
 // --- fixtures (loop execution path) ---
 
 
-/**
- * Stub PluginContext. `messages` returns a single user+assistant turn whose
- * assistant text is `outputs[sessionId]` so processIdle Step 4 captures it
- * (the decider's <decision> block is read out of responses[]). `promptAsync`
- * records each dispatch for assertion.
- */
-function makeCtx(outputs: Record<string, string>, calls: DispatchCall[] = []): PluginContext {
-    return {
-        directory: "/app",
-        client: {
-            app: {
-                // logEvent fires on decision parse failure (loop.ts:37) and must
-                // not throw — other tests never hit that path so this is inert.
-                log: async () => ({}),
-            },
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text
-                                ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }]
-                                : []),
-                        ],
-                    }
-                },
-                promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeLoopTask(opts: Partial<ActiveTask> & { stages: Stage[] }): ActiveTask {
     return {
@@ -132,7 +96,7 @@ describe("handleLoopIdle (via processIdle): stage progression", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         })
-        const ctx = makeCtx({ ses_alice: "code written" }, calls)
+        const ctx = makeCtx({ outputs: { ses_alice: "code written" }, calls })
 
         await processIdle(ctx, team, team.members[0], "ses_alice")
 
@@ -165,7 +129,7 @@ describe("handleLoopIdle (via processIdle): decider termination", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         })
-        const ctx = makeCtx({ ses_bob: DONE }, calls)
+        const ctx = makeCtx({ outputs: { ses_bob: DONE }, calls })
 
         await processIdle(ctx, team, team.members[1], "ses_bob")
 
@@ -195,7 +159,7 @@ describe("handleLoopIdle (via processIdle): decider termination", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         })
-        const ctx = makeCtx({ ses_bob: CONTINUE("patch the regression") }, calls)
+        const ctx = makeCtx({ outputs: { ses_bob: CONTINUE("patch the regression") }, calls })
 
         await processIdle(ctx, team, team.members[1], "ses_bob")
 
@@ -229,7 +193,7 @@ describe("handleLoopIdle (via processIdle): decider termination", () => {
                 { name: "bob", sessionId: "ses_bob" },
             ],
         })
-        const ctx = makeCtx({ ses_bob: CONTINUE() }, calls)
+        const ctx = makeCtx({ outputs: { ses_bob: CONTINUE() }, calls })
 
         await processIdle(ctx, team, team.members[1], "ses_bob")
 
@@ -263,7 +227,7 @@ describe("handleLoopIdle (via processIdle): decider termination", () => {
         // every read-only stage (here only the decider) must report <no_issues/>.
         // The decider still emits a "continue" decision; without the ordering fix
         // this clean final round would be misreported as a max_rounds failure.
-        const ctx = makeCtx({ ses_bob: `${CONTINUE()}\n<no_issues/>` }, calls)
+        const ctx = makeCtx({ outputs: { ses_bob: `${CONTINUE()}\n<no_issues/>` }, calls })
 
         await processIdle(ctx, team, team.members[1], "ses_bob")
 
@@ -301,7 +265,7 @@ describe("handleLoopIdle (via processIdle): decision parse failure escalation", 
             ],
         })
         // Bob's output has NO <decision> tag → parseDecision returns parseFailed.
-        const ctx = makeCtx({ ses_bob: "I am unable to decide at this time." }, calls)
+        const ctx = makeCtx({ outputs: { ses_bob: "I am unable to decide at this time." }, calls })
 
         await processIdle(ctx, team, team.members[1], "ses_bob")
 
@@ -335,7 +299,7 @@ describe("handleLoopIdle (via processIdle): decision parse failure escalation", 
                 { name: "bob", sessionId: "ses_bob" },
             ],
         })
-        const ctx = makeCtx({ ses_bob: "no decision tag here either" }, calls)
+        const ctx = makeCtx({ outputs: { ses_bob: "no decision tag here either" }, calls })
 
         await processIdle(ctx, team, team.members[1], "ses_bob")
 
@@ -368,7 +332,7 @@ describe("handleLoopIdle (via processIdle): decision parse failure escalation", 
             ],
         })
         // This time bob emits a valid "continue" decision → counter resets.
-        const ctx = makeCtx({ ses_bob: CONTINUE() }, calls)
+        const ctx = makeCtx({ outputs: { ses_bob: CONTINUE() }, calls })
 
         await processIdle(ctx, team, team.members[1], "ses_bob")
 

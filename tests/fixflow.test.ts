@@ -1,29 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { checkWorkflowInvariants } from "../src/orchestration/invariants.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import type { Team } from "../src/state/store.js"
 import { teamFixWorkflowTool } from "../src/tools/fixflow.js"
-import { makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
-
-function makeCtx(root: string, calls: DispatchCall[] = []): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: root,
-        client: {
-            session: {
-                promptAsync: async (args: { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
 
 function makeWorkflowTask(fields: Partial<WorkflowTask> & { readonly steps: WorkflowStep[] }): WorkflowTask {
     return {
@@ -76,7 +59,7 @@ describe("team_fix_workflow", () => {
         const calls: DispatchCall[] = []
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
             { team_id: "alpha", op: "redispatch", step: 1 },
             makeToolContext(masterSid),
         )
@@ -104,7 +87,7 @@ describe("team_fix_workflow", () => {
         const calls: DispatchCall[] = []
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
             { team_id: "alpha", op: "redispatch", step: "impl" },
             makeToolContext(masterSid),
         )
@@ -130,7 +113,7 @@ describe("team_fix_workflow", () => {
         const calls: DispatchCall[] = []
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
             { team_id: "alpha", op: "redispatch", step: "ghost" },
             makeToolContext(masterSid),
         )
@@ -160,7 +143,7 @@ describe("team_fix_workflow", () => {
         const calls: DispatchCall[] = []
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
             { team_id: "alpha", op: "redispatch", step: 2 },
             makeToolContext(masterSid),
         )
@@ -195,7 +178,7 @@ describe("team_fix_workflow", () => {
         const calls: DispatchCall[] = []
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
             { team_id: "alpha", op: "skip", step: 1 },
             makeToolContext(masterSid),
         )
@@ -228,7 +211,7 @@ describe("team_fix_workflow", () => {
         await setupTeam(root, masterSid, task, [makeMember("alice", aliceSid), makeMember("bob", bobSid)])
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", op: "redispatch", step: 2 },
             makeToolContext(masterSid),
         )
@@ -257,7 +240,7 @@ describe("team_fix_workflow", () => {
         const calls: DispatchCall[] = []
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
             { team_id: "alpha", op: "advance" },
             makeToolContext(masterSid),
         )
@@ -282,7 +265,7 @@ describe("team_fix_workflow", () => {
         const calls: DispatchCall[] = []
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
             { team_id: "alpha", op: "fail", reason: "operator_reset" },
             makeToolContext(masterSid),
         )
@@ -305,7 +288,7 @@ describe("team_fix_workflow", () => {
         await setupTeam(root, masterSid, task, [makeMember("alice", aliceSid)])
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", op: "advance" },
             makeToolContext(aliceSid),
         )
@@ -339,7 +322,7 @@ describe("team_fix_workflow", () => {
         const calls: DispatchCall[] = []
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
             { team_id: "alpha", op: "redispatch", step: 1 },
             makeToolContext(masterSid),
         )
@@ -373,7 +356,7 @@ describe("team_fix_workflow", () => {
         })
         await rebuildSessionIndex(root, `${root}__unused`)
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", op: "redispatch", step: 99 },
             makeToolContext(masterSid),
         )
@@ -422,7 +405,7 @@ describe("team_fix_workflow", () => {
         })
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", op: "redispatch", step: 1 },
             makeToolContext(masterSid),
         )
@@ -459,7 +442,7 @@ describe("team_fix_workflow", () => {
         await setupTeam(root, masterSid, task, [makeMember("alice", "ses_fix_wf_nw_alice")])
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", op: "advance" },
             makeToolContext(masterSid),
         )
@@ -483,7 +466,7 @@ describe("team_fix_workflow", () => {
         const calls: DispatchCall[] = []
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
             { team_id: "alpha", op: "reassign", step: 1, to_member: "bob" },
             makeToolContext(masterSid),
         )
@@ -519,7 +502,7 @@ describe("team_fix_workflow", () => {
         ])
 
         // When: try to reassign api branch (step 2, index 1) to carol, who is active in qa.
-        const result = await teamFixWorkflowTool(makeCtx(root)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", op: "reassign", step: 2, to_member: "carol" },
             makeToolContext(masterSid),
         )
@@ -541,7 +524,7 @@ describe("team_fix_workflow", () => {
         await setupTeam(root, masterSid, task, [makeMember("alice", aliceSid)])
 
         // When
-        const result = await teamFixWorkflowTool(makeCtx(root)).execute(
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", op: "reassign", step: 1, to_member: "ghost" },
             makeToolContext(masterSid),
         )

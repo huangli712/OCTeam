@@ -100,7 +100,7 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
         })
         await seedTask(team, { subject: "done", description: "x", status: "completed" })
 
-        await processIdle(makeCtx({ calls }), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ calls, status: async () => ({ data: {} }) }), team, team.members[0], "ses_alice")
 
         expect(team.status).toBe("idle")
         expect(team.activeTask).toBeUndefined()
@@ -124,7 +124,7 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
             blockedBy: [blocker.id],
         })
 
-        await processIdle(makeCtx({ calls }), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ calls, status: async () => ({ data: {} }) }), team, team.members[0], "ses_alice")
 
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
@@ -152,7 +152,7 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
         })
 
         // Override makeCtx to report alice's session as "running" (wake-hint path).
-        const ctx = makeCtx({ calls })
+        const ctx = makeCtx({ calls, status: async () => ({ data: {} }) })
         ;(ctx.client.session as { status: unknown }).status = async () => ({
             data: { ses_alice: { type: "running" } },
         })
@@ -175,7 +175,7 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
         })
         await seedTask(team, { subject: "available", description: "x", status: "pending" })
 
-        await processIdle(makeCtx({ calls }), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ calls, status: async () => ({ data: {} }) }), team, team.members[0], "ses_alice")
 
         expect(team.status).toBe("busy")
         expect(team.activeTask).toBeDefined()

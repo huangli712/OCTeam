@@ -2,7 +2,6 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { teamConsensusTool } from "../src/tools/consensus.js"
 import { teamDelegateTool } from "../src/tools/delegate.js"
@@ -12,23 +11,8 @@ import { teamPipelineTool } from "../src/tools/pipeline.js"
 import { teamWorkflowTool } from "../src/tools/workflow.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
 
-function makeCtx(storageRoot: string, calls?: DispatchCall[]): PluginContext {
-    return {
-        storageRoot,
-        scope: "project",
-        directory: storageRoot,
-        client: calls === undefined ? undefined : {
-            session: {
-                promptAsync: async (args: { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 const tracked: string[] = []
 afterEach(() => {
@@ -76,7 +60,7 @@ describe("team_parallel startup validation", () => {
         const memberSid = "ses_par_a"
         tracked.push(masterSid, memberSid)
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
-        const result = await teamParallelTool(makeCtx(root)).execute(
+        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", mode: "isolated", task: "do x" },
             makeToolContext(memberSid),
         )
@@ -88,7 +72,7 @@ describe("team_parallel startup validation", () => {
         const sid = "ses_par_inact"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, undefined) // no activatedAt
-        const result = await teamParallelTool(makeCtx(root)).execute(
+        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", mode: "isolated", task: "do x" },
             makeToolContext(sid),
         )
@@ -101,7 +85,7 @@ describe("team_parallel startup validation", () => {
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
         await setBusy(root, sid, "parallel")
-        const result = await teamParallelTool(makeCtx(root)).execute(
+        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", mode: "isolated", task: "do x" },
             makeToolContext(sid),
         )
@@ -113,7 +97,7 @@ describe("team_parallel startup validation", () => {
         const sid = "ses_par_notask"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
-        const result = await teamParallelTool(makeCtx(root)).execute(
+        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", mode: "isolated" },
             makeToolContext(sid),
         )
@@ -125,7 +109,7 @@ describe("team_parallel startup validation", () => {
         const sid = "ses_par_notasks"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
-        const result = await teamParallelTool(makeCtx(root)).execute(
+        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", mode: "cooperative" },
             makeToolContext(sid),
         )
@@ -137,7 +121,7 @@ describe("team_parallel startup validation", () => {
         const sid = "ses_par_sd"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamParallelTool(makeCtx(root)).execute(
+        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", mode: "isolated", task: "do x", signoff_policy: "decider", signoff_decider: "bob" },
             makeToolContext(sid),
         )
@@ -149,7 +133,7 @@ describe("team_parallel startup validation", () => {
         const sid = "ses_par_sel_nr"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamParallelTool(makeCtx(root)).execute(
+        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "select" },
             makeToolContext(sid),
         )
@@ -161,7 +145,7 @@ describe("team_parallel startup validation", () => {
         const sid = "ses_par_merge_nr"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamParallelTool(makeCtx(root)).execute(
+        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "merge" },
             makeToolContext(sid),
         )
@@ -173,7 +157,7 @@ describe("team_parallel startup validation", () => {
         const sid = "ses_par_rub_nr"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamParallelTool(makeCtx(root)).execute(
+        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "rubric", reduce_rubric: "correctness" },
             makeToolContext(sid),
         )
@@ -191,7 +175,7 @@ describe("team_consensus startup validation", () => {
         const memberSid = "ses_con_a"
         tracked.push(masterSid, memberSid)
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
-        const result = await teamConsensusTool(makeCtx(root)).execute(
+        const result = await teamConsensusTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", topic: "use sqlite?" },
             makeToolContext(memberSid),
         )
@@ -203,7 +187,7 @@ describe("team_consensus startup validation", () => {
         const sid = "ses_con_inact"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, undefined)
-        const result = await teamConsensusTool(makeCtx(root)).execute(
+        const result = await teamConsensusTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", topic: "use sqlite?" },
             makeToolContext(sid),
         )
@@ -216,7 +200,7 @@ describe("team_consensus startup validation", () => {
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
         await setBusy(root, sid, "consensus")
-        const result = await teamConsensusTool(makeCtx(root)).execute(
+        const result = await teamConsensusTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", topic: "use sqlite?" },
             makeToolContext(sid),
         )
@@ -234,7 +218,7 @@ describe("team_pipeline startup validation", () => {
         const memberSid = "ses_pip_a"
         tracked.push(masterSid, memberSid)
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
-        const result = await teamPipelineTool(makeCtx(root)).execute(
+        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
             makeToolContext(memberSid),
         )
@@ -246,7 +230,7 @@ describe("team_pipeline startup validation", () => {
         const sid = "ses_pip_inact"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, undefined)
-        const result = await teamPipelineTool(makeCtx(root)).execute(
+        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
             makeToolContext(sid),
         )
@@ -259,7 +243,7 @@ describe("team_pipeline startup validation", () => {
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
         await setBusy(root, sid, "pipeline")
-        const result = await teamPipelineTool(makeCtx(root)).execute(
+        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
             makeToolContext(sid),
         )
@@ -271,7 +255,7 @@ describe("team_pipeline startup validation", () => {
         const sid = "ses_pip_sd"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamPipelineTool(makeCtx(root)).execute(
+        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "do x" }], signoff_policy: "decider", signoff_decider: "bob" },
             makeToolContext(sid),
         )
@@ -283,7 +267,7 @@ describe("team_pipeline startup validation", () => {
         const sid = "ses_pip_unk"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamPipelineTool(makeCtx(root)).execute(
+        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "bob", task: "do x" }] },
             makeToolContext(sid),
         )
@@ -295,7 +279,7 @@ describe("team_pipeline startup validation", () => {
         const sid = "ses_pip_dup"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamPipelineTool(makeCtx(root)).execute(
+        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "a" }, { member: "alice", task: "b" }] },
             makeToolContext(sid),
         )
@@ -313,7 +297,7 @@ describe("team_workflow startup validation", () => {
         const memberSid = "ses_wf_a"
         tracked.push(masterSid, memberSid)
         await setupTeam(root, masterSid, [makeMember("alice", memberSid), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
             makeToolContext(memberSid),
         )
@@ -325,7 +309,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_inact"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, undefined)
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
             makeToolContext(sid),
         )
@@ -338,7 +322,7 @@ describe("team_workflow startup validation", () => {
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
         await setBusy(root, sid, "workflow")
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
             makeToolContext(sid),
         )
@@ -350,7 +334,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_empty"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [] },
             makeToolContext(sid),
         )
@@ -362,7 +346,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_nm"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", task: "do x" }] },
             makeToolContext(sid),
         )
@@ -374,7 +358,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_unk"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "bob", task: "do x" }] },
             makeToolContext(sid),
         )
@@ -389,7 +373,7 @@ describe("team_workflow startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
 
         // When: the workflow is validated.
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", fallback_member: "bob", task: "do x" }] },
             makeToolContext(sid),
         )
@@ -407,7 +391,7 @@ describe("team_workflow startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
 
         // When: the workflow is validated.
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -433,7 +417,7 @@ describe("team_workflow startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
 
         // When: the gate verifier matches the target task fallback actor.
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -461,7 +445,7 @@ describe("team_workflow startup validation", () => {
         const calls: DispatchCall[] = []
 
         // When: the workflow starts.
-        const result = await teamWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: calls })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", fallback_member: "bob", task: "do x" }] },
             makeToolContext(sid),
         )
@@ -476,7 +460,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_gf"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "gate", verifier: "bob", criteria: "ok" }] },
             makeToolContext(sid),
         )
@@ -488,7 +472,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_tgf"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x", verifier: "bob" }] },
             makeToolContext(sid),
         )
@@ -500,7 +484,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_gtf"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -518,7 +502,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_sv"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }, { kind: "gate", verifier: "alice", criteria: "ok" }] },
             makeToolContext(sid),
         )
@@ -530,7 +514,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_tsv"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -550,7 +534,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_tb"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -569,7 +553,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_dup"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -588,7 +572,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_tid"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -610,7 +594,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_targets"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol"), makeMember("dave")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -633,7 +617,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_targets_conflict"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -651,7 +635,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_targets_invalid"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -671,7 +655,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_targets_selfverify"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -691,7 +675,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_task_targets"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x", targets: [1] }] },
             makeToolContext(sid),
         )
@@ -703,7 +687,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_tui"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -721,7 +705,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_input_forward"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -741,7 +725,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_inm"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -759,7 +743,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_dryid"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -780,7 +764,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_dry_dataflow_reduce"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol"), makeMember("dave")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -814,7 +798,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_dry_skip_survivors"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -846,7 +830,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_gu"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -865,7 +849,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_gs"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -884,7 +868,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_mobg"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -903,7 +887,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_mjng"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -922,7 +906,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_mjg"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -943,7 +927,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_mobb"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -960,7 +944,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_ag"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -979,7 +963,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_cd"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -1001,7 +985,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_ge"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1019,7 +1003,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_gd"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -1041,7 +1025,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_where_dry"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -1061,7 +1045,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_where_bad"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1090,7 +1074,7 @@ describe("team_workflow startup validation", () => {
             ],
         }))
 
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/register.json", vars: { handler: "register-handler" } },
             makeToolContext(sid),
         )
@@ -1114,7 +1098,7 @@ describe("team_workflow startup validation", () => {
             ],
         }))
 
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/v.json" },
             makeToolContext(sid),
         )
@@ -1138,7 +1122,7 @@ describe("team_workflow startup validation", () => {
             ],
         }))
 
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/v.json" },
             makeToolContext(sid),
         )
@@ -1163,7 +1147,7 @@ describe("team_workflow startup validation", () => {
             ],
         }))
 
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/v.json" },
             makeToolContext(sid),
         )
@@ -1186,7 +1170,7 @@ describe("team_workflow startup validation", () => {
             ],
         }))
 
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/f.json", vars: {} },
             makeToolContext(sid),
         )
@@ -1210,7 +1194,7 @@ describe("team_workflow startup validation", () => {
             ],
         }))
 
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/f.json", vars: {} },
             makeToolContext(sid),
         )
@@ -1235,7 +1219,7 @@ describe("team_workflow startup validation", () => {
             ],
         }))
 
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/f.json", vars: {} },
             makeToolContext(sid),
         )
@@ -1249,7 +1233,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_file_inline"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", workflow_file: ".octeam/workflows/register.json", steps: [{ kind: "task", member: "alice", task: "x" }] },
             makeToolContext(sid),
         )
@@ -1262,7 +1246,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_file_escape"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", workflow_file: "../escape.json" },
             makeToolContext(sid),
         )
@@ -1276,7 +1260,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_rnm"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1294,7 +1278,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_dr"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -1318,7 +1302,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_dry"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol"), makeMember("dave"), makeMember("erin")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -1367,7 +1351,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_policy_dry"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 dry_run: true,
@@ -1415,7 +1399,7 @@ describe("team_workflow startup validation", () => {
             ],
         }))
 
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/fanout.json", vars: { area: "billing" } },
             makeToolContext(sid),
         )
@@ -1439,7 +1423,7 @@ describe("team_workflow startup validation", () => {
             ],
         }))
 
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/invalid-retry.json" },
             makeToolContext(sid),
         )
@@ -1460,7 +1444,7 @@ describe("team_workflow startup validation", () => {
             ],
         }))
 
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", dry_run: true, workflow_file: ".octeam/workflows/invalid-timeout.json" },
             makeToolContext(sid),
         )
@@ -1487,7 +1471,7 @@ describe("team_workflow startup validation", () => {
         }))
         const calls: DispatchCall[] = []
 
-        const result = await teamWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: calls })).execute(
             { team_id: "alpha", workflow_file: ".octeam/workflows/register.json", vars: { handler: "register-handler" } },
             makeToolContext(sid),
         )
@@ -1514,7 +1498,7 @@ describe("team_workflow startup validation", () => {
         }))
         const calls: DispatchCall[] = []
 
-        const result = await teamWorkflowTool(makeCtx(root, calls)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: calls })).execute(
             { team_id: "alpha", workflow_file: ".octeam/workflows/missing-var.json" },
             makeToolContext(sid),
         )
@@ -1528,7 +1512,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_recursive"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1548,7 +1532,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_missing_join"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1568,7 +1552,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_orphan_join"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "Plan" }, { kind: "join" }] },
             makeToolContext(sid),
         )
@@ -1581,7 +1565,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_dup_branch"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1607,7 +1591,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_dup_step"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1627,7 +1611,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_unknown"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1647,7 +1631,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_same_member"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1673,7 +1657,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_quorum_no_q"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1700,7 +1684,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_required_unknown"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1728,7 +1712,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_reduce_no_red"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1758,7 +1742,7 @@ describe("team_workflow startup validation", () => {
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
 
         // When: the workflow is validated.
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1786,7 +1770,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_same_verifier"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol"), makeMember("dave")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1812,7 +1796,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_max_errored"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1839,7 +1823,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_timeout_retry_required"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [{ kind: "task", member: "alice", task: "Plan", timeout_ms: 1000, on_timeout: "retry" }],
@@ -1855,7 +1839,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_branch_timeout_retry"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1875,7 +1859,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_approval"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1895,7 +1879,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_goto_cross"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1919,7 +1903,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_selfverify"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1939,7 +1923,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_fanout_marker_target"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob"), makeMember("carol")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
@@ -1960,7 +1944,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_uv"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }, { kind: "gate", verifier: "bob", criteria: "ok" }] },
             makeToolContext(sid),
         )
@@ -1972,7 +1956,7 @@ describe("team_workflow startup validation", () => {
         const sid = "ses_wf_sd"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamWorkflowTool(makeCtx(root)).execute(
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }], signoff_policy: "decider", signoff_decider: "bob" },
             makeToolContext(sid),
         )
@@ -1990,7 +1974,7 @@ describe("team_loop startup validation", () => {
         const memberSid = "ses_loop_a"
         tracked.push(masterSid, memberSid)
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
-        const result = await teamLoopTool(makeCtx(root)).execute(
+        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
             makeToolContext(memberSid),
         )
@@ -2002,7 +1986,7 @@ describe("team_loop startup validation", () => {
         const sid = "ses_loop_inact"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, undefined)
-        const result = await teamLoopTool(makeCtx(root)).execute(
+        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
             makeToolContext(sid),
         )
@@ -2015,7 +1999,7 @@ describe("team_loop startup validation", () => {
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
         await setBusy(root, sid, "loop")
-        const result = await teamLoopTool(makeCtx(root)).execute(
+        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
             makeToolContext(sid),
         )
@@ -2027,7 +2011,7 @@ describe("team_loop startup validation", () => {
         const sid = "ses_loop_dm"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
-        const result = await teamLoopTool(makeCtx(root)).execute(
+        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "master", max_rounds: 3, initial_task: "start" },
             makeToolContext(sid),
         )
@@ -2039,7 +2023,7 @@ describe("team_loop startup validation", () => {
         const sid = "ses_loop_d404"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamLoopTool(makeCtx(root)).execute(
+        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "bob", max_rounds: 3, initial_task: "start" },
             makeToolContext(sid),
         )
@@ -2051,7 +2035,7 @@ describe("team_loop startup validation", () => {
         const sid = "ses_loop_unk"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamLoopTool(makeCtx(root)).execute(
+        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", stages: [{ member: "bob", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
             makeToolContext(sid),
         )
@@ -2069,7 +2053,7 @@ describe("team_delegate startup validation", () => {
         const memberSid = "ses_del_a"
         tracked.push(masterSid, memberSid)
         await setupTeam(root, masterSid, [makeMember("alice", memberSid)], Date.now())
-        const result = await teamDelegateTool(makeCtx(root)).execute(
+        const result = await teamDelegateTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
             makeToolContext(memberSid),
         )
@@ -2081,7 +2065,7 @@ describe("team_delegate startup validation", () => {
         const sid = "ses_del_inact"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, undefined)
-        const result = await teamDelegateTool(makeCtx(root)).execute(
+        const result = await teamDelegateTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
             makeToolContext(sid),
         )
@@ -2094,7 +2078,7 @@ describe("team_delegate startup validation", () => {
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
         await setBusy(root, sid, "delegate")
-        const result = await teamDelegateTool(makeCtx(root)).execute(
+        const result = await teamDelegateTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
             makeToolContext(sid),
         )
@@ -2106,7 +2090,7 @@ describe("team_delegate startup validation", () => {
         const sid = "ses_del_ref"
         tracked.push(sid)
         await setupTeam(root, sid, undefined, Date.now())
-        const result = await teamDelegateTool(makeCtx(root)).execute(
+        const result = await teamDelegateTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 tasks: [
@@ -2124,7 +2108,7 @@ describe("team_delegate startup validation", () => {
         const sid = "ses_del_sd"
         tracked.push(sid)
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamDelegateTool(makeCtx(root)).execute(
+        const result = await teamDelegateTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 tasks: [{ subject: "s1", description: "d1" }],

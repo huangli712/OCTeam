@@ -3,40 +3,15 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { checkTermination } from "../src/orchestration/termination.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
 
-import { type DispatchCall } from "./helpers.js"
+import { type DispatchCall, makeCtx } from "./helpers.js"
 const NOW = 1_700_000_000_000
 
-function makeCtx(outputs: Record<string, string> = {}, calls: DispatchCall[] = []): PluginContext {
-    return {
-        storageRoot: mkdtempSync(join(tmpdir(), "octeam-wf-timeout-root-")),
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }] : []),
-                        ],
-                    }
-                },
-                promptAsync: async (args: { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeWorkflowTask(fields: Partial<WorkflowTask> & { readonly steps: WorkflowStep[] }): WorkflowTask {
     return {
@@ -104,7 +79,7 @@ describe("workflow step timeout policy", () => {
             steps: [{ kind: "task", member: "alice", task: "slow", completed: false, timeoutMs: 1000, dispatchedAt: NOW - 2000 }],
         })
         const team = makeTeam(task, [{ name: "alice", sessionId: "ses_alice" }])
-        const ctx = makeCtx()
+        const ctx = makeCtx({ calls: [] })
 
         // When
         await checkTermination(ctx, team, NOW)
@@ -122,7 +97,7 @@ describe("workflow step timeout policy", () => {
             steps: [{ kind: "task", member: "alice", task: "retry slow", completed: false, timeoutMs: 1000, onTimeout: "retry", maxTimeoutRetries: 1, timeoutAttempts: 0, dispatchedAt: NOW - 2000 }],
         })
         const team = makeTeam(task, [{ name: "alice", sessionId: "ses_alice" }])
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
 
         // When
         await checkTermination(ctx, team, NOW)
@@ -153,7 +128,7 @@ describe("workflow step timeout policy", () => {
             ],
         })
         const team = makeTeam(task, [{ name: "alice", sessionId: "ses_alice" }, { name: "bob", sessionId: "ses_bob" }])
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
 
         // When
         await checkTermination(ctx, team, NOW)
@@ -188,7 +163,7 @@ describe("workflow step timeout policy", () => {
             ],
         })
         const team = makeTeam(task, [{ name: "alice", sessionId: "ses_alice" }, { name: "bob", sessionId: "ses_bob" }, { name: "carol", sessionId: "ses_carol" }])
-        const ctx = makeCtx({ ses_bob: "tests output", ses_carol: "downstream output" }, calls)
+        const ctx = makeCtx({ outputs: { ses_bob: "tests output", ses_carol: "downstream output" }, calls })
 
         // When
         await checkTermination(ctx, team, NOW)
@@ -224,7 +199,7 @@ describe("workflow step timeout policy", () => {
             ],
         })
         const team = makeTeam(task, [{ name: "alice" }, { name: "bob", sessionId: "ses_bob" }, { name: "carol", sessionId: "ses_carol" }, { name: "dave", sessionId: "ses_dave" }])
-        const ctx = makeCtx({ ses_carol: "tests output", ses_dave: "downstream output" }, calls)
+        const ctx = makeCtx({ outputs: { ses_carol: "tests output", ses_dave: "downstream output" }, calls })
 
         // When: the fallback-dispatched branch times out.
         await checkTermination(ctx, team, NOW)

@@ -15,25 +15,12 @@ import { beforeEach, describe, expect, mock, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import { clearWakeHint, sendWakeHint } from "../src/messaging/wake-hint.js"
+import { makeCtx } from "./helpers.js"
+
 
 /** Captures every promptAsync call: which session got which body. */
 type Call = { sessionId: string; text: string }
 
-function makeCtx(calls: Call[]): PluginContext {
-    return {
-        client: {
-            session: {
-                promptAsync: mock(async (args: any) => {
-                    calls.push({
-                        sessionId: args.path.id,
-                        text: args.body.parts[0].text,
-                    })
-                    return { data: {} }
-                }),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 // Module-level throttle state (wakeHintLastSent) persists across tests.
 // Reset it before each test so prior throttling doesn't bleed in.
@@ -45,7 +32,7 @@ beforeEach(() => {
 describe("sendWakeHint", () => {
     test("sends promptAsync with unread count in the reminder text", async () => {
         const calls: Call[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls: calls })
         await sendWakeHint(ctx, "ses_a", 3)
         expect(calls).toHaveLength(1)
         expect(calls[0]?.sessionId).toBe("ses_a")
@@ -55,7 +42,7 @@ describe("sendWakeHint", () => {
 
     test("throttles: second call within 30s window is skipped", async () => {
         const calls: Call[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls: calls })
         await sendWakeHint(ctx, "ses_a", 1)
         await sendWakeHint(ctx, "ses_a", 2)
         expect(calls).toHaveLength(1)
@@ -63,7 +50,7 @@ describe("sendWakeHint", () => {
 
     test("throttle is per-session: different sessions are not blocked", async () => {
         const calls: Call[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls: calls })
         await sendWakeHint(ctx, "ses_a", 1)
         await sendWakeHint(ctx, "ses_b", 2)
         expect(calls).toHaveLength(2)
@@ -86,7 +73,7 @@ describe("sendWakeHint", () => {
 describe("clearWakeHint", () => {
     test("resets throttle so the next sendWakeHint goes through immediately", async () => {
         const calls: Call[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls: calls })
         await sendWakeHint(ctx, "ses_a", 1)
         expect(calls).toHaveLength(1)
         // Without clear, second call would be throttled.

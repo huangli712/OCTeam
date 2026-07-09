@@ -9,8 +9,7 @@ import { dispatchToMember } from "../src/orchestration/dispatch.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
-import type { PluginContext } from "../src/core/context.js"
-import { type DispatchCall } from "./helpers.js"
+import { type DispatchCall, makeCtx } from "./helpers.js"
 
 // --- fixtures (P0-1: errored-member signoff revival) ---
 
@@ -21,30 +20,6 @@ import { type DispatchCall } from "./helpers.js"
  * `promptAsync` records every dispatch so a test can assert which member
  * sessions were (and were NOT) prompted.
  */
-function makeCtx(outputs: Record<string, string>, calls: DispatchCall[] = []): PluginContext {
-    return {
-        directory: "/app",
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text
-                                ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }]
-                                : []),
-                        ],
-                    }
-                },
-                promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeParallelTask(opts: Partial<ActiveTask> = {}): ActiveTask {
     return {
@@ -110,7 +85,7 @@ function makeTeam(opts: {
 describe("P0-1: errored member is not revived by a peer-quorum signoff dispatch", () => {
     test("the review prompt goes ONLY to surviving reviewers, never the errored member", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
         const task = makeParallelTask({
             signoffPolicy: "peer-quorum",
             signoffQuorum: 0.5,
@@ -165,7 +140,7 @@ describe("P0-1: peer-quorum denominator excludes errored members", () => {
                 { name: "carol", sessionId: "ses_carol", status: "idle" },
             ],
         })
-        const ctx = makeCtx({ ses_carol: approve }, calls)
+        const ctx = makeCtx({ outputs: { ses_carol: approve }, calls })
 
         // carol idles during the signoff stage and approves. The denominator is
         // the LIVE reviewers (alice, carol) = 2; bob is excluded. Both approved,
@@ -185,7 +160,7 @@ describe("P0-1: peer-quorum denominator excludes errored members", () => {
 describe("P0-1: dispatchToMember refuses to dispatch an errored member", () => {
     test("status stays errored, turnCount unchanged, and no prompt is sent", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx({}, calls)
+        const ctx = makeCtx({ calls })
         const team = makeTeam({
             activeTask: makeParallelTask(),
             members: [{ name: "bob", sessionId: "ses_bob", status: "errored", error: "boom" }],

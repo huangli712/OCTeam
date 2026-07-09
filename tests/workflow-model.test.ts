@@ -3,14 +3,13 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { checkWorkflowInvariants } from "../src/orchestration/invariants.js"
 import { getActiveWorkflowStepActors } from "../src/orchestration/dag.js"
 import { processIdle } from "../src/orchestration/idle.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
-import { type DispatchCall } from "./helpers.js"
+import { type DispatchCall, makeCtx } from "./helpers.js"
 
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
 
@@ -26,30 +25,6 @@ function sessionId(name: string, seed: number): string {
     return `ses_${name}_${seed}`
 }
 
-function makeCtx(outputs: Record<string, string>, calls: DispatchCall[]): PluginContext {
-    return {
-        storageRoot: mkdtempSync(join(tmpdir(), "octeam-wf-model-root-")),
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                messages: async ({ path }: { path: { id: string } }) => {
-                    const text = outputs[path.id] ?? ""
-                    return {
-                        data: [
-                            { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-                            ...(text ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }] : []),
-                        ],
-                    }
-                },
-                promptAsync: async (args: { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeMember(name: string, seed: number): MemberState {
     return {
@@ -176,7 +151,7 @@ function findMember(team: Team, name: string): MemberState {
 async function driveWorkflowModel(seed: number): Promise<void> {
     const generated = generateWorkflow(seed)
     const calls: DispatchCall[] = []
-    const ctx = makeCtx(generated.outputs, calls)
+    const ctx = makeCtx({ outputs: generated.outputs, calls })
     const team = makeTeam(generated.task, generated.members)
 
     for (let turn = 0; turn < 20 && team.activeTask?.type === "workflow"; turn += 1) {
