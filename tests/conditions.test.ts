@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { matchesWorkflowCondition } from "../src/orchestration/conditions.js"
+import { matchesWorkflowCondition } from "../src/orchestration/gate.js"
 
 describe("matchesWorkflowCondition", () => {
     test("matches numeric score and confidence thresholds", () => {

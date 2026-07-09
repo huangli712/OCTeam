@@ -18,7 +18,7 @@ import type {
     WorkflowStep,
     WorkflowTask,
 } from "../core/types.js"
-import { formatWorkflowCondition, parseWorkflowCondition } from "../orchestration/conditions.js"
+import { formatWorkflowCondition, parseWorkflowCondition } from "../orchestration/gate.js"
 import { activationError } from "../state/activation.js"
 import { dispatchTaskStep, maybePauseBeforeWorkflowStep } from "../orchestration/workflow.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
