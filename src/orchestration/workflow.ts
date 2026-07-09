@@ -79,38 +79,6 @@ import {
 
 import { buildWorkflowUpstream } from "./upstream.js";
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 function assertNeverWorkflowStepKind(value: never): never {
     throw new Error(`unhandled workflow step kind: ${String(value)}`);
 }
@@ -1139,8 +1107,6 @@ export async function handleWorkflowIdle(
     });
     await saveTeamState(team);
 }
-
-
 
 /**
  * Handle an unevaluable gate verdict (INVALID or parse failure) according to
