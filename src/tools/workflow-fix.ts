@@ -2,7 +2,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type { ActiveTask, WorkflowTask } from "../core/types.js"
-import { checkWorkflowInvariants } from "../orchestration/workflow-invariants.js"
+import { checkWorkflowInvariants } from "../orchestration/invariants.js"
 import { activationError } from "../core/utils.js"
 import { workflowOperatorFailReason } from "../orchestration/reasons.js"
 import { getActiveWorkflowStepIndices } from "../orchestration/dag.js"

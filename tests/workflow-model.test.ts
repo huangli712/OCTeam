@@ -5,7 +5,7 @@ import { join } from "node:path"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
-import { checkWorkflowInvariants } from "../src/orchestration/workflow-invariants.js"
+import { checkWorkflowInvariants } from "../src/orchestration/invariants.js"
 import { getActiveWorkflowStepActors } from "../src/orchestration/dag.js"
 import { processIdle } from "../src/orchestration/handlers.js"
 import { AsyncMutex } from "../src/state/locks.js"

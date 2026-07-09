@@ -22,7 +22,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { isIndexedMember } from "../state/resolve.js"
 import { validateMemberAgent, validateMemberName } from "./shared.js"
-import { validateWorkflowSteps } from "./workflow-file.js"
+import { validateWorkflowSteps } from "./file.js"
 import { validateWorkflowStepsAgainstMembers } from "./workflow.js"
 
 const PLANNER_AGENT = "oct-metis"
