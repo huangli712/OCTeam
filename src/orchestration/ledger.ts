@@ -9,6 +9,18 @@
 import type { WorkflowStep } from "../core/types.js";
 import { truncateOutput } from "./output.js";
 
+/** Per-issue detail lines for a gate step with structured verdict. Severity-sorted
+ * (critical > high > medium > low) so the most actionable issues surface first. */
+const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+
+function assertNeverWorkflowStepKind(kind: never): never {
+    throw new Error(`unhandled WorkflowStepKind: ${String(kind)}`)
+}
+
+function hasWorkflowBranchTree(steps: readonly WorkflowStep[]): boolean {
+    return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
+}
+
 export function workflowTargetLabel(s: WorkflowStep): string {
     if (s.targetStepIndices !== undefined && s.targetStepIndices.length > 0) {
         const targets = s.targetStepIndices.map(index => index + 1)
@@ -23,25 +35,6 @@ export function workflowVerdictMetrics(s: WorkflowStep): string {
     if (s.confidence !== undefined) metrics.push(`confidence=${s.confidence}`)
     if (s.issues !== undefined && s.issues.length > 0) metrics.push(`issues=${s.issues.length}`)
     return metrics.length > 0 ? ` [${metrics.join(", ")}]` : ""
-}
-
-/** Per-issue detail lines for a gate step with structured verdict. Severity-sorted
- * (critical > high > medium > low) so the most actionable issues surface first. */
-const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
-
-function assertNeverWorkflowStepKind(kind: never): never {
-    throw new Error(`unhandled WorkflowStepKind: ${String(kind)}`)
-}
-
-export function formatWorkflowIssueDetail(s: WorkflowStep): string {
-    const issues = s.issues
-    if (!issues || issues.length === 0) return ""
-    const sorted = [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99))
-    const lines = sorted.map(issue => {
-        const msg = issue.message && issue.message.trim() !== "" ? `: ${issue.message}` : ""
-        return `    - [${issue.severity}]${msg}`
-    })
-    return "\n" + lines.join("\n")
 }
 
 export function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
@@ -63,6 +56,17 @@ function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: Wo
     return fanout.branchIds
         .map((branchId, branchIndex) => `${branchId}:${workflowBranchStatus(steps, fanoutStep, branchId, branchIndex)}`)
         .join(", ")
+}
+
+export function formatWorkflowIssueDetail(s: WorkflowStep): string {
+    const issues = s.issues
+    if (!issues || issues.length === 0) return ""
+    const sorted = [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99))
+    const lines = sorted.map(issue => {
+        const msg = issue.message && issue.message.trim() !== "" ? `: ${issue.message}` : ""
+        return `    - [${issue.severity}]${msg}`
+    })
+    return "\n" + lines.join("\n")
 }
 
 function formatWorkflowBranchLine(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
@@ -105,10 +109,6 @@ export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: W
         default:
             return assertNeverWorkflowStepKind(step.kind)
     }
-}
-
-function hasWorkflowBranchTree(steps: readonly WorkflowStep[]): boolean {
-    return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
 }
 
 export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): string[] {
