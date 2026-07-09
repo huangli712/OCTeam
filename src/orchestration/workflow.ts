@@ -36,7 +36,7 @@ import type {
 import {
     formatWorkflowCondition,
     matchesWorkflowCondition,
-} from "../core/workflow-conditions.js";
+} from "./workflow-conditions.js";
 import {
     workflowCompleteReason,
     workflowFanoutAllErroredReason,
@@ -45,7 +45,7 @@ import {
     workflowInvalidReason,
     workflowJumpLimitReason,
     workflowNoSessionReason,
-} from "../core/workflow-reasons.js";
+} from "./workflow-reasons.js";
 import { dispatchToMember } from "./dispatch.js";
 import { finishRun } from "./summary.js";
 import { recordEvent } from "./events.js";
@@ -54,7 +54,7 @@ import {
     findActiveWorkflowStepIndexForMember,
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
-} from "../core/workflow-dag.js";
+} from "./workflow-dag.js";
 import { parseSelection, parseVerdict } from "./decisions.js";
 import { maybeTriggerSignoff } from "./signoff.js";
 import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js";

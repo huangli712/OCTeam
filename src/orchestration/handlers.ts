@@ -28,7 +28,7 @@ import { type Team, loadTeamState, saveTeamState } from '../state/store.js';
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"
 import { extractOutputFromParts, isEnoent, sumMemberTokens, truncateOutput } from '../core/utils.js';
-import { findActiveWorkflowStepIndexForMember, getActiveWorkflowStepActors } from "../core/workflow-dag.js"
+import { findActiveWorkflowStepIndexForMember, getActiveWorkflowStepActors } from "./workflow-dag.js"
 import { resolveTeamMember } from "../state/resolve.js"
 import { safeMemberAgent } from "../core/role.js"
 import { atomicWrite } from "../state/locks.js"

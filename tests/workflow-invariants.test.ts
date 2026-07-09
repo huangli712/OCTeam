@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import type { WorkflowStep, WorkflowTask } from "../src/core/types.js"
-import { checkWorkflowInvariants } from "../src/core/workflow-invariants.js"
+import { checkWorkflowInvariants } from "../src/orchestration/workflow-invariants.js"
 
 function workflowTask(fields: {
     readonly steps: WorkflowStep[]

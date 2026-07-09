@@ -1,4 +1,4 @@
-import type { WorkflowBranchRange, WorkflowStep, WorkflowTask } from "./types.js"
+import type { WorkflowBranchRange, WorkflowStep, WorkflowTask } from "../core/types.js"
 
 export type WorkflowDagValidationResult =
     | { readonly ok: true }

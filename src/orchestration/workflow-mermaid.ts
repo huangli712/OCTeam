@@ -1,4 +1,4 @@
-import type { WorkflowRunStep } from "./types.js"
+import type { WorkflowRunStep } from "../core/types.js"
 
 export type MermaidStepStatus = "done" | "active" | "pending" | "skipped"
 

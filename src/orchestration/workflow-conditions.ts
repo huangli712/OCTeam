@@ -1,4 +1,4 @@
-import type { WorkflowCondition, WorkflowIssue, WorkflowIssueSeverity } from "./types.js"
+import type { WorkflowCondition, WorkflowIssue, WorkflowIssueSeverity } from "../core/types.js"
 
 type ConditionInput = {
     score?: number

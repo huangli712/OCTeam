@@ -1,4 +1,4 @@
-import type { WorkflowBranchMetadata, WorkflowBranchRange, WorkflowFanoutMetadata, WorkflowJoinMetadata, WorkflowStep, WorkflowTask } from "./types.js"
+import type { WorkflowBranchMetadata, WorkflowBranchRange, WorkflowFanoutMetadata, WorkflowJoinMetadata, WorkflowStep, WorkflowTask } from "../core/types.js"
 
 export type WorkflowInvariantCheckResult = { readonly ok: true } | { readonly ok: false; readonly violations: readonly string[] }
 

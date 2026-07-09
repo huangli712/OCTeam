@@ -7,14 +7,14 @@
 
 import type { PluginContext } from "../core/context.js"
 import type { WorkflowStep, WorkflowTask } from "../core/types.js"
-import { getActiveWorkflowStepActors } from "../core/workflow-dag.js"
+import { getActiveWorkflowStepActors } from "./workflow-dag.js"
 import type { Team } from "../state/store.js"
 import { finishRun } from "./summary.js"
 import { advanceWorkflowStep, markWorkflowFanoutBranchErrored, redispatchWorkflowStep } from "./workflow.js"
 import {
     workflowNoSessionReason,
     workflowTimeoutStepReason,
-} from "../core/workflow-reasons.js"
+} from "./workflow-reasons.js"
 
 /**
  * Check the active task's termination conditions and, if met, deliver a summary
