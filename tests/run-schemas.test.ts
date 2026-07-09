@@ -58,7 +58,7 @@ function fanoutStep(index: number, joinIndex: number, branchIds: string[], range
     })
 }
 
-function joinStep(index: number, fanoutIndex: number, branchTailIndices: number[]): Record<string, unknown> {
+function joinStep(index: number, fanoutIndex: number, branchTailIndices: number[], overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return wfRunStep(index, {
         kind: "join",
         completed: true,
@@ -66,6 +66,7 @@ function joinStep(index: number, fanoutIndex: number, branchTailIndices: number[
             fanoutIndex,
             branchTailIndices,
             maxErrored: 0,
+            ...overrides,
         },
     })
 }
@@ -246,15 +247,14 @@ describe("WorkflowRunSchema (via RunRecordSchema.workflow)", () => {
         expectIssue(result, "fanout joinIndex must point to a matching join step")
     })
 
-    test("valid fanout+join parses", () => {
+    test("branch step without metadata inside fanout range rejected", () => {
         const result = parseWorkflow([
-            fanoutStep(0, 3, ["b1"], [{ startIndex: 1, endIndex: 1 }]),
+            fanoutStep(0, 3, ["b1"], [{ startIndex: 1, endIndex: 2 }]),
             branchStep(1, 0, "b1", 0, 3),
-            wfRunStep(2, { kind: "task", completed: true }), // this is wrong - need branch metadata
-            joinStep(3, 0, [1]),
+            wfRunStep(2, { kind: "task", completed: true }),
+            joinStep(3, 0, [2]),
         ])
-        // step 2 has no branch metadata but is inside the fanout range
-        expectIssue(result, "branch metadata must match")
+        expectIssue(result, "branch step requires branch metadata")
     })
 
     test("valid fanout+join with branch metadata parses", () => {
@@ -298,18 +298,18 @@ describe("WorkflowRunSchema (via RunRecordSchema.workflow)", () => {
 
     test("survivorBranchIds referencing unknown branch rejected", () => {
         const result = parseWorkflow([
-            fanoutStep(0, 3, ["b1"], [{ startIndex: 1, endIndex: 1 }]),
-            branchStep(1, 0, "b1", 0, 3),
-            joinStep(3, 0, [1], { survivorBranchIds: ["unknown"] }),
+            fanoutStep(0, 2, ["b1"], [{ startIndex: 1, endIndex: 1 }]),
+            branchStep(1, 0, "b1", 0, 2),
+            joinStep(2, 0, [1], { survivorBranchIds: ["unknown"] }),
         ])
         expectIssue(result, "join survivorBranchIds must reference known fanout branches")
     })
 
     test("survivor and errored overlap rejected", () => {
         const result = parseWorkflow([
-            fanoutStep(0, 3, ["b1"], [{ startIndex: 1, endIndex: 1 }]),
-            branchStep(1, 0, "b1", 0, 3),
-            joinStep(3, 0, [1], { survivorBranchIds: ["b1"], erroredBranchIds: ["b1"] }),
+            fanoutStep(0, 2, ["b1"], [{ startIndex: 1, endIndex: 1 }]),
+            branchStep(1, 0, "b1", 0, 2),
+            joinStep(2, 0, [1], { survivorBranchIds: ["b1"], erroredBranchIds: ["b1"] }),
         ])
         expectIssue(result, "join branch cannot be both survivor and errored")
     })
@@ -324,10 +324,10 @@ describe("WorkflowRunSchema (via RunRecordSchema.workflow)", () => {
 
     test("multi-branch fanout with required_branches parses", () => {
         const result = parseWorkflow([
-            fanoutStep(0, 5, ["b1", "b2"], [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }]),
-            branchStep(1, 0, "b1", 0, 5),
-            branchStep(2, 0, "b2", 1, 5),
-            joinStep(5, 0, [1, 2], {
+            fanoutStep(0, 3, ["b1", "b2"], [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }]),
+            branchStep(1, 0, "b1", 0, 3),
+            branchStep(2, 0, "b2", 1, 3),
+            joinStep(3, 0, [1, 2], {
                 joinPolicy: "required_branches",
                 requiredBranchIds: ["b1"],
                 survivorBranchIds: ["b1"],

@@ -47,7 +47,10 @@ export async function finishRun(
     reason: string,
     status: "idle" | "failed",
 ): Promise<void> {
-    await deliverSummaryToLeader(ctx, team, reason)
+    // Map team status to run status for persistRun. "idle" = completed run,
+    // "failed" = failed run. Threaded explicitly so persistRun no longer relies
+    // on the runStatusFromReason substring heuristic.
+    await deliverSummaryToLeader(ctx, team, reason, status === "failed" ? "failed" : "completed")
     clearActiveTask(team)
     team.status = status
 }
