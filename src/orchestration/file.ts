@@ -1,7 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import type { WorkflowToolStep } from "./workflow.js"
+import type { WorkflowToolStep } from "../tools/workflow.js"
 
 // Supported workflow_file schema versions. When the schema gains a v2, add it
 // here and branch on `version` in loadWorkflowFile. A file with an unlisted
@@ -16,6 +16,15 @@ type WorkflowFileResult =
 type StepLocation = {
     readonly filePath: string
     readonly prefix: string
+}
+
+/** Thrown when a ${name} reference has no matching entry in `vars` under strict mode. */
+class UnknownTemplateVarError extends Error {
+    readonly name: string
+    constructor(varName: string) {
+        super(`unknown template variable "${varName}"`)
+        this.name = varName
+    }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -61,15 +70,6 @@ function applyTemplateVars(value: unknown, vars: Record<string, string>, strict:
         return out
     }
     return value
-}
-
-/** Thrown when a ${name} reference has no matching entry in `vars` under strict mode. */
-class UnknownTemplateVarError extends Error {
-    readonly name: string
-    constructor(varName: string) {
-        super(`unknown template variable "${varName}"`)
-        this.name = varName
-    }
 }
 
 function validateWorkflowStepArray(value: unknown, location: StepLocation): { steps: WorkflowToolStep[] } | { error: string } {

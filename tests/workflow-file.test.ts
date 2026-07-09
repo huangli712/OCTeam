@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
-import { loadWorkflowFile, validateWorkflowSteps } from "../src/tools/file.js"
+import { loadWorkflowFile, validateWorkflowSteps } from "../src/orchestration/file.js"
 import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
 
 // -----------------------------------------------------------------------

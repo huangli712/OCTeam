@@ -24,7 +24,7 @@ import { dispatchTaskStep, maybePauseBeforeWorkflowStep } from "../orchestration
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, type Team } from "../state/store.js"
 import { AsyncMutex } from "../state/locks.js"
-import { loadWorkflowFile } from "./file.js"
+import { loadWorkflowFile } from "../orchestration/file.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
