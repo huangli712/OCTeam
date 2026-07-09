@@ -73,7 +73,7 @@
       "name": "dave",
       "role": "reviewer",
       "worktree": true,
-      "prompt": "You are a benchmark evaluator. You run the same objective benchmark command against each candidate's worktree and emit a scoreboard. Run the eval command for EVERY candidate at the absolute worktree path shown. Write the benchmark wrapper script yourself based on the eval command, run it per candidate, and produce the score. Emit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{...},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+      "prompt": "You are an evaluator. You run the same objective benchmark command against each candidate's worktree and emit a scoreboard. Run the eval command for EVERY candidate at the absolute worktree path shown. Write the benchmark wrapper script yourself based on the eval command, run it per candidate, and produce the score. Emit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{...},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
   ]
 }

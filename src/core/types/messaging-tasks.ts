@@ -36,6 +36,6 @@ export type Message = {
     summary?: string                   // one-line summary for status display
     timestamp: number
     correlationId?: string             // UUID for request-response pairing
-    runId?: string                      // per-orchestration run id for directive messages
+    runId?: string                     // per-orchestration run id for directive messages
     deliveryStatus: "pending" | "delivered" | "processed"
 }

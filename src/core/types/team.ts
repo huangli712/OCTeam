@@ -50,20 +50,20 @@ export type MemberState = {
     initialized: boolean               // true after role-setup prompt completes
     worktreePath?: string              // absolute path to git worktree
     turnCount: number                  // incremented per promptAsync dispatch
-    lastTurnMarkers?: string            // Transform hook injection dedup
+    lastTurnMarkers?: string           // Transform hook injection dedup
     lastNotifiedAt?: number            // delegate: rate-limit re-prompts
     retryingSince?: number             // epoch ms when session entered "retry"
     error?: string                     // if status === "errored"
     isMaster?: boolean                 // runtime-only: true on the synthetic master record
-                                        // (built by masterPseudoMember / syntheticMaster).
-                                        // Never stored in team.members and never written to
-                                        // state.json; lives on MemberState so the synthetic
-                                        // master can flow through MemberState-typed code paths.
+                                       // (built by masterPseudoMember / syntheticMaster).
+                                       // Never stored in team.members and never written to
+                                       // state.json; lives on MemberState so the synthetic
+                                       // master can flow through MemberState-typed code paths.
     declaredDone?: boolean             // require_done_ack: member has called team_done() this run
     retryCount?: number                // OCTeam-level grace-extension windows consumed this run (reset to 0 at task commit)
     prompt?: string                    // member's standing instruction (copied from MemberSpec.prompt at
-                                        // spawn). Delivered as <standing-instruction> on the member's FIRST
-                                        // real task dispatch (NOT during role-setup, which is identity-only).
+                                       // spawn). Delivered as <standing-instruction> on the member's FIRST
+                                       // real task dispatch (NOT during role-setup, which is identity-only).
     promptDelivered?: boolean          // true after prompt has been prepended to a dispatch once
 }
 
@@ -101,12 +101,12 @@ export type TeamState = {
     createdAt: number
     startedAt?: number                 // when first task started
     activatedAt?: number               // epoch ms; presence ⇒ "available" team for its
-                                        // leadSessionId. INVARIANT: ≤1 team per leadSessionId
-                                        // has this set. Enforced by team_activate (refuses if a
-                                        // sibling is already active — auto-switching is disabled;
-                                        // caller must team_deactivate first) + startup reconcile
-                                        // (clears ALL activatedAt on plugin restart so nothing
-                                        // auto-activates after a reload). Orthogonal to TeamStatus.
+                                       // leadSessionId. INVARIANT: ≤1 team per leadSessionId
+                                       // has this set. Enforced by team_activate (refuses if a
+                                       // sibling is already active — auto-switching is disabled;
+                                       // caller must team_deactivate first) + startup reconcile
+                                       // (clears ALL activatedAt on plugin restart so nothing
+                                       // auto-activates after a reload). Orthogonal to TeamStatus.
 }
 
 /** Persisted record of the most recent orchestration mode, for sidebar display. */

@@ -562,9 +562,7 @@ T+16m    workflow_complete，汇总交付 master
         ]
       },
       {
-        "kind": "join",
-        "join_policy": "reduce",
-        "reducer_member": "frank"
+        "kind": "join"
       },
       {
         "kind": "gate",
