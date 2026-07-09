@@ -32,10 +32,14 @@ export type Task = {
  * inspect parts. Defining it once here avoids the duplicated
  * `{ info?: any; parts?: any }` casts that previously appeared at every
  * SDK boundary call site.
+ *
+ * `info` is the SDK's Message type (UserMessage | AssistantMessage) so
+ * sumMemberTokens (which reads info.tokens) stays type-safe; `parts` stays
+ * loose because capture/transform only filter by type/text fields.
  */
 export type SdkMessage = {
-    info?: { sessionID?: string; role?: string; [key: string]: unknown }
-    parts?: Array<{ type: string; text?: string; synthetic?: boolean; [key: string]: unknown }>
+    info?: import("@opencode-ai/sdk").Message
+    parts?: unknown[]
 }
 
 /** A file mailbox entry — a message, announcement, or directive between members. */
