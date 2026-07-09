@@ -1,7 +1,7 @@
 # team_consensus 编排场景设计
 
 > **模式**：`team_consensus` — 多轮结构化辩论，所有成员就 `topic` 发表立场并逐轮逼近共识；每轮每成员 emits `<consensus>{"agreed": true|false}</consensus>`，全部 `agreed=true` 即共识达成。无 signoff 闸（全员同意机制本身就是闸）。
-> **源码**：[`src/tools/consensus.ts`](../../../src/tools/consensus.ts)
+> **源码**：[`src/tools/consensus.ts`](../../src/tools/consensus.ts)
 > **控时设计**：3 成员 × `max_rounds=6`；每轮每成员 2-3 min；总时长 ≈ 6 轮 × 3 min + 调度 ≈ 18-24 min（低于 30 min 上限）。
 
 ## 场景一览
@@ -404,7 +404,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 
 ## 验收清单
 
-- [ ] 4 个 check 脚本 `tsc -p src/demos/tsconfig.json` 通过（无类型错误）
+- [ ] 4 个 check 脚本 `tsc -p demos/tsconfig.json` 通过（无类型错误）
 - [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_consensus` schema（`team_id` / `topic` / `max_rounds` / `timeout_ms`）
 - [ ] 每个调用**无** `signoff_*` 参数（共识机制即闸，源码 wf-013）
@@ -421,7 +421,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 ### 场景 1: 小规模排序选型（数学）
 
 ```text
-执行 src/demos/02-team-consensus/README.md「场景 1」的完整闭环并自动评判。
+执行 demos/02-team-consensus/README.md「场景 1」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队
@@ -429,7 +429,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 3. 读 README「1.3 Master 启动调用」，按 team_consensus JSON 启动编排
 4. team_results 轮询至 master 收到汇总（consensus 最多 max_rounds 轮）
 5. 定位 <run_dir>（含各成员 <member>.md）
-6. 运行：bun src/demos/02-team-consensus/check-math-sort-stability.ts <run_dir>
+6. 运行：bun demos/02-team-consensus/check-math-sort-stability.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：所有成员最终轮 emit `"agreed": true`；共识 choice ∈ {insertion, timsort, merge}。
@@ -438,7 +438,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 ### 场景 2: 一维热传导时间格式选型（物理）
 
 ```text
-执行 src/demos/02-team-consensus/README.md「场景 2」的完整闭环并自动评判。
+执行 demos/02-team-consensus/README.md「场景 2」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
@@ -446,7 +446,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 3. 读 README「2.3 Master 启动调用」，按 team_consensus JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun src/demos/02-team-consensus/check-physics-heat-diffusion.ts <run_dir>
+6. 运行：bun demos/02-team-consensus/check-physics-heat-diffusion.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：全员最终轮 `"agreed": true`；共识 choice ∈ {explicit, implicit, crank-nicolson}。
@@ -455,7 +455,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 ### 场景 3: 短文本字符串匹配选型（编程）
 
 ```text
-执行 src/demos/02-team-consensus/README.md「场景 3」的完整闭环并自动评判。
+执行 demos/02-team-consensus/README.md「场景 3」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
@@ -463,7 +463,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 3. 读 README「3.3 Master 启动调用」，按 team_consensus JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun src/demos/02-team-consensus/check-coding-string-match.ts <run_dir>
+6. 运行：bun demos/02-team-consensus/check-coding-string-match.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：全员最终轮 `"agreed": true`；共识 choice ∈ {naive, kmp, boyer, sunday}。
@@ -472,7 +472,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 ### 场景 4: 60 位 RSA 模数分解算法选型（挑战级，数学）
 
 ```text
-执行 src/demos/02-team-consensus/README.md「场景 4」的完整闭环并自动评判（挑战级，6 成员 × max_rounds=5，预计 ~35 min）。
+执行 demos/02-team-consensus/README.md「场景 4」的完整闭环并自动评判（挑战级，6 成员 × max_rounds=5，预计 ~35 min）。
 
 步骤：
 1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（6 个 mathematician）
@@ -480,7 +480,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 3. 读 README「4.3 Master 启动调用」，按 team_consensus JSON 启动编排（max_rounds=5）
 4. team_results 轮询至 master 收到汇总（consensus 最多 5 轮，需较长等待）
 5. 定位 <run_dir>（含 6 个成员 <member>.md）
-6. 运行：bun src/demos/02-team-consensus/check-math-factoring-consensus.ts <run_dir>
+6. 运行：bun demos/02-team-consensus/check-math-factoring-consensus.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：6 成员最终轮全部 `"agreed": true`；每个 choice ∈ {nfs, number-field-sieve, quadratic-sieve, qs, pollard-rho, ecm, shor, trial-division}；至少一位成员论证提及 {sub-exponential, 60-digit, rsa, quantum} 之一。预期共识收敛到 NFS，并承认 Shor 量子算法的未来相关性。

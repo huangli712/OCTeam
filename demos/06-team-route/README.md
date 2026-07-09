@@ -1,7 +1,7 @@
 # team_route 编排场景设计
 
 > **模式**：`team_route` — 内容路由：router 成员分析输入，选择匹配的分支成员处理；选中分支并行执行后汇总。无默认路由，未匹配输入直接失败整个 run。
-> **源码**：[`src/tools/router.ts`](../../../src/tools/router.ts)
+> **源码**：[`src/tools/router.ts`](../../src/tools/router.ts)
 > **控时设计**：路由模式天然节能 —— 每个 run 实际只有 **router + 1 个匹配分支** 被调度执行（其余分支仅作为分类候选项存在，不会被 dispatch）。因此即便 team 配置 4-5 个成员，活跃成员 ≤ 2，总时长 ≈ router 分类（~1 min）+ 匹配分支求解（~5-8 min）≈ 10 min（远低于 30 min 上限）。
 
 ## 场景一览
@@ -459,7 +459,7 @@ T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
 
 ## 验收清单
 
-- [ ] 4 个 check 脚本通过 `bunx tsc -p src/demos/tsconfig.json`（无类型错误）
+- [ ] 4 个 check 脚本通过 `bunx tsc -p demos/tsconfig.json`（无类型错误）
 - [ ] 每个 team 配置 role 合法（`mathematician` / `physicist` / `simulator` / `analyst` / `coder` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_route` schema：`router` 非 master、非分支 target；routes 的 `name`/`member` 唯一；`input` ≤ 32768 字符
 - [ ] 路由模式实际调度成员 = router + N 匹配分支：场景 1-3 单选（≤ 2 活跃，≤ 10 min）；场景 4 多选并行（≤ 9 活跃，≤ 30 min 上限）
@@ -475,7 +475,7 @@ T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
 ### 场景 1: 数学题分类路由（数学）
 
 ```text
-执行 src/demos/06-team-route/README.md「场景 1」的完整闭环并自动评判。
+执行 demos/06-team-route/README.md「场景 1」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（1 router + 4 分支成员）
@@ -483,7 +483,7 @@ T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
 3. 读 README「1.3 Master 启动调用」，按 team_route JSON 启动编排（input 是一道具体数学题）
 4. team_results 轮询至 master 收到汇总（router 先决策，命中分支再执行）
 5. 定位 <run_dir>（含 router 与各分支成员 .md）
-6. 运行：bun src/demos/06-team-route/check-math-problem-router.ts <run_dir>
+6. 运行：bun demos/06-team-route/check-math-problem-router.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：router 选 calculus 分支；bob 的 ANSWER 含 3x²·sin(x)+x³·cos(x)（或等价导数表达式）。
@@ -492,7 +492,7 @@ T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
 ### 场景 2: PDE 类型路由（物理）
 
 ```text
-执行 src/demos/06-team-route/README.md「场景 2」的完整闭环并自动评判。
+执行 demos/06-team-route/README.md「场景 2」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
@@ -500,7 +500,7 @@ T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
 3. 读 README「2.3 Master 启动调用」，按 team_route JSON 启动编排（input 是一个具体 PDE）
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun src/demos/06-team-route/check-physics-pde-router.ts <run_dir>
+6. 运行：bun demos/06-team-route/check-physics-pde-router.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：router 选 parabolic 分支（热扩散方程 u_t=u_xx+u_yy）；METHOD ∈ {crank-nicolson, implicit, ftcs}。
@@ -509,7 +509,7 @@ T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
 ### 场景 3: GitHub issue 分流（编程）
 
 ```text
-执行 src/demos/06-team-route/README.md「场景 3」的完整闭环并自动评判。
+执行 demos/06-team-route/README.md「场景 3」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
@@ -517,7 +517,7 @@ T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
 3. 读 README「3.3 Master 启动调用」，按 team_route JSON 启动编排（input 是一段 issue 正文）
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun src/demos/06-team-route/check-coding-issue-router.ts <run_dir>
+6. 运行：bun demos/06-team-route/check-coding-issue-router.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：router 选 bug 分支；FIX_STRATEGY 含 guard / throw / RangeError 之一（针对负 id 的修复思路）。
@@ -526,7 +526,7 @@ T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
 ### 场景 4: 多面性工单九路分流（挑战级，编程）
 
 ```text
-执行 src/demos/06-team-route/README.md「场景 4」的完整闭环并自动评判（挑战级，9 成员、8 分支多选）。
+执行 demos/06-team-route/README.md「场景 4」的完整闭环并自动评判（挑战级，9 成员、8 分支多选）。
 
 步骤：
 1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（1 router + 8 分支成员）
@@ -534,7 +534,7 @@ T+~20m    运行: bun check-coding-multi-ticket-router.ts <run_dir>
 3. 读 README「4.3 Master 启动调用」，按 team_route JSON 启动编排（input 是一段 200 字多面性工单）
 4. team_results 轮询至 master 收到汇总（router 先多选分类，命中分支并行执行）
 5. 定位 <run_dir>（含 router 与各命中分支成员 .md）
-6. 运行：bun src/demos/06-team-route/check-coding-multi-ticket-router.ts <run_dir>
+6. 运行：bun demos/06-team-route/check-coding-multi-ticket-router.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：router 以 {"branches":[...]} 选中 ≥4 分支（至少含 bug/refactor/test/docs/perf 中 4 个）；每个命中分支产 ACTION 计划；bug 分支的 ACTION 含 guard/throw/empty/null/undefined/check 之一。

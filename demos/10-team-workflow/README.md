@@ -1,7 +1,7 @@
 # team_workflow 编排场景设计
 
 > **模式**：`team_workflow` — 声明式、确定性步骤引擎。每个 step 可以是 `task`（一个成员产出）、`gate`（验证者对指定前导 task 给出 PASS / FAIL / INVALID 三值判定）、`fanout` 或 `join`。引擎——而非 master LLM——驱动推进、重试、分支汇合、reduce 聚合和恢复；中间结果默认只进入下游成员上下文，不进 master 上下文。
-> **源码**：[`src/tools/workflow.ts`](../../../src/tools/workflow.ts) / [`src/orchestration/workflow.ts`](../../../src/orchestration/workflow.ts)
+> **源码**：[`src/tools/workflow.ts`](../../src/tools/workflow.ts) / [`src/orchestration/workflow.ts`](../../src/orchestration/workflow.ts)
 > **控时设计**：4 步链（task → gate → task → gate）、2 成员，每步 3-5 min，串行 ≈ 14-18 min（远低于 30 min 上限）。
 
 ## 与 pipeline / tollgate 的区别
@@ -254,7 +254,7 @@ Workflow dry run for "register-handler-flow" (4 step(s)):
   "tool": "team_workflow",
   "args": {
     "team_id": "register-handler-flow",
-    "workflow_file": "src/demos/10-team-workflow/register-handler.workflow.json",
+    "workflow_file": "demos/10-team-workflow/register-handler.workflow.json",
     "vars": {
       "handler": "handleRegister",
       "resource": "register handler"
@@ -279,7 +279,7 @@ Workflow dry run for "register-handler-flow" (4 step(s)):
 ### 场景 1: REST API handler 实现 + 验证 + 重构
 
 ```text
-执行 src/demos/10-team-workflow/README.md「场景 1」的完整闭环。
+执行 demos/10-team-workflow/README.md「场景 1」的完整闭环。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（2 名成员：alice=coder、bob=tester）

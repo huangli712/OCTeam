@@ -71,7 +71,7 @@
 5. **评判结果**：
 
    ```bash
-   bun src/demos/0N-team-<mode>/check-<theme>-<topic>.ts <run_dir>
+   bun demos/0N-team-<mode>/check-<theme>-<topic>.ts <run_dir>
    ```
 
    - `<run_dir>` 是该次 run 的输出目录（含各成员的 `<member>.md` 输出）
@@ -99,7 +99,7 @@
 
 ## 相关文档
 
-- [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — 11 种编排原语的官方定义与状态持久化模型
-- parallel / consensus / pipeline / loop 工具源码：[`src/tools/parallel.ts`](../../src/tools/parallel.ts) / [`consensus.ts`](../../src/tools/consensus.ts) / [`pipeline.ts`](../../src/tools/pipeline.ts) / [`loop.ts`](../../src/tools/loop.ts)
-- delegate / route / arbitrate / tollgate / arena / recurse / workflow 工具源码：[`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`arena.ts`](../../src/tools/arena.ts) / [`recurse.ts`](../../src/tools/recurse.ts) / [`workflow.ts`](../../src/tools/workflow.ts)
-- [`src/core/role.ts`](../../src/core/role.ts) — 18 种角色预设及其 agent 映射
+- [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) — 11 种编排原语的官方定义与状态持久化模型
+- parallel / consensus / pipeline / loop 工具源码：[`src/tools/parallel.ts`](../src/tools/parallel.ts) / [`consensus.ts`](../src/tools/consensus.ts) / [`pipeline.ts`](../src/tools/pipeline.ts) / [`loop.ts`](../src/tools/loop.ts)
+- delegate / route / arbitrate / tollgate / arena / recurse / workflow 工具源码：[`src/tools/delegate.ts`](../src/tools/delegate.ts) / [`router.ts`](../src/tools/router.ts) / [`arbitrate.ts`](../src/tools/arbitrate.ts) / [`tollgate.ts`](../src/tools/tollgate.ts) / [`arena.ts`](../src/tools/arena.ts) / [`recurse.ts`](../src/tools/recurse.ts) / [`workflow.ts`](../src/tools/workflow.ts)
+- [`src/core/role.ts`](../src/core/role.ts) — 18 种角色预设及其 agent 映射

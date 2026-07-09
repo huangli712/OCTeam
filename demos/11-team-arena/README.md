@@ -1,7 +1,7 @@
 # team_arena 编排场景设计
 
 > **模式**：`team_arena` —— 竞争擂台。N 名候选成员在各自的隔离 git worktree 中实现同一任务的竞争方案（implement 阶段）；随后一名独立 evaluator 对每位候选人的输出运行相同的客观评估，产出结构化 `<scoreboard>` 评分；引擎按 `winner_metric` 和 `score_direction` 选出确定性胜者并直接交付（v1 无 signoff 门控）。
-> **源码**：[`src/tools/arena.ts`](../../../src/tools/arena.ts)
+> **源码**：[`src/tools/arena.ts`](../../src/tools/arena.ts)
 > **控时设计**：每场景 3-5 名候选 + 1 名 evaluator，候选实现 5-8 min、evaluator 评估 3-5 min，并行 implement + 串行 evaluate ≈ 10-13 min（远低于 30 min 上限）。
 
 ## 场景一览
@@ -261,7 +261,7 @@ evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard�
 ### 场景 1: 三种排序基准选最快（编程）
 
 ```text
-执行 src/demos/11-team-arena/README.md「场景 1」的完整闭环并自动评分。
+执行 demos/11-team-arena/README.md「场景 1」的完整闭环并自动评分。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（3 名候选 coder + 1 名 evaluator benchmarker，每名候选 worktree: true，evaluator 也设 worktree: true）
@@ -277,7 +277,7 @@ evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard�
 ### 场景 2: 三种积分器按能量漂移选最稳（计算物理）
 
 ```text
-执行 src/demos/11-team-arena/README.md「场景 2」的完整闭环并自动评分。
+执行 demos/11-team-arena/README.md「场景 2」的完整闭环并自动评分。
 
 步骤：
 1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队（3 名候选 simulator + 1 名 evaluator physicist，每名候选 worktree: true，evaluator 也设 worktree: true）

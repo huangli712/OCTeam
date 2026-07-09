@@ -1,7 +1,7 @@
 # team_tollgate 编排场景设计
 
 > **模式**：`team_tollgate` — 判定门控流水线。每个 stage 产出后必须经独立 verifier 三值判定（PASS / FAIL / INVALID），PASS 才放行下游；FAIL 把产出连同 diff 退回 producer（最多 `max_gate_retries` 次）；INVALID 隔离问题、升级到 verifier 侧，不惩罚 producer。
-> **源码**：[`src/tools/tollgate.ts`](../../../src/tools/tollgate.ts)
+> **源码**：[`src/tools/tollgate.ts`](../../src/tools/tollgate.ts)
 > **控时设计**：每场景 1 个 gate、2 成员（producer + verifier），producer 3-5 min、verifier 2-3 min，串行 ≈ 6-8 min（远低于 30 min 上限）。**场景 4 为挑战级**：6 成员、3 门串行 V&V，约 60 min，演示 tollgate 的多门级联能力。
 
 ## 场景一览
@@ -428,7 +428,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 
 ## 验收清单
 
-- [ ] 4 个 check 脚本 `tsc -p src/demos/tsconfig.json` 通过（无类型错误）
+- [ ] 4 个 check 脚本 `tsc -p demos/tsconfig.json` 通过（无类型错误）
 - [ ] 每个 team 配置 role 合法（`mathematician` / `reviewer` / `simulator` / `physicist` / `coder` / `tester` 均为预设）
 - [ ] 每个 stage 的 `verifier != member`（`bob` ≠ `alice`，满足 tollgate 硬约束）
 - [ ] 每个 master 调用参数符合 `team_tollgate` schema（`stages[].{member,task,verifier,criteria}`）
@@ -445,7 +445,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 ### 场景 1: 实现快速幂 + 验证（数学）
 
 ```text
-执行 src/demos/09-team-tollgate/README.md「场景 1」的完整闭环并自动评判。
+执行 demos/09-team-tollgate/README.md「场景 1」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（producer + verifier 两个成员）
@@ -453,7 +453,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 3. 读 README「1.3 Master 启动调用」，按 team_tollgate JSON 启动编排（1 个门：implement → verify）
 4. team_results 轮询至 master 收到汇总（verifier PASS 才交付；FAIL 回退 producer 重做，受 max_gate_retries 限制）
 5. 定位 <run_dir>（含 producer 与 verifier 的 .md）
-6. 运行：bun src/demos/09-team-tollgate/check-math-fast-pow.ts <run_dir>
+6. 运行：bun demos/09-team-tollgate/check-math-fast-pow.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：producer 的 modPow 通过 3 用例（2^10 mod 1000 = 24、3^0 mod 7 = 1、7^256 mod 13 = 9）；verifier VERDICT = PASS。
@@ -462,7 +462,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 ### 场景 2: 实现 Verlet 求解器 + 验证（物理）
 
 ```text
-执行 src/demos/09-team-tollgate/README.md「场景 2」的完整闭环并自动评判。
+执行 demos/09-team-tollgate/README.md「场景 2」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
@@ -470,7 +470,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 3. 读 README「2.3 Master 启动调用」，按 team_tollgate JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun src/demos/09-team-tollgate/check-physics-verlet.ts <run_dir>
+6. 运行：bun demos/09-team-tollgate/check-physics-verlet.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：producer 报 DRIFT < 1e-3（Verlet 辛格式守恒）；verifier VERDICT = PASS。
@@ -479,7 +479,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 ### 场景 3: 实现字符串反转 + 验证（编程）
 
 ```text
-执行 src/demos/09-team-tollgate/README.md「场景 3」的完整闭环并自动评判。
+执行 demos/09-team-tollgate/README.md「场景 3」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
@@ -487,7 +487,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 3. 读 README「3.3 Master 启动调用」，按 team_tollgate JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun src/demos/09-team-tollgate/check-coding-reverse-str.ts <run_dir>
+6. 运行：bun demos/09-team-tollgate/check-coding-reverse-str.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：producer 的 reverseStr 通过 3 用例（'abc'→'cba'、''→''、'a🚀b'→'b🚀a' 含 surrogate pair intact）；verifier VERDICT = PASS。
@@ -496,7 +496,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 ### 场景 4: 二维热传导求解器 V&V 认证（挑战级）
 
 ```text
-执行 src/demos/09-team-tollgate/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、3 门串行 V&V）。
+执行 demos/09-team-tollgate/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、3 门串行 V&V）。
 
 步骤：
 1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（6 名成员：alice/bob/carol/dave/erin/frank）
@@ -504,7 +504,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 3. 读 README「4.3 Master 启动调用」，按 team_tollgate JSON 启动编排（3 门串行：correctness -> convergence -> conservation）
 4. team_results 轮询至 master 收到汇总（每门 verifier PASS 才放行下一门；FAIL 回退 producer 重做，受 max_gate_retries=1 限制）
 5. 定位 <run_dir>（含 6 个成员的 .md：alice/bob/carol/dave/erin/frank）
-6. 运行：bun src/demos/09-team-tollgate/check-physics-heat-vv.ts <run_dir>
+6. 运行：bun demos/09-team-tollgate/check-physics-heat-vv.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：G1 max-error < 1e-3 且 VERDICT1 = PASS；G2 convergence order >= 2 且 VERDICT2 = PASS；G3 heat drift < 1e-4 且 VERDICT3 = PASS。三门全 PASS 才判 PASS。

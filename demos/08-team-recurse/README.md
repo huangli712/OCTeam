@@ -1,7 +1,7 @@
 # team_recurse 编排场景设计
 
 > **模式**：`team_recurse` — 层次化递归分解：根任务被分解为子任务（子任务可继续分解至 `max_depth`），子任务结果自底向上聚合，最终解出根任务。使用共享任务列表 + blockedBy DAG 实现分层聚合。
-> **源码**：[`src/tools/recurse.ts`](../../../src/tools/recurse.ts)
+> **源码**：[`src/tools/recurse.ts`](../../src/tools/recurse.ts)
 > **控时设计**：`max_depth=2`、`max_subtasks=3`，根 → 3 个叶节点（成员并行认领），每叶 ≤ 8 min；decomposer 汇总 ≈ 最慢叶 + 聚合 ≈ 10-12 min（远低于 30 min 上限）。
 
 ## 场景一览
@@ -400,7 +400,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 
 ## 验收清单
 
-- [ ] 3 个 check 脚本 `tsc -p src/demos/tsconfig.json` 通过（无类型错误）
+- [ ] 3 个 check 脚本 `tsc -p demos/tsconfig.json` 通过（无类型错误）
 - [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` 均为预设）
 - [ ] 每个 master 调用参数符合 `team_recurse` schema（`decomposer` 为成员名，非 `master`；`max_depth=2`、`max_subtasks=3`）
 - [ ] 每场景总时长 ≤ 15 min（远低于 30 min 上限）
@@ -417,7 +417,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 ### 场景 1: 错排数 D_n 推导（数学）
 
 ```text
-执行 src/demos/08-team-recurse/README.md「场景 1」的完整闭环并自动评判。
+执行 demos/08-team-recurse/README.md「场景 1」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（3 个 mathematician，decomposer 由团队配置指定）
@@ -425,7 +425,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 3. 读 README「1.3 Master 启动调用」，按 team_recurse JSON 启动编排（root task = 推导 D_n）
 4. team_results 轮询至 master 收到汇总（decomposer 拆子任务 → 成员自取 → 底层聚合回根）
 5. 定位 <run_dir>（含所有成员 .md）
-6. 运行：bun src/demos/08-team-recurse/check-math-derangement.ts <run_dir>
+6. 运行：bun demos/08-team-recurse/check-math-derangement.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：decomposer 的 D4_FINAL = 9；且至少 1 个叶子成员 D4_VALUE = 9（容斥/递推/生成函数三路均应得 9）。
@@ -434,7 +434,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 ### 场景 2: 阻尼单摆建模（物理）
 
 ```text
-执行 src/demos/08-team-recurse/README.md「场景 2」的完整闭环并自动评判。
+执行 demos/08-team-recurse/README.md「场景 2」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
@@ -442,7 +442,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 3. 读 README「2.3 Master 启动调用」，按 team_recurse JSON 启动编排
 4. team_results 轮询至 master 收到汇总
 5. 定位 <run_dir>
-6. 运行：bun src/demos/08-team-recurse/check-physics-damped-pendulum.ts <run_dir>
+6. 运行：bun demos/08-team-recurse/check-physics-damped-pendulum.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：decomposer 的 MODEL_VALID = true；且至少 1 叶子报 ENVELOPE_DECAY（γ=0.2 时 e-folding 常数 ≈ 0.1，即 2/γ）。
@@ -451,7 +451,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 ### 场景 3: 单页 Markdown→HTML 转换器（编程）
 
 ```text
-执行 src/demos/08-team-recurse/README.md「场景 3」的完整闭环并自动评判。
+执行 demos/08-team-recurse/README.md「场景 3」的完整闭环并自动评判。
 
 步骤：
 1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
@@ -459,7 +459,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 3. 读 README「3.3 Master 启动调用」，按 team_recurse JSON 启动编排（root = 构建转换器）
 4. team_results 轮询至 master 收到汇总（子任务：alice / bob / carol）
 5. 定位 <run_dir>
-6. 运行：bun src/demos/08-team-recurse/check-coding-md-converter.ts <run_dir>
+6. 运行：bun demos/08-team-recurse/check-coding-md-converter.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：decomposer 的 CONVERTS = true；且聚合出的 convert() 通过：convert("# Hi") 含 <h1>、convert("**b**") 含 <strong> 或 <b>。
@@ -468,7 +468,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 ### 场景 4: Vandermonde 恒等式多层证明（数学·挑战级）
 
 ```text
-执行 src/demos/08-team-recurse/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、max_depth=4，预计 ~50 min）。
+执行 demos/08-team-recurse/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、max_depth=4，预计 ~50 min）。
 
 步骤：
 1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（6 个 mathematician，decomposer 为 alice）
@@ -476,7 +476,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 3. 读 README「4.3 Master 启动调用」，按 team_recurse JSON 启动编排（root = 证明 Vandermonde 恒等式；max_depth=4, max_subtasks=4）
 4. team_results 轮询至 master 收到汇总（alice 拆 3 路径 → 各路径拆子引理 → 成员认领叶引理 → 自底向上逐层聚合回根）
 5. 定位 <run_dir>（含所有 6 名成员 .md）
-6. 运行：bun src/demos/08-team-recurse/check-math-vandermonde.ts <run_dir>
+6. 运行：bun demos/08-team-recurse/check-math-vandermonde.ts <run_dir>
 7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
 
 成功标准：alice 的 VANDERMONDE_PROVEN = true；叶节点 APPROACH 出现 ≥2 个不同名称（必含 algebraic 与 combinatorial）；所有 LEMMA_HOLDS 均为 true。
