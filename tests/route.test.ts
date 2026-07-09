@@ -19,30 +19,10 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js"
 
 // --- fixtures ---
 
-/**
- * Stub PluginContext: only ctx.client.session.promptAsync is exercised (by
- * dispatchToMember and deliverSummaryToLeader). Each call is recorded into
- * `calls` so tests can assert routing targets and leader delivery.
- */
-function makeCtx(calls: DispatchCall[] = []): PluginContext {
-    return {
-        client: {
-            session: {
-                promptAsync: async (args: any) => {
-                    calls.push({
-                        sessionId: args.path.id,
-                        text: args.body.parts[0].text,
-                    })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 /** Minimal valid route ActiveTask with sensible defaults. */
 function makeRouteTask(opts: Partial<RouteTask> = {}): RouteTask {
@@ -218,7 +198,7 @@ describe("getExpectedMember: route type", () => {
 describe("handleRouteIdle Phase A: router decision resolution", () => {
     test("normal single-target route: dispatches to the selected branch member", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const branches = [
             { name: "sales", member: "alice" },
             { name: "support", member: "bob" },
@@ -262,7 +242,7 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
 
     test("multi-target route: dispatches to all selected branch members", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const branches = [
             { name: "sales", member: "alice" },
             { name: "support", member: "bob" },
@@ -299,7 +279,7 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
 
     test("per-branch task overrides the routing input when present", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const branches = [
             { name: "support", member: "bob", task: "Handle the refund request." },
         ]
@@ -325,7 +305,7 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
 
     test("falls back to routing input when branch has no per-branch task", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const branches = [{ name: "support", member: "bob" }]
         const task = makeRouteTask({
             routerMember: "router",
@@ -349,7 +329,7 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
 
     test("no-match: parse failure fails the run with decision_parse_failure", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeRouteTask({
             routerMember: "router",
             routeBranches: [{ name: "sales", member: "alice" }],
@@ -385,7 +365,7 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
 
     test("no-match: valid parse but unknown branch name also fails the run", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeRouteTask({
             routerMember: "router",
             routeBranches: [{ name: "sales", member: "alice" }],
@@ -409,7 +389,7 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
 
     test("no active task is a safe no-op", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const team = makeTeam({ members: [{ name: "router", sessionId: "s" }] })
         await expect(handleRouteIdle(ctx, team)).resolves.toBeUndefined()
         expect(calls).toHaveLength(0)
@@ -421,7 +401,7 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
 describe("handleRouteIdle Phase B: target barrier", () => {
     test("all targets idle: delivers summary and clears the task", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeRouteTask({
             routerMember: "router",
             routeStage: true,
@@ -451,7 +431,7 @@ describe("handleRouteIdle Phase B: target barrier", () => {
 
     test("not all targets idle: no delivery (barrier waits)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeRouteTask({
             routerMember: "router",
             routeStage: true,
@@ -486,7 +466,7 @@ describe("handleRouteIdle Phase B: target barrier", () => {
 describe("routed event recording", () => {
     test("Phase A records a routed event naming the router and target members", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeRouteTask({
             routerMember: "router",
             routeBranches: [
@@ -679,7 +659,7 @@ describe("buildRouterPrompt", () => {
 describe("checkTermination: route Phase B errored target", () => {
     test("an errored target fails the run (route tolerance is 0)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeRouteTask({
             routeStage: true,
             // Fresh start time so the wall-clock branch cannot fire first; this

@@ -17,28 +17,11 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot, type DispatchCall } from "./helpers.js"
+import { makeCtx, makeMember, makeState, tmpRoot, type DispatchCall } from "./helpers.js"
 
 // --- fixtures ---
 
 
-/**
- * Stub PluginContext: only ctx.client.session.promptAsync is exercised (by
- * dispatchToMember and deliverSummaryToLeader). Each call is recorded so tests
- * can assert producer/verifier/escalator dispatch and leader delivery.
- */
-function makeCtx(calls: DispatchCall[] = []): PluginContext {
-    return {
-        client: {
-            session: {
-                promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-            },
-        },
-    } as unknown as PluginContext
-}
 
 /** Build a GatedStage with sensible defaults. */
 function gate(opts: Partial<GatedStage> & Pick<GatedStage, "member" | "verifier">): GatedStage {
@@ -273,7 +256,7 @@ describe("getExpectedMember: tollgate type", () => {
 describe("handleTollgateIdle: produce -> verify", () => {
     test("producer idle in produce phase dispatches the verifier and sets phase=verify", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "produce",
@@ -303,7 +286,7 @@ describe("handleTollgateIdle: produce -> verify", () => {
 
     test("stray idle in produce phase (verifier idles) is ignored", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "produce",
@@ -324,7 +307,7 @@ describe("handleTollgateIdle: produce -> verify", () => {
 
     test("stray idle in verify phase (producer idles) is ignored", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "verify",
@@ -345,7 +328,7 @@ describe("handleTollgateIdle: produce -> verify", () => {
 
     test("verifier with no live session in produce phase escalates as INVALID", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "produce",
@@ -376,7 +359,7 @@ describe("handleTollgateIdle: produce -> verify", () => {
 describe("handleTollgateIdle: PASS advances and completes", () => {
     test("single gate PASS -> tollgate_complete, delivered to leader", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "verify",
@@ -401,7 +384,7 @@ describe("handleTollgateIdle: PASS advances and completes", () => {
 
     test("PASS on gate 0 advances to gate 1 (dispatches gate-1 producer)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [
                 gate({ member: "alice", verifier: "bob" }),
@@ -434,7 +417,7 @@ describe("handleTollgateIdle: PASS advances and completes", () => {
 
     test("all gates PASS -> tollgate_complete", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [
                 gate({ member: "alice", verifier: "bob", completed: true }),
@@ -468,7 +451,7 @@ describe("handleTollgateIdle: PASS advances and completes", () => {
 describe("handleTollgateIdle: FAIL retry semantics", () => {
     test("default maxGateRetries=0 -> first FAIL fails the run", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "verify",
@@ -501,7 +484,7 @@ describe("handleTollgateIdle: FAIL retry semantics", () => {
 
     test("maxGateRetries=2 -> exactly 2 retries then fail (attempts counted)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "verify",
@@ -553,7 +536,7 @@ describe("handleTollgateIdle: FAIL retry semantics", () => {
 
     test("FAIL retry does NOT start the downstream gate's producer", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [
                 gate({ member: "alice", verifier: "bob" }),
@@ -587,7 +570,7 @@ describe("handleTollgateIdle: FAIL retry semantics", () => {
 describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
     test("INVALID + escalateTo -> escalate phase -> re-verify, producer never re-dispatched", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "verify",
@@ -635,7 +618,7 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
 
     test("INVALID without escalateTo -> delivered to leader, status=failed (T-4)", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "verify",
@@ -668,7 +651,7 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
 
     test("parse failure (no verdict tag) is treated as INVALID, not a producer FAIL", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "verify",
@@ -699,7 +682,7 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
 describe("handleTollgateIdle: INVALID cycle cap (P2 regression)", () => {
     test("maxInvalidCycles=2 -> the 3rd INVALID fails with tollgate_invalid:exhausted", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "verify",
@@ -771,7 +754,7 @@ describe("runStatusFromReason: tollgate markers", () => {
 describe("persisted run record: all-PASS is completed", () => {
     test("single-gate PASS persists a completed run record", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
             gatedStages: [gate({ member: "alice", verifier: "bob" })],
             tollgatePhase: "verify",
@@ -801,7 +784,7 @@ describe("persisted run record: all-PASS is completed", () => {
 describe("startVerification / advanceToGatedStage", () => {
     test("startVerification sets phase=verify and dispatches the verifier", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const g = gate({ member: "alice", verifier: "bob" })
         const task = makeTollgateTask({ gatedStages: [g], tollgatePhase: "produce" })
         const team = makeTeam({
@@ -820,7 +803,7 @@ describe("startVerification / advanceToGatedStage", () => {
 
     test("advanceToGatedStage dispatches the producer with its task", async () => {
         const calls: DispatchCall[] = []
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         const g = gate({ member: "alice", verifier: "bob", task: "produce flux core" })
         const task = makeTollgateTask({ gatedStages: [g], tollgatePhase: "produce" })
         const team = makeTeam({

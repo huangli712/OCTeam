@@ -5,34 +5,13 @@ import { createTask, updateTask } from "../src/state/tasks.js"
 import type { ActiveTask, MemberState, Task } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
-import type { PluginContext } from "../src/core/context.js"
-import { cleanupTmpRoots, tmpRoot, type DispatchCall } from "./helpers.js"
+import { makeCtx, cleanupTmpRoots, tmpRoot, type DispatchCall } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
 // --- fixtures (delegate execution path) ---
 
 
-/**
- * Stub PluginContext. delegate does NOT use responses[] (per-task results go to
- * master via team_send_message), so `messages` only needs to return an empty
- * turn. `promptAsync` records each dispatch for assertion.
- */
-function makeCtx(calls: DispatchCall[] = []): PluginContext {
-    return {
-        directory: "/app",
-        client: {
-            session: {
-                messages: async () => ({ data: [] }),
-                promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-                status: async () => ({ data: {} }),
-            },
-        },
-    } as unknown as PluginContext
-}
 
 function makeDelegateTask(opts: Partial<ActiveTask> = {}): ActiveTask {
     return {
@@ -121,7 +100,7 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
         })
         await seedTask(team, { subject: "done", description: "x", status: "completed" })
 
-        await processIdle(makeCtx(calls), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ calls }), team, team.members[0], "ses_alice")
 
         expect(team.status).toBe("idle")
         expect(team.activeTask).toBeUndefined()
@@ -145,7 +124,7 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
             blockedBy: [blocker.id],
         })
 
-        await processIdle(makeCtx(calls), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ calls }), team, team.members[0], "ses_alice")
 
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
@@ -173,7 +152,7 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
         })
 
         // Override makeCtx to report alice's session as "running" (wake-hint path).
-        const ctx = makeCtx(calls)
+        const ctx = makeCtx({ calls })
         ;(ctx.client.session as { status: unknown }).status = async () => ({
             data: { ses_alice: { type: "running" } },
         })
@@ -196,7 +175,7 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
         })
         await seedTask(team, { subject: "available", description: "x", status: "pending" })
 
-        await processIdle(makeCtx(calls), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ calls }), team, team.members[0], "ses_alice")
 
         expect(team.status).toBe("busy")
         expect(team.activeTask).toBeDefined()
