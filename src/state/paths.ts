@@ -1,3 +1,8 @@
+/**
+ * Team directory layout and path construction. All on-disk paths for team state,
+ * mailbox, tasks, worktrees, and run records are derived from these functions.
+ */
+
 import path from "node:path"
 
 // --- Scope-level paths ---

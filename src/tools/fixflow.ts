@@ -1,3 +1,9 @@
+/**
+ * team_fix_workflow tool -- master-only workflow repair. Redispatch, skip,
+ * advance, reassign, or fail a busy or interrupted team_workflow run without
+ * cancelling the whole team.
+ */
+
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
