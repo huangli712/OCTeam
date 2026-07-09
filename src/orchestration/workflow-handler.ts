@@ -1,8 +1,66 @@
-export /**
- * Workflow core state machine. processIdle captures the idle member's current
- * turn; this function validates that the member belongs to the active frontier
- * and advances only that matching step.
+/**
+ * Workflow idle handler + invalid-verdict handler, extracted from workflow.ts
+ * to keep each file under ~700 LOC. handleWorkflowIdle is the largest function
+ * in the engine (~430 lines): it captures the idle member's current turn,
+ * validates that the member belongs to the active frontier, and advances only
+ * that matching step. handleInvalidVerdict handles the three-valued
+ * PASS/FAIL/INVALID verdict routing plus ensemble aggregation.
  */
+
+import type { PluginContext } from "../core/context.js";
+import { type Team, saveTeamState } from "../state/store.js";
+import type {
+    MemberState,
+    WorkflowStep,
+} from "../core/types.js";
+import {
+    advanceWorkflowStep,
+    completeExpandedFanoutMarkers,
+    describeStep,
+    dispatchEnsembleGate,
+    dispatchGateStep,
+    dispatchTaskStep,
+    gotoWorkflowStep,
+    hasWaitingActiveWorkflowActor,
+    maybePauseAfterWorkflowStep,
+    maybePauseBeforeWorkflowStep,
+    moveActiveWorkflowStep,
+    redispatchWorkflowStep,
+    resetWorkflowStepTiming,
+} from "./workflow.js";
+import {
+    aggregateEnsembleVerdict,
+    gatedGotoIndex,
+    gateTargetIndex,
+    gateTargetIndices,
+    stepIndicesLabel,
+    whereReason,
+} from "./gate.js";
+import {
+    workflowCompleteReason,
+    workflowGateFailReason,
+    workflowInvalidReason,
+} from "./reasons.js";
+import { finishRun } from "./summary.js";
+import { recordEvent } from "./events.js";
+import { truncateOutput } from "./output.js";
+import {
+    findActiveWorkflowStepIndexForMember,
+    getActiveWorkflowStepIndices,
+    readyWorkflowStepIndices,
+} from "./dag.js";
+import { parseSelection, parseVerdict } from "./decisions.js";
+import { maybeTriggerSignoff } from "./signoff.js";
+import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js";
+import {
+    branchIdsForJoin,
+    buildBranchWorkflowOutput,
+    completeWorkflowJoinStep,
+    dispatchWorkflowJoinReducer,
+    handleWorkflowDispatchUnavailable,
+    markWorkflowStepCompleted,
+} from "./fanout.js";
+
 export async function handleWorkflowIdle(
     ctx: PluginContext,
     team: Team,

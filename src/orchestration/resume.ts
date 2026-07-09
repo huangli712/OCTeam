@@ -28,7 +28,7 @@ import {
     startVerification,
 } from "./tollgate.js";
 import { advanceWorkflowStep, redispatchWorkflowStep } from './workflow.js';
-import { handleWorkflowIdle } from './workflow-handler';
+import { handleWorkflowIdle } from "./workflow-handler.js";
 import { handleWorkflowDispatchUnavailable } from "./fanout.js";
 import {
     buildArbiterPrompt,

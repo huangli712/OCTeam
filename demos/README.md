@@ -1,6 +1,6 @@
 # OCTeam 编排场景目录
 
-11 种编排原语的真实应用场景设计集。每个场景 **端到端 ≤ 30 分钟** 可完成，含 team 配置、master 调用、执行流程时序、可运行的 TypeScript 评判脚本。
+11 种编排原语的真实应用场景设计集。每个原语包含 4 个子场景（数学 / 计算物理 / 编程 × 3 基线 + 1 挑战级），含 team 配置、master 调用、执行流程时序、可运行的 TypeScript 评判脚本。
 >
 > 场景方向覆盖：**数学 / 计算物理 / 编程**。
 
@@ -17,7 +17,7 @@
 | 07 | `team_arbitrate` | 辩论 + 仲裁 | 两派对立争议的裁决 | [`07-team-arbitrate/`](./07-team-arbitrate/) |
 | 08 | `team_recurse` | 递归分解 | 复杂任务分层拆解 | [`08-team-recurse/`](./08-team-recurse/) |
 | 09 | `team_tollgate` | 验证门流水线 | 逐关质量把关 | [`09-team-tollgate/`](./09-team-tollgate/) |
-| 10 | `team_workflow` | 声明式线性步骤引擎 | task/gate 确定性串联 | [`10-team-workflow/`](./10-team-workflow/) |
+| 10 | `team_workflow` | 声明式步骤引擎（task/gate/fanout/join） | task→gate 链 + fanout 并行集成 | [`10-team-workflow/`](./10-team-workflow/) |
 | 11 | `team_arena` | 竞争擂台：N 候选实现 + evaluator 评分选优 | 多方案竞争、客观基准选优 | [`11-team-arena/`](./11-team-arena/) |
 
 ## 场景矩阵
@@ -33,8 +33,8 @@
 | arbitrate | 矩阵求逆法之争 | 刚性 ODE 格式之争 | 缓存淘汰策略之争 | 复杂边界 PDE 五方法之争（6 人, ~40min）|
 | recurse | 错排数 D_n 推导 | 阻尼摆建模 | Markdown→HTML 转换器 | Vandermonde 恒等式多层证明（6 人, ~50min）|
 | tollgate | 快速幂实现+验证 | Verlet 求解器+验证 | 字符串反转+验证 | 二维热传导求解器 V&V 认证（6 人, ~60min）|
-| workflow | task→gate→task 链 | ODE 求解+验证+优化 | API 实现+测试+重构 | —（线性+门控重试，无评判脚本基线）|
-| arena | 排序基准选最快 | 积分器能量漂移选最稳 | — | —（候选三倍并行，evaluator 客观评分选胜者）|
+| workflow | 二分法求根实现+验证 | 抛体运动 RK4 求解+能量验证 | REST API handler 实现+验证+重构 | 多模块 fanout 并行实现 + join reduce 集成验证（6 人, ~50min）|
+| arena | 定积分三求积方法精度对决 | 三种积分器能量漂移选最稳 | 三种排序基准选最快 | 泊松方程五求解器综合擂台（5 候选+1 evaluator, ~40min）|
 
 ## 综合场景（多团队多编排）
 

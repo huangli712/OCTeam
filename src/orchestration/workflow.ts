@@ -78,7 +78,7 @@ function assertNeverWorkflowStepKind(value: never): never {
     throw new Error(`unhandled workflow step kind: ${String(value)}`);
 }
 
-function describeStep(step: WorkflowStep | undefined, index: number): string {
+export function describeStep(step: WorkflowStep | undefined, index: number): string {
     if (!step) return `step ${index + 1}`;
     const idTag = step.id ? ` (${step.id})` : "";
     switch (step.kind) {
@@ -141,7 +141,7 @@ export async function dispatchTaskStep(
 }
 
 /** Dispatch an ensemble gate's verifiers in parallel. */
-async function dispatchEnsembleGate(
+export async function dispatchEnsembleGate(
     ctx: PluginContext,
     team: Team,
     task: WorkflowTask,
@@ -189,7 +189,7 @@ async function dispatchEnsembleGate(
 }
 
 /** Dispatch a gate step's verifier with the preceding task's output + criteria. */
-async function dispatchGateStep(
+export async function dispatchGateStep(
     ctx: PluginContext,
     team: Team,
     task: WorkflowTask,
@@ -238,15 +238,13 @@ async function dispatchGateStep(
     return true;
 }
 
-function resetWorkflowStepTiming(step: WorkflowStep): void {
-    step.startedAt = undefined;
-    step.completedAt = undefined;
-    step.durationMs = undefined;
-    step.dispatchedAt = undefined;
-    step.dispatchedActor = undefined;
-}
+export function resetWorkflowStepTiming(step: WorkflowStep): void { step.startedAt = undefined;
+step.completedAt = undefined;
+step.durationMs = undefined;
+step.dispatchedAt = undefined;
+step.dispatchedActor = undefined; }
 
-function moveActiveWorkflowStep(
+export function moveActiveWorkflowStep(
     task: WorkflowTask,
     fromIndex: number,
     toIndex: number,
@@ -268,7 +266,7 @@ function moveActiveWorkflowStep(
     task.currentStageIndex = task.activeStepIndices[0] ?? toIndex;
 }
 
-function hasWaitingActiveWorkflowActor(
+export function hasWaitingActiveWorkflowActor(
     steps: WorkflowStep[],
     previousActive: ReadonlySet<number>,
     ready: readonly number[],
@@ -293,7 +291,7 @@ function hasWaitingActiveWorkflowActor(
     return false;
 }
 
-function completeExpandedFanoutMarkers(
+export function completeExpandedFanoutMarkers(
     steps: WorkflowStep[],
     readyIndices: readonly number[],
 ): void {
@@ -367,7 +365,7 @@ export async function maybePauseBeforeWorkflowStep(
  * HITL pause before the workflow advances. team_approve resumes via
  * advanceWorkflowStep. Returns true when paused (caller must NOT advance).
  */
-async function maybePauseAfterWorkflowStep(
+export async function maybePauseAfterWorkflowStep(
     ctx: PluginContext,
     team: Team,
     index: number,
@@ -399,7 +397,7 @@ async function maybePauseAfterWorkflowStep(
  * Returns true when the jump dispatched (caller must not also advance), false
  * when the jump cap was exceeded and the run terminated.
  */
-async function gotoWorkflowStep(
+export async function gotoWorkflowStep(
     ctx: PluginContext,
     team: Team,
     gateIndex: number,
