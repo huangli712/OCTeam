@@ -6,7 +6,7 @@ import { checkWorkflowInvariants } from "../src/orchestration/invariants.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import type { Team } from "../src/state/store.js"
-import { teamFixWorkflowTool } from "../src/tools/workflow-fix.js"
+import { teamFixWorkflowTool } from "../src/tools/fixflow.js"
 import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 type DispatchCall = { readonly sessionId: string; readonly text: string }
