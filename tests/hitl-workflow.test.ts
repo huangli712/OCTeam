@@ -13,9 +13,8 @@ import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { teamProgressTool } from "../src/tools/progress.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
 
-type DispatchCall = { readonly sessionId: string; readonly text: string }
 type PromptRequest = { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }
 
 function makeCtx(root: string, outputs: Record<string, string>, calls: DispatchCall[] = []): PluginContext {

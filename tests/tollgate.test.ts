@@ -17,12 +17,10 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 import { AsyncMutex } from "../src/state/locks.js"
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, tmpRoot, type DispatchCall } from "./helpers.js"
 
 // --- fixtures ---
 
-/** A recorded promptAsync call: which session got which text. */
-type DispatchCall = { sessionId: string; text: string }
 
 /**
  * Stub PluginContext: only ctx.client.session.promptAsync is exercised (by

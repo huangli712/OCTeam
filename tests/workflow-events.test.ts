@@ -16,12 +16,11 @@ import { rebuildSessionIndex } from "../src/state/resolve.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import type { Team } from "../src/state/store.js"
-import { makeMember, makeState, makeToolContext } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, type DispatchCall } from "./helpers.js"
 import { teamFixWorkflowTool } from "../src/tools/fixflow.js"
 
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
 
-type DispatchCall = { readonly sessionId: string; readonly text: string }
 
 function makeCtx(root: string, outputs: Record<string, string> = {}, calls: DispatchCall[] = []): PluginContext {
     return {

@@ -8,7 +8,7 @@ import { parseScoreboard } from "../src/orchestration/decisions.js"
 import { persistRun, readRunRecord, runStatusFromReason } from "../src/orchestration/runs.js"
 import { buildSummary } from "../src/orchestration/summary.js"
 import type { ActiveTask, ArenaTask, MemberState, RunRecord } from "../src/core/types.js"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, tmpRoot, type DispatchCall } from "./helpers.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { PluginContext } from "../src/core/context.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
@@ -477,7 +477,6 @@ describe("RunRecordSchema arena round-trip (1d)", () => {
 // Disk-backed team state + indexed master session (mirrors tollgate.test.ts).
 // =======================================================================
 
-type DispatchCall = { sessionId: string; text: string }
 
 const arenaTracked: string[] = []
 afterEach(() => {

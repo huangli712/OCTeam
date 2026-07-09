@@ -7,9 +7,8 @@ import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
 
-type DispatchCall = { readonly sessionId: string; readonly text: string }
 type PromptRequest = { readonly path: { readonly id: string }; readonly body: { readonly parts: readonly [{ readonly text: string }] } }
 
 const DECOMPOSE = '<decompose>{"subtasks":[{"subject":"part A","description":"do A"},{"subject":"part B","description":"do B"}]}</decompose>'

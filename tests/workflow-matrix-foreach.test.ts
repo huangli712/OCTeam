@@ -4,13 +4,12 @@ import { processIdle } from "../src/orchestration/idle.js"
 import { checkTermination } from "../src/orchestration/termination.js"
 import { teamWorkflowTool } from "../src/tools/workflow.js"
 import { expandMatrixForeachFanout } from "../src/tools/workflow.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { PluginContext } from "../src/core/context.js"
 import type { WorkflowToolStep } from "../src/tools/workflow.js"
 
-type DispatchCall = { readonly sessionId: string; readonly text: string }
 
 function makeCtx(root: string, outputs: Record<string, string> = {}, calls: DispatchCall[] = []): PluginContext {
     return {
