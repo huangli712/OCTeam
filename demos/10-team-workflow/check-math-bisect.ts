@@ -49,9 +49,17 @@ function parseVerdicts(raw: string): Verdict[] {
 }
 
 function loadBisect(code: string): (f: (x: number) => number, a: number, b: number, tol: number) => number {
+    // Member prompt asks for TypeScript (with type annotations) in a
+    // ```typescript block. `new Function` is a JS-only evaluator, so transpile
+    // the snippet to JS via bun's TS transpiler first. Also strip any leading
+    // `export` / `export default` -- valid ESM but illegal inside a function body.
+    // (Mirrors demos/01-team-parallel/check-coding-twosum.ts:loadFunction.)
+    const js = new Bun.Transpiler({ loader: "ts" }).transformSync(
+        code.replace(/\bexport\s+(?:default\s+)?/g, ""),
+    );
     // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
     const factory = new Function(
-        `${code}; return typeof bisect === "function" ? bisect : null;`
+        `${js}; return typeof bisect === "function" ? bisect : null;`
     ) as () => ((f: (x: number) => number, a: number, b: number, tol: number) => number) | null;
     const fn = factory();
     if (typeof fn !== "function") {
