@@ -36,7 +36,7 @@ import type {
 import {
     formatWorkflowCondition,
     matchesWorkflowCondition,
-} from "./workflow-conditions.js";
+} from "./conditions.js";
 import {
     workflowCompleteReason,
     workflowFanoutAllErroredReason,
@@ -418,7 +418,7 @@ function whereReason(step: WorkflowStep, fallback: string): string {
     return step.where === undefined ? fallback : `when:${step.where.kind}`;
 }
 
-/** Local exhaustive guard for WorkflowCondition, mirroring workflow-conditions.ts. */
+/** Local exhaustive guard for WorkflowCondition, mirroring conditions.ts. */
 function assertNeverWorkflowCondition(value: never): never {
     throw new Error(`unhandled workflow condition: ${String(value)}`);
 }
