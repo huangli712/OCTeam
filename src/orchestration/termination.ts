@@ -14,7 +14,7 @@ import { advanceWorkflowStep, markWorkflowFanoutBranchErrored, redispatchWorkflo
 import {
     workflowNoSessionReason,
     workflowTimeoutStepReason,
-} from "./workflow-reasons.js"
+} from "./reasons.js"
 
 /**
  * Check the active task's termination conditions and, if met, deliver a summary

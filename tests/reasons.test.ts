@@ -12,7 +12,7 @@ import {
     workflowNoSessionReason,
     workflowOperatorFailReason,
     workflowTimeoutStepReason,
-} from "../src/orchestration/workflow-reasons.js"
+} from "../src/orchestration/reasons.js"
 import { runStatusFromReason } from "../src/orchestration/runs.js"
 
 describe("workflow reason builders", () => {

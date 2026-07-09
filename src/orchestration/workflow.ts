@@ -45,7 +45,7 @@ import {
     workflowInvalidReason,
     workflowJumpLimitReason,
     workflowNoSessionReason,
-} from "./workflow-reasons.js";
+} from "./reasons.js";
 import { dispatchToMember } from "./dispatch.js";
 import { finishRun } from "./summary.js";
 import { recordEvent } from "./events.js";
