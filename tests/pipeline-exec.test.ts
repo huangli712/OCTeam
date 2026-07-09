@@ -116,3 +116,76 @@ describe("handlePipelineIdle (via processIdle): stage progression", () => {
         expect(team.activeTask).toBeDefined()
     })
 })
+
+
+// --- human-approval gate ---
+
+describe("handlePipelineIdle (via processIdle): human-approval gate", () => {
+    test("humanApproval=true pauses after a stage completes before dispatching the next", async () => {
+        const calls: DispatchCall[] = []
+        const task = makePipelineTask({
+            stages: [
+                { member: "alice", task: "step 1", completed: false },
+                { member: "bob", task: "step 2", completed: false },
+            ],
+            currentStageIndex: 0,
+            humanApproval: true,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({ outputs: { ses_alice: "alice's result" }, calls })
+
+        await processIdle(ctx, team, team.members[0], "ses_alice")
+
+        // Stage 0 marked complete, but pipeline paused for approval.
+        expect(task.stages[0].completed).toBe(true)
+        expect(task.approvalStage).toBe(true)
+        expect(task.approvalRequest).toBeDefined()
+        expect(task.approvalRequest!.kind).toBe("pipeline_stage")
+        // Stage 1 NOT dispatched (paused).
+        expect(calls.some(c => c.sessionId === "ses_bob")).toBe(false)
+        // Leader notified of the approval request.
+        expect(calls.some(c => c.sessionId === "ses_lead")).toBe(true)
+        // Run stays live.
+        expect(team.activeTask).toBeDefined()
+    })
+})
+
+// --- signoff gate ---
+
+describe("handlePipelineIdle (via processIdle): signoff gate", () => {
+    test("all stages complete with signoffPolicy=decider triggers signoff (no direct delivery)", async () => {
+        const calls: DispatchCall[] = []
+        const task = makePipelineTask({
+            stages: [{ member: "alice", task: "the only step", completed: false }],
+            currentStageIndex: 0,
+            signoffPolicy: "decider",
+            signoffDecider: "bob",
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob", status: "idle" },
+            ],
+        })
+        const ctx = makeCtx({ outputs: { ses_alice: "final output" }, calls })
+
+        await processIdle(ctx, team, team.members[0], "ses_alice")
+
+        // Signoff stage triggered.
+        expect(task.signoffStage).toBe(true)
+        // Decider dispatched with review prompt.
+        const bobCall = calls.find(c => c.sessionId === "ses_bob")
+        expect(bobCall).toBeDefined()
+        // NOT directly delivered as pipeline_complete.
+        expect(calls.some(c => c.sessionId === "ses_lead" && c.text.includes("pipeline_complete"))).toBe(false)
+        // Run stays live (signoff pending).
+        expect(team.activeTask).toBeDefined()
+    })
+})
