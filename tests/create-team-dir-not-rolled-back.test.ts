@@ -108,8 +108,7 @@ describe("team_create directory rollback (finding: create-team-dir-not-rolled-ba
             // expected failure — swallowed so we can inspect the on-disk state
         })
 
-        // BUG: on unfixed code the orphan directory remains → this FAILS.
-        // On fixed code create.ts rolls back the directory on write failure.
+        // create.ts rolls back the directory on write failure.
         expect(await pathExists(dir)).toBe(false)
     })
 
@@ -137,9 +136,7 @@ describe("team_create directory rollback (finding: create-team-dir-not-rolled-ba
             { sessionID: sid } as unknown as ToolContext,
         )
 
-        // BUG: on unfixed code the orphan directory triggers EEXIST at
-        // create.ts:167-170 → result contains "already exists" → this FAILS.
-        // On fixed code the directory was rolled back, so the retry succeeds.
+        // The directory was rolled back on the first failure, so the retry succeeds.
         expect(result).not.toContain("already exists")
     })
 })

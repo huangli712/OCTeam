@@ -192,13 +192,9 @@ describe("ackMessages unlink swallowed (finding: mailbox-ack-unlink-swallowed)",
         // --- Run the stale-reservation reaper. ---
         await releaseStaleReservations(teamDir, recipient)
 
-        // --- BUG (unfixed): the reaper re-appended the already-processed
-        //     message to the inbox → the recipient will see a DUPLICATE on
-        //     the next poll. processed.jsonl already has it, AND now the
-        //     inbox has it again.
-        // --- FIXED: ackMessages would have rejected (not swallowed), so
-        //     the caller knows the ack failed and the reservation's
-        //     presence is expected/surprising rather than silently lost. ---
+        // Ack failure propagation: ackMessages rejects (not swallowed), so
+        // the caller knows the ack failed and the reservation's presence
+        // is expected rather than silently lost.
         const inboxRaw = await realFs.readFile(
             inboxPath(teamDir, recipient),
             "utf8",

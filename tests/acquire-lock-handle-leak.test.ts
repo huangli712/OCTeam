@@ -107,11 +107,8 @@ describe("acquireLock handle/file leak (finding: acquire-lock-handle-leak)", () 
             }),
         ).rejects.toThrow("simulated writeFile failure")
 
-        // --- BUG (unfixed): acquireLock has no finally, so fh.close() at
-        //     locks.ts:151 is never reached and the lock file created at
-        //     locks.ts:149 stays on disk, wedging future callers.
-        // --- FIXED: a finally closes the handle and rolls back the partial
-        //     lock file before rethrowing.
+        // Lock cleanup: a finally closes the handle and rolls back the
+        // partial lock file before rethrowing.
 
         // Assertion 1: the partial lock file must be cleaned up (no orphan).
         expect(await pathExists(lockPath)).toBe(false)

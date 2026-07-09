@@ -163,12 +163,9 @@ describe("releaseStaleReservations unlink swallowed (finding: stale-reservation-
         //     Inbox now has 2 copies (UNFIXED bug). ---
         await releaseStaleReservations(teamDir, recipient)
 
-        // --- BUG (unfixed): the inbox accumulated a DUPLICATE — the same
-        //     reservation was requeued on BOTH sweeps because the unlink
-        //     failure was swallowed. A single stale reservation should
-        //     produce at most ONE requeue; here it produced TWO.
-        // --- FIXED: unlink-first means a failed unlink prevents the
-        //     requeue entirely → inbox has 0 copies across both sweeps. ---
+        // --- Inbox duplicate guard: unlink-first means a failed unlink
+        //     prevents the requeue entirely → inbox has 0 copies across
+        //     both sweeps. ---
         const occurrences = await countInboxOccurrences(
             msgId,
             inboxPath(teamDir, recipient),

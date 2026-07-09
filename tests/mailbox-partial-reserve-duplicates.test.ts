@@ -155,12 +155,8 @@ describe("pollMailbox partial reserve duplicates (finding: mailbox-partial-reser
         const inboxLines = inboxRaw.split("\n").filter(l => l.length > 0)
         expect(inboxLines.length).toBe(3)
 
-        // --- BUG (unfixed): reserved/msg-001 (written before the failure)
-        //     remains on disk. After RESERVATION_TTL_MS,
-        //     releaseStaleReservations re-appends it to the inbox →
-        //     duplicate delivery (msg-001 exists in BOTH inbox AND reserved).
-        // --- FIXED: the reserve loop's catch unlinks earlier reserved
-        //     files before rethrowing → reserved/ is empty → no duplicate.
+        // Reserve cleanup: the reserve loop's catch unlinks earlier reserved
+        // files before rethrowing → reserved/ is empty → no duplicate.
         const reservedCount = await countFiles(rdir)
         expect(reservedCount).toBe(0)
     })

@@ -133,12 +133,8 @@ describe("claimTask lock handle leak (finding: claim-lock-handle-leak)", () => {
             claimTask(dir, task.id, "alice"),
         ).rejects.toThrow("simulated writeFile failure")
 
-        // --- BUG (unfixed): tasks.ts:268-270 has no try/finally, so
-        //     fh.close() at :270 is never reached and the claim lock file
-        //     created at :268 stays on disk, wedging future claimTask
-        //     callers within the CLAIM_TTL window.
-        // --- FIXED: a finally closes the handle and rolls back the partial
-        //     claim lock file before rethrowing.
+        // Claim lock cleanup: a finally closes the handle and rolls back
+        // the partial claim lock file before rethrowing.
 
         // Assertion 1: the partial claim lock file must be cleaned up.
         expect(await pathExists(lockPath)).toBe(false)
