@@ -217,7 +217,7 @@ export interface MakeCtxOptions {
     scope?: "project" | "user"
     calls?: DispatchCall[]
     outputs?: Record<string, string>
-    promptAsync?: (req: unknown) => Promise<unknown>
+    promptAsync?: (req: { path: { id: string }; body: { parts: Array<{ type: string; text: string }> } }) => Promise<unknown>
     messages?: (req: unknown) => Promise<{ data: unknown[] }>
     status?: (req: unknown) => Promise<{ data: unknown }>
     abort?: (req: unknown) => Promise<unknown>

@@ -5,7 +5,7 @@ import { join } from "node:path"
 
 import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { advanceWorkflowStep } from '../src/orchestration/workflow.js';
-import { handleWorkflowIdle } from '../src/orchestration/workflow-handler';
+import { handleWorkflowIdle } from '../src/orchestration/workflow-handler.js';
 import { processIdle } from "../src/orchestration/idle.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
 import { waitUntil } from "../src/core/utils.js"

@@ -42,7 +42,7 @@ import { chmod, mkdir } from "node:fs/promises"
 import path from "node:path"
 
 import { captureMemberOutput } from "../src/orchestration/capture.js"
-import type { ActiveTask } from "../src/core/types.js"
+import type { ActiveTask, SdkMessage } from "../src/core/types.js"
 import { cleanupTmpRoots, makeTeam, tmpRoot } from "./helpers.js"
 
 function makeParallelTask(runId: string): ActiveTask {
@@ -67,9 +67,9 @@ function makeParallelTask(runId: string): ActiveTask {
 
 
 // A single user -> assistant turn so captureMemberOutput collects output.
-const messages = [
-    { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
-    { info: { role: "assistant" }, parts: [{ type: "text", text: "the full deliverable output" }] },
+const messages: SdkMessage[] = [
+    { info: { role: "user", id: "u1", sessionID: "s1", time: { created: 0 }, agent: "a", model: { providerID: "p", modelID: "m" } }, parts: [{ type: "text", text: "go" }] },
+    { info: { role: "assistant", id: "a1", sessionID: "s1", time: { created: 0 }, parentID: "u1", modelID: "m", providerID: "p", mode: "x", path: { cwd: "/", root: "/" }, cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } }, parts: [{ type: "text", text: "the full deliverable output" }] },
 ]
 
 afterAll(cleanupTmpRoots)
