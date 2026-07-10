@@ -90,6 +90,45 @@ describe("workflow ensemble gate", () => {
         expect(erinDispatch).toBeDefined();
     });
 
+    test("majority completes when dispatch records the last ensemble verifier", async () => {
+        // Given an active ensemble gate in the state left by its dispatch loop.
+        const calls: DispatchCall[] = [];
+        const steps = makeEnsembleSteps("majority");
+        const gate = steps[1];
+        if (gate === undefined) throw new Error("Missing ensemble gate fixture");
+        gate.dispatchedActor = "dave";
+        const task = makeWorkflowTask({
+            steps,
+            currentStageIndex: 1,
+            responses: { alice: "alice output" },
+        });
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+                { name: "dave", sessionId: "ses_dave" },
+                { name: "erin", sessionId: "ses_erin" },
+            ],
+        });
+        const ctx = makeCtx({ outputs: {
+            ses_bob: PASS_V,
+            ses_carol: PASS_V,
+            ses_dave: FAIL_V,
+        }, calls });
+
+        // When every verifier reports through the production idle path.
+        await processIdle(ctx, team, memberByName(team, "bob"), "ses_bob");
+        await processIdle(ctx, team, memberByName(team, "carol"), "ses_carol");
+        await processIdle(ctx, team, memberByName(team, "dave"), "ses_dave");
+
+        // Then the majority verdict completes and dispatches the successor.
+        expect(gate.verdict).toBe("PASS");
+        expect(gate.completed).toBe(true);
+        expect(calls.some((call) => call.sessionId === "ses_erin")).toBe(true);
+    });
+
     test("majority: 1 PASS + 2 FAIL -> aggregated FAIL, run fails", async () => {
         const calls: DispatchCall[] = [];
         const task = makeWorkflowTask({

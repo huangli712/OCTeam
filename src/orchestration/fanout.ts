@@ -22,6 +22,7 @@ import { dispatchToMember } from "./dispatch.js";
 import { finishRun } from "./summary.js";
 import { recordEvent } from "./events.js";
 import { truncateOutput } from "./output.js";
+import { joinPolicyImpossible } from "./join-policy.js";
 import {
     findActiveWorkflowStepIndexForMember,
     getActiveWorkflowStepIndices,
@@ -345,7 +346,7 @@ function evaluateWorkflowFanoutError(
     const fanoutDisplayStep = join.fanoutIndex + 1;
 
     // Fail-fast: can the join policy still be satisfied given current errors?
-    const impossible = fanoutPolicyImpossible(
+    const impossible = joinPolicyImpossible(
         join,
         erroredBranchIds,
         remainingSurvivors,
@@ -363,49 +364,6 @@ function evaluateWorkflowFanoutError(
               };
     }
     return { kind: "within_tolerance" };
-}
-
-/**
- * Given the branches that have errored so far, can the join policy still be
- * satisfied once the remaining (still-running or pending) branches resolve?
- * Used for fail-fast termination when a branch error makes success impossible.
- */
-function fanoutPolicyImpossible(
-    join: NonNullable<WorkflowStep["join"]>,
-    erroredBranchIds: readonly string[],
-    remainingSurvivors: number,
-    total: number,
-): boolean {
-    if (join.useSurvivors === true) return remainingSurvivors === 0;
-    const erroredSet = new Set(erroredBranchIds);
-    switch (join.joinPolicy) {
-        case undefined:
-        case "tolerance":
-            return (
-                remainingSurvivors === 0 ||
-                erroredBranchIds.length > join.maxErrored
-            );
-        case "all":
-        case "reduce":
-        case "select":
-            return erroredBranchIds.length > 0;
-        case "quorum": {
-            const threshold = join.quorum ?? 0;
-            const required = Math.ceil(threshold * total);
-            return remainingSurvivors < required;
-        }
-        case "any_success":
-            return remainingSurvivors === 0;
-        case "required_branches": {
-            const required = join.requiredBranchIds ?? [];
-            return required.some((branchId) => erroredSet.has(branchId));
-        }
-        default:
-            return (
-                remainingSurvivors === 0 ||
-                erroredBranchIds.length > join.maxErrored
-            );
-    }
 }
 
 function markWorkflowBranchStepsSkipped(

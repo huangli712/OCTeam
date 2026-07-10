@@ -34,6 +34,7 @@ import {
     resolveWorkflowInputIndices,
     stepLocation,
     targetStepErrorLabel,
+    type LoweredWorkflowFanoutStep,
     type LoweredWorkflowLinearStep,
     type LoweredWorkflowStep,
 } from "./lower.js"
@@ -384,6 +385,183 @@ function validateTaskInputs(steps: readonly LoweredWorkflowStep[], task: Lowered
     return null
 }
 
+function validateLoweredTaskStep(
+    steps: readonly LoweredWorkflowStep[],
+    task: LoweredWorkflowLinearStep,
+    index: number,
+    displayStep: number,
+    team: Team,
+): string | null {
+    const location = stepLocation(task, displayStep, true)
+    if (task.verifier !== undefined || task.fallback_verifier !== undefined || task.criteria !== undefined || task.target_step !== undefined || task.targets !== undefined || task.on_fail !== undefined || task.max_retries !== undefined || task.on_invalid !== undefined || task.max_invalid_retries !== undefined || task.where !== undefined) {
+        return `Error: ${location} must not set gate fields`
+    }
+    if (!task.member) return `Error: ${location} requires \`member\``
+    if (!task.task) return `Error: ${location} requires \`task\``
+    const inputsError = validateTaskInputs(steps, task, index, displayStep)
+    if (inputsError !== null) return inputsError
+    if (task.retry_on !== undefined) {
+        const condCount = [task.retry_on.empty, task.retry_on.output_contains, task.retry_on.output_not_contains, task.retry_on.regex].filter(v => v !== undefined).length
+        if (condCount === 0) return `Error: ${location} retry_on must set exactly one of empty, output_contains, output_not_contains, or regex`
+        if (condCount > 1) return `Error: ${location} retry_on must set exactly one condition (found ${condCount})`
+        if (task.max_task_retries === undefined) return `Error: ${location} with retry_on requires \`max_task_retries\``
+    }
+    if (task.max_task_retries !== undefined && task.retry_on === undefined) {
+        return `Error: ${location} max_task_retries requires \`retry_on\``
+    }
+    if (task.max_output_bytes !== undefined && (!Number.isInteger(task.max_output_bytes) || task.max_output_bytes <= 0)) {
+        return `Error: ${location} max_output_bytes must be a positive integer`
+    }
+    if (task.timeout_ms !== undefined && (!Number.isInteger(task.timeout_ms) || task.timeout_ms < 1000)) {
+        return `Error: ${location} timeout_ms must be an integer >= 1000`
+    }
+    if (task.on_timeout === "retry" && task.max_timeout_retries === undefined) {
+        return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
+    }
+    if (!isTeamMember(team, task.member)) {
+        return `Error: unknown member "${task.member}" in ${stepLocation(task, displayStep, false)}`
+    }
+    if (task.fallback_member !== undefined && !isTeamMember(team, task.fallback_member)) {
+        return `Error: ${location} fallback_member "${task.fallback_member}" is not a team member`
+    }
+    return null
+}
+
+function validateLoweredGateStep(
+    steps: readonly LoweredWorkflowStep[],
+    gate: LoweredWorkflowLinearStep,
+    index: number,
+    displayStep: number,
+    team: Team,
+): string | null {
+    const location = stepLocation(gate, displayStep, true)
+    if (gate.member !== undefined || gate.fallback_member !== undefined || gate.task !== undefined) {
+        return `Error: ${location} must not set task fields`
+    }
+    if (gate.inputs !== undefined || gate.expose_output !== undefined) {
+        return `Error: ${location} must not set task data-flow fields`
+    }
+    if (gate.max_output_bytes !== undefined) {
+        return `Error: ${location} must not set max_output_bytes (task steps only)`
+    }
+    if (gate.timeout_ms !== undefined && (!Number.isInteger(gate.timeout_ms) || gate.timeout_ms < 1000)) {
+        return `Error: ${location} timeout_ms must be an integer >= 1000`
+    }
+    if (gate.on_timeout === "retry" && gate.max_timeout_retries === undefined) {
+        return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
+    }
+    if (!gate.verifier && !gate.verifiers) return `Error: ${location} requires \`verifier\` or \`verifiers\``
+    if (!gate.criteria) return `Error: ${location} requires \`criteria\``
+    if (gate.target_step !== undefined && gate.targets !== undefined) {
+        return `Error: ${location} must not set both target_step and targets`
+    }
+    if (gate.on_fail === "retry" && gate.max_retries === undefined) {
+        return `Error: ${location} with on_fail='retry' requires \`max_retries\``
+    }
+    if (gate.on_fail === "skip" && gate.on_fail_goto !== undefined) {
+        return `Error: ${location} on_fail_goto is incompatible with on_fail='skip'`
+    }
+    if (gate.on_invalid === "retry_verifier" && gate.max_invalid_retries === undefined) {
+        return `Error: ${location} with on_invalid='retry_verifier' requires \`max_invalid_retries\``
+    }
+    if (gate.on_malformed === "retry_verifier" && gate.max_malformed_retries === undefined) {
+        return `Error: ${location} with on_malformed='retry_verifier' requires \`max_malformed_retries\``
+    }
+    if (gate.max_jumps !== undefined && (gate.max_jumps < 0 || gate.max_jumps > 10)) {
+        return `Error: ${location} max_jumps must be between 0 and 10`
+    }
+    if (gate.max_jumps !== undefined && gate.on_pass_goto === undefined && gate.on_fail_goto === undefined && gate.on_invalid_goto === undefined) {
+        return `Error: ${location} max_jumps requires on_pass_goto/on_fail_goto/on_invalid_goto (no goto to bound)`
+    }
+    if (gate.loop !== undefined) {
+        if (gate.on_fail_goto === undefined) return `Error: ${location} loop requires \`on_fail_goto\` (no backward jump target)`
+        if (gate.on_fail === "retry") return `Error: ${location} loop is incompatible with on_fail='retry' (use on_fail='fail' with on_fail_goto)`
+        if (gate.on_fail === "skip") return `Error: ${location} loop is incompatible with on_fail='skip'`
+    }
+    if (gate.where !== undefined) {
+        if (gate.on_pass_goto === undefined && gate.on_fail_goto === undefined) {
+            return `Error: ${location} where requires on_pass_goto or on_fail_goto`
+        }
+        const parsed = parseWorkflowCondition(gate.where)
+        if ("error" in parsed) return `Error: ${location} ${parsed.error}`
+    }
+    for (const [field, ref] of [
+        ["on_pass_goto", gate.on_pass_goto],
+        ["on_fail_goto", gate.on_fail_goto],
+        ["on_invalid_goto", gate.on_invalid_goto],
+    ] as const) {
+        if (ref === undefined) continue
+        const gotoIdx = resolveGotoIndex(steps, index, ref)
+        if (gotoIdx < 0) {
+            return `Error: ${location} ${field} "${String(ref)}" must reference an existing step${typeof ref === "string" ? " by id" : ""} and must not self-jump`
+        }
+        if (gate.on_invalid === "escalate" && field === "on_invalid_goto") {
+            return `Error: ${location} on_invalid_goto is incompatible with on_invalid='escalate' (escalate uses approve/reject)`
+        }
+    }
+    if (gate.approval_after === true && (gate.on_pass_goto !== undefined || gate.on_fail_goto !== undefined || gate.on_invalid_goto !== undefined)) {
+        return `Error: ${location} approval_after is incompatible with on_pass_goto/on_fail_goto/on_invalid_goto (team_approve calls advance, which cannot honor a goto jump)`
+    }
+    const targetIndices = resolveAndValidateGateTargets(steps, gate, index, displayStep)
+    if ("error" in targetIndices) return targetIndices.error
+    for (const targetIndex of targetIndices.indices) {
+        const target = steps[targetIndex]
+        if (target?.kind !== "task" || !target.member) return `Error: step ${targetIndex + 1} (task) requires \`member\``
+        const targetActors = [
+            { field: "member", name: target.member },
+            { field: "fallback_member", name: target.fallback_member },
+        ]
+        const verifierActors = [
+            { field: "verifier", name: gate.verifier },
+            { field: "fallback_verifier", name: gate.fallback_verifier },
+        ]
+        for (const verifierActor of verifierActors) {
+            if (verifierActor.name === undefined) continue
+            const matchingTarget = targetActors.find(targetActor => targetActor.name === verifierActor.name)
+            if (matchingTarget !== undefined) {
+                return `Error: ${location} ${verifierActor.field} "${verifierActor.name}" must differ from ${targetStepErrorLabel(target, targetIndex)} ${matchingTarget.field} (no self-verification)`
+            }
+        }
+    }
+    if (targetIndices.indices.length === 0) {
+        if (gate.targets === undefined) {
+            return `Error: ${location} has no preceding task step to verify`
+        }
+        return `Error: ${location} targets must reference at least one previous task step`
+    }
+    if (gate.verifier !== undefined && !isTeamMember(team, gate.verifier)) {
+        return `Error: unknown member "${gate.verifier}" in ${location} verifier`
+    }
+    if (gate.fallback_verifier !== undefined && !isTeamMember(team, gate.fallback_verifier)) {
+        return `Error: ${location} fallback_verifier "${gate.fallback_verifier}" is not a team member`
+    }
+    if (gate.verifiers !== undefined) {
+        if (gate.verifier !== undefined) return `Error: ${location} verifiers is mutually exclusive with verifier`
+        if (gate.fallback_verifier !== undefined) return `Error: ${location} verifiers is mutually exclusive with fallback_verifier`
+        if (gate.ensemble_policy === undefined) return `Error: ${location} with verifiers requires \`ensemble_policy\``
+        if (gate.ensemble_policy === "quorum" && gate.ensemble_quorum === undefined) return `Error: ${location} with ensemble_policy='quorum' requires \`ensemble_quorum\``
+        for (const vName of gate.verifiers) {
+            if (!isTeamMember(team, vName)) return `Error: ${location} verifiers entry "${vName}" is not a team member`
+            for (const targetIndex of targetIndices.indices) {
+                const target = steps[targetIndex]
+                if (target?.kind === "task" && (target.member === vName || target.fallback_member === vName)) {
+                    return `Error: ${location} verifiers entry "${vName}" must differ from ${targetStepErrorLabel(target, targetIndex)} member (no self-verification)`
+                }
+            }
+        }
+    }
+    if (gate.ensemble_policy !== undefined && gate.verifiers === undefined) return `Error: ${location} ensemble_policy requires \`verifiers\``
+    if (gate.ensemble_quorum !== undefined && gate.ensemble_policy !== "quorum") return `Error: ${location} ensemble_quorum requires ensemble_policy='quorum'`
+    return null
+}
+
+function validateLoweredFanoutStep(step: LoweredWorkflowFanoutStep, displayStep: number, team: Team): string | null {
+    if ((step.fanout.joinPolicy === "reduce" || step.fanout.joinPolicy === "select") && step.fanout.reducerMember !== undefined && !isTeamMember(team, step.fanout.reducerMember)) {
+        return `Error: fanout step ${displayStep} reducer_member "${step.fanout.reducerMember}" is not a team member`
+    }
+    return null
+}
+
 // --- graph validator ---
 
 /** Full structural and semantic validation of the lowered workflow graph against a team. */
@@ -403,165 +581,18 @@ export function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team
         const displayStep = i + 1
         switch (s.kind) {
             case "task": {
-                const location = stepLocation(s, displayStep, true)
-                if (s.verifier !== undefined || s.fallback_verifier !== undefined || s.criteria !== undefined || s.target_step !== undefined || s.targets !== undefined || s.on_fail !== undefined || s.max_retries !== undefined || s.on_invalid !== undefined || s.max_invalid_retries !== undefined || s.where !== undefined) {
-                    return `Error: ${location} must not set gate fields`
-                }
-                if (!s.member) return `Error: ${location} requires \`member\``
-                if (!s.task) return `Error: ${location} requires \`task\``
-                const inputsError = validateTaskInputs(loweredSteps, s, i, displayStep)
-                if (inputsError !== null) return inputsError
-                if (s.retry_on !== undefined) {
-                    const condCount = [s.retry_on.empty, s.retry_on.output_contains, s.retry_on.output_not_contains, s.retry_on.regex].filter(v => v !== undefined).length
-                    if (condCount === 0) return `Error: ${location} retry_on must set exactly one of empty, output_contains, output_not_contains, or regex`
-                    if (condCount > 1) return `Error: ${location} retry_on must set exactly one condition (found ${condCount})`
-                    if (s.max_task_retries === undefined) return `Error: ${location} with retry_on requires \`max_task_retries\``
-                }
-                if (s.max_task_retries !== undefined && s.retry_on === undefined) {
-                    return `Error: ${location} max_task_retries requires \`retry_on\``
-                }
-                if (s.max_output_bytes !== undefined && (!Number.isInteger(s.max_output_bytes) || s.max_output_bytes <= 0)) {
-                    return `Error: ${location} max_output_bytes must be a positive integer`
-                }
-                if (s.timeout_ms !== undefined && (!Number.isInteger(s.timeout_ms) || s.timeout_ms < 1000)) {
-                    return `Error: ${location} timeout_ms must be an integer >= 1000`
-                }
-                if (s.on_timeout === "retry" && s.max_timeout_retries === undefined) {
-                    return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
-                }
-                if (!isTeamMember(team, s.member)) {
-                    return `Error: unknown member "${s.member}" in ${stepLocation(s, displayStep, false)}`
-                }
-                if (s.fallback_member !== undefined && !isTeamMember(team, s.fallback_member)) {
-                    return `Error: ${location} fallback_member "${s.fallback_member}" is not a team member`
-                }
+                const taskError = validateLoweredTaskStep(loweredSteps, s, i, displayStep, team)
+                if (taskError !== null) return taskError
                 break
             }
             case "gate": {
-                const location = stepLocation(s, displayStep, true)
-                if (s.member !== undefined || s.fallback_member !== undefined || s.task !== undefined) {
-                    return `Error: ${location} must not set task fields`
-                }
-                if (s.inputs !== undefined || s.expose_output !== undefined) {
-                    return `Error: ${location} must not set task data-flow fields`
-                }
-                if (s.max_output_bytes !== undefined) {
-                    return `Error: ${location} must not set max_output_bytes (task steps only)`
-                }
-                if (s.timeout_ms !== undefined && (!Number.isInteger(s.timeout_ms) || s.timeout_ms < 1000)) {
-                    return `Error: ${location} timeout_ms must be an integer >= 1000`
-                }
-                if (s.on_timeout === "retry" && s.max_timeout_retries === undefined) {
-                    return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
-                }
-                if (!s.verifier && !s.verifiers) return `Error: ${location} requires \`verifier\` or \`verifiers\``
-                if (!s.criteria) return `Error: ${location} requires \`criteria\``
-                if (s.target_step !== undefined && s.targets !== undefined) {
-                    return `Error: ${location} must not set both target_step and targets`
-                }
-                if (s.on_fail === "retry" && s.max_retries === undefined) {
-                    return `Error: ${location} with on_fail='retry' requires \`max_retries\``
-                }
-                if (s.on_fail === "skip" && s.on_fail_goto !== undefined) {
-                    return `Error: ${location} on_fail_goto is incompatible with on_fail='skip'`
-                }
-                if (s.on_invalid === "retry_verifier" && s.max_invalid_retries === undefined) {
-                    return `Error: ${location} with on_invalid='retry_verifier' requires \`max_invalid_retries\``
-                }
-                if (s.on_malformed === "retry_verifier" && s.max_malformed_retries === undefined) {
-                    return `Error: ${location} with on_malformed='retry_verifier' requires \`max_malformed_retries\``
-                }
-                if (s.max_jumps !== undefined && (s.max_jumps < 0 || s.max_jumps > 10)) {
-                    return `Error: ${location} max_jumps must be between 0 and 10`
-                }
-                if (s.max_jumps !== undefined && s.on_pass_goto === undefined && s.on_fail_goto === undefined && s.on_invalid_goto === undefined) {
-                    return `Error: ${location} max_jumps requires on_pass_goto/on_fail_goto/on_invalid_goto (no goto to bound)`
-                }
-                if (s.loop !== undefined) {
-                    if (s.on_fail_goto === undefined) return `Error: ${location} loop requires \`on_fail_goto\` (no backward jump target)`
-                    if (s.on_fail === "retry") return `Error: ${location} loop is incompatible with on_fail='retry' (use on_fail='fail' with on_fail_goto)`
-                    if (s.on_fail === "skip") return `Error: ${location} loop is incompatible with on_fail='skip'`
-                }
-                if (s.where !== undefined) {
-                    if (s.on_pass_goto === undefined && s.on_fail_goto === undefined) {
-                        return `Error: ${location} where requires on_pass_goto or on_fail_goto`
-                    }
-                    const parsed = parseWorkflowCondition(s.where)
-                    if ("error" in parsed) return `Error: ${location} ${parsed.error}`
-                }
-                for (const [field, ref] of [
-                    ["on_pass_goto", s.on_pass_goto],
-                    ["on_fail_goto", s.on_fail_goto],
-                    ["on_invalid_goto", s.on_invalid_goto],
-                ] as const) {
-                    if (ref === undefined) continue
-                    const gotoIdx = resolveGotoIndex(loweredSteps, i, ref)
-                    if (gotoIdx < 0) {
-                        return `Error: ${location} ${field} "${String(ref)}" must reference an existing step${typeof ref === "string" ? " by id" : ""} and must not self-jump`
-                    }
-                    if (s.on_invalid === "escalate" && field === "on_invalid_goto") {
-                        return `Error: ${location} on_invalid_goto is incompatible with on_invalid='escalate' (escalate uses approve/reject)`
-                    }
-                }
-                if (s.approval_after === true && (s.on_pass_goto !== undefined || s.on_fail_goto !== undefined || s.on_invalid_goto !== undefined)) {
-                    return `Error: ${location} approval_after is incompatible with on_pass_goto/on_fail_goto/on_invalid_goto (team_approve calls advance, which cannot honor a goto jump)`
-                }
-                const targetIndices = resolveAndValidateGateTargets(loweredSteps, s, i, displayStep)
-                if ("error" in targetIndices) return targetIndices.error
-                for (const targetIndex of targetIndices.indices) {
-                    const target = loweredSteps[targetIndex]
-                    if (target?.kind !== "task" || !target.member) return `Error: step ${targetIndex + 1} (task) requires \`member\``
-                    const targetActors = [
-                        { field: "member", name: target.member },
-                        { field: "fallback_member", name: target.fallback_member },
-                    ]
-                    const verifierActors = [
-                        { field: "verifier", name: s.verifier },
-                        { field: "fallback_verifier", name: s.fallback_verifier },
-                    ]
-                    for (const verifierActor of verifierActors) {
-                        if (verifierActor.name === undefined) continue
-                        const matchingTarget = targetActors.find(targetActor => targetActor.name === verifierActor.name)
-                        if (matchingTarget !== undefined) {
-                            return `Error: ${location} ${verifierActor.field} "${verifierActor.name}" must differ from ${targetStepErrorLabel(target, targetIndex)} ${matchingTarget.field} (no self-verification)`
-                        }
-                    }
-                }
-                if (targetIndices.indices.length === 0) {
-                    if (s.targets === undefined) {
-                        return `Error: ${location} has no preceding task step to verify`
-                    }
-                    return `Error: ${location} targets must reference at least one previous task step`
-                }
-                if (s.verifier !== undefined && !isTeamMember(team, s.verifier)) {
-                    return `Error: unknown member "${s.verifier}" in ${location} verifier`
-                }
-                if (s.fallback_verifier !== undefined && !isTeamMember(team, s.fallback_verifier)) {
-                    return `Error: ${location} fallback_verifier "${s.fallback_verifier}" is not a team member`
-                }
-                if (s.verifiers !== undefined) {
-                    if (s.verifier !== undefined) return `Error: ${location} verifiers is mutually exclusive with verifier`
-                    if (s.fallback_verifier !== undefined) return `Error: ${location} verifiers is mutually exclusive with fallback_verifier`
-                    if (s.ensemble_policy === undefined) return `Error: ${location} with verifiers requires \`ensemble_policy\``
-                    if (s.ensemble_policy === "quorum" && s.ensemble_quorum === undefined) return `Error: ${location} with ensemble_policy='quorum' requires \`ensemble_quorum\``
-                    for (const vName of s.verifiers) {
-                        if (!isTeamMember(team, vName)) return `Error: ${location} verifiers entry "${vName}" is not a team member`
-                        for (const targetIndex of targetIndices.indices) {
-                            const target = loweredSteps[targetIndex]
-                            if (target?.kind === "task" && (target.member === vName || target.fallback_member === vName)) {
-                                return `Error: ${location} verifiers entry "${vName}" must differ from ${targetStepErrorLabel(target, targetIndex)} member (no self-verification)`
-                            }
-                        }
-                    }
-                }
-                if (s.ensemble_policy !== undefined && s.verifiers === undefined) return `Error: ${location} ensemble_policy requires \`verifiers\``
-                if (s.ensemble_quorum !== undefined && s.ensemble_policy !== "quorum") return `Error: ${location} ensemble_quorum requires ensemble_policy='quorum'`
+                const gateError = validateLoweredGateStep(loweredSteps, s, i, displayStep, team)
+                if (gateError !== null) return gateError
                 break
             }
             case "fanout": {
-                if ((s.fanout.joinPolicy === "reduce" || s.fanout.joinPolicy === "select") && s.fanout.reducerMember !== undefined && !isTeamMember(team, s.fanout.reducerMember)) {
-                    return `Error: fanout step ${displayStep} reducer_member "${s.fanout.reducerMember}" is not a team member`
-                }
+                const fanoutError = validateLoweredFanoutStep(s, displayStep, team)
+                if (fanoutError !== null) return fanoutError
                 break
             }
             case "join":

@@ -21,7 +21,7 @@ import { type Team, saveTeamState } from "../state/store.js"
 import { countUnreadMessages } from "../messaging/mailbox.js"
 import { sendWakeHint } from "../messaging/wake-hint.js"
 import { sumMemberTokens } from "./output.js";
-import { getActiveWorkflowStepActors } from "./dag.js"
+import { getActiveWorkflowStepActors, getActiveWorkflowStepIndices } from "./dag.js"
 import { safeMemberAgent } from "../core/role.js"
 import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../core/types.js"
 import { deliverQueuedResultsToMaster } from "./summary.js"
@@ -70,7 +70,15 @@ export function getExpectedMember(task: ActiveTask): string | null {
     if (task.type === "recurse") return null   // same as delegate: any member advances
     if (task.type === "workflow") {
         // workflow: linear state expects one actor; fanout frontiers can have
-        // several active branch actors and are rejected inside handleWorkflowIdle.
+        // several active branch actors and are rejected inside handleWorkflowIdle. 
+        // An ensemble gate dispatches multiple verifiers in parallel; any of them
+        // may advance, so do not nominate a single (last-dispatched) actor —
+        // member-specific validation is deferred to handleWorkflowIdle.
+        const steps = task.steps ?? []
+        for (const index of getActiveWorkflowStepIndices(task)) {
+            const step = steps[index]
+            if (step?.kind === "gate" && step.verifiers) return null
+        }
         const actors = getActiveWorkflowStepActors(task)
         return actors.length === 1 ? (actors[0] ?? null) : null
     }
@@ -275,6 +283,5 @@ export async function processIdle(
     // Step 7: Termination checks.
     await checkTermination(ctx, team)
 }
-
 
 

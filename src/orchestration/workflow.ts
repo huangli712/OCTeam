@@ -25,45 +25,33 @@
 import type { PluginContext } from "../core/context.js";
 import { type Team, saveTeamState } from "../state/store.js";
 import type {
-    MemberState,
     WorkflowStep,
     WorkflowTask,
 } from "../core/types.js";
 import {
-    aggregateEnsembleVerdict,
     buildGateProducerOutput,
     buildGateVerifierPrompt,
     buildJumpContext,
-    gatedGotoIndex,
-    gateTargetIndex,
     gateTargetIndices,
     stepIndicesLabel,
-    whereReason,
     workflowTargetLabel,
     type WorkflowJumpTransition,
 } from "./gate.js";
 import {
     workflowCompleteReason,
-    workflowGateFailReason,
-    workflowInvalidReason,
     workflowJumpLimitReason,
 } from "./reasons.js";
 import { dispatchToMember } from "./dispatch.js";
 import { finishRun } from "./summary.js";
 import { recordEvent } from "./events.js";
-import { truncateOutput } from "./output.js";
 import {
-    findActiveWorkflowStepIndexForMember,
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
     sortedWorkflowIndices,
 } from "./dag.js";
-import { parseSelection, parseVerdict } from "./decisions.js";
 import { maybeTriggerSignoff } from "./signoff.js";
-import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js";
+import { forceApprovalRequest } from "./hitl.js";
 import {
-    branchIdsForJoin,
-    buildBranchWorkflowOutput,
     completeWorkflowJoinStep,
     dispatchWorkflowJoinReducer,
     handleWorkflowDispatchUnavailable,
@@ -450,6 +438,9 @@ export async function gotoWorkflowStep(
             if (s.kind === "task") s.output = undefined;
             if (s.kind === "gate") {
                 s.verdict = undefined;
+                // Clear cached per-verifier results so the ensemble gate
+                // re-dispatches every verifier when the body re-runs.
+                s.ensembleResults = undefined;
                 if (i !== gateIndex) {
                     s.attempts = 0;
                     s.invalidAttempts = 0;
@@ -457,10 +448,14 @@ export async function gotoWorkflowStep(
             }
         }
     }
-    // Mark the triggering gate complete so find-next-incomplete does not loop
-    // back to it after a forward jump, and so approval resume advances past it.
-    gate.completed = true;
-    gate.dispatchedActor = undefined;
+    // Forward jumps mark the triggering gate complete so find-next-incomplete
+    // does not loop back to it and approval resume advances past it. Backward
+    // jumps leave the gate incomplete so it re-verifies the re-run path on the
+    // next advance (mirroring FAIL-retry semantics).
+    if (targetIndex > gateIndex) {
+        gate.completed = true;
+        gate.dispatchedActor = undefined;
+    }
 
     recordEvent(team, {
         timestamp: Date.now(),

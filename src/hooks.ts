@@ -10,6 +10,7 @@
 import type { Hooks } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "./core/context.js"
+import type { Team } from "./state/store.js"
 import { activeTeams, loadTeamState, saveTeamState } from './state/store.js';
 import { resolveMasterTeams, resolveTeamMember, isMasterSession } from "./state/resolve.js"
 import { ackMessages, formatMailboxInjection, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
@@ -301,7 +302,7 @@ export function createTransformHook(
  */
 export async function sweepTeamOnce(
     ctx: PluginContext,
-    team: { directory: string; members: MemberState[]; deleted?: boolean; mutex: { runExclusive<T>(fn: () => Promise<T>): Promise<T> } },
+    team: Team,
     statusMap: Record<string, { type: string }>,
 ): Promise<void> {
     await team.mutex.runExclusive(async () => {
@@ -320,20 +321,20 @@ export async function sweepTeamOnce(
         for (const m of team.members) {
             await releaseStaleReservations(team.directory, m.name)
         }
-        if ((team as { activeTask?: { type?: string } }).activeTask?.type === "delegate") {
+        if (team.activeTask?.type === "delegate") {
             await reapStaleClaims(team.directory)
         }
         // 2. Termination checks run even if no idle arrives.
-        await checkTermination(ctx, team as Parameters<typeof checkTermination>[1])
-        if (!(team as { activeTask?: unknown }).activeTask) return
+        await checkTermination(ctx, team)
+        if (!team.activeTask) return
         // 3. Missed-idle reconciliation.
         for (const member of team.members) {
             if (!member.sessionId || member.status !== "running") continue
             if (statusMap[member.sessionId]?.type === "idle") {
-                await processIdle(ctx, team as Parameters<typeof processIdle>[1], member, member.sessionId)
+                await processIdle(ctx, team, member, member.sessionId)
             }
         }
-        await persistTeamState(ctx, team as Parameters<typeof saveTeamState>[0], "persist team state failed (sweep)", { team: (team as { teamName?: string }).teamName ?? "(unknown)" })
+        await persistTeamState(ctx, team, "persist team state failed (sweep)", { team: team.teamName ?? "(unknown)" })
     })
 }
 

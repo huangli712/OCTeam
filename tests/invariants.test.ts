@@ -116,6 +116,31 @@ describe("workflow runtime invariants", () => {
         expect(task).toEqual(before)
     })
 
+    test("accepts a completed all join using surviving branches", () => {
+        // Given
+        const steps = fanoutSteps({
+            apiCompleted: true,
+            testCompleted: false,
+            joinCompleted: true,
+            erroredBranchIds: ["tests"],
+            survivorBranchIds: ["api"],
+        })
+        const joinStep = steps[3]
+        if (joinStep?.join === undefined) throw new Error("Missing join fixture step")
+        joinStep.join = {
+            ...joinStep.join,
+            joinPolicy: "all",
+            useSurvivors: true,
+        }
+        const task = workflowTask({ currentStageIndex: 3, steps })
+
+        // When
+        const result = checkWorkflowInvariants(task)
+
+        // Then
+        expect(result).toEqual({ ok: true })
+    })
+
     test("rejects active frontier indices that are unsorted, duplicated, out of bounds, or already completed", () => {
         // Given
         const task = workflowTask({

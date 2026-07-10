@@ -75,6 +75,41 @@ describe("workflow loop", () => {
         expect(task.steps![1].jumpCount ?? 0).toBe(0);
     });
 
+    test("loop revalidates the body before dispatching the successor", async () => {
+        // Given an active gate whose FAIL verdict loops back to the body.
+        const calls: DispatchCall[] = [];
+        const steps = makeLoopSteps(0);
+        const task = makeWorkflowTask({
+            steps,
+            currentStageIndex: 1,
+            responses: { alice: "alice output" },
+        });
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+            ],
+        });
+        const ctx = makeCtx({
+            outputs: {
+                ses_alice: "revised alice output",
+                ses_bob: FAIL_VERDICT,
+            },
+            calls,
+        });
+
+        // When the gate fails and the redispatched body completes.
+        await processIdle(ctx, team, team.members[1], "ses_bob");
+        await processIdle(ctx, team, team.members[0], "ses_alice");
+
+        // Then the gate is pending a fresh verdict and the successor is untouched.
+        expect(calls.filter((call) => call.sessionId === "ses_bob")).toHaveLength(1);
+        expect(steps[1]?.completed).toBe(false);
+        expect(calls.some((call) => call.sessionId === "ses_carol")).toBe(false);
+    });
+
     test("exhaust with on_exhaust='fail' terminates the run", async () => {
         const calls: DispatchCall[] = [];
         const task = makeWorkflowTask({
@@ -153,5 +188,47 @@ describe("workflow loop", () => {
         // workflow should advance to step 2 (carol)
         const carolDispatch = calls.find((c) => c.sessionId === "ses_carol");
         expect(carolDispatch).toBeDefined();
+    });
+
+    test("full cycle: FAIL backward goto then body idle re-dispatches gate, not successor", async () => {
+        const calls: DispatchCall[] = [];
+        const steps = makeLoopSteps(0);
+        const task = makeWorkflowTask({
+            steps,
+            currentStageIndex: 1,
+            responses: { alice: "alice output" },
+        });
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+            ],
+        });
+        const ctx = makeCtx({
+            outputs: { ses_bob: FAIL_VERDICT, ses_alice: "alice output" },
+            calls: calls,
+        });
+
+        // Phase 1: gate verifier FAIL triggers backward goto to step 0 (alice).
+        await processIdle(ctx, team, team.members[1], "ses_bob");
+
+        // Backward goto re-dispatches alice (step 0 body).
+        const aliceRedispatch = calls.find((c) => c.sessionId === "ses_alice");
+        expect(aliceRedispatch).toBeDefined();
+        // Gate must remain incomplete after the backward jump so advancement
+        // re-verifies it instead of skipping to the successor.
+        expect(steps[1]?.completed).toBe(false);
+
+        // Phase 2: body (alice) goes idle after re-running -> must re-verify gate.
+        await processIdle(ctx, team, team.members[0], "ses_alice");
+
+        // Gate (bob) must be re-dispatched for re-verification.
+        const gateRedispatch = calls.filter((c) => c.sessionId === "ses_bob");
+        expect(gateRedispatch.length).toBe(1);
+        // Successor (carol) must remain undispatched.
+        const carolDispatch = calls.find((c) => c.sessionId === "ses_carol");
+        expect(carolDispatch).toBeUndefined();
     });
 });

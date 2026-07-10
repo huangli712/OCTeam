@@ -14,7 +14,7 @@ import type {
     WorkflowJoinMetadata,
     WorkflowStep,
 } from "../core/types.js"
-import { parseWorkflowCondition, formatWorkflowCondition } from "../orchestration/gate.js"
+import { parseWorkflowCondition } from "../orchestration/gate.js"
 import type {
     WorkflowFanoutBranch,
     WorkflowLinearToolStep,

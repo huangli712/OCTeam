@@ -4,6 +4,7 @@
         "noEmit": true,
         "emitDeclarationOnly": false,
         "rootDir": ".",
+        "noUnusedLocals": false,
         "types": ["node", "bun"]
     },
     "include": [
