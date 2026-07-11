@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { ToolContext } from "@opencode-ai/plugin"
 
 import { getExpectedMember } from "../src/orchestration/idle.js"
-import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../src/orchestration/tollgate.js"
+import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../src/orchestration/modes/tollgate.js"
 import { parseVerdict } from "../src/orchestration/decisions.js"
 import { readRunRecord, runStatusFromReason } from "../src/orchestration/runs.js"
 import { buildSummary } from "../src/orchestration/summary.js"

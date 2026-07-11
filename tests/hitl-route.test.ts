@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { MemberState, RouteBranch, RouteTask } from "../src/core/types.js"
-import { handleRouteIdle } from "../src/orchestration/route.js"
+import { handleRouteIdle } from "../src/orchestration/modes/route.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"

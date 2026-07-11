@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { ToolContext } from "@opencode-ai/plugin"
 
 import { getExpectedMember } from "../src/orchestration/idle.js"
-import { handleRouteIdle } from "../src/orchestration/route.js"
+import { handleRouteIdle } from "../src/orchestration/modes/route.js"
 import { parseRouteDecision } from "../src/orchestration/decisions.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
 

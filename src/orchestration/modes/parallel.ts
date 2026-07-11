@@ -9,11 +9,11 @@
  *   - All errored / zero survivors → deliver (failed: member_error)
  */
 
-import type { PluginContext } from "../core/context.js"
-import { type Team } from "../state/store.js"
-import { finishRun } from "./summary.js"
-import { waitForBarrier } from "./barriers.js"
-import { maybeTriggerReduce, maybeTriggerSignoff } from "./signoff.js"
+import type { PluginContext } from "../../core/context.js"
+import { type Team } from "../../state/store.js"
+import { finishRun } from "../summary.js"
+import { waitForBarrier } from "../barriers.js"
+import { maybeTriggerReduce, maybeTriggerSignoff } from "../signoff.js"
 
 /** Single-barrier fan-in for parallel mode: wait for all members, then maybe reduce, signoff, and deliver. */
 export async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void> {

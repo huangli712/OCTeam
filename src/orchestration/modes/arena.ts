@@ -5,13 +5,13 @@
  * evaluate (scoreboard parse, winner selection, bounded eval retry, delivery).
  */
 
-import type { PluginContext } from "../core/context.js"
-import { type Team, saveTeamState } from "../state/store.js"
-import type { ArenaCandidateScore, ArenaScoreboard, ArenaTask, MemberState } from "../core/types.js"
-import { waitForBarrier } from "./barriers.js"
-import { dispatchToMember } from "./dispatch.js"
-import { parseScoreboard } from "./decisions.js"
-import { finishRun } from "./summary.js"
+import type { PluginContext } from "../../core/context.js"
+import { type Team, saveTeamState } from "../../state/store.js"
+import type { ArenaCandidateScore, ArenaScoreboard, ArenaTask, MemberState } from "../../core/types.js"
+import { waitForBarrier } from "../barriers.js"
+import { dispatchToMember } from "../dispatch.js"
+import { parseScoreboard } from "../decisions.js"
+import { finishRun } from "../summary.js"
 
 /**
  * Select the winning candidate deterministically from an evaluator-attested

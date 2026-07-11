@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ConsensusTask, MemberState } from "../src/core/types.js"
-import { handleConsensusIdle } from "../src/orchestration/consensus.js"
+import { handleConsensusIdle } from "../src/orchestration/modes/consensus.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"

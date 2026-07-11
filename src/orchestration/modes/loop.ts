@@ -11,15 +11,15 @@
  *   - Else → next round with decider feedback injected into member prompts
  */
 
-import type { PluginContext } from "../core/context.js"
-import { logEvent } from "../core/log.js"
-import { type Team, clearActiveTask } from "../state/store.js"
-import type { MemberState } from "../core/types.js"
-import { advanceToStage } from "./dispatch.js"
-import { deliverSummaryToLeader, finishRun } from "./summary.js"
-import { recordEvent } from "./events.js"
-import { allReadOnlyStagesReportNoIssues, parseDecision } from "./decisions.js"
-import { maybeRequestApproval } from "./hitl.js"
+import type { PluginContext } from "../../core/context.js"
+import { logEvent } from "../../core/log.js"
+import { type Team, clearActiveTask } from "../../state/store.js"
+import type { MemberState } from "../../core/types.js"
+import { advanceToStage } from "../dispatch.js"
+import { deliverSummaryToLeader, finishRun } from "../summary.js"
+import { recordEvent } from "../events.js"
+import { allReadOnlyStagesReportNoIssues, parseDecision } from "../decisions.js"
+import { maybeRequestApproval } from "../hitl.js"
 
 async function continueLoopRound(
     ctx: PluginContext,

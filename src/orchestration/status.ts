@@ -12,11 +12,11 @@ import { resolveTeamMember } from "../state/resolve.js"
 import { recordEvent } from "./events.js"
 import { checkTermination } from "./termination.js"
 import { handleReduceIdle, handleSignoffIdle } from "./signoff.js"
-import { handleParallelIdle } from "./parallel.js"
-import { handleDelegateIdle } from "./delegate.js"
-import { handleRecurseIdle } from "./recurse.js"
+import { handleParallelIdle } from "./modes/parallel.js"
+import { handleDelegateIdle } from "./modes/delegate.js"
+import { handleRecurseIdle } from "./modes/recurse.js"
 import { advanceWorkflowStep } from "./workflow.js"
-import { handleArenaIdle } from "./arena.js"
+import { handleArenaIdle } from "./modes/arena.js"
 
 const RETRY_ESCALATION_MS = 60_000
 

@@ -13,16 +13,16 @@
  *   - Route parse failure / no branches selected → deliver (failed: route_complete:decision_parse_failure)
  */
 
-import type { PluginContext } from "../core/context.js"
-import type { RouteBranch } from "../core/types.js"
-import { type Team, saveTeamState } from "../state/store.js"
-import { dispatchToMember } from "./dispatch.js"
-import { finishRun } from "./summary.js"
-import { recordEvent } from "./events.js"
-import { waitForBarrier } from "./barriers.js"
-import { parseRouteDecision } from "./decisions.js"
-import { maybeTriggerSignoff } from "./signoff.js"
-import { maybeRequestApproval } from "./hitl.js"
+import type { PluginContext } from "../../core/context.js"
+import type { RouteBranch } from "../../core/types.js"
+import { type Team, saveTeamState } from "../../state/store.js"
+import { dispatchToMember } from "../dispatch.js"
+import { finishRun } from "../summary.js"
+import { recordEvent } from "../events.js"
+import { waitForBarrier } from "../barriers.js"
+import { parseRouteDecision } from "../decisions.js"
+import { maybeTriggerSignoff } from "../signoff.js"
+import { maybeRequestApproval } from "../hitl.js"
 
 /**
  * Build the router member's dispatch prompt: the input to route, the available

@@ -9,7 +9,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { dispatchToMember } from "../orchestration/dispatch.js"
 import { createTask, listAllTasks } from "../state/tasks.js"
-import { buildRecursePrompt } from "../orchestration/recurse.js"
+import { buildRecursePrompt } from "../orchestration/modes/recurse.js"
 import {
     DEFAULT_RECURSE_DEPTH,
     DEFAULT_RECURSE_SUBTASKS,

@@ -14,18 +14,18 @@
  *   - Ruling parse failure → deliver (failed: arbitrate_complete:decision_parse_failure)
  */
 
-import type { PluginContext } from "../core/context.js"
-import { type Team, saveTeamState } from "../state/store.js"
-import type { ActiveTask, ArbitrateTask } from "../core/types.js"
-import { dispatchToMember } from "./dispatch.js"
-import { DEFAULT_ARBITRATE_ROUNDS } from "./defaults.js"
-import { buildRoundSummary, finishRun } from "./summary.js"
-import { recordEvent } from "./events.js"
-import { truncateOutput } from "./output.js"
-import { waitForBarrier } from "./barriers.js"
-import { parseArbitrationDecision } from "./decisions.js"
-import { maybeTriggerSignoff } from "./signoff.js"
-import { maybeRequestApproval } from "./hitl.js"
+import type { PluginContext } from "../../core/context.js"
+import { type Team, saveTeamState } from "../../state/store.js"
+import type { ActiveTask, ArbitrateTask } from "../../core/types.js"
+import { dispatchToMember } from "../dispatch.js"
+import { DEFAULT_ARBITRATE_ROUNDS } from "../defaults.js"
+import { buildRoundSummary, finishRun } from "../summary.js"
+import { recordEvent } from "../events.js"
+import { truncateOutput } from "../output.js"
+import { waitForBarrier } from "../barriers.js"
+import { parseArbitrationDecision } from "../decisions.js"
+import { maybeTriggerSignoff } from "../signoff.js"
+import { maybeRequestApproval } from "../hitl.js"
 
 /**
  * Build a debater's prompt for the current debate round. Round 1 states the

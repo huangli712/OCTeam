@@ -9,14 +9,14 @@
  *   - Else → next round dispatch with prior-round summary
  */
 
-import type { PluginContext } from "../core/context.js"
-import { type Team } from "../state/store.js"
-import { dispatchToMember } from "./dispatch.js"
-import { buildRoundSummary, finishRun } from "./summary.js"
-import { recordEvent } from "./events.js"
-import { waitForBarrier } from "./barriers.js"
-import { allMembersAgree } from "./decisions.js"
-import { maybeRequestApproval } from "./hitl.js"
+import type { PluginContext } from "../../core/context.js"
+import { type Team } from "../../state/store.js"
+import { dispatchToMember } from "../dispatch.js"
+import { buildRoundSummary, finishRun } from "../summary.js"
+import { recordEvent } from "../events.js"
+import { waitForBarrier } from "../barriers.js"
+import { allMembersAgree } from "../decisions.js"
+import { maybeRequestApproval } from "../hitl.js"
 
 export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask

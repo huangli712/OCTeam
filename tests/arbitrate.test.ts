@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { ToolContext } from "@opencode-ai/plugin"
 
 import { getExpectedMember } from "../src/orchestration/idle.js"
-import { handleArbitrateIdle } from "../src/orchestration/arbitrate.js"
+import { handleArbitrateIdle } from "../src/orchestration/modes/arbitrate.js"
 import { parseArbitrationDecision } from "../src/orchestration/decisions.js"
 import { readRunEvents } from "../src/orchestration/runs.js"
 import { buildSummary } from "../src/orchestration/summary.js"

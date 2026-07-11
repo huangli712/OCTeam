@@ -12,14 +12,14 @@
  *   - Member idle with claimable tasks → rate-limited re-prompt toward next task
  */
 
-import type { PluginContext } from "../core/context.js"
-import { type Team } from "../state/store.js"
-import type { MemberState, SdkMessage } from "../core/types.js"
-import { listAllTasks } from "../state/tasks.js"
-import { dispatchToMember } from "./dispatch.js"
-import { finishRun } from "./summary.js"
-import { maybeTriggerSignoff } from "./signoff.js"
-import { captureMemberOutput } from "./capture.js"
+import type { PluginContext } from "../../core/context.js"
+import { type Team } from "../../state/store.js"
+import type { MemberState, SdkMessage } from "../../core/types.js"
+import { listAllTasks } from "../../state/tasks.js"
+import { dispatchToMember } from "../dispatch.js"
+import { finishRun } from "../summary.js"
+import { maybeTriggerSignoff } from "../signoff.js"
+import { captureMemberOutput } from "../capture.js"
 
 /** Minimum cooldown (ms) between re-prompt notifications in delegate/recurse. */
 export const NOTIFY_COOLDOWN_MS = 10_000

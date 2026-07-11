@@ -7,7 +7,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { dispatchToMember } from "../orchestration/dispatch.js"
-import { buildDebatePrompt } from "../orchestration/arbitrate.js"
+import { buildDebatePrompt } from "../orchestration/modes/arbitrate.js"
 import {
     DEFAULT_ARBITRATE_ROUNDS,
     DEFAULT_TIMEOUT_MS,

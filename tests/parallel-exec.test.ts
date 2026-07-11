@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 
 import { processIdle } from "../src/orchestration/idle.js"
-import { handleParallelIdle } from "../src/orchestration/parallel.js"
+import { handleParallelIdle } from "../src/orchestration/modes/parallel.js"
 import { runMemberOutputPath } from "../src/state/paths.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"

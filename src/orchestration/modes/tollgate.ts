@@ -15,16 +15,16 @@
  *   - INVALID without escalateTo → deliver (failed: tollgate_invalid:<producer>:<reason>)
  */
 
-import type { PluginContext } from "../core/context.js"
-import { type Team, saveTeamState } from "../state/store.js"
-import type { ActiveTask, GatedStage, MemberState } from "../core/types.js"
-import { buildUpstreamContext, dispatchToMember } from "./dispatch.js"
-import { finishRun } from "./summary.js"
-import { recordEvent } from "./events.js"
-import { truncateOutput } from "./output.js"
-import { parseVerdict } from "./decisions.js"
-import { maybeTriggerSignoff } from "./signoff.js"
-import { maybeRequestApproval } from "./hitl.js"
+import type { PluginContext } from "../../core/context.js"
+import { type Team, saveTeamState } from "../../state/store.js"
+import type { ActiveTask, GatedStage, MemberState } from "../../core/types.js"
+import { buildUpstreamContext, dispatchToMember } from "../dispatch.js"
+import { finishRun } from "../summary.js"
+import { recordEvent } from "../events.js"
+import { truncateOutput } from "../output.js"
+import { parseVerdict } from "../decisions.js"
+import { maybeTriggerSignoff } from "../signoff.js"
+import { maybeRequestApproval } from "../hitl.js"
 
 /**
  * Build the verifier's dispatch prompt: the producer's output, the criteria,

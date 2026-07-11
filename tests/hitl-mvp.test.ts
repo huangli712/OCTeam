@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ActiveTask, GatedStage, LoopTask, MemberState, PipelineTask, Stage, TollgateTask } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/idle.js"
-import { handleTollgateIdle } from "../src/orchestration/tollgate.js"
+import { handleTollgateIdle } from "../src/orchestration/modes/tollgate.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { teamProgressTool } from "../src/tools/progress.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"

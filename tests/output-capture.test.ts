@@ -8,7 +8,7 @@ import { appendTurnBlock, captureMemberOutput } from "../src/orchestration/captu
 import { runMemberOutputPath, runReduceOutputPath } from "../src/state/paths.js"
 import { initTeamState } from "../src/state/store.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"
-import { runDelegateStyleTail } from "../src/orchestration/delegate.js"
+import { runDelegateStyleTail } from "../src/orchestration/modes/delegate.js"
 import { createTask, updateTask } from "../src/state/tasks.js"
 
 describe("extractTextFromParts (baseline regression)", () => {

@@ -19,14 +19,14 @@ import type { PluginContext } from "../core/context.js";
 import type { ActiveTask } from "../core/types.js";
 import { type Team, saveTeamState } from "../state/store.js";
 import { advanceToStage, dispatchToMember } from "./dispatch.js";
-import { handleParallelIdle } from "./parallel.js";
-import { handleConsensusIdle } from "./consensus.js";
-import { buildRecursePrompt } from "./recurse.js";
+import { handleParallelIdle } from "./modes/parallel.js";
+import { handleConsensusIdle } from "./modes/consensus.js";
+import { buildRecursePrompt } from "./modes/recurse.js";
 import {
     advanceToGatedStage,
     handleTollgateIdle,
     startVerification,
-} from "./tollgate.js";
+} from "./modes/tollgate.js";
 import { advanceWorkflowStep, redispatchWorkflowStep } from './workflow.js';
 import { handleWorkflowIdle } from "./workflow-handler.js";
 import { handleWorkflowDispatchUnavailable } from "./fanout.js";
@@ -34,10 +34,10 @@ import {
     buildArbiterPrompt,
     buildDebatePrompt,
     handleArbitrateIdle,
-} from "./arbitrate.js";
-import { buildRouterPrompt, handleRouteIdle } from "./route.js";
+} from "./modes/arbitrate.js";
+import { buildRouterPrompt, handleRouteIdle } from "./modes/route.js";
 import { buildSummary, finishRun } from "./summary.js";
-import { buildArenaEvaluatorPrompt, handleArenaIdle } from "./arena.js";
+import { buildArenaEvaluatorPrompt, handleArenaIdle } from "./modes/arena.js";
 import {
     buildReducePrompt,
     buildSignoffReviewPrompt,

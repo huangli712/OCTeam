@@ -3,7 +3,7 @@ import path from "node:path"
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import { handleArenaIdle, selectArenaWinner } from "../src/orchestration/arena.js"
+import { handleArenaIdle, selectArenaWinner } from "../src/orchestration/modes/arena.js"
 import { parseScoreboard } from "../src/orchestration/decisions.js"
 import { persistRun, readRunRecord, runStatusFromReason } from "../src/orchestration/runs.js"
 import { buildSummary } from "../src/orchestration/summary.js"

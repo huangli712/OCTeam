@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { handleConsensusIdle } from "../src/orchestration/consensus.js"
+import { handleConsensusIdle } from "../src/orchestration/modes/consensus.js"
 import type { ConsensusTask } from "../src/core/types.js"
 import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 

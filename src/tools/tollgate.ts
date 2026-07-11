@@ -7,7 +7,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type { GatedStage } from "../core/types.js"
-import { advanceToGatedStage } from "../orchestration/tollgate.js"
+import { advanceToGatedStage } from "../orchestration/modes/tollgate.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
