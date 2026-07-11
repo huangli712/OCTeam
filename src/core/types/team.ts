@@ -1,8 +1,8 @@
 /**
  * Team state and configuration type definitions.
  *
- * Layer 0 in the types decomposition — depends only on the ActiveTask union
- * from task.ts (forward reference resolved via the barrel in types.ts).
+ * Layer 2 in the types decomposition — imports ActiveTask, OrchestrationType,
+ * and ParallelMode from task.ts (layer 1).
  * This file declares TeamSpec, TeamState, MemberState, Bounds, and the
  * TeamStatus / MemberStatus enums.
  */
@@ -116,10 +116,8 @@ export type LastModeRecord = {
     finishedAt: number                 // epoch ms when activeTask was cleared
 }
 
-// Forward imports: ActiveTask + supporting types live in orchestration.ts (layer 1).
+// Forward imports: ActiveTask + supporting types live in task.ts (layer 1).
 // They are re-exported here for type-narrowing convenience from a single import,
 // but the canonical definitions live in their own focused file.
-import type { ActiveTask, OrchestrationType, ParallelMode } from "./orchestration.js"
+import type { ActiveTask, OrchestrationType, ParallelMode } from "./task.js"
 
-/** Storage scope for team state: user (~/.octeam) or project (<dir>/.octeam). */
-export type StorageScope = "user" | "project"

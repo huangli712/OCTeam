@@ -1,7 +1,8 @@
 /**
  * Construct the shared PluginContext from host-provided PluginInput — the
  * single context object passed to every tool handler, event handler, and
- * transform hook.
+ * transform hook. Also defines StorageScope, the storage scope enum consumed
+ * by PluginContext and re-exported via the types barrel.
  */
 
 import os from "node:os"
@@ -10,7 +11,8 @@ import path from "node:path"
 import type { PluginInput } from "@opencode-ai/plugin"
 import type { OpencodeClient, Project } from "@opencode-ai/sdk"
 
-import type { StorageScope } from "./types.js"
+/** Storage scope for team state: user (~/.octeam) or project (<dir>/.octeam). */
+export type StorageScope = "user" | "project"
 
 /**
  * Closure-style context shared by every tool handler, event handler, and the
