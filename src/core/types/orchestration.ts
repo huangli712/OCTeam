@@ -24,15 +24,39 @@ import type {
 // --- Orchestration mode enums ---
 
 /** Discriminated orchestration mode — one of eleven workflow primitives. */
-export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse" | "tollgate" | "workflow" | "arena"
+export type OrchestrationType =
+    | "parallel"
+    | "pipeline"
+    | "loop"
+    | "delegate"
+    | "consensus"
+    | "route"
+    | "arbitrate"
+    | "recurse"
+    | "tollgate"
+    | "workflow"
+    | "arena"
+
 /** Parallel execution mode: isolated (same task) or cooperative (per-member). */
 export type ParallelMode = "isolated" | "cooperative"
+
 /** Result reduction policy for parallel member outputs. */
 export type ReducePolicy = "summarize" | "select" | "merge" | "rubric"
+
 /** Post-completion review gate policy. */
 export type SignoffPolicy = "none" | "decider" | "peer-quorum"
+
 /** Mid-run human approval pause point kind. */
-export type ApprovalKind = "pipeline_stage" | "tollgate_gate" | "loop_done" | "route_decision" | "recurse_decompose" | "arbitrate_ruling" | "consensus_deadlock" | "workflow_step"
+export type ApprovalKind =
+    | "pipeline_stage"
+    | "tollgate_gate"
+    | "loop_done"
+    | "route_decision"
+    | "recurse_decompose"
+    | "arbitrate_ruling"
+    | "consensus_deadlock"
+    | "workflow_step"
+
 /** Action taken when an approval pause times out. */
 export type ApprovalTimeoutAction = "fail" | "approve" | "reject"
 
