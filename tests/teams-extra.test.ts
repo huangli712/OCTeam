@@ -12,7 +12,7 @@ import path from "node:path"
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
 import { loadTeams } from "../src/tui/teams.js"
-import { configPath, statePath, teamDir, teamsDir } from "../src/state/paths.js"
+import { statePath, teamDir } from "../src/state/paths.js"
 import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
@@ -33,22 +33,6 @@ async function writeTeamState(
     await fs.mkdir(dir, { recursive: true })
     await fs.writeFile(statePath(dir), JSON.stringify(state, null, 2), "utf8")
     return dir
-}
-
-/** Write a config.json for a team. */
-async function writeTeamConfig(
-    storageRoot: string,
-    sessionId: string,
-    teamName: string,
-    members: Array<{ name: string; role: string; prompt: string }>,
-): Promise<void> {
-    const dir = teamDir(storageRoot, teamName, sessionId)
-    await fs.mkdir(dir, { recursive: true })
-    await fs.writeFile(
-        configPath(dir),
-        JSON.stringify({ version: 1, name: teamName, createdAt: Date.now(), members }, null, 2),
-        "utf8",
-    )
 }
 
 describe("loadTeams", () => {

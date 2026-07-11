@@ -161,7 +161,7 @@ describe("runPlannerSession: happy path", () => {
             messageScript: [[assistantWith(taggedBlock(VALID_PAYLOAD))]],
         })
 
-        await expect(
+        expect(
             runPlannerSession(ctx, {
                 teamId: "demo",
                 parentSessionId: "ses_master",
@@ -328,7 +328,7 @@ describe("runPlannerSession: invalid-output retry with validation feedback", () 
             messageScript: [[assistantWith(taggedBlock(badPayload))]],
         })
 
-        await expect(
+        expect(
             runPlannerSession(ctx, {
                 teamId: "demo",
                 parentSessionId: "ses_master",
@@ -359,7 +359,7 @@ describe("runPlannerSession: timeout", () => {
         })
 
         const start = Date.now()
-        await expect(
+        expect(
             runPlannerSession(ctx, {
                 teamId: "demo",
                 parentSessionId: "ses_master",

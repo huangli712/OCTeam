@@ -30,7 +30,7 @@ import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import { listAllTasks } from "../src/state/tasks.js"
-import { taskPath, tasksDir } from "../src/state/paths.js"
+import { taskPath } from "../src/state/paths.js"
 import { tmpRoot } from "./helpers.js"
 
 /** Ensure the tasks/ dir exists, then write a task JSON file. */

@@ -66,7 +66,7 @@ describe("sendWakeHint", () => {
                 },
             },
         } as unknown as PluginContext
-        await expect(sendWakeHint(ctx, "ses_a", 1)).resolves.toBeUndefined()
+        expect(sendWakeHint(ctx, "ses_a", 1)).resolves.toBeUndefined()
     })
 })
 

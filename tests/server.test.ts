@@ -66,7 +66,7 @@ describe("server()", () => {
         // All three reconcile functions (rebuildSessionIndex,
         // reconcileActivation, reconcileCrashedTeams) must no-op cleanly on an
         // empty root and return hooks without throwing.
-        await expect(pluginModule.server(input)).resolves.toBeDefined()
+        expect(pluginModule.server(input)).resolves.toBeDefined()
     })
 
     test("returns a non-empty tool registry (33 tools)", async () => {

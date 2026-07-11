@@ -91,7 +91,7 @@ describe("deliverSummaryToLeader failure swallowed (finding: summary-delivery-fa
         //
         // UNFIXED: .catch(logSwallowed) → resolves with void → rejects FAILS.
         // FIXED:   promptAsync failure propagates → rejects → PASSES.
-        await expect(
+        expect(
             deliverSummaryToLeader(makeFailingCtx(), team, "parallel_isolated_complete", "completed"),
         ).rejects.toThrow("simulated leader promptAsync failure")
     })

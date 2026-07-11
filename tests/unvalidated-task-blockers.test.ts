@@ -30,7 +30,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamTaskCreateTool } from "../src/tools/task.js"
-import { createTask, getTask, listAllTasks } from "../src/state/tasks.js"
+import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
 import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"

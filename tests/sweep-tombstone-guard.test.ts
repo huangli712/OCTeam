@@ -22,11 +22,10 @@
 import { access } from "node:fs/promises"
 import path from "node:path"
 
-import { afterAll, describe, expect, mock, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 
-import type { ActiveTask, MemberState } from "../src/core/types.js"
+import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, invalidateTeam, loadTeamState } from "../src/state/store.js"
-import { teamDir } from "../src/state/paths.js"
 import { sweepTeamOnce } from "../src/hooks.js"
 import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 

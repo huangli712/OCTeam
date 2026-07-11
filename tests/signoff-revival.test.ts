@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test"
 import { processIdle } from "../src/orchestration/idle.js"
 import { handleParallelIdle } from "../src/orchestration/parallel.js"
 import { dispatchToMember } from "../src/orchestration/dispatch.js"
-import type { ActiveTask, MemberState } from "../src/core/types.js"
+import type { ActiveTask } from "../src/core/types.js"
 
 
 import { makeTeam, type DispatchCall, makeCtx } from "./helpers.js"

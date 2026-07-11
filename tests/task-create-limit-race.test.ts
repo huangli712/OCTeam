@@ -66,7 +66,7 @@ describe("task-create limit race (finding: task-create-limit-race)", () => {
         // Neither step 3→5 is under a shared lock, so both proceed past the
         // check before either write lands.
         const tool = teamTaskCreateTool(makeCtx({ storageRoot: root }))
-        const [res1, res2] = await Promise.all([
+        await Promise.all([
             tool.execute(
                 { team_id: "alpha", subject: "task-A", description: "desc-A" },
                 { sessionID: aliceSid } as unknown as ToolContext,

@@ -12,7 +12,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { teamTaskCreateTool, teamTaskUpdateTool } from "../src/tools/task.js"
 import { initTeamState, invalidateTeam } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { createTask, listAllTasks } from "../src/state/tasks.js"
+import { createTask } from "../src/state/tasks.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)

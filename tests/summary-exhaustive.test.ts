@@ -94,7 +94,7 @@ describe("buildSummary: exhaustive guard throws on unknown type (P2-1)", () => {
         // The exhaustive `default` case assigns task to `never` and throws.
         // Without the guard, this would silently fall into the old default
         // branch and produce a parallel-style summary for an unknown type.
-        await expect(buildSummary(mockTeam, task, "test")).rejects.toThrow(
+        expect(buildSummary(mockTeam, task, "test")).rejects.toThrow(
             /unhandled OrchestrationType/i,
         )
     })

@@ -1146,7 +1146,7 @@ describe("team_resume: tollgate case", () => {
             currentStageIndex: 0,
             tollgatePhase: "produce",
         })
-        const team = await setupFailedTollgate(root, sid, task, [
+        await setupFailedTollgate(root, sid, task, [
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
         ])

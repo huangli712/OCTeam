@@ -353,7 +353,7 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
         const team = makeTeam({ members: [{ name: "router", sessionId: "s" }] })
-        await expect(handleRouteIdle(ctx, team)).resolves.toBeUndefined()
+        expect(handleRouteIdle(ctx, team)).resolves.toBeUndefined()
         expect(calls).toHaveLength(0)
     })
 })

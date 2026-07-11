@@ -41,7 +41,7 @@ describe("claimTask: per-member concurrency cap (1 active task)", () => {
         const t2 = await seedTask(dir, "T2")
 
         await claimTask(dir, t1, "alice")
-        await expect(claimTask(dir, t2, "alice")).rejects.toBeInstanceOf(
+        expect(claimTask(dir, t2, "alice")).rejects.toBeInstanceOf(
             MemberHoldsActiveTaskError,
         )
     })
@@ -54,7 +54,7 @@ describe("claimTask: per-member concurrency cap (1 active task)", () => {
         const claimed = await claimTask(dir, t1, "alice")
         await updateTask(dir, claimed.id, { status: "in_progress" })
 
-        await expect(claimTask(dir, t2, "alice")).rejects.toBeInstanceOf(
+        expect(claimTask(dir, t2, "alice")).rejects.toBeInstanceOf(
             MemberHoldsActiveTaskError,
         )
     })
@@ -102,7 +102,7 @@ describe("claimTask: per-member concurrency cap (1 active task)", () => {
         const t2 = await seedTask(dir, "T2")
 
         await claimTask(dir, t1, "alice")
-        await expect(claimTask(dir, t2, "alice")).rejects.toThrow(
+        expect(claimTask(dir, t2, "alice")).rejects.toThrow(
             new RegExp(`alice.*${t1}.*claimed`, "i"),
         )
     })
@@ -113,7 +113,7 @@ describe("claimTask: per-member concurrency cap (1 active task)", () => {
 
         await claimTask(dir, t1, "alice")
         // Bob tries to claim the same task already held by alice.
-        await expect(claimTask(dir, t1, "bob")).rejects.toBeInstanceOf(
+        expect(claimTask(dir, t1, "bob")).rejects.toBeInstanceOf(
             TaskAlreadyClaimedError,
         )
     })
