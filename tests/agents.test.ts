@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test"
 import { createConfigHook, OCTEAM_AGENTS } from "../src/agents/index.js"
 import type { OcteamAgentConfig } from "../src/agents/types.js"
 
-const READONLY_AGENTS = ["oct-oracle", "oct-librarian", "oct-explore", "oct-multimodal-looker"] as const
+const READONLY_AGENTS = ["oct-oracle", "oct-librarian", "oct-explore", "oct-multimodal-looker", "oct-ultrabrain"] as const
 const ANALYSIS_AGENTS = ["oct-metis", "oct-momus"] as const
-const EXECUTOR_AGENTS = ["oct-junior", "oct-ultrabrain"] as const
+const EXECUTOR_AGENTS = ["oct-junior"] as const
 
 const ALL_AGENT_KEYS = [
     ...READONLY_AGENTS,
@@ -127,8 +127,8 @@ describe("temperature values", () => {
         expect(getAgent("oct-junior").temperature).toBe(0.1)
     })
 
-    test("ultrabrain has temperature 0.2", () => {
-        expect(getAgent("oct-ultrabrain").temperature).toBe(0.2)
+    test("ultrabrain has temperature 0.7", () => {
+        expect(getAgent("oct-ultrabrain").temperature).toBe(0.7)
     })
 })
 
