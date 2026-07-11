@@ -18,6 +18,17 @@
  * lives in ActiveTaskBase so it is accessible without narrowing.
  */
 
+import type {
+    Verdict,
+    WorkflowStep,
+} from "./workflow.js"
+
+// ============================================================================
+// Type aliases
+// ============================================================================
+
+// --- Shared tasklist types (Layer 0: no imports) ---
+
 /** Shared tasklist item status: pending, claimed, in_progress, completed, or deleted. */
 export type TaskStatus = "pending" | "claimed" | "in_progress" | "completed" | "deleted"
 
@@ -37,10 +48,7 @@ export type Task = {
     result?: string                    // completed-task output (read by aggregating parents)
 }
 
-import type {
-    Verdict,
-    WorkflowStep,
-} from "./workflow.js"
+// --- Orchestration mode enums ---
 
 /** Discriminated orchestration mode — one of eleven workflow primitives. */
 export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse" | "tollgate" | "workflow" | "arena"
@@ -55,6 +63,8 @@ export type ApprovalKind = "pipeline_stage" | "tollgate_gate" | "loop_done" | "r
 /** Action taken when an approval pause times out. */
 export type ApprovalTimeoutAction = "fail" | "approve" | "reject"
 
+// --- Stage types ---
+
 /** A pipeline or loop stage — member, task, action, and completion flag. */
 export type Stage = {
     member: string                     // member name (validated unique within stages)
@@ -62,6 +72,109 @@ export type Stage = {
     action?: "modify" | "read_only"    // loop mode only
     completed: boolean
 }
+
+// --- Arena types ---
+
+/** Evaluator-attested score for a single arena candidate. */
+export type ArenaCandidateScore = {
+    member: string
+    score?: number
+    metrics?: Record<string, number>
+    passed?: boolean
+    rationale?: string
+}
+
+/** Complete arena scoreboard — per-candidate scores and evaluator rationale. */
+export type ArenaScoreboard = {
+    scores: ArenaCandidateScore[]
+    rationale?: string
+}
+
+// --- Supporting types referenced by ActiveTaskBase and variants ---
+
+/** A route branch — label, target member, and optional per-branch task. */
+export type RouteBranch = {
+    name: string                       // branch label the router selects by (unique)
+    member: string                     // target member to dispatch to (unique across branches)
+    task?: string                      // per-branch task; if omitted, target receives the routing `task`
+    description?: string               // optional hint shown to the router
+}
+
+/** A single round decision in a corrective loop: continue or done. */
+export type DecisionRecord = {
+    round: number
+    decision: "continue" | "done"
+    rationale: string
+    nextActions: string[]              // concrete directives for next round
+    timestamp: number
+}
+
+// tollgate: a Stage with an associated verification gate. The gate's verifier
+// (distinct from the producer) emits a <verdict> (or <判定>) block; downstream
+// starts only on PASS. FAIL returns the producer with a diff; INVALID isolates
+// the stage and escalates the verifier side (not the producer). Structurally
+// satisfies Stage so it can be fed to buildUpstreamContext.
+/** A tollgate stage with an associated verification gate and verdict state. */
+export type GatedStage = {
+    member: string                     // the producer member name
+    task: string                       // the producer's task
+    completed: boolean                 // set true only on PASS
+    verifier: string                   // the verifier member name (NOT the producer)
+    criteria: string                   // verification criteria (tolerance / conservation law / reference description)
+    reference?: string                 // golden reference location (Compare-style numerical verdict)
+    verdict?: Verdict                  // last verdict rendered by this gate
+    attempts: number                   // FAIL retry count against maxGateRetries
+    invalidAttempts: number            // INVALID/escalate cycle count against maxInvalidCycles
+}
+
+/** Pending human-in-the-loop approval request. */
+export type ApprovalRequest = {
+    id: string                          // UUID used by team_approve/team_reject
+    kind: ApprovalKind                  // mode-specific pause point
+    requestedAt: number                 // epoch ms, used to suspend wall-clock timing
+    summary: string                     // text presented to the leader for approval
+    stage?: number                      // currentStageIndex for stage/gate approvals
+    round?: number                      // currentRound for loop done approval
+    taskId?: string                     // recurse approval: task being decomposed
+    member?: string                     // recurse approval: member that requested decomposition
+    subtasks?: ApprovalSubtask[]        // recurse approval: proposed child tasks
+}
+
+/** A proposed child task in a recurse decomposition approval request. */
+export type ApprovalSubtask = {
+    subject: string
+    description: string
+}
+
+/** Resolved approval decision for audit and history. */
+export type ApprovalDecisionRecord = {
+    id: string
+    kind: ApprovalKind
+    approved: boolean
+    requestedAt: number
+    resolvedAt: number
+    feedback?: string
+}
+
+// --- ActiveTask discriminated union (references interfaces below) ---
+
+/** Discriminated union of all orchestration task variants. */
+export type ActiveTask =
+    | ParallelTask
+    | PipelineTask
+    | LoopTask
+    | DelegateTask
+    | ConsensusTask
+    | RouteTask
+    | ArbitrateTask
+    | RecurseTask
+    | TollgateTask
+    | WorkflowTask
+    | ArenaTask
+
+// ============================================================================
+// Interfaces
+// ============================================================================
 
 /**
  * ActiveTask is a discriminated union: a shared ActiveTaskBase plus one
@@ -249,21 +362,6 @@ export interface WorkflowTask extends ActiveTaskBase {
 // deterministic winner is selected over the evaluator-attested scoreboard
 // (evaluate phase). ArenaCandidateScore / ArenaScoreboard are the evaluator's
 // structured report shape.
-/** Evaluator-attested score for a single arena candidate. */
-export type ArenaCandidateScore = {
-    member: string
-    score?: number
-    metrics?: Record<string, number>
-    passed?: boolean
-    rationale?: string
-}
-
-/** Complete arena scoreboard — per-candidate scores and evaluator rationale. */
-export type ArenaScoreboard = {
-    scores: ArenaCandidateScore[]
-    rationale?: string
-}
-
 /** Competitive arena — N candidates implement competing solutions, one winner selected. */
 export interface ArenaTask extends ActiveTaskBase {
     type: "arena"
@@ -280,84 +378,4 @@ export interface ArenaTask extends ActiveTaskBase {
     evalAttempts?: number                    // evaluator attempts consumed so far
     scoreboard?: ArenaScoreboard             // evaluator-attested per-candidate scores
     winner?: string                          // deterministically selected winner name
-}
-
-/** Discriminated union of all orchestration task variants. */
-export type ActiveTask =
-    | ParallelTask
-    | PipelineTask
-    | LoopTask
-    | DelegateTask
-    | ConsensusTask
-    | RouteTask
-    | ArbitrateTask
-    | RecurseTask
-    | TollgateTask
-    | WorkflowTask
-    | ArenaTask
-
-// --- Supporting types referenced by ActiveTaskBase and variants ---
-
-/** A route branch — label, target member, and optional per-branch task. */
-export type RouteBranch = {
-    name: string                       // branch label the router selects by (unique)
-    member: string                     // target member to dispatch to (unique across branches)
-    task?: string                      // per-branch task; if omitted, target receives the routing `task`
-    description?: string               // optional hint shown to the router
-}
-
-/** A single round decision in a corrective loop: continue or done. */
-export type DecisionRecord = {
-    round: number
-    decision: "continue" | "done"
-    rationale: string
-    nextActions: string[]              // concrete directives for next round
-    timestamp: number
-}
-
-// tollgate: a Stage with an associated verification gate. The gate's verifier
-// (distinct from the producer) emits a <verdict> (or <判定>) block; downstream
-// starts only on PASS. FAIL returns the producer with a diff; INVALID isolates
-// the stage and escalates the verifier side (not the producer). Structurally
-// satisfies Stage so it can be fed to buildUpstreamContext.
-/** A tollgate stage with an associated verification gate and verdict state. */
-export type GatedStage = {
-    member: string                     // the producer member name
-    task: string                       // the producer's task
-    completed: boolean                 // set true only on PASS
-    verifier: string                   // the verifier member name (NOT the producer)
-    criteria: string                   // verification criteria (tolerance / conservation law / reference description)
-    reference?: string                 // golden reference location (Compare-style numerical verdict)
-    verdict?: Verdict                  // last verdict rendered by this gate
-    attempts: number                   // FAIL retry count against maxGateRetries
-    invalidAttempts: number            // INVALID/escalate cycle count against maxInvalidCycles
-}
-
-/** Pending human-in-the-loop approval request. */
-export type ApprovalRequest = {
-    id: string                          // UUID used by team_approve/team_reject
-    kind: ApprovalKind                  // mode-specific pause point
-    requestedAt: number                 // epoch ms, used to suspend wall-clock timing
-    summary: string                     // text presented to the leader for approval
-    stage?: number                      // currentStageIndex for stage/gate approvals
-    round?: number                      // currentRound for loop done approval
-    taskId?: string                     // recurse approval: task being decomposed
-    member?: string                     // recurse approval: member that requested decomposition
-    subtasks?: ApprovalSubtask[]        // recurse approval: proposed child tasks
-}
-
-/** A proposed child task in a recurse decomposition approval request. */
-export type ApprovalSubtask = {
-    subject: string
-    description: string
-}
-
-/** Resolved approval decision for audit and history. */
-export type ApprovalDecisionRecord = {
-    id: string
-    kind: ApprovalKind
-    approved: boolean
-    requestedAt: number
-    resolvedAt: number
-    feedback?: string
 }
