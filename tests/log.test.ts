@@ -14,15 +14,15 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
-import { _resetLoggerForTests, initLogger, logEvent, logSwallowed, logger, setLogLevel } from "../src/core/log.js"
+import { __test__, initLogger, logEvent, logSwallowed, logger, setLogLevel } from "../src/core/log.js"
 import { makeCtx } from "./helpers.js"
 
 /** Minimal ctx stub: captures the last app.log call. */
 
 // Reset global logger state before each test so sink/level don't bleed.
-beforeEach(() => _resetLoggerForTests())
+beforeEach(() => __test__.resetState())
 // Reset level to default after each test so level-filter tests don't bleed.
-afterEach(() => _resetLoggerForTests())
+afterEach(() => __test__.resetState())
 
 // ============================================================
 // logEvent (ctx-based API)

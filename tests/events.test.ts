@@ -9,7 +9,7 @@ import { readRunEvents } from "../src/orchestration/runs.js"
 import { runEventsPath } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"
 import type { ActiveTask } from "../src/core/types.js"
-import { _resetLoggerForTests, initLogger } from "../src/core/log.js"
+import { __test__ as logTest, initLogger } from "../src/core/log.js"
 
 import { makeCtx, makeTeam } from "./helpers.js"
 function tmpTeamDir(): string {
@@ -87,8 +87,8 @@ describe("recordEvent + readRunEvents", () => {
 })
 
 describe("recordEvent failure logging", () => {
-    beforeEach(() => _resetLoggerForTests())
-    afterEach(() => _resetLoggerForTests())
+beforeEach(() => logTest.resetState())
+afterEach(() => logTest.resetState())
 
     test("logs warning when append fails (write failure visible to operators)", async () => {
         const dir = tmpTeamDir()

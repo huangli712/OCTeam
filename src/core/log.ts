@@ -93,15 +93,6 @@ export function setLogLevel(level: LogLevel): void {
     minLevel = level
 }
 
-/**
- * Reset the global logger state (sink + level) for unit tests.
- * @internal Exported only for tests/log.test.ts. Production code must NOT call this.
- */
-export function _resetLoggerForTests(): void {
-    sink = null
-    minLevel = levelFromEnv()
-}
-
 // ---------------------------------------------------------------------------
 // ctx-based API (for code that already holds a PluginContext)
 // ---------------------------------------------------------------------------
@@ -155,4 +146,19 @@ export const logger: Record<LogLevel, LogMethod> = {
     info: (message, extra) => emitGlobal("info", message, extra),
     warn: (message, extra) => emitGlobal("warn", message, extra),
     error: (message, extra) => emitGlobal("error", message, extra),
+}
+
+// ---------------------------------------------------------------------------
+// Test-only API (production code must NOT use this)
+// ---------------------------------------------------------------------------
+
+/**
+ * Reset the global logger state (sink + level) for unit tests.
+ * @internal Exported only for test files.
+ */
+export const __test__ = {
+    resetState(): void {
+        sink = null
+        minLevel = levelFromEnv()
+    },
 }
