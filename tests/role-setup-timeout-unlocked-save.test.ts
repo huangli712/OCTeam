@@ -58,7 +58,7 @@ mock.module("../src/core/utils.js", () => ({
 import type { TeamSpec } from "../src/core/types.js"
 import { ensureMembersReady } from "../src/orchestration/dispatch.js"
 import { initTeamState, loadTeamState, saveTeamState, writeTeamSpec } from "../src/state/store.js"
-import { indexMember, unindexSession } from "../src/state/resolve.js"
+import { unindexSession } from "../src/state/resolve.js"
 import { statePath } from "../src/state/paths.js"
 import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
