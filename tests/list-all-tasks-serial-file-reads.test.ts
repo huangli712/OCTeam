@@ -36,10 +36,8 @@ import { afterAll, describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 
 import { createTask, listAllTasks } from "../src/state/tasks.js"
-import { AsyncMutex } from "../src/state/locks.js"
 import { tmpRoot, cleanupTmpRoots } from "./helpers.js"
 import { waitUntil } from "../src/core/utils.js"
-import type { Team } from "../src/state/store.js"
 
 afterAll(cleanupTmpRoots)
 
@@ -47,13 +45,6 @@ describe("listAllTasks must read task files concurrently (finding: list-all-task
     test("peak in-flight reads exceeds 1 (not purely serial)", async () => {
         const root = tmpRoot("list-all-tasks-serial")
         const teamDir = `${root}/team`
-
-        // Build a Team fixture so listAllTasks(team.directory) resolves to the
-        // seeded tasks dir. tasksDir = <teamDirectory>/tasks.
-        const team = {
-            directory: teamDir,
-            mutex: new AsyncMutex(),
-        } as unknown as Team
 
         // Seed N real task files (via real fs, before intercepting readFile).
         const N = 6

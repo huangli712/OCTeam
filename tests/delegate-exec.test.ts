@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 
 import { processIdle } from "../src/orchestration/idle.js"
 import { createTask, updateTask } from "../src/state/tasks.js"
-import type { ActiveTask, MemberState, Task } from "../src/core/types.js"
+import type { ActiveTask, Task } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { makeCtx, makeTeam, cleanupTmpRoots, type DispatchCall } from "./helpers.js"
 

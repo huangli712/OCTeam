@@ -268,7 +268,7 @@ describe("handleArbitrateIdle Phase A: debate round progression", () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
         const team = makeTeam({ members: [{ name: "arbiter", sessionId: "s" }] })
-        await expect(handleArbitrateIdle(ctx, team)).resolves.toBeUndefined()
+        expect(handleArbitrateIdle(ctx, team)).resolves.toBeUndefined()
         expect(calls).toHaveLength(0)
     })
 })

@@ -144,7 +144,7 @@ describe("pollMailbox partial reserve duplicates (finding: mailbox-partial-reser
         failOnReserveNumber = 2
 
         // pollMailbox must propagate the reservation failure.
-        await expect(
+        expect(
             pollMailbox(teamDir, recipient),
         ).rejects.toThrow("simulated reservation write failure")
 

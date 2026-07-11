@@ -73,7 +73,7 @@ describe("create maxMembers bypass (finding: create-max-members-bypass)", () => 
         // On UNFIXED code: the team dir was created + state.json written →
         // loadTeamState succeeds → FAIL. On FIXED code: loadTeamState throws
         // (no state.json) → PASS.
-        await expect(loadTeamState(root, "alpha", sid)).rejects.toThrow()
+        expect(loadTeamState(root, "alpha", sid)).rejects.toThrow()
     })
 
     test("control: maxMembers === members.length is accepted (boundary)", async () => {

@@ -91,7 +91,7 @@ describe("add-member cap race (finding: add-member-cap-race)", () => {
         //     members, exceeding maxMembers=3. ---
         releaseGate()
         await mutexHold
-        const [resCarol, resDave] = await Promise.all([addCarol, addDave])
+        await Promise.all([addCarol, addDave])
 
         // --- ASSERT: total members must NOT exceed maxMembers (3) ---
         // On UNFIXED code: both added → 4 members → FAIL.

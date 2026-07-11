@@ -1,12 +1,10 @@
 import { describe, expect, test } from "bun:test"
 
 import { processIdle } from "../src/orchestration/idle.js"
-import type { ActiveTask, MemberState, Stage } from "../src/core/types.js"
+import type { ActiveTask, Stage } from "../src/core/types.js"
 import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 
 // --- fixtures (pipeline execution path) ---
-
-
 /**
  * Stub PluginContext. `messages` returns a single user+assistant turn whose
  * assistant text is `outputs[sessionId]` so processIdle Step 4 captures it.

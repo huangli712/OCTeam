@@ -4,12 +4,10 @@ import fs from "node:fs/promises"
 import { processIdle } from "../src/orchestration/idle.js"
 import { handleParallelIdle } from "../src/orchestration/parallel.js"
 import { runMemberOutputPath } from "../src/state/paths.js"
-import type { ActiveTask, MemberState } from "../src/core/types.js"
+import type { ActiveTask } from "../src/core/types.js"
 import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 
 // --- fixtures (parallel execution path) ---
-
-
 /**
  * Stub PluginContext. `messages` returns a single user+assistant turn whose
  * assistant text is `outputs[sessionId]` so processIdle Step 4 captures it.

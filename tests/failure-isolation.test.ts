@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { checkTermination } from "../src/orchestration/termination.js"
-import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
+import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import { makeCtx } from "./helpers.js"

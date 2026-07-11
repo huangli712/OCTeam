@@ -110,7 +110,7 @@ describe("deliverToRecipients", () => {
         const ctx = makeCtx({ overrides: { client: { app: { log: async () => ({ data: {} }) }, session: { promptAsync: async () => ({ data: {} }) } } } })
 
         // The call throws (bob failed) but alice's write happened first.
-        await expect(
+        expect(
             deliverToRecipients(ctx, team, ["alice", "bob"], makeBase("master", "x")),
         ).rejects.toThrow(/delivery failed for: bob/)
 
@@ -133,7 +133,7 @@ describe("deliverToRecipients", () => {
 
         const ctx = makeCtx({ overrides: { client: { app: { log: async () => ({ data: {} }) }, session: { promptAsync: async () => ({ data: {} }) } } } })
 
-        await expect(
+        expect(
             deliverToRecipients(ctx, team, ["alice", "bob", "carol"], makeBase("master", "x")),
         ).rejects.toThrow(/bob.*carol/)
     })
@@ -144,7 +144,7 @@ describe("deliverToRecipients", () => {
             { name: "alice", sessionId: "ses_alice" },
         ])
         const ctx = makeCtx({ overrides: { client: { app: { log: async () => ({ data: {} }) }, session: { promptAsync: async () => ({ data: {} }) } } } })
-        await expect(
+        expect(
             deliverToRecipients(ctx, team, ["alice"], makeBase("master", "ok")),
         ).resolves.toBeUndefined()
     })

@@ -273,7 +273,7 @@ describe("team_rename", () => {
     test("rename live team → success, state + spec + directory updated", async () => {
         const root = tmpRoot("rn-ok")
         const sid = "ses_rn_ok"
-        const { team } = await setupLiveTeam(root, sid, "old-name", [
+        await setupLiveTeam(root, sid, "old-name", [
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
@@ -286,7 +286,7 @@ describe("team_rename", () => {
         expect(result).toContain("renamed to")
         expect(result).toContain("new-name")
         // Old name should not be loadable.
-        await expect(
+        expect(
             loadTeamState(root, "old-name", sid),
         ).rejects.toThrow()
         // New name should be loadable.

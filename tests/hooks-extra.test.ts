@@ -3,10 +3,10 @@ import { rmSync } from "node:fs"
 import path from "node:path"
 
 import type { PluginContext } from "../src/core/context.js"
-import type { ActiveTask, MemberState } from "../src/core/types.js"
+import type { ActiveTask } from "../src/core/types.js"
 import { createEventHandler, sweepTeamOnce } from "../src/hooks.js"
 import { initTeamState, invalidateTeam, loadTeamState } from "../src/state/store.js"
-import { statePath, teamDir } from "../src/state/paths.js"
+import { statePath } from "../src/state/paths.js"
 import {
     indexMasterTeam,
     rebuildSessionIndex,
@@ -94,7 +94,7 @@ describe("createEventHandler: session.deleted dispatch", () => {
         } as never)
 
         // handleSessionDeleted removed the per-session dir on disk.
-        await expect(
+        expect(
             import("node:fs/promises").then(fs => fs.stat(sessionDir)),
         ).rejects.toThrow(/ENOENT/)
     })
@@ -119,7 +119,7 @@ describe("createEventHandler: session.deleted dispatch", () => {
             event: { type: "session.deleted", id: sid },
         } as never)
 
-        await expect(
+        expect(
             import("node:fs/promises").then(fs => fs.stat(sessionDir)),
         ).rejects.toThrow(/ENOENT/)
     })
@@ -132,7 +132,7 @@ describe("createEventHandler: session.deleted dispatch", () => {
 
         // Neither properties.sessionID nor event.id — the `if (sid)` guard
         // (line 76) skips handleSessionDeleted entirely.
-        await expect(
+        expect(
             handler({
                 event: { type: "session.deleted" },
             } as never),

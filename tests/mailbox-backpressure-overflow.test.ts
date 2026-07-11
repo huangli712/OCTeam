@@ -105,7 +105,7 @@ describe("mailbox backpressure overflow (finding: mailbox-backpressure-allows-ov
         //     (preSize is ~900; even a modest body + JSON overhead exceeds 100.) ---
         const tool = teamSendMessageTool(makeCtx({ storageRoot: root }))
         const newBody = "y".repeat(200) // 200 bytes body → ~330-byte line
-        const result = await tool.execute(
+        await tool.execute(
             { team_id: "alpha", to: "bob", body: newBody },
             { sessionID: aliceSid } as unknown as ToolContext,
         )

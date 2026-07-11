@@ -82,7 +82,7 @@ describe("recordEvent + readRunEvents", () => {
         // yield once to let pending tasks flush, then the runs directory must
         // not have been created.
         await new Promise(r => setImmediate(r))
-        await expect(fs.readdir(join(dir, "runs"))).rejects.toThrow()
+        expect(fs.readdir(join(dir, "runs"))).rejects.toThrow()
     })
 })
 

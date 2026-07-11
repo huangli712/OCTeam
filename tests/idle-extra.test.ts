@@ -390,7 +390,7 @@ describe("handleStatusEvent: retry escalation", () => {
         ])
 
         // Non-member sessionID → resolveTeamMember returns null → no-op.
-        await expect(
+        expect(
             handleStatusEvent(ctx, {
                 type: "session.status",
                 properties: { sessionID: "ses_not_a_member" },
@@ -411,7 +411,7 @@ describe("handleStatusEvent: retry escalation", () => {
         // The lead sessionID resolves via resolveTeamMember only when indexed
         // as a member, which it is not — so this is a no-op. The intent here is
         // to cover the `!member || member.isMaster` early-return guard.
-        await expect(
+        expect(
             handleStatusEvent(ctx, {
                 type: "session.status",
                 properties: { sessionID: sid },

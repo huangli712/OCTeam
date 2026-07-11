@@ -94,7 +94,7 @@ describe("captureMemberOutput must not swallow persistence failure (finding: cap
             // UNFIXED: .catch(logSwallowed) at handlers.ts:362 swallows the
             // EACCES -> captureMemberOutput resolves -> rejects assertion FAILS.
             // FIXED: the failure propagates -> rejects -> PASS.
-            await expect(
+            expect(
                 captureMemberOutput(team, team.members[0], messages),
             ).rejects.toThrow()
         } finally {

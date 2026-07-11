@@ -16,7 +16,6 @@ import { afterAll, describe, expect, test } from "bun:test"
 import type { Message } from "../src/core/types.js"
 import {
     countUnreadMessages,
-    pollMailbox,
     releaseStaleReservations,
     writeMailboxMessage,
 } from "../src/messaging/mailbox.js"
@@ -188,7 +187,7 @@ describe("releaseStaleReservations: edge cases", () => {
         const teamDir = tmpRoot("rsr-noent")
         const recipient = "alice"
         // Deliberately do NOT create the reserved dir.
-        await expect(releaseStaleReservations(teamDir, recipient)).resolves.toBeUndefined()
+        expect(releaseStaleReservations(teamDir, recipient)).resolves.toBeUndefined()
         expect(await countUnreadMessages(teamDir, recipient)).toBe(0)
     })
 
@@ -198,7 +197,7 @@ describe("releaseStaleReservations: edge cases", () => {
         // Create the dir but leave it empty.
         await fs.mkdir(reservedDir(teamDir, recipient), { recursive: true })
 
-        await expect(releaseStaleReservations(teamDir, recipient)).resolves.toBeUndefined()
+        expect(releaseStaleReservations(teamDir, recipient)).resolves.toBeUndefined()
         expect(await countUnreadMessages(teamDir, recipient)).toBe(0)
     })
 })

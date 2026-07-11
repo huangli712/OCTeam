@@ -10,7 +10,6 @@
 import { afterAll, describe, expect, test } from "bun:test"
 
 import type { ActiveTask, TeamSpec } from "../src/core/types.js"
-import { normalizeRole } from "../src/core/role.js"
 import { teamFixMemberTool } from "../src/tools/fixmember.js"
 import { initTeamState, invalidateTeam, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"

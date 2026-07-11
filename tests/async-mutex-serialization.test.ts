@@ -62,7 +62,7 @@ describe("AsyncMutex: mutual exclusion under overlap", () => {
             ran.push("c")
         })
 
-        await expect(failing).rejects.toThrow("boom")
+        expect(failing).rejects.toThrow("boom")
         await Promise.all([b, c])
 
         // Both subsequent sections executed despite the earlier rejection.
@@ -80,7 +80,7 @@ describe("AsyncMutex: mutual exclusion under overlap", () => {
         const next = mutex.runExclusive(async () => {
             ran.push("next")
         })
-        await expect(failing).rejects.toThrow("sync-throw")
+        expect(failing).rejects.toThrow("sync-throw")
         await next
         expect(ran).toEqual(["next"])
     })

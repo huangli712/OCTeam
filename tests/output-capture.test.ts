@@ -197,22 +197,6 @@ afterEach(() => {
     }
 })
 
-function makeCaptureCtx(storageRoot: string): PluginContext {
-    return {
-        storageRoot,
-        scope: "project",
-        directory: "/app",
-        client: {
-            app: { log: mock(async () => {}) },
-            session: {
-                abort: mock(async () => {}),
-                promptAsync: mock(async () => {}),
-                messages: mock(async () => ({ data: [] })),
-            },
-        },
-    } as unknown as PluginContext
-}
-
 /** Minimal active parallel task; opts flip it into a reduce-stage task. */
 function parallelCaptureTask(opts?: {
     runId?: string
@@ -295,7 +279,6 @@ describe("captureMemberOutput: turn accumulation (last-turn-overwrite regression
     test("two exec idles -> <member>.md accumulates BOTH turns with a separator", async () => {
         const root = tmpRoot("cap-acc")
         capRoots.push(root)
-        const ctx = makeCaptureCtx(root)
         const alice = makeMember("alice", "ses_alice")
         const team = await initTeamState(
             root,
@@ -325,7 +308,6 @@ describe("captureMemberOutput: reduce-stage routing (reducer.md overwrite regres
     test("reduce-stage reducer idle -> reduce.md written; reducer's own .md untouched", async () => {
         const root = tmpRoot("cap-red")
         capRoots.push(root)
-        const ctx = makeCaptureCtx(root)
         const bob = makeMember("bob", "ses_bob")
         const team = await initTeamState(
             root,
@@ -350,13 +332,12 @@ describe("captureMemberOutput: reduce-stage routing (reducer.md overwrite regres
         // The reducer's own <member>.md is NOT touched by the reduce turn
         // (the bug: bob.md was overwritten with the reduce summary, losing bob's
         // own stratified-sampling deliverable).
-        await expect(readFile(runMemberOutputPath(dir, "run-red", "bob"), "utf8")).rejects.toThrow()
+        expect(readFile(runMemberOutputPath(dir, "run-red", "bob"), "utf8")).rejects.toThrow()
     })
 
     test("reducer exec turn -> <member>.md; then reduce turn -> reduce.md (both preserved)", async () => {
         const root = tmpRoot("cap-both")
         capRoots.push(root)
-        const ctx = makeCaptureCtx(root)
         const bob = makeMember("bob", "ses_bob")
         const team = await initTeamState(
             root,
@@ -393,7 +374,6 @@ describe("captureMemberOutput: delegate parity (captures like other modes)", () 
     test("delegate idle -> <member>.md written with turn output", async () => {
         const root = tmpRoot("cap-del")
         capRoots.push(root)
-        const ctx = makeCaptureCtx(root)
         const alice = makeMember("alice", "ses_alice")
         const team = await initTeamState(
             root,
@@ -416,7 +396,6 @@ describe("captureMemberOutput: delegate parity (captures like other modes)", () 
     test("delegate turn with team_send_message: text kept, message body excluded", async () => {
         const root = tmpRoot("cap-del-msg")
         capRoots.push(root)
-        const ctx = makeCaptureCtx(root)
         const alice = makeMember("alice", "ses_alice")
         const team = await initTeamState(
             root,

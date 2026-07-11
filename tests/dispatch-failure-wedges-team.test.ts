@@ -52,7 +52,7 @@ describe("startOrchestration dispatch-failure rollback", () => {
         } as ActiveTask
 
         // startOrchestration should reject because dispatch throws.
-        await expect(
+        expect(
             startOrchestration(
                 "alpha",
                 makeToolContext(sid),
