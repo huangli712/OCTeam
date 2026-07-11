@@ -13,8 +13,8 @@ import { prependStandingInstruction } from "../src/orchestration/dispatch.js"
 import type { MemberState } from "../src/core/types.js"
 
 describe("ROLES catalogue", () => {
-    test("has 21 roles, each with a non-empty agent and instruction", () => {
-        expect(ROLE_NAMES.length).toBe(21)
+    test("has 22 roles, each with a non-empty agent and instruction", () => {
+        expect(ROLE_NAMES.length).toBe(22)
         for (const name of ROLE_NAMES) {
             const def = ROLES[name]
             expect(def.agent.length).toBeGreaterThan(0)
@@ -63,6 +63,7 @@ describe("roleAgent (role → fixed agent)", () => {
         expect(roleAgent("optimizer")).toBe("oct-junior")
         expect(roleAgent("tester")).toBe("oct-junior")
         expect(roleAgent("writer")).toBe("oct-junior")
+        expect(roleAgent("solver")).toBe("oct-deep")
         expect(roleAgent("reviewer")).toBe("oct-oracle")
         expect(roleAgent("architect")).toBe("oct-oracle")
         expect(roleAgent("explorer")).toBe("oct-explore")
@@ -80,7 +81,7 @@ describe("roleAgent (role → fixed agent)", () => {
     test("research / writing / ideation", () => {
         expect(roleAgent("researcher")).toBe("oct-librarian")
         expect(roleAgent("author")).toBe("oct-junior")
-        expect(roleAgent("fantast")).toBe("oct-junior")
+        expect(roleAgent("fantast")).toBe("oct-ultrabrain")
     })
 
     test("planning / review / media roles", () => {
@@ -96,7 +97,7 @@ describe("roleAgent (role → fixed agent)", () => {
 
     test("is case-insensitive", () => {
         expect(roleAgent("Reviewer")).toBe("oct-oracle")
-        expect(roleAgent("FANTAST")).toBe("oct-junior")
+        expect(roleAgent("FANTAST")).toBe("oct-ultrabrain")
     })
 })
 

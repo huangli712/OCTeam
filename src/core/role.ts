@@ -13,18 +13,21 @@
  * message, NOT the OpenCode agent's built-in system prompt (the platform
  * injects that as the LLM system role and OCTeam does not control it).
  *
- * Agents used: oct-junior (focused task executor, writes code/files), oct-oracle
- * (read-only strategic advisor), oct-explore (codebase search), oct-librarian
- * (external references), oct-metis (planning), oct-momus (plan audit),
- * oct-multimodal-looker (media analysis). All 7 oct-* agents back at least one
- * role. Matching is case-insensitive (see normalizeRole).
+ * Agents used: oct-junior (focused task executor, writes code/files), oct-deep
+ * (heavy-duty executor for long-range complex tasks, writes code/files),
+ * oct-oracle (read-only strategic advisor), oct-explore (codebase search),
+ * oct-librarian (external references), oct-metis (planning), oct-momus (plan
+ * audit), oct-multimodal-looker (media analysis), oct-ultrabrain (frontier-level
+ * deep thinker and radical ideator, read-only). All 9 oct-* agents back at
+ * least one role. Matching is case-insensitive (see normalizeRole).
  *
  * PERMISSION ENFORCEMENT. All roles map to OCTeam's hardened `oct-*` agents
  * (agents/*.ts), not bare host agent names. The `oct-*` agents carry
- * mode:"subagent" and hardened permission maps: oct-junior permits edit (it is
- * the executor for write-capable roles), while oct-oracle/oct-explore deny
- * edit/task/bash/webfetch (read-only) and oct-librarian denies edit/task/bash
- * but allows webfetch (external reference lookup is its job). Subagent-mode
+ * mode:"subagent" and hardened permission maps: oct-junior/oct-deep permit
+ * edit (write-capable executors), oct-oracle/oct-explore/oct-multimodal-looker
+ * deny edit/task/bash/webfetch (fully read-only), oct-librarian/oct-ultrabrain
+ * deny edit/task/bash but allow webfetch (reference lookup is their job).
+ * Subagent-mode
  * sessions have been verified to support the persistent, multi-dispatch member
  * lifecycle (OCTeam dispatches via session.create + promptAsync, which does
  * not consult agent mode -- see dispatch.ts). Permissions are therefore fixed
@@ -116,6 +119,17 @@ export const ROLES: Record<string, RoleDef> = {
             "Verify code samples compile or run.",
         ].join(" "),
     },
+    solver: {
+        agent: "oct-deep",
+        instruction: [
+            "You are the team's heavy-duty problem solver.",
+            "Take on long-range, complex, and exceptionally challenging tasks",
+            "that exceed single-step execution.",
+            "Build a complete mental model before acting, verify at every phase boundary,",
+            "and never leave code in a broken state.",
+            "Rigor and correctness over speed — always.",
+        ].join(" "),
+    },
     // --- math / physics / chemistry / computation ---
     mathematician: {
         agent: "oct-junior",
@@ -199,13 +213,13 @@ export const ROLES: Record<string, RoleDef> = {
         ].join(" "),
     },
     fantast: {
-        agent: "oct-junior",
+        agent: "oct-ultrabrain",
         instruction: [
             "You are the team's ideator.",
             "Generate novel, unconventional, even contrarian ideas",
             "— challenge the team's assumptions and propose approaches no one else would.",
-            "Favor breadth and originality over caution; surface bold options,",
-            "then briefly note what would make each viable.",
+            "Favor originality and vision over caution; surface bold options,",
+            "ground each in real principles, and note what would make it viable.",
             "Do not self-censor for feasibility first.",
         ].join(" "),
     },
