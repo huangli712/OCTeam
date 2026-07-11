@@ -289,7 +289,7 @@ export type WorkflowToolStep = {
     readonly loop?: { readonly max_iterations: number; readonly on_exhaust?: "fail" | "continue" }
     readonly branches?: readonly WorkflowFanoutBranch[]
     readonly max_errored?: number
-    readonly join_policy?: "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
+    readonly join_policy?: "tolerance" | "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
     readonly quorum?: number
     readonly required_branches?: readonly string[]
     readonly reducer_member?: string
