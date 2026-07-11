@@ -64,7 +64,14 @@ export function clearWakeHint(sessionID: string): void {
     wakeHintLastSent.delete(sessionID)
 }
 
-/** Test-only: current number of tracked sessions (bounds-check regression). */
-export function _wakeHintMapSizeForTests(): number {
-    return wakeHintLastSent.size
+// ---------------------------------------------------------------------------
+// Test-only API (production code must NOT use this)
+// ---------------------------------------------------------------------------
+
+/** @internal Exported only for test files. */
+export const __test__ = {
+    /** Current number of tracked sessions (bounds-check regression). */
+    wakeHintMapSize(): number {
+        return wakeHintLastSent.size
+    },
 }

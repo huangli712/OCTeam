@@ -9,8 +9,8 @@
  */
 import { describe, expect, test } from "bun:test"
 
-import { _wakeHintMapSizeForTests, clearWakeHint, sendWakeHint } from "../src/messaging/wake-hint.js"
-import { _authDirectiveMapSizeForTests, authenticateDirective } from "../src/messaging/mailbox.js"
+import { __test__ as wakeHintTest, clearWakeHint, sendWakeHint } from "../src/messaging/wake-hint.js"
+import { __test__ as mailboxTest, authenticateDirective } from "../src/messaging/mailbox.js"
 import type { Message } from "../src/core/types.js"
 import type { PluginContext } from "../src/core/context.js"
 
@@ -45,7 +45,7 @@ describe("wake-hint Map eviction", () => {
         for (let i = 0; i < CAP + 10; i++) {
             await sendWakeHint(ctx, `ses_evict_${i}`, 1)
         }
-        expect(_wakeHintMapSizeForTests()).toBeLessThanOrEqual(CAP)
+        expect(wakeHintTest.wakeHintMapSize()).toBeLessThanOrEqual(CAP)
         // Cleanup.
         for (let i = 0; i < CAP + 10; i++) clearWakeHint(`ses_evict_${i}`)
     })
@@ -53,10 +53,10 @@ describe("wake-hint Map eviction", () => {
 
 describe("authenticatedDirectives Map eviction", () => {
     test("inserting beyond the cap evicts the oldest entries", () => {
-        const before = _authDirectiveMapSizeForTests()
+        const before = mailboxTest.authDirectiveMapSize()
         for (let i = 0; i < CAP + 10; i++) {
             authenticateDirective(makeDirective(`dir_evict_${i}_${Date.now()}_${i}`))
         }
-        expect(_authDirectiveMapSizeForTests() - before).toBeLessThanOrEqual(CAP)
+        expect(mailboxTest.authDirectiveMapSize() - before).toBeLessThanOrEqual(CAP)
     })
 })

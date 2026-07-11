@@ -100,11 +100,6 @@ function isAuthenticatedDirective(msg: Message): boolean {
         && registered.body === msg.body
 }
 
-/** Test-only: current number of tracked authentications (bounds-check regression). */
-export function _authDirectiveMapSizeForTests(): number {
-    return authenticatedDirectives.size
-}
-
 // --- low-level jsonl helpers ---
 
 async function appendJsonl(filePath: string, obj: unknown): Promise<void> {
@@ -493,4 +488,16 @@ export function formatMailboxInjection(msgs: Message[]): string {
         ...directives.map(m => render(m, "[DIRECTIVE] ")),
         ...regular.map(m => render(m, "")),
     ].join("\n\n")
+}
+
+// ---------------------------------------------------------------------------
+// Test-only API (production code must NOT use this)
+// ---------------------------------------------------------------------------
+
+/** @internal Exported only for test files. */
+export const __test__ = {
+    /** Current number of tracked authentications (bounds-check regression). */
+    authDirectiveMapSize(): number {
+        return authenticatedDirectives.size
+    },
 }
