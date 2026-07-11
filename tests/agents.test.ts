@@ -5,7 +5,7 @@ import type { OcteamAgentConfig } from "../src/agents/types.js"
 
 const READONLY_AGENTS = ["oct-oracle", "oct-librarian", "oct-explore", "oct-multimodal-looker", "oct-ultrabrain"] as const
 const ANALYSIS_AGENTS = ["oct-metis", "oct-momus"] as const
-const EXECUTOR_AGENTS = ["oct-junior"] as const
+const EXECUTOR_AGENTS = ["oct-junior", "oct-deep"] as const
 
 const ALL_AGENT_KEYS = [
     ...READONLY_AGENTS,
@@ -20,9 +20,9 @@ function getAgent(key: string): OcteamAgentConfig {
 }
 
 describe("OCTEAM_AGENTS registry", () => {
-    test("exports exactly 8 agents", () => {
+    test("exports exactly 9 agents", () => {
         const keys = Object.keys(OCTEAM_AGENTS)
-        expect(keys).toHaveLength(8)
+        expect(keys).toHaveLength(9)
     })
 
     test("has the exact 6 expected agent keys (no extras, no missing)", () => {
@@ -130,6 +130,10 @@ describe("temperature values", () => {
     test("ultrabrain has temperature 0.7", () => {
         expect(getAgent("oct-ultrabrain").temperature).toBe(0.7)
     })
+
+    test("deep has temperature 0.1", () => {
+        expect(getAgent("oct-deep").temperature).toBe(0.1)
+    })
 })
 
 describe("createConfigHook", () => {
@@ -140,12 +144,12 @@ describe("createConfigHook", () => {
         expect(hook.constructor.name).toBe("AsyncFunction")
     })
 
-    test("injects all 8 agents into an empty config", async () => {
+    test("injects all 9 agents into an empty config", async () => {
         const cfg: { agent?: Record<string, unknown> } = {}
         const hook = createConfigHook()
         await hook(cfg as Parameters<typeof hook>[0])
         expect(cfg.agent).toBeDefined()
-        expect(Object.keys(cfg.agent!)).toHaveLength(8)
+        expect(Object.keys(cfg.agent!)).toHaveLength(9)
         for (const key of ALL_AGENT_KEYS) {
             expect(cfg.agent![key]).toBe(OCTEAM_AGENTS[key])
         }
@@ -161,8 +165,8 @@ describe("createConfigHook", () => {
         // pre-existing entries untouched
         expect(cfg.agent!["oct-oracle"]).toBe(preExisting)
         expect(cfg.agent!["oct-junior"]).toBe(preExisting)
-        // the other 6 should be injected
-        expect(Object.keys(cfg.agent!)).toHaveLength(8)
+        // the other 7 should be injected
+        expect(Object.keys(cfg.agent!)).toHaveLength(9)
     })
 
     test("does NOT overwrite a completely pre-populated config", async () => {
