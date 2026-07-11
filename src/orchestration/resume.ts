@@ -118,7 +118,11 @@ async function resumeSignoffReduceStage(
         const reducer = team.members.find(
             (m) => m.name === task.reducerMember && !m.isMaster,
         );
-        if (reducer && !task.responses[reducer.name]) {
+        if (reducer === undefined) {
+            await finishRun(ctx, team, `parallel_failed:reducer_missing:${task.reducerMember ?? "undefined"}`, "failed");
+            return true;
+        }
+        if (!task.responses[reducer.name]) {
             const body = await buildSummary(team, task, "pending_reduce");
             const prompt = buildReducePrompt(body);
             await dispatchToMember(
@@ -128,7 +132,7 @@ async function resumeSignoffReduceStage(
                 reducer.worktreePath ?? ctx.directory,
                 team,
             );
-        } else if (reducer) {
+        } else {
             await handleReduceIdle(ctx, team, reducer);
         }
         return true;

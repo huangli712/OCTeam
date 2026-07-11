@@ -250,4 +250,41 @@ describe("resumeDispatch signoff/reduce sub-stage recovery (P1-1)", () => {
         // normal map-recovery path.
         expect(dispatched).toEqual(["ses_bob"])
     })
+
+    test("reduceStage set + reducer member missing → run fails explicitly instead of hanging", async () => {
+        const root = tmpRoot("rd-red-missing")
+        const sid = "ses_rd_red_missing"
+        tracked.push(sid)
+
+        // Parallel task that crashed DURING reduce, but the reducer member
+        // ("ghost") was removed before resume. Without an explicit failure,
+        // resumeSignoffReduceStage returns true and the run hangs.
+        const task = makeTask({
+            responses: { alice: "alice-result" },
+            reducePolicy: "merge",
+            reducerMember: "ghost",
+            reduceStage: true,
+        })
+
+        const alice = makeMember("alice", "ses_alice")
+        alice.status = "idle"
+        const state = makeState("alpha", sid, [alice], Date.now())
+        await initTeamState(root, state, sid)
+        const team = await loadTeamState(root, "alpha", sid)
+        await team.mutex.runExclusive(async () => {
+            team.activeTask = task
+            await saveTeamState(team)
+        })
+        await rebuildSessionIndex(root, `${root}__unused`)
+
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async () => {} })
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(ctx, team, team.activeTask!)
+        })
+
+        // The run must fail explicitly rather than hang.
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+    })
 })
