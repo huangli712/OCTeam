@@ -24,7 +24,7 @@ export type {
     WorkflowToolArgs,
     WorkflowToolStep,
     WorkflowWhere,
-} from "../core/workflow-types.js"
+} from "../core/types/workflow.js"
 
 import type {
     WorkflowStep,
