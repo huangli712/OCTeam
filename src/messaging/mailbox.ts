@@ -266,8 +266,8 @@ export async function ackMessages(
     // Hold the mailbox lock for the whole batch so releaseStaleReservations
     // cannot re-add a message to the inbox between our append-to-processed and
     // unlink-reservation (exactly-once violation). Matches pollMailbox and
-    // releaseStaleReservations batch semantics. Calls _pruneProcessedLogUnlocked
-    // (not pruneProcessedLog) to avoid re-acquiring the same non-reentrant lock.
+    // releaseStaleReservations batch semantics. Calls pruneProcessedLogUnlocked
+    // (the unlocked variant) to avoid re-acquiring the same non-reentrant lock.
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
         for (const msg of msgs) {
             await appendJsonl(processedPath(teamDirectory, recipient), {
@@ -284,7 +284,7 @@ export async function ackMessages(
             })
         }
         // Retention: cap the audit log so it doesn't grow unbounded.
-        await _pruneProcessedLogUnlocked(teamDirectory, recipient)
+        await pruneProcessedLogUnlocked(teamDirectory, recipient)
     })
 }
 
@@ -295,7 +295,7 @@ export async function ackMessages(
  * acks can't race the truncate-and-rewrite. Best-effort on read errors
  * (a malformed/missing log is left untouched).
  */
-async function _pruneProcessedLogUnlocked(teamDirectory: string, recipient: string): Promise<void> {
+async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: string): Promise<void> {
     const p = processedPath(teamDirectory, recipient)
     let raw: string
     try {
