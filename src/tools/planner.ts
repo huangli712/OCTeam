@@ -14,7 +14,8 @@
  * the team/workflow validators. This module reads NO team lifecycle state.
  */
 
-import { existsSync, writeFileSync } from "node:fs"
+import { existsSync } from "node:fs"
+import { writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
@@ -410,7 +411,7 @@ async function runReviseOp(ctx: PluginContext, sessionID: string, args: TeamPlan
     return `Revised team + workflow for "${args.team_id}" (nothing written).\n\n${artifact}\n\nReview, then call team_planner op="write" to persist.`
 }
 
-function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): string {
+async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<string> {
     const validationError = validatePlannerPayload(args.team_id, args.team, args.workflow)
     if (validationError) return validationError
     const teamPath = path.join(ctx.directory, teamFileName(args.team_id))
@@ -422,8 +423,8 @@ function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): string {
     if (args.overwrite !== true && (existsSync(teamPath) || existsSync(workflowPath))) {
         return `Error: refusing to overwrite existing file(s). ${teamFileName(args.team_id)} or ${workflowFileName(args.team_id)} already exists; pass overwrite: true to replace both.`
     }
-    writeFileSync(teamPath, `${JSON.stringify(args.team, null, 4)}\n`)
-    writeFileSync(workflowPath, `${JSON.stringify(args.workflow, null, 4)}\n`)
+    await writeFile(teamPath, `${JSON.stringify(args.team, null, 4)}\n`)
+    await writeFile(workflowPath, `${JSON.stringify(args.workflow, null, 4)}\n`)
     return `Wrote ${teamFileName(args.team_id)} and ${workflowFileName(args.team_id)} under ${ctx.directory}.\n\n${artifact}`
 }
 
@@ -459,7 +460,7 @@ export function teamPlannerTool(ctx: PluginContext): ToolDefinition {
                 case "revise":
                     return await runReviseOp(ctx, context.sessionID, args)
                 case "write":
-                    return runWriteOp(ctx, args)
+                    return await runWriteOp(ctx, args)
                 default:
                     args.op satisfies never
                     return "Error: unknown team_planner op"

@@ -31,7 +31,7 @@ export const juniorAgent: OcteamAgentConfig = {
     mode: "subagent",
     description: "OCTeam focused task executor",
     temperature: 0.1,
-    color: "#20B2AA",
+    color: "#20b2aa",
     permission: { task: "deny" },
     prompt: JUNIOR_PROMPT,
 }

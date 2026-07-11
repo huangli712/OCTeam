@@ -16,7 +16,7 @@ import type {
     WorkflowStep,
 } from "./workflow.js"
 
-/** Discriminated orchestration mode — one of ten workflow primitives. */
+/** Discriminated orchestration mode — one of eleven workflow primitives. */
 export type OrchestrationType = "parallel" | "pipeline" | "loop" | "delegate" | "consensus" | "route" | "arbitrate" | "recurse" | "tollgate" | "workflow" | "arena"
 /** Parallel execution mode: isolated (same task) or cooperative (per-member). */
 export type ParallelMode = "isolated" | "cooperative"

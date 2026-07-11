@@ -37,7 +37,7 @@ export const oracleAgent: OcteamAgentConfig = {
     mode: "subagent",
     description: "OCTeam read-only strategic advisor",
     temperature: 0.1,
-    color: "#FF8C00",
+    color: "#ff8c00",
     permission: { edit: "deny", task: "deny", bash: "deny", webfetch: "deny" },
     prompt: ORACLE_PROMPT,
 }
