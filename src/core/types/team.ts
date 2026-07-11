@@ -116,10 +116,10 @@ export type LastModeRecord = {
     finishedAt: number                 // epoch ms when activeTask was cleared
 }
 
-// Forward imports: ActiveTask + supporting types live in task.ts (layer 1).
+// Forward imports: ActiveTask + supporting types live in orchestration.ts (layer 1).
 // They are re-exported here for type-narrowing convenience from a single import,
 // but the canonical definitions live in their own focused file.
-import type { ActiveTask, OrchestrationType, ParallelMode } from "./task.js"
+import type { ActiveTask, OrchestrationType, ParallelMode } from "./orchestration.js"
 
 /** Storage scope for team state: user (~/.octeam) or project (<dir>/.octeam). */
 export type StorageScope = "user" | "project"

@@ -14,7 +14,8 @@
  * Subsystem files (layered, no cycles):
  *   - workflow.ts         (Layer 0) WorkflowStep, Verdict, fanout/join metadata, WorkflowToolStep (external tool API)
  *   - messaging.ts        (Layer 0) Message, SdkMessage
- *   - task.ts             (Layer 0-1) ActiveTask union + 11 variants + enums + Stage/GatedStage/Approval/RouteBranch/Arena; Task/TaskStatus (shared cooperative tasklist)
+ *   - task.ts             (Layer 0) Task/TaskStatus (shared cooperative tasklist)
+ *   - orchestration.ts    (Layer 1) ActiveTask union + 11 variants + enums + Stage/GatedStage/Approval/RouteBranch/Arena
  *   - team.ts             (Layer 2) TeamSpec, TeamState, MemberState, Bounds, LastModeRecord, StorageScope
  *   - runs.ts             (Layer 2) RunRecord, RunEvent, WorkflowRunStep
  */
@@ -22,5 +23,6 @@
 export * from "./types/workflow.js"
 export * from "./types/messaging.js"
 export * from "./types/task.js"
+export * from "./types/orchestration.js"
 export * from "./types/team.js"
 export * from "./types/runs.js"

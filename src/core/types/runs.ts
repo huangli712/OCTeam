@@ -3,8 +3,8 @@
  * result and timeline, stored under runs/<runId>/.
  *
  * Layer 2 in the types decomposition — imports from workflow.ts (Verdict,
- * WorkflowStep-related types) and task.ts (OrchestrationType, ParallelMode,
- * enums, DecisionRecord, ApprovalDecisionRecord, ArenaScoreboard).
+ * WorkflowStep-related types) and orchestration.ts (OrchestrationType,
+ * ParallelMode, enums, DecisionRecord, ApprovalDecisionRecord, ArenaScoreboard).
  */
 
 import type {
@@ -14,7 +14,7 @@ import type {
     OrchestrationType,
     ParallelMode,
     SignoffPolicy,
-} from "./task.js"
+} from "./orchestration.js"
 
 import type {
     Verdict,
