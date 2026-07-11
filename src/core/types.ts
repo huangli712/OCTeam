@@ -18,9 +18,6 @@
  *   - orchestration.ts    (Layer 1) ActiveTask union + 11 variants + enums + Stage/GatedStage/Approval/RouteBranch/Arena
  *   - team.ts             (Layer 2) TeamSpec, TeamState, MemberState, Bounds, LastModeRecord
  *   - runs.ts             (Layer 2) RunRecord, RunEvent, WorkflowRunStep
- *
- * Infrastructure types (re-exported for convenience):
- *   - context.ts          StorageScope (consumed by PluginContext)
  */
 
 export * from "./types/workflow.js"
@@ -29,4 +26,3 @@ export * from "./types/task.js"
 export * from "./types/orchestration.js"
 export * from "./types/team.js"
 export * from "./types/runs.js"
-export type { StorageScope } from "./context.js"
