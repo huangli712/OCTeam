@@ -36,19 +36,19 @@ export type WorkflowBranchStatus = "pending" | "completed" | "skipped" | "errore
 
 /** Persisted snapshot of a single workflow step for run records. */
 export type WorkflowRunStep = {
-    index: number                       // zero-based internal workflow step index
-    step: number                        // one-based display step number
+    index: number                      // zero-based internal workflow step index
+    step: number                       // one-based display step number
     kind: WorkflowStepKind
-    id?: string                          // stable step identifier when declared
+    id?: string                        // stable step identifier when declared
     member?: string
     verifier?: string
     verifiers?: readonly string[]
     ensemblePolicy?: WorkflowEnsemblePolicy
     ensembleQuorum?: number
     ensembleResults?: Record<string, WorkflowEnsembleResult>
-    dispatchedActor?: string              // the actor (primary or fallback) that actually executed the step
-    targetStep?: number                 // one-based display primary target task step for gate steps
-    targetSteps?: number[]              // one-based display multi-target task steps for gate steps
+    dispatchedActor?: string           // the actor (primary or fallback) that actually executed the step
+    targetStep?: number                // one-based display primary target task step for gate steps
+    targetSteps?: number[]             // one-based display multi-target task steps for gate steps
     verdict?: Verdict
     score?: number
     confidence?: number
@@ -64,7 +64,7 @@ export type WorkflowRunStep = {
     loopIterations?: number
     skipped?: boolean
     completed: boolean
-    output?: string                     // bounded task-step snapshot captured at completion
+    output?: string                    // bounded task-step snapshot captured at completion
     outputBytes?: number
     joinedOutputBytes?: number
     startedAt?: number

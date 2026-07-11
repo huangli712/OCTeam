@@ -193,8 +193,8 @@ export interface ActiveTaskBase {
     type: OrchestrationType                  // discriminant (narrowed to a literal per variant)
     startedAt: number
     wallClockTimeoutMs: number               // hard timeout in ms; set by the tool layer to
-                                        // DEFAULT_TIMEOUT_MS (600_000 / 10 min) or
-                                        // DEFAULT_LOOP_TIMEOUT_MS (900_000 / 15 min for loop)
+                                             // DEFAULT_TIMEOUT_MS (600_000 / 10 min) or
+                                             // DEFAULT_LOOP_TIMEOUT_MS (900_000 / 15 min for loop)
     tokenBudget?: number                     // optional cost cap
     tokensUsed: number                       // running total = sum of tokensByMember (recomputed)
     tokensByMember: Record<string, number>   // memberName -> sum(input+output+reasoning)
@@ -228,7 +228,7 @@ export interface ActiveTaskBase {
     // reduce policy (parallel isolated/cooperative only; read un-narrowed)
     reducePolicy?: ReducePolicy
     reduceRubric?: string                    // when reducePolicy === "rubric"
-    reduceSelect?: string                   // when reducePolicy === "select": what "best" means (method-neutral)
+    reduceSelect?: string                    // when reducePolicy === "select": what "best" means (method-neutral)
     // #4 real map-reduce: when reducePolicy != summarize AND reducerMember names
     // a live member AND there are >1 candidates, a dedicated reducer member is
     // dispatched post-barrier to combine outputs into one. Otherwise (undefined
@@ -350,8 +350,8 @@ export interface TollgateTask extends ActiveTaskBase {
 /** Declarative workflow orchestration — a task/gate/fanout/join step engine. */
 export interface WorkflowTask extends ActiveTaskBase {
     type: "workflow"
-    steps?: WorkflowStep[]              // declarative step list; currentStageIndex is the cursor. Optional to match the codebase convention (all variant-specific fields are optional, like gatedStages?); handlers guard with `task.steps ?? []`.
-    activeStepIndices?: number[]        // persisted active frontier for fanout/join; legacy readers fall back to [currentStageIndex]
+    steps?: WorkflowStep[]                   // declarative step list; currentStageIndex is the cursor. Optional to match the codebase convention (all variant-specific fields are optional, like gatedStages?); handlers guard with `task.steps ?? []`.
+    activeStepIndices?: number[]             // persisted active frontier for fanout/join; legacy readers fall back to [currentStageIndex]
 }
 
 // arena: N candidates implement competing solutions in isolated worktrees
