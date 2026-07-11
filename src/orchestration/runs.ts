@@ -49,6 +49,7 @@ const FAILED_REASON_MARKERS = [
     "workflow_failed",     // workflow: a gate FAIL (onFail='fail' or retries exhausted) or unparseable verdict
     "workflow_invalid",    // workflow: verifier could not evaluate the target task output
     "pipeline_failed",    // pipeline: a stage's member has no live session (explicit failure instead of stalling)
+    "parallel_failed",    // parallel: reducer member missing on resume of a reduce stage
     "signoff_rejected",           // signoff: decider/reviewer rejected the work
     "signoff_quorum_not_reached", // signoff: peer-quorum did not get enough approvals
     "human_rejected",             // HITL: leader rejected a mid-run approval request
