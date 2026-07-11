@@ -33,8 +33,8 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import { logger } from '../core/log.js';
-import { isEnoent } from '../core/utils.js';
+import { logger } from "../core/log.js"
+import { isEnoent } from "../core/utils.js"
 import { RESERVATION_TTL_MS, atomicWrite, refuseSymlink, withLock } from "../state/locks.js"
 import {
     inboxPath,
@@ -104,9 +104,7 @@ function isAuthenticatedDirective(msg: Message): boolean {
 
 async function appendJsonl(filePath: string, obj: unknown): Promise<void> {
     await refuseSymlink(filePath)
-    await fs.mkdir(path.dirname(filePath), { recursive: true }).catch(() => {
-        // parent may already exist
-    })
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
     await fs.appendFile(filePath, JSON.stringify(obj) + "\n", "utf8")
 }
 
@@ -292,11 +290,11 @@ export async function ackMessages(
 
 /**
  * Cap mailbox/{recipient}.processed.jsonl at PROCESSED_MAX_LINES entries,
- * keeping the most recent. Runs under the mailbox lock so concurrent acks and
- * the stale-reservation reaper can't race the truncate-and-rewrite. Best-effort
- * on read errors (a malformed/missing log is left untouched).
+ * keeping the most recent. Caller MUST hold the mailbox lock — runs under
+ * the same lock as ackMessages and the stale-reservation reaper so concurrent
+ * acks can't race the truncate-and-rewrite. Best-effort on read errors
+ * (a malformed/missing log is left untouched).
  */
-/** Unlocked body of pruneProcessedLog. Caller MUST hold the mailbox lock. */
 async function _pruneProcessedLogUnlocked(teamDirectory: string, recipient: string): Promise<void> {
     const p = processedPath(teamDirectory, recipient)
     let raw: string

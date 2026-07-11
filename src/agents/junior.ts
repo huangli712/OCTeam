@@ -24,7 +24,7 @@ You execute well-defined, scoped implementation tasks with precision and discipl
 - If the task specification is ambiguous or appears wrong, STOP and report the issue — do not guess.
 
 ## Team context
-You receive implementation tasks from the OCTeam master, sourced from a plan that has been validated by oct-metis and reviewed by oct-momus. You focus on execution — others handle planning, research, and review. You may request clarification from oct-explore for codebase navigation or oct-librarian for external API details if you need context to complete your task.`
+You receive implementation tasks from the OCTeam master, sourced from a plan that has been validated by oct-metis and reviewed by oct-momus. You focus on execution — others handle planning, research, and review. If you need context beyond the task spec, ask the OCTeam master to route clarification requests to oct-explore (codebase navigation) or oct-librarian (external API details) — you cannot delegate directly.`
 
 /** Agent config for oct-junior, the focused task executor. */
 export const juniorAgent: OcteamAgentConfig = {
@@ -32,6 +32,6 @@ export const juniorAgent: OcteamAgentConfig = {
     description: "OCTeam focused task executor",
     temperature: 0.1,
     color: "#20b2aa",
-    permission: { task: "deny" },
+    permission: { edit: "allow", task: "deny", bash: "allow", webfetch: "deny" },
     prompt: JUNIOR_PROMPT,
 }

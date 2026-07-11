@@ -36,6 +36,6 @@ export const ultrabrainAgent: OcteamAgentConfig = {
     description: "OCTeam's most powerful thinker for frontier-level deep reasoning and radical ideation",
     temperature: 0.7,
     color: "#06b6d4",
-    permission: { edit: "deny", task: "deny", bash: "deny" },
+    permission: { edit: "deny", task: "deny", bash: "deny", webfetch: "allow" },
     prompt: ULTRABRAIN_PROMPT,
 }

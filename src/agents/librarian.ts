@@ -40,6 +40,6 @@ export const librarianAgent: OcteamAgentConfig = {
     description: "OCTeam external reference researcher",
     temperature: 0.1,
     color: "#4169e1",
-    permission: { edit: "deny", task: "deny", bash: "deny" },
+    permission: { edit: "deny", task: "deny", bash: "deny", webfetch: "allow" },
     prompt: LIBRARIAN_PROMPT,
 }

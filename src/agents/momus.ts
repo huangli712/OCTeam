@@ -36,6 +36,6 @@ export const momusAgent: OcteamAgentConfig = {
     temperature: 0.1,
     color: "#ef4444",
     // task allowed: momus consults oracle/explore for review validation
-    permission: { edit: "deny", bash: "deny", webfetch: "deny" },
+    permission: { edit: "deny", task: "allow", bash: "deny", webfetch: "deny" },
     prompt: MOMUS_PROMPT,
 }

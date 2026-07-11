@@ -44,8 +44,8 @@ export const OCTEAM_AGENTS: Record<string, OcteamAgentConfig> = {
  */
 export function createConfigHook(): NonNullable<Hooks["config"]> {
     return async (cfg) => {
+        if (!cfg.agent) cfg.agent = {}
         for (const [name, def] of Object.entries(OCTEAM_AGENTS)) {
-            if (!cfg.agent) cfg.agent = {}
             if (!cfg.agent[name]) {
                 cfg.agent[name] = def
             }
