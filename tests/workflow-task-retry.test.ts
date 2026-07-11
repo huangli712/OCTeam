@@ -11,12 +11,6 @@
 import { describe, expect, test } from "bun:test";
 
 import { processIdle } from "../src/orchestration/idle.js";
-import type {
-    ActiveTask,
-    MemberState,
-    WorkflowStep,
-    WorkflowTask,
-} from "../src/core/types.js";
 import { makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js";
 
 

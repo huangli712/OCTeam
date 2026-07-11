@@ -16,7 +16,6 @@ import { checkTermination } from "../src/orchestration/termination.js";
 import { advanceWorkflowStep } from "../src/orchestration/workflow.js";
 import { readRunEvents, readRunRecord } from "../src/orchestration/runs.js";
 import type {
-    ActiveTask,
     MemberState,
     WorkflowStep,
     WorkflowTask,
