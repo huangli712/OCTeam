@@ -15,6 +15,7 @@ import type {
     ParallelMode,
     SignoffPolicy,
 } from "./task.js"
+
 import type {
     Verdict,
     WorkflowBranchMetadata,
@@ -30,8 +31,6 @@ import type {
     WorkflowStepKind,
 } from "./workflow.js"
 
-/** Run outcome: completed successfully or failed. */
-export type RunStatus = "completed" | "failed"
 /** Per-branch status within a workflow fanout. */
 export type WorkflowBranchStatus = "pending" | "completed" | "skipped" | "errored"
 
@@ -86,6 +85,9 @@ export type WorkflowRunStep = {
     approvalAfter?: boolean
     maxOutputBytes?: number
 }
+
+/** Run outcome: completed successfully or failed. */
+export type RunStatus = "completed" | "failed"
 
 /** Persistent per-orchestration result record stored as runs/<runId>/record.json. */
 export type RunRecord = {
