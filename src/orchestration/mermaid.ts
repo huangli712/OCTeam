@@ -30,7 +30,12 @@ function mermaidSafeId(value: string): string {
 }
 
 function mermaidLabel(value: string): string {
-    return value.replace(/\\/g, "\\\\").replace(/"/g, "'").replace(/[\r\n]+/g, " ")
+    return value
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, "'")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/[\r\n]+/g, " ")
 }
 
 function mermaidStepLabel(step: WorkflowRunStep): string {

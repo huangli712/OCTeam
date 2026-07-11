@@ -76,8 +76,12 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                 // validate
                 (team) => {
                     // Evaluator must be a real non-master member.
-                    if (!team.members.some(m => m.name === args.evaluator && !m.isMaster)) {
+                    const evaluatorMember = team.members.find(m => m.name === args.evaluator)
+                    if (evaluatorMember === undefined) {
                         return `Error: unknown evaluator "${args.evaluator}"`
+                    }
+                    if (evaluatorMember.isMaster) {
+                        return `Error: evaluator "${args.evaluator}" must be a non-master member`
                     }
                     const candidates = resolveCandidates(team)
                     // Unique names (mirrors team_arbitrate): duplicates would

@@ -36,4 +36,13 @@ describe("formatWorkflowMermaid", () => {
         expect(result).toContain("class s2 active;")
         expect(result).toContain("class s3 pending;")
     })
+
+    test("escapes angle brackets in labels to prevent Mermaid render corruption", () => {
+        const steps: WorkflowRunStep[] = [
+            { index: 0, step: 1, kind: "task", member: "alice<b>x</b>", completed: true },
+        ]
+        const result = formatWorkflowMermaid(steps)
+        expect(result).not.toContain("<b>")
+        expect(result).toContain("&lt;b&gt;")
+    })
 })

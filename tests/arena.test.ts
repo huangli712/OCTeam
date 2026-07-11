@@ -580,6 +580,30 @@ describe("team_arena tool", () => {
         expect(result).toBe('Error: unknown evaluator "ghost"')
     })
 
+    test("evaluator who is the master is rejected with a non-master message", async () => {
+        const root = tmpRoot("arena-tool-master-eval")
+        const sid = "ses_arena_master_eval_m"
+        arenaTracked.push(sid)
+        await setupArenaTeam(root, sid, [
+            { ...arenaMember("alice", "ses_alice"), isMaster: true },
+            arenaMember("bob", "ses_bob"),
+            arenaMember("carol", "ses_carol"),
+        ])
+        const result = await teamArenaTool(makeArenaCtx(root, [])).execute(
+            {
+                team_id: "alpha",
+                task: "t",
+                evaluator: "alice",
+                candidates: ["bob", "carol"],
+                eval_criteria: "x",
+            },
+            { sessionID: sid } as unknown as ToolContext,
+        )
+        // alice exists but is the master → must NOT say "unknown evaluator"
+        expect(result).not.toContain("unknown evaluator")
+        expect(result).toContain("non-master")
+    })
+
     test("evaluator listed as a candidate is rejected", async () => {
         const root = tmpRoot("arena-tool-eval-in-cand")
         const sid = "ses_arena_eval_in_cand_m"
