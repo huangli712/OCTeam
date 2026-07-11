@@ -2,10 +2,12 @@
  * Team state and configuration type definitions.
  *
  * Layer 2 in the types decomposition — imports ActiveTask, OrchestrationType,
- * and ParallelMode from task.ts (layer 1).
+ * and ParallelMode from orchestration.ts (layer 1).
  * This file declares TeamSpec, TeamState, MemberState, Bounds, and the
  * TeamStatus / MemberStatus enums.
  */
+
+import type { ActiveTask, OrchestrationType, ParallelMode } from "./orchestration.js"
 
 /** Immutable team specification stored as config.json. */
 export type TeamSpec = {
@@ -82,10 +84,9 @@ export type Bounds = {
 /**
  * Mutable team runtime state persisted as state.json.
  *
- * Depends on ActiveTask from task.ts (an import cycle would form if
- * task.ts imported from this file). Instead, task.ts is layered
- * BELOW this file: it imports Stage/GatedStage/etc. but NOT TeamState, and
- * this file imports the ActiveTask union from task.ts.
+ * Depends on ActiveTask from orchestration.ts (an import cycle would form if
+ * orchestration.ts imported from this file). Instead, orchestration.ts is layered
+ * BELOW this file, and this file imports the ActiveTask union from it.
  */
 export type TeamState = {
     version: 1
@@ -95,7 +96,7 @@ export type TeamState = {
     leadSessionId: string              // always context.sessionID; leader name is "master"
     members: MemberState[]
     activeTask?: ActiveTask            // only one active orchestration at a time
-    lastInterruptedTask?: ActiveTask       // task to resume on reconnect (survives activeTask cleanup)
+    lastInterruptedTask?: ActiveTask   // task to resume on reconnect (survives activeTask cleanup)
     lastMode?: LastModeRecord          // most recent orchestration mode (survives activeTask cleanup)
     bounds: Bounds                     // resource limits
     createdAt: number
@@ -115,9 +116,3 @@ export type LastModeRecord = {
     mode?: ParallelMode                // parallel only
     finishedAt: number                 // epoch ms when activeTask was cleared
 }
-
-// Forward imports: ActiveTask + supporting types live in task.ts (layer 1).
-// They are re-exported here for type-narrowing convenience from a single import,
-// but the canonical definitions live in their own focused file.
-import type { ActiveTask, OrchestrationType, ParallelMode } from "./task.js"
-
