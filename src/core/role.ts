@@ -26,7 +26,9 @@
  * mode:"subagent" and hardened permission maps: oct-junior/oct-deep permit
  * edit (write-capable executors), oct-oracle/oct-explore/oct-multimodal-looker
  * deny edit/task/bash/webfetch (fully read-only), oct-librarian/oct-ultrabrain
- * deny edit/task/bash but allow webfetch (reference lookup is their job).
+ * deny edit/task/bash but allow webfetch (reference lookup is their job),
+ * oct-metis/oct-momus deny edit/bash/webfetch but allow task (planning/review
+ * agents need subagent delegation). Subagent-mode
  * Subagent-mode
  * sessions have been verified to support the persistent, multi-dispatch member
  * lifecycle (OCTeam dispatches via session.create + promptAsync, which does
@@ -277,10 +279,10 @@ export const DEFAULT_ROLE = "reviewer"
  * All preset role names (the closed enum of valid roles).
  *
  * @internal Exported only for use by tests/role.test.ts (closed-enum regression
- * on the 21 preset role count + names). Not part of the public API; do not
+ * on the 22 preset role count + names). Not part of the public API; do not
  * consume from production code.
  */
-export const ROLE_NAMES: string[] = Object.keys(ROLES)
+export const ROLE_NAMES: readonly string[] = Object.freeze(Object.keys(ROLES))
 
 /**
  * All hardened oct-* agent names used by OCTeam roles. Derived from ROLES so
@@ -319,7 +321,7 @@ export function normalizeRole(role: string): string {
  * permission-determining `agent` field.
  */
 export function isOCTeamAgent(agent: string): boolean {
-    return (OCTEAM_AGENTS as readonly string[]).includes(agent)
+    return OCTEAM_AGENTS.includes(agent)
 }
 
 /**

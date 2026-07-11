@@ -2,7 +2,7 @@
  * Construct the shared PluginContext from host-provided PluginInput — the
  * single context object passed to every tool handler, event handler, and
  * transform hook. Also defines StorageScope, the storage scope enum consumed
- * by PluginContext and re-exported via the types barrel.
+ * by PluginContext.
  */
 
 import os from "node:os"
