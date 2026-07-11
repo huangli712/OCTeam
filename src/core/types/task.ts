@@ -1,8 +1,15 @@
 /**
- * ActiveTask discriminated union and supporting orchestration types.
+ * ActiveTask discriminated union and supporting orchestration types,
+ * plus the shared cooperative tasklist item (Task).
+ *
+ * Two task-related families co-located here:
+ *   1. ActiveTask — the active orchestration's runtime state machine.
+ *   2. Task / TaskStatus — a shared cooperative tasklist item used by
+ *      delegate mode (persisted to tasks/*.json, has blockedBy DAG deps).
  *
  * Layer 1 in the types decomposition — imports workflow step types
- * (Verdict, WorkflowStep, WorkflowRetryCondition, etc.) from workflow.ts.
+ * (Verdict, WorkflowStep) from workflow.ts. Task/TaskStatus are Layer 0
+ * (no imports).
  * Consumed by team.ts (TeamState.activeTask field), runs.ts (RunRecord.type),
  * and all orchestration handlers.
  *
@@ -10,6 +17,25 @@
  * (tokens, responses, stages, decision history, signoff, HITL approvals, ...)
  * lives in ActiveTaskBase so it is accessible without narrowing.
  */
+
+/** Shared tasklist item status: pending, claimed, in_progress, completed, or deleted. */
+export type TaskStatus = "pending" | "claimed" | "in_progress" | "completed" | "deleted"
+
+/** A task in the shared cooperative tasklist with optional blockedBy dependencies. */
+export type Task = {
+    version: 1
+    id: string                         // UUID
+    subject: string
+    description: string
+    status: TaskStatus
+    owner?: string                     // member name who claimed
+    blockedBy: string[]                // task IDs that must complete first
+    createdAt: number
+    updatedAt: number
+    claimedAt?: number
+    depth?: number                     // recursion level (root = 0; child = parent + 1)
+    result?: string                    // completed-task output (read by aggregating parents)
+}
 
 import type {
     Verdict,

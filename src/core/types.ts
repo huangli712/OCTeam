@@ -12,9 +12,9 @@
  * its in-process mutex) live in state/store.ts, NOT here.
  *
  * Subsystem files (layered, no cycles):
- *   - workflow.ts         (Layer 0) WorkflowStep, Verdict, fanout/join metadata
- *   - messaging.ts  (Layer 0) Message, Task, TaskStatus
- *   - task.ts      (Layer 1) ActiveTask union + 11 variants + enums + Stage/GatedStage/Approval/RouteBranch/Arena
+ *   - workflow.ts         (Layer 0) WorkflowStep, Verdict, fanout/join metadata, WorkflowToolStep (external tool API)
+ *   - messaging.ts        (Layer 0) Message, SdkMessage
+ *   - task.ts             (Layer 0-1) ActiveTask union + 11 variants + enums + Stage/GatedStage/Approval/RouteBranch/Arena; Task/TaskStatus (shared cooperative tasklist)
  *   - team.ts             (Layer 2) TeamSpec, TeamState, MemberState, Bounds, LastModeRecord, StorageScope
  *   - runs.ts             (Layer 2) RunRecord, RunEvent, WorkflowRunStep
  */

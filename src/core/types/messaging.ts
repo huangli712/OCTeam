@@ -1,29 +1,10 @@
 /**
- * Shared task list item (Task) and file mailbox entry (Message) type definitions.
+ * File mailbox entry (Message) and SDK message runtime shape (SdkMessage).
  *
  * Layer 0 in the types decomposition — no imports from other type files.
- * Both types are JSON-serializable (persisted to disk) and used by the
- * cooperative task list (tasks/*.json) and messaging layer (mailbox/*.jsonl).
+ * Both types are JSON-serializable. Message is persisted to mailbox/*.jsonl;
+ * SdkMessage is a runtime-only shape used at SDK boundaries.
  */
-
-/** Shared tasklist item status: pending, claimed, in_progress, completed, or deleted. */
-export type TaskStatus = "pending" | "claimed" | "in_progress" | "completed" | "deleted"
-
-/** A task in the shared cooperative tasklist with optional blockedBy dependencies. */
-export type Task = {
-    version: 1
-    id: string                         // UUID
-    subject: string
-    description: string
-    status: TaskStatus
-    owner?: string                     // member name who claimed
-    blockedBy: string[]                // task IDs that must complete first
-    createdAt: number
-    updatedAt: number
-    claimedAt?: number
-    depth?: number                     // recursion level (root = 0; child = parent + 1)
-    result?: string                    // completed-task output (read by aggregating parents)
-}
 
 /**
  * Runtime shape of an OpenCode SDK chat message (session.messages /
