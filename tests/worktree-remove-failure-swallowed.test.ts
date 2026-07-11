@@ -36,7 +36,7 @@ import { rm, writeFile, mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { promisify } from "node:util"
 
-import { afterAll, afterEach, describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 
 import { cleanWorktree } from "../src/state/worktrees.js"
 import { teamDir, worktreesDir } from "../src/state/paths.js"
@@ -127,7 +127,7 @@ describe("cleanWorktree git failure swallowed (finding: worktree-remove-failure-
         // UNFIXED: .catch(()=>{}) at worktrees.ts:42 swallows the git exit-128
         //          → cleanWorktree resolves with void → rejects FAILS.
         // FIXED:   git failure propagates → cleanWorktree rejects → PASSES.
-        await expect(
+        expect(
             cleanWorktree(repoDir, wtPath, wtRoot),
         ).rejects.toThrow()
 

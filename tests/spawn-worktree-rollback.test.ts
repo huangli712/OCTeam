@@ -71,17 +71,17 @@ describe("spawn worktree rollback (finding: spawn-worktree-not-rolled-back)", ()
         const branchName = "team/alpha/alice"
 
         // Sanity: worktree doesn't exist yet.
-        await expect(access(wtPath)).rejects.toThrow()
+        expect(access(wtPath)).rejects.toThrow()
 
         // --- Drive ensureMembersReady; session.create fails ---
-        await expect(ensureMembersReady(makeCtx({ storageRoot, directory: projectDir, overrides: { client: { app: { log: async () => ({}) }, session: { create: async () => { throw new Error("session.create boom") } } } } }), team))
+        expect(ensureMembersReady(makeCtx({ storageRoot, directory: projectDir, overrides: { client: { app: { log: async () => ({}) }, session: { create: async () => { throw new Error("session.create boom") } } } } }), team))
             .rejects.toThrow("session.create boom")
 
         // --- ASSERT: the worktree directory must have been cleaned up ---
         // On UNFIXED code: createWorktree succeeded, session.create threw,
         // nothing cleaned up → wtPath still exists → access resolves → FAIL.
         // On FIXED code: rollback removed it → access rejects (ENOENT) → PASS.
-        await expect(access(wtPath)).rejects.toThrow()
+        expect(access(wtPath)).rejects.toThrow()
 
         // --- ASSERT: the git branch must have been deleted ---
         // On UNFIXED code: branch `team/alpha/alice` still exists → FAIL.
