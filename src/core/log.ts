@@ -18,23 +18,64 @@
  */
 import type { PluginContext } from "./context.js"
 
+// ---------------------------------------------------------------------------
+// Level definitions
+// ---------------------------------------------------------------------------
+
 /** Structured logging severity level, from debug to error. */
 export type LogLevel = "debug" | "info" | "warn" | "error"
 
 const LEVEL_ORDER: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 }
-
-// --- module-level state (initialized once at server startup via initLogger) ---
-
-let minLevel: LogLevel = levelFromEnv()
-
-/** The host's app.log sink, captured by initLogger for the global logger path. */
-let sink: PluginContext["client"]["app"]["log"] | null = null
 
 function levelFromEnv(): LogLevel {
     const v = process.env.OCTEAM_LOG_LEVEL?.toLowerCase()
     if (v === "debug" || v === "info" || v === "warn" || v === "error") return v
     return "info"
 }
+
+// ---------------------------------------------------------------------------
+// Module-level state (initialized once at server startup via initLogger)
+// ---------------------------------------------------------------------------
+
+let minLevel: LogLevel = levelFromEnv()
+
+/** The host's app.log sink, captured by initLogger for the global logger path. */
+let sink: PluginContext["client"]["app"]["log"] | null = null
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+function shouldLog(level: LogLevel): boolean {
+    return LEVEL_ORDER[level] >= LEVEL_ORDER[minLevel]
+}
+
+function sendToSink(
+    sinkFn: PluginContext["client"]["app"]["log"],
+    level: LogLevel,
+    message: string,
+    extra?: Record<string, unknown>,
+): void {
+    // Do not await: logging must not add latency or backpressure to handlers.
+    void sinkFn({ body: { service: "octeam", level, message, extra } }).catch(() => {
+        // Never throw from the logger — the call sites are best-effort.
+    })
+}
+
+/**
+ * Shared emit path for the global `logger` object. Routes to the captured
+ * sink when available, otherwise falls back to console.warn so output is
+ * still visible (e.g. in unit tests before initLogger is called).
+ */
+function emitGlobal(level: LogLevel, message: string, extra?: Record<string, unknown>): void {
+    if (!shouldLog(level)) return
+    if (sink) sendToSink(sink, level, message, extra)
+    else console.warn(`[octeam] ${message}`, extra ?? "")
+}
+
+// ---------------------------------------------------------------------------
+// Init / configuration
+// ---------------------------------------------------------------------------
 
 /**
  * Initialize the global logger. Called once in server() init. Captures the
@@ -61,23 +102,9 @@ export function _resetLoggerForTests(): void {
     minLevel = levelFromEnv()
 }
 
-function shouldLog(level: LogLevel): boolean {
-    return LEVEL_ORDER[level] >= LEVEL_ORDER[minLevel]
-}
-
-function sendToSink(
-    sinkFn: PluginContext["client"]["app"]["log"],
-    level: LogLevel,
-    message: string,
-    extra?: Record<string, unknown>,
-): void {
-    // Do not await: logging must not add latency or backpressure to handlers.
-    void sinkFn({ body: { service: "octeam", level, message, extra } }).catch(() => {
-        // Never throw from the logger — the call sites are best-effort.
-    })
-}
-
-// --- ctx-based API (for code that already holds a PluginContext) ---
+// ---------------------------------------------------------------------------
+// ctx-based API (for code that already holds a PluginContext)
+// ---------------------------------------------------------------------------
 
 /**
  * Send a structured log event to the host's app.log sink.
@@ -111,37 +138,21 @@ export function logSwallowed(
     })
 }
 
-// --- global logger (for modules without ctx: state/, messaging/) ---
+// ---------------------------------------------------------------------------
+// Global logger (for modules without ctx: state/, messaging/)
+// ---------------------------------------------------------------------------
+
+/** Method signature for each level on the global `logger` object. */
+type LogMethod = (message: string, extra?: Record<string, unknown>) => void
 
 /**
  * Global logger for bottom-layer modules that do not carry a PluginContext.
  * Uses the sink captured by initLogger; before initLogger is called (e.g. in
  * unit tests), falls back to console.warn so output is still visible.
  */
-export const logger: {
-    debug(message: string, extra?: Record<string, unknown>): void
-    info(message: string, extra?: Record<string, unknown>): void
-    warn(message: string, extra?: Record<string, unknown>): void
-    error(message: string, extra?: Record<string, unknown>): void
-} = {
-    debug(message, extra) {
-        if (!shouldLog("debug")) return
-        if (sink) sendToSink(sink, "debug", message, extra)
-        else console.warn(`[octeam] ${message}`, extra ?? "")
-    },
-    info(message, extra) {
-        if (!shouldLog("info")) return
-        if (sink) sendToSink(sink, "info", message, extra)
-        else console.warn(`[octeam] ${message}`, extra ?? "")
-    },
-    warn(message, extra) {
-        if (!shouldLog("warn")) return
-        if (sink) sendToSink(sink, "warn", message, extra)
-        else console.warn(`[octeam] ${message}`, extra ?? "")
-    },
-    error(message, extra) {
-        if (!shouldLog("error")) return
-        if (sink) sendToSink(sink, "error", message, extra)
-        else console.warn(`[octeam] ${message}`, extra ?? "")
-    },
+export const logger: Record<LogLevel, LogMethod> = {
+    debug: (message, extra) => emitGlobal("debug", message, extra),
+    info: (message, extra) => emitGlobal("info", message, extra),
+    warn: (message, extra) => emitGlobal("warn", message, extra),
+    error: (message, extra) => emitGlobal("error", message, extra),
 }

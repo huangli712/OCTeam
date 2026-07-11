@@ -313,21 +313,6 @@ export function normalizeRole(role: string): string {
     return Object.prototype.hasOwnProperty.call(ROLES, key) ? key : DEFAULT_ROLE
 }
 
-/** The full role definition for a label (normalized, always resolves). */
-export function roleDef(role: string): RoleDef {
-    return ROLES[normalizeRole(role)]
-}
-
-/** The fixed agent for a role label (normalized, always resolves). */
-export function roleAgent(role: string): string {
-    return roleDef(role).agent
-}
-
-/** The preset instruction for a role label (normalized, always non-empty). */
-export function rolePreset(role: string): string {
-    return roleDef(role).instruction
-}
-
 /**
  * True iff `agent` is one of OCTeam's hardened oct-* agents. Used at every
  * trust boundary (tool input, disk reload, dispatch) to gate the
@@ -350,4 +335,19 @@ export function isOCTeamAgent(agent: string): boolean {
  */
 export function safeMemberAgent(agent: string | undefined): string {
     return agent !== undefined && isOCTeamAgent(agent) ? agent : SAFE_FALLBACK_AGENT
+}
+
+/** The full role definition for a label (normalized, always resolves). */
+export function roleDef(role: string): RoleDef {
+    return ROLES[normalizeRole(role)]
+}
+
+/** The fixed agent for a role label (normalized, always resolves). */
+export function roleAgent(role: string): string {
+    return roleDef(role).agent
+}
+
+/** The preset instruction for a role label (normalized, always non-empty). */
+export function rolePreset(role: string): string {
+    return roleDef(role).instruction
 }
