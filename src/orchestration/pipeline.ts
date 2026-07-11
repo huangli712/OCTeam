@@ -33,9 +33,15 @@ export async function advancePipelineAfterStage(ctx: PluginContext, team: Team):
 
     task.currentStageIndex = nextIndex
     const nextStage = stages[nextIndex]
-    if (!nextStage) return
+    if (!nextStage) {
+        await finishRun(ctx, team, "pipeline_failed:missing_stage", "failed")
+        return
+    }
     const nextMember = team.members.find(m => m.name === nextStage.member)
-    if (!nextMember?.sessionId) return
+    if (!nextMember?.sessionId) {
+        await finishRun(ctx, team, `pipeline_failed:${nextStage.member}`, "failed")
+        return
+    }
 
     const upstream = buildUpstreamContext(stages, task.responses, nextIndex)
     const stageTask = upstream

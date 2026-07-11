@@ -113,6 +113,36 @@ describe("handlePipelineIdle (via processIdle): stage progression", () => {
         expect(calls.some(c => c.sessionId === "ses_alice")).toBe(false)
         expect(team.activeTask).toBeDefined()
     })
+
+    test("next-stage member with no live session fails explicitly instead of stalling", async () => {
+        const calls: DispatchCall[] = []
+        const task = makePipelineTask({
+            stages: [
+                { member: "alice", task: "step 1", completed: false },
+                { member: "bob", task: "step 2", completed: false },
+            ],
+            currentStageIndex: 0,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob" }, // no sessionId — session lost
+            ],
+        })
+        const ctx = makeCtx({ outputs: { ses_alice: "step 1 done" }, calls })
+
+        await processIdle(ctx, team, team.members[0], "ses_alice")
+
+        // The run must fail explicitly (not hang waiting for a dispatch that
+        // never happens). Mirrors workflow's "missing next-step session fails
+        // explicitly instead of stalling" contract.
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("pipeline_failed")
+    })
 })
 
 
