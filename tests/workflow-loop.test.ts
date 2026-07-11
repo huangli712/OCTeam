@@ -14,10 +14,7 @@ import { describe, expect, test } from "bun:test";
 
 import { processIdle } from "../src/orchestration/idle.js";
 import type {
-    ActiveTask,
-    MemberState,
     WorkflowStep,
-    WorkflowTask,
 } from "../src/core/types.js";
 
 

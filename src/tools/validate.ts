@@ -552,6 +552,7 @@ function validateLoweredGateStep(
     }
     if (gate.ensemble_policy !== undefined && gate.verifiers === undefined) return `Error: ${location} ensemble_policy requires \`verifiers\``
     if (gate.ensemble_quorum !== undefined && gate.ensemble_policy !== "quorum") return `Error: ${location} ensemble_quorum requires ensemble_policy='quorum'`
+    if (gate.ensemble_quorum !== undefined && (typeof gate.ensemble_quorum !== "number" || !Number.isFinite(gate.ensemble_quorum) || gate.ensemble_quorum <= 0 || gate.ensemble_quorum > 1)) return `Error: ${location} ensemble_quorum must be a number > 0 and <= 1`
     return null
 }
 
