@@ -12,19 +12,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { processIdle } from "../src/orchestration/idle.js";
-import type {
-    ActiveTask,
-    WorkflowStep,
-    WorkflowTask,
-} from "../src/core/types.js";
 import { makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js";
 
-
-function sessionIdFor(team: Team, name: string): string {
-    const member = team.members.find((c) => c.name === name);
-    if (member?.sessionId === undefined) throw new Error(`Missing fixture session: ${name}`);
-    return member.sessionId;
-}
 
 const MALFORMED_OUTPUT = "I cannot decide, no verdict tag";
 
