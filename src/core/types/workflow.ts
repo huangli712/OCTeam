@@ -16,6 +16,17 @@
  * Layer 0 in the types decomposition — no imports from other type files.
  */
 
+// ============================================================================
+// INTERNAL RUNTIME TYPES
+//
+// Consumed by the orchestration engine (workflow.ts, workflow-handler.ts,
+// dag.ts, gate.ts, fanout.ts, etc.).
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// Verdict & gate issue primitives
+// ---------------------------------------------------------------------------
+
 /** Three-valued verification verdict: PASS, FAIL, or INVALID. */
 export type Verdict = "PASS" | "FAIL" | "INVALID"
 
@@ -34,6 +45,10 @@ export type WorkflowCondition =
     | { kind: "score_lt"; value: number }
     | { kind: "confidence_gte"; value: number }
     | { kind: "has_issue_severity"; value: WorkflowIssueSeverity }
+
+// ---------------------------------------------------------------------------
+// Step control primitives (kinds, retry, loop, ensemble, verdict policies)
+// ---------------------------------------------------------------------------
 
 /** Workflow step kind: task, gate, fanout, or join. */
 export type WorkflowStepKind = "task" | "gate" | "fanout" | "join"
@@ -70,6 +85,10 @@ export type WorkflowEnsembleResult = {
     diff?: string
     parseFailed?: boolean
 }
+
+// ---------------------------------------------------------------------------
+// Fanout / join metadata
+// ---------------------------------------------------------------------------
 
 /** Start and end index range for a fanout branch within the step list. */
 export type WorkflowBranchRange = {
@@ -117,6 +136,10 @@ export type WorkflowJoinMetadata = {
     readonly selectionRationale?: string
     readonly joinedOutput?: string
 }
+
+// ---------------------------------------------------------------------------
+// WorkflowStep — the runtime step (task, gate, fanout marker, or join marker)
+// ---------------------------------------------------------------------------
 
 /** A single workflow step — task, gate, fanout marker, or join marker. */
 export type WorkflowStep = {
@@ -202,6 +225,10 @@ export type WorkflowStep = {
 // and orchestration/file.ts (workflow_file JSON loader).
 // ============================================================================
 
+// ---------------------------------------------------------------------------
+// Tool API: step-reference & condition helpers
+// ---------------------------------------------------------------------------
+
 /** Conditional threshold for gate-step branching (goto control). */
 export type WorkflowWhere = {
     readonly score_gte?: number
@@ -218,6 +245,10 @@ export type WorkflowFanoutBranch = {
     readonly id: string
     readonly steps: readonly WorkflowToolStep[]
 }
+
+// ---------------------------------------------------------------------------
+// Tool API: WorkflowToolStep & narrowed variants
+// ---------------------------------------------------------------------------
 
 /** A single workflow step (task, gate, fanout, or join marker). */
 export type WorkflowToolStep = {
@@ -274,6 +305,10 @@ export type WorkflowLinearToolStep = WorkflowToolStep & { readonly kind: "task" 
 
 /** A fanout workflow step narrowed to kind "fanout". */
 export type WorkflowFanoutToolStep = WorkflowToolStep & { readonly kind: "fanout" }
+
+// ---------------------------------------------------------------------------
+// Tool API: top-level args
+// ---------------------------------------------------------------------------
 
 /** Public args for the team_workflow tool. */
 export type WorkflowToolArgs = {
