@@ -37,7 +37,8 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 import type { Message } from "../src/core/types.js"
-import { formatMailboxInjection, pollMailbox, writeMailboxMessage } from "../src/messaging/mailbox.js"
+import { pollMailbox, writeMailboxMessage } from "../src/messaging/mailbox.js"
+import { formatMailboxInjection } from "../src/messaging/format.js"
 import { inboxPath } from "../src/state/paths.js"
 import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
 

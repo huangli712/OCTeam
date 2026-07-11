@@ -10,7 +10,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { __test__ as wakeHintTest, clearWakeHint, sendWakeHint } from "../src/messaging/wake-hint.js"
-import { __test__ as mailboxTest, authenticateDirective } from "../src/messaging/mailbox.js"
+import { __test__ as mailboxTest, authenticateDirective } from "../src/messaging/auth.js"
 import type { Message } from "../src/core/types.js"
 import type { PluginContext } from "../src/core/context.js"
 

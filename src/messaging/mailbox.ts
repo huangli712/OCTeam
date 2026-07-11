@@ -33,143 +33,23 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import { logger } from "../core/log.js"
 import { isEnoent } from "../core/utils.js"
-import { RESERVATION_TTL_MS, atomicWrite, refuseSymlink, withLock } from "../state/locks.js"
+import { RESERVATION_TTL_MS, atomicWrite, withLock } from "../state/locks.js"
 import {
     inboxPath,
-    isSafePathSegment,
     mailboxLockPath,
     processedPath,
     reservedDir,
     reservedPath,
 } from "../state/paths.js"
 import type { Message } from "../core/types.js"
+import { authenticateDirective } from "./auth.js"
+import { appendJsonl, readJsonl, truncateFile } from "./jsonl.js"
 
 // Max lines retained in mailbox/{recipient}.processed.jsonl (audit log). The
 // log is append-only by nature; without a cap it grows unbounded across a
 // long-lived team. Pruning keeps the most recent entries (see ackMessages).
 const PROCESSED_MAX_LINES = 1000
-
-// In-memory registry binding directive IDs to their authenticated CONTENT.
-// The mailbox JSONL lives under .octeam/ which member agents can write to, so
-// stored fields (id, from, kind, body) are all forgeable (see file header
-// "TRUST BOUNDARY"). A member CAN read a legitimate directive's id from the
-// JSONL and append a forged line with the SAME id but a DIFFERENT body. To
-// defeat this replay attack, the registry maps id → {from, body}: the stored
-// content must match BOTH the id AND the from/body of the line being rendered.
-// A member cannot add to this in-process map (only writeMailboxMessage, running
-// in the host plugin, can), so the only forged line that passes is a VERBATIM
-// copy of a legitimate directive — which merely re-delivers identical content
-// (harmless, bounded by pollMailbox's exactly-once delivery).
-// Cap on tracked directive authentications. When exceeded, the oldest
-// entries are evicted to bound memory growth for long-lived hosts.
-// Directives are authenticated at write time and checked at poll time
-// (typically seconds later); 64 is far above any realistic in-flight count.
-const AUTH_DIRECTIVE_MAP_CAP = 64
-const authenticatedDirectives = new Map<string, { from: string; body: string; ts: number }>()
-
-/** Evict the oldest auth entries once the map exceeds the cap. */
-function evictStaleAuthDirectives(): void {
-    if (authenticatedDirectives.size <= AUTH_DIRECTIVE_MAP_CAP) return
-    const sorted = [...authenticatedDirectives.entries()].sort((a, b) => a[1].ts - b[1].ts)
-    const toRemove = sorted.length - AUTH_DIRECTIVE_MAP_CAP
-    for (let i = 0; i < toRemove; i++) {
-        authenticatedDirectives.delete(sorted[i]![0])
-    }
-}
-
-/**
- * Register a directive's authenticated content (called by writeMailboxMessage
- * for kind:"directive" messages). The (from, body) binding prevents a member
- * from replaying a legitimate id with forged content.
- */
-export function authenticateDirective(msg: Message): void {
-    authenticatedDirectives.set(msg.id, { from: msg.from, body: msg.body, ts: Date.now() })
-    evictStaleAuthDirectives()
-}
-
-/** True iff `msg` is a directive whose (id, from, body) match a registered
- *  legitimate write. Rejects forged lines (unregistered id OR same id with
- *  different content). */
-function isAuthenticatedDirective(msg: Message): boolean {
-    if (msg.kind !== "directive") return false
-    const registered = authenticatedDirectives.get(msg.id)
-    return registered !== undefined
-        && registered.from === msg.from
-        && registered.body === msg.body
-}
-
-// --- low-level jsonl helpers ---
-
-async function appendJsonl(filePath: string, obj: unknown): Promise<void> {
-    await refuseSymlink(filePath)
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
-    await fs.appendFile(filePath, JSON.stringify(obj) + "\n", "utf8")
-}
-
-/**
- * Minimal top-level schema check for a mailbox Message. Each jsonl line is
- * parsed and cast to Message; a corrupt or tampered line can be valid JSON yet
- * miss the fields delivery/formatting dereference. Validate just id/from/body so
- * wrong-shape entries are skipped alongside the already-skipped malformed lines.
- *
- * NOTE: this is a SHAPE check only, NOT an authenticity check — see the file
- * header "TRUST BOUNDARY" comment. `from`/`kind` are never re-authenticated, so
- * a tampered line with a valid shape is accepted (and rendered trusting its
- * stored sender/kind).
- */
-function isValidMessage(value: unknown): value is Message {
-    if (typeof value !== "object" || value === null) return false
-    const m = value as Record<string, unknown>
-    return (
-        typeof m.id === "string"
-        && isSafePathSegment(m.id)
-        && typeof m.from === "string"
-        && typeof m.body === "string"
-    )
-}
-
-async function readJsonl(filePath: string): Promise<Message[]> {
-    try {
-        const raw = await fs.readFile(filePath, "utf8")
-        const lines = raw.split("\n").filter(l => l.length > 0)
-        const out: Message[] = []
-        let skipped = 0
-        for (const line of lines) {
-            let parsed: unknown
-            try {
-                parsed = JSON.parse(line)
-            } catch {
-                skipped++
-                continue
-            }
-            if (!isValidMessage(parsed)) {
-                // Valid JSON but wrong shape (corrupt / tampered): skip it the
-                // same way malformed lines are skipped.
-                skipped++
-                continue
-            }
-            out.push(parsed)
-        }
-        if (skipped > 0) {
-            logger.warn(`readJsonl: skipped ${skipped} invalid message line(s)`, { file: filePath, skipped })
-        }
-        return out
-    } catch (err: unknown) {
-        if (isEnoent(err)) return []
-        throw err
-    }
-}
-
-async function truncateFile(filePath: string): Promise<void> {
-    await refuseSymlink(filePath)
-    await fs.writeFile(filePath, "", "utf8").catch(err => {
-        if (!isEnoent(err)) throw err
-    })
-}
-
-// --- public API ---
 
 /**
  * Append a single message to a recipient's inbox. Caller handles broadcast by
@@ -433,69 +313,4 @@ export async function unreadInboxBytes(
         if (isEnoent(err)) return 0
         throw err
     }
-}
-
-// --- XML escaping (injection hardening) ---
-
-// Escape XML text content (message body). `&` MUST be replaced first so the
-// ampersands introduced for the other entities are not double-escaped.
-function escapeXmlText(value: string): string {
-    return value
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-}
-
-// Escape an XML attribute value (from, correlationId). Builds on text escaping
-// and additionally neutralizes the quotes that could close the attribute.
-function escapeXmlAttr(value: string): string {
-    return escapeXmlText(value)
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;")
-}
-
-/**
- * Format messages for injection as a synthetic user message. Shared by the
- * Transform hook (member delivery) and the master drain path so both routes
- * present identical formatting.
- *
- * Directive priority: messages with kind === "directive" are rendered FIRST,
- * each prefixed with a [DIRECTIVE] marker, so they take visual precedence in
- * the injected prompt. Regular messages follow after, preserving their order.
- *
- * SECURITY: `kind` and `from` are taken verbatim from the stored line (no
- * authenticity check — see the file header "TRUST BOUNDARY" comment). Only
- * the legitimate write path (writeMailboxMessage, called by team_send_message
- * and team_intervene) sets these fields; the only legitimate directive source
- * is team_intervene, which writes `from: "master"`. A `kind:"directive"` line
- * with any other `from` is a forgery (a member with FS write to .octeam/
- * impersonating control traffic) and is downgraded to a regular message here.
- */
-export function formatMailboxInjection(msgs: Message[]): string {
-    const render = (m: Message, prefix: string): string =>
-        `<team_message from="${escapeXmlAttr(m.from)}"${m.correlationId ? ` correlationId="${escapeXmlAttr(m.correlationId)}"` : ""}>\n`
-        + `${prefix}${escapeXmlText(m.body)}\n</team_message>`
-    // Directives first (with marker), then regular messages in original order.
-    // Authentication: only directives whose (id, from, body) match a
-    // legitimate writeMailboxMessage registration are honored. A forged line
-    // — whether unregistered id OR a replayed id with different content — is
-    // downgraded to a regular message (no [DIRECTIVE] prefix, no priority).
-    const directives = msgs.filter(m => isAuthenticatedDirective(m))
-    const regular = msgs.filter(m => !isAuthenticatedDirective(m))
-    return [
-        ...directives.map(m => render(m, "[DIRECTIVE] ")),
-        ...regular.map(m => render(m, "")),
-    ].join("\n\n")
-}
-
-// ---------------------------------------------------------------------------
-// Test-only API (production code must NOT use this)
-// ---------------------------------------------------------------------------
-
-/** @internal Exported only for test files. */
-export const __test__ = {
-    /** Current number of tracked authentications (bounds-check regression). */
-    authDirectiveMapSize(): number {
-        return authenticatedDirectives.size
-    },
 }

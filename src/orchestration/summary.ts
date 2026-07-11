@@ -14,7 +14,8 @@
 
 import type { PluginContext } from "../core/context.js"
 import { type Team, clearActiveTask } from "../state/store.js"
-import { formatMailboxInjection, pollMailbox, ackMessages } from "../messaging/mailbox.js"
+import { pollMailbox, ackMessages } from "../messaging/mailbox.js"
+import { formatMailboxInjection } from "../messaging/format.js"
 import { truncateOutput } from "./output.js"
 import { logSwallowed } from "../core/log.js"
 import { persistRun } from "./runs.js"
