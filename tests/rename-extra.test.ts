@@ -10,7 +10,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import type { TeamSpec } from "../src/core/types.js"
 import { normalizeRole } from "../src/core/role.js"
 import { teamRenameTool } from "../src/tools/rename.js"
-import { initTeamState, invalidateTeam, loadTeamState, writeTeamSpec } from "../src/state/store.js"
+import { initTeamState, invalidateTeam, writeTeamSpec } from "../src/state/store.js"
 import { indexMasterTeam, resolveTeamMember, setActiveTeam, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 

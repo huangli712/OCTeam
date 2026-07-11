@@ -632,7 +632,7 @@ describe("team_resume: recurse case", () => {
         const sid = "ses_rec_resume_running"
         tracked.push(sid)
         const task = makeRecurseTask({ decomposerMember: "alice", rootTaskId: "root-1" })
-        const team = await setupFailedRecurse(root, sid, task, [
+        await setupFailedRecurse(root, sid, task, [
             makeMember("alice", "ses_alice"),
             { ...makeMember("bob", "ses_bob"), status: "running" },
         ])
