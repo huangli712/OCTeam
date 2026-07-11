@@ -27,7 +27,7 @@ export type SdkMessage = {
 export type Message = {
     version: 1
     id: string                         // UUID
-    from: string                       // sender member name, or "orchestrator"
+    from: string                       // sender member name, or "master"
     to: string                         // recipient member name, or "*" for broadcast
     kind: "message" | "announcement" | "directive"
     body: string                       // max 32KB
