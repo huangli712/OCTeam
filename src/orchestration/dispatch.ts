@@ -91,19 +91,26 @@ export async function ensureMembersReady(
     team: Team,
 ): Promise<void> {
     const toSpawn = team.members.filter((m) => !m.sessionId);
-    if (toSpawn.length === 0) return; // team reused; all sessions live & initialized
-
-    const spec = await readTeamSpec(
-        ctx.storageRoot,
-        team.teamName,
-        team.leadSessionId,
+    const initializationWaitNames = new Set(
+        team.members
+            .filter((m) => !m.isMaster && (!m.sessionId || !m.initialized))
+            .map((m) => m.name),
     );
-    if (!spec)
+    if (initializationWaitNames.size === 0) return;
+
+    const spec = toSpawn.length > 0
+        ? await readTeamSpec(
+              ctx.storageRoot,
+              team.teamName,
+              team.leadSessionId,
+          )
+        : undefined;
+    if (toSpawn.length > 0 && !spec)
         throw new Error(
             `ensureMembersReady: no config.json for team "${team.teamName}"`,
         );
-    const specByName = new Map(spec.members.map((m) => [m.name, m]));
-    const peerNames = spec.members.map((m) => m.name);
+    const specByName = new Map((spec?.members ?? []).map((m) => [m.name, m]));
+    const peerNames = (spec?.members ?? []).map((m) => m.name);
 
     for (const batch of chunk(toSpawn, team.bounds.maxParallelMembers)) {
         await Promise.all(
@@ -179,7 +186,25 @@ export async function ensureMembersReady(
                     // unindex/forget the session, restore member runtime
                     // fields, then tear down the worktree + branch.
                     if (member.sessionId) {
-                        unindexSession(member.sessionId);
+                        const sessionId = member.sessionId;
+                        await ctx.client.session.delete({
+                            path: { id: sessionId },
+                            query: {
+                                directory: member.worktreePath ?? ctx.directory,
+                            },
+                        }).catch((deleteError) =>
+                            logSwallowed(
+                                ctx,
+                                "spawn rollback failed to delete session",
+                                deleteError,
+                                {
+                                    team: team.teamName,
+                                    member: member.name,
+                                    sessionId,
+                                },
+                            ),
+                        );
+                        unindexSession(sessionId);
                         member.sessionId = undefined;
                     }
                     member.status = "pending";
@@ -215,13 +240,13 @@ export async function ensureMembersReady(
         // state before throwing.
     }
 
-    // 4. ROLE-SETUP BARRIER: wait until every spawned member has idled once.
+    // 4. ROLE-SETUP BARRIER: wait until every non-master member has idled once.
     //    The event handler flips member.initialized on the first idle of an
     //    uninitialized member and returns WITHOUT capturing output or advancing.
     await waitUntil(
         () =>
-            toSpawn.every(
-                (m) => team.members.find((x) => x.name === m.name)?.initialized,
+            [...initializationWaitNames].every(
+                (name) => team.members.find((member) => member.name === name)?.initialized,
             ),
         { timeoutMs: ROLE_SETUP_BARRIER_TIMEOUT_MS },
     ).catch(async () => {
@@ -233,8 +258,8 @@ export async function ensureMembersReady(
         await team.mutex.runExclusive(async () => {
             // Re-check initialized under the mutex: the idle handler may have
             // flipped it since the outside-mutex waitUntil evaluation.
-            for (const m of toSpawn) {
-                const cur = team.members.find((x) => x.name === m.name);
+            for (const name of initializationWaitNames) {
+                const cur = team.members.find((member) => member.name === name);
                 if (cur && !cur.initialized) {
                     cur.status = "errored";
                     cur.error = "role-setup barrier timed out";

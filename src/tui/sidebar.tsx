@@ -54,7 +54,7 @@ export function SessionNavigatorSidebar(props: {
         } catch {
             // Silent fail — sidebar is best-effort
         } finally {
-            setLoading(false)
+            if (gen === refreshGeneration) setLoading(false)
         }
     }
 

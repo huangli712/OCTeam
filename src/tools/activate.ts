@@ -55,7 +55,7 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
             let result = ""
             await withOrderedLocks([target, activeSibling].filter((t): t is Team => t !== undefined), async () => {
                 const decision = decideActivate({
-                    targetIsAlreadyActive: target.activatedAt !== undefined && activeSibling === undefined,
+                    targetIsAlreadyActive: target.activatedAt !== undefined,
                     outgoingExists: activeSibling !== undefined,
                     outgoingName: activeSibling?.teamName,
                 })

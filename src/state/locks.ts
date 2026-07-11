@@ -10,7 +10,7 @@ import path from "node:path"
 import { isEnoent } from '../core/utils.js';
 
 
-/** Default stale-lock TTL: a lock older than this is treated as dead (30s). */
+/** Default stale-lock age threshold and heartbeat basis (30s). */
 export const LOCK_TTL_MS = 30_000
 
 /** Default mailbox reservation TTL (30s). Covers crash-between-reserve-and-ack. */
@@ -24,28 +24,13 @@ const LOCK_MAX_WAIT_MS = 30_000
 
 /**
  * Heartbeat interval for refreshing a held lock's mtime. Set to LOCK_TTL_MS / 3
- * so a long-running critical section is refreshed up to three times per TTL
- * window and is never misjudged as stale (defect 1 fix). Internal constant.
+ * so a long-running critical section refreshes its lock metadata up to three
+ * times per TTL window. Internal constant.
  */
 const LOCK_HEARTBEAT_MS = LOCK_TTL_MS / 3
 
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-/**
- * Check whether a process with the given pid is currently alive. Uses signal 0
- * (existence check): no throw = alive; EPERM = alive (exists, different user);
- * ESRCH = dead. Used by acquireLock so a stale lock mtime alone never causes a
- * live holder's lock to be reaped, which would break mutual exclusion.
- */
-function isProcessAlive(pid: number): boolean {
-    try {
-        process.kill(pid, 0)
-        return true
-    } catch (err: unknown) {
-        return (err as NodeJS.ErrnoException).code === "EPERM"
-    }
 }
 
 /**
@@ -95,32 +80,21 @@ export class AsyncMutex {
 }
 
 /**
- * Cross-process exclusive file lock built on exclusive-create (fs.open 'wx')
- * with stale-TTL detection. Acquires <lockPath>; if it already exists and is
- * older than LOCK_TTL_MS, unlinks and retries. While the lock is held a
- * heartbeat refreshes its mtime so a long critical section is not reaped as
- * stale (defect 1); release verifies pid ownership before unlinking so a slow
- * holder never deletes another process's lock (defect 2). Used to guard
- * state.json writes and mailbox reservations.
+ * Cross-process exclusive file lock built on exclusive-create (fs.open 'wx').
+ * An existing lock is never unlinked by a waiter because stat/read/unlink cannot
+ * identify one lock generation atomically. Waiters poll until release or timeout.
+ * While held, a heartbeat refreshes mtime; release verifies pid ownership before
+ * unlinking. Used to guard state.json writes and mailbox reservations.
  */
 export async function withLock<T>(lockPath: string, fn: () => Promise<T>): Promise<T> {
     await acquireLock(lockPath)
-    // Defect 1 fix: refresh the lock's mtime on a heartbeat so a critical
-    // section longer than LOCK_TTL_MS is never misjudged as stale and reaped
-    // by another process while we still hold it.
+    // Keep the held lock's metadata current for diagnostics and consumers.
     const heartbeat = setInterval(() => {
         const now = new Date()
         fs.utimes(lockPath, now, now).catch((err) => {
             if (isEnoent(err)) return // lock vanished or refresh raced — release() handles ownership cleanup
-            // Non-vanish error (ENOSPC/EIO/EROFS/EPERM): swallow rather than
-            // throw. The heartbeat is best-effort — a transient utimes failure
-            // does not affect lock correctness: the next heartbeat (every
-            // LOCK_HEARTBEAT_MS) retries, and if failures persist past
-            // LOCK_TTL_MS the stale-reap invariant (shouldReapStaleLock
-            // requires owner-process-dead) keeps mutual exclusion sound. A
-            // PluginContext is not available in this unref'd interval, and
-            // re-throwing would surface as an unhandled promise rejection —
-            // fatal under Node ≥15. We deliberately choose silence over crash.
+            // Non-vanish errors are best-effort. Exclusive-create correctness
+            // does not depend on mtime because waiters never unlink held locks.
         })
     }, LOCK_HEARTBEAT_MS)
     heartbeat.unref()
@@ -133,10 +107,9 @@ export async function withLock<T>(lockPath: string, fn: () => Promise<T>): Promi
 }
 
 /**
- * Pure decision: should a stale lock be reaped? True only when the lock's mtime
- * exceeds the TTL AND the owner process is confirmed dead (or pid unreadable).
- * A live holder's lock is never reaped — that would break mutual exclusion.
- * Extracted from acquireLock so the reap invariant is unit-testable in isolation.
+ * Pure stale-lock policy helper retained for callers and direct tests. acquireLock
+ * deliberately does not use it: deciding from stat/read and then unlinking has a
+ * TOCTOU window in which a waiter can delete a newer lock generation.
  */
 export function shouldReapStaleLock(
     mtimeMs: number,
@@ -158,9 +131,8 @@ async function acquireLock(lockPath: string): Promise<void> {
             try {
                 await fh.writeFile(String(process.pid))
             } catch (err) {
-                // writeFile failed — unlink the orphan lock file so the next
-                // caller does not spin until LOCK_TTL_MS (stale-reap refuses a
-                // fresh mtime). Best-effort; a race is fine (EEXIST path handles it).
+                // The creator removes its incomplete lock so later callers do
+                // not wait until the acquisition timeout.
                 await fs.unlink(lockPath).catch(() => { /* best-effort */ })
                 throw err
             } finally {
@@ -170,34 +142,6 @@ async function acquireLock(lockPath: string): Promise<void> {
         } catch (err: unknown) {
             const code = (err as NodeJS.ErrnoException).code
             if (code !== "EEXIST") throw err
-            // Lock exists — check whether it is stale.
-            try {
-                const stat = await fs.stat(lockPath)
-                if (Date.now() - stat.mtimeMs > LOCK_TTL_MS) {
-                    // mtime is stale — verify the holder is actually dead before
-                    // reaping (a heartbeat glitch must not let two processes into
-                    // the critical section). The reap DECISION is delegated to
-                    // the pure shouldReapStaleLock (unit-tested in isolation).
-                    let ownerAlive = false
-                    try {
-                        const owner = parseInt((await fs.readFile(lockPath, "utf8")).trim(), 10)
-                        if (Number.isInteger(owner) && isProcessAlive(owner)) {
-                            ownerAlive = true
-                        }
-                    } catch {
-                        // pid unreadable — treat as dead (best-effort reap)
-                    }
-                    if (shouldReapStaleLock(stat.mtimeMs, Date.now(), LOCK_TTL_MS, ownerAlive)) {
-                        await fs.unlink(lockPath).catch(() => {
-                            // raced — another process already reaped it
-                        })
-                        continue // retry immediately
-                    }
-                }
-            } catch {
-                // Lock vanished between open and stat — retry.
-                continue
-            }
             if (Date.now() > deadline) {
                 throw new Error(`withLock: timed out acquiring ${lockPath}`)
             }
@@ -226,7 +170,7 @@ async function releaseLock(lockPath: string): Promise<void> {
         return
     }
     await fs.unlink(lockPath).catch((err: unknown) => {
-        // ENOENT is the benign race (reaper or another release won) — swallow.
+        // ENOENT is the benign race (manual cleanup or another release won).
         // Any other errno (EPERM, EBUSY, EROFS, ...) is a real release failure
         // that would leave a fresh live-owner lock wedging the next caller for
         // LOCK_MAX_WAIT_MS; surface it through withLock's finally.

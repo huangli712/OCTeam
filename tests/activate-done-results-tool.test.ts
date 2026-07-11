@@ -142,7 +142,7 @@ describe("teamActivateTool.execute", () => {
         setActiveTeam(masterSid, path.join(root, masterSid, "teams", TEAM))
 
         // Create a second team in the same scope.
-        const otherState = makeState("other-team", masterSid, [], Date.now())
+        const otherState = makeState("other-team", masterSid, [])
         await initTeamState(root, otherState, masterSid)
 
         const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
@@ -150,6 +150,34 @@ describe("teamActivateTool.execute", () => {
             { sessionID: masterSid } as never,
         )
         expect(result).toContain("currently active") // refuse message mentions existing active team
+    })
+
+    test("idempotent when stale sibling has activatedAt (idempotence takes precedence)", async () => {
+        // Bug: targetIsAlreadyActive was AND'd with activeSibling===undefined, so if a
+        // stale sibling still had activatedAt set, activating the already-active target
+        // returned an error instead of a noop.
+        const root = tmpRoot("act-stale-sibling")
+        const masterSid = "ses_act_master_6"
+        tracked.push(masterSid)
+        // Create target team, already active
+        await setupTeam({
+            root,
+            masterSid,
+            members: [],
+            activatedAt: Date.now(),
+        })
+        setActiveTeam(masterSid, path.join(root, masterSid, "teams", TEAM))
+
+        // Create a stale sibling team that also has activatedAt set
+        const staleState = makeState("stale-sibling", masterSid, [], Date.now())
+        await initTeamState(root, staleState, masterSid)
+
+        const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
+            { team_id: TEAM },
+            { sessionID: masterSid } as never,
+        )
+        // Must be noop ("already the active team"), NOT an error about stale sibling
+        expect(result).toContain("already the active team")
     })
 })
 

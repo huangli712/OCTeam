@@ -13,7 +13,10 @@
  * so the NodeJS.ErrnoException cast lives in one place.
  */
 export function isEnoent(err: unknown): boolean {
-    return (err as NodeJS.ErrnoException).code === "ENOENT"
+    return err !== null
+        && typeof err === "object"
+        && "code" in err
+        && err.code === "ENOENT"
 }
 
 // --- polling primitive ---

@@ -1,6 +1,6 @@
 /**
  * Regression tests for the 2026-06 deep-audit hardening fixes:
- *   - P2-1: acquireLock verifies PID liveness before reaping a stale lock.
+ *   - P2-1: acquireLock never reaps an existing lock from a waiter.
  *   - P2-3: listAllTasks skips malformed (non-UUID) task filenames.
  *   - P0-1: handleStatusEvent re-drives delegate/recurse/signoff/reduce on a
  *     within-tolerance member error so the run resolves instead of stalling
@@ -24,33 +24,32 @@ import type { PluginContext } from "../src/core/context.js"
 afterAll(cleanupTmpRoots)
 
 // ---------------------------------------------------------------------------
-// P2-1: PID-liveness-checked stale-lock reaping (locks.ts)
+// P2-1: waiters never reap existing locks (locks.ts)
 // ---------------------------------------------------------------------------
 
-describe("P2-1 acquireLock: PID-liveness check before reaping a stale lock", () => {
-    test("stale lock held by a DEAD pid is reaped and acquired", async () => {
+describe("P2-1 acquireLock: existing locks are never reaped by waiters", () => {
+    test("stale lock held by a dead pid remains until removed", async () => {
         const dir = tmpRoot("lock-dead")
         const lockPath = join(dir, "state.json.lock")
-        // Write a lock claiming a pid that does not exist (999999 is effectively
-        // never assigned on a test runner) and age its mtime past LOCK_TTL_MS.
         writeFileSync(lockPath, "999999")
         const stale = new Date(Date.now() - 60_000)
         utimesSync(lockPath, stale, stale)
 
         let ran = false
-        // Should reap the dead holder and acquire immediately (not time out).
-        await withLock(lockPath, async () => {
+        const pending = withLock(lockPath, async () => {
             ran = true
         })
+        await new Promise(r => setTimeout(r, 300))
+        expect(ran).toBe(false)
+
+        unlinkSync(lockPath)
+        await pending
         expect(ran).toBe(true)
     })
 
     test("stale lock held by an ALIVE pid is NOT reaped (mutual exclusion preserved)", async () => {
         const dir = tmpRoot("lock-alive")
         const lockPath = join(dir, "state.json.lock")
-        // Write a lock holding the CURRENT process pid (alive) with a stale
-        // mtime. The PID-liveness check must refuse to reap it, so withLock
-        // cannot acquire — it polls until the lock disappears.
         writeFileSync(lockPath, String(process.pid))
         const stale = new Date(Date.now() - 60_000)
         utimesSync(lockPath, stale, stale)
@@ -225,7 +224,7 @@ describe("H2 resumeDispatch: unknown task.type throws (no silent fall-through)",
         const team = { members: [], teamName: "test-team" } as unknown as Team
         const task = { type: "bogus" } as unknown as ActiveTask
 
-        await expect(resumeDispatch(ctx, team, task)).rejects.toThrow(
+        expect(resumeDispatch(ctx, team, task)).rejects.toThrow(
             /Unhandled task type: bogus/,
         )
     })

@@ -47,8 +47,10 @@ export async function approveLoopDone(ctx: PluginContext, team: Team): Promise<v
     if (!task || task.type !== "loop") return
     const deciderOutput = task.responses[task.deciderMember ?? ""]
     const decision = parseDecision(deciderOutput ?? "")
-    await deliverSummaryToLeader(ctx, team, "loop_complete:human_approved", "completed")
+    // Record the final decision BEFORE delivering so summarizeLoop reads it as
+    // the last history entry (final: done + rationale), not after (final: n/a).
     task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
+    await deliverSummaryToLeader(ctx, team, "loop_complete:human_approved", "completed")
     clearActiveTask(team)
     team.status = "idle"
 }
@@ -113,8 +115,10 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
         })) {
             return
         }
-        await deliverSummaryToLeader(ctx, team, "loop_complete:decider_done", "completed")
+        // Record the final decision BEFORE delivering so summarizeLoop reads it
+        // as the last history entry (final: done + rationale), not after.
         task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
+        await deliverSummaryToLeader(ctx, team, "loop_complete:decider_done", "completed")
         clearActiveTask(team)
         team.status = "idle"
         return

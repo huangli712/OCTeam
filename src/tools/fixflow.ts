@@ -279,10 +279,19 @@ export function teamFixWorkflowTool(ctx: PluginContext): ToolDefinition {
             let result = ""
             await team.mutex.runExclusive(async () => {
                 const snapshot = snapshotTeam(team)
-                result = await applyWorkflowFix(ctx, team, args.op, args.step, args.reason, args.to_member)
-                if (result.startsWith("Error:")) {
+                try {
+                    result = await applyWorkflowFix(ctx, team, args.op, args.step, args.reason, args.to_member)
+                    if (result.startsWith("Error:")) {
+                        restoreSnapshot(team, snapshot)
+                        await saveTeamState(team)
+                    }
+                } catch (err) {
+                    // dispatch/advance can throw after workflowRepairTarget already
+                    // mutated the registry-cached team. Roll cache + disk back to the
+                    // snapshot, then rethrow the original error unchanged.
                     restoreSnapshot(team, snapshot)
                     await saveTeamState(team)
+                    throw err
                 }
             })
             return result

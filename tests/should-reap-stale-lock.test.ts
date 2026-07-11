@@ -1,7 +1,8 @@
 /**
- * Pure-core unit tests for shouldReapStaleLock: the stale-lock reap decision
- * extracted from acquireLock. The function is pure (no IO, no subprocess
- * checks), so it can be tested directly without filesystem or pid state.
+ * Pure-core unit tests for the exported shouldReapStaleLock policy helper.
+ * acquireLock intentionally does not call it because deciding from lock
+ * metadata and then unlinking cannot be made atomic. The helper remains pure,
+ * so it can be tested directly without filesystem or pid state.
  *
  * Decision contract (the mutual-exclusion invariant): a lock is reaped ONLY
  * when its mtime strictly exceeds the TTL AND the owner process is confirmed

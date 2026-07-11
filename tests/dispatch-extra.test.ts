@@ -10,8 +10,7 @@ import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
 /** Shared request shape for promptAsync mocks (union of all fields accessed across tests). */
 type PromptReq = { path: { id: string }; body: { parts: Array<{ text: string; synthetic?: boolean }>; title?: string } }
-/** Shared request shape for session.create mocks. */
-type CreateReq = PromptReq
+type DeleteReq = { path: { id: string }; query: { directory: string } }
 
 
 async function makeTeam(
@@ -96,7 +95,7 @@ describe("advanceToStage", () => {
         })
 
         const stage: Stage = { member: "alice", task: "x", completed: false }
-        await expect(advanceToStage(ctx, team, stage)).rejects.toThrow(/has no session/)
+        expect(advanceToStage(ctx, team, stage)).rejects.toThrow(/has no session/)
     })
 
     test("unknown member name: rejects with 'has no session'", async () => {
@@ -111,7 +110,7 @@ describe("advanceToStage", () => {
         })
 
         const stage: Stage = { member: "ghost", task: "x", completed: false }
-        await expect(advanceToStage(ctx, team, stage)).rejects.toThrow(/has no session/)
+        expect(advanceToStage(ctx, team, stage)).rejects.toThrow(/has no session/)
     })
 
     test("injects upstream context with [Output from] label and [Your task] header", async () => {
@@ -302,6 +301,32 @@ describe("ensureMembersReady", () => {
         expect(create).toHaveBeenCalledTimes(0)
     })
 
+    test("existing session waits until its non-master member initializes", async () => {
+        const root = tmpRoot("emr-existing-init")
+        const sid = "ses_emr_existing_init"
+        tracked.push(sid)
+        const create = mock(async () => {
+            throw new Error("session.create must NOT be called for an existing session")
+        })
+        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create } } } })
+        await writeSpec(root, "alpha", sid, [{ name: "alice" }])
+        const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice_existing")])
+        const alice = team.members.find(m => m.name === "alice")!
+        alice.initialized = false
+
+        const readiness = ensureMembersReady(ctx, team)
+        let resolved = false
+        const settlement = readiness.then(() => {
+            resolved = true
+        })
+        await Promise.resolve()
+
+        expect(resolved).toBe(false)
+        expect(create).toHaveBeenCalledTimes(0)
+        alice.initialized = true
+        await settlement
+    })
+
     test("spec missing (no config.json): rejects with 'no config.json for team'", async () => {
         const root = tmpRoot("emr-nospec")
         const sid = "ses_emr_nospec"
@@ -310,7 +335,7 @@ describe("ensureMembersReady", () => {
         // Deliberately do NOT call writeTeamSpec.
         const team = await makeTeam(root, sid, tracked, [makeMember("alice")])
 
-        await expect(ensureMembersReady(ctx, team)).rejects.toThrow(/no config\.json for team/)
+        expect(ensureMembersReady(ctx, team)).rejects.toThrow(/no config\.json for team/)
     })
 
     test("session.create returns no id: rejects with 'returned no id'", async () => {
@@ -322,7 +347,39 @@ describe("ensureMembersReady", () => {
         await writeSpec(root, "alpha", sid, [{ name: "alice" }])
         const team = await makeTeam(root, sid, tracked, [makeMember("alice")])
 
-        await expect(ensureMembersReady(ctx, team)).rejects.toThrow(/returned no id/)
+        expect(ensureMembersReady(ctx, team)).rejects.toThrow(/returned no id/)
+    })
+
+    test("prompt failure deletes the spawned session best-effort and preserves the original error", async () => {
+        const root = tmpRoot("emr-prompt-delete")
+        const sid = "ses_emr_prompt_delete"
+        const spawnedSid = "ses_emr_prompt_delete_spawned"
+        tracked.push(sid, spawnedSid)
+        const promptError = new Error("promptAsync boom")
+        const create = mock(async () => ({ data: { id: spawnedSid } }))
+        const promptAsync = mock(async () => {
+            throw promptError
+        })
+        const deleteSession = mock(async (_req: DeleteReq) => {
+            throw new Error("session.delete boom")
+        })
+        const ctx = makeCtx({ storageRoot: root, directory: "/project", overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create, delete: deleteSession } } } })
+        await writeSpec(root, "alpha", sid, [{ name: "alice" }])
+        const team = await makeTeam(root, sid, tracked, [makeMember("alice")])
+
+        let thrown: unknown
+        try {
+            await ensureMembersReady(ctx, team)
+        } catch (error) {
+            thrown = error
+        }
+
+        expect(thrown).toBe(promptError)
+        expect(deleteSession).toHaveBeenCalledTimes(1)
+        expect(deleteSession).toHaveBeenCalledWith({
+            path: { id: spawnedSid },
+            query: { directory: "/project" },
+        })
     })
 
     test("happy path: spawns session, sends role-setup prompt, flips member to running", async () => {
@@ -465,7 +522,7 @@ describe("ensureMembersReady", () => {
         await writeSpec(root, "alpha", sid, [{ name: "alice", worktree: true }])
         const team = await makeTeam(root, sid, tracked, [makeMember("alice")])
 
-        await expect(ensureMembersReady(ctx, team)).rejects.toThrow(/createWorktree\(alice\) failed/)
+        expect(ensureMembersReady(ctx, team)).rejects.toThrow(/createWorktree\(alice\) failed/)
 
         // Failure happened before session.create — no session was spawned.
         const alice = team.members.find(m => m.name === "alice")!

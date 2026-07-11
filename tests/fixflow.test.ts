@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
-import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
+import type { ActiveTask, MemberState, WorkflowTask } from "../src/core/types.js"
 import { checkWorkflowInvariants } from "../src/orchestration/invariants.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
+import { initTeamState, invalidateTeam, loadTeamState, saveTeamState } from "../src/state/store.js"
 import type { Team } from "../src/state/store.js"
 import { teamFixWorkflowTool } from "../src/tools/fixflow.js"
 import { makeCtx, makeMember, makeState, makeToolContext, makeWorkflowTask, tmpRoot, type DispatchCall } from "./helpers.js"
@@ -399,6 +399,59 @@ describe("team_fix_workflow", () => {
         const restoredTask = after.lastInterruptedTask as WorkflowTask | undefined
         expect(restoredTask?.type).toBe("workflow")
         expect(restoredTask?.steps?.[0]?.dispatchedAt).toBe(12345)
+    })
+
+    test("restores cached and persisted state when a failed checkpoint redispatch throws", async () => {
+        // Given: a failed checkpoint whose active step redispatch reaches a live
+        // actor, but promptAsync throws mid-repair — after workflowRepairTarget
+        // has already flipped status to busy, revived alice, and cleared the
+        // step's dispatchedAt on the registry-cached team.
+        const root = tmpRoot("fix-wf-throw-rollback")
+        const masterSid = "ses_fix_wf_throw_master"
+        const aliceSid = "ses_fix_wf_throw_alice"
+        tracked.push(masterSid, aliceSid)
+        const task = makeWorkflowTask({
+            activeStepIndices: [0],
+            steps: [{ kind: "task", member: "alice", task: "recover me", completed: false, dispatchedAt: 12345 }],
+        })
+        await initTeamState(root, makeState("alpha", masterSid, [makeMember("alice", aliceSid)], Date.now()), masterSid)
+        const team = await loadTeamState(root, "alpha", masterSid)
+        await team.mutex.runExclusive(async () => {
+            team.status = "failed"
+            team.lastInterruptedTask = task
+            const alice = team.members.find(member => member.name === "alice")
+            if (alice === undefined) throw new Error("Missing alice")
+            alice.status = "errored"
+            alice.error = "interrupted"
+            await saveTeamState(team)
+        })
+        await rebuildSessionIndex(root, `${root}__unused`)
+        const boom = new Error("promptAsync exploded")
+
+        // When
+        const call = teamFixWorkflowTool(
+            makeCtx({ storageRoot: root, promptAsync: async () => { throw boom } }),
+        ).execute(
+            { team_id: "alpha", op: "redispatch", step: 1 },
+            makeToolContext(masterSid),
+        )
+
+        // Then: the original error propagates unchanged...
+        expect(call).rejects.toThrow("promptAsync exploded")
+        // ...and the registry-cached team is rolled back to the failed checkpoint.
+        const after = await loadTeamState(root, "alpha", masterSid)
+        expect(after.status).toBe("failed")
+        expect(after.activeTask).toBeUndefined()
+        const restoredTask = after.lastInterruptedTask as WorkflowTask | undefined
+        expect(restoredTask?.type).toBe("workflow")
+        expect(restoredTask?.steps?.[0]?.dispatchedAt).toBe(12345)
+        expect(after.members.find(member => member.name === "alice")?.status).toBe("errored")
+        expect(after.members.find(member => member.name === "alice")?.error).toBe("interrupted")
+        // ...and the persisted state on disk matches the restored cache.
+        invalidateTeam(after.directory)
+        const reloaded = await loadTeamState(root, "alpha", masterSid)
+        expect(reloaded.status).toBe("failed")
+        expect((reloaded.lastInterruptedTask as WorkflowTask | undefined)?.steps?.[0]?.dispatchedAt).toBe(12345)
     })
 
     test("rejects non-workflow active tasks", async () => {

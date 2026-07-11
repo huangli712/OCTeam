@@ -1,13 +1,10 @@
 import { describe, expect, test } from "bun:test"
 
 import { processIdle } from "../src/orchestration/idle.js"
-import type { ActiveTask, MemberState, Stage } from "../src/core/types.js"
+import type { ActiveTask, Stage } from "../src/core/types.js"
 import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 
 // --- fixtures (loop execution path) ---
-
-
-
 function makeLoopTask(opts: Partial<ActiveTask> & { stages: Stage[] }): ActiveTask {
     return {
         type: "loop",
@@ -96,6 +93,11 @@ describe("handleLoopIdle (via processIdle): decider termination", () => {
         const leaderCall = calls.find(c => c.sessionId === "ses_lead")
         expect(leaderCall).toBeDefined()
         expect(leaderCall!.text).toContain("loop_complete:decider_done")
+        // T8: the delivered summary must carry the final decision. Before the
+        // ordering fix, decisionHistory.push ran AFTER delivery, so summarizeLoop
+        // rendered "final: n/a" with no decision-log line for the done round.
+        expect(leaderCall!.text).toContain("final: done")
+        expect(leaderCall!.text).toContain("round 1: done")
     })
 
     test('decider emits "continue" with rounds remaining -> starts the next round', async () => {
