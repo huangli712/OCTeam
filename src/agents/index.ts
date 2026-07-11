@@ -11,6 +11,7 @@ import { exploreAgent } from "./explore.js"
 import { metisAgent } from "./metis.js"
 import { momusAgent } from "./momus.js"
 import { juniorAgent } from "./junior.js"
+import { ultrabrainAgent } from "./ultrabrain.js"
 import { multimodalLookerAgent } from "./multimodal-looker.js"
 import type { OcteamAgentConfig } from "./types.js"
 
@@ -31,6 +32,7 @@ export const OCTEAM_AGENTS: Record<string, OcteamAgentConfig> = {
     "oct-momus": momusAgent,
     "oct-multimodal-looker": multimodalLookerAgent,
     "oct-junior": juniorAgent,
+    "oct-ultrabrain": ultrabrainAgent,
 }
 
 /**

@@ -5,12 +5,12 @@ import type { OcteamAgentConfig } from "../src/agents/types.js"
 
 const READONLY_AGENTS = ["oct-oracle", "oct-librarian", "oct-explore", "oct-multimodal-looker"] as const
 const ANALYSIS_AGENTS = ["oct-metis", "oct-momus"] as const
-const JUNIOR_AGENT = "oct-junior"
+const EXECUTOR_AGENTS = ["oct-junior", "oct-ultrabrain"] as const
 
 const ALL_AGENT_KEYS = [
     ...READONLY_AGENTS,
     ...ANALYSIS_AGENTS,
-    JUNIOR_AGENT,
+    ...EXECUTOR_AGENTS,
 ] as const
 
 function getAgent(key: string): OcteamAgentConfig {
@@ -20,9 +20,9 @@ function getAgent(key: string): OcteamAgentConfig {
 }
 
 describe("OCTEAM_AGENTS registry", () => {
-    test("exports exactly 7 agents", () => {
+    test("exports exactly 8 agents", () => {
         const keys = Object.keys(OCTEAM_AGENTS)
-        expect(keys).toHaveLength(7)
+        expect(keys).toHaveLength(8)
     })
 
     test("has the exact 6 expected agent keys (no extras, no missing)", () => {
@@ -90,14 +90,16 @@ describe("analysis agents (metis / momus) — deny edit, NOT deny task", () => {
     }
 })
 
-describe("junior agent — deny task, NOT deny edit", () => {
-    test("oct-junior: permission.task is 'deny'", () => {
-        expect(getAgent("oct-junior").permission?.task).toBe("deny")
-    })
+describe("executor agents (junior / ultrabrain) — deny task, NOT deny edit", () => {
+    for (const key of EXECUTOR_AGENTS) {
+        test(`${key}: permission.task is 'deny'`, () => {
+            expect(getAgent(key).permission?.task).toBe("deny")
+        })
 
-    test("oct-junior: permission.edit is NOT 'deny'", () => {
-        expect(getAgent("oct-junior").permission?.edit).not.toBe("deny")
-    })
+        test(`${key}: permission.edit is NOT 'deny'`, () => {
+            expect(getAgent(key).permission?.edit).not.toBe("deny")
+        })
+    }
 })
 
 describe("temperature values", () => {
@@ -124,6 +126,10 @@ describe("temperature values", () => {
     test("junior has temperature 0.1", () => {
         expect(getAgent("oct-junior").temperature).toBe(0.1)
     })
+
+    test("ultrabrain has temperature 0.2", () => {
+        expect(getAgent("oct-ultrabrain").temperature).toBe(0.2)
+    })
 })
 
 describe("createConfigHook", () => {
@@ -134,12 +140,12 @@ describe("createConfigHook", () => {
         expect(hook.constructor.name).toBe("AsyncFunction")
     })
 
-    test("injects all 7 agents into an empty config", async () => {
+    test("injects all 8 agents into an empty config", async () => {
         const cfg: { agent?: Record<string, unknown> } = {}
         const hook = createConfigHook()
         await hook(cfg as Parameters<typeof hook>[0])
         expect(cfg.agent).toBeDefined()
-        expect(Object.keys(cfg.agent!)).toHaveLength(7)
+        expect(Object.keys(cfg.agent!)).toHaveLength(8)
         for (const key of ALL_AGENT_KEYS) {
             expect(cfg.agent![key]).toBe(OCTEAM_AGENTS[key])
         }
@@ -155,8 +161,8 @@ describe("createConfigHook", () => {
         // pre-existing entries untouched
         expect(cfg.agent!["oct-oracle"]).toBe(preExisting)
         expect(cfg.agent!["oct-junior"]).toBe(preExisting)
-        // the other 4 should be injected
-        expect(Object.keys(cfg.agent!)).toHaveLength(7)
+        // the other 6 should be injected
+        expect(Object.keys(cfg.agent!)).toHaveLength(8)
     })
 
     test("does NOT overwrite a completely pre-populated config", async () => {
