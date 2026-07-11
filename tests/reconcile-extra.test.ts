@@ -71,10 +71,10 @@ describe("handleSessionDeleted", () => {
         await handleSessionDeleted(ctxFor(root, userRoot), sid)
 
         // The per-session directory is gone.
-        await expect(fs.stat(sessionDir)).rejects.toThrow(/ENOENT/)
+        expect(fs.stat(sessionDir)).rejects.toThrow(/ENOENT/)
         // Registry entry for the team dir is invalidated (loadTeamState throws
         // because the dir is gone and the in-memory entry was dropped).
-        await expect(loadTeamState(root, "alpha", sid)).rejects.toThrow(/no state\.json/)
+        expect(loadTeamState(root, "alpha", sid)).rejects.toThrow(/no state\.json/)
     })
 
     test("unrelated session: leaves other sessions' teams untouched", async () => {
@@ -96,7 +96,7 @@ describe("handleSessionDeleted", () => {
         await handleSessionDeleted(ctxFor(root, userRoot), deleteSid)
 
         // deleteSid dir gone; keepSid team still loadable.
-        await expect(fs.stat(deleteDir)).rejects.toThrow(/ENOENT/)
+        expect(fs.stat(deleteDir)).rejects.toThrow(/ENOENT/)
         const keep = await loadTeamState(root, "keep", keepSid)
         expect(keep.teamName).toBe("keep")
     })
@@ -106,7 +106,7 @@ describe("handleSessionDeleted", () => {
         const userRoot = `${root}__user`
         // No teams, no per-session dirs. listAllTeams returns [] and fs.rm is
         // a no-op with force: true. The function must resolve cleanly.
-        await expect(handleSessionDeleted(ctxFor(root, userRoot), "ses_ghost")).resolves.toBeUndefined()
+        expect(handleSessionDeleted(ctxFor(root, userRoot), "ses_ghost")).resolves.toBeUndefined()
     })
 
     test("bare member session (no owned team dir): still unindexes without error", async () => {
@@ -118,7 +118,7 @@ describe("handleSessionDeleted", () => {
         // as a team member under someone else's lead session.
         await rebuildSessionIndex(root, userRoot)
 
-        await expect(
+        expect(
             handleSessionDeleted(ctxFor(root, userRoot), memberSid),
         ).resolves.toBeUndefined()
     })
@@ -133,7 +133,7 @@ describe("handleSessionDeleted", () => {
 
         // The function must not throw (defense-in-depth catch block) and must
         // still run the unconditional unindexSession at the bottom.
-        await expect(
+        expect(
             handleSessionDeleted(ctxFor(root, userRoot), unsafeSid),
         ).resolves.toBeUndefined()
 
@@ -157,7 +157,7 @@ describe("handleSessionDeleted", () => {
         await handleSessionDeleted(ctxFor(root, userRoot), sid)
 
         // The session dir is still removed (fs.rm runs after the inner loop).
-        await expect(fs.stat(path.join(root, sid))).rejects.toThrow(/ENOENT/)
+        expect(fs.stat(path.join(root, sid))).rejects.toThrow(/ENOENT/)
     })
 })
 
@@ -230,7 +230,7 @@ describe("reconcileCrashedTeams", () => {
         await rebuildSessionIndex(root, userRoot)
 
         // Must not throw — corrupt team is skipped via logSwallowed.
-        await expect(reconcileCrashedTeams(ctxFor(root, userRoot))).resolves.toBeUndefined()
+        expect(reconcileCrashedTeams(ctxFor(root, userRoot))).resolves.toBeUndefined()
 
         // Healthy team still reconciled despite the sibling corruption.
         // New semantics: busy team is NOT auto-failed (concurrent-instance safety);
@@ -256,7 +256,7 @@ describe("reconcileCrashedTeams", () => {
         await fs.writeFile(statePath(corruptDir), "{broken")
         await rebuildSessionIndex(root, userRoot)
 
-        await expect(reconcileCrashedTeams(ctxFor(root, userRoot))).resolves.toBeUndefined()
+        expect(reconcileCrashedTeams(ctxFor(root, userRoot))).resolves.toBeUndefined()
 
         // Project-scope team untouched by the user-scope corruption.
         const proj = await loadTeamState(root, "proj", sid)
@@ -287,7 +287,7 @@ describe("reconcileActivation", () => {
         await rebuildSessionIndex(root, userRoot)
 
         // Must not throw — bad team is skipped via logSwallowed.
-        await expect(reconcileActivation(ctxFor(root, userRoot))).resolves.toBeUndefined()
+        expect(reconcileActivation(ctxFor(root, userRoot))).resolves.toBeUndefined()
 
         // Good team's activatedAt was still cleared.
         const good = await loadTeamState(root, "good", sid)

@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test"
 
 import { processIdle } from "../src/orchestration/idle.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
-import type { RecurseTask, Task } from "../src/core/types.js"
-import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
+import type { RecurseTask } from "../src/core/types.js"
+import { makeCtx, makeTeam } from "./helpers.js"
 
 /**
  * Regression for finding recurse-deleted-tasks-count-against-cap.

@@ -12,8 +12,7 @@
  */
 import { afterAll, describe, expect, test } from "bun:test"
 
-import { chmod, readFile, readdir, writeFile } from "node:fs/promises"
-import path from "node:path"
+import { chmod, readFile, readdir } from "node:fs/promises"
 
 import type { Message } from "../src/core/types.js"
 import { pollMailbox, writeMailboxMessage } from "../src/messaging/mailbox.js"
@@ -58,7 +57,7 @@ describe("pollMailbox — truncate failure rolls back reserved copies", () => {
         await chmod(inbox, 0o444)
 
         // pollMailbox should reject (the EACCES propagates out of withLock).
-        await expect(pollMailbox(dir, recipient)).rejects.toThrow()
+        expect(pollMailbox(dir, recipient)).rejects.toThrow()
 
         // Rollback assertion 1: no reserved files left (they were unlinked on
         // the failure path). Without the rollback, m1 and m2 would persist

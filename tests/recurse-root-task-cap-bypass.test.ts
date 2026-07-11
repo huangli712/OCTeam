@@ -21,7 +21,7 @@
  * at maxTasks → PASS.
  */
 
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamRecurseTool } from "../src/tools/recurse.js"
@@ -61,7 +61,7 @@ describe("recurse root task cap bypass (finding: recurse-root-task-cap-bypass)",
         // --- Start recurse. buildTask (recurse.ts:60) calls createTask for the
         //     root task WITHOUT checking maxTasks. ---
         const tool = teamRecurseTool(makeCtx({ storageRoot: root, promptAsync: async () => {} }))
-        const result = await tool.execute(
+        await tool.execute(
             {
                 team_id: "alpha",
                 task: "decompose and solve X",
