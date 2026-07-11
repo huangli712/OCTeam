@@ -198,13 +198,13 @@ export type WorkflowStep = {
     timeoutMs?: number                  // task/gate steps: wall-clock deadline from dispatch time
     onTimeout?: "fail" | "retry" | "skip" // timeout control; default fail
     maxTimeoutRetries?: number          // timeout retry cap when onTimeout=retry
-          timeoutAttempts?: number      // timeout retry attempts so far
-          startedAt?: number
-          completedAt?: number
-          durationMs?: number
-          dispatchedAt?: number         // epoch ms when this step was last dispatched
-          dispatchedActor?: string
-          correlationId?: string        // links this step's dispatch/capture/verdict events in events.jsonl
+    timeoutAttempts?: number            // timeout retry attempts so far
+    startedAt?: number
+    completedAt?: number
+    durationMs?: number
+    dispatchedAt?: number               // epoch ms when this step was last dispatched
+    dispatchedActor?: string
+    correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl
     // fanout/join DAG metadata. Runtime dispatch wiring lands in a
     // later task.
     fanout?: WorkflowFanoutMetadata     // fanout marker steps

@@ -106,12 +106,15 @@ export type DecisionRecord = {
     timestamp: number
 }
 
-// tollgate: a Stage with an associated verification gate. The gate's verifier
-// (distinct from the producer) emits a <verdict> (or <判定>) block; downstream
-// starts only on PASS. FAIL returns the producer with a diff; INVALID isolates
-// the stage and escalates the verifier side (not the producer). Structurally
-// satisfies Stage so it can be fed to buildUpstreamContext.
-/** A tollgate stage with an associated verification gate and verdict state. */
+/**
+ * A tollgate stage with an associated verification gate and verdict state.
+ *
+ * The gate's verifier (distinct from the producer) emits a <verdict> (or
+ * <判定>) block; downstream starts only on PASS. FAIL returns the producer
+ * with a diff; INVALID isolates the stage and escalates the verifier side
+ * (not the producer). Structurally satisfies Stage so it can be fed to
+ * buildUpstreamContext.
+ */
 export type GatedStage = {
     member: string                     // the producer member name
     task: string                       // the producer's task
@@ -220,7 +223,7 @@ export interface ActiveTaskBase {
     currentStageIndex: number
 
     // loop decision log. Constructed by ALL variants (kept in Base to avoid
-    // excess-property churn across the 9 construction literals), but only
+    // excess-property churn across the 11 construction literals), but only
     // loop reads it at runtime.
     decisionHistory: DecisionRecord[]        // structured decisions per round (loop)
     decisionParseFailures: number            // consecutive <decision> parse failures; abort at 3 (loop)
