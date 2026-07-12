@@ -20,10 +20,10 @@ import { createTask, getTask, listAllTasks, updateTask } from "../../state/tasks
 import { recordEvent } from "../records/events.js"
 import { parseDecompose } from "../protocol/decisions.js"
 import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
-import { DEFAULT_RECURSE_DEPTH, DEFAULT_RECURSE_SUBTASKS } from "../runtime/defaults.js"
-import { finishRun } from '../runtime/completion.js';
-import { dispatchToMember } from "../runtime/dispatch.js"
-import { maybeRequestApproval } from "../runtime/hitl.js"
+import { DEFAULT_RECURSE_DEPTH, DEFAULT_RECURSE_SUBTASKS } from "../control/defaults.js"
+import { finishRun } from '../control/completion.js';
+import { dispatchToMember } from "../control/dispatch.js"
+import { maybeRequestApproval } from "../control/hitl.js"
 
 /**
  * Build the recursive-decomposition contract prompt: claim a task, then either

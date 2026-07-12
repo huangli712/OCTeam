@@ -41,16 +41,16 @@ import {
     workflowCompleteReason,
     workflowJumpLimitReason,
 } from "./reasons.js";
-import { dispatchToMember } from "../runtime/dispatch.js";
-import { finishRun } from '../runtime/completion.js';
+import { dispatchToMember } from "../control/dispatch.js";
+import { finishRun } from '../control/completion.js';
 import { recordEvent } from "../records/events.js";
 import {
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
     sortedWorkflowIndices,
 } from "./dag.js";
-import { maybeTriggerSignoff } from "../runtime/signoff.js";
-import { forceApprovalRequest } from "../runtime/hitl.js";
+import { maybeTriggerSignoff } from "../control/signoff.js";
+import { forceApprovalRequest } from "../control/hitl.js";
 import {
     completeWorkflowJoinStep,
     dispatchWorkflowJoinReducer,

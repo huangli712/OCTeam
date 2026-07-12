@@ -7,10 +7,10 @@ const ROOT = path.resolve("src/orchestration")
 const ALLOWED_DEPENDENCIES: Readonly<Record<string, ReadonlySet<string>>> = {
     protocol: new Set(),
     records: new Set(["protocol"]),
-    runtime: new Set(["protocol", "records"]),
-    modes: new Set(["protocol", "records", "runtime"]),
-    workflow: new Set(["protocol", "records", "runtime"]),
-    lifecycle: new Set(["protocol", "records", "runtime", "modes", "workflow"]),
+    control: new Set(["protocol", "records"]),
+    modes: new Set(["protocol", "records", "control"]),
+    workflow: new Set(["protocol", "records", "control"]),
+    lifecycle: new Set(["protocol", "records", "control", "modes", "workflow"]),
 }
 
 async function orchestrationFiles(): Promise<string[]> {

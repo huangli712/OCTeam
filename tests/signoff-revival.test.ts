@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { handleParallelIdle } from "../src/orchestration/modes/parallel.js"
-import { dispatchToMember } from "../src/orchestration/runtime/dispatch.js"
+import { dispatchToMember } from "../src/orchestration/control/dispatch.js"
 import type { ActiveTask } from "../src/core/types.js"
 
 

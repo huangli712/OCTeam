@@ -16,9 +16,9 @@ import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
 import type { MemberState, SdkMessage } from "../../core/types.js"
 import { listAllTasks } from "../../state/tasks.js"
-import { dispatchToMember } from "../runtime/dispatch.js"
-import { finishRun } from '../runtime/completion.js';
-import { maybeTriggerSignoff } from "../runtime/signoff.js"
+import { dispatchToMember } from "../control/dispatch.js"
+import { finishRun } from '../control/completion.js';
+import { maybeTriggerSignoff } from "../control/signoff.js"
 import { captureMemberOutput } from "../records/capture.js"
 
 /** Minimum cooldown (ms) between re-prompt notifications in delegate/recurse. */

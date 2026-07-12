@@ -17,16 +17,16 @@
 import type { PluginContext } from "../../core/context.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import type { ActiveTask, ArbitrateTask } from "../../core/types.js"
-import { dispatchToMember } from "../runtime/dispatch.js"
-import { DEFAULT_ARBITRATE_ROUNDS } from "../runtime/defaults.js"
+import { dispatchToMember } from "../control/dispatch.js"
+import { DEFAULT_ARBITRATE_ROUNDS } from "../control/defaults.js"
 import { buildRoundSummary } from '../records/summary.js';
-import { finishRun } from '../runtime/completion.js';
+import { finishRun } from '../control/completion.js';
 import { recordEvent } from "../records/events.js"
 import { truncateOutput } from "../protocol/output.js"
-import { waitForBarrier } from "../runtime/barriers.js"
+import { waitForBarrier } from "../control/barriers.js"
 import { parseArbitrationDecision } from "../protocol/decisions.js"
-import { maybeTriggerSignoff } from "../runtime/signoff.js"
-import { maybeRequestApproval } from "../runtime/hitl.js"
+import { maybeTriggerSignoff } from "../control/signoff.js"
+import { maybeRequestApproval } from "../control/hitl.js"
 
 /**
  * Build a debater's prompt for the current debate round. Round 1 states the

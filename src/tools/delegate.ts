@@ -6,7 +6,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { dispatchToMember } from "../orchestration/runtime/dispatch.js"
+import { dispatchToMember } from "../orchestration/control/dispatch.js"
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import {
     DEFAULT_TIMEOUT_MS,

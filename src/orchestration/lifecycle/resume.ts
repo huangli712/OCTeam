@@ -18,7 +18,7 @@
 import type { PluginContext } from "../../core/context.js";
 import type { ActiveTask } from "../../core/types.js";
 import { type Team, saveTeamState } from "../../state/store.js";
-import { advanceToStage, dispatchToMember } from "../runtime/dispatch.js";
+import { advanceToStage, dispatchToMember } from "../control/dispatch.js";
 import { handleParallelIdle } from "../modes/parallel.js";
 import { handleConsensusIdle } from "../modes/consensus.js";
 import { buildRecursePrompt } from "../modes/recurse.js";
@@ -37,14 +37,14 @@ import {
 } from "../modes/arbitrate.js";
 import { buildRouterPrompt, handleRouteIdle } from "../modes/route.js";
 import { buildSummary } from '../records/summary.js';
-import { finishRun } from '../runtime/completion.js';
+import { finishRun } from '../control/completion.js';
 import { buildArenaEvaluatorPrompt, handleArenaIdle } from "../modes/arena.js";
 import {
     buildReducePrompt,
     buildSignoffReviewPrompt,
     handleReduceIdle,
-} from "../runtime/signoff.js";
-import { resumeApprovalStage } from "../runtime/hitl.js";
+} from "../control/signoff.js";
+import { resumeApprovalStage } from "../control/hitl.js";
 import { listAllTasks, reapStaleClaims, updateTask } from "../../state/tasks.js";
 import {
     getActiveWorkflowStepIndices,

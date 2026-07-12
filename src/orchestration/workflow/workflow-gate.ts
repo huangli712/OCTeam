@@ -37,10 +37,10 @@ import {
     workflowGateFailReason,
     workflowInvalidReason,
 } from "./reasons.js";
-import { finishRun } from '../runtime/completion.js';
+import { finishRun } from '../control/completion.js';
 import { recordEvent } from "../records/events.js";
 import { parseVerdict } from "../protocol/decisions.js";
-import { forceApprovalRequest, maybeRequestApproval } from "../runtime/hitl.js";
+import { forceApprovalRequest, maybeRequestApproval } from "../control/hitl.js";
 import {
     handleWorkflowDispatchUnavailable,
     markWorkflowStepCompleted,

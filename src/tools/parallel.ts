@@ -6,7 +6,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { dispatchToMember } from "../orchestration/runtime/dispatch.js"
+import { dispatchToMember } from "../orchestration/control/dispatch.js"
 import {
     DEFAULT_REDUCE_POLICY,
     DEFAULT_TIMEOUT_MS,

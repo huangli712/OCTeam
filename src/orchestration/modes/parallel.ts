@@ -11,9 +11,9 @@
 
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
-import { finishRun } from '../runtime/completion.js';
-import { waitForBarrier } from "../runtime/barriers.js"
-import { maybeTriggerReduce, maybeTriggerSignoff } from "../runtime/signoff.js"
+import { finishRun } from '../control/completion.js';
+import { waitForBarrier } from "../control/barriers.js"
+import { maybeTriggerReduce, maybeTriggerSignoff } from "../control/signoff.js"
 
 /** Single-barrier fan-in for parallel mode: wait for all members, then maybe reduce, signoff, and deliver. */
 export async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void> {

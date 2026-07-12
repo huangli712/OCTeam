@@ -7,7 +7,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type { RouteBranch } from "../core/types.js"
-import { dispatchToMember } from "../orchestration/runtime/dispatch.js"
+import { dispatchToMember } from "../orchestration/control/dispatch.js"
 import { buildRouterPrompt } from "../orchestration/modes/route.js"
 import {
     DEFAULT_TIMEOUT_MS,

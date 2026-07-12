@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "role-setup-timeout-unlocked-save".
  *
- * Bug: src/orchestration/runtime/dispatch.ts:202-219 — the role-setup barrier runs
+ * Bug: src/orchestration/control/dispatch.ts:202-219 — the role-setup barrier runs
  * OUTSIDE team.mutex (by necessity). Its .catch handler (timeout path) also
  * runs outside the mutex and:
  *   1. Mutates member state: sets status="errored", error="..." (lines 207-213)
@@ -56,7 +56,7 @@ mock.module("../src/core/utils.js", () => ({
 }))
 
 import type { TeamSpec } from "../src/core/types.js"
-import { ensureMembersReady } from "../src/orchestration/runtime/dispatch.js"
+import { ensureMembersReady } from "../src/orchestration/control/dispatch.js"
 import { initTeamState, loadTeamState, saveTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { statePath } from "../src/state/paths.js"

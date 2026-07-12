@@ -15,7 +15,7 @@ import {
     maybePauseAfterWorkflowStep,
 } from "./workflow.js";
 import { workflowInvalidReason } from "./reasons.js";
-import { finishRun } from '../runtime/completion.js';
+import { finishRun } from '../control/completion.js';
 import { recordEvent } from "../records/events.js";
 import { truncateOutput } from "../protocol/output.js";
 import {
@@ -23,7 +23,7 @@ import {
     readyWorkflowStepIndices,
 } from "./dag.js";
 import { parseSelection } from "../protocol/decisions.js";
-import { maybeRequestApproval } from "../runtime/hitl.js";
+import { maybeRequestApproval } from "../control/hitl.js";
 import {
     branchIdsForJoin,
     buildBranchWorkflowOutput,

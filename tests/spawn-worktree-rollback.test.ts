@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "spawn-worktree-not-rolled-back".
  *
- * Bug: src/orchestration/runtime/dispatch.ts:117 calls createWorktree() BEFORE
+ * Bug: src/orchestration/control/dispatch.ts:117 calls createWorktree() BEFORE
  * session.create (dispatch.ts:125) and promptAsync (dispatch.ts:151). If
  * either later step throws, the worktree + git branch created at line 117
  * are never removed — they leak on disk. On a retry of ensureMembersReady,
@@ -25,7 +25,7 @@ import { access } from "node:fs/promises"
 import { promisify } from "node:util"
 
 import type { TeamSpec } from "../src/core/types.js"
-import { ensureMembersReady } from "../src/orchestration/runtime/dispatch.js"
+import { ensureMembersReady } from "../src/orchestration/control/dispatch.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { worktreePath } from "../src/state/paths.js"

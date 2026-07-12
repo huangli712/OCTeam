@@ -9,7 +9,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type { Team } from "../state/store.js"
-import { dispatchToMember } from "../orchestration/runtime/dispatch.js"
+import { dispatchToMember } from "../orchestration/control/dispatch.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,

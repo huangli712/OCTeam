@@ -4,7 +4,7 @@
  *
  * Threat model: member.worktreePath is persisted in state.json and, on reload,
  * is passed VERBATIM as the child session's `directory` at spawn time
- * (src/orchestration/runtime/dispatch.ts:130: `member.worktreePath ?? ctx.directory`)
+ * (src/orchestration/control/dispatch.ts:130: `member.worktreePath ?? ctx.directory`)
  * and on every subsequent dispatch (dispatch.ts:232). The state-loader's only
  * schema gate is isValidTeamState (src/state/store.ts:80), which checks the
  * top-level identity fields and the per-member `agent` allowlist — it NEVER

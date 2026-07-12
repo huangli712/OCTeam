@@ -8,10 +8,10 @@
 import type { PluginContext } from "../../core/context.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import type { ArenaCandidateScore, ArenaScoreboard, ArenaTask, MemberState } from "../../core/types.js"
-import { waitForBarrier } from "../runtime/barriers.js"
-import { dispatchToMember } from "../runtime/dispatch.js"
+import { waitForBarrier } from "../control/barriers.js"
+import { dispatchToMember } from "../control/dispatch.js"
 import { parseScoreboard } from "../protocol/decisions.js"
-import { finishRun } from '../runtime/completion.js';
+import { finishRun } from '../control/completion.js';
 
 /**
  * Select the winning candidate deterministically from an evaluator-attested

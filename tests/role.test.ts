@@ -9,7 +9,7 @@ import {
     rolePreset,
 } from "../src/core/role.js"
 import { buildRolePrompt } from "../src/orchestration/protocol/output.js"
-import { prependStandingInstruction } from "../src/orchestration/runtime/dispatch.js"
+import { prependStandingInstruction } from "../src/orchestration/control/dispatch.js"
 import type { MemberState } from "../src/core/types.js"
 
 describe("ROLES catalogue", () => {

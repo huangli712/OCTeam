@@ -16,13 +16,13 @@
 import type { PluginContext } from "../../core/context.js"
 import type { RouteBranch } from "../../core/types.js"
 import { type Team, saveTeamState } from "../../state/store.js"
-import { dispatchToMember } from "../runtime/dispatch.js"
-import { finishRun } from '../runtime/completion.js';
+import { dispatchToMember } from "../control/dispatch.js"
+import { finishRun } from '../control/completion.js';
 import { recordEvent } from "../records/events.js"
-import { waitForBarrier } from "../runtime/barriers.js"
+import { waitForBarrier } from "../control/barriers.js"
 import { parseRouteDecision } from "../protocol/decisions.js"
-import { maybeTriggerSignoff } from "../runtime/signoff.js"
-import { maybeRequestApproval } from "../runtime/hitl.js"
+import { maybeTriggerSignoff } from "../control/signoff.js"
+import { maybeRequestApproval } from "../control/hitl.js"
 
 /**
  * Build the router member's dispatch prompt: the input to route, the available
