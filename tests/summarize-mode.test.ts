@@ -25,7 +25,7 @@ import {
     summarizeRoute,
     summarizeTollgate,
     summarizeWorkflow,
-} from "../src/orchestration/runs/summarize-mode.js"
+} from "../src/orchestration/records/summarize-mode.js"
 import { makeTeam, makeWorkflowTask, tmpRoot } from "./helpers.js"
 
 const HEAD = "mode=test reason=test_complete tokens=0 messages=0"

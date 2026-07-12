@@ -6,11 +6,11 @@ import ts from "typescript"
 const ROOT = path.resolve("src/orchestration")
 const ALLOWED_DEPENDENCIES: Readonly<Record<string, ReadonlySet<string>>> = {
     protocol: new Set(),
-    runs: new Set(["protocol"]),
-    runtime: new Set(["protocol", "runs"]),
-    modes: new Set(["protocol", "runs", "runtime"]),
-    workflow: new Set(["protocol", "runs", "runtime"]),
-    lifecycle: new Set(["protocol", "runs", "runtime", "modes", "workflow"]),
+    records: new Set(["protocol"]),
+    runtime: new Set(["protocol", "records"]),
+    modes: new Set(["protocol", "records", "runtime"]),
+    workflow: new Set(["protocol", "records", "runtime"]),
+    lifecycle: new Set(["protocol", "records", "runtime", "modes", "workflow"]),
 }
 
 async function orchestrationFiles(): Promise<string[]> {

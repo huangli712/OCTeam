@@ -12,7 +12,7 @@
  */
 import { describe, expect, test } from "bun:test"
 
-import { RunEventSchema, RunRecordSchema } from "../src/orchestration/runs/run-schemas.js"
+import { RunEventSchema, RunRecordSchema } from "../src/orchestration/records/run-schemas.js"
 
 // --- helpers ---------------------------------------------------------------
 

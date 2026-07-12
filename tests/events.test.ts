@@ -4,7 +4,7 @@ import fs from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { recordEvent } from "../src/orchestration/runs/events.js"
+import { recordEvent } from "../src/orchestration/records/events.js"
 import { readRunEvents } from "../src/orchestration/records/runs.js"
 import { runEventsPath } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"

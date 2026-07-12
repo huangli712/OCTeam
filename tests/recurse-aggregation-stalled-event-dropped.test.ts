@@ -5,7 +5,7 @@
  * `kind: "aggregation_stalled"` via recordEvent (fire-and-forget append to
  * runs/<runId>/events.jsonl). The RunEventKind union (src/core/types.ts:328)
  * includes "aggregation_stalled", so recordEvent accepts and writes it. BUT
- * src/orchestration/runs/run-schemas.ts:110 RunEventSchema.kind z.enum(...) omits
+ * src/orchestration/records/run-schemas.ts:110 RunEventSchema.kind z.enum(...) omits
  * "aggregation_stalled" (the schema enum and the TS type have drifted). When
  * readRunEvents reads the line back, parseRunEvent -> RunEventSchema.safeParse
  * FAILS on the unknown kind, and the catch at runs.ts:294 SILENTLY DROPS the
@@ -32,7 +32,7 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { recordEvent } from "../src/orchestration/runs/events.js"
+import { recordEvent } from "../src/orchestration/records/events.js"
 import { readRunEvents } from "../src/orchestration/records/runs.js"
 import { runEventsPath } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"

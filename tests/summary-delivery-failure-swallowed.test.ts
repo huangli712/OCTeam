@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "summary-delivery-failure-swallowed".
  *
- * Bug: src/orchestration/runs/summary.ts:48-61 — deliverSummaryToLeader swallows
+ * Bug: src/orchestration/control/completion.ts — deliverSummaryToLeader swallows
  * the leader promptAsync failure:
  *   await ctx.client.session.promptAsync({ ... }).catch(err =>
  *       logSwallowed(ctx, "deliver summary to leader failed", err, ...),

@@ -2,7 +2,7 @@
  * Invariant test for the three 9-way dispatchers over OrchestrationType:
  *   - processIdle    (src/orchestration/lifecycle/idle.ts) — Record<OrchestrationType, ...> table
  *   - resumeDispatch (src/orchestration/lifecycle/resume.ts) — switch with `_exhaustive: never` guard
- *   - buildSummary   (src/orchestration/runs/summary.ts) — switch with `_exhaustive: never` guard
+ *   - buildSummary   (src/orchestration/records/summary.ts) — switch with `_exhaustive: never` guard
  *
  * processIdle was converted from a switch to a Record table in P1-6: the
  * Record<OrchestrationType, ...> type enforces compile-time completeness.
@@ -95,8 +95,8 @@ describe("11-way switch invariant: every OrchestrationType has a case in all thr
         }
     })
 
-    test("buildSummary (orchestration/runs/summary.ts) covers all 11 OrchestrationTypes", async () => {
-        const body = await readSwitchBody("src/orchestration/runs/summary.ts", "buildSummary")
+test("buildSummary (orchestration/records/summary.ts) covers all 11 OrchestrationTypes", async () => {
+    const body = await readSwitchBody("src/orchestration/records/summary.ts", "buildSummary")
         for (const t of ORCHESTRATION_TYPES) {
             expect(body).toContain(`case "${t}"`)
         }
