@@ -7,7 +7,7 @@
  * resolution + step flattening, while this module owns presentation.
  */
 
-import { parseWorkflowCondition, formatWorkflowCondition } from "../orchestration/gate.js"
+import { parseWorkflowCondition, formatWorkflowCondition } from "../orchestration/workflow/gate.js"
 import type {
     LoweredWorkflowLinearStep,
     LoweredWorkflowStep,

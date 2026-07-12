@@ -5,25 +5,25 @@
  * handling, and ensemble aggregation live in workflow-gate.ts.
  */
 
-import type { PluginContext } from "../core/context.js";
-import { type Team, saveTeamState } from "../state/store.js";
-import type { MemberState, WorkflowStep } from "../core/types.js";
+import type { PluginContext } from "../../core/context.js";
+import { type Team, saveTeamState } from "../../state/store.js";
+import type { MemberState, WorkflowStep } from "../../core/types.js";
 import {
     advanceWorkflowStep,
     describeStep,
     dispatchTaskStep,
     maybePauseAfterWorkflowStep,
 } from "./workflow.js";
-import { workflowInvalidReason } from "./reasons.js";
-import { finishRun } from "./summary.js";
-import { recordEvent } from "./events.js";
-import { truncateOutput } from "./output.js";
+import { workflowInvalidReason } from "../reasons.js";
+import { finishRun } from "../summary.js";
+import { recordEvent } from "../events.js";
+import { truncateOutput } from "../output.js";
 import {
     findActiveWorkflowStepIndexForMember,
     readyWorkflowStepIndices,
 } from "./dag.js";
-import { parseSelection } from "./decisions.js";
-import { maybeRequestApproval } from "./hitl.js";
+import { parseSelection } from "../decisions.js";
+import { maybeRequestApproval } from "../hitl.js";
 import {
     branchIdsForJoin,
     buildBranchWorkflowOutput,

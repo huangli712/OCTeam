@@ -3,7 +3,7 @@
  * join satisfaction, fanout validation, and branch identity helpers.
  */
 
-import type { WorkflowBranchRange, WorkflowStep, WorkflowTask } from "../core/types.js"
+import type { WorkflowBranchRange, WorkflowStep, WorkflowTask } from "../../core/types.js"
 import { joinPolicySatisfied } from "./join-policy.js"
 
 /** Outcome of validateWorkflowDag: either ok or a reason string. */

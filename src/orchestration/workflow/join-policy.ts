@@ -12,7 +12,7 @@
  * and post-condition (invariants) stay in lockstep.
  */
 
-import type { WorkflowStep } from "../core/types.js"
+import type { WorkflowStep } from "../../core/types.js"
 
 type Join = NonNullable<WorkflowStep["join"]>
 

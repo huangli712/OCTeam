@@ -6,8 +6,8 @@
  * they read WorkflowStep data and produce strings, with no side effects.
  */
 
-import type { WorkflowStep } from "../core/types.js";
-import { truncateOutput } from "./output.js";
+import type { WorkflowStep } from "../../core/types.js";
+import { truncateOutput } from "../output.js";
 
 /** Per-issue detail lines for a gate step with structured verdict. Severity-sorted
  * (critical > high > medium > low) so the most actionable issues surface first. */

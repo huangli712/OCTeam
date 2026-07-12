@@ -13,7 +13,7 @@
  */
 
 import type { ActiveTask, ArenaCandidateScore, DecisionRecord, Verdict, WorkflowIssue } from "../core/types.js"
-import { isWorkflowIssueSeverity } from "./gate.js"
+import { isWorkflowIssueSeverity } from "./workflow/gate.js"
 
 // Structured, i18n-consistent "no issues" signal for loop read_only stages. A
 // read_only stage emits <no_issues/> (or the Chinese <无问题/>) to declare clean.

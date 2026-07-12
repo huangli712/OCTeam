@@ -7,8 +7,8 @@
  */
 
 import type { MemberState } from "../core/types.js"
-import { parseWorkflowCondition } from "../orchestration/gate.js"
-import { loadWorkflowFile } from "../orchestration/file.js"
+import { parseWorkflowCondition } from "../orchestration/workflow/gate.js"
+import { loadWorkflowFile } from "../orchestration/workflow/file.js"
 import { defaultBounds, validateSignoff } from "../orchestration/shared.js"
 import { AsyncMutex } from "../state/locks.js"
 import type { Team } from "../state/store.js"

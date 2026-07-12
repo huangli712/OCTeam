@@ -7,7 +7,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import type { WorkflowToolStep } from "../core/types/workflow.js"
+import type { WorkflowToolStep } from "../../core/types/workflow.js"
 
 // Supported workflow_file schema versions. When the schema gains a v2, add it
 // here and branch on `version` in loadWorkflowFile. A file with an unlisted

@@ -31,7 +31,7 @@ import type {
     WorkflowTask,
 } from "../core/types.js"
 import { activationError } from "../state/activation.js"
-import { dispatchTaskStep, maybePauseBeforeWorkflowStep } from "../orchestration/workflow.js"
+import { dispatchTaskStep, maybePauseBeforeWorkflowStep } from "../orchestration/workflow/workflow.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState } from "../state/store.js"
 import {

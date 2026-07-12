@@ -10,18 +10,18 @@
 
 import crypto from "node:crypto";
 
-import type { PluginContext } from "../core/context.js";
-import type { Team } from "../state/store.js";
+import type { PluginContext } from "../../core/context.js";
+import type { Team } from "../../state/store.js";
 import type {
     MemberState,
     WorkflowBranchMetadata,
     WorkflowStep,
     WorkflowTask,
-} from "../core/types.js";
-import { dispatchToMember } from "./dispatch.js";
-import { finishRun } from "./summary.js";
-import { recordEvent } from "./events.js";
-import { truncateOutput } from "./output.js";
+} from "../../core/types.js";
+import { dispatchToMember } from "../dispatch.js";
+import { finishRun } from "../summary.js";
+import { recordEvent } from "../events.js";
+import { truncateOutput } from "../output.js";
 import { joinPolicyImpossible } from "./join-policy.js";
 import {
     findActiveWorkflowStepIndexForMember,
@@ -30,7 +30,7 @@ import {
     sortedWorkflowIndices,
     workflowStepActorName,
 } from "./dag.js";
-import { workflowFanoutAllErroredReason, workflowFanoutOverToleranceReason, workflowNoSessionReason } from "./reasons.js";
+import { workflowFanoutAllErroredReason, workflowFanoutOverToleranceReason, workflowNoSessionReason } from "../reasons.js";
 
 // Total byte budget for joined output (mirrors workflow.ts UPSTREAM_TOTAL_CAP).
 const JOINED_TOTAL_CAP = 65_536;

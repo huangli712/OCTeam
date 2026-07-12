@@ -15,7 +15,7 @@ import { handleReduceIdle, handleSignoffIdle } from "./signoff.js"
 import { handleParallelIdle } from "./modes/parallel.js"
 import { handleDelegateIdle } from "./modes/delegate.js"
 import { handleRecurseIdle } from "./modes/recurse.js"
-import { advanceWorkflowStep } from "./workflow.js"
+import { advanceWorkflowStep } from "./workflow/workflow.js"
 import { handleArenaIdle } from "./modes/arena.js"
 
 const RETRY_ESCALATION_MS = 60_000

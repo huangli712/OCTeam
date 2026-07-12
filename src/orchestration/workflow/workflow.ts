@@ -22,12 +22,12 @@
  * buildWorkflowUpstream includes only completed task-step outputs.
  */
 
-import type { PluginContext } from "../core/context.js";
-import { type Team, saveTeamState } from "../state/store.js";
+import type { PluginContext } from "../../core/context.js";
+import { type Team, saveTeamState } from "../../state/store.js";
 import type {
     WorkflowStep,
     WorkflowTask,
-} from "../core/types.js";
+} from "../../core/types.js";
 import {
     buildGateProducerOutput,
     buildGateVerifierPrompt,
@@ -40,17 +40,17 @@ import {
 import {
     workflowCompleteReason,
     workflowJumpLimitReason,
-} from "./reasons.js";
-import { dispatchToMember } from "./dispatch.js";
-import { finishRun } from "./summary.js";
-import { recordEvent } from "./events.js";
+} from "../reasons.js";
+import { dispatchToMember } from "../dispatch.js";
+import { finishRun } from "../summary.js";
+import { recordEvent } from "../events.js";
 import {
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
     sortedWorkflowIndices,
 } from "./dag.js";
-import { maybeTriggerSignoff } from "./signoff.js";
-import { forceApprovalRequest } from "./hitl.js";
+import { maybeTriggerSignoff } from "../signoff.js";
+import { forceApprovalRequest } from "../hitl.js";
 import {
     completeWorkflowJoinStep,
     dispatchWorkflowJoinReducer,
@@ -60,7 +60,7 @@ import {
     markWorkflowStepDispatched,
 } from "./fanout.js";
 
-import { buildWorkflowUpstream } from "./upstream.js";
+import { buildWorkflowUpstream } from "../upstream.js";
 
 function assertNeverWorkflowStepKind(value: never): never {
     throw new Error(`unhandled workflow step kind: ${String(value)}`);

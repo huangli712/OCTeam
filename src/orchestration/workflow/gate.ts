@@ -12,8 +12,8 @@ import type {
     WorkflowIssue,
     WorkflowIssueSeverity,
     WorkflowStep,
-} from "../core/types.js";
-import { truncateOutput } from "./output.js";
+} from "../../core/types.js";
+import { truncateOutput } from "../output.js";
 import { isSameWorkflowBranch } from "./dag.js";
 
 /** Structured jump context produced by a gate's goto evaluation. */

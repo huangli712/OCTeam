@@ -9,7 +9,7 @@
 
 import type { WorkflowStep } from "../core/types.js";
 import { truncateOutput } from "./output.js";
-import { isSameWorkflowBranch } from "./dag.js";
+import { isSameWorkflowBranch } from "./workflow/dag.js";
 
 /** Total byte budget for injected upstream context. */
 const UPSTREAM_TOTAL_CAP = 65_536;

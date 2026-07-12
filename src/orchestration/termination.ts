@@ -7,11 +7,11 @@
 
 import type { PluginContext } from "../core/context.js"
 import type { WorkflowStep, WorkflowTask } from "../core/types.js"
-import { getActiveWorkflowStepActors } from "./dag.js"
+import { getActiveWorkflowStepActors } from "./workflow/dag.js"
 import type { Team } from "../state/store.js"
 import { finishRun } from "./summary.js"
-import { advanceWorkflowStep, redispatchWorkflowStep } from "./workflow.js"
-import { markWorkflowFanoutBranchErrored } from "./fanout.js"
+import { advanceWorkflowStep, redispatchWorkflowStep } from "./workflow/workflow.js"
+import { markWorkflowFanoutBranchErrored } from "./workflow/fanout.js"
 import {
     workflowNoSessionReason,
     workflowTimeoutStepReason,

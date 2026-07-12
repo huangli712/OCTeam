@@ -7,13 +7,13 @@
  * is shared with workflow-handler.ts for task / join step completion.
  */
 
-import type { PluginContext } from "../core/context.js";
-import { type Team, saveTeamState } from "../state/store.js";
+import type { PluginContext } from "../../core/context.js";
+import { type Team, saveTeamState } from "../../state/store.js";
 import type {
     MemberState,
     WorkflowStep,
     WorkflowTask,
-} from "../core/types.js";
+} from "../../core/types.js";
 import {
     advanceWorkflowStep,
     describeStep,
@@ -36,11 +36,11 @@ import {
 import {
     workflowGateFailReason,
     workflowInvalidReason,
-} from "./reasons.js";
-import { finishRun } from "./summary.js";
-import { recordEvent } from "./events.js";
-import { parseVerdict } from "./decisions.js";
-import { forceApprovalRequest, maybeRequestApproval } from "./hitl.js";
+} from "../reasons.js";
+import { finishRun } from "../summary.js";
+import { recordEvent } from "../events.js";
+import { parseVerdict } from "../decisions.js";
+import { forceApprovalRequest, maybeRequestApproval } from "../hitl.js";
 import {
     handleWorkflowDispatchUnavailable,
     markWorkflowStepCompleted,

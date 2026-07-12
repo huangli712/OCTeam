@@ -27,9 +27,9 @@ import {
     handleTollgateIdle,
     startVerification,
 } from "./modes/tollgate.js";
-import { advanceWorkflowStep, redispatchWorkflowStep } from './workflow.js';
-import { handleWorkflowIdle } from "./workflow-handler.js";
-import { handleWorkflowDispatchUnavailable } from "./fanout.js";
+import { advanceWorkflowStep, redispatchWorkflowStep } from "./workflow/workflow.js";
+import { handleWorkflowIdle } from "./workflow/workflow-handler.js";
+import { handleWorkflowDispatchUnavailable } from "./workflow/fanout.js";
 import {
     buildArbiterPrompt,
     buildDebatePrompt,
@@ -49,7 +49,7 @@ import {
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
     workflowStepActor,
-} from "./dag.js";
+} from "./workflow/dag.js";
 
 type TeamMember = Team["members"][number];
 

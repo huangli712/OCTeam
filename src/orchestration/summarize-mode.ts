@@ -9,7 +9,7 @@
 import type { Team } from "../state/store.js"
 import { listAllTasks } from "../state/tasks.js"
 import { truncateOutput } from "./output.js"
-import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./ledger.js"
+import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./workflow/ledger.js"
 import type { ActiveTask, ArenaCandidateScore } from "../core/types.js"
 
 export async function summarizeDelegate(team: Team, head: string): Promise<string> {
