@@ -33,7 +33,7 @@
 
 import { afterAll, describe, expect, mock, test } from "bun:test"
 
-import { deliverSummaryToLeader } from "../src/orchestration/runs/summary.js"
+import { deliverSummaryToLeader } from '../src/orchestration/runtime/completion';
 import type { ActiveTask } from "../src/core/types.js"
 import type { PluginContext } from "../src/core/context.js"
 import { cleanupTmpRoots, makeTeam, tmpRoot } from "./helpers.js"

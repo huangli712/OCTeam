@@ -20,7 +20,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import type { Message } from "../src/core/types.js"
 import type { PluginContext } from "../src/core/context.js"
 import { pollMailbox, writeMailboxMessage } from "../src/messaging/mailbox.js"
-import { deliverQueuedResultsToMaster } from "../src/orchestration/runs/summary.js"
+import { deliverQueuedResultsToMaster } from '../src/orchestration/runtime/completion';
 import { AsyncMutex } from "../src/state/locks.js"
 import { cleanupTmpRoots, makeState, tmpRoot } from "./helpers.js"
 import type { Team } from "../src/state/store.js"
