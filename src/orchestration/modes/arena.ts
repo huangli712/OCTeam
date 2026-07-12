@@ -65,6 +65,63 @@ export function selectArenaWinner(
 }
 
 /**
+ * Transition implement -> evaluate. Live-check the evaluator (exists,
+ * non-master, has a session, not terminally errored); if it is not live, fail
+ * closed WITHOUT entering the evaluate phase (there would be no running prompt
+ * to await). Otherwise set the evaluate phase and dispatch the evaluator its
+ * scoreboard prompt in its own worktree.
+ */
+export async function startArenaEvaluation(ctx: PluginContext, team: Team): Promise<void> {
+    const task = team.activeTask
+    if (!task || task.type !== "arena") return
+    const evaluator = team.members.find(m => m.name === task.evaluatorMember && !m.isMaster)
+    if (!evaluator?.sessionId || evaluator.status === "errored") {
+        await finishRun(ctx, team, "arena_failed:evaluator_unavailable", "failed")
+        return
+    }
+    task.arenaPhase = "evaluate"
+    await dispatchToMember(
+        ctx,
+        evaluator,
+        buildArenaEvaluatorPrompt(task, team),
+        evaluator.worktreePath ?? ctx.directory,
+        team,
+    )
+    await saveTeamState(team)
+}
+
+/**
+ * Build the evaluator's dispatch prompt: every SURVIVING candidate's name +
+ * absolute worktree path, the eval command/criteria, the winner metric +
+ * direction, and the EXACT <scoreboard> block the evaluator must emit. The
+ * evaluator runs the command against each candidate's WORKING TREE (uncommitted
+ * agent edits included), reading the absolute paths shown — NOT a committed ref.
+ */
+export function buildArenaEvaluatorPrompt(task: ArenaTask, team: Team): string {
+    const survivors = task.survivingCandidates ?? []
+    const rows = survivors
+        .map(name => {
+            const wt = team.members.find(m => m.name === name)?.worktreePath ?? "(no worktree)"
+            return `- ${name}: ${wt}`
+        })
+        .join("\n")
+    const basis: string[] = []
+    if (task.evalCommand) basis.push(`Eval command: ${task.evalCommand}`)
+    if (task.evalCriteria) basis.push(`Eval criteria: ${task.evalCriteria}`)
+    return (
+        `[Arena evaluation] Objectively score every candidate below on the same basis.\n`
+        + `Candidates (name: absolute worktree path):\n${rows}\n\n`
+        + `${basis.join("\n")}\n`
+        + `Winner metric: "${task.winnerMetric}", selected by ${task.scoreDirection}.\n\n`
+        + `Run the eval command against EACH candidate's WORKING TREE at the absolute path `
+        + `above (include uncommitted agent edits; do NOT check out a committed ref). Read `
+        + `each candidate's files at the path shown and score them all identically.\n`
+        + `Emit EXACTLY one scoreboard block and nothing after it:\n`
+        + `<scoreboard>{"scores":[{"member":"...","score":<n>,"metrics":{...},"passed":true|false,"rationale":"..."}],"rationale":"..."}</scoreboard>`
+    )
+}
+
+/**
  * Arena idle handler for BOTH phases.
  *
  * IMPLEMENT: on each candidate idle, re-check the barrier over the ORIGINAL
@@ -155,61 +212,4 @@ export async function handleArenaIdle(
         task.survivingCandidates = survivors
         await startArenaEvaluation(ctx, team)
     })
-}
-
-/**
- * Transition implement -> evaluate. Live-check the evaluator (exists,
- * non-master, has a session, not terminally errored); if it is not live, fail
- * closed WITHOUT entering the evaluate phase (there would be no running prompt
- * to await). Otherwise set the evaluate phase and dispatch the evaluator its
- * scoreboard prompt in its own worktree.
- */
-export async function startArenaEvaluation(ctx: PluginContext, team: Team): Promise<void> {
-    const task = team.activeTask
-    if (!task || task.type !== "arena") return
-    const evaluator = team.members.find(m => m.name === task.evaluatorMember && !m.isMaster)
-    if (!evaluator?.sessionId || evaluator.status === "errored") {
-        await finishRun(ctx, team, "arena_failed:evaluator_unavailable", "failed")
-        return
-    }
-    task.arenaPhase = "evaluate"
-    await dispatchToMember(
-        ctx,
-        evaluator,
-        buildArenaEvaluatorPrompt(task, team),
-        evaluator.worktreePath ?? ctx.directory,
-        team,
-    )
-    await saveTeamState(team)
-}
-
-/**
- * Build the evaluator's dispatch prompt: every SURVIVING candidate's name +
- * absolute worktree path, the eval command/criteria, the winner metric +
- * direction, and the EXACT <scoreboard> block the evaluator must emit. The
- * evaluator runs the command against each candidate's WORKING TREE (uncommitted
- * agent edits included), reading the absolute paths shown — NOT a committed ref.
- */
-export function buildArenaEvaluatorPrompt(task: ArenaTask, team: Team): string {
-    const survivors = task.survivingCandidates ?? []
-    const rows = survivors
-        .map(name => {
-            const wt = team.members.find(m => m.name === name)?.worktreePath ?? "(no worktree)"
-            return `- ${name}: ${wt}`
-        })
-        .join("\n")
-    const basis: string[] = []
-    if (task.evalCommand) basis.push(`Eval command: ${task.evalCommand}`)
-    if (task.evalCriteria) basis.push(`Eval criteria: ${task.evalCriteria}`)
-    return (
-        `[Arena evaluation] Objectively score every candidate below on the same basis.\n`
-        + `Candidates (name: absolute worktree path):\n${rows}\n\n`
-        + `${basis.join("\n")}\n`
-        + `Winner metric: "${task.winnerMetric}", selected by ${task.scoreDirection}.\n\n`
-        + `Run the eval command against EACH candidate's WORKING TREE at the absolute path `
-        + `above (include uncommitted agent edits; do NOT check out a committed ref). Read `
-        + `each candidate's files at the path shown and score them all identically.\n`
-        + `Emit EXACTLY one scoreboard block and nothing after it:\n`
-        + `<scoreboard>{"scores":[{"member":"...","score":<n>,"metrics":{...},"passed":true|false,"rationale":"..."}],"rationale":"..."}</scoreboard>`
-    )
 }
