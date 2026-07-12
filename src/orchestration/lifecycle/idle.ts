@@ -10,7 +10,7 @@
  *   1.5. Role-setup barrier — first idle of uninitialized member marks it ready, returns
  *   2. Token accounting (recompute, never +=)
  *   3. Identity validation (stray idle does not advance pipeline/loop)
- *   4. Capture output (delegated to runs/capture.ts)
+ *   4. Capture output (delegated to records/capture.ts)
  *   5. Unread-message wake hint (returns; Transform hook injects content next turn)
  *   6. Dispatch by active-task type
  *   7. Termination checks
