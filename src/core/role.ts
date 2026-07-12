@@ -42,7 +42,7 @@ export type RoleDef = { agent: string; instruction: string }
 export const ROLES: Record<string, RoleDef> = {
     // --- software ---
     coder: {
-        agent: "oct-junior",
+        agent: "oct-deep",
         instruction: [
             "You are the team's implementation engineer.",
             "",
@@ -194,7 +194,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join("\n"),
     },
     physicist: {
-        agent: "oct-junior",
+        agent: "oct-deep",
         instruction: [
             "You are the team's physicist.",
             "",
@@ -209,7 +209,7 @@ export const ROLES: Record<string, RoleDef> = {
         ].join("\n"),
     },
     simulator: {
-        agent: "oct-junior",
+        agent: "oct-deep",
         instruction: [
             "You are the team's computational scientist.",
             "",
