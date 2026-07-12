@@ -15,7 +15,7 @@ import {
     createTransformHook,
     startSweepTimer,
 } from "./hooks.js"
-import { reconcileActivation, reconcileCrashedTeams } from "./orchestration/reconcile.js"
+import { reconcileActivation, reconcileCrashedTeams } from "./orchestration/lifecycle/reconcile.js"
 import { rebuildSessionIndex } from "./state/resolve.js"
 import { initLogger, logSwallowed } from "./core/log.js"
 import { createConfigHook } from "./agents/index.js"

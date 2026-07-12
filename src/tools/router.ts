@@ -7,7 +7,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type { RouteBranch } from "../core/types.js"
-import { dispatchToMember } from "../orchestration/dispatch.js"
+import { dispatchToMember } from "../orchestration/runtime/dispatch.js"
 import { buildRouterPrompt } from "../orchestration/modes/route.js"
 import {
     DEFAULT_TIMEOUT_MS,
@@ -15,12 +15,12 @@ import {
     humanApprovalTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/start-orchestration.js"
+} from "../orchestration/lifecycle/start-orchestration.js"
 import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
-import { validateSignoff } from "../orchestration/shared.js"
+import { validateSignoff } from "./support.js"
 
 // Re-export buildRouterPrompt for any external consumers that historically
-// imported it from this module. The canonical home is orchestration/route.ts.
+// imported it from this module. The canonical home is orchestration/modes/route.ts.
 export { buildRouterPrompt }
 
 /** Content-based routing: a router inspects input and dispatches to matching branches. */

@@ -24,7 +24,7 @@ import { access, readFile } from "node:fs/promises"
 import { afterEach, describe, expect, mock, test } from "bun:test"
 
 import type { ActiveTask, MemberState } from "../src/core/types.js"
-import { processIdle } from "../src/orchestration/idle.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { runEventsPath, runsDir, runDir, runMemberOutputPath, statePath } from "../src/state/paths.js"
 import { initTeamState, invalidateTeam, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamDir } from "../src/state/paths.js"

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { waitForBarrier } from "../src/orchestration/barriers.js"
+import { waitForBarrier } from "../src/orchestration/runtime/barriers.js"
 import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 

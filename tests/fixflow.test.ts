@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ActiveTask, MemberState, WorkflowTask } from "../src/core/types.js"
-import { checkWorkflowInvariants } from "../src/orchestration/invariants.js"
+import { checkWorkflowInvariants } from "../src/orchestration/workflow/invariants.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { initTeamState, invalidateTeam, loadTeamState, saveTeamState } from "../src/state/store.js"
 import type { Team } from "../src/state/store.js"

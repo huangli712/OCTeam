@@ -4,7 +4,7 @@
  * Bug: src/tools/task.ts:38 accepts arbitrary blocked_by strings
  * (tool.schema.array(tool.schema.string()) — no UUID format or existence
  * validation), and task.ts:81 persists them verbatim via createTask.
- * src/orchestration/delegate.ts:62 then requires every blocker to match a
+ * src/orchestration/modes/delegate.ts:62 then requires every blocker to match a
  * completed task:
  *   t.blockedBy.every(id => tasks.find(x => x.id === id)?.status === "completed")
  * When a blocker ID is a typo or non-existent, tasks.find() returns undefined,

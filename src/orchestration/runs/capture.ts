@@ -2,21 +2,20 @@
  * Member output capture: persists each turn's deliverable to runs/<runId>/<member>.md
  * (accumulative, not overwrite) and truncates for state.json / prompt injection.
  *
- * Extracted from handlers.ts so the capture IO + workflow step routing lives
- * independently from the idle state machine.
+ * Extracted from handlers.ts so capture IO lives independently from the idle
+ * state machine.
  */
 
 import crypto from "node:crypto"
 import { readFile } from "node:fs/promises"
 
-import type { Team } from "../state/store.js"
-import { isEnoent } from "../core/utils.js"
-import { extractOutputFromParts, truncateOutput } from "./output.js"
-import { findActiveWorkflowStepIndexForMember } from "./workflow/dag.js"
-import { atomicWrite } from "../state/locks.js"
-import { runMemberOutputPath, runReduceOutputPath } from "../state/paths.js"
+import type { Team } from "../../state/store.js"
+import { isEnoent } from "../../core/utils.js"
+import { extractOutputFromParts, truncateOutput } from "../protocol/output.js"
+import { atomicWrite } from "../../state/locks.js"
+import { runMemberOutputPath, runReduceOutputPath } from "../../state/paths.js"
 import { recordEvent } from "./events.js"
-import type { MemberState, SdkMessage } from "../core/types.js"
+import type { MemberState, SdkMessage } from "../../core/types.js"
 
 /**
  * Build the accumulated run-member output by appending the current turn's
@@ -67,19 +66,6 @@ export async function captureMemberOutput(
     if (outputs.length === 0) return
     const full = outputs.join("\n\n")
     const captured = truncateOutput(full)
-    if (task.type === "workflow" && !task.signoffStage) {
-        const activeStepIndex = findActiveWorkflowStepIndexForMember(task, member.name)
-        if (activeStepIndex === null) return
-        const activeStep = task.steps?.[activeStepIndex]
-        if (activeStep?.kind === "task") {
-            activeStep.output = activeStep.maxOutputBytes !== undefined
-                ? truncateOutput(captured, activeStep.maxOutputBytes)
-                : captured
-        }
-        if (activeStep?.kind === "gate") {
-            activeStep.output = captured
-        }
-    }
     task.responses[member.name] = captured
     const runId = (task.runId ??= crypto.randomUUID())
 

@@ -11,7 +11,7 @@ import {
     listRunRecords,
     readRunRecord,
     DEFAULT_MAX_RUNS,
-} from "../src/orchestration/runs.js"
+} from "../src/orchestration/runs/runs.js"
 import {
     runsDir,
     runDir,

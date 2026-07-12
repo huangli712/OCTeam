@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { MemberState, RecurseTask, Task } from "../src/core/types.js"
-import { processIdle } from "../src/orchestration/idle.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"

@@ -14,11 +14,11 @@
  * principle land out of order (impossible at LLM-turn cadence, but cheap insurance).
  */
 
-import type { Team } from "../state/store.js"
-import type { RunEvent } from "../core/types.js"
-import { appendJsonl } from "../state/locks.js"
-import { runEventsPath } from "../state/paths.js"
-import { logger } from "../core/log.js"
+import type { Team } from "../../state/store.js"
+import type { RunEvent } from "../../core/types.js"
+import { appendJsonl } from "../../state/locks.js"
+import { runEventsPath } from "../../state/paths.js"
+import { logger } from "../../core/log.js"
 
 /** Fire-and-forget: append one RunEvent to the run's events.jsonl timeline. */
 export function recordEvent(team: Team, event: RunEvent): void {

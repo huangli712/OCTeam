@@ -9,12 +9,12 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type { Team } from "../state/store.js"
-import { dispatchToMember } from "../orchestration/dispatch.js"
+import { dispatchToMember } from "../orchestration/runtime/dispatch.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     startOrchestration,
-} from "../orchestration/start-orchestration.js"
+} from "../orchestration/lifecycle/start-orchestration.js"
 
 export function teamArenaTool(ctx: PluginContext): ToolDefinition {
     return tool({

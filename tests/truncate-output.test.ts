@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { truncateOutput } from "../src/orchestration/output.js"
+import { truncateOutput } from "../src/orchestration/protocol/output.js"
 
 // Regression coverage for the end-marker-loss bug: the old head-only cut dropped
 // any deliverable marker placed at the END of a member turn exceeding maxBytes,

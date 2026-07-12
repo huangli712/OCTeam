@@ -1,8 +1,8 @@
 /**
  * Invariant test for the three 9-way dispatchers over OrchestrationType:
- *   - processIdle    (src/orchestration/idle.ts) — Record<OrchestrationType, ...> table
- *   - resumeDispatch (src/orchestration/resume.ts) — switch with `_exhaustive: never` guard
- *   - buildSummary   (src/orchestration/summary.ts) — switch with `_exhaustive: never` guard
+ *   - processIdle    (src/orchestration/lifecycle/idle.ts) — Record<OrchestrationType, ...> table
+ *   - resumeDispatch (src/orchestration/lifecycle/resume.ts) — switch with `_exhaustive: never` guard
+ *   - buildSummary   (src/orchestration/runs/summary.ts) — switch with `_exhaustive: never` guard
  *
  * processIdle was converted from a switch to a Record table in P1-6: the
  * Record<OrchestrationType, ...> type enforces compile-time completeness.
@@ -79,24 +79,24 @@ describe("11-way switch invariant: every OrchestrationType has a case in all thr
         // After P1-6, processIdle dispatches via a Record<OrchestrationType, ...>
         // table (idleDispatch) instead of a switch. Record enforces compile-time
         // completeness; this test verifies all 11 keys are present in the source.
-        const src = await readFile(path.resolve("src/orchestration/idle.ts"), "utf8")
+        const src = await readFile(path.resolve("src/orchestration/lifecycle/idle.ts"), "utf8")
         for (const t of ORCHESTRATION_TYPES) {
             // Each type appears as a top-level key: `    parallel: async ...`
             expect(src).toMatch(new RegExp(`^    ${t}:\\s*async`, "m"))
         }
     })
 
-    test("resumeDispatch (orchestration/resume.ts) covers all 11 OrchestrationTypes", async () => {
+    test("resumeDispatch (orchestration/lifecycle/resume.ts) covers all 11 OrchestrationTypes", async () => {
         // pipeline and loop share a single case block (`case "pipeline":\ncase "loop": {`),
         // so each must appear as its own label — the test asserts both labels exist.
-        const body = await readSwitchBody("src/orchestration/resume.ts", "resumeDispatch")
+        const body = await readSwitchBody("src/orchestration/lifecycle/resume.ts", "resumeDispatch")
         for (const t of ORCHESTRATION_TYPES) {
             expect(body).toContain(`case "${t}"`)
         }
     })
 
-    test("buildSummary (orchestration/summary.ts) covers all 11 OrchestrationTypes", async () => {
-        const body = await readSwitchBody("src/orchestration/summary.ts", "buildSummary")
+    test("buildSummary (orchestration/runs/summary.ts) covers all 11 OrchestrationTypes", async () => {
+        const body = await readSwitchBody("src/orchestration/runs/summary.ts", "buildSummary")
         for (const t of ORCHESTRATION_TYPES) {
             expect(body).toContain(`case "${t}"`)
         }

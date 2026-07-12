@@ -13,14 +13,14 @@
  * over the per-mode switch).
  */
 
-import type { PluginContext } from "../core/context.js"
-import { logEvent } from "../core/log.js"
-import { type Team, saveTeamState } from "../state/store.js"
-import type { MemberState } from "../core/types.js"
+import type { PluginContext } from "../../core/context.js"
+import { logEvent } from "../../core/log.js"
+import { type Team, saveTeamState } from "../../state/store.js"
+import type { MemberState } from "../../core/types.js"
 import { dispatchToMember } from "./dispatch.js"
-import { buildSummary, finishRun } from "./summary.js"
-import { recordEvent } from "./events.js"
-import { isQuorumReached, parseSignoff } from "./decisions.js"
+import { buildSummary, finishRun } from "../runs/summary.js"
+import { recordEvent } from "../runs/events.js"
+import { isQuorumReached, parseSignoff } from "../protocol/decisions.js"
 
 // --- shared prompt builders (live + crash-recovery paths must use identical wording) ---
 

@@ -22,7 +22,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { isIndexedMember } from "../state/resolve.js"
-import { validateMemberAgent, validateMemberName } from "../orchestration/shared.js"
+import { validateMemberAgent, validateMemberName } from "./support.js"
 import { validateWorkflowSteps } from "../orchestration/workflow/file.js"
 import { validateWorkflowStepsAgainstMembers } from "./workflow.js"
 

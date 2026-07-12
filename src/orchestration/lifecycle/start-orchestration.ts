@@ -24,12 +24,12 @@
 import crypto from "node:crypto"
 import type { ToolContext } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
-import { ensureMembersReady } from "./dispatch.js"
-import { activationError } from "../state/activation.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import type { ActiveTask, DecisionRecord, ReducePolicy, SignoffPolicy } from "../core/types.js"
+import type { PluginContext } from "../../core/context.js"
+import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
+import { ensureMembersReady } from "../runtime/dispatch.js"
+import { activationError } from "../../state/activation.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import type { ActiveTask, DecisionRecord, ReducePolicy, SignoffPolicy } from "../../core/types.js"
 
 // ============================================================
 // Orchestration defaults
@@ -48,7 +48,7 @@ export const DEFAULT_LOOP_TIMEOUT_MS = 900_000
 // Named defaults for orchestration parameters (wf-011). Previously these were
 // scattered as inline `?? N` literals across the Phase-3 commit blocks, which
 // made the effective defaults hard to audit and easy to drift between tools.
-// The numeric defaults live in orchestration/defaults.ts (single-sourced for
+// The numeric defaults live in orchestration/runtime/defaults.ts (single-sourced for
 // both the tool and handler layers); re-exported here for tool-layer callers.
 /** Re-export named orchestration defaults from defaults.ts for tool-layer callers. */
 export {
@@ -56,7 +56,7 @@ export {
     DEFAULT_ARBITRATE_ROUNDS,
     DEFAULT_RECURSE_DEPTH,
     DEFAULT_RECURSE_SUBTASKS,
-} from "./defaults.js"
+} from "../runtime/defaults.js"
 /** Default signoff policy: no post-completion review. */
 export const DEFAULT_SIGNOFF_POLICY: SignoffPolicy = "none"
 /** Default reduce policy: concatenate member outputs with a header summary. */

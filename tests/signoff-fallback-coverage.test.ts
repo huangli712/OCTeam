@@ -6,12 +6,12 @@
  *
  * Both paths return false (caller must do direct delivery) AND reset
  * task.signoffStage to false. Without coverage these were silent dead-code
- * branches (lines 53-57 and 64-67 of src/orchestration/signoff.ts).
+ * branches (lines 53-57 and 64-67 of src/orchestration/runtime/signoff.ts).
  */
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
 import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
-import { maybeTriggerSignoff } from "../src/orchestration/signoff.js"
+import { maybeTriggerSignoff } from "../src/orchestration/runtime/signoff.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"

@@ -40,17 +40,17 @@ import {
 import {
     workflowCompleteReason,
     workflowJumpLimitReason,
-} from "../reasons.js";
-import { dispatchToMember } from "../dispatch.js";
-import { finishRun } from "../summary.js";
-import { recordEvent } from "../events.js";
+} from "./reasons.js";
+import { dispatchToMember } from "../runtime/dispatch.js";
+import { finishRun } from "../runs/summary.js";
+import { recordEvent } from "../runs/events.js";
 import {
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
     sortedWorkflowIndices,
 } from "./dag.js";
-import { maybeTriggerSignoff } from "../signoff.js";
-import { forceApprovalRequest } from "../hitl.js";
+import { maybeTriggerSignoff } from "../runtime/signoff.js";
+import { forceApprovalRequest } from "../runtime/hitl.js";
 import {
     completeWorkflowJoinStep,
     dispatchWorkflowJoinReducer,
@@ -60,7 +60,7 @@ import {
     markWorkflowStepDispatched,
 } from "./fanout.js";
 
-import { buildWorkflowUpstream } from "../upstream.js";
+import { buildWorkflowUpstream } from "./upstream.js";
 
 function assertNeverWorkflowStepKind(value: never): never {
     throw new Error(`unhandled workflow step kind: ${String(value)}`);

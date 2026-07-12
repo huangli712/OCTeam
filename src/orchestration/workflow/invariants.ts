@@ -3,8 +3,8 @@
  * task's steps against structural constraints (ordering, bounds, branch ranges).
  */
 
-import type { WorkflowBranchMetadata, WorkflowBranchRange, WorkflowFanoutMetadata, WorkflowJoinMetadata, WorkflowStep, WorkflowTask } from "../core/types.js"
-import { joinPolicySatisfied } from "./workflow/join-policy.js"
+import type { WorkflowBranchMetadata, WorkflowBranchRange, WorkflowFanoutMetadata, WorkflowJoinMetadata, WorkflowStep, WorkflowTask } from "../../core/types.js"
+import { joinPolicySatisfied } from "./join-policy.js"
 
 /** Result of a workflow invariant check: either ok or a list of violations. */
 export type WorkflowInvariantCheckResult = { readonly ok: true } | { readonly ok: false; readonly violations: readonly string[] }

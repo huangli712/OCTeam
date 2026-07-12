@@ -4,7 +4,7 @@
  * the OpenCode Hooks.event / experimental.chat.messages.transform signatures,
  * and run a periodic sweep timer that babysits busy teams (missed-idle
  * reconciliation, termination enforcement). Crash recovery on startup lives in
- * orchestration/reconcile.ts.
+ * orchestration/lifecycle/reconcile.ts.
  */
 
 import type { Hooks } from "@opencode-ai/plugin"
@@ -16,12 +16,12 @@ import { resolveMasterTeams, resolveTeamMember, isMasterSession } from "./state/
 import { ackMessages, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
 import { formatMailboxInjection } from "./messaging/format.js"
 import { reapStaleClaims } from "./state/tasks.js"
-import { handleStatusEvent } from "./orchestration/status.js"
-import { processIdle } from "./orchestration/idle.js"
-import { checkTermination } from "./orchestration/termination.js"
+import { handleStatusEvent } from "./orchestration/lifecycle/status.js"
+import { processIdle } from "./orchestration/lifecycle/idle.js"
+import { checkTermination } from "./orchestration/lifecycle/termination.js"
 import type { MemberState, SdkMessage } from "./core/types.js"
 import { logEvent, logSwallowed } from "./core/log.js"
-import { handleSessionDeleted } from "./orchestration/reconcile.js"
+import { handleSessionDeleted } from "./orchestration/lifecycle/reconcile.js"
 
 const SWEEP_INTERVAL_MS = 15_000
 const SAVE_MAX_ATTEMPTS = 3

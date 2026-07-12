@@ -6,7 +6,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { dispatchToMember } from "../orchestration/dispatch.js"
+import { dispatchToMember } from "../orchestration/runtime/dispatch.js"
 import { buildDebatePrompt } from "../orchestration/modes/arbitrate.js"
 import {
     DEFAULT_ARBITRATE_ROUNDS,
@@ -15,9 +15,9 @@ import {
     humanApprovalTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/start-orchestration.js"
+} from "../orchestration/lifecycle/start-orchestration.js"
 import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
-import { validateSignoff } from "../orchestration/shared.js"
+import { validateSignoff } from "./support.js"
 
 /** Run a binding arbitration with structured debate between members and a ruling arbiter. */
 export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {

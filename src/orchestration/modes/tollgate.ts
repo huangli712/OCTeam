@@ -18,13 +18,13 @@
 import type { PluginContext } from "../../core/context.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import type { ActiveTask, GatedStage, MemberState } from "../../core/types.js"
-import { buildUpstreamContext, dispatchToMember } from "../dispatch.js"
-import { finishRun } from "../summary.js"
-import { recordEvent } from "../events.js"
-import { truncateOutput } from "../output.js"
-import { parseVerdict } from "../decisions.js"
-import { maybeTriggerSignoff } from "../signoff.js"
-import { maybeRequestApproval } from "../hitl.js"
+import { buildUpstreamContext, dispatchToMember } from "../runtime/dispatch.js"
+import { finishRun } from "../runs/summary.js"
+import { recordEvent } from "../runs/events.js"
+import { truncateOutput } from "../protocol/output.js"
+import { parseVerdict } from "../protocol/decisions.js"
+import { maybeTriggerSignoff } from "../runtime/signoff.js"
+import { maybeRequestApproval } from "../runtime/hitl.js"
 
 /**
  * Build the verifier's dispatch prompt: the producer's output, the criteria,

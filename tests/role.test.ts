@@ -8,8 +8,8 @@ import {
     roleAgent,
     rolePreset,
 } from "../src/core/role.js"
-import { buildRolePrompt } from "../src/orchestration/output.js"
-import { prependStandingInstruction } from "../src/orchestration/dispatch.js"
+import { buildRolePrompt } from "../src/orchestration/protocol/output.js"
+import { prependStandingInstruction } from "../src/orchestration/runtime/dispatch.js"
 import type { MemberState } from "../src/core/types.js"
 
 describe("ROLES catalogue", () => {

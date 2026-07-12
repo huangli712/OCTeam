@@ -9,7 +9,7 @@ import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../st
 import { normalizeRole, roleAgent } from "../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../core/types.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
-import { validateMemberAgent, validateMemberName } from "../orchestration/shared.js"
+import { validateMemberAgent, validateMemberName } from "./support.js"
 
 /** Add a member to an existing live team with auto-picked or explicit name. */
 export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {

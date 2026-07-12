@@ -6,16 +6,16 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { dispatchToMember } from "../orchestration/dispatch.js"
+import { dispatchToMember } from "../orchestration/runtime/dispatch.js"
 import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/start-orchestration.js"
+} from "../orchestration/lifecycle/start-orchestration.js"
 import { signoffSchemaFields } from "./shared-schema.js"
-import { validateSignoff } from "../orchestration/shared.js"
+import { validateSignoff } from "./support.js"
 
 /**
  * Detect a cycle in the blocked_by dependency graph declared by a delegate

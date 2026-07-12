@@ -3,13 +3,13 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 
-import { getExpectedMember } from "../src/orchestration/idle.js"
+import { getExpectedMember } from "../src/orchestration/lifecycle/idle.js"
 import { handleRouteIdle } from "../src/orchestration/modes/route.js"
-import { parseRouteDecision } from "../src/orchestration/decisions.js"
-import { readRunEvents } from "../src/orchestration/runs.js"
+import { parseRouteDecision } from "../src/orchestration/protocol/decisions.js"
+import { readRunEvents } from "../src/orchestration/runs/runs.js"
 
-import { buildSummary } from "../src/orchestration/summary.js"
-import { checkTermination } from "../src/orchestration/termination.js"
+import { buildSummary } from "../src/orchestration/runs/summary.js"
+import { checkTermination } from "../src/orchestration/lifecycle/termination.js"
 import { buildRouterPrompt, teamRouteTool } from "../src/tools/router.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import type { ActiveTask, MemberState, RouteBranch, RouteTask } from "../src/core/types.js"

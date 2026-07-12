@@ -13,7 +13,7 @@
 import { describe, expect, test } from "bun:test";
 
 
-import { processIdle } from "../src/orchestration/idle.js";
+import { processIdle } from "../src/orchestration/lifecycle/idle.js";
 import type {
     MemberState,
     WorkflowStep,

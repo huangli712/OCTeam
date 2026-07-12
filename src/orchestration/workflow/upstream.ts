@@ -7,9 +7,9 @@
  * UPSTREAM_TOTAL_CAP total bytes.
  */
 
-import type { WorkflowStep } from "../core/types.js";
-import { truncateOutput } from "./output.js";
-import { isSameWorkflowBranch } from "./workflow/dag.js";
+import type { WorkflowStep } from "../../core/types.js";
+import { truncateOutput } from "../protocol/output.js";
+import { isSameWorkflowBranch } from "./dag.js";
 
 /** Total byte budget for injected upstream context. */
 const UPSTREAM_TOTAL_CAP = 65_536;

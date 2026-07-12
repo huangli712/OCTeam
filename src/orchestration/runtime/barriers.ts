@@ -4,7 +4,7 @@
  * god-file so the barrier logic can be unit-tested in isolation.
  */
 
-import type { Team } from "../state/store.js"
+import type { Team } from "../../state/store.js"
 
 /**
  * Idempotent barrier check (NOT blocking). Called from handleParallelIdle on

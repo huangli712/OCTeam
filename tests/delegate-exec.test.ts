@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test"
 
-import { processIdle } from "../src/orchestration/idle.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { createTask, updateTask } from "../src/state/tasks.js"
 import type { ActiveTask, Task } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"

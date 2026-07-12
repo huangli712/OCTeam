@@ -11,21 +11,21 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
-import type { PluginContext } from "../core/context.js";
-import type { Team } from "../state/store.js";
-import { readTeamSpec, saveTeamState } from "../state/store.js";
-import { worktreesDir } from "../state/paths.js";
-import { cleanWorktree, createWorktree } from "../state/worktrees.js";
+import type { PluginContext } from "../../core/context.js";
+import type { Team } from "../../state/store.js";
+import { readTeamSpec, saveTeamState } from "../../state/store.js";
+import { worktreesDir } from "../../state/paths.js";
+import { cleanWorktree, createWorktree } from "../../state/worktrees.js";
 import {
     chunk,
     waitUntil,
-} from "../core/utils.js";
-import { buildRolePrompt, truncateOutput } from "./output.js";
-import { indexMember, unindexSession } from "../state/resolve.js";
-import { safeMemberAgent } from "../core/role.js";
-import type { MemberState, Stage } from "../core/types.js";
-import { logSwallowed } from "../core/log.js";
-import { recordEvent } from "./events.js";
+} from "../../core/utils.js";
+import { buildRolePrompt, truncateOutput } from "../protocol/output.js";
+import { indexMember, unindexSession } from "../../state/resolve.js";
+import { safeMemberAgent } from "../../core/role.js";
+import type { MemberState, Stage } from "../../core/types.js";
+import { logSwallowed } from "../../core/log.js";
+import { recordEvent } from "../runs/events.js";
 
 const execFileP = promisify(execFile);
 

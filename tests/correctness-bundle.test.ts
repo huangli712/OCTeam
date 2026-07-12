@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildSummary } from "../src/orchestration/summary.js"
-import { allReadOnlyStagesReportNoIssues, allMembersAgree } from "../src/orchestration/decisions.js"
-import { buildUpstreamContext } from "../src/orchestration/dispatch.js"
+import { buildSummary } from "../src/orchestration/runs/summary.js"
+import { allReadOnlyStagesReportNoIssues, allMembersAgree } from "../src/orchestration/protocol/decisions.js"
+import { buildUpstreamContext } from "../src/orchestration/runtime/dispatch.js"
 import type { ActiveTask, Stage } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { makeTask } from "./helpers.js"

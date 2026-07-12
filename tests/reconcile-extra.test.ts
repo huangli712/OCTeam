@@ -8,7 +8,7 @@ import {
     handleSessionDeleted,
     reconcileActivation,
     reconcileCrashedTeams,
-} from "../src/orchestration/reconcile.js"
+} from "../src/orchestration/lifecycle/reconcile.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { statePath, teamDir } from "../src/state/paths.js"

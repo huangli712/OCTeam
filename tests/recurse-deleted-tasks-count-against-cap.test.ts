@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { processIdle } from "../src/orchestration/idle.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import type { RecurseTask } from "../src/core/types.js"
 import { makeCtx, makeTeam } from "./helpers.js"
@@ -8,7 +8,7 @@ import { makeCtx, makeTeam } from "./helpers.js"
 /**
  * Regression for finding recurse-deleted-tasks-count-against-cap.
  *
- * src/orchestration/recurse.ts:95 computes the capacity guard as
+ * src/orchestration/modes/recurse.ts:95 computes the capacity guard as
  *   tasks.length + dec.subtasks.length <= team.bounds.maxTasks
  * using the raw task count, which INCLUDES "deleted" tasks. Every other
  * live-task capacity check in the codebase (src/tools/task.ts:90-92,

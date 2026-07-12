@@ -6,8 +6,8 @@
  */
 
 import type { Message, Part, TextPart } from "@opencode-ai/sdk"
-import type { MemberSpec } from "../core/types.js"
-import { rolePreset } from "../core/role.js"
+import type { MemberSpec } from "../../core/types.js"
+import { rolePreset } from "../../core/role.js"
 
 /**
  * Extract concatenated text from message parts (filters type === "text").

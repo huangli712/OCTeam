@@ -4,7 +4,7 @@ import { join } from "node:path"
 
 import { describe, expect, mock, test } from "bun:test"
 
-import { checkTermination } from "../src/orchestration/termination.js"
+import { checkTermination } from "../src/orchestration/lifecycle/termination.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"

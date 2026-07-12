@@ -10,35 +10,39 @@
  *   1.5. Role-setup barrier — first idle of uninitialized member marks it ready, returns
  *   2. Token accounting (recompute, never +=)
  *   3. Identity validation (stray idle does not advance pipeline/loop)
- *   4. Capture output (delegated to capture.ts)
+ *   4. Capture output (delegated to runs/capture.ts)
  *   5. Unread-message wake hint (returns; Transform hook injects content next turn)
  *   6. Dispatch by active-task type
  *   7. Termination checks
  */
 
-import type { PluginContext } from "../core/context.js"
-import { type Team, saveTeamState } from "../state/store.js"
-import { countUnreadMessages } from "../messaging/mailbox.js"
-import { sendWakeHint } from "../messaging/wake-hint.js"
-import { sumMemberTokens } from "./output.js";
-import { getActiveWorkflowStepActors, getActiveWorkflowStepIndices } from "./workflow/dag.js"
-import { safeMemberAgent } from "../core/role.js"
-import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../core/types.js"
-import { deliverQueuedResultsToMaster } from "./summary.js"
+import type { PluginContext } from "../../core/context.js"
+import { type Team, saveTeamState } from "../../state/store.js"
+import { countUnreadMessages } from "../../messaging/mailbox.js"
+import { sendWakeHint } from "../../messaging/wake-hint.js"
+import { sumMemberTokens } from "../protocol/output.js"
+import {
+    findActiveWorkflowStepIndexForMember,
+    getActiveWorkflowStepActors,
+    getActiveWorkflowStepIndices,
+} from "../workflow/dag.js"
+import { safeMemberAgent } from "../../core/role.js"
+import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../../core/types.js"
+import { deliverQueuedResultsToMaster } from "../runs/summary.js"
 import { checkTermination } from "./termination.js"
-import { handleReduceIdle, handleSignoffIdle } from "./signoff.js"
-import { handleConsensusIdle } from "./modes/consensus.js"
-import { handleParallelIdle } from "./modes/parallel.js"
-import { handlePipelineIdle } from "./modes/pipeline.js"
-import { handleLoopIdle } from "./modes/loop.js"
-import { handleDelegateIdle } from "./modes/delegate.js"
-import { handleRecurseIdle } from "./modes/recurse.js"
-import { handleTollgateIdle } from "./modes/tollgate.js"
-import { handleRouteIdle } from "./modes/route.js"
-import { handleArbitrateIdle } from "./modes/arbitrate.js"
-import { handleWorkflowIdle } from "./workflow/workflow-handler.js"
-import { handleArenaIdle } from "./modes/arena.js"
-import { captureMemberOutput } from "./capture.js"
+import { handleReduceIdle, handleSignoffIdle } from "../runtime/signoff.js"
+import { handleConsensusIdle } from "../modes/consensus.js"
+import { handleParallelIdle } from "../modes/parallel.js"
+import { handlePipelineIdle } from "../modes/pipeline.js"
+import { handleLoopIdle } from "../modes/loop.js"
+import { handleDelegateIdle } from "../modes/delegate.js"
+import { handleRecurseIdle } from "../modes/recurse.js"
+import { handleTollgateIdle } from "../modes/tollgate.js"
+import { handleRouteIdle } from "../modes/route.js"
+import { handleArbitrateIdle } from "../modes/arbitrate.js"
+import { handleWorkflowIdle } from "../workflow/workflow-handler.js"
+import { handleArenaIdle } from "../modes/arena.js"
+import { captureMemberOutput } from "../runs/capture.js"
 
 // --- helpers ---
 
@@ -244,7 +248,14 @@ export async function processIdle(
     if (messages === null) return // stray idle
 
     // Step 4: Capture output (mode-aware; delegate skips, signoff always captures).
-    await captureMemberOutput(team, member, messages)
+    const task = team.activeTask
+    if (
+        task?.type !== "workflow"
+        || task.signoffStage === true
+        || findActiveWorkflowStepIndexForMember(task, member.name) !== null
+    ) {
+        await captureMemberOutput(team, member, messages)
+    }
 
     await saveTeamState(team)
 
@@ -283,5 +294,3 @@ export async function processIdle(
     // Step 7: Termination checks.
     await checkTermination(ctx, team)
 }
-
-

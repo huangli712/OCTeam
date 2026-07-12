@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { parseVerdict } from "../src/orchestration/decisions.js"
+import { parseVerdict } from "../src/orchestration/protocol/decisions.js"
 
 describe("parseVerdict structured fields", () => {
     test("parses score, confidence, and issues without changing the primary verdict", () => {

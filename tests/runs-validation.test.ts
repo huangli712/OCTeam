@@ -13,11 +13,11 @@ import path from "node:path"
 import { afterAll, describe, expect, it } from "bun:test"
 
 import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
-import { listRunRecords, readRunRecord } from "../src/orchestration/runs.js"
+import { listRunRecords, readRunRecord } from "../src/orchestration/runs/runs.js"
 
 afterAll(cleanupTmpRoots)
 
-/** A minimal valid RunRecord matching RunRecordSchema (src/orchestration/runs.ts). */
+/** A minimal valid RunRecord matching RunRecordSchema (src/orchestration/runs/run-schemas.ts). */
 function validRecord(runId: string, finishedAt: number): string {
     return JSON.stringify({
         version: 1,

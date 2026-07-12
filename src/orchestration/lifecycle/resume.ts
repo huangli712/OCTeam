@@ -15,41 +15,41 @@
  * team/task freely; does NOT save state (caller owns persistence).
  */
 
-import type { PluginContext } from "../core/context.js";
-import type { ActiveTask } from "../core/types.js";
-import { type Team, saveTeamState } from "../state/store.js";
-import { advanceToStage, dispatchToMember } from "./dispatch.js";
-import { handleParallelIdle } from "./modes/parallel.js";
-import { handleConsensusIdle } from "./modes/consensus.js";
-import { buildRecursePrompt } from "./modes/recurse.js";
+import type { PluginContext } from "../../core/context.js";
+import type { ActiveTask } from "../../core/types.js";
+import { type Team, saveTeamState } from "../../state/store.js";
+import { advanceToStage, dispatchToMember } from "../runtime/dispatch.js";
+import { handleParallelIdle } from "../modes/parallel.js";
+import { handleConsensusIdle } from "../modes/consensus.js";
+import { buildRecursePrompt } from "../modes/recurse.js";
 import {
     advanceToGatedStage,
     handleTollgateIdle,
     startVerification,
-} from "./modes/tollgate.js";
-import { advanceWorkflowStep, redispatchWorkflowStep } from "./workflow/workflow.js";
-import { handleWorkflowIdle } from "./workflow/workflow-handler.js";
-import { handleWorkflowDispatchUnavailable } from "./workflow/fanout.js";
+} from "../modes/tollgate.js";
+import { advanceWorkflowStep, redispatchWorkflowStep } from "../workflow/workflow.js";
+import { handleWorkflowIdle } from "../workflow/workflow-handler.js";
+import { handleWorkflowDispatchUnavailable } from "../workflow/fanout.js";
 import {
     buildArbiterPrompt,
     buildDebatePrompt,
     handleArbitrateIdle,
-} from "./modes/arbitrate.js";
-import { buildRouterPrompt, handleRouteIdle } from "./modes/route.js";
-import { buildSummary, finishRun } from "./summary.js";
-import { buildArenaEvaluatorPrompt, handleArenaIdle } from "./modes/arena.js";
+} from "../modes/arbitrate.js";
+import { buildRouterPrompt, handleRouteIdle } from "../modes/route.js";
+import { buildSummary, finishRun } from "../runs/summary.js";
+import { buildArenaEvaluatorPrompt, handleArenaIdle } from "../modes/arena.js";
 import {
     buildReducePrompt,
     buildSignoffReviewPrompt,
     handleReduceIdle,
-} from "./signoff.js";
-import { resumeApprovalStage } from "./hitl.js";
-import { listAllTasks, reapStaleClaims, updateTask } from "../state/tasks.js";
+} from "../runtime/signoff.js";
+import { resumeApprovalStage } from "../runtime/hitl.js";
+import { listAllTasks, reapStaleClaims, updateTask } from "../../state/tasks.js";
 import {
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
     workflowStepActor,
-} from "./workflow/dag.js";
+} from "../workflow/dag.js";
 
 type TeamMember = Team["members"][number];
 

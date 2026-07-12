@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test"
 
 import type { MemberState } from "../src/core/types.js"
-import { checkTermination } from "../src/orchestration/termination.js"
-import { processIdle } from "../src/orchestration/idle.js"
+import { checkTermination } from "../src/orchestration/lifecycle/termination.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import type { Team } from "../src/state/store.js"
 
 import { makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js"

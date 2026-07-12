@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "greedy-tag-json-breaks-repeated-decisions".
  *
- * Bug: src/orchestration/decisions.ts:39 uses a GREEDY regex to capture the
+ * Bug: src/orchestration/protocol/decisions.ts:39 uses a GREEDY regex to capture the
  * JSON payload inside a tag:
  *   new RegExp(`<${tag}>\\s*(\\{[\\s\\S]*\\})\\s*</${tag}>`)
  *                                  ^^^ greedy [^]*
@@ -36,7 +36,7 @@
 
 import { describe, expect, test } from "bun:test"
 
-import { parseDecision } from "../src/orchestration/decisions.js"
+import { parseDecision } from "../src/orchestration/protocol/decisions.js"
 
 describe("greedy tag JSON breaks repeated decisions (finding: greedy-tag-json-breaks-repeated-decisions)", () => {
     test("two <decision> tags in one output: the second must parse (not fail)", async () => {

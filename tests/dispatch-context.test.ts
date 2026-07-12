@@ -1,8 +1,8 @@
 import { describe, expect, mock, test } from "bun:test"
 
 import type { ActiveTask, MemberState } from "../src/core/types.js"
-import { dispatchToMember } from "../src/orchestration/dispatch.js"
-import { processIdle } from "../src/orchestration/idle.js"
+import { dispatchToMember } from "../src/orchestration/runtime/dispatch.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { createTask } from "../src/state/tasks.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"

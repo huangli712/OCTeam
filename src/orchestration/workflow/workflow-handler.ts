@@ -14,16 +14,16 @@ import {
     dispatchTaskStep,
     maybePauseAfterWorkflowStep,
 } from "./workflow.js";
-import { workflowInvalidReason } from "../reasons.js";
-import { finishRun } from "../summary.js";
-import { recordEvent } from "../events.js";
-import { truncateOutput } from "../output.js";
+import { workflowInvalidReason } from "./reasons.js";
+import { finishRun } from "../runs/summary.js";
+import { recordEvent } from "../runs/events.js";
+import { truncateOutput } from "../protocol/output.js";
 import {
     findActiveWorkflowStepIndexForMember,
     readyWorkflowStepIndices,
 } from "./dag.js";
-import { parseSelection } from "../decisions.js";
-import { maybeRequestApproval } from "../hitl.js";
+import { parseSelection } from "../protocol/decisions.js";
+import { maybeRequestApproval } from "../runtime/hitl.js";
 import {
     branchIdsForJoin,
     buildBranchWorkflowOutput,

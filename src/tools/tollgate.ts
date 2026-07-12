@@ -14,9 +14,9 @@ import {
     humanApprovalTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/start-orchestration.js"
+} from "../orchestration/lifecycle/start-orchestration.js"
 import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
-import { validateSignoff } from "../orchestration/shared.js"
+import { validateSignoff } from "./support.js"
 
 /** Run a verdict-gated pipeline where each stage is verified before the next proceeds. */
 export function teamTollgateTool(ctx: PluginContext): ToolDefinition {

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
 
 import type { MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
-import { checkWorkflowInvariants } from "../src/orchestration/invariants.js"
+import { checkWorkflowInvariants } from "../src/orchestration/workflow/invariants.js"
 import { getActiveWorkflowStepActors } from "../src/orchestration/workflow/dag.js"
-import { processIdle } from "../src/orchestration/idle.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { makeCtx, makeTeam, makeWorkflowTask as sharedMakeWorkflowTask, type DispatchCall } from "./helpers.js"
 import type { Team } from "../src/state/store.js"
 

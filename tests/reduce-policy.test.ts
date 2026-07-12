@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildSummary } from "../src/orchestration/summary.js"
+import { buildSummary } from "../src/orchestration/runs/summary.js"
 import type { ActiveTask } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 

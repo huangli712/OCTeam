@@ -6,11 +6,11 @@
  * buildSummary (summary.ts) dispatches to exactly one of these per run.
  */
 
-import type { Team } from "../state/store.js"
-import { listAllTasks } from "../state/tasks.js"
-import { truncateOutput } from "./output.js"
-import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./workflow/ledger.js"
-import type { ActiveTask, ArenaCandidateScore } from "../core/types.js"
+import type { Team } from "../../state/store.js"
+import { listAllTasks } from "../../state/tasks.js"
+import { truncateOutput } from "../protocol/output.js"
+import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./ledger.js"
+import type { ActiveTask, ArenaCandidateScore } from "../../core/types.js"
 
 export async function summarizeDelegate(team: Team, head: string): Promise<string> {
     const tasks = await listAllTasks(team.directory)

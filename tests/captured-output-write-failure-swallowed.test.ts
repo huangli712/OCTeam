@@ -41,7 +41,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { chmod, mkdir } from "node:fs/promises"
 import path from "node:path"
 
-import { captureMemberOutput } from "../src/orchestration/capture.js"
+import { captureMemberOutput } from "../src/orchestration/runs/capture.js"
 import type { ActiveTask, SdkMessage } from "../src/core/types.js"
 import { cleanupTmpRoots, makeTeam, tmpRoot } from "./helpers.js"
 

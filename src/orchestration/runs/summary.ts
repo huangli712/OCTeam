@@ -12,15 +12,15 @@
  * event.
  */
 
-import type { PluginContext } from "../core/context.js"
-import { type Team, clearActiveTask } from "../state/store.js"
-import { pollMailbox, ackMessages } from "../messaging/mailbox.js"
-import { formatMailboxInjection } from "../messaging/format.js"
-import { truncateOutput } from "./output.js"
-import { logSwallowed } from "../core/log.js"
+import type { PluginContext } from "../../core/context.js"
+import { type Team, clearActiveTask } from "../../state/store.js"
+import { pollMailbox, ackMessages } from "../../messaging/mailbox.js"
+import { formatMailboxInjection } from "../../messaging/format.js"
+import { truncateOutput } from "../protocol/output.js"
+import { logSwallowed } from "../../core/log.js"
 import { persistRun } from "./runs.js"
 import { recordEvent } from "./events.js"
-import type { ActiveTask, RunStatus } from "../core/types.js"
+import type { ActiveTask, RunStatus } from "../../core/types.js"
 import {
     summarizeDelegate,
     summarizeLoop,

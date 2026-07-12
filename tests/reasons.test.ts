@@ -12,8 +12,8 @@ import {
     workflowNoSessionReason,
     workflowOperatorFailReason,
     workflowTimeoutStepReason,
-} from "../src/orchestration/reasons.js"
-import { runStatusFromReason } from "../src/orchestration/runs.js"
+} from "../src/orchestration/workflow/reasons.js"
+import { runStatusFromReason } from "../src/orchestration/runs/runs.js"
 
 describe("workflow reason builders", () => {
     test("produce the exact legacy strings so persisted records stay readable", () => {

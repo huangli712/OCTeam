@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { processIdle } from "../src/orchestration/idle.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import type { ActiveTask, Stage } from "../src/core/types.js"
 import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 

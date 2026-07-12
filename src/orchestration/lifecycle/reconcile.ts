@@ -18,22 +18,22 @@
  * runs concurrently. Iterates BOTH scopes: project (session-segmented) + user
  * (flat).
  *
- * Layer note: lives in orchestration/ (not state/) for historical reasons —
+ * Layer note: lives in orchestration/lifecycle/ (not state/) for historical reasons —
  * the original implementation persisted terminated run records here, which a
  * state/ placement would have inverted the layer dependency. That run-record
  * persistence was removed (see reconcileOne), but the module stays in
- * orchestration/ to avoid a wide import churn.
+ * orchestration/lifecycle/ to avoid a wide import churn.
  */
 
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import type { PluginContext } from "../core/context.js"
-import { invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from "../state/store.js"
-import { unindexSession } from "../state/resolve.js"
-import { assertSafeSegment } from "../state/paths.js"
-import { releaseStaleReservations } from "../messaging/mailbox.js"
-import { logSwallowed } from "../core/log.js"
+import type { PluginContext } from "../../core/context.js"
+import { invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from "../../state/store.js"
+import { unindexSession } from "../../state/resolve.js"
+import { assertSafeSegment } from "../../state/paths.js"
+import { releaseStaleReservations } from "../../messaging/mailbox.js"
+import { logSwallowed } from "../../core/log.js"
 
 async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx: PluginContext): Promise<void> {
     if (team.status !== "busy" && team.status !== "idle") return

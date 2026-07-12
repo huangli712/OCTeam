@@ -6,17 +6,17 @@
  * (called from hooks.ts), unrelated to the idle state machine.
  */
 
-import type { PluginContext } from "../core/context.js"
-import { loadTeamState, saveTeamState } from "../state/store.js"
-import { resolveTeamMember } from "../state/resolve.js"
-import { recordEvent } from "./events.js"
+import type { PluginContext } from "../../core/context.js"
+import { loadTeamState, saveTeamState } from "../../state/store.js"
+import { resolveTeamMember } from "../../state/resolve.js"
+import { recordEvent } from "../runs/events.js"
 import { checkTermination } from "./termination.js"
-import { handleReduceIdle, handleSignoffIdle } from "./signoff.js"
-import { handleParallelIdle } from "./modes/parallel.js"
-import { handleDelegateIdle } from "./modes/delegate.js"
-import { handleRecurseIdle } from "./modes/recurse.js"
-import { advanceWorkflowStep } from "./workflow/workflow.js"
-import { handleArenaIdle } from "./modes/arena.js"
+import { handleReduceIdle, handleSignoffIdle } from "../runtime/signoff.js"
+import { handleParallelIdle } from "../modes/parallel.js"
+import { handleDelegateIdle } from "../modes/delegate.js"
+import { handleRecurseIdle } from "../modes/recurse.js"
+import { advanceWorkflowStep } from "../workflow/workflow.js"
+import { handleArenaIdle } from "../modes/arena.js"
 
 const RETRY_ESCALATION_MS = 60_000
 

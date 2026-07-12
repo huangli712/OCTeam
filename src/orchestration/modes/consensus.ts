@@ -11,12 +11,12 @@
 
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
-import { dispatchToMember } from "../dispatch.js"
-import { buildRoundSummary, finishRun } from "../summary.js"
-import { recordEvent } from "../events.js"
-import { waitForBarrier } from "../barriers.js"
-import { allMembersAgree } from "../decisions.js"
-import { maybeRequestApproval } from "../hitl.js"
+import { dispatchToMember } from "../runtime/dispatch.js"
+import { buildRoundSummary, finishRun } from "../runs/summary.js"
+import { recordEvent } from "../runs/events.js"
+import { waitForBarrier } from "../runtime/barriers.js"
+import { allMembersAgree } from "../protocol/decisions.js"
+import { maybeRequestApproval } from "../runtime/hitl.js"
 
 export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask

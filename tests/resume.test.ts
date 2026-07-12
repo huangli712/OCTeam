@@ -7,7 +7,7 @@ import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeCtx, makeMember, makeState, makeTask, makeToolContext, tmpRoot } from "./helpers.js"
 import fs from "node:fs/promises"
 import { createTask, listAllTasks, updateTask } from "../src/state/tasks.js"
-import { processIdle } from "../src/orchestration/idle.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 
 
 /** Build a failed team with lastInterruptedTask, indexed for master resolution. */

@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "summary-delivery-failure-swallowed".
  *
- * Bug: src/orchestration/summary.ts:48-61 — deliverSummaryToLeader swallows
+ * Bug: src/orchestration/runs/summary.ts:48-61 — deliverSummaryToLeader swallows
  * the leader promptAsync failure:
  *   await ctx.client.session.promptAsync({ ... }).catch(err =>
  *       logSwallowed(ctx, "deliver summary to leader failed", err, ...),
@@ -33,7 +33,7 @@
 
 import { afterAll, describe, expect, mock, test } from "bun:test"
 
-import { deliverSummaryToLeader } from "../src/orchestration/summary.js"
+import { deliverSummaryToLeader } from "../src/orchestration/runs/summary.js"
 import type { ActiveTask } from "../src/core/types.js"
 import type { PluginContext } from "../src/core/context.js"
 import { cleanupTmpRoots, makeTeam, tmpRoot } from "./helpers.js"

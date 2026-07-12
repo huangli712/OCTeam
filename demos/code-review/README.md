@@ -452,4 +452,4 @@ for g in 1..G:                          # 分组循环：每组 triage → fix
 - [`demos/01-team-parallel/README.md`](../01-team-parallel/README.md) — parallel 原语参考
 - [`demos/07-team-arbitrate/README.md`](../07-team-arbitrate/README.md) — arbitrate 原语参考
 - [`demos/09-team-tollgate/README.md`](../09-team-tollgate/README.md) — tollgate 原语参考
-- parallel / arbitrate / tollgate 源码：[`src/orchestration/parallel.ts`](../../src/orchestration/parallel.ts) / [`arbitrate.ts`](../../src/orchestration/arbitrate.ts) / [`tollgate.ts`](../../src/orchestration/tollgate.ts)
+- parallel / arbitrate / tollgate 源码：[`src/orchestration/modes/parallel.ts`](../../src/orchestration/modes/parallel.ts) / [`arbitrate.ts`](../../src/orchestration/modes/arbitrate.ts) / [`tollgate.ts`](../../src/orchestration/modes/tollgate.ts)

@@ -3,7 +3,7 @@
  * diagram with subgraphs for fanout branches and styled status nodes.
  */
 
-import type { WorkflowRunStep } from "../core/types.js"
+import type { WorkflowRunStep } from "../../core/types.js"
 
 /** Visual status classification for a workflow step node in a Mermaid diagram. */
 export type MermaidStepStatus = "done" | "active" | "pending" | "skipped"

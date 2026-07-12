@@ -15,11 +15,11 @@ import type { PluginContext } from "../../core/context.js"
 import { logEvent } from "../../core/log.js"
 import { type Team, clearActiveTask } from "../../state/store.js"
 import type { MemberState } from "../../core/types.js"
-import { advanceToStage } from "../dispatch.js"
-import { deliverSummaryToLeader, finishRun } from "../summary.js"
-import { recordEvent } from "../events.js"
-import { allReadOnlyStagesReportNoIssues, parseDecision } from "../decisions.js"
-import { maybeRequestApproval } from "../hitl.js"
+import { advanceToStage } from "../runtime/dispatch.js"
+import { deliverSummaryToLeader, finishRun } from "../runs/summary.js"
+import { recordEvent } from "../runs/events.js"
+import { allReadOnlyStagesReportNoIssues, parseDecision } from "../protocol/decisions.js"
+import { maybeRequestApproval } from "../runtime/hitl.js"
 
 async function continueLoopRound(
     ctx: PluginContext,

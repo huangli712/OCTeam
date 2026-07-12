@@ -5,17 +5,17 @@
  * idle events arriving.
  */
 
-import type { PluginContext } from "../core/context.js"
-import type { WorkflowStep, WorkflowTask } from "../core/types.js"
-import { getActiveWorkflowStepActors } from "./workflow/dag.js"
-import type { Team } from "../state/store.js"
-import { finishRun } from "./summary.js"
-import { advanceWorkflowStep, redispatchWorkflowStep } from "./workflow/workflow.js"
-import { markWorkflowFanoutBranchErrored } from "./workflow/fanout.js"
+import type { PluginContext } from "../../core/context.js"
+import type { WorkflowStep, WorkflowTask } from "../../core/types.js"
+import { getActiveWorkflowStepActors } from "../workflow/dag.js"
+import type { Team } from "../../state/store.js"
+import { finishRun } from "../runs/summary.js"
+import { advanceWorkflowStep, redispatchWorkflowStep } from "../workflow/workflow.js"
+import { markWorkflowFanoutBranchErrored } from "../workflow/fanout.js"
 import {
     workflowNoSessionReason,
     workflowTimeoutStepReason,
-} from "./reasons.js"
+} from "../workflow/reasons.js"
 
 /**
  * Check the active task's termination conditions and, if met, deliver a summary

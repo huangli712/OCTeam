@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import { createEventHandler } from "../src/hooks.js"
-import { reconcileCrashedTeams } from "../src/orchestration/reconcile.js"
+import { reconcileCrashedTeams } from "../src/orchestration/lifecycle/reconcile.js"
 import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import type { ActiveTask, Message, TeamState } from "../src/core/types.js"

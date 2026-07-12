@@ -1,9 +1,17 @@
 import { describe, expect, test } from "bun:test"
 
-import { getExpectedMember } from "../src/orchestration/idle.js"
-import { isQuorumReached, parseSignoff } from "../src/orchestration/decisions.js"
-import { makeTask } from "./helpers.js"
+import type { MemberState } from "../src/core/types.js"
+import type { Team } from "../src/state/store.js"
+import { getExpectedMember } from "../src/orchestration/lifecycle/idle.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
+import { isQuorumReached, parseSignoff } from "../src/orchestration/protocol/decisions.js"
+import { makeCtx, makeTask, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js"
 
+function requireMember(team: Team, name: string): MemberState {
+    const member = team.members.find(candidate => candidate.name === name)
+    if (member === undefined) throw new Error(`Missing fixture member: ${name}`)
+    return member
+}
 
 describe("parseSignoff", () => {
     test("parses approved signoff with rationale", () => {
@@ -88,6 +96,75 @@ describe("getExpectedMember with signoff", () => {
     test("non-signoff delegate still returns null", () => {
         const task = makeTask({ type: "delegate", signoffStage: false })
         expect(getExpectedMember(task)).toBeNull()
+    })
+})
+
+describe("workflow signoff output capture", () => {
+    test("decider uses the fresh signoff response instead of stale workflow output", async () => {
+        const calls: DispatchCall[] = []
+        const signoff = '<signoff>{"approved":true,"rationale":"ready"}</signoff>'
+        const task = makeWorkflowTask({
+            signoffPolicy: "decider",
+            signoffDecider: "alice",
+            signoffStage: true,
+            signoffApprovals: {},
+            responses: { alice: "stale workflow output" },
+            steps: [{ kind: "task", member: "worker", task: "done", completed: true }],
+            activeStepIndices: [],
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "worker", sessionId: "ses_worker" },
+            ],
+        })
+
+        await processIdle(
+            makeCtx({ calls, outputs: { ses_alice: signoff } }),
+            team,
+            requireMember(team, "alice"),
+            "ses_alice",
+        )
+
+        expect(task.responses.alice).toBe(signoff)
+        expect(task.signoffApprovals?.alice).toBe(true)
+        expect(team.activeTask).toBeUndefined()
+    })
+
+    test("peer quorum captures each reviewer's fresh signoff response", async () => {
+        const calls: DispatchCall[] = []
+        const aliceSignoff = '<signoff>{"approved":true,"rationale":"ready"}</signoff>'
+        const bobSignoff = '<signoff>{"approved":false,"rationale":"changes"}</signoff>'
+        const task = makeWorkflowTask({
+            signoffPolicy: "peer-quorum",
+            signoffStage: true,
+            signoffApprovals: {},
+            signoffQuorum: 0.5,
+            steps: [{ kind: "task", member: "worker", task: "done", completed: true }],
+            activeStepIndices: [],
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+        const ctx = makeCtx({
+            calls,
+            outputs: { ses_alice: aliceSignoff, ses_bob: bobSignoff },
+        })
+
+        await processIdle(ctx, team, requireMember(team, "alice"), "ses_alice")
+        expect(task.responses.alice).toBe(aliceSignoff)
+        expect(task.signoffApprovals?.alice).toBe(true)
+        expect(team.activeTask).toBe(task)
+
+        await processIdle(ctx, team, requireMember(team, "bob"), "ses_bob")
+        expect(task.responses.bob).toBe(bobSignoff)
+        expect(task.signoffApprovals).toEqual({ alice: true, bob: false })
+        expect(team.activeTask).toBeUndefined()
     })
 })
 

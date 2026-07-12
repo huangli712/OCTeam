@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
-import { processIdle } from "../src/orchestration/idle.js"
-import { checkTermination } from "../src/orchestration/termination.js"
+import { processIdle } from "../src/orchestration/lifecycle/idle.js"
+import { checkTermination } from "../src/orchestration/lifecycle/termination.js"
 import { teamWorkflowTool } from "../src/tools/workflow.js"
 import { expandMatrixForeachFanout } from "../src/tools/workflow.js"
 import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"

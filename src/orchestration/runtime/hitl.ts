@@ -6,10 +6,10 @@
 
 import crypto from "node:crypto"
 
-import type { PluginContext } from "../core/context.js"
-import type { ApprovalKind, ApprovalRequest, ApprovalSubtask } from "../core/types.js"
-import { type Team, saveTeamState } from "../state/store.js"
-import { recordEvent } from "./events.js"
+import type { PluginContext } from "../../core/context.js"
+import type { ApprovalKind, ApprovalRequest, ApprovalSubtask } from "../../core/types.js"
+import { type Team, saveTeamState } from "../../state/store.js"
+import { recordEvent } from "../runs/events.js"
 
 type ApprovalRequestInput = {
     kind: ApprovalKind

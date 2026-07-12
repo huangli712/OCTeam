@@ -13,7 +13,8 @@ import type {
     WorkflowIssueSeverity,
     WorkflowStep,
 } from "../../core/types.js";
-import { truncateOutput } from "../output.js";
+import { isWorkflowIssueSeverity } from "../protocol/decisions.js";
+import { truncateOutput } from "../protocol/output.js";
 import { isSameWorkflowBranch } from "./dag.js";
 
 /** Structured jump context produced by a gate's goto evaluation. */
@@ -303,11 +304,6 @@ type ConditionInput = {
 type ParsedCondition =
     | { condition: WorkflowCondition }
     | { error: string }
-
-/** Type guard for valid workflow issue severity literals. */
-export function isWorkflowIssueSeverity(value: unknown): value is WorkflowIssueSeverity {
-    return value === "low" || value === "medium" || value === "high" || value === "critical"
-}
 
 function severityRank(severity: WorkflowIssueSeverity): number {
     switch (severity) {

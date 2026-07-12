@@ -12,8 +12,14 @@
  *     signal at all (absent tag = solve directly = leaf).
  */
 
-import type { ActiveTask, ArenaCandidateScore, DecisionRecord, Verdict, WorkflowIssue } from "../core/types.js"
-import { isWorkflowIssueSeverity } from "./workflow/gate.js"
+import type {
+    ActiveTask,
+    ArenaCandidateScore,
+    DecisionRecord,
+    Verdict,
+    WorkflowIssue,
+    WorkflowIssueSeverity,
+} from "../../core/types.js"
 
 // Structured, i18n-consistent "no issues" signal for loop read_only stages. A
 // read_only stage emits <no_issues/> (or the Chinese <无问题/>) to declare clean.
@@ -293,4 +299,9 @@ export function isQuorumReached(
     const approvedCount = Object.values(approvals).filter(Boolean).length
     const reached = allResponded && reviewerCount > 0 && approvedCount / reviewerCount >= quorum
     return { allResponded, reached, approvedCount }
+}
+
+/** Type guard for valid workflow issue severity literals. */
+export function isWorkflowIssueSeverity(value: unknown): value is WorkflowIssueSeverity {
+    return value === "low" || value === "medium" || value === "high" || value === "critical"
 }

@@ -36,11 +36,11 @@ import {
 import {
     workflowGateFailReason,
     workflowInvalidReason,
-} from "../reasons.js";
-import { finishRun } from "../summary.js";
-import { recordEvent } from "../events.js";
-import { parseVerdict } from "../decisions.js";
-import { forceApprovalRequest, maybeRequestApproval } from "../hitl.js";
+} from "./reasons.js";
+import { finishRun } from "../runs/summary.js";
+import { recordEvent } from "../runs/events.js";
+import { parseVerdict } from "../protocol/decisions.js";
+import { forceApprovalRequest, maybeRequestApproval } from "../runtime/hitl.js";
 import {
     handleWorkflowDispatchUnavailable,
     markWorkflowStepCompleted,
@@ -392,7 +392,9 @@ export async function handleGateVerdict(
     const steps = task.steps ?? [];
     if (step.verifier === undefined && step.verifiers === undefined) return;
     const verifierName = member.name;
-    const parsed = parseVerdict(step.output ?? task.responses[verifierName] ?? "");
+    const response = task.responses[verifierName];
+    if (response !== undefined) step.output = response;
+    const parsed = parseVerdict(step.output ?? "");
 
     const collected = collectEnsembleVerdicts(team, task, step, gateIndex, verifierName, parsed);
     if (collected === null) return;

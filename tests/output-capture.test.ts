@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 
-import { extractOutputFromParts, extractTextFromParts } from "../src/orchestration/output.js"
+import { extractOutputFromParts, extractTextFromParts } from "../src/orchestration/protocol/output.js"
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, SdkMessage } from "../src/core/types.js"
-import { appendTurnBlock, captureMemberOutput } from "../src/orchestration/capture.js"
+import { appendTurnBlock, captureMemberOutput } from "../src/orchestration/runs/capture.js"
 import { runMemberOutputPath, runReduceOutputPath } from "../src/state/paths.js"
 import { initTeamState } from "../src/state/store.js"
 import { makeMember, makeState, tmpRoot } from "./helpers.js"

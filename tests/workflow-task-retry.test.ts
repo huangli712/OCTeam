@@ -10,7 +10,7 @@
  */
 import { describe, expect, test } from "bun:test";
 
-import { processIdle } from "../src/orchestration/idle.js";
+import { processIdle } from "../src/orchestration/lifecycle/idle.js";
 import { makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js";
 
 

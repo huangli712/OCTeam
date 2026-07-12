@@ -3,7 +3,7 @@
  *
  * Bug: startOrchestration (src/tools/shared.ts) checks team.activeTask under
  * team.mutex in Phase 1, then RELEASES the mutex. Phase 2 runs
- * ensureMembersReady (src/orchestration/dispatch.ts) OUTSIDE the mutex, which
+ * ensureMembersReady (src/orchestration/runtime/dispatch.ts) OUTSIDE the mutex, which
  * spawns child sessions via ctx.client.session.create and overwrites
  * member.sessionId. Phase 3 re-acquires the mutex and re-checks activeTask,
  * but only guards the activeTask commit — NOT the spawn side effects.
@@ -29,7 +29,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, TeamSpec } from "../src/core/types.js"
-import { startOrchestration } from "../src/orchestration/start-orchestration.js"
+import { startOrchestration } from "../src/orchestration/lifecycle/start-orchestration.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { isIndexedMember, rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';

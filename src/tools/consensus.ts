@@ -5,7 +5,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
-import { dispatchToMember } from "../orchestration/dispatch.js"
+import { dispatchToMember } from "../orchestration/runtime/dispatch.js"
 import {
     DEFAULT_CONSENSUS_ROUNDS,
     DEFAULT_SIGNOFF_POLICY,
@@ -13,7 +13,7 @@ import {
     baseTaskFields,
     humanApprovalTaskFields,
     startOrchestration,
-} from "../orchestration/start-orchestration.js"
+} from "../orchestration/lifecycle/start-orchestration.js"
 import { humanApprovalSchemaFields } from "./shared-schema.js"
 
 /** Run a multi-round structured debate until all members reach consensus. */

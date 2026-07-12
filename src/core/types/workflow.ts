@@ -222,7 +222,7 @@ export type WorkflowStep = {
 // workflow_file JSON contains. lower.ts (tools/lower.ts) converts these into
 // the internal WorkflowStep defined above. Consumed by tools/workflow.ts
 // (tool definition + schema), tools/validate.ts (cross-field validation),
-// and orchestration/file.ts (workflow_file JSON loader).
+// and orchestration/workflow/file.ts (workflow_file JSON loader).
 // ============================================================================
 
 // ---------------------------------------------------------------------------
