@@ -5,7 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { recordEvent } from "../src/orchestration/runs/events.js"
-import { readRunEvents } from "../src/orchestration/runs/runs.js"
+import { readRunEvents } from "../src/orchestration/records/runs.js"
 import { runEventsPath } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"
 import type { ActiveTask } from "../src/core/types.js"

@@ -6,7 +6,7 @@ import { join } from "node:path"
 import type { WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { advanceWorkflowStep } from "../src/orchestration/workflow/workflow.js";
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
-import { readRunEvents } from "../src/orchestration/runs/runs.js"
+import { readRunEvents } from "../src/orchestration/records/runs.js"
 import { waitUntil } from "../src/core/utils.js"
 import { runEventsPath } from "../src/state/paths.js"
 import { existsSync, readFileSync } from "node:fs"

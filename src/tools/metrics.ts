@@ -20,7 +20,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
-import { listRunRecords } from "../orchestration/runs/runs.js"
+import { listRunRecords } from "../orchestration/records/runs.js"
 import type { RunRecord } from "../core/types.js"
 
 /** One per-run detail line; flags zero-token runs as "(no token data)". */

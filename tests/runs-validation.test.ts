@@ -13,7 +13,7 @@ import path from "node:path"
 import { afterAll, describe, expect, it } from "bun:test"
 
 import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
-import { listRunRecords, readRunRecord } from "../src/orchestration/runs/runs.js"
+import { listRunRecords, readRunRecord } from "../src/orchestration/records/runs.js"
 
 afterAll(cleanupTmpRoots)
 

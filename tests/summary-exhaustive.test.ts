@@ -20,7 +20,7 @@
 
 import { describe, expect, test } from "bun:test"
 
-import { buildSummary } from "../src/orchestration/runs/summary.js"
+import { buildSummary } from "../src/orchestration/records/summary.js"
 import type { ActiveTask, ConsensusTask, WorkflowTask } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { makeWorkflowTask } from "./helpers.js"

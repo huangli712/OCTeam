@@ -13,7 +13,7 @@ import {
     workflowOperatorFailReason,
     workflowTimeoutStepReason,
 } from "../src/orchestration/workflow/reasons.js"
-import { runStatusFromReason } from "../src/orchestration/runs/runs.js"
+import { runStatusFromReason } from "../src/orchestration/records/runs.js"
 
 describe("workflow reason builders", () => {
     test("produce the exact legacy strings so persisted records stay readable", () => {
