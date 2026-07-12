@@ -12,7 +12,7 @@ import { checkWorkflowInvariants } from "../orchestration/workflow/invariants.js
 import { activationError } from "../state/activation.js"
 import { workflowOperatorFailReason } from "../orchestration/workflow/reasons.js"
 import { getActiveWorkflowStepIndices } from "../orchestration/workflow/dag.js"
-import { finishRun } from "../orchestration/runs/summary.js"
+import { finishRun } from '../orchestration/runtime/completion.js';
 import { recordEvent } from "../orchestration/runs/events.js"
 import { advanceWorkflowStep, redispatchWorkflowStep } from "../orchestration/workflow/workflow.js"
 import { resolveCallerInTeam } from "../state/resolve.js"

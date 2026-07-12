@@ -13,8 +13,8 @@ import { type Team } from "../../state/store.js"
 import type { MemberState } from "../../core/types.js"
 import { buildUpstreamContext, prependStandingInstruction } from "../runtime/dispatch.js"
 import { safeMemberAgent } from "../../core/role.js"
-import { finishRun } from "../runs/summary.js"
-import { recordEvent } from "../runs/events.js"
+import { finishRun } from '../runtime/completion.js';
+import { recordEvent } from "../records/events.js"
 import { maybeTriggerSignoff } from "../runtime/signoff.js"
 import { maybeRequestApproval } from "../runtime/hitl.js"
 

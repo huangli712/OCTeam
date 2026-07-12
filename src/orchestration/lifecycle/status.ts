@@ -9,7 +9,7 @@
 import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, saveTeamState } from "../../state/store.js"
 import { resolveTeamMember } from "../../state/resolve.js"
-import { recordEvent } from "../runs/events.js"
+import { recordEvent } from "../records/events.js"
 import { checkTermination } from "./termination.js"
 import { handleReduceIdle, handleSignoffIdle } from "../runtime/signoff.js"
 import { handleParallelIdle } from "../modes/parallel.js"

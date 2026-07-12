@@ -9,7 +9,7 @@ import type { PluginContext } from "../../core/context.js"
 import type { WorkflowStep, WorkflowTask } from "../../core/types.js"
 import { getActiveWorkflowStepActors } from "../workflow/dag.js"
 import type { Team } from "../../state/store.js"
-import { finishRun } from "../runs/summary.js"
+import { finishRun } from '../runtime/completion.js';
 import { advanceWorkflowStep, redispatchWorkflowStep } from "../workflow/workflow.js"
 import { markWorkflowFanoutBranchErrored } from "../workflow/fanout.js"
 import {

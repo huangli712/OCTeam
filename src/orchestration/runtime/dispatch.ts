@@ -25,7 +25,7 @@ import { indexMember, unindexSession } from "../../state/resolve.js";
 import { safeMemberAgent } from "../../core/role.js";
 import type { MemberState, Stage } from "../../core/types.js";
 import { logSwallowed } from "../../core/log.js";
-import { recordEvent } from "../runs/events.js";
+import { recordEvent } from "../records/events.js";
 
 const execFileP = promisify(execFile);
 

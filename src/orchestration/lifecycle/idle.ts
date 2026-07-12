@@ -28,7 +28,7 @@ import {
 } from "../workflow/dag.js"
 import { safeMemberAgent } from "../../core/role.js"
 import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../../core/types.js"
-import { deliverQueuedResultsToMaster } from '../runtime/completion';
+import { deliverQueuedResultsToMaster } from '../runtime/completion.js';
 import { checkTermination } from "./termination.js"
 import { handleReduceIdle, handleSignoffIdle } from "../runtime/signoff.js"
 import { handleConsensusIdle } from "../modes/consensus.js"
@@ -42,7 +42,7 @@ import { handleRouteIdle } from "../modes/route.js"
 import { handleArbitrateIdle } from "../modes/arbitrate.js"
 import { handleWorkflowIdle } from "../workflow/workflow-handler.js"
 import { handleArenaIdle } from "../modes/arena.js"
-import { captureMemberOutput } from "../runs/capture.js"
+import { captureMemberOutput } from "../records/capture.js"
 
 // --- helpers ---
 

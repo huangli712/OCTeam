@@ -3,10 +3,10 @@ import { logSwallowed } from "../../core/log.js"
 import type { RunStatus } from "../../core/types.js"
 import { ackMessages, pollMailbox } from "../../messaging/mailbox.js"
 import { formatMailboxInjection } from "../../messaging/format.js"
-import type { Team } from "../../state/store.js"
-import { recordEvent } from "../runs/events.js"
-import { persistRun } from "../runs/runs.js"
-import { buildSummary } from "../runs/summary.js"
+import { type Team, clearActiveTask } from "../../state/store.js"
+import { recordEvent } from "../records/events.js"
+import { persistRun } from "../records/runs.js"
+import { buildSummary } from "../records/summary.js"
 
 /**
  * Drain the master mailbox and deliver queued team results when the master goes
@@ -94,4 +94,25 @@ export async function deliverSummaryToLeader(
             ],
         },
     })
+}
+
+/**
+ * Deliver the run summary, clear the active task, and set the team status.
+ * Consolidates the teardown triplet (deliver -> clear -> status) that was
+ * copy-pasted across the orchestration primitives. Sites with intervening
+ * work between deliver and clear (e.g. loop's decisionHistory.push) call the
+ * individual operations directly.
+ */
+export async function finishRun(
+    ctx: PluginContext,
+    team: Team,
+    reason: string,
+    status: "idle" | "failed",
+): Promise<void> {
+    // Map team status to run status for persistRun. "idle" = completed run,
+    // "failed" = failed run. Threaded explicitly so persistRun no longer relies
+    // on the runStatusFromReason substring heuristic.
+    await deliverSummaryToLeader(ctx, team, reason, status === "failed" ? "failed" : "completed")
+    clearActiveTask(team)
+    team.status = status
 }

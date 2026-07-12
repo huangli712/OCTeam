@@ -42,8 +42,8 @@ import {
     workflowJumpLimitReason,
 } from "./reasons.js";
 import { dispatchToMember } from "../runtime/dispatch.js";
-import { finishRun } from "../runs/summary.js";
-import { recordEvent } from "../runs/events.js";
+import { finishRun } from '../runtime/completion.js';
+import { recordEvent } from "../records/events.js";
 import {
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,

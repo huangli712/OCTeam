@@ -18,8 +18,9 @@ import { logEvent } from "../../core/log.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import type { MemberState } from "../../core/types.js"
 import { dispatchToMember } from "./dispatch.js"
-import { buildSummary, finishRun } from "../runs/summary.js"
-import { recordEvent } from "../runs/events.js"
+import { buildSummary } from '../records/summary.js';
+import { finishRun } from './completion.js';
+import { recordEvent } from "../records/events.js"
 import { isQuorumReached, parseSignoff } from "../protocol/decisions.js"
 
 // --- shared prompt builders (live + crash-recovery paths must use identical wording) ---

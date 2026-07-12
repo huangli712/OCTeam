@@ -12,8 +12,9 @@
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
 import { dispatchToMember } from "../runtime/dispatch.js"
-import { buildRoundSummary, finishRun } from "../runs/summary.js"
-import { recordEvent } from "../runs/events.js"
+import { buildRoundSummary } from '../records/summary.js';
+import { finishRun } from '../runtime/completion.js';
+import { recordEvent } from "../records/events.js"
 import { waitForBarrier } from "../runtime/barriers.js"
 import { allMembersAgree } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../runtime/hitl.js"

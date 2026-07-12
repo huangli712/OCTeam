@@ -17,9 +17,9 @@ import { type Team } from "../../state/store.js"
 import type { MemberState, SdkMessage } from "../../core/types.js"
 import { listAllTasks } from "../../state/tasks.js"
 import { dispatchToMember } from "../runtime/dispatch.js"
-import { finishRun } from "../runs/summary.js"
+import { finishRun } from '../runtime/completion.js';
 import { maybeTriggerSignoff } from "../runtime/signoff.js"
-import { captureMemberOutput } from "../runs/capture.js"
+import { captureMemberOutput } from "../records/capture.js"
 
 /** Minimum cooldown (ms) between re-prompt notifications in delegate/recurse. */
 export const NOTIFY_COOLDOWN_MS = 10_000

@@ -17,11 +17,11 @@ import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
 import type { ApprovalRequest, MemberState } from "../../core/types.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../../state/tasks.js"
-import { recordEvent } from "../runs/events.js"
+import { recordEvent } from "../records/events.js"
 import { parseDecompose } from "../protocol/decisions.js"
 import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
 import { DEFAULT_RECURSE_DEPTH, DEFAULT_RECURSE_SUBTASKS } from "../runtime/defaults.js"
-import { finishRun } from "../runs/summary.js"
+import { finishRun } from '../runtime/completion.js';
 import { dispatchToMember } from "../runtime/dispatch.js"
 import { maybeRequestApproval } from "../runtime/hitl.js"
 
