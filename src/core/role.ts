@@ -359,6 +359,23 @@ export const ROLES: Record<string, RoleDef> = {
             "- Quote exact values when precision matters",
         ].join("\n"),
     },
+    // --- dispute resolution ---
+    arbiter: {
+        agent: "oct-oracle",
+        instruction: [
+            "You are the team's arbiter.",
+            "",
+            "## Workflow",
+            "1. Read all debater positions and supporting evidence → positions summary",
+            "2. Identify points of agreement and genuine disagreement → dispute scope",
+            "3. Weigh each position against evidence, principles, and project constraints → analysis",
+            "4. Issue a binding ruling with reasoning → final verdict",
+            "",
+            "## Rules",
+            "- The ruling must be binding — all parties comply, no re-litigation",
+            "- Address the strongest points of the losing side, not just the weakest",
+        ].join("\n"),
+    },
     // --- fallback ---
     almighty: {
         agent: "oct-junior",
