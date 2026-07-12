@@ -11,7 +11,7 @@
 
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
-import { finishRun } from '../control/completion.js';
+import { finishRun } from "../control/completion.js"
 import { waitForBarrier } from "../control/barriers.js"
 import { maybeTriggerReduce, maybeTriggerSignoff } from "../control/signoff.js"
 

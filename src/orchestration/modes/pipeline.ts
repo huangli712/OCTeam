@@ -13,7 +13,7 @@ import { type Team } from "../../state/store.js"
 import type { MemberState } from "../../core/types.js"
 import { buildUpstreamContext, prependStandingInstruction } from "../control/dispatch.js"
 import { safeMemberAgent } from "../../core/role.js"
-import { finishRun } from '../control/completion.js';
+import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/hitl.js"

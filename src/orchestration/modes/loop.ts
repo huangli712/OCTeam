@@ -16,8 +16,7 @@ import { logEvent } from "../../core/log.js"
 import { type Team, clearActiveTask } from "../../state/store.js"
 import type { MemberState } from "../../core/types.js"
 import { advanceToStage } from "../control/dispatch.js"
-import { finishRun } from '../control/completion.js';
-import { deliverSummaryToLeader } from '../control/completion.js';
+import { deliverSummaryToLeader, finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { allReadOnlyStagesReportNoIssues, parseDecision } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../control/hitl.js"

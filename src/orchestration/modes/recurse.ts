@@ -21,7 +21,7 @@ import { recordEvent } from "../records/events.js"
 import { parseDecompose } from "../protocol/decisions.js"
 import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
 import { DEFAULT_RECURSE_DEPTH, DEFAULT_RECURSE_SUBTASKS } from "../control/defaults.js"
-import { finishRun } from '../control/completion.js';
+import { finishRun } from "../control/completion.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { maybeRequestApproval } from "../control/hitl.js"
 

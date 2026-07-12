@@ -36,8 +36,8 @@ import {
     handleArbitrateIdle,
 } from "../modes/arbitrate.js";
 import { buildRouterPrompt, handleRouteIdle } from "../modes/route.js";
-import { buildSummary } from '../records/summary.js';
-import { finishRun } from '../control/completion.js';
+import { buildSummary } from "../records/summary.js";
+import { finishRun } from "../control/completion.js";
 import { buildArenaEvaluatorPrompt, handleArenaIdle } from "../modes/arena.js";
 import {
     buildReducePrompt,

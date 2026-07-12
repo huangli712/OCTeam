@@ -19,7 +19,7 @@ import type {
     WorkflowTask,
 } from "../../core/types.js";
 import { dispatchToMember } from "../control/dispatch.js";
-import { finishRun } from '../control/completion.js';
+import { finishRun } from "../control/completion.js";
 import { recordEvent } from "../records/events.js";
 import { truncateOutput } from "../protocol/output.js";
 import { joinPolicyImpossible } from "./join-policy.js";

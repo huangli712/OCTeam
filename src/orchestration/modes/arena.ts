@@ -11,7 +11,7 @@ import type { ArenaCandidateScore, ArenaScoreboard, ArenaTask, MemberState } fro
 import { waitForBarrier } from "../control/barriers.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { parseScoreboard } from "../protocol/decisions.js"
-import { finishRun } from '../control/completion.js';
+import { finishRun } from "../control/completion.js"
 
 /**
  * Select the winning candidate deterministically from an evaluator-attested

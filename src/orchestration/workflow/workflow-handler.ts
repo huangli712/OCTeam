@@ -15,7 +15,7 @@ import {
     maybePauseAfterWorkflowStep,
 } from "./workflow.js";
 import { workflowInvalidReason } from "./reasons.js";
-import { finishRun } from '../control/completion.js';
+import { finishRun } from "../control/completion.js";
 import { recordEvent } from "../records/events.js";
 import { truncateOutput } from "../protocol/output.js";
 import {

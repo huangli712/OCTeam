@@ -17,7 +17,7 @@ import type { PluginContext } from "../../core/context.js"
 import type { RouteBranch } from "../../core/types.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import { dispatchToMember } from "../control/dispatch.js"
-import { finishRun } from '../control/completion.js';
+import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { waitForBarrier } from "../control/barriers.js"
 import { parseRouteDecision } from "../protocol/decisions.js"

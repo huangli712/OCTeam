@@ -28,7 +28,7 @@ import {
 } from "../workflow/dag.js"
 import { safeMemberAgent } from "../../core/role.js"
 import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../../core/types.js"
-import { deliverQueuedResultsToMaster } from '../control/completion.js';
+import { deliverQueuedResultsToMaster } from "../control/completion.js"
 import { checkTermination } from "./termination.js"
 import { handleReduceIdle, handleSignoffIdle } from "../control/signoff.js"
 import { handleConsensusIdle } from "../modes/consensus.js"

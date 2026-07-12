@@ -19,8 +19,8 @@ import { type Team, saveTeamState } from "../../state/store.js"
 import type { ActiveTask, ArbitrateTask } from "../../core/types.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { DEFAULT_ARBITRATE_ROUNDS } from "../control/defaults.js"
-import { buildRoundSummary } from '../records/summary.js';
-import { finishRun } from '../control/completion.js';
+import { buildRoundSummary } from "../records/summary.js"
+import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { truncateOutput } from "../protocol/output.js"
 import { waitForBarrier } from "../control/barriers.js"

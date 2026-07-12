@@ -19,7 +19,7 @@ import type { PluginContext } from "../../core/context.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import type { ActiveTask, GatedStage, MemberState } from "../../core/types.js"
 import { buildUpstreamContext, dispatchToMember } from "../control/dispatch.js"
-import { finishRun } from '../control/completion.js';
+import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { truncateOutput } from "../protocol/output.js"
 import { parseVerdict } from "../protocol/decisions.js"

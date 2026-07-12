@@ -7,7 +7,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../core/context.js"
 import type { ApprovalDecisionRecord, ApprovalRequest } from "../core/types.js"
-import { finishRun } from '../orchestration/control/completion.js';
+import { finishRun } from "../orchestration/control/completion.js"
 import { recordEvent } from "../orchestration/records/events.js"
 import { advancePipelineAfterStage } from "../orchestration/modes/pipeline.js"
 import { advanceTollgateAfterPass } from "../orchestration/modes/tollgate.js"
