@@ -17,7 +17,7 @@ import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { waitForBarrier } from "../control/barriers.js"
 import { allMembersAgree } from "../protocol/decisions.js"
-import { maybeRequestApproval } from "../control/hitl.js"
+import { maybeRequestApproval } from "../control/approval.js"
 
 export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask

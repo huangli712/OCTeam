@@ -22,7 +22,7 @@ import { recordEvent } from "../records/events.js"
 import { waitForBarrier } from "../control/barriers.js"
 import { parseRouteDecision } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
-import { maybeRequestApproval } from "../control/hitl.js"
+import { maybeRequestApproval } from "../control/approval.js"
 
 /**
  * Build the router member's dispatch prompt: the input to route, the available

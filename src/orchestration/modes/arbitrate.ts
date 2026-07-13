@@ -26,7 +26,7 @@ import { truncateOutput } from "../protocol/output.js"
 import { waitForBarrier } from "../control/barriers.js"
 import { parseArbitrationDecision } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
-import { maybeRequestApproval } from "../control/hitl.js"
+import { maybeRequestApproval } from "../control/approval.js"
 
 /**
  * Build a debater's prompt for the current debate round. Round 1 states the

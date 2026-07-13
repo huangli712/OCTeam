@@ -11,12 +11,13 @@
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
 import type { MemberState } from "../../core/types.js"
-import { buildUpstreamContext, prependStandingInstruction } from "../control/dispatch.js"
+import { buildUpstreamContext } from "./stages.js"
+import { prependStandingInstruction } from "../control/dispatch.js"
 import { safeMemberAgent } from "../../core/role.js"
 import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
-import { maybeRequestApproval } from "../control/hitl.js"
+import { maybeRequestApproval } from "../control/approval.js"
 
 /** Dispatch the next incomplete pipeline stage with upstream context from prior stages. */
 export async function advancePipelineAfterStage(ctx: PluginContext, team: Team): Promise<void> {

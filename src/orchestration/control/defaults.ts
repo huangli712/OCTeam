@@ -1,9 +1,7 @@
 /**
- * Named defaults for orchestration parameters. Single-sourced here so the
- * tool layer (task construction in tools/shared.ts, re-exported) and the
- * handler layer (defensive `?? N` fallbacks in orchestration/*.ts) reference
- * the same value. Previously these lived only in tools/shared.ts, which made
- * a tools-layer import from orchestration handlers a layering violation.
+ * Named defaults for orchestration parameters. Single-sourced here so tool
+ * construction and orchestration handlers reference the same values without
+ * introducing a dependency on the tools layer.
  */
 
 /** Default max rounds for consensus orchestration. */

@@ -23,7 +23,7 @@ import {
     readyWorkflowStepIndices,
 } from "./dag.js";
 import { parseSelection } from "../protocol/decisions.js";
-import { maybeRequestApproval } from "../control/hitl.js";
+import { maybeRequestApproval } from "../control/approval.js";
 import {
     branchIdsForJoin,
     buildBranchWorkflowOutput,

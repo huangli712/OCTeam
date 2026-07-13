@@ -23,7 +23,7 @@ import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
 import { DEFAULT_RECURSE_DEPTH, DEFAULT_RECURSE_SUBTASKS } from "../control/defaults.js"
 import { finishRun } from "../control/completion.js"
 import { dispatchToMember } from "../control/dispatch.js"
-import { maybeRequestApproval } from "../control/hitl.js"
+import { maybeRequestApproval } from "../control/approval.js"
 
 /**
  * Build the recursive-decomposition contract prompt: claim a task, then either

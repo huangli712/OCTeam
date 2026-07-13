@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { buildSummary } from "../src/orchestration/records/summary.js"
 import { allReadOnlyStagesReportNoIssues, allMembersAgree } from "../src/orchestration/protocol/decisions.js"
-import { buildUpstreamContext } from "../src/orchestration/control/dispatch.js"
+import { buildUpstreamContext } from "../src/orchestration/modes/stages.js"
 import type { ActiveTask, Stage } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { makeTask } from "./helpers.js"

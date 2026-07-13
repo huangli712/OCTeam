@@ -1,0 +1,78 @@
+import type { PluginContext } from "../../core/context.js";
+import { safeMemberAgent } from "../../core/role.js";
+import type { Stage } from "../../core/types.js";
+import type { Team } from "../../state/store.js";
+import { prependStandingInstruction } from "../control/dispatch.js";
+import { truncateOutput } from "../protocol/output.js";
+import { recordEvent } from "../records/events.js";
+
+const UPSTREAM_TOTAL_CAP = 65_536;
+const NO_ISSUES_CONTRACT =
+    "If you find NO issues, end your reply with the literal tag <no_issues/> " +
+    "(or <无问题/>). Emit it ONLY when truly clean — it ends the loop.";
+
+export function buildUpstreamContext(
+    stages: Stage[],
+    responses: Record<string, string>,
+    uptoIndex: number,
+): string {
+    const blocks: string[] = [];
+    let used = 0;
+    for (let i = 0; i < uptoIndex; i++) {
+        const stage = stages[i];
+        if (!stage?.completed) continue;
+        const output = responses[stage.member];
+        if (!output) continue;
+        const block = `[Output from ${stage.member}]\n${truncateOutput(output)}`;
+        if (used + block.length > UPSTREAM_TOTAL_CAP) {
+            blocks.push(`[…upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`);
+            break;
+        }
+        blocks.push(block);
+        used += block.length;
+    }
+    return blocks.join("\n\n");
+}
+
+export async function advanceToStage(
+    ctx: PluginContext,
+    team: Team,
+    stage: Stage,
+    contextPrefix?: string,
+): Promise<void> {
+    const task = team.activeTask;
+    if (!task) return;
+    const member = team.members.find((candidate) => candidate.name === stage.member);
+    if (!member?.sessionId) {
+        throw new Error(`advanceToStage: member "${stage.member}" has no session`);
+    }
+    const upstream = buildUpstreamContext(
+        task.stages,
+        task.responses,
+        task.currentStageIndex,
+    );
+    const readOnlyContract = stage.action === "read_only" ? `\n\n${NO_ISSUES_CONTRACT}` : "";
+    const base = upstream
+        ? `${upstream}\n\n[Your task]\n${stage.task}${readOnlyContract}`
+        : `${stage.task}${readOnlyContract}`;
+    const rawText = contextPrefix ? `${contextPrefix}\n\n${base}` : base;
+    const text = prependStandingInstruction(member, rawText);
+    await ctx.client.session.promptAsync({
+        path: { id: member.sessionId },
+        body: {
+            parts: [{ type: "text", text, synthetic: true }],
+            agent: safeMemberAgent(member.agent),
+        },
+        query: { directory: member.worktreePath ?? ctx.directory },
+    });
+    member.promptDelivered = true;
+    member.status = "running";
+    member.turnCount++;
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "dispatched",
+        member: member.name,
+        stage: task.currentStageIndex,
+        round: task.currentRound,
+    });
+}

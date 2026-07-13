@@ -50,7 +50,7 @@ import {
     sortedWorkflowIndices,
 } from "./dag.js";
 import { maybeTriggerSignoff } from "../control/signoff.js";
-import { forceApprovalRequest } from "../control/hitl.js";
+import { forceApprovalRequest } from "../control/approval.js";
 import {
     completeWorkflowJoinStep,
     dispatchWorkflowJoinReducer,

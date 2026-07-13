@@ -1,9 +1,9 @@
 /**
  * Regression test for finding: concurrent-workflow-spawns-duplicate-sessions.
  *
- * Bug: startOrchestration (src/tools/shared.ts) checks team.activeTask under
+ * Bug: startOrchestration (src/orchestration/lifecycle/start-orchestration.ts) checks team.activeTask under
  * team.mutex in Phase 1, then RELEASES the mutex. Phase 2 runs
- * ensureMembersReady (src/orchestration/control/dispatch.ts) OUTSIDE the mutex, which
+ * ensureMembersReady (src/orchestration/control/members.ts) OUTSIDE the mutex, which
  * spawns child sessions via ctx.client.session.create and overwrites
  * member.sessionId. Phase 3 re-acquires the mutex and re-checks activeTask,
  * but only guards the activeTask commit — NOT the spawn side effects.

@@ -4,7 +4,7 @@
  * reconcileOne on host restart). Master-only. Requires explicit prior
  * team_activate.
  *
- * 3-phase lock order (mirrors startOrchestration in tools/shared.ts, NOT
+ * 3-phase lock order (mirrors startOrchestration in orchestration/lifecycle/start-orchestration.ts, NOT
  * team_cancel which is single-phase):
  *   Phase 1 (mutex): snapshot lastInterruptedTask → local, reset errored→idle,
  *                    save. DO NOT commit activeTask (O1: Phase 2 window safety —
@@ -32,7 +32,7 @@ import type { PluginContext } from "../core/context.js"
 import type { ActiveTask } from "../core/types.js"
 import { activationError } from "../state/activation.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
-import { ensureMembersReady } from "../orchestration/control/dispatch.js"
+import { ensureMembersReady } from "../orchestration/control/members.js"
 import { loadTeamState, saveTeamState } from "../state/store.js"
 import { resumeDispatch } from "../orchestration/lifecycle/resume.js"
 

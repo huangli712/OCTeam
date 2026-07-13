@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test"
 
 import type { ActiveTask, MemberState, Stage, TeamSpec } from "../src/core/types.js"
-import { advanceToStage, ensureMembersReady } from "../src/orchestration/control/dispatch.js"
+import { advanceToStage } from "../src/orchestration/modes/stages.js"
+import { ensureMembersReady } from "../src/orchestration/control/members.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"

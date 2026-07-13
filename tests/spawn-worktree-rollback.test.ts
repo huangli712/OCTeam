@@ -25,7 +25,7 @@ import { access } from "node:fs/promises"
 import { promisify } from "node:util"
 
 import type { TeamSpec } from "../src/core/types.js"
-import { ensureMembersReady } from "../src/orchestration/control/dispatch.js"
+import { ensureMembersReady } from "../src/orchestration/control/members.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { worktreePath } from "../src/state/paths.js"

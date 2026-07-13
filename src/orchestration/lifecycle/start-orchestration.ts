@@ -26,7 +26,7 @@ import type { ToolContext } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
-import { ensureMembersReady } from "../control/dispatch.js"
+import { ensureMembersReady } from "../control/members.js"
 import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import type { ActiveTask, DecisionRecord, ReducePolicy, SignoffPolicy } from "../../core/types.js"
