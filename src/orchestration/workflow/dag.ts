@@ -41,7 +41,11 @@ export function workflowStepActor(step: WorkflowStep | undefined): string | null
         case "gate":
             return step.dispatchedActor ?? step.verifier ?? null
         case "join":
-            return step.dispatchedAt === undefined || (step.join?.joinPolicy !== "reduce" && step.join?.joinPolicy !== "select") ? null : step.dispatchedActor ?? step.join?.reducerMember ?? null
+            return step.dispatchedAt === undefined
+                || (step.join?.joinPolicy !== "reduce"
+                    && step.join?.joinPolicy !== "select")
+                ? null
+                : step.dispatchedActor ?? step.join?.reducerMember ?? null
         case "fanout":
             return null
         default:
@@ -211,7 +215,9 @@ export function isSameWorkflowBranch(
     branch: NonNullable<WorkflowStep["branch"]>,
 ): boolean {
     const stepBranch = step.branch
-    return stepBranch !== undefined && stepBranch.fanoutIndex === branch.fanoutIndex && stepBranch.branchId === branch.branchId
+    return stepBranch !== undefined
+        && stepBranch.fanoutIndex === branch.fanoutIndex
+        && stepBranch.branchId === branch.branchId
 }
 
 /** Sort workflow step indices ascending. */
