@@ -227,11 +227,13 @@ export async function dispatchGateStep(
 }
 
 /** Reset timing metadata on a workflow step so it can be re-dispatched (used by retry/goto). */
-export function resetWorkflowStepTiming(step: WorkflowStep): void { step.startedAt = undefined;
-step.completedAt = undefined;
-step.durationMs = undefined;
-step.dispatchedAt = undefined;
-step.dispatchedActor = undefined; }
+export function resetWorkflowStepTiming(step: WorkflowStep): void {
+    step.startedAt = undefined;
+    step.completedAt = undefined;
+    step.durationMs = undefined;
+    step.dispatchedAt = undefined;
+    step.dispatchedActor = undefined;
+}
 
 /** Move the active-step cursor from one index to another (used by jumps and dynamic fanout). */
 export function moveActiveWorkflowStep(
