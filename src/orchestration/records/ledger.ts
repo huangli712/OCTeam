@@ -18,7 +18,7 @@ function hasWorkflowBranchTree(steps: readonly WorkflowStep[]): boolean {
 }
 
 /** Render the target step label for a gate step (e.g. "step 3" or "nearest task"). */
-export function workflowTargetLabel(s: WorkflowStep): string {
+function workflowTargetLabel(s: WorkflowStep): string {
     if (s.targetStepIndices !== undefined && s.targetStepIndices.length > 0) {
         const targets = s.targetStepIndices.map(index => index + 1)
         return targets.length === 1 ? `step ${targets[0]}` : `steps ${targets.join(", ")}`
@@ -27,7 +27,7 @@ export function workflowTargetLabel(s: WorkflowStep): string {
 }
 
 /** Render verdict metrics (score, confidence, issue count) as a bracketed string. */
-export function workflowVerdictMetrics(s: WorkflowStep): string {
+function workflowVerdictMetrics(s: WorkflowStep): string {
     const metrics: string[] = []
     if (s.score !== undefined) metrics.push(`score=${s.score}`)
     if (s.confidence !== undefined) metrics.push(`confidence=${s.confidence}`)
@@ -36,7 +36,7 @@ export function workflowVerdictMetrics(s: WorkflowStep): string {
 }
 
 /** Classify a fanout branch status: completed, skipped, errored, or pending. */
-export function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
+function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
     const fanout = fanoutStep.fanout
     if (fanout === undefined) throw new Error("workflow fanout step missing fanout metadata")
     const range = fanout.branchRanges[branchIndex]
@@ -58,7 +58,7 @@ function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: Wo
 }
 
 /** Format the per-issue detail lines for a gate step's structured verdict, severity-sorted. */
-export function formatWorkflowIssueDetail(s: WorkflowStep): string {
+function formatWorkflowIssueDetail(s: WorkflowStep): string {
     const issues = s.issues
     if (!issues || issues.length === 0) return ""
     const sorted = [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99))
