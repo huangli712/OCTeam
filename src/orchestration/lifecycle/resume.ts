@@ -464,7 +464,7 @@ async function resumeWorkflowMode(
  * responded); a no-op dispatch is NOT counted, so a zero real
  * dispatch re-drives the barrier via handleArenaIdle with the FIRST candidate
  * regardless of status — errored candidates count as terminal-ready in
- * waitForBarrier, so termination 3b delivers arena_failed:no_survivors instead
+ * maybeAdvanceBarrier, so termination 3b delivers arena_failed:no_survivors instead
  * of hanging to wall-clock. Evaluate: an errored evaluator fails closed (its
  * state is preserved across resume by 4d); a missing evaluator response is
  * re-dispatched; an already-present response is parsed exactly once (2c deletes

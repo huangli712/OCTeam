@@ -23,7 +23,7 @@ import { buildRoundSummary } from "../records/summary.js"
 import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { truncateOutput } from "../protocol/output.js"
-import { waitForBarrier } from "../control/barriers.js"
+import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { parseArbitrationDecision } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/approval.js"
@@ -75,7 +75,7 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
 
     // Phase A: debate (arbitrationStage not yet set).
     if (!task.arbitrationStage) {
-        await waitForBarrier(team, disputants, async () => {
+        await maybeAdvanceBarrier(team, disputants, async () => {
             if ((task.currentRound ?? 1) >= (task.maxRounds ?? DEFAULT_ARBITRATE_ROUNDS)) {
                 // Debate exhausted -> transition to the ruling phase.
                 task.arbitrationStage = true

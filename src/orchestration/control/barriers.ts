@@ -19,7 +19,7 @@ import type { Team } from "../../state/store.js"
  * The caller holds the team mutex, so a successful transition cannot fire twice
  * for the same phase.
  */
-export async function waitForBarrier(
+export async function maybeAdvanceBarrier(
     team: Team,
     memberNames: string[],
     onBarrier: () => Promise<void>,

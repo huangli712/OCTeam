@@ -6,11 +6,11 @@
  * worktree routing, and dispatch telemetry remain consistent.
  */
 
-import type { PluginContext } from "../../core/context.js";
-import { safeMemberAgent } from "../../core/role.js";
-import type { MemberState } from "../../core/types.js";
-import type { Team } from "../../state/store.js";
-import { recordEvent } from "../records/events.js";
+import type { PluginContext } from "../../core/context.js"
+import { safeMemberAgent } from "../../core/role.js"
+import type { MemberState } from "../../core/types.js"
+import type { Team } from "../../state/store.js"
+import { recordEvent } from "../records/events.js"
 
 /**
  * Prefix a member's persistent standing instruction until the first successful
@@ -20,8 +20,8 @@ export function prependStandingInstruction(
     member: MemberState,
     text: string,
 ): string {
-    if (member.promptDelivered || !member.prompt) return text;
-    return `<standing-instruction>\n${member.prompt}\n</standing-instruction>\n\n${text}`;
+    if (member.promptDelivered || !member.prompt) return text
+    return `<standing-instruction>\n${member.prompt}\n</standing-instruction>\n\n${text}`
 }
 
 /**
@@ -39,9 +39,9 @@ export async function dispatchToMember(
     team?: Team,
     eventMeta?: { stepIndex?: number; correlationId?: string },
 ): Promise<void> {
-    if (!member.sessionId) return;
-    if (member.status === "errored") return;
-    const dispatchedText = prependStandingInstruction(member, text);
+    if (!member.sessionId) return
+    if (member.status === "errored") return
+    const dispatchedText = prependStandingInstruction(member, text)
     await ctx.client.session.promptAsync({
         path: { id: member.sessionId },
         body: {
@@ -49,16 +49,16 @@ export async function dispatchToMember(
             agent: safeMemberAgent(member.agent),
         },
         query: { directory },
-    });
-    member.promptDelivered = true;
-    member.status = "running";
-    member.turnCount++;
+    })
+    member.promptDelivered = true
+    member.status = "running"
+    member.turnCount++
     if (team) {
         recordEvent(team, {
             timestamp: Date.now(),
             kind: "dispatched",
             member: member.name,
             ...eventMeta,
-        });
+        })
     }
 }

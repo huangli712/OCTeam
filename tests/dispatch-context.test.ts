@@ -231,7 +231,7 @@ describe("processIdle consensus round 2 broadcast", () => {
         const member = team.members.find(m => m.name === "alice")!
 
         // The member must be running for processIdle to flip it to idle
-        // and for waitForBarrier to see it as the last participant becoming idle
+        // and for maybeAdvanceBarrier to see it as the last participant becoming idle
         member.status = "running"
 
         // Drive processIdle — this should:

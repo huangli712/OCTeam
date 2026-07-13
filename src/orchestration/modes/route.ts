@@ -19,7 +19,7 @@ import { type Team, saveTeamState } from "../../state/store.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
-import { waitForBarrier } from "../control/barriers.js"
+import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { parseRouteDecision } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/approval.js"
@@ -109,7 +109,7 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
 
     // Phase B: target barrier (any selected target's idle re-checks readiness).
     const targets = task.routeTargets ?? []
-    await waitForBarrier(team, targets, async () => {
+    await maybeAdvanceBarrier(team, targets, async () => {
         // checkTermination owns fail-fast for route errors (route is excluded
         // from termination's concurrent set, so tolerance is 0); by the time the
         // barrier fires, all targets are idle.

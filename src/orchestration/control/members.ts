@@ -5,22 +5,22 @@
  * Must run outside team.mutex because idle initialization acquires that mutex.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execFile } from "node:child_process"
+import { promisify } from "node:util"
 
-import type { PluginContext } from "../../core/context.js";
-import { logSwallowed } from "../../core/log.js";
-import { safeMemberAgent } from "../../core/role.js";
-import type { MemberSpec, MemberState } from "../../core/types.js";
-import { chunk, waitUntil } from "../../core/utils.js";
-import { worktreesDir } from "../../state/paths.js";
-import { indexMember, unindexSession } from "../../state/resolve.js";
-import { type Team, readTeamSpec, saveTeamState } from "../../state/store.js";
-import { cleanWorktree, createWorktree } from "../../state/worktrees.js";
-import { buildRolePrompt } from "../protocol/output.js";
+import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
+import { safeMemberAgent } from "../../core/role.js"
+import type { MemberSpec, MemberState } from "../../core/types.js"
+import { chunk, waitUntil } from "../../core/utils.js"
+import { worktreesDir } from "../../state/paths.js"
+import { indexMember, unindexSession } from "../../state/resolve.js"
+import { type Team, readTeamSpec, saveTeamState } from "../../state/store.js"
+import { cleanWorktree, createWorktree } from "../../state/worktrees.js"
+import { buildRolePrompt } from "../protocol/output.js"
 
-const execFileP = promisify(execFile);
-const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000;
+const execFileP = promisify(execFile)
+const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000
 
 /**
  * Snapshot the spawn work and readiness-barrier set for a team.
@@ -30,16 +30,16 @@ const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000;
  * before dispatch may begin.
  */
 function planMemberSpawn(team: Team): {
-    toSpawn: MemberState[];
-    waitNames: Set<string>;
+    toSpawn: MemberState[]
+    waitNames: Set<string>
 } {
-    const toSpawn = team.members.filter((member) => !member.sessionId);
+    const toSpawn = team.members.filter((member) => !member.sessionId)
     const waitNames = new Set(
         team.members
             .filter((member) => !member.isMaster && (!member.sessionId || !member.initialized))
             .map((member) => member.name),
-    );
-    return { toSpawn, waitNames };
+    )
+    return { toSpawn, waitNames }
 }
 
 /**
@@ -56,16 +56,16 @@ async function spawnMemberSafely(
     specByName: Map<string, MemberSpec>,
     peerNames: string[],
 ): Promise<void> {
-    const memberSpec = specByName.get(member.name);
-    let worktreeCreated = false;
+    const memberSpec = specByName.get(member.name)
+    let worktreeCreated = false
     if (memberSpec?.worktree) {
         member.worktreePath = await createWorktree(
             ctx.directory,
             team.directory,
             team.teamName,
             member.name,
-        );
-        worktreeCreated = true;
+        )
+        worktreeCreated = true
     }
     try {
         // Session creation and role-prompt delivery form one transaction.
@@ -75,26 +75,26 @@ async function spawnMemberSafely(
                 title: `${team.teamName}/${member.name}`,
             },
             query: { directory: member.worktreePath ?? ctx.directory },
-        });
-        const sessionId = result.data?.id;
+        })
+        const sessionId = result.data?.id
         if (!sessionId) {
-            throw new Error(`session.create returned no id for ${member.name}`);
+            throw new Error(`session.create returned no id for ${member.name}`)
         }
-        member.sessionId = sessionId;
-        member.prompt = memberSpec?.prompt;
-        member.promptDelivered = false;
+        member.sessionId = sessionId
+        member.prompt = memberSpec?.prompt
+        member.promptDelivered = false
         indexMember(
             sessionId,
             team.teamName,
             member.name,
             team.leadSessionId,
             ctx.storageRoot,
-        );
-        member.status = "running";
-        member.initialized = false;
+        )
+        member.status = "running"
+        member.initialized = false
         const rolePrompt = memberSpec
             ? buildRolePrompt(memberSpec, team.teamName, peerNames)
-            : `You are "${member.name}" on team "${team.teamName}". Acknowledge, then stop.`;
+            : `You are "${member.name}" on team "${team.teamName}". Acknowledge, then stop.`
         await ctx.client.session.promptAsync({
             path: { id: sessionId },
             body: {
@@ -107,12 +107,12 @@ async function spawnMemberSafely(
                 ],
                 agent: safeMemberAgent(member.agent),
             },
-        });
-        member.turnCount = 1;
+        })
+        member.turnCount = 1
     } catch (err) {
         // Roll back every side effect before exposing the spawn error.
         if (member.sessionId) {
-            const sessionId = member.sessionId;
+            const sessionId = member.sessionId
             await ctx.client.session.delete({
                 path: { id: sessionId },
                 query: { directory: member.worktreePath ?? ctx.directory },
@@ -123,30 +123,30 @@ async function spawnMemberSafely(
                     deleteError,
                     { team: team.teamName, member: member.name, sessionId },
                 ),
-            );
-            unindexSession(sessionId);
-            member.sessionId = undefined;
+            )
+            unindexSession(sessionId)
+            member.sessionId = undefined
         }
-        member.status = "pending";
-        member.initialized = false;
-        member.prompt = undefined;
-        member.promptDelivered = false;
-        member.turnCount = 0;
+        member.status = "pending"
+        member.initialized = false
+        member.prompt = undefined
+        member.promptDelivered = false
+        member.turnCount = 0
         if (worktreeCreated) {
-            const branch = `team/${team.teamName}/${member.name}`;
+            const branch = `team/${team.teamName}/${member.name}`
             await cleanWorktree(
                 ctx.directory,
                 member.worktreePath,
                 worktreesDir(team.directory),
-            );
-            member.worktreePath = undefined;
+            )
+            member.worktreePath = undefined
             await execFileP("git", ["branch", "-D", branch], {
                 cwd: ctx.directory,
             }).catch(() => {
                 // Best effort.
-            });
+            })
         }
-        throw err;
+        throw err
     }
 }
 
@@ -171,10 +171,10 @@ async function waitForRoleSetupBarrier(
         // Timeout state is persisted under the mutex before aborting startup.
         await team.mutex.runExclusive(async () => {
             for (const name of waitNames) {
-                const current = team.members.find((member) => member.name === name);
+                const current = team.members.find((member) => member.name === name)
                 if (current && !current.initialized) {
-                    current.status = "errored";
-                    current.error = "role-setup barrier timed out";
+                    current.status = "errored"
+                    current.error = "role-setup barrier timed out"
                 }
             }
             await saveTeamState(team).catch((err) =>
@@ -184,10 +184,10 @@ async function waitForRoleSetupBarrier(
                     err,
                     { team: team.teamName },
                 ),
-            );
-        });
-        throw new Error("ensureMembersReady: role-setup barrier timed out");
-    });
+            )
+        })
+        throw new Error("ensureMembersReady: role-setup barrier timed out")
+    })
 }
 
 /**
@@ -203,17 +203,17 @@ export async function ensureMembersReady(
     team: Team,
 ): Promise<void> {
     // Phase 1: snapshot both spawn work and the full readiness barrier set.
-    const { toSpawn, waitNames } = planMemberSpawn(team);
-    if (waitNames.size === 0) return;
+    const { toSpawn, waitNames } = planMemberSpawn(team)
+    if (waitNames.size === 0) return
 
     const spec = toSpawn.length > 0
         ? await readTeamSpec(ctx.storageRoot, team.teamName, team.leadSessionId)
-        : undefined;
+        : undefined
     if (toSpawn.length > 0 && !spec) {
-        throw new Error(`ensureMembersReady: no config.json for team "${team.teamName}"`);
+        throw new Error(`ensureMembersReady: no config.json for team "${team.teamName}"`)
     }
-    const specByName = new Map((spec?.members ?? []).map((member) => [member.name, member]));
-    const peerNames = (spec?.members ?? []).map((member) => member.name);
+    const specByName = new Map((spec?.members ?? []).map((member) => [member.name, member]))
+    const peerNames = (spec?.members ?? []).map((member) => member.name)
 
     // Phase 2: spawn missing members in bounded parallel batches.
     for (const batch of chunk(toSpawn, team.bounds.maxParallelMembers)) {
@@ -221,9 +221,9 @@ export async function ensureMembersReady(
             batch.map((member) =>
                 spawnMemberSafely(ctx, team, member, specByName, peerNames),
             ),
-        );
+        )
     }
 
     // Phase 3: wait outside the mutex for role-setup idle acknowledgements.
-    await waitForRoleSetupBarrier(ctx, team, waitNames);
+    await waitForRoleSetupBarrier(ctx, team, waitNames)
 }

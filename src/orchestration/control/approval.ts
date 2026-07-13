@@ -63,7 +63,23 @@ export async function maybeRequestApproval(
     const task = team.activeTask
     if (!task?.humanApproval) return false
     if (task.approvalStage && task.approvalRequest) return true
+    return createApprovalPause(ctx, team, input)
+}
 
+/**
+ * Build, persist, and announce a new approval pause.
+ *
+ * Assumes the caller has already authorized the pause (HITL flag or forced
+ * escalation) and confirmed no active stage exists. Returns false only when
+ * there is no active task to attach the pause to.
+ */
+async function createApprovalPause(
+    ctx: PluginContext,
+    team: Team,
+    input: ApprovalRequestInput,
+): Promise<boolean> {
+    const task = team.activeTask
+    if (!task) return false
     const request: ApprovalRequest = {
         id: crypto.randomUUID(),
         kind: input.kind,
@@ -106,14 +122,7 @@ export async function forceApprovalRequest(
     team: Team,
     input: ApprovalRequestInput,
 ): Promise<boolean> {
-    if (team.activeTask?.approvalStage && team.activeTask?.approvalRequest) return true
     const task = team.activeTask
-    if (!task) return false
-    const previous = task.humanApproval
-    task.humanApproval = true
-    try {
-        return await maybeRequestApproval(ctx, team, input)
-    } finally {
-        task.humanApproval = previous
-    }
+    if (task?.approvalStage && task.approvalRequest) return true
+    return createApprovalPause(ctx, team, input)
 }

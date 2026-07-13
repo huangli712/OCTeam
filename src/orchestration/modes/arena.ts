@@ -8,7 +8,7 @@
 import type { PluginContext } from "../../core/context.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import type { ArenaCandidateScore, ArenaScoreboard, ArenaTask, MemberState } from "../../core/types.js"
-import { waitForBarrier } from "../control/barriers.js"
+import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { parseScoreboard } from "../protocol/decisions.js"
 import { finishRun } from "../control/completion.js"
@@ -125,7 +125,7 @@ export function buildArenaEvaluatorPrompt(task: ArenaTask, team: Team): string {
  * Arena idle handler for BOTH phases.
  *
  * IMPLEMENT: on each candidate idle, re-check the barrier over the ORIGINAL
- * candidate set (errored members count as terminal-ready in waitForBarrier).
+ * candidate set (errored members count as terminal-ready in maybeAdvanceBarrier).
  * When it fires, apply failure isolation IDENTICAL to termination 3b — the two
  * MUST agree on the reason string — then hand the surviving subset to the
  * evaluator. The barrier ignores the trigger member's identity.
@@ -192,7 +192,7 @@ export async function handleArenaIdle(
 
     // IMPLEMENT phase (or undefined): the barrier ignores the trigger member's
     // identity — it only inspects team-wide candidate status.
-    await waitForBarrier(team, task.candidates, async () => {
+    await maybeAdvanceBarrier(team, task.candidates, async () => {
         const erroredCandidates = task.candidates.filter(
             n => team.members.find(m => m.name === n)?.status === "errored",
         )

@@ -1,6 +1,6 @@
 /**
  * Consensus handler -- multi-round broadcast until agreement or max_rounds.
- * Relies on waitForBarrier to converge each round.
+ * Relies on maybeAdvanceBarrier to converge each round.
  *
  * STATE MACHINE:
  *   round_N_dispatch → barrier_wait → consensus_reached | max_rounds | next_round
@@ -15,7 +15,7 @@ import { dispatchToMember } from "../control/dispatch.js"
 import { buildRoundSummary } from "../records/summary.js"
 import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
-import { waitForBarrier } from "../control/barriers.js"
+import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { allMembersAgree } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../control/approval.js"
 
@@ -24,7 +24,7 @@ export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promi
     if (!task || task.type !== "consensus") return
     const participants = team.members.filter(m => !m.isMaster).map(m => m.name)
 
-    await waitForBarrier(team, participants, async () => {
+    await maybeAdvanceBarrier(team, participants, async () => {
         task.consensusReached = allMembersAgree(task.responses)
         if (task.consensusReached) {
             await finishRun(ctx, team, "consensus_reached", "idle")

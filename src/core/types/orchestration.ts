@@ -257,8 +257,7 @@ export interface ActiveTaskBase {
     approvalHistory?: ApprovalDecisionRecord[] // resolved approval decisions for audit/history
 
     // delegate mode: uses shared tasklist (team_task_*), no extra fields
-
-    requireDoneAck?: boolean                 // parallel: all-acked barrier (read un-narrowed in waitForBarrier)
+    requireDoneAck?: boolean                 // parallel: all-acked barrier (read un-narrowed in maybeAdvanceBarrier)
     maxErroredMembers?: number               // parallel/delegate: failure isolation (read un-narrowed)
     maxRetries?: number                      // all modes: bounded retry (read un-narrowed)
 

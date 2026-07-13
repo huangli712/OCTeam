@@ -23,26 +23,18 @@ export function buildSignoffReviewPrompt(summary: string): string {
         + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
 }
 
-/**
- * Enter signoff when configured. Returns true when the caller must stop normal
- * completion because signoff is already active or reviewers were dispatched.
- */
 export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<boolean> {
     const task = team.activeTask
     if (!task) return false
     if (!task.signoffPolicy || task.signoffPolicy === "none") return false
     if (task.signoffStage) return true
 
-    task.signoffStage = true
-    task.signoffApprovals = {}
-    recordEvent(team, {
-        timestamp: Date.now(),
-        kind: "signoff",
-        detail: task.signoffPolicy,
-    })
     const summary = await buildSummary(team, task, "pending_signoff")
     const reviewPrompt = buildSignoffReviewPrompt(summary)
 
+    // Resolve eligible reviewers per policy before recording the signoff event,
+    // so a guard failure does not leave a stale "signoff" entry in the timeline.
+    let reviewers: MemberState[]
     if (task.signoffPolicy === "decider") {
         const decider = team.members.find(member =>
             member.name === task.signoffDecider && !member.isMaster
@@ -51,30 +43,33 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
             task.signoffStage = false
             return false
         }
-        await dispatchToMember(
-            ctx,
-            decider,
-            reviewPrompt,
-            decider.worktreePath ?? ctx.directory,
-            team,
-        )
-    } else if (task.signoffPolicy === "peer-quorum") {
-        const reviewers = team.members.filter(member =>
+        reviewers = [decider]
+    } else {
+        reviewers = team.members.filter(member =>
             !member.isMaster && member.sessionId && member.status !== "errored"
         )
         if (reviewers.length === 0) {
             task.signoffStage = false
             return false
         }
-        for (const reviewer of reviewers) {
-            await dispatchToMember(
-                ctx,
-                reviewer,
-                reviewPrompt,
-                reviewer.worktreePath ?? ctx.directory,
-                team,
-            )
-        }
+    }
+
+    // Commit the signoff stage only once reviewers are confirmed available.
+    task.signoffStage = true
+    task.signoffApprovals = {}
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "signoff",
+        detail: task.signoffPolicy,
+    })
+    for (const reviewer of reviewers) {
+        await dispatchToMember(
+            ctx,
+            reviewer,
+            reviewPrompt,
+            reviewer.worktreePath ?? ctx.directory,
+            team,
+        )
     }
 
     await saveTeamState(team)

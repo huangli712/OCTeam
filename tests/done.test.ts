@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
-import { waitForBarrier } from "../src/orchestration/control/barriers.js"
+import { maybeAdvanceBarrier } from "../src/orchestration/control/barriers.js"
 import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
 import { AsyncMutex } from "../src/state/locks.js"
 
 /**
- * Minimal Team stub for barrier tests. Only the fields waitForBarrier reads
+ * Minimal Team stub for barrier tests. Only the fields maybeAdvanceBarrier reads
  * are populated; everything else is bypassed via type assertion.
  */
 function makeTeam(opts: {
@@ -61,7 +61,7 @@ function makeTeam(opts: {
     } as unknown as TeamState & { mutex: AsyncMutex; directory: string }
 }
 
-describe("waitForBarrier: default mode (no require_done_ack)", () => {
+describe("maybeAdvanceBarrier: default mode (no require_done_ack)", () => {
     test("fires onBarrier when all participants are idle", async () => {
         const team = makeTeam({
             members: [
@@ -71,7 +71,7 @@ describe("waitForBarrier: default mode (no require_done_ack)", () => {
             activeTask: { requireDoneAck: false },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(1)
@@ -86,7 +86,7 @@ describe("waitForBarrier: default mode (no require_done_ack)", () => {
             activeTask: { requireDoneAck: false },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(0)
@@ -101,7 +101,7 @@ describe("waitForBarrier: default mode (no require_done_ack)", () => {
             activeTask: {}, // requireDoneAck is undefined
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(1)
@@ -116,7 +116,7 @@ describe("waitForBarrier: default mode (no require_done_ack)", () => {
             activeTask: { requireDoneAck: false },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(1)
@@ -132,14 +132,14 @@ describe("waitForBarrier: default mode (no require_done_ack)", () => {
             activeTask: { requireDoneAck: false },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(1)
     })
 })
 
-describe("waitForBarrier: require_done_ack mode", () => {
+describe("maybeAdvanceBarrier: require_done_ack mode", () => {
     test("fires when all participants have declaredDone=true", async () => {
         const team = makeTeam({
             members: [
@@ -149,7 +149,7 @@ describe("waitForBarrier: require_done_ack mode", () => {
             activeTask: { requireDoneAck: true },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(1)
@@ -164,7 +164,7 @@ describe("waitForBarrier: require_done_ack mode", () => {
             activeTask: { requireDoneAck: true },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(0)
@@ -179,7 +179,7 @@ describe("waitForBarrier: require_done_ack mode", () => {
             activeTask: { requireDoneAck: true },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(0)
@@ -196,7 +196,7 @@ describe("waitForBarrier: require_done_ack mode", () => {
             activeTask: { requireDoneAck: true },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(1)
@@ -211,7 +211,7 @@ describe("waitForBarrier: require_done_ack mode", () => {
             activeTask: { requireDoneAck: true },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(0)
@@ -229,7 +229,7 @@ describe("waitForBarrier: require_done_ack mode", () => {
             activeTask: { requireDoneAck: true },
         })
         let fired = 0
-        await waitForBarrier(team, ["n1", "n2", "n3", "n4", "n5"], async () => {
+        await maybeAdvanceBarrier(team, ["n1", "n2", "n3", "n4", "n5"], async () => {
             fired++
         })
         expect(fired).toBe(0)
@@ -237,21 +237,21 @@ describe("waitForBarrier: require_done_ack mode", () => {
         // Last member acks → barrier fires.
         const n5 = team.members.find(m => m.name === "n5")!
         n5.declaredDone = true
-        await waitForBarrier(team, ["n1", "n2", "n3", "n4", "n5"], async () => {
+        await maybeAdvanceBarrier(team, ["n1", "n2", "n3", "n4", "n5"], async () => {
             fired++
         })
         expect(fired).toBe(1)
     })
 })
 
-describe("waitForBarrier: edge cases", () => {
+describe("maybeAdvanceBarrier: edge cases", () => {
     test("no activeTask → treats as default mode (status idle check)", async () => {
         const team = makeTeam({
             members: [{ name: "alice", status: "idle" }],
             activeTask: undefined,
         })
         let fired = 0
-        await waitForBarrier(team, ["alice"], async () => {
+        await maybeAdvanceBarrier(team, ["alice"], async () => {
             fired++
         })
         expect(fired).toBe(1)
@@ -263,7 +263,7 @@ describe("waitForBarrier: edge cases", () => {
             activeTask: { requireDoneAck: true },
         })
         let fired = 0
-        await waitForBarrier(team, [], async () => {
+        await maybeAdvanceBarrier(team, [], async () => {
             fired++
         })
         // every() on empty array returns true — barrier fires. This matches
@@ -277,7 +277,7 @@ describe("waitForBarrier: edge cases", () => {
             activeTask: { requireDoneAck: true },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "unknown"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "unknown"], async () => {
             fired++
         })
         expect(fired).toBe(0)
@@ -292,20 +292,20 @@ describe("waitForBarrier: edge cases", () => {
             activeTask: { requireDoneAck: true },
         })
         let fired = 0
-        // Calling waitForBarrier twice with the same ready state fires twice —
+        // Calling maybeAdvanceBarrier twice with the same ready state fires twice —
         // idempotency is the CALLER's responsibility (handleParallelIdle guards
         // via mutex + state flips). Documented here as a regression sentinel.
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(2)
     })
 })
 
-describe("waitForBarrier: errored is terminal (failure isolation)", () => {
+describe("maybeAdvanceBarrier: errored is terminal (failure isolation)", () => {
     test("errored member counts as ready → barrier fires with idle survivors", async () => {
         const team = makeTeam({
             members: [
@@ -315,7 +315,7 @@ describe("waitForBarrier: errored is terminal (failure isolation)", () => {
             activeTask: { requireDoneAck: false },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(1)
@@ -330,7 +330,7 @@ describe("waitForBarrier: errored is terminal (failure isolation)", () => {
             activeTask: { requireDoneAck: true },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(1)
@@ -345,7 +345,7 @@ describe("waitForBarrier: errored is terminal (failure isolation)", () => {
             activeTask: { requireDoneAck: false },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(0)
@@ -360,7 +360,7 @@ describe("waitForBarrier: errored is terminal (failure isolation)", () => {
             activeTask: { requireDoneAck: false },
         })
         let fired = 0
-        await waitForBarrier(team, ["alice", "bob"], async () => {
+        await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
         expect(fired).toBe(1)

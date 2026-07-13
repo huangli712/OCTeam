@@ -1,6 +1,6 @@
 /**
  * Parallel handler -- single-barrier fan-in with failure isolation, optional
- * reduce and signoff. Relies on waitForBarrier to converge.
+ * reduce and signoff. Relies on maybeAdvanceBarrier to converge.
  *
  * STATE MACHINE:
  *   dispatch → barrier_wait → [reduce_stage → signoff_stage →] deliver
@@ -12,7 +12,7 @@
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
 import { finishRun } from "../control/completion.js"
-import { waitForBarrier } from "../control/barriers.js"
+import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { maybeTriggerReduce } from "./reduce.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 
@@ -22,7 +22,7 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
     if (!task) return
     const participants = team.members.filter(m => !m.isMaster).map(m => m.name)
 
-    await waitForBarrier(team, participants, async () => {
+    await maybeAdvanceBarrier(team, participants, async () => {
         // Failure isolation: count terminally-errored members. Within tolerance ->
         // deliver survivors (partial success); over tolerance or no survivors -> fail.
         const errored = participants.filter(
