@@ -1,3 +1,8 @@
+/**
+ * Shared infrastructure for sequential-stage modes (pipeline, loop, tollgate):
+ * upstream-context assembly and the stage-advance dispatch primitive.
+ */
+
 import type { PluginContext } from "../../core/context.js";
 import { safeMemberAgent } from "../../core/role.js";
 import type { Stage } from "../../core/types.js";

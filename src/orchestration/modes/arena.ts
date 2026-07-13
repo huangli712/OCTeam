@@ -126,7 +126,7 @@ export function buildArenaEvaluatorPrompt(task: ArenaTask, team: Team): string {
  *
  * IMPLEMENT: on each candidate idle, re-check the barrier over the ORIGINAL
  * candidate set (errored members count as terminal-ready in maybeAdvanceBarrier).
- * When it fires, apply failure isolation IDENTICAL to termination 3b — the two
+ * When it fires, apply failure isolation IDENTICAL to checkTermination — the two
  * MUST agree on the reason string — then hand the surviving subset to the
  * evaluator. The barrier ignores the trigger member's identity.
  *
@@ -197,7 +197,7 @@ export async function handleArenaIdle(
             n => team.members.find(m => m.name === n)?.status === "errored",
         )
         const survivors = task.candidates.filter(n => !erroredCandidates.includes(n))
-        // Ordered branching MUST match termination.ts (3b): zero survivors ->
+        // Ordered branching MUST match checkTermination in termination.ts: zero survivors ->
         // no_survivors; else over tolerance -> member_error; else proceed.
         if (survivors.length === 0) {
             await finishRun(ctx, team, "arena_failed:no_survivors", "failed")

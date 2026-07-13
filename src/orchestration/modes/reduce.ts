@@ -1,3 +1,9 @@
+/**
+ * Reduce sub-stage for parallel mode: when the barrier fires with multiple
+ * responses, dispatch a single reducer to synthesize them into one final
+ * output before signoff/delivery.
+ */
+
 import type { PluginContext } from "../../core/context.js"
 import type { MemberState } from "../../core/types.js"
 import { type Team, saveTeamState } from "../../state/store.js"
