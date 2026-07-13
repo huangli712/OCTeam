@@ -21,7 +21,11 @@ import {
  * Check the active task's termination conditions and, if met, deliver a summary
  * to the leader and tear down the active task. No-op if no active task.
  */
-export async function checkTermination(ctx: PluginContext, team: Team, now = Date.now()): Promise<void> {
+export async function checkTermination(
+    ctx: PluginContext,
+    team: Team,
+    now = Date.now(),
+): Promise<void> {
     const task = team.activeTask
     if (!task) return
 
@@ -92,10 +96,11 @@ export async function checkTermination(ctx: PluginContext, team: Team, now = Dat
                 }
                 return
             }
-            // Implement phase: candidate-count tolerance, SAME ordered branching as
-            // the 2b barrier (the two MUST NOT diverge on the reason string). An
-            // errored evaluator during implement is ignored here (it is live-checked
-            // at start-evaluate, 2b).
+            // Implement phase: candidate-count tolerance. The reason strings here
+            // MUST match handleArenaIdle's barrier branching — divergence would
+            // confuse the leader with different failure reasons for the same
+            // condition. An errored evaluator during implement is ignored here
+            // (it is live-checked when the evaluate phase starts).
             const erroredCandidates = erroredMembers.filter(m => task.candidates.includes(m.name))
             const tolerance = task.maxErroredMembers ?? 0
             const survivors = task.candidates.length - erroredCandidates.length
@@ -119,7 +124,18 @@ export async function checkTermination(ctx: PluginContext, team: Team, now = Dat
     }
 }
 
-async function checkWorkflowStepTimeouts(ctx: PluginContext, team: Team, task: WorkflowTask, now: number): Promise<boolean> {
+/**
+ * Check each active workflow step for timeout expiration. If any step timed
+ * out, delegate to handleWorkflowStepTimeout and return true so the caller
+ * skips the remaining generic checks (a timeout already ended or advanced
+ * the run). Returns false when no timeout fired.
+ */
+async function checkWorkflowStepTimeouts(
+    ctx: PluginContext,
+    team: Team,
+    task: WorkflowTask,
+    now: number,
+): Promise<boolean> {
     const steps = task.steps ?? []
     const activeStepIndices = task.activeStepIndices ?? [task.currentStageIndex]
     for (const index of activeStepIndices) {
@@ -132,7 +148,19 @@ async function checkWorkflowStepTimeouts(ctx: PluginContext, team: Team, task: W
     return false
 }
 
-async function handleWorkflowStepTimeout(ctx: PluginContext, team: Team, task: WorkflowTask, step: WorkflowStep, index: number, now: number): Promise<void> {
+/**
+ * Handle a single workflow step's timeout. Fanout-branch steps isolate the
+ * timed-out actor via markWorkflowFanoutBranchErrored; linear steps apply the
+ * step's on_timeout policy (fail / skip / retry).
+ */
+async function handleWorkflowStepTimeout(
+    ctx: PluginContext,
+    team: Team,
+    task: WorkflowTask,
+    step: WorkflowStep,
+    index: number,
+    now: number,
+): Promise<void> {
     const policy = step.onTimeout ?? "fail"
     if (step.branch !== undefined) {
         const actor = workflowTimeoutStepActor(step)
