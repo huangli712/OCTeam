@@ -30,30 +30,6 @@ const LOCK_MAX_WAIT_MS = 30_000
  */
 const LOCK_HEARTBEAT_MS = LOCK_TTL_MS / 3
 
-/** Promise-based delay. */
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-/**
- * Best-effort fsync of a directory's entries. Used by atomicWrite after rename
- * so the directory-entry change is durable across an OS crash (file content is
- * already fsync'd). Some platforms/filesystems don't support opening a dir for
- * fsync; errors are swallowed.
- */
-async function fsyncDir(dir: string): Promise<void> {
-    try {
-        const dirFd = await fs.open(dir, "r")
-        try {
-            await dirFd.sync()
-        } finally {
-            await dirFd.close().catch(() => {})
-        }
-    } catch {
-        // best-effort: dir fsync unsupported or dir missing
-    }
-}
-
 /**
  * Per-team async mutex. Serializes event-handler state mutations within a
  * single process.
@@ -78,6 +54,30 @@ export class AsyncMutex {
             () => undefined,
         )
         return run
+    }
+}
+
+/** Promise-based delay. */
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Best-effort fsync of a directory's entries. Used by atomicWrite after rename
+ * so the directory-entry change is durable across an OS crash (file content is
+ * already fsync'd). Some platforms/filesystems don't support opening a dir for
+ * fsync; errors are swallowed.
+ */
+async function fsyncDir(dir: string): Promise<void> {
+    try {
+        const dirFd = await fs.open(dir, "r")
+        try {
+            await dirFd.sync()
+        } finally {
+            await dirFd.close().catch(() => {})
+        }
+    } catch {
+        // best-effort: dir fsync unsupported or dir missing
     }
 }
 
