@@ -30,7 +30,11 @@ import {
     sortedWorkflowIndices,
     workflowStepActorName,
 } from "./dag.js";
-import { workflowFanoutAllErroredReason, workflowFanoutOverToleranceReason, workflowNoSessionReason } from "./reasons.js";
+import {
+    workflowFanoutAllErroredReason,
+    workflowFanoutOverToleranceReason,
+    workflowNoSessionReason,
+} from "./reasons.js";
 
 // Total byte budget for joined output (mirrors workflow.ts UPSTREAM_TOTAL_CAP).
 const JOINED_TOTAL_CAP = 65_536;
@@ -173,7 +177,10 @@ function buildWorkflowReducePrompt(
     steps: WorkflowStep[],
     joinIndex: number,
 ): string {
-    return `[Workflow reduce task] You are the reducer for workflow join step ${joinIndex + 1}. Combine the branch outputs below into ONE joined result. Output ONLY the final result, with no preamble.\n\n${buildJoinedWorkflowOutput(steps, joinIndex)}`;
+    return `[Workflow reduce task] You are the reducer for workflow join step ${joinIndex + 1}.`
+        + ` Combine the branch outputs below into ONE joined result.`
+        + ` Output ONLY the final result, with no preamble.\n\n`
+        + buildJoinedWorkflowOutput(steps, joinIndex);
 }
 
 /** Build the prompt for a select join policy selector. */
@@ -183,7 +190,10 @@ function buildWorkflowSelectPrompt(
 ): string {
     const step = steps[joinIndex];
     const branchIds = step?.join === undefined ? [] : branchIdsForJoin(steps, step.join);
-    return `[Workflow select task] You are the selector for workflow join step ${joinIndex + 1}. Choose exactly one winning branch id from: ${branchIds.join(", ")}. Emit ONLY <selection>{"winner":"branch_id","rationale":"..."}</selection>.\n\n${buildJoinedWorkflowOutput(steps, joinIndex)}`;
+    return `[Workflow select task] You are the selector for workflow join step ${joinIndex + 1}.`
+        + ` Choose exactly one winning branch id from: ${branchIds.join(", ")}.`
+        + ` Emit ONLY <selection>{"winner":"branch_id","rationale":"..."}</selection>.\n\n`
+        + buildJoinedWorkflowOutput(steps, joinIndex);
 }
 
 /** Dispatch the reducer/selector member for a reduce or select join policy. */
