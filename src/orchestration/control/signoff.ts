@@ -23,6 +23,14 @@ export function buildSignoffReviewPrompt(summary: string): string {
         + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
 }
 
+/**
+ * Enter signoff when configured. Returns true when the caller must stop normal
+ * completion because signoff is already active or reviewers were dispatched.
+ *
+ * Reviewer availability is resolved per policy BEFORE any signoff state is
+ * committed, so a guard failure leaves no stale event in the timeline and
+ * resets signoffStage to false for the caller's direct-delivery fallback.
+ */
 export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<boolean> {
     const task = team.activeTask
     if (!task) return false
@@ -93,6 +101,8 @@ export async function handleSignoffIdle(
             member: member.name,
         })
     }
+    // A missing or unparseable verdict counts as non-approval so a single
+    // reviewer's malformed output cannot stall the policy indefinitely.
     task.signoffApprovals![member.name] = signoff?.approved === true
 
     if (task.signoffPolicy === "decider") {
