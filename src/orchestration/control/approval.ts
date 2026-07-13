@@ -13,6 +13,7 @@ import type { ApprovalKind, ApprovalRequest, ApprovalSubtask } from "../../core/
 import { type Team, saveTeamState } from "../../state/store.js"
 import { recordEvent } from "../records/events.js"
 
+/** Caller-supplied input for constructing an ApprovalRequest at a pause site. */
 type ApprovalRequestInput = {
     kind: ApprovalKind
     summary: string
@@ -21,6 +22,16 @@ type ApprovalRequestInput = {
     taskId?: string
     member?: string
     subtasks?: ApprovalSubtask[]
+}
+
+/** Notify the team leader without mutating approval state. */
+async function notifyLeader(ctx: PluginContext, team: Team, request: ApprovalRequest): Promise<void> {
+    await ctx.client.session.promptAsync({
+        path: { id: team.leadSessionId },
+        body: {
+            parts: [{ type: "text", text: buildApprovalPrompt(team.teamName, request), synthetic: true }],
+        },
+    })
 }
 
 /** Build the leader-facing prompt for a persisted approval request. */
@@ -39,16 +50,6 @@ export function buildApprovalPrompt(teamName: string, request: ApprovalRequest):
         + `${request.summary}\n\n`
         + `Call team_approve(team_id="${teamName}", approval_id="${request.id}") to continue, `
         + `or team_reject(team_id="${teamName}", approval_id="${request.id}", feedback="...") to reject.`
-}
-
-/** Notify the team leader without mutating approval state. */
-async function notifyLeader(ctx: PluginContext, team: Team, request: ApprovalRequest): Promise<void> {
-    await ctx.client.session.promptAsync({
-        path: { id: team.leadSessionId },
-        body: {
-            parts: [{ type: "text", text: buildApprovalPrompt(team.teamName, request), synthetic: true }],
-        },
-    })
 }
 
 /**
