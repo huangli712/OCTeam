@@ -343,7 +343,8 @@ export async function maybePauseBeforeWorkflowStep(
     const paused = await forceApprovalRequest(ctx, team, {
         kind: "workflow_step",
         stage: index,
-        summary: `Before ${describeStep(step, index)}. Approve to dispatch this step; reject to fail the run as workflow_human_rejected.`,
+        summary: `Before ${describeStep(step, index)}. Approve to dispatch this step;`
+            + ` reject to fail the run as workflow_human_rejected.`,
     });
     if (paused) {
         await saveTeamState(team);
@@ -371,7 +372,8 @@ export async function maybePauseAfterWorkflowStep(
     const paused = await forceApprovalRequest(ctx, team, {
         kind: "workflow_step",
         stage: index,
-        summary: `After ${describeStep(step, index)}. Approve to continue; reject to fail the run as workflow_human_rejected.`,
+        summary: `After ${describeStep(step, index)}. Approve to continue;`
+            + ` reject to fail the run as workflow_human_rejected.`,
     });
     if (paused) {
         await saveTeamState(team);
@@ -467,7 +469,9 @@ export async function gotoWorkflowStep(
         timestamp: Date.now(),
         kind: "stage_advanced",
         stage: targetIndex,
-        detail: `workflow jump: step ${gateIndex + 1} -> step ${targetIndex + 1} (${transition.reason}${transition.verdict ? ` ${transition.verdict}` : ""}); jump ${gate.jumpCount}/${maxJ}`,
+        detail: `workflow jump: step ${gateIndex + 1} -> step ${targetIndex + 1}`
+            + ` (${transition.reason}${transition.verdict ? ` ${transition.verdict}` : ""})`
+            + `; jump ${gate.jumpCount}/${maxJ}`,
     });
 
     moveActiveWorkflowStep(task, gateIndex, targetIndex);
