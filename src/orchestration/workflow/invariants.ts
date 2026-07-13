@@ -3,11 +3,20 @@
  * task's steps against structural constraints (ordering, bounds, branch ranges).
  */
 
-import type { WorkflowBranchMetadata, WorkflowBranchRange, WorkflowFanoutMetadata, WorkflowJoinMetadata, WorkflowStep, WorkflowTask } from "../../core/types.js"
+import type {
+    WorkflowBranchMetadata,
+    WorkflowBranchRange,
+    WorkflowFanoutMetadata,
+    WorkflowJoinMetadata,
+    WorkflowStep,
+    WorkflowTask,
+} from "../../core/types.js"
 import { joinPolicySatisfied } from "./join-policy.js"
 
 /** Result of a workflow invariant check: either ok or a list of violations. */
-export type WorkflowInvariantCheckResult = { readonly ok: true } | { readonly ok: false; readonly violations: readonly string[] }
+export type WorkflowInvariantCheckResult =
+    | { readonly ok: true }
+    | { readonly ok: false; readonly violations: readonly string[] }
 
 type WorkflowInvariantContext = {
     readonly steps: readonly WorkflowStep[]
@@ -26,7 +35,10 @@ export function checkWorkflowInvariants(task: WorkflowTask): WorkflowInvariantCh
 }
 
 /** Validate that active step indices are sorted, unique, in-bounds, and point to advanceable steps. */
-function checkActiveStepIndices(context: WorkflowInvariantContext, activeStepIndices: readonly number[] | undefined): void {
+function checkActiveStepIndices(
+    context: WorkflowInvariantContext,
+    activeStepIndices: readonly number[] | undefined,
+): void {
     if (activeStepIndices === undefined) return
 
     const seen = new Set<number>()
@@ -34,7 +46,9 @@ function checkActiveStepIndices(context: WorkflowInvariantContext, activeStepInd
     for (let position = 0; position < activeStepIndices.length; position += 1) {
         const index = activeStepIndices[position]
         if (index === undefined) continue
-        if (index <= previousIndex) context.violations.push(`active[${position}]: index ${index} is not sorted after ${previousIndex}`)
+        if (index <= previousIndex) {
+            context.violations.push(`active[${position}]: index ${index} is not sorted after ${previousIndex}`)
+        }
         previousIndex = index
         if (seen.has(index)) {
             context.violations.push(`active[${position}]: duplicate index ${index}`)
@@ -62,7 +76,10 @@ function activeStepViolation(steps: readonly WorkflowStep[], index: number, step
         case "fanout":
             return canFanoutAdvance(steps, step.fanout) ? null : `step ${index} fanout cannot advance`
         case "join":
-            return step.join !== undefined && isJoinSatisfied(steps, index, step.join) ? null : `step ${index} join cannot advance`
+            if (step.join !== undefined && isJoinSatisfied(steps, index, step.join)) {
+                return null
+            }
+            return `step ${index} join cannot advance`
         default:
             return assertNever(step.kind)
     }
@@ -76,7 +93,9 @@ function checkStep(context: WorkflowInvariantContext, index: number, step: Workf
     switch (step.kind) {
         case "task": {
             if (step.taskAttempts !== undefined && step.taskAttempts > (step.maxTaskRetries ?? 0)) {
-                context.violations.push(`step ${index}: taskAttempts ${step.taskAttempts} exceeds cap ${step.maxTaskRetries ?? 0}`)
+                context.violations.push(
+                    `step ${index}: taskAttempts ${step.taskAttempts} exceeds cap ${step.maxTaskRetries ?? 0}`,
+                )
             }
             return
         }
@@ -150,9 +169,15 @@ function checkBranchMetadata(context: WorkflowInvariantContext, index: number, b
     if (join?.kind !== "join" || join.join === undefined) {
         context.violations.push(`step ${index}: branch join ${branch.joinIndex} is not a join marker`)
     } else if (join.join.fanoutIndex !== branch.fanoutIndex) {
-        context.violations.push(`step ${index}: branch join ${branch.joinIndex} points to fanout ${join.join.fanoutIndex}`)
+        context.violations.push(
+            `step ${index}: branch join ${branch.joinIndex} points to fanout ${join.join.fanoutIndex}`,
+        )
     }
-    if (branch.joinIndex !== fanout.joinIndex) context.violations.push(`step ${index}: branch join ${branch.joinIndex} differs from fanout join ${fanout.joinIndex}`)
+    if (branch.joinIndex !== fanout.joinIndex) {
+        context.violations.push(
+            `step ${index}: branch join ${branch.joinIndex} differs from fanout join ${fanout.joinIndex}`,
+        )
+    }
 
     const branchIdIndex = fanout.branchIds.indexOf(branch.branchId)
     if (branchIdIndex < 0) {
@@ -163,7 +188,10 @@ function checkBranchMetadata(context: WorkflowInvariantContext, index: number, b
     if (declaredBranchId === undefined) {
         context.violations.push(`step ${index}: branchIndex ${branch.branchIndex} is out of fanout range`)
     } else if (declaredBranchId !== branch.branchId) {
-        context.violations.push(`step ${index}: branchIndex ${branch.branchIndex} maps to branch ${declaredBranchId}, not ${branch.branchId}`)
+        context.violations.push(
+            `step ${index}: branchIndex ${branch.branchIndex} maps to branch `
+                + `${declaredBranchId}, not ${branch.branchId}`,
+        )
     }
     const range = fanout.branchRanges[branchIdIndex]
     if (range === undefined) {
@@ -181,19 +209,35 @@ function checkFanoutStep(context: WorkflowInvariantContext, index: number, step:
         return
     }
     const join = context.steps[fanout.joinIndex]
-    if (join?.kind !== "join" || join.join === undefined) context.violations.push(`step ${index}: fanout join ${fanout.joinIndex} is not a join marker`)
-    if (fanout.branchIds.length !== fanout.branchRanges.length) context.violations.push(`step ${index}: branch id/range count mismatch`)
+    if (join?.kind !== "join" || join.join === undefined) {
+        context.violations.push(`step ${index}: fanout join ${fanout.joinIndex} is not a join marker`)
+    }
+    if (fanout.branchIds.length !== fanout.branchRanges.length) {
+        context.violations.push(`step ${index}: branch id/range count mismatch`)
+    }
 
     for (let rangeIndex = 0; rangeIndex < fanout.branchRanges.length; rangeIndex += 1) {
         const range = fanout.branchRanges[rangeIndex]
         if (range === undefined) continue
-        if (range.startIndex > range.endIndex) context.violations.push(`step ${index}: branch range ${rangeIndex} is empty`)
-        if (!isIndexInBounds(context.steps, range.startIndex) || !isIndexInBounds(context.steps, range.endIndex)) context.violations.push(`step ${index}: branch range ${rangeIndex} out of bounds`)
-        if (range.startIndex <= index) context.violations.push(`step ${index}: branch range ${rangeIndex} must start after fanout`)
-        if (range.endIndex >= fanout.joinIndex) context.violations.push(`step ${index}: branch range ${rangeIndex} must end before join ${fanout.joinIndex}`)
+        if (range.startIndex > range.endIndex) {
+            context.violations.push(`step ${index}: branch range ${rangeIndex} is empty`)
+        }
+        if (!isIndexInBounds(context.steps, range.startIndex) || !isIndexInBounds(context.steps, range.endIndex)) {
+            context.violations.push(`step ${index}: branch range ${rangeIndex} out of bounds`)
+        }
+        if (range.startIndex <= index) {
+            context.violations.push(`step ${index}: branch range ${rangeIndex} must start after fanout`)
+        }
+        if (range.endIndex >= fanout.joinIndex) {
+            context.violations.push(
+                `step ${index}: branch range ${rangeIndex} must end before join ${fanout.joinIndex}`,
+            )
+        }
         for (let previousIndex = 0; previousIndex < rangeIndex; previousIndex += 1) {
             const previous = fanout.branchRanges[previousIndex]
-            if (previous !== undefined && rangesOverlap(previous, range)) context.violations.push(`step ${index}: branch range ${rangeIndex} overlaps ${previousIndex}`)
+            if (previous !== undefined && rangesOverlap(previous, range)) {
+                context.violations.push(`step ${index}: branch range ${rangeIndex} overlaps ${previousIndex}`)
+            }
         }
     }
 }
@@ -210,7 +254,9 @@ function checkJoinStep(context: WorkflowInvariantContext, index: number, step: W
         context.violations.push(`step ${index}: join fanout ${join.fanoutIndex} is not a fanout marker`)
         return
     }
-    if (fanout.joinIndex !== index) context.violations.push(`step ${index}: fanout ${join.fanoutIndex} points to join ${fanout.joinIndex}`)
+    if (fanout.joinIndex !== index) {
+        context.violations.push(`step ${index}: fanout ${join.fanoutIndex} points to join ${fanout.joinIndex}`)
+    }
 
     for (const tailIndex of join.branchTailIndices) {
         const tail = context.steps[tailIndex]
@@ -221,10 +267,14 @@ function checkJoinStep(context: WorkflowInvariantContext, index: number, step: W
         }
     }
     for (const branchId of join.erroredBranchIds ?? []) {
-        if (!fanout.branchIds.includes(branchId)) context.violations.push(`step ${index}: errored branch ${branchId} is not in fanout`)
+        if (!fanout.branchIds.includes(branchId)) {
+            context.violations.push(`step ${index}: errored branch ${branchId} is not in fanout`)
+        }
     }
     for (const branchId of join.survivorBranchIds ?? []) {
-        if (!fanout.branchIds.includes(branchId)) context.violations.push(`step ${index}: survivor branch ${branchId} is not in fanout`)
+        if (!fanout.branchIds.includes(branchId)) {
+            context.violations.push(`step ${index}: survivor branch ${branchId} is not in fanout`)
+        }
     }
     if (!step.completed) return
 
@@ -237,7 +287,9 @@ function checkJoinStep(context: WorkflowInvariantContext, index: number, step: W
         const branchId = fanout.branchIds[branchIndex]
         if (branchId === undefined || erroredBranchIds.has(branchId)) continue
         const tailIndex = join.branchTailIndices[branchIndex]
-        if (tailIndex === undefined || !isTerminalStep(context.steps[tailIndex])) context.violations.push(`step ${index}: completed join has non-terminal branch ${branchId}`)
+        if (tailIndex === undefined || !isTerminalStep(context.steps[tailIndex])) {
+            context.violations.push(`step ${index}: completed join has non-terminal branch ${branchId}`)
+        }
     }
 }
 
@@ -246,7 +298,11 @@ function canFanoutAdvance(steps: readonly WorkflowStep[], fanout: WorkflowFanout
     if (fanout === undefined) return false
     const join = steps[fanout.joinIndex]
     if (join?.kind !== "join" || join.join === undefined) return false
-    return fanout.branchRanges.some(range => range.startIndex <= range.endIndex && isIndexInBounds(steps, range.startIndex) && range.endIndex < fanout.joinIndex)
+    return fanout.branchRanges.some(
+        range => range.startIndex <= range.endIndex
+            && isIndexInBounds(steps, range.startIndex)
+            && range.endIndex < fanout.joinIndex,
+    )
 }
 
 /** Check whether a join's branches are all terminal and its join policy is satisfied. */
