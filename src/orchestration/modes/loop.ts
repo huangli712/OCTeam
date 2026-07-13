@@ -21,6 +21,11 @@ import { recordEvent } from "../records/events.js"
 import { allReadOnlyStagesReportNoIssues, parseDecision } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../control/approval.js"
 
+/**
+ * Advance to the next loop round: bump the round counter, reset all stages to
+ * incomplete, and re-dispatch stage 0 with the decider's feedback (rationale +
+ * next actions) injected as a prefix so the loop is actually corrective.
+ */
 async function continueLoopRound(
     ctx: PluginContext,
     team: Team,
