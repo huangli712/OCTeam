@@ -43,7 +43,7 @@ import {
 } from "../../orchestration/lifecycle/startup.js"
 import { humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { lowerWorkflowSteps, toWorkflowStep } from "./lower.js"
-import { formatWorkflowDryRun } from "./lower-format.js"
+import { formatWorkflowDryRun } from "./format.js"
 import {
     resolveWorkflowArgs,
     validateWorkflowArgs,

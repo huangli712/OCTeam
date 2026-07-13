@@ -18,13 +18,13 @@ import { teamListTool } from "./lifecycle/list.js"
 import { teamQueryTool } from "./query/query.js"
 import { teamRemoveMemberTool } from "./lifecycle/remove.js"
 import { teamRenameTool } from "./lifecycle/rename.js"
-import { teamSendMessageTool } from "./coordination/messaging.js"
+import { teamSendMessageTool } from "./exchange/messaging.js"
 import {
     teamTaskCreateTool,
     teamTaskGetTool,
     teamTaskListTool,
     teamTaskUpdateTool,
-} from "./coordination/task.js"
+} from "./exchange/task.js"
 import { teamConsensusTool } from "./modes/consensus.js"
 import { teamDelegateTool } from "./modes/delegate.js"
 import { teamLoopTool } from "./modes/loop.js"

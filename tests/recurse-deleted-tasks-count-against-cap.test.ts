@@ -11,7 +11,7 @@ import { makeCtx, makeTeam } from "./helpers.js"
  * src/orchestration/modes/recurse.ts:95 computes the capacity guard as
  *   tasks.length + dec.subtasks.length <= team.bounds.maxTasks
  * using the raw task count, which INCLUDES "deleted" tasks. Every other
- * live-task capacity check in the codebase (src/tools/coordination/task.ts:90-92,
+ * live-task capacity check in the codebase (src/tools/exchange/task.ts:90-92,
  * src/tools/delegate.ts:132-134, src/tools/recurse.ts:61-63) filters out
  * status === "deleted" first. Because of this inconsistency, recurse mode
  * stops decomposing even when live capacity remains, simply because deleted

@@ -3,7 +3,7 @@
  * LoweredWorkflowStep[] representation (flat fanout branches, resolved refs).
  * Also handles matrix/foreach expansion and validation error label formatting.
  *
- * Dry-run preview formatting lives in lower-format.ts.
+ * Dry-run preview formatting lives in format.ts.
  *
  * Extracted from tools/workflow.ts.
  */
@@ -540,7 +540,7 @@ function sanitizeBranchId(value: string): string {
 }
 
 // --- validation error labels ---
-// (dry-run preview formatting lives in lower-format.ts; these two helpers
+// (dry-run preview formatting lives in format.ts; these two helpers
 // serve validation error messages and stay with the lowering engine.)
 
 /** Format a human-readable step location string for validation error output. */
