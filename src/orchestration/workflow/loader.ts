@@ -15,10 +15,12 @@ import type { WorkflowToolStep } from "../../core/types/workflow.js"
 // silently mis-parsing fields (e.g. a renamed key, a removed shape).
 const SUPPORTED_WORKFLOW_FILE_VERSIONS = new Set([1])
 
+/** Result of loading a workflow_file: parsed steps or an error message. */
 type WorkflowFileResult =
     | { steps: WorkflowToolStep[] }
     | { error: string }
 
+/** File path + human-readable prefix for error messages (e.g. "step 2 branch \"fix\" step 1"). */
 type StepLocation = {
     readonly filePath: string
     readonly prefix: string
@@ -111,9 +113,11 @@ function validateWorkflowStepArray(
  * actual file.
  */
 export function validateWorkflowSteps(value: unknown): { steps: WorkflowToolStep[] } | { error: string }
+
 export function validateWorkflowSteps(
     value: unknown, sourcePath: string,
 ): { steps: WorkflowToolStep[] } | { error: string }
+
 export function validateWorkflowSteps(
     value: unknown, sourcePath = "<workflow>",
 ): { steps: WorkflowToolStep[] } | { error: string } {
