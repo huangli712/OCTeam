@@ -141,7 +141,6 @@ export function worktreePath(teamDirectory: string, memberName: string): string 
     return path.join(worktreesDir(teamDirectory), memberName)
 }
 
-
 // --- runs/ (per-orchestration result records + full member outputs) ---
 
 /**

@@ -11,7 +11,6 @@ import { promisify } from "node:util"
 import { logger } from '../core/log.js';
 import { worktreePath } from "./paths.js";
 
-
 const execFileP = promisify(execFile)
 
 /**

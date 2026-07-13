@@ -9,7 +9,6 @@ import path from "node:path"
 
 import { isEnoent } from '../core/utils.js';
 
-
 /** Default stale-lock age threshold and heartbeat basis (30s). */
 export const LOCK_TTL_MS = 30_000
 

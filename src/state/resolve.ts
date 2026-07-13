@@ -13,6 +13,9 @@ import type { PluginContext } from "../core/context.js"
 import { logSwallowed } from "../core/log.js"
 import { isInteractionForbidden } from "./activation.js"
 
+const memberIndex = new Map<string, MemberIndexEntry>()
+const masterIndex = new Map<string, MasterIndexEntry>()
+
 // --- sessionID -> team index (process-level, O(1) resolve) ---
 //
 // Two maps by role. A member session belongs to exactly one team (1:1), so the
@@ -38,9 +41,6 @@ type MasterIndexEntry = {
     teams: Map<string, MasterTeamEntry> // keyed by directory
     activeDirectory?: string            // the ONE available team; undefined ⇒ none active
 }
-
-const memberIndex = new Map<string, MemberIndexEntry>()
-const masterIndex = new Map<string, MasterIndexEntry>()
 
 /** Index a member session by its sessionID, mapping it to a specific team. */
 export function indexMember(
