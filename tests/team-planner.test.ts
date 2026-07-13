@@ -8,7 +8,7 @@
  * happy-path, invalid-output-retry, and timeout behaviors deterministically
  * with a fake `ctx.client.session` — no live model call, no real team state.
  *
- * The file imports from "../src/tools/planner.js", which does not exist yet,
+ * The file imports from "../src/tools/workflow/planner.js", which does not exist yet,
  * so the whole suite is RED until Task 5 lands the module. That is the
  * intended failure mode (see .omo/evidence/task-3-team-planner-workflow-files.txt).
  */
@@ -20,7 +20,7 @@ import path from "node:path"
 import type { PluginContext } from "../src/core/context.js"
 import { createTools } from "../src/tools/index.js"
 // RED: this module + exports do not exist yet (implemented by Task 5).
-import { runPlannerSession, teamPlannerTool } from "../src/tools/planner.js"
+import { runPlannerSession, teamPlannerTool } from "../src/tools/workflow/planner.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeToolContext, tmpRoot } from "./helpers.js"
 
@@ -398,7 +398,7 @@ describe("runPlannerSession: timeout", () => {
 //   - team_planner is registered in createTools(ctx).
 //
 // The file still imports teamPlannerTool from the not-yet-built
-// "../src/tools/planner.js", so the whole suite is RED at module resolution
+// "../src/tools/workflow/planner.js", so the whole suite is RED at module resolution
 // until Task 5 lands the module. No live model call, no real team state.
 // =========================================================================
 
