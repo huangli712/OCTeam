@@ -18,6 +18,7 @@ export type WorkflowInvariantCheckResult =
     | { readonly ok: true }
     | { readonly ok: false; readonly violations: readonly string[] }
 
+/** Internal accumulator for invariant checks: the step array under validation and the collected violations. */
 type WorkflowInvariantContext = {
     readonly steps: readonly WorkflowStep[]
     readonly violations: string[]
