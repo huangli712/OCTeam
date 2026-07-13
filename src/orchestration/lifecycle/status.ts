@@ -19,6 +19,7 @@ import { handleRecurseIdle } from "../modes/recurse.js"
 import { advanceWorkflowStep } from "../workflow/workflow.js"
 import { handleArenaIdle } from "../modes/arena.js"
 
+/** Sustained-retry grace window before a member is escalated to "errored". */
 const RETRY_ESCALATION_MS = 60_000
 
 /**
@@ -41,12 +42,16 @@ export async function handleStatusEvent(
         if (team.deleted) return
         const live = team.members.find(m => m.name === member.name)
         if (!live) return
+        // The event payload is only a signal; re-query to read the authoritative
+        // status entry for this session.
         const status = await ctx.client.session.status({})
         const entry = (status.data as Record<string, { type: string; message?: string }> | undefined)?.[sessionID]
         if (entry?.type === "retry") {
             live.retryingSince ??= Date.now()
             if (Date.now() - live.retryingSince > RETRY_ESCALATION_MS) {
                 const maxRetries = team.activeTask?.maxRetries ?? 0
+                // Within grace (max_retries not exhausted): consume one grace retry
+                // and reset the window so the next escalation check starts fresh.
                 if ((live.retryCount ?? 0) < maxRetries) {
                     live.retryCount = (live.retryCount ?? 0) + 1
                     live.retryingSince = Date.now()
@@ -59,6 +64,7 @@ export async function handleStatusEvent(
                     await saveTeamState(team)
                     return
                 }
+                // Grace exhausted: escalate the member to errored.
                 live.status = "errored"
                 live.error =
                     `sustained retry > ${RETRY_ESCALATION_MS}ms`
@@ -111,9 +117,11 @@ export async function handleStatusEvent(
                 await saveTeamState(team)
             }
         } else if (entry?.type === "idle") {
+            // Member returned to idle: the retry storm ended, so clear tracking.
             live.retryingSince = undefined
             await saveTeamState(team)
         } else if (entry?.type === "busy") {
+            // A previously-idle member is active again: backfill the running state.
             if (live.status === "idle") {
                 live.status = "running"
                 await saveTeamState(team)
