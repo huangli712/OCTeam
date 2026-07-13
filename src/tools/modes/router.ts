@@ -32,14 +32,35 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
             + "an unmatched input fails the run.",
         args: {
             team_id: tool.schema.string().min(1),
-            router: tool.schema.string().min(1).describe("member name of the router (NOT \"master\", NOT a branch member)"),
-            input: tool.schema.string().min(1).max(32768).describe("the content to be routed (dispatched to the router; if a branch has no per-branch task, the branch member receives this input)"),
+            router: tool.schema
+                .string()
+                .min(1)
+                .describe("member name of the router (NOT \"master\", NOT a branch member)"),
+            input: tool.schema
+                .string()
+                .min(1)
+                .max(32768)
+                .describe(
+                    "the content to be routed (dispatched to the router; if a branch "
+                    + "has no per-branch task, the branch member receives this input)",
+                ),
             routes: tool.schema
                 .array(
                     tool.schema.object({
                         name: tool.schema.string().min(1).describe("branch label the router selects by (unique)"),
-                        member: tool.schema.string().min(1).describe("target member to dispatch to (unique across branches)"),
-                        task: tool.schema.string().min(1).max(8192).optional().describe("per-branch task; if omitted, the branch member receives the routing `input`"),
+                        member: tool.schema
+                            .string()
+                            .min(1)
+                            .describe("target member to dispatch to (unique across branches)"),
+                        task: tool.schema
+                            .string()
+                            .min(1)
+                            .max(8192)
+                            .optional()
+                            .describe(
+                                "per-branch task; if omitted, the branch member "
+                                + "receives the routing `input`",
+                            ),
                         description: tool.schema.string().max(1024).optional().describe("hint shown to the router"),
                     }),
                 )
@@ -47,8 +68,21 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            token_budget: tool.schema
+                .number()
+                .min(1)
+                .optional()
+                .describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .max(5)
+                .optional()
+                .describe(
+                    "re-dispatch grace windows before a sustained-retry member "
+                    + "is marked errored. Default 0.",
+                ),
         },
         async execute(args, context) {
             return startOrchestration(
@@ -110,7 +144,8 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                     await dispatchToMember(ctx, routerMember, prompt, routerMember.worktreePath ?? ctx.directory, team)
                 },
                 // successMessage
-                () => `team_route started on "${args.team_id}" (router: ${args.router}, ${args.routes.length} route(s)).`,
+                () => `team_route started on "${args.team_id}" `
+                    + `(router: ${args.router}, ${args.routes.length} route(s)).`,
             )
         },
     })

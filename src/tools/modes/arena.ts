@@ -16,29 +16,43 @@ import {
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
 
+/** Competitive arena with multiple candidates and a dedicated evaluator. */
 export function teamArenaTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
             "Competitive arena: N candidate members implement competing solutions, each in an isolated git worktree "
-            + "(implement phase); a dedicated evaluator then runs the same objective evaluation over every candidate "
-            + "and emits a structured scoreboard; a deterministic winner is selected on the winner metric and delivered "
-            + "directly. Every candidate MUST be created with worktree:true.",
+            + "(implement phase); a dedicated evaluator then runs the same objective evaluation "
+            + "over every candidate and emits a structured scoreboard; a deterministic winner is "
+            + "selected on the winner metric and delivered directly. Every candidate MUST be created "
+            + "with worktree:true.",
         args: {
             team_id: tool.schema.string().min(1),
             task: tool.schema.string().min(1).max(8192).describe("the shared implement task every candidate works on"),
-            evaluator: tool.schema.string().min(1).describe("member name of the evaluator (NOT \"master\", NOT a candidate)"),
+            evaluator: tool.schema
+                .string()
+                .min(1)
+                .describe("member name of the evaluator (NOT \"master\", NOT a candidate)"),
             candidates: tool.schema
                 .array(tool.schema.string().min(1))
                 .optional()
-                .describe("candidate member names (unique, >=2). Defaults to all non-master members except the evaluator."),
+                .describe(
+                    "candidate member names (unique, >=2). Defaults to all non-master "
+                    + "members except the evaluator.",
+                ),
             eval_command: tool.schema
                 .string()
                 .optional()
-                .describe("objective command the evaluator runs against each candidate worktree. At least one of eval_command/eval_criteria is required."),
+                .describe(
+                    "objective command the evaluator runs against each candidate worktree. "
+                    + "At least one of eval_command/eval_criteria is required.",
+                ),
             eval_criteria: tool.schema
                 .string()
                 .optional()
-                .describe("scoring criteria for the evaluator. At least one of eval_command/eval_criteria is required."),
+                .describe(
+                    "scoring criteria for the evaluator. At least one of "
+                    + "eval_command/eval_criteria is required.",
+                ),
             winner_metric: tool.schema
                 .string()
                 .optional()
@@ -58,10 +72,26 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                 .int()
                 .min(0)
                 .optional()
-                .describe("candidate failure isolation: tolerate up to N errored candidates during implement. Default 0."),
+                .describe(
+                    "candidate failure isolation: tolerate up to N errored candidates "
+                    + "during implement. Default 0.",
+                ),
             timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            token_budget: tool.schema
+                .number()
+                .min(1)
+                .optional()
+                .describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .max(5)
+                .optional()
+                .describe(
+                    "re-dispatch grace windows before a sustained-retry member "
+                    + "is marked errored. Default 0.",
+                ),
         },
         async execute(args, context) {
             // Resolve candidates once (shared by validate, buildTask, and the
@@ -117,7 +147,8 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                     })
                     if (missing.length > 0) {
                         return {
-                            error: `team_arena requires every candidate to have an isolated worktree (create with worktree:true): ${missing.join(", ")}`,
+                            error: `team_arena requires every candidate to have an isolated worktree `
+                                + `(create with worktree:true): ${missing.join(", ")}`,
                         }
                     }
                     candidateCount = candidates.length
@@ -149,7 +180,8 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                     }
                 },
                 // successMessage
-                () => `team_arena started on "${args.team_id}" (evaluator: ${args.evaluator}, ${candidateCount} candidate(s)).`,
+                () => `team_arena started on "${args.team_id}" `
+                    + `(evaluator: ${args.evaluator}, ${candidateCount} candidate(s)).`,
             )
         },
     })

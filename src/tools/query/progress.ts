@@ -21,11 +21,13 @@ import { getActiveWorkflowStepIndices } from "../../orchestration/workflow/dag.j
 import type { RunEvent, WorkflowRunStep, WorkflowStep, WorkflowTask } from "../../core/types.js"
 import type { Team } from "../../state/store.js"
 
+/** Elapsed time suffix for a workflow step line. */
 function formatWorkflowStepElapsed(step: WorkflowStep | undefined): string {
     if (step?.startedAt === undefined) return ""
     return ` elapsed=${Math.max(0, Date.now() - step.startedAt)}ms`
 }
 
+/** One-line frontier indicator for a single active step. */
 function formatWorkflowFrontierStep(steps: readonly WorkflowStep[], index: number): string {
     const step = steps[index]
     const branch = step?.branch
@@ -33,6 +35,7 @@ function formatWorkflowFrontierStep(steps: readonly WorkflowStep[], index: numbe
     return `${branchTag}step ${index + 1}/${steps.length}${formatWorkflowStepElapsed(step)}`
 }
 
+/** Join policy tag for the active fanout frontier. */
 function activeFanoutJoinPolicy(task: WorkflowTask): string {
     const steps = task.steps ?? []
     for (const index of getActiveWorkflowStepIndices(task)) {
@@ -44,13 +47,23 @@ function activeFanoutJoinPolicy(task: WorkflowTask): string {
     return ""
 }
 
+/** Stage description line for a workflow task (frontier or simple progress). */
 function formatWorkflowStage(task: WorkflowTask): string {
     const steps = task.steps ?? []
     if (steps.length === 0) return ""
     const activeIndices = getActiveWorkflowStepIndices(task)
-    const hasBranchFrontier = activeIndices.length > 1 || activeIndices.some(index => steps[index]?.branch !== undefined)
-    if (!hasBranchFrontier) return `  step ${task.currentStageIndex + 1}/${steps.length}${formatWorkflowStepElapsed(steps[task.currentStageIndex])}`
-    return `  frontier ${activeIndices.map(index => formatWorkflowFrontierStep(steps, index)).join(", ")}${activeFanoutJoinPolicy(task)}`
+    const hasBranchFrontier =
+        activeIndices.length > 1 || activeIndices.some(index => steps[index]?.branch !== undefined)
+    if (!hasBranchFrontier) {
+        return (
+            `  step ${task.currentStageIndex + 1}/${steps.length}` +
+            `${formatWorkflowStepElapsed(steps[task.currentStageIndex])}`
+        )
+    }
+    return (
+        `  frontier ${activeIndices.map(index => formatWorkflowFrontierStep(steps, index)).join(", ")}` +
+        `${activeFanoutJoinPolicy(task)}`
+    )
 }
 
 /** One-line-per-member live snapshot (current state, not history). */
@@ -70,7 +83,10 @@ function formatSnapshot(team: Team): string[] {
                 req.stage !== undefined ? `stage ${req.stage}` : "",
                 req.round !== undefined ? `round ${req.round}` : "",
             ].filter(Boolean).join(" ")
-            lines.push(`Awaiting approval: ${req.kind} ${req.id.slice(0, 8)}${where ? ` (${where})` : ""} requested ${age}s ago`)
+            lines.push(
+                `Awaiting approval: ${req.kind} ${req.id.slice(0, 8)}` +
+                    `${where ? ` (${where})` : ""} requested ${age}s ago`,
+            )
         }
     } else {
         lines.push("Active: none")
@@ -80,7 +96,10 @@ function formatSnapshot(team: Team): string[] {
         if (m.isMaster) continue
         const tok = team.activeTask?.tokensByMember?.[m.name]
         const err = m.error ? `  "${m.error}"` : ""
-        lines.push(`  - ${m.name}: ${m.status}${m.turnCount ? `  ${m.turnCount} turns` : ""}${tok ? `  tok ${tok}` : ""}${err}`)
+        lines.push(
+            `  - ${m.name}: ${m.status}` +
+                `${m.turnCount ? `  ${m.turnCount} turns` : ""}${tok ? `  tok ${tok}` : ""}${err}`,
+        )
     }
     return lines
 }
@@ -108,6 +127,7 @@ function formatTimeline(events: RunEvent[], runId: string, totalBefore: number):
     return [header, ...lines]
 }
 
+/** Convert live WorkflowStep[] into WorkflowRunStep[] for mermaid rendering. */
 function liveStepsToRunSteps(steps: readonly WorkflowStep[]): WorkflowRunStep[] {
     return steps.map((step, index) => ({
         index,
@@ -144,6 +164,7 @@ function liveStepsToRunSteps(steps: readonly WorkflowStep[]): WorkflowRunStep[] 
     }))
 }
 
+/** Build a status map (pending/active/done/skipped) by step index. */
 function liveStatusByIndex(task: WorkflowTask): Map<number, MermaidStepStatus> {
     const active = new Set(getActiveWorkflowStepIndices(task))
     const statuses = new Map<number, MermaidStepStatus>()
@@ -164,6 +185,7 @@ function liveStatusByIndex(task: WorkflowTask): Map<number, MermaidStepStatus> {
     return statuses
 }
 
+/** Render a live mermaid diagram for an in-progress workflow, or null. */
 function formatLiveWorkflowMermaid(team: Team): string | null {
     const task = team.activeTask
     if (task?.type !== "workflow") return null
@@ -176,12 +198,19 @@ function formatLiveWorkflowMermaid(team: Team): string | null {
 export function teamProgressTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Show a team's live progress: current member states PLUS the run's event timeline (dispatched/captured/errored/retry/stage/round/signoff/terminated). Use mid-run to see where an orchestration is, or after to review how it unfolded. Omit run_id for the active (or latest) run. Use format='mermaid' for a live team_workflow graph.",
+            "Show a team's live progress: current member states PLUS the run's event timeline " +
+                "(dispatched/captured/errored/retry/stage/round/signoff/terminated). " +
+                "Use mid-run to see where an orchestration is, or after to review how it unfolded. " +
+                "Omit run_id for the active (or latest) run. " +
+                "Use format='mermaid' for a live team_workflow graph.",
         args: {
             team_id: tool.schema.string().min(1),
-            limit: tool.schema.number().int().min(1).max(200).optional().describe("max events, most-recent kept (default 40)"),
-            since: tool.schema.number().int().optional().describe("epoch ms; only events strictly after this (incremental polling)"),
-            run_id: tool.schema.string().optional().describe("a specific finished run; omit for the active or latest run"),
+            limit: tool.schema.number().int().min(1).max(200).optional()
+                .describe("max events, most-recent kept (default 40)"),
+            since: tool.schema.number().int().optional()
+                .describe("epoch ms; only events strictly after this (incremental polling)"),
+            run_id: tool.schema.string().optional()
+                .describe("a specific finished run; omit for the active or latest run"),
             format: tool.schema.enum(["text", "mermaid"]).optional().describe("output format; default text"),
         },
         async execute(args, context) {
@@ -206,7 +235,10 @@ export function teamProgressTool(ctx: PluginContext): ToolDefinition {
             if ((args.format ?? "text") === "mermaid") {
                 const mermaid = formatLiveWorkflowMermaid(team)
                 if (mermaid === null) {
-                    return `Error: team_progress format=mermaid requires an in-progress team_workflow (no active workflow on team "${args.team_id}")`
+                    return (
+                        `Error: team_progress format=mermaid requires an in-progress team_workflow ` +
+                        `(no active workflow on team "${args.team_id}")`
+                    )
                 }
                 return mermaid
             }

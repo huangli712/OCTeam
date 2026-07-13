@@ -18,11 +18,13 @@ import { advanceWorkflowStep } from "../../orchestration/workflow/engine.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 
+/** Result of a human approval decision: approved boolean with optional feedback. */
 type ApprovalDecision = {
     approved: boolean
     feedback?: string
 }
 
+/** Validate that a team has a pending approval matching the given approvalId (if provided). */
 function validateApproval(team: Team, approvalId: string | undefined): ApprovalRequest | string {
     const task = team.activeTask
     if (!task?.approvalStage || !task.approvalRequest) {
@@ -134,6 +136,7 @@ export async function applyApprovalDecision(
     }
 }
 
+/** Create an approve or reject tool definition based on the boolean `approved` flag. */
 function approvalTool(ctx: PluginContext, approved: boolean): ToolDefinition {
     return tool({
         description: approved
@@ -147,7 +150,9 @@ function approvalTool(ctx: PluginContext, approved: boolean): ToolDefinition {
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller) return "Error: caller is not a member of this team"
-            if (!caller.isMaster) return approved ? "Error: team_approve is master-only" : "Error: team_reject is master-only"
+            if (!caller.isMaster) {
+                return approved ? "Error: team_approve is master-only" : "Error: team_reject is master-only"
+            }
 
             let team
             try {

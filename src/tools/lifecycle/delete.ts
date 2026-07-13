@@ -18,7 +18,10 @@ import { worktreesDir } from "../../state/paths.js"
 export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Delete a team. Without force, refuses while the team is busy with an active orchestration, or if any member worktree has uncommitted changes. With force, removes on-disk state immediately (member worktrees are cleaned up; sessions stay in OpenCode history; running agents finish their current turn but receive no further dispatch).",
+            "Delete a team. Without force, refuses while the team is busy with an active orchestration, or if any "
+            + "member worktree has uncommitted changes. With force, removes on-disk state "
+            + "immediately (member worktrees are cleaned up; sessions stay in OpenCode history; "
+            + "running agents finish their current turn but receive no further dispatch).",
         args: {
             team_id: tool.schema.string().min(1),
             force: tool.schema.boolean().optional(),
@@ -36,7 +39,8 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             }
             const force = args.force ?? false
             if (!force && team.status === "busy") {
-                return `Error: team "${args.team_id}" is busy with an active orchestration. Wait for it to finish, or re-run with force: true.`
+                return `Error: team "${args.team_id}" is busy with an active orchestration. `
+                    + `Wait for it to finish, or re-run with force: true.`
             }
             // Protect uncommitted work: if any member's worktree is dirty, refuse
             // unless force: true -- regardless of team status.
@@ -48,7 +52,8 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     }
                 }
                 if (dirty.length > 0) {
-                    return `Error: member(s) ${dirty.join(", ")} have uncommitted changes in their worktrees. Commit or stash them first, or re-run with force: true.`
+                    return `Error: member(s) ${dirty.join(", ")} have uncommitted changes in their worktrees. `
+                        + `Commit or stash them first, or re-run with force: true.`
                 }
             }
             // Hold the team mutex for the entire teardown. team.deleted is set FIRST
@@ -99,7 +104,8 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 // the deletion was incomplete and the orphaned state may
                 // resurrect on restart.
                 const msg = err instanceof Error ? err.message : String(err)
-                return `Error: failed to fully delete team "${args.team_id}" storage: ${msg}. The team directory may still exist on disk; manual cleanup may be required.`
+                return `Error: failed to fully delete team "${args.team_id}" storage: ${msg}. `
+                    + `The team directory may still exist on disk; manual cleanup may be required.`
             }
         },
     })

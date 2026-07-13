@@ -19,12 +19,18 @@ import { MEMBER_NAME_POOL } from "../../state/naming.js"
 export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Modify a team member's name, role, system prompt, and/or agent. new_role must be a preset role (unknown → \"reviewer\", read-only) and re-derives the member's agent unless new_agent is also given. new_name must be a preset pool name. Changing the agent re-resolves the model from the agent registry. Only allowed when the team is not busy and the target member is not running.",
+            "Modify a team member's name, role, system prompt, and/or agent. new_role must be a preset role "
+            + `(unknown → "reviewer", read-only) and re-derives the member's agent unless new_agent is also given. `
+            + "new_name must be a preset pool name. Changing the agent re-resolves the model from the agent registry. "
+            + "Only allowed when the team is not busy and the target member is not running.",
         args: {
             team_id: tool.schema.string().min(1),
             member_name: tool.schema.string().min(1),
             new_name: tool.schema.string().min(1).max(32).regex(/^[a-z0-9-]+$/).optional(),
-            new_role: tool.schema.string().min(1).max(64).regex(/^[a-zA-Z]+$/, "a single English word, letters only, e.g. \"coder\"").optional(),
+            new_role: tool.schema.string().min(1).max(64).regex(
+                /^[a-zA-Z]+$/,
+                "a single English word, letters only, e.g. \"coder\"",
+            ).optional(),
             new_prompt: tool.schema.string().min(1).max(8192).optional(),
             new_agent: tool.schema.string().min(1).optional(),
         },
@@ -32,9 +38,15 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             if (!args.new_name && !args.new_role && !args.new_prompt && !args.new_agent) {
                 return "Error: provide at least one of new_name, new_role, new_prompt, or new_agent"
             }
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false })
-            if (!caller) return "Error: caller is not a member of this team"
-            if (!caller.isMaster) return "Error: team_fix_member is master-only (only the team's leader session can modify members)"
+            const caller = await resolveCallerInTeam(
+                ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false },
+            )
+            if (!caller) {
+                return "Error: caller is not a member of this team"
+            }
+            if (!caller.isMaster) {
+                return "Error: team_fix_member is master-only (only the team's leader session can modify members)"
+            }
             let team
             try {
                 team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
@@ -42,26 +54,31 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 return `Error: team "${args.team_id}" not found`
             }
             if (team.status === "busy") {
-                return `Error: team "${args.team_id}" is busy. Wait for the workflow to finish before modifying members.`
+                return `Error: team "${args.team_id}" is busy. `
+                    + `Wait for the workflow to finish before modifying members.`
             }
             const member = team.members.find(m => m.name === args.member_name)
             if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
             if (member.status === "running") {
-                return `Error: member "${args.member_name}" is currently running. Wait for it to finish before modifying.`
+                return `Error: member "${args.member_name}" is currently running. `
+                    + `Wait for it to finish before modifying.`
             }
 
             // Agent override (optional): must be one of OCTeam's hardened oct-*
             // agents. A bare host agent (e.g. "build") would bypass the
             // role->agent permission-hardening chokepoint (role.ts).
             if (args.new_agent !== undefined && !isOCTeamAgent(args.new_agent)) {
-                return `Error: agent "${args.new_agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'new_agent' to derive it from the role.`
+                return `Error: agent "${args.new_agent}" is not a hardened oct-* agent. `
+                    + `Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. `
+                    + `Omit 'new_agent' to derive it from the role.`
             }
 
             // Validate new_name BEFORE taking the lock.
             const renaming = !!(args.new_name && args.new_name !== args.member_name)
             if (renaming) {
                 if (!(MEMBER_NAME_POOL as readonly string[]).includes(args.new_name!)) {
-                    return `Error: name "${args.new_name}" is not a preset pool name. Choose one of: ${MEMBER_NAME_POOL.join(", ")}`
+                    return `Error: name "${args.new_name}" is not a preset pool name. `
+                        + `Choose one of: ${MEMBER_NAME_POOL.join(", ")}`
                 }
                 if (team.members.some(m => m.name === args.new_name)) {
                     return `Error: name "${args.new_name}" already exists in this team`
@@ -95,7 +112,10 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     if (specMember) specMember.name = args.new_name!
                     if (member.sessionId) {
                         unindexSession(member.sessionId)
-                        indexMember(member.sessionId, team.teamName, args.new_name!, caller.leadSessionId, ctx.storageRoot)
+                        indexMember(
+                            member.sessionId, team.teamName, args.new_name!,
+                            caller.leadSessionId, ctx.storageRoot,
+                        )
                     }
                     try {
                         await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, args.new_name!))
@@ -158,7 +178,8 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             })
 
             if (staleState) {
-                return `Error: team "${args.team_id}" is busy. Wait for the workflow to finish before modifying members.`
+                return `Error: team "${args.team_id}" is busy. `
+                    + `Wait for the workflow to finish before modifying members.`
             }
 
             return `Member "${args.member_name}" updated — ${changes.join("; ")}`

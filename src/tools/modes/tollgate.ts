@@ -22,9 +22,12 @@ import { validateSignoff } from "../support.js"
 export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Verdict-gated pipeline: between each stage sits a three-valued verification gate. A downstream stage starts "
-            + "only on a verifier's PASS verdict. FAIL returns the producer with a diff (up to max_gate_retries, then the "
-            + "run fails). INVALID (verifier/reference cannot evaluate) isolates the stage and escalates the verifier side "
+            "Verdict-gated pipeline: between each stage sits a three-valued "
+            + "verification gate. A downstream stage starts "
+            + "only on a verifier's PASS verdict. FAIL returns the producer "
+            + "with a diff (up to max_gate_retries, then the "
+            + "run fails). INVALID (verifier/reference cannot evaluate) "
+            + "isolates the stage and escalates the verifier side "
             + "— the producer is NOT penalized. Each gate's verifier must differ from its producer.",
         args: {
             team_id: tool.schema.string().min(1),
@@ -33,33 +36,71 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                     tool.schema.object({
                         member: tool.schema.string().min(1).describe("the producer member name"),
                         task: tool.schema.string().min(1).max(8192).describe("the producer's task"),
-                        verifier: tool.schema.string().min(1).describe("the verifier member name (must differ from member)"),
-                        criteria: tool.schema.string().min(1).max(8192).describe("verification criteria (tolerance / conservation law / reference description)"),
-                        reference: tool.schema.string().max(8192).optional().describe("golden reference location for a Compare-style numerical verdict"),
+                        verifier: tool.schema
+                            .string()
+                            .min(1)
+                            .describe("the verifier member name (must differ from member)"),
+                        criteria: tool.schema
+                            .string()
+                            .min(1)
+                            .max(8192)
+                            .describe(
+                                "verification criteria (tolerance / conservation law "
+                                + "/ reference description)",
+                            ),
+                        reference: tool.schema
+                            .string()
+                            .max(8192)
+                            .optional()
+                            .describe("golden reference location for a Compare-style numerical verdict"),
                     }),
                 )
                 .min(1),
             escalate_to: tool.schema
                 .string()
                 .optional()
-                .describe("INVALID escalation target member. When unset, an INVALID verdict is escalated to the leader."),
+                .describe(
+                    "INVALID escalation target member. When unset, an INVALID "
+                    + "verdict is escalated to the leader.",
+                ),
             max_gate_retries: tool.schema
                 .number()
                 .int()
                 .min(0)
                 .optional()
-                .describe("gate FAIL retry cap, DISTINCT from provider-retry max_retries. Default 0 (first FAIL fails)."),
+                .describe(
+                    "gate FAIL retry cap, DISTINCT from provider-retry "
+                    + "max_retries. Default 0 (first FAIL fails).",
+                ),
             max_invalid_cycles: tool.schema
                 .number()
                 .int()
                 .min(0)
                 .optional()
-                .describe("cap on INVALID/escalate ping-pong per gate. Default 3; beyond it the run fails with tollgate_invalid:exhausted instead of burning wall-clock/turn budget."),
+                .describe(
+                    "cap on INVALID/escalate ping-pong per gate. Default 3; "
+                    + "beyond it the run fails with "
+                    + "tollgate_invalid:exhausted instead of burning "
+                    + "wall-clock/turn budget.",
+                ),
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0. Distinct from max_gate_retries."),
+            token_budget: tool.schema
+                .number()
+                .min(1)
+                .optional()
+                .describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .max(5)
+                .optional()
+                .describe(
+                    "re-dispatch grace windows before a sustained-retry member "
+                    + "is marked errored. Default 0. Distinct from max_gate_retries.",
+                ),
         },
         async execute(args, context) {
             return startOrchestration(

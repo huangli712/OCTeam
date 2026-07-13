@@ -23,7 +23,10 @@ export const signoffSchemaFields = {
     signoff_policy: tool.schema
         .enum(["none", "decider", "peer-quorum"])
         .optional()
-        .describe("post-completion review gate. 'none' (default): direct delivery. 'decider': named member reviews. 'peer-quorum': all members vote."),
+        .describe(
+            "post-completion review gate. 'none' (default): direct delivery. " +
+            "'decider': named member reviews. 'peer-quorum': all members vote.",
+        ),
     signoff_decider: tool.schema
         .string()
         .optional()
@@ -33,7 +36,10 @@ export const signoffSchemaFields = {
         .gt(0)
         .max(1)
         .optional()
-        .describe("fraction of members needed for peer-quorum (default 0.5 = majority). Only when signoff_policy='peer-quorum'."),
+        .describe(
+            "fraction of members needed for peer-quorum (default 0.5 = majority). " +
+            "Only when signoff_policy='peer-quorum'.",
+        ),
 }
 
 /** Schema fields for human approval: a boolean flag to pause at mid-run boundaries. */
@@ -41,5 +47,8 @@ export const humanApprovalSchemaFields = {
     human_approval: tool.schema
         .boolean()
         .optional()
-        .describe("Pause at supported mid-run boundaries and require the leader to call team_approve/team_reject before continuing."),
+        .describe(
+            "Pause at supported mid-run boundaries and require the leader to call " +
+            "team_approve/team_reject before continuing.",
+        ),
 }

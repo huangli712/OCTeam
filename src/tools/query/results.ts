@@ -22,6 +22,7 @@ import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js
 import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
 import type { RunRecord, WorkflowRunStep } from "../../core/types.js"
 
+/** Label for a gate's target step (for display in step lines). */
 function workflowTargetLabel(step: WorkflowRunStep): string {
     if (step.targetSteps !== undefined && step.targetSteps.length > 0) {
         return step.targetSteps.length === 1 ? `step ${step.targetSteps[0]}` : `steps ${step.targetSteps.join(", ")}`
@@ -29,6 +30,7 @@ function workflowTargetLabel(step: WorkflowRunStep): string {
     return step.targetStep === undefined ? "nearest task" : `step ${step.targetStep}`
 }
 
+/** Metrics suffix for a gate step line (score, confidence, issues). */
 function workflowVerdictMetrics(step: WorkflowRunStep): string {
     const metrics: string[] = []
     if (step.score !== undefined) metrics.push(`score=${step.score}`)
@@ -62,10 +64,12 @@ function workflowStepControlsTag(step: WorkflowRunStep): string {
     return controls.length > 0 ? `  [${controls.join(", ")}]` : ""
 }
 
+/** Duration suffix for a step line, e.g. " duration=123ms". */
 function workflowStepDurationTag(step: WorkflowRunStep): string {
     return step.durationMs === undefined ? "" : ` duration=${step.durationMs}ms`
 }
 
+/** Fanout join policy tag for step lines. */
 function workflowFanoutPolicyTag(fanout: NonNullable<WorkflowRunStep["fanout"]>): string {
     const controls: string[] = []
     if (fanout.joinPolicy !== undefined) controls.push(`join_policy=${fanout.joinPolicy}`)
@@ -75,25 +79,31 @@ function workflowFanoutPolicyTag(fanout: NonNullable<WorkflowRunStep["fanout"]>)
     return controls.length > 0 ? `  [${controls.join(", ")}]` : ""
 }
 
+/** Format branch status map as a comma-separated string. */
 function formatBranchStatusList(statuses: Record<string, string> | undefined): string {
     if (statuses === undefined) return ""
     const pairs = Object.entries(statuses).map(([branchId, status]) => `${branchId}:${status}`)
     return pairs.length > 0 ? pairs.join(", ") : ""
 }
 
+/** Single branch line for a fanout step in the step tree. */
 function formatWorkflowBranchLine(fanoutStep: WorkflowRunStep, branchId: string, branchIndex: number): string {
     const range = fanoutStep.fanout?.branchRanges[branchIndex]
-    if (range === undefined) throw new Error(`workflow fanout step ${fanoutStep.step} missing branch range ${branchIndex}`)
+    if (range === undefined) {
+    throw new Error(`workflow fanout step ${fanoutStep.step} missing branch range ${branchIndex}`)
+}
     const status = fanoutStep.branchStatuses?.[branchId] ?? "pending"
     return `  - Branch ${branchId} [${status}] steps ${range.startIndex + 1}-${range.endIndex + 1}`
 }
 
+/** Indent multi-line output by a prefix (for nested step output). */
 function formatIndentedOutput(output: string, indent: string): string {
     const text = truncateOutput(output, 1024)
     if (indent === "") return text
     return text.split("\n").map(line => `${indent}  ${line}`).join("\n")
 }
 
+/** Append a formatted step line and its task output to a lines array. */
 function appendWorkflowStepLines(lines: string[], step: WorkflowRunStep, indent: string): void {
     lines.push(`${indent}${formatWorkflowStepLine(step)}`)
     if (step.kind === "task" && step.output) {
@@ -101,27 +111,47 @@ function appendWorkflowStepLines(lines: string[], step: WorkflowRunStep, indent:
     }
 }
 
+/** Format a single workflow step into a display line. */
 function formatWorkflowStepLine(step: WorkflowRunStep): string {
     const idTag = step.id ? ` (${step.id})` : ""
     switch (step.kind) {
         case "task": {
             const bytes = step.outputBytes === undefined ? "" : ` (${step.outputBytes} bytes)`
             const state = step.skipped ? " (skipped)" : step.completed ? " (done)" : ""
-            return `- Step ${step.step}: [task]${idTag} ${step.dispatchedActor ?? step.member ?? "?"}${state}${bytes}${workflowStepDurationTag(step)}${workflowStepControlsTag(step)}`
+            return (
+                `- Step ${step.step}: [task]${idTag} ${step.dispatchedActor ?? step.member ?? "?"}${state}${bytes}` +
+                `${workflowStepDurationTag(step)}${workflowStepControlsTag(step)}`
+            )
         }
         case "gate": {
             const target = workflowTargetLabel(step)
             const attempts = step.attempts && step.attempts > 0 ? ` (${step.attempts} retries)` : ""
-            const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
-            const malformedTag = step.onMalformed && step.onMalformed !== "fail" ? `, on_malformed=${step.onMalformed}${(step.malformedAttempts ?? 0) > 0 ? ` (${step.malformedAttempts})` : ""}` : ""
+            const invalidTag = step.onInvalid && step.onInvalid !== "fail"
+                ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}`
+                : ""
+            const malformedTag = step.onMalformed && step.onMalformed !== "fail"
+                ? `, on_malformed=${step.onMalformed}${
+                    (step.malformedAttempts ?? 0) > 0 ? ` (${step.malformedAttempts})` : ""
+                }`
+                : ""
             const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
-            return `- Step ${step.step}: [gate]${idTag} ${step.dispatchedActor ?? step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}${invalidTag}${malformedTag}${jumpTag}${workflowStepDurationTag(step)}${formatWorkflowIssueDetail(step)}${workflowStepControlsTag(step)}`
+            return (
+                `- Step ${step.step}: [gate]${idTag}` +
+                ` ${step.dispatchedActor ?? step.verifier ?? "?"} verifies ${target}` +
+                ` -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}` +
+                `${invalidTag}${malformedTag}${jumpTag}` +
+                `${workflowStepDurationTag(step)}${formatWorkflowIssueDetail(step)}` +
+                `${workflowStepControlsTag(step)}`
+            )
         }
         case "fanout": {
             const fanout = step.fanout
             if (fanout === undefined) throw new Error(`workflow fanout step ${step.step} missing fanout metadata`)
             const branchList = fanout.branchIds.length > 0 ? fanout.branchIds.join(", ") : "(none)"
-            return `- Step ${step.step}: [fanout]${idTag} branches ${branchList} -> join step ${fanout.joinIndex + 1}${workflowStepDurationTag(step)}${workflowFanoutPolicyTag(fanout)}${workflowStepControlsTag(step)}`
+            return (
+                `- Step ${step.step}: [fanout]${idTag} branches ${branchList} -> join step ${fanout.joinIndex + 1}` +
+                `${workflowStepDurationTag(step)}${workflowFanoutPolicyTag(fanout)}${workflowStepControlsTag(step)}`
+            )
         }
         case "join": {
             const join = step.join
@@ -129,17 +159,22 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
             const statuses = formatBranchStatusList(step.branchStatuses)
             const statusTag = statuses === "" ? "" : ` branches ${statuses}`
             const joinedBytes = step.joinedOutputBytes === undefined ? "" : ` (joined ${step.joinedOutputBytes} bytes)`
-            return `- Step ${step.step}: [join]${idTag} fanout step ${join.fanoutIndex + 1}${statusTag}${joinedBytes}${workflowStepDurationTag(step)}${workflowStepControlsTag(step)}`
+            return (
+                `- Step ${step.step}: [join]${idTag} fanout step ${join.fanoutIndex + 1}${statusTag}${joinedBytes}` +
+                `${workflowStepDurationTag(step)}${workflowStepControlsTag(step)}`
+            )
         }
         default:
             return assertNeverWorkflowStepKind(step.kind)
     }
 }
 
+/** Check whether the step list has any fanout/join/branch steps. */
 function hasWorkflowBranchTree(steps: readonly WorkflowRunStep[]): boolean {
     return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
 }
 
+/** Render all workflow steps into display lines, handling fanout branch trees. */
 function formatWorkflowStepLines(steps: readonly WorkflowRunStep[]): string[] {
     if (!hasWorkflowBranchTree(steps)) {
         const lines: string[] = []
@@ -161,7 +196,11 @@ function formatWorkflowStepLines(steps: readonly WorkflowRunStep[]): string[] {
                     const range = fanout.branchRanges[branchIndex]
                     if (branchId === undefined || range === undefined) continue
                     lines.push(formatWorkflowBranchLine(step, branchId, branchIndex))
-                    for (let branchStepIndex = range.startIndex; branchStepIndex <= range.endIndex; branchStepIndex += 1) {
+                    for (
+                        let branchStepIndex = range.startIndex;
+                        branchStepIndex <= range.endIndex;
+                        branchStepIndex += 1
+                    ) {
                         const branchStep = steps[branchStepIndex]
                         if (branchStep === undefined) continue
                         appendWorkflowStepLines(lines, branchStep, "    ")
@@ -182,12 +221,16 @@ function formatWorkflowStepLines(steps: readonly WorkflowRunStep[]): string[] {
     return lines
 }
 
+/** One-line summary of a run record for the runs list. */
 function formatRunLine(r: RunRecord): string {
     const mode = r.mode ? `/${r.mode}` : ""
     const when = new Date(r.finishedAt).toISOString()
     const members = Object.keys(r.memberOutputs).length
     const winner = r.arena?.winner ? `  winner=${r.arena.winner}` : ""
-    return `- ${r.runId}  [${r.type}${mode}] ${r.status}  reason=${r.reason}  ${when}  tokens=${r.tokensUsed}  members=${members}${winner}`
+    return (
+        `- ${r.runId}  [${r.type}${mode}] ${r.status}  reason=${r.reason}  ${when}  tokens=${r.tokensUsed}` +
+        `  members=${members}${winner}`
+    )
 }
 
 /** Arena winner + evaluator-attested scoreboard audit trail (4e). The winner is
@@ -207,7 +250,9 @@ function formatArenaPreview(arena: NonNullable<RunRecord["arena"]>, reason: stri
         const val = arena.winnerMetric === "score" ? s.score : s.metrics?.[arena.winnerMetric]
         const ineligible = surviving !== undefined && !surviving.includes(s.member) ? " [ineligible]" : ""
         const rationale = s.rationale ? ` — ${s.rationale}` : ""
-        lines.push(`- ${s.member}: ${arena.winnerMetric}=${val ?? "n/a"} passed=${s.passed ?? false}${ineligible}${rationale}`)
+        lines.push(
+            `- ${s.member}: ${arena.winnerMetric}=${val ?? "n/a"} passed=${s.passed ?? false}${ineligible}${rationale}`,
+        )
     }
     return `### arena\n${lines.join("\n")}`
 }
@@ -216,7 +261,9 @@ function formatArenaPreview(arena: NonNullable<RunRecord["arena"]>, reason: stri
 export function teamResultsTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "List recent orchestration run records for a team (newest first). Each run is one completed/failed workflow with persisted full outputs. Use team_result_get to fetch a single run's details.",
+            "List recent orchestration run records for a team (newest first). " +
+                "Each run is one completed/failed workflow with persisted full outputs. " +
+                "Use team_result_get to fetch a single run's details.",
         args: {
             team_id: tool.schema.string().min(1),
             limit: tool.schema.number().int().min(1).max(50).optional().describe("max runs to return (default 10)"),
@@ -239,7 +286,10 @@ export function teamResultsTool(ctx: PluginContext): ToolDefinition {
 export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Get one orchestration run's full record. Omit run_id for the LATEST run (covers 'I lost the summary'). Pass member= to get that member's full untruncated output; otherwise returns metadata + a bounded preview of each member's output.",
+            "Get one orchestration run's full record. Omit run_id for the LATEST run " +
+                "(covers 'I lost the summary'). Pass member= to get that member's full " +
+                "untruncated output; otherwise returns metadata + a bounded preview of each " +
+                "member's output.",
         args: {
             team_id: tool.schema.string().min(1),
             run_id: tool.schema.string().optional().describe("run id; omit for the most recent run"),
@@ -297,7 +347,8 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                 `Run ${record.runId}`,
                 `Team: ${record.teamName}  Type: ${record.type}${mode}  Status: ${record.status}`,
                 `Reason: ${record.reason}`,
-                `Started: ${new Date(record.startedAt).toISOString()}  Finished: ${new Date(record.finishedAt).toISOString()}`,
+                `Started: ${new Date(record.startedAt).toISOString()}` +
+                    `  Finished: ${new Date(record.finishedAt).toISOString()}`,
                 `Tokens: ${record.tokensUsed}  Messages: ${record.messagesSent}`,
             ]
             if (record.consensusReached !== undefined) header.push(`Consensus reached: ${record.consensusReached}`)
@@ -312,7 +363,8 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                     )
                     previews.push(
                         `### ${name} (${info.bytes} bytes)\n${truncateOutput(content, 1024)}\n` +
-                            `[full output: team_result_get(team_id="${record.teamName}", run_id="${record.runId}", member="${name}")]`,
+                            `[full output: team_result_get(` +
+                                `team_id="${record.teamName}", run_id="${record.runId}", member="${name}")]`,
                     )
                 } catch {
                     previews.push(`### ${name} (${info.bytes} bytes)\n[output file missing]`)

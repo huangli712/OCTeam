@@ -20,7 +20,9 @@ import { assertMember } from "../support.js"
 export function teamLoopTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Run a corrective loop: code -> review -> decide -> repeat. The decider (a member, NOT master) emits a <decision>{...} block each round. Loops until done, max_rounds, no-issues, timeout, or 3 consecutive parse failures.",
+            "Run a corrective loop: code -> review -> decide -> repeat. The decider "
+            + "(a member, NOT master) emits a <decision>{...} block each round. "
+            + "Loops until done, max_rounds, no-issues, timeout, or 3 consecutive parse failures.",
         args: {
             team_id: tool.schema.string().min(1),
             stages: tool.schema
@@ -36,8 +38,21 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             max_rounds: tool.schema.number().min(1).max(50),
             initial_task: tool.schema.string().min(1).max(8192),
             timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            token_budget: tool.schema
+                .number()
+                .min(1)
+                .optional()
+                .describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .max(5)
+                .optional()
+                .describe(
+                    "re-dispatch grace windows before a sustained-retry member "
+                    + "is marked errored. Default 0.",
+                ),
             ...humanApprovalSchemaFields,
         },
         async execute(args, context) {
@@ -73,7 +88,13 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                     if (!stages.some(s => s.member === args.decider)) {
                         stages.push({
                             member: args.decider,
-                            task: 'Review all outputs, then emit a <decision> block with JSON body. The tags must be the literal English <decision> and </decision> — do NOT use translated tags such as <决策>. Required JSON fields: "decision" (string, literally "done" or "continue" — not boolean), "rationale" (string), "nextActions" (string[]). Example: <decision>{"decision":"done","rationale":"checks passed","nextActions":[]}</decision>',
+                            task: 'Review all outputs, then emit a <decision> block with JSON body. '
+                                + 'The tags must be the literal English <decision> and </decision> '
+                                + "— do NOT use translated tags such as <决策>. Required JSON fields: "
+                                + '"decision" (string, literally "done" or "continue" — not boolean), '
+                                + '"rationale" (string), "nextActions" (string[]). Example: '
+                                + '<decision>{"decision":"done","rationale":"checks passed",'
+                                + '"nextActions":[]}</decision>',
                             action: "read_only",
                             completed: false,
                         })
@@ -94,7 +115,8 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                     await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? ctx.directory, team)
                 },
                 // successMessage
-                () => `team_loop started on "${args.team_id}" (decider: ${args.decider}, max ${args.max_rounds} rounds).`,
+                () => `team_loop started on "${args.team_id}" `
+                    + `(decider: ${args.decider}, max ${args.max_rounds} rounds).`,
             )
         },
     })

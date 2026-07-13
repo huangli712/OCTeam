@@ -23,7 +23,9 @@ import { validateSignoff } from "../support.js"
 export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Authoritative ruling: debaters argue a dispute over up to max_rounds rounds, then a single arbiter weighs all positions and issues a binding ruling. The arbiter must not be one of the debaters.",
+            "Authoritative ruling: debaters argue a dispute over up to max_rounds rounds, "
+            + "then a single arbiter weighs all positions and issues a binding ruling. "
+            + "The arbiter must not be one of the debaters.",
         args: {
             team_id: tool.schema.string().min(1),
             task: tool.schema.string().min(1).max(8192).describe("the dispute / subject under arbitration"),
@@ -32,12 +34,30 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                 .array(tool.schema.string().min(1))
                 .min(2)
                 .describe("debater member names (at least 2, unique; none may be the arbiter)"),
-            max_rounds: tool.schema.number().min(1).max(20).optional().describe("debate round limit before the ruling (default 1)"),
+            max_rounds: tool.schema
+                .number()
+                .min(1)
+                .max(20)
+                .optional()
+                .describe("debate round limit before the ruling (default 1)"),
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            token_budget: tool.schema
+                .number()
+                .min(1)
+                .optional()
+                .describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .max(5)
+                .optional()
+                .describe(
+                    "re-dispatch grace windows before a sustained-retry member "
+                    + "is marked errored. Default 0.",
+                ),
         },
         async execute(args, context) {
             return startOrchestration(
@@ -87,7 +107,8 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                     }
                 },
                 // successMessage
-                () => `team_arbitrate started on "${args.team_id}" (arbiter: ${args.arbiter}, ${args.debaters.length} debater(s)).`,
+                () => `team_arbitrate started on "${args.team_id}" `
+                    + `(arbiter: ${args.arbiter}, ${args.debaters.length} debater(s)).`,
             )
         },
     })

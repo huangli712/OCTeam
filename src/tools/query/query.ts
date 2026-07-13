@@ -18,7 +18,9 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
             member_name: tool.schema.string().min(1),
         },
         async execute(args, context) {
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false })
+            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, {
+                requireActive: false,
+            })
             if (!caller) return "Error: caller is not a member of this team"
             let team
             try {

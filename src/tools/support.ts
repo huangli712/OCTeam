@@ -59,7 +59,11 @@ export function validateMemberName(name: string): string | null {
  */
 export function validateMemberAgent(agent: string): string | null {
     if (!isOCTeamAgent(agent)) {
-        return `Error: agent "${agent}" is not a hardened oct-* agent. Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. Omit 'agent' to derive it from the role.`
+        return (
+            `Error: agent "${agent}" is not a hardened oct-* agent. ` +
+            `Members must run as one of: ${OCTEAM_AGENTS.join(", ")}. ` +
+            `Omit 'agent' to derive it from the role.`
+        )
     }
     return null
 }

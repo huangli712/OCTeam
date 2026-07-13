@@ -45,7 +45,9 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
             ]
             for (const r of rows) {
                 const desc = r.desc.length > 50 ? r.desc.slice(0, 47) + "…" : r.desc
-                lines.push(`| ${r.name} | ${desc} | ${r.created} | ${r.count} | ${r.status} | ${r.active ? "yes" : "no" } |`)
+                const row = `| ${r.name} | ${desc} | ${r.created} | ${r.count} | ${r.status} `
+                    + `| ${r.active ? "yes" : "no"} |`
+                lines.push(row)
             }
             return lines.join("\n")
         },

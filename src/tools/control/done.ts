@@ -26,7 +26,11 @@ import { loadTeamState, saveTeamState } from "../../state/store.js"
 export function teamDoneTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Acknowledge that your work on the current parallel task is complete. Only meaningful when the orchestrator started the run with require_done_ack=true; the all-idle barrier is replaced by an all-acked barrier so premature idle does not end the orchestration. Call this exactly once when you have finished every step in your task (including required messages and self-verification). Idempotent.",
+            "Acknowledge that your work on the current parallel task is complete. Only meaningful "
+            + "when the orchestrator started the run with require_done_ack=true; the all-idle "
+            + "barrier is replaced by an all-acked barrier so premature idle does not end the "
+            + "orchestration. Call this exactly once when you have finished every step in your "
+            + "task (including required messages and self-verification). Idempotent.",
         args: {
             team_id: tool.schema.string().min(1),
         },
@@ -55,7 +59,8 @@ export function teamDoneTool(ctx: PluginContext): ToolDefinition {
                 return `Error: team_done does not apply to parallel/${task.mode} (isolated/cooperative only)`
             }
             if (!task.requireDoneAck) {
-                return "Error: this run did not enable require_done_ack; just stop producing tool calls and the barrier will fire normally on idle"
+                return "Error: this run did not enable require_done_ack; just stop producing tool "
+                    + "calls and the barrier will fire normally on idle"
             }
 
             // Bind this ack to the current run's identity. The active run may
@@ -87,12 +92,14 @@ export function teamDoneTool(ctx: PluginContext): ToolDefinition {
             })
 
             if (staleRun) {
-                return "Error: the active run changed before this acknowledgement was applied; re-evaluate the current run and ack again if appropriate"
+                return "Error: the active run changed before this acknowledgement was applied; "
+                    + "re-evaluate the current run and ack again if appropriate"
             }
             if (alreadyAcked) {
                 return `Already acknowledged. ${caller.name} is declared done; waiting for the rest of the team.`
             }
-            return `Acknowledged. ${caller.name} marked done. The barrier will fire when every participant has acked (or earlier via timeout/turn-cap).`
+            return `Acknowledged. ${caller.name} marked done. The barrier will fire when every `
+                + `participant has acked (or earlier via timeout/turn-cap).`
         },
     })
 }

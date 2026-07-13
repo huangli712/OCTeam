@@ -133,10 +133,16 @@ function validateMatrixForeachShape(step: WorkflowToolStep, displayStep: number)
     const hasMatrix = step.matrix !== undefined
     const hasForeach = step.foreach !== undefined
     const hasBranches = (step.branches ?? []).length > 0
-    if (hasMatrix && hasForeach) return `Error: fanout step ${displayStep} must not set both matrix and foreach`
-    if ((hasMatrix || hasForeach) && hasBranches) return `Error: fanout step ${displayStep} must not set both matrix/foreach and branches`
+    if (hasMatrix && hasForeach) {
+        return `Error: fanout step ${displayStep} must not set both matrix and foreach`
+    }
+    if ((hasMatrix || hasForeach) && hasBranches) {
+        return `Error: fanout step ${displayStep} must not set both matrix/foreach and branches`
+    }
     if (hasMatrix || hasForeach) {
-        if ((step.steps ?? []).length === 0) return `Error: fanout step ${displayStep} with matrix/foreach requires template \`steps\``
+        if ((step.steps ?? []).length === 0) {
+            return `Error: fanout step ${displayStep} with matrix/foreach requires template \`steps\``
+        }
     }
     return null
 }
@@ -154,17 +160,23 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
         case "select":
             break
         case "quorum": {
-            if (step.quorum === undefined) return `Error: fanout step ${displayStep} join_policy='quorum' requires \`quorum\``
-            if (!(step.quorum > 0 && step.quorum <= 1)) return `Error: fanout step ${displayStep} quorum must be > 0 and <= 1`
+            if (step.quorum === undefined) {
+                return `Error: fanout step ${displayStep} join_policy='quorum' requires \`quorum\``
+            }
+            if (!(step.quorum > 0 && step.quorum <= 1)) {
+                return `Error: fanout step ${displayStep} quorum must be > 0 and <= 1`
+            }
             break
         }
         case "required_branches": {
             if (step.required_branches === undefined || step.required_branches.length === 0) {
-                return `Error: fanout step ${displayStep} join_policy='required_branches' requires \`required_branches\``
+                return `Error: fanout step ${displayStep}`
+                    + ` join_policy='required_branches' requires \`required_branches\``
             }
             for (const requiredId of step.required_branches) {
                 if (!branchIds.includes(requiredId)) {
-                    return `Error: fanout step ${displayStep} required_branches references unknown branch "${requiredId}"`
+                    return (`Error: fanout step ${displayStep} required_branches references unknown`
+                        + ` branch "${requiredId}"`)
                 }
             }
             break
@@ -189,9 +201,13 @@ function validateFanoutBranches(step: WorkflowFanoutToolStep, displayStep: numbe
     const branchIds = new Set<string>()
     const branchByMember = new Map<string, string>()
     for (const branch of branches) {
-        if (branchIds.has(branch.id)) return `Error: duplicate fanout branch id "${branch.id}" at fanout step ${displayStep}`
+        if (branchIds.has(branch.id)) {
+            return `Error: duplicate fanout branch id "${branch.id}" at fanout step ${displayStep}`
+        }
         branchIds.add(branch.id)
-        if (branch.steps.length === 0) return `Error: fanout step ${displayStep} branch "${branch.id}" must contain at least one step`
+        if (branch.steps.length === 0) {
+            return `Error: fanout step ${displayStep} branch "${branch.id}" must contain at least one step`
+        }
         const branchError = validateBranchSteps(branch, displayStep, branchByMember)
         if (branchError !== null) return branchError
     }
@@ -207,18 +223,26 @@ function registerFanoutBranchActor(
     if (member === undefined) return null
     const existingBranch = branchByMember.get(member)
     if (existingBranch !== undefined && existingBranch !== branchId) {
-        return `Error: fanout step ${fanoutDisplayStep} uses member "${member}" in concurrent branches "${existingBranch}" and "${branchId}"`
+        return (`Error: fanout step ${fanoutDisplayStep} uses member "${member}"`
+            + ` in concurrent branches "${existingBranch}" and "${branchId}"`)
     }
     branchByMember.set(member, branchId)
     return null
 }
 
-function validateBranchTimeoutPolicy(step: WorkflowToolStep, fanoutDisplayStep: number, branchId: string, displayStep: number): string | null {
+function validateBranchTimeoutPolicy(
+    step: WorkflowToolStep,
+    fanoutDisplayStep: number,
+    branchId: string,
+    displayStep: number,
+): string | null {
     if (step.on_timeout === "retry" || step.on_timeout === "skip") {
-        return `Error: fanout step ${fanoutDisplayStep} branch "${branchId}" step ${displayStep} must not set on_timeout='retry' or on_timeout='skip'`
+        return (`Error: fanout step ${fanoutDisplayStep} branch "${branchId}" step ${displayStep}`
+            + ` must not set on_timeout='retry' or on_timeout='skip'`)
     }
     if (step.max_timeout_retries !== undefined) {
-        return `Error: fanout step ${fanoutDisplayStep} branch "${branchId}" step ${displayStep} must not set max_timeout_retries`
+        return (`Error: fanout step ${fanoutDisplayStep} branch "${branchId}"`
+            + ` step ${displayStep} must not set max_timeout_retries`)
     }
     return null
 }
@@ -239,30 +263,44 @@ function validateBranchSteps(
                 return `Error: fanout step ${fanoutDisplayStep} branch "${branch.id}" must not contain join`
             case "task":
                 if (step.approval_before === true || step.approval_after === true) {
-                    return `Error: fanout step ${fanoutDisplayStep} branch "${branch.id}" step ${displayStep} must not set approval_before/approval_after`
+                    return (`Error: fanout step ${fanoutDisplayStep} branch "${branch.id}"`
+                        + ` step ${displayStep} must not set approval_before/approval_after`)
                 }
                 {
                     const timeoutError = validateBranchTimeoutPolicy(step, fanoutDisplayStep, branch.id, displayStep)
                     if (timeoutError !== null) return timeoutError
                 }
                 {
-                    const actorError = registerFanoutBranchActor(branchByMember, step.member, fanoutDisplayStep, branch.id)
+                    const actorError = registerFanoutBranchActor(
+                        branchByMember, step.member,
+                        fanoutDisplayStep, branch.id,
+                    )
                     if (actorError !== null) return actorError
                 }
                 {
-                    const actorError = registerFanoutBranchActor(branchByMember, step.fallback_member, fanoutDisplayStep, branch.id)
+                    const actorError = registerFanoutBranchActor(
+                        branchByMember, step.fallback_member,
+                        fanoutDisplayStep, branch.id,
+                    )
                     if (actorError !== null) return actorError
                 }
                 break
             case "gate": {
                 if (step.approval_before === true || step.approval_after === true) {
-                    return `Error: fanout step ${fanoutDisplayStep} branch "${branch.id}" step ${displayStep} must not set approval_before/approval_after`
+                    return (`Error: fanout step ${fanoutDisplayStep} branch "${branch.id}"`
+                        + ` step ${displayStep} must not set approval_before/approval_after`)
                 }
                 const timeoutError = validateBranchTimeoutPolicy(step, fanoutDisplayStep, branch.id, displayStep)
                 if (timeoutError !== null) return timeoutError
-                const actorError = registerFanoutBranchActor(branchByMember, step.verifier, fanoutDisplayStep, branch.id)
+                const actorError = registerFanoutBranchActor(
+                    branchByMember, step.verifier,
+                    fanoutDisplayStep, branch.id,
+                )
                 if (actorError !== null) return actorError
-                const fallbackActorError = registerFanoutBranchActor(branchByMember, step.fallback_verifier, fanoutDisplayStep, branch.id)
+                const fallbackActorError = registerFanoutBranchActor(
+                    branchByMember, step.fallback_verifier,
+                    fanoutDisplayStep, branch.id,
+                )
                 if (fallbackActorError !== null) return fallbackActorError
                 const targetError = validateBranchGateTargets(branch.steps, index, fanoutDisplayStep, branch.id)
                 if (targetError !== null) return targetError
@@ -293,7 +331,8 @@ function validateBranchGateTargets(
         for (let index = 0; index < gate.targets.length; index += 1) {
             const targetRef = gate.targets[index]
             if (targetRef === undefined || resolvePublicTaskRef(steps, gateIndex, targetRef) < 0) {
-                return `Error: ${location} targets[${index}] "${String(targetRef)}" must reference a previous task step in the same branch`
+                return (`Error: ${location} targets[${index}] "${String(targetRef)}"`
+                    + ` must reference a previous task step in the same branch`)
             }
         }
         return null
@@ -304,7 +343,8 @@ function validateBranchGateTargets(
     if (targetRef === undefined) {
         return `Error: ${location} has no preceding task step to verify in the same branch`
     }
-    return `Error: ${location} target_step "${String(targetRef)}" must reference a previous task step in the same branch`
+    return (`Error: ${location} target_step "${String(targetRef)}"`
+        + ` must reference a previous task step in the same branch`)
 }
 
 function validateBranchGateGotos(
@@ -322,7 +362,8 @@ function validateBranchGateGotos(
     ] as const) {
         if (ref === undefined) continue
         if (resolvePublicGotoRef(steps, gateIndex, ref) < 0) {
-            return `Error: fanout step ${fanoutDisplayStep} branch "${branchId}" step ${gateIndex + 1} (gate) ${field} "${String(ref)}" must not cross fanout boundaries`
+            return (`Error: fanout step ${fanoutDisplayStep} branch "${branchId}" step ${gateIndex + 1} (gate) ${field}`
+                + ` "${String(ref)}" must not cross fanout boundaries`)
         }
     }
     return null
@@ -346,11 +387,13 @@ export function resolveAndValidateGateTargets(
                 return { error: `Error: ${location} targets[${index}] "undefined" must reference a previous task step` }
             }
             if (resolvesToMarkerStep(steps, gateIndex, targetRef)) {
-                return { error: `Error: ${location} targets[${index}] "${String(targetRef)}" must not reference a fanout/join marker step` }
+                return ({ error: `Error: ${location} targets[${index}] "${String(targetRef)}"`
+                    + ` must not reference a fanout/join marker step` })
             }
             const targetIndex = resolveGateTargetRef(steps, gateIndex, targetRef)
             if (targetIndex < 0) {
-                return { error: `Error: ${location} targets[${index}] "${String(targetRef)}" must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}` }
+                return ({ error: `Error: ${location} targets[${index}] "${String(targetRef)}"`
+                    + ` must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}` })
             }
             if (!targetIndices.includes(targetIndex)) targetIndices.push(targetIndex)
         }
@@ -359,27 +402,35 @@ export function resolveAndValidateGateTargets(
     }
     const targetRef = gate.target_step
     if (targetRef !== undefined && resolvesToMarkerStep(steps, gateIndex, targetRef)) {
-        return { error: `Error: ${location} target_step "${String(targetRef)}" must not reference a fanout/join marker step` }
+        return ({ error: `Error: ${location} target_step "${String(targetRef)}"`
+            + ` must not reference a fanout/join marker step` })
     }
     const targetIndex = resolveGateTargetIndex(steps, gateIndex)
     if (targetIndex < 0) {
         if (targetRef === undefined) {
             return { error: `Error: ${location} has no preceding task step to verify` }
         }
-        return { error: `Error: ${location} target_step "${String(targetRef)}" must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}` }
+        return ({ error: `Error: ${location} target_step "${String(targetRef)}"`
+            + ` must reference a previous task step${typeof targetRef === "string" ? " by id" : ""}` })
     }
     targetIndices.push(targetIndex)
     return { indices: targetIndices }
 }
 
-function validateTaskInputs(steps: readonly LoweredWorkflowStep[], task: LoweredWorkflowLinearStep, index: number, displayStep: number): string | null {
+function validateTaskInputs(
+    steps: readonly LoweredWorkflowStep[],
+    task: LoweredWorkflowLinearStep,
+    index: number,
+    displayStep: number,
+): string | null {
     if (task.kind !== "task" || task.inputs === undefined) return null
     const location = stepLocation(task, displayStep, true)
     const inputIndices = resolveWorkflowInputIndices(steps, index) ?? []
     for (let inputPosition = 0; inputPosition < task.inputs.length; inputPosition += 1) {
         const inputIndex = inputIndices[inputPosition]
         if (inputIndex === undefined || inputIndex < 0 || !canConsumeWorkflowInput(steps, index, inputIndex)) {
-            return `Error: ${location} inputs[${inputPosition}] must reference a previous task or join step in the same workflow scope`
+            return (`Error: ${location} inputs[${inputPosition}] must reference a previous task`
+                + ` or join step in the same workflow scope`)
         }
     }
     return null
@@ -393,7 +444,11 @@ function validateLoweredTaskStep(
     team: Team,
 ): string | null {
     const location = stepLocation(task, displayStep, true)
-    if (task.verifier !== undefined || task.fallback_verifier !== undefined || task.criteria !== undefined || task.target_step !== undefined || task.targets !== undefined || task.on_fail !== undefined || task.max_retries !== undefined || task.on_invalid !== undefined || task.max_invalid_retries !== undefined || task.where !== undefined) {
+    if (task.verifier !== undefined || task.fallback_verifier !== undefined
+        || task.criteria !== undefined || task.target_step !== undefined
+        || task.targets !== undefined || task.on_fail !== undefined
+        || task.max_retries !== undefined || task.on_invalid !== undefined
+        || task.max_invalid_retries !== undefined || task.where !== undefined) {
         return `Error: ${location} must not set gate fields`
     }
     if (!task.member) return `Error: ${location} requires \`member\``
@@ -401,15 +456,24 @@ function validateLoweredTaskStep(
     const inputsError = validateTaskInputs(steps, task, index, displayStep)
     if (inputsError !== null) return inputsError
     if (task.retry_on !== undefined) {
-        const condCount = [task.retry_on.empty, task.retry_on.output_contains, task.retry_on.output_not_contains, task.retry_on.regex].filter(v => v !== undefined).length
-        if (condCount === 0) return `Error: ${location} retry_on must set exactly one of empty, output_contains, output_not_contains, or regex`
+        const condCount = [
+            task.retry_on.empty,
+            task.retry_on.output_contains,
+            task.retry_on.output_not_contains,
+            task.retry_on.regex,
+        ].filter(v => v !== undefined).length
+        if (condCount === 0) {
+            return (`Error: ${location} retry_on must set exactly one of empty, output_contains,`
+                + ` output_not_contains, or regex`)
+        }
         if (condCount > 1) return `Error: ${location} retry_on must set exactly one condition (found ${condCount})`
         if (task.max_task_retries === undefined) return `Error: ${location} with retry_on requires \`max_task_retries\``
     }
     if (task.max_task_retries !== undefined && task.retry_on === undefined) {
         return `Error: ${location} max_task_retries requires \`retry_on\``
     }
-    if (task.max_output_bytes !== undefined && (!Number.isInteger(task.max_output_bytes) || task.max_output_bytes <= 0)) {
+    if (task.max_output_bytes !== undefined
+        && (!Number.isInteger(task.max_output_bytes) || task.max_output_bytes <= 0)) {
         return `Error: ${location} max_output_bytes must be a positive integer`
     }
     if (task.timeout_ms !== undefined && (!Number.isInteger(task.timeout_ms) || task.timeout_ms < 1000)) {
@@ -470,12 +534,17 @@ function validateLoweredGateStep(
     if (gate.max_jumps !== undefined && (gate.max_jumps < 0 || gate.max_jumps > 10)) {
         return `Error: ${location} max_jumps must be between 0 and 10`
     }
-    if (gate.max_jumps !== undefined && gate.on_pass_goto === undefined && gate.on_fail_goto === undefined && gate.on_invalid_goto === undefined) {
+    if (gate.max_jumps !== undefined && gate.on_pass_goto === undefined
+        && gate.on_fail_goto === undefined && gate.on_invalid_goto === undefined) {
         return `Error: ${location} max_jumps requires on_pass_goto/on_fail_goto/on_invalid_goto (no goto to bound)`
     }
     if (gate.loop !== undefined) {
-        if (gate.on_fail_goto === undefined) return `Error: ${location} loop requires \`on_fail_goto\` (no backward jump target)`
-        if (gate.on_fail === "retry") return `Error: ${location} loop is incompatible with on_fail='retry' (use on_fail='fail' with on_fail_goto)`
+        if (gate.on_fail_goto === undefined) {
+            return `Error: ${location} loop requires \`on_fail_goto\` (no backward jump target)`
+        }
+        if (gate.on_fail === "retry") {
+            return `Error: ${location} loop is incompatible with on_fail='retry' (use on_fail='fail' with on_fail_goto)`
+        }
         if (gate.on_fail === "skip") return `Error: ${location} loop is incompatible with on_fail='skip'`
     }
     if (gate.where !== undefined) {
@@ -493,20 +562,27 @@ function validateLoweredGateStep(
         if (ref === undefined) continue
         const gotoIdx = resolveGotoIndex(steps, index, ref)
         if (gotoIdx < 0) {
-            return `Error: ${location} ${field} "${String(ref)}" must reference an existing step${typeof ref === "string" ? " by id" : ""} and must not self-jump`
+            return (`Error: ${location} ${field} "${String(ref)}" must reference an existing step`
+                + `${typeof ref === "string" ? " by id" : ""} and must not self-jump`)
         }
         if (gate.on_invalid === "escalate" && field === "on_invalid_goto") {
-            return `Error: ${location} on_invalid_goto is incompatible with on_invalid='escalate' (escalate uses approve/reject)`
+            return (`Error: ${location} on_invalid_goto is incompatible with on_invalid='escalate'`
+                + ` (escalate uses approve/reject)`)
         }
     }
-    if (gate.approval_after === true && (gate.on_pass_goto !== undefined || gate.on_fail_goto !== undefined || gate.on_invalid_goto !== undefined)) {
-        return `Error: ${location} approval_after is incompatible with on_pass_goto/on_fail_goto/on_invalid_goto (team_approve calls advance, which cannot honor a goto jump)`
+    if (gate.approval_after === true
+        && (gate.on_pass_goto !== undefined || gate.on_fail_goto !== undefined
+            || gate.on_invalid_goto !== undefined)) {
+        return (`Error: ${location} approval_after is incompatible with on_pass_goto/on_fail_goto`
+            + `/on_invalid_goto (team_approve calls advance, which cannot honor a goto jump)`)
     }
     const targetIndices = resolveAndValidateGateTargets(steps, gate, index, displayStep)
     if ("error" in targetIndices) return targetIndices.error
     for (const targetIndex of targetIndices.indices) {
         const target = steps[targetIndex]
-        if (target?.kind !== "task" || !target.member) return `Error: step ${targetIndex + 1} (task) requires \`member\``
+        if (target?.kind !== "task" || !target.member) {
+            return `Error: step ${targetIndex + 1} (task) requires \`member\``
+        }
         const targetActors = [
             { field: "member", name: target.member },
             { field: "fallback_member", name: target.fallback_member },
@@ -519,7 +595,8 @@ function validateLoweredGateStep(
             if (verifierActor.name === undefined) continue
             const matchingTarget = targetActors.find(targetActor => targetActor.name === verifierActor.name)
             if (matchingTarget !== undefined) {
-                return `Error: ${location} ${verifierActor.field} "${verifierActor.name}" must differ from ${targetStepErrorLabel(target, targetIndex)} ${matchingTarget.field} (no self-verification)`
+                return (`Error: ${location} ${verifierActor.field} "${verifierActor.name}" must differ from`
+                    + ` ${targetStepErrorLabel(target, targetIndex)} ${matchingTarget.field} (no self-verification)`)
             }
         }
     }
@@ -537,27 +614,42 @@ function validateLoweredGateStep(
     }
     if (gate.verifiers !== undefined) {
         if (gate.verifier !== undefined) return `Error: ${location} verifiers is mutually exclusive with verifier`
-        if (gate.fallback_verifier !== undefined) return `Error: ${location} verifiers is mutually exclusive with fallback_verifier`
+        if (gate.fallback_verifier !== undefined) {
+            return `Error: ${location} verifiers is mutually exclusive with fallback_verifier`
+        }
         if (gate.ensemble_policy === undefined) return `Error: ${location} with verifiers requires \`ensemble_policy\``
-        if (gate.ensemble_policy === "quorum" && gate.ensemble_quorum === undefined) return `Error: ${location} with ensemble_policy='quorum' requires \`ensemble_quorum\``
+        if (gate.ensemble_policy === "quorum" && gate.ensemble_quorum === undefined) {
+            return `Error: ${location} with ensemble_policy='quorum' requires \`ensemble_quorum\``
+        }
         for (const vName of gate.verifiers) {
             if (!isTeamMember(team, vName)) return `Error: ${location} verifiers entry "${vName}" is not a team member`
             for (const targetIndex of targetIndices.indices) {
                 const target = steps[targetIndex]
                 if (target?.kind === "task" && (target.member === vName || target.fallback_member === vName)) {
-                    return `Error: ${location} verifiers entry "${vName}" must differ from ${targetStepErrorLabel(target, targetIndex)} member (no self-verification)`
+                    return (`Error: ${location} verifiers entry "${vName}" must differ from`
+                        + ` ${targetStepErrorLabel(target, targetIndex)} member (no self-verification)`)
                 }
             }
         }
     }
-    if (gate.ensemble_policy !== undefined && gate.verifiers === undefined) return `Error: ${location} ensemble_policy requires \`verifiers\``
-    if (gate.ensemble_quorum !== undefined && gate.ensemble_policy !== "quorum") return `Error: ${location} ensemble_quorum requires ensemble_policy='quorum'`
-    if (gate.ensemble_quorum !== undefined && (typeof gate.ensemble_quorum !== "number" || !Number.isFinite(gate.ensemble_quorum) || gate.ensemble_quorum <= 0 || gate.ensemble_quorum > 1)) return `Error: ${location} ensemble_quorum must be a number > 0 and <= 1`
+    if (gate.ensemble_policy !== undefined && gate.verifiers === undefined) {
+        return `Error: ${location} ensemble_policy requires \`verifiers\``
+    }
+    if (gate.ensemble_quorum !== undefined && gate.ensemble_policy !== "quorum") {
+        return `Error: ${location} ensemble_quorum requires ensemble_policy='quorum'`
+    }
+    if (gate.ensemble_quorum !== undefined
+        && (typeof gate.ensemble_quorum !== "number" || !Number.isFinite(gate.ensemble_quorum)
+            || gate.ensemble_quorum <= 0 || gate.ensemble_quorum > 1)) {
+        return (`Error: ${location} ensemble_quorum must be a number > 0 and <= 1`)
+    }
     return null
 }
 
 function validateLoweredFanoutStep(step: LoweredWorkflowFanoutStep, displayStep: number, team: Team): string | null {
-    if ((step.fanout.joinPolicy === "reduce" || step.fanout.joinPolicy === "select") && step.fanout.reducerMember !== undefined && !isTeamMember(team, step.fanout.reducerMember)) {
+    if ((step.fanout.joinPolicy === "reduce" || step.fanout.joinPolicy === "select")
+        && step.fanout.reducerMember !== undefined
+        && !isTeamMember(team, step.fanout.reducerMember)) {
         return `Error: fanout step ${displayStep} reducer_member "${step.fanout.reducerMember}" is not a team member`
     }
     return null
@@ -662,7 +754,9 @@ export function validateWorkflowSource(args: WorkflowToolArgs): string | null {
 }
 
 /** Resolve workflow args: load loader if needed, expand matrix/foreach, validate source. */
-export async function resolveWorkflowArgs(ctx: PluginContext, args: WorkflowToolArgs): Promise<ResolvedWorkflowToolArgs | string> {
+export async function resolveWorkflowArgs(
+    ctx: PluginContext, args: WorkflowToolArgs,
+): Promise<ResolvedWorkflowToolArgs | string> {
     const sourceError = validateWorkflowSource(args)
     if (sourceError) return sourceError
     if (args.steps !== undefined) {

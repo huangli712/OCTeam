@@ -75,7 +75,16 @@ async function resolveCreateModel(
 export function teamCreateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Define an agent team. Each member has a role, a prompt (the member's instructions), and an optional name. role must be one of the preset roles (coder, debugger, optimizer, tester, solver, reviewer, architect, explorer, writer, mathematician, physicist, simulator, chemist, analyst, visualizer, researcher, author, fantast, planner, auditor, looker, almighty); it fixes the member's agent and preset instruction, and any unknown role falls back to \"reviewer\" (read-only). name, if given, must be one of the preset pool names; if omitted it is auto-picked from the pool. Writes config.json + initial state.json. Does NOT spawn member sessions — they are spawned lazily on the first workflow call (team_parallel/pipeline/loop/delegate). The calling session becomes the team leader (\"master\").",
+            "Define an agent team. Each member has a role, a prompt (the member's instructions), and an optional name. "
+            + "role must be one of the preset roles (coder, debugger, optimizer, tester, solver, "
+            + "reviewer, architect, explorer, writer, mathematician, physicist, simulator, chemist, "
+            + "analyst, visualizer, researcher, author, fantast, planner, auditor, looker, almighty); "
+            + "it fixes the member's agent and preset instruction, and any unknown role falls back "
+            + "to \"reviewer\" (read-only). name, if given, must be one of the preset pool names; "
+            + "if omitted it is auto-picked from the pool. Writes config.json + initial state.json. "
+            + "Does NOT spawn member sessions — they are spawned lazily on the first workflow call "
+            + "(team_parallel/pipeline/loop/delegate). The calling session becomes the team leader "
+            + "(\"master\").",
         args: {
             name: tool.schema
                 .string()
@@ -87,7 +96,10 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 .array(
                     tool.schema.object({
                         name: tool.schema.string().min(1).max(32).regex(/^[a-z0-9-]+$/).optional(),
-                        role: tool.schema.string().min(1).max(64).regex(/^[a-zA-Z]+$/, "a single English word, letters only, e.g. \"coder\""),
+                        role: tool.schema.string().min(1).max(64).regex(
+                            /^[a-zA-Z]+$/,
+                            "a single English word, letters only, e.g. \"coder\"",
+                        ),
                         prompt: tool.schema.string().min(1).max(8192),
                         model: tool.schema.string().optional(),
                         agent: tool.schema.string().optional(),
@@ -175,7 +187,10 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             const resolved: MemberSpec[] = named.map(m => {
                 const role = normalizeRole(m.role)
                 const agent = m.agent ?? roleAgent(role)
-                const model = m.model ?? modelInfo.modelByAgent.get(agent) ?? modelInfo.defaultModel ?? modelInfo.sessionModel
+                const model = m.model
+                    ?? modelInfo.modelByAgent.get(agent)
+                    ?? modelInfo.defaultModel
+                    ?? modelInfo.sessionModel
                 return { name: m.name, role, prompt: m.prompt, agent, model, worktree: m.worktree }
             })
 
@@ -192,7 +207,8 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 await fs.rm(teamDir(ctx.storageRoot, args.name, leadSessionId), {
                     recursive: true, force: true,
                 }).catch(() => { /* best-effort */ })
-                return `Error: bounds.maxMembers (${bounds.maxMembers}) is less than the number of initial members (${resolved.length}). Set maxMembers to at least ${resolved.length}.`
+                return `Error: bounds.maxMembers (${bounds.maxMembers}) is less than the number of initial `
+                    + `members (${resolved.length}). Set maxMembers to at least ${resolved.length}.`
             }
             const spec: TeamSpec = {
                 version: 1,
@@ -236,7 +252,9 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 throw err
             }
 
-            return `Team "${args.name}" created with ${members.length} member(s): ${members.map(m => m.name).join(", ")}. Status: live (inactive — call team_activate to activate it). Sessions will spawn on first workflow call.`
+            return `Team "${args.name}" created with ${members.length} member(s): `
+                + `${members.map(m => m.name).join(", ")}. Status: live `
+                + `(inactive — call team_activate to activate it). Sessions will spawn on first workflow call.`
         },
     })
 }

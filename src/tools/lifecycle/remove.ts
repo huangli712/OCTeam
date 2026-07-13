@@ -31,7 +31,8 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 return "Error: team_remove_member is master-only (only the team's leader can remove members)"
             }
             if (team.status !== "live") {
-                return `Error: team "${args.team_id}" status is "${team.status}", not "live". Members can only be removed before sessions are spawned (workflow calls).`
+                return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
+                    + `Members can only be removed before sessions are spawned (workflow calls).`
             }
 
             const stateIdx = team.members.findIndex(m => m.name === args.member_name)
@@ -39,7 +40,8 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
             }
             if (team.members.length <= 1) {
-                return `Error: team "${args.team_id}" has only ${team.members.length} member(s). Cannot remove the last member.`
+                return `Error: team "${args.team_id}" has only ${team.members.length} member(s). `
+                    + `Cannot remove the last member.`
             }
 
             let staleState = false
@@ -75,13 +77,15 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
             })
 
             if (staleState) {
-                return `Error: team "${args.team_id}" status is "${team.status}", not "live". Members can only be removed before sessions are spawned (workflow calls).`
+                return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
+                    + `Members can only be removed before sessions are spawned (workflow calls).`
             }
             if (specError) {
                 return `Error: cannot read config for team "${args.team_id}"`
             }
 
-            return `Member "${args.member_name}" removed from team "${args.team_id}" (${team.members.length} members remaining).`
+            return `Member "${args.member_name}" removed from team "${args.team_id}" `
+                + `(${team.members.length} members remaining).`
         },
     })
 }

@@ -68,10 +68,13 @@ export function detectBlockedByCycle(
     return null
 }
 
+/** Delegate mode tool: publish tasks to a shared tasklist for self-claiming members. */
 export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Delegate mode: publish tasks to a shared tasklist; idle members self-claim, execute, and report to master. Supports blockedBy dependencies via human-readable refs.",
+            "Delegate mode: publish tasks to a shared tasklist; idle members self-claim, "
+            + "execute, and report to master. Supports blockedBy dependencies via "
+            + "human-readable refs.",
         args: {
             team_id: tool.schema.string().min(1),
             tasks: tool.schema
@@ -87,9 +90,30 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 .max(200),
             ...signoffSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
-            max_errored_members: tool.schema.number().int().min(0).optional().describe("tolerate up to N terminally-errored members and still deliver survivors' work. Default 0 (any member error fails the run)."),
-            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            token_budget: tool.schema
+                .number()
+                .min(1)
+                .optional()
+                .describe("optional token cap; orchestration fails if exceeded"),
+            max_errored_members: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .optional()
+                .describe(
+                    "tolerate up to N terminally-errored members and still deliver "
+                    + "survivors' work. Default 0 (any member error fails the run).",
+                ),
+            max_retries: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .max(5)
+                .optional()
+                .describe(
+                    "re-dispatch grace windows before a sustained-retry member "
+                    + "is marked errored. Default 0.",
+                ),
         },
         async execute(args, context) {
             return startOrchestration(
@@ -133,7 +157,10 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                         t => t.status !== "deleted",
                     ).length
                     if (liveTaskCount + args.tasks.length > team.bounds.maxTasks) {
-                        return { error: `Error: team task limit reached (${team.bounds.maxTasks}). ${liveTaskCount} live task(s) exist; cannot add ${args.tasks.length} more.` }
+                        return {
+                            error: `Error: team task limit reached (${team.bounds.maxTasks}). `
+                                + `${liveTaskCount} live task(s) exist; cannot add ${args.tasks.length} more.`,
+                        }
                     }
 
                     // Create all tasks, building ref -> uuid and index -> uuid
@@ -175,10 +202,12 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 // tasklist.
                 async (team) => {
                     for (const m of team.members.filter(x => !x.isMaster)) {
-                        const text =
-                            `[Team Orchestrator] You are on team "${team.teamName}" in delegate mode. ` +
-                            `${args.tasks.length} task(s) published. Use team_task_list to view, team_task_update (status "claimed") to claim, ` +
-                            `execute, then team_send_message to report results to master. Repeat until no tasks remain.`
+                    const text =
+                        `[Team Orchestrator] You are on team "${team.teamName}" in delegate mode. `
+                        + `${args.tasks.length} task(s) published. `
+                        + `Use team_task_list to view, team_task_update (status "claimed") to claim, `
+                        + `execute, then team_send_message to report results to master. `
+                        + `Repeat until no tasks remain.`
                         await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
                     }
                 },

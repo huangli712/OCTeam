@@ -19,7 +19,9 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
             team_id: tool.schema.string().min(1),
         },
         async execute(args, context) {
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false })
+            const caller = await resolveCallerInTeam(
+                ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false },
+            )
             if (!caller) return "Error: caller is not a member of this team"
             let team
             try {
@@ -28,12 +30,14 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
                 return `Error: team "${args.team_id}" not found`
             }
             const active = team.activatedAt !== undefined
-            const lines: string[] = [`Team: ${team.teamName}  status: ${team.status}  active: ${active ? "yes" : "no"}`]
+            const lines: string[] = [
+                `Team: ${team.teamName}  status: ${team.status}  active: ${active ? "yes" : "no"}`,
+            ]
             if (team.activeTask) {
                 const t = team.activeTask
-                lines.push(
-                    `Active: ${t.type}${t.mode ? `/${t.mode}` : ""}  round ${t.currentRound ?? "-"}/${t.maxRounds ?? "-"}  tokens ${t.tokensUsed}`,
-                )
+                const activeStr = `Active: ${t.type}${t.mode ? `/${t.mode}` : ""} `
+                    + `round ${t.currentRound ?? "-"}/${t.maxRounds ?? "-"}  tokens ${t.tokensUsed}`
+                lines.push(activeStr)
                 if (t.approvalStage && t.approvalRequest) {
                     const req = t.approvalRequest
                     const where = [
@@ -45,7 +49,11 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
                 // parallel: reduce + signoff policy
                 if (t.type === "parallel") {
                     const pol: string[] = []
-                    if (t.reducePolicy) pol.push(`reduce: ${t.reducePolicy}${t.reduceRubric ? ` (${t.reduceRubric})` : ""}${t.reduceSelect ? ` (${t.reduceSelect})` : ""}`)
+                    if (t.reducePolicy) {
+                        const rubric = t.reduceRubric ? ` (${t.reduceRubric})` : ""
+                        const select = t.reduceSelect ? ` (${t.reduceSelect})` : ""
+                        pol.push(`reduce: ${t.reducePolicy}${rubric}${select}`)
+                    }
                     if (t.signoffPolicy) {
                         let s = `signoff: ${t.signoffPolicy}`
                         if (t.signoffDecider) s += ` (decider: ${t.signoffDecider})`
@@ -60,7 +68,10 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
                     try {
                         const tasks = await listAllTasks(team.directory)
                         const by = (s: string) => tasks.filter(x => x.status === s).length
-                        lines.push(`Tasks: ${by("completed")} done, ${by("in_progress")} in progress, ${by("claimed")} claimed, ${by("pending")} pending (of ${tasks.length})`)
+                        lines.push(
+                            `Tasks: ${by("completed")} done, ${by("in_progress")} in progress, `
+                                + `${by("claimed")} claimed, ${by("pending")} pending (of ${tasks.length})`,
+                        )
                     } catch {
                         // tasklist unreadable — skip
                     }
@@ -85,9 +96,10 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
             for (const m of team.members) {
                 const unread = await countUnreadMessages(team.directory, m.name)
                 const modelStr = m.model ? ` (${m.model})` : ""
-                lines.push(
-                    `  - ${m.name}: ${m.status}${modelStr}${unread ? ` ${unread} unread` : ""}${m.turnCount ? ` ${m.turnCount} turns` : ""}`,
-                )
+                const memberLine = `  - ${m.name}: ${m.status}${modelStr}`
+                    + `${unread ? ` ${unread} unread` : ""}`
+                    + `${m.turnCount ? ` ${m.turnCount} turns` : ""}`
+                lines.push(memberLine)
             }
             return lines.join("\n")
         },

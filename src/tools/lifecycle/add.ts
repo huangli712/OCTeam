@@ -22,7 +22,10 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
         args: {
             team_id: tool.schema.string().min(1),
             name: tool.schema.string().min(1).max(32).regex(/^[a-z0-9-]+$/).optional(),
-            role: tool.schema.string().min(1).max(64).regex(/^[a-zA-Z]+$/, "a single English word, letters only, e.g. \"coder\""),
+            role: tool.schema.string().min(1).max(64).regex(
+                /^[a-zA-Z]+$/,
+                "a single English word, letters only, e.g. \"coder\"",
+            ),
             prompt: tool.schema.string().min(1).max(8192),
             model: tool.schema.string().optional(),
             agent: tool.schema.string().optional(),
@@ -40,7 +43,8 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 return "Error: team_add_member is master-only (only the team's leader can add members)"
             }
             if (team.status !== "live") {
-                return `Error: team "${args.team_id}" status is "${team.status}", not "live". Members can only be added before sessions are spawned (workflow calls).`
+                return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
+                    + `Members can only be added before sessions are spawned (workflow calls).`
             }
             if (team.members.length >= team.bounds.maxMembers) {
                 return `Error: team already has ${team.bounds.maxMembers} members (maximum)`
@@ -134,7 +138,8 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
             })
 
             if (staleState) {
-                return `Error: team "${args.team_id}" status is "${team.status}", not "live". Members can only be added before sessions are spawned (workflow calls).`
+                return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
+                    + `Members can only be added before sessions are spawned (workflow calls).`
             }
             if (capReached) {
                 return `Error: team already has ${team.bounds.maxMembers} members (maximum)`

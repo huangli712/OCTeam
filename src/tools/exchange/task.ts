@@ -31,7 +31,9 @@ import type { TaskStatus } from "../../state/tasks.js"
 /** Create a new task on the team's shared task list. */
 export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
     return tool({
-        description: "Create a task in the shared team task list. Tasks can declare blockedBy dependencies (other task IDs).",
+        description:
+            "Create a task in the shared team task list. Tasks can declare blockedBy "
+            + "dependencies (other task IDs).",
         args: {
             team_id: tool.schema.string().min(1),
             subject: tool.schema.string().min(1).max(500),
@@ -102,7 +104,10 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                 })
             })
             if (limitError) {
-                return `Error: team task limit reached (${team.bounds.maxTasks}). Complete or delete tasks before creating more.`
+                return (
+                    `Error: team task limit reached (${team.bounds.maxTasks}). `
+                    + "Complete or delete tasks before creating more."
+                )
             }
             return `Task created: ${task!.id} [${task!.subject}]`
         },
@@ -130,7 +135,9 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
             return tasks
                 .map(
                     t =>
-                        `- [${t.status}] ${t.id} ${t.subject}${t.owner ? ` @${t.owner}` : ""}${t.blockedBy.length ? ` (blocked by ${t.blockedBy.length})` : ""}`,
+                        `- [${t.status}] ${t.id} ${t.subject}`
+                        + `${t.owner ? ` @${t.owner}` : ""}`
+                        + `${t.blockedBy.length ? ` (blocked by ${t.blockedBy.length})` : ""}`,
                 )
                 .join("\n")
         },
@@ -141,7 +148,9 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
 export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Update a task. Setting status to \"claimed\" atomically acquires the claim lock (fails if another member holds it). The caller becomes the task owner on claim. Other status changes require the caller to be the task owner or master.",
+            "Update a task. Setting status to \"claimed\" atomically acquires the claim lock "
+            + "(fails if another member holds it). The caller becomes the task owner on claim. "
+            + "Other status changes require the caller to be the task owner or master.",
         args: {
             team_id: tool.schema.string().min(1),
             task_id: tool.schema.string().regex(TASK_ID_PATTERN, "must be a task UUID"),
@@ -206,7 +215,10 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                 return `Task ${task.id} updated to ${args.status}.`
             } catch (err) {
                 if (err instanceof TaskOwnershipError) {
-                    return `Error: only the task owner (@${existing.owner ?? "unassigned"}) or master can update task ${args.task_id}.`
+                    return (
+                        `Error: only the task owner (@${existing.owner ?? "unassigned"}) `
+                        + `or master can update task ${args.task_id}.`
+                    )
                 }
                 throw err
             }

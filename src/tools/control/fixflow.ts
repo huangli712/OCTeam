@@ -123,7 +123,10 @@ function sanitizeReason(reason: string | undefined): string {
     return reason?.trim() ? reason.trim().replace(/[^A-Za-z0-9_.:-]+/g, "_").slice(0, 80) : "operator_fix"
 }
 
-async function applyRedispatch(ctx: PluginContext, team: Team, task: WorkflowTask, step: WorkflowFixStepArg | undefined): Promise<string> {
+async function applyRedispatch(
+    ctx: PluginContext, team: Team, task: WorkflowTask,
+    step: WorkflowFixStepArg | undefined,
+): Promise<string> {
     const index = stepIndexFromArg(step, task)
     if (index === null) return "Error: workflow has no active step to redispatch"
     const workflowStep = task.steps?.[index]
@@ -139,13 +142,18 @@ async function applyRedispatch(ctx: PluginContext, team: Team, task: WorkflowTas
     return `team_fix_workflow redispatched step ${index + 1}.`
 }
 
-async function applySkip(ctx: PluginContext, team: Team, task: WorkflowTask, step: WorkflowFixStepArg | undefined): Promise<string> {
+async function applySkip(
+    ctx: PluginContext, team: Team, task: WorkflowTask,
+    step: WorkflowFixStepArg | undefined,
+): Promise<string> {
     const index = stepIndexFromArg(step, task)
     if (index === null) return "Error: workflow has no active step to skip"
     const workflowStep = task.steps?.[index]
     if (workflowStep === undefined) return `Error: step ${index + 1} does not exist`
     if (!isActiveWorkflowStep(task, index)) return `Error: step ${index + 1} is not in the active workflow frontier`
-    if (workflowStep.kind === "fanout" || workflowStep.kind === "join") return `Error: step ${index + 1} marker steps cannot be skipped directly`
+    if (workflowStep.kind === "fanout" || workflowStep.kind === "join") {
+        return `Error: step ${index + 1} marker steps cannot be skipped directly`
+    }
     workflowStep.completed = true
     workflowStep.skipped = true
     workflowStep.dispatchedAt = undefined
@@ -168,6 +176,7 @@ async function applyAdvance(ctx: PluginContext, team: Team): Promise<string> {
     return "team_fix_workflow advanced workflow."
 }
 
+/** Fail a workflow step with a sanitized reason, finishing the run with a failure status. */
 async function applyFail(ctx: PluginContext, team: Team, reason: string | undefined): Promise<string> {
     const safeReason = sanitizeReason(reason)
     await finishRun(ctx, team, workflowOperatorFailReason(safeReason), "failed")
@@ -175,7 +184,13 @@ async function applyFail(ctx: PluginContext, team: Team, reason: string | undefi
     return `team_fix_workflow failed workflow with reason ${workflowOperatorFailReason(safeReason)}.`
 }
 
-async function applyWorkflowFix(ctx: PluginContext, team: Team, op: FixWorkflowOp, step: WorkflowFixStepArg | undefined, reason: string | undefined, toMember: string | undefined): Promise<string> {
+/** Orchestrate a workflow fix operation: find the repair target and dispatch the selected op. */
+async function applyWorkflowFix(
+    ctx: PluginContext, team: Team, op: FixWorkflowOp,
+    step: WorkflowFixStepArg | undefined,
+    reason: string | undefined,
+    toMember: string | undefined,
+): Promise<string> {
     const target = workflowRepairTarget(team)
     if (target === null) return team.activeTask === undefined && team.lastInterruptedTask === undefined
         ? `Error: team "${team.teamName}" has no active or interrupted workflow to fix`
@@ -193,20 +208,29 @@ async function applyWorkflowFix(ctx: PluginContext, team: Team, op: FixWorkflowO
     return result
 }
 
-async function applyReassign(ctx: PluginContext, team: Team, task: WorkflowTask, step: WorkflowFixStepArg | undefined, toMember: string | undefined): Promise<string> {
+/** Reassign a workflow step to a different team member, updating the actor and re-dispatching. */
+async function applyReassign(
+    ctx: PluginContext, team: Team, task: WorkflowTask,
+    step: WorkflowFixStepArg | undefined,
+    toMember: string | undefined,
+): Promise<string> {
     if (toMember === undefined) return "Error: team_fix_workflow op='reassign' requires `to_member`"
     const index = stepIndexFromArg(step, task)
     if (index === null) return "Error: workflow has no active step to reassign"
     const workflowStep = task.steps?.[index]
     if (workflowStep === undefined) return `Error: step ${index + 1} does not exist`
     if (!isActiveWorkflowStep(task, index)) return `Error: step ${index + 1} is not in the active workflow frontier`
-    if (workflowStep.kind === "fanout" || workflowStep.kind === "join") return `Error: step ${index + 1} marker steps cannot be reassigned`
+    if (workflowStep.kind === "fanout" || workflowStep.kind === "join") {
+        return `Error: step ${index + 1} marker steps cannot be reassigned`
+    }
 
     const currentActor = workflowStep.kind === "task" ? workflowStep.member : workflowStep.verifier
     if (currentActor === toMember) return `Error: step ${index + 1} is already owned by "${toMember}"`
     const newMember = team.members.find(m => m.name === toMember && !m.isMaster)
     if (newMember === undefined) return `Error: "${toMember}" is not a team member`
-    if (newMember.sessionId === undefined || newMember.status === "errored") return `Error: "${toMember}" has no live session`
+    if (newMember.sessionId === undefined || newMember.status === "errored") {
+        return `Error: "${toMember}" has no live session`
+    }
 
     // Fanout branch actor uniqueness: the new actor must not already be active
     // in a sibling branch (reuses the same rule as fanout validation).
@@ -228,6 +252,7 @@ async function applyReassign(ctx: PluginContext, team: Team, task: WorkflowTask,
     return `team_fix_workflow reassigned step ${index + 1} to "${toMember}".`
 }
 
+/** Check whether a candidate member is already active in a sibling branch of a fanout step. */
 function activeBranchActorConflict(task: WorkflowTask, candidateMember: string, excludeIndex: number): string | null {
     for (const activeIndex of getActiveWorkflowStepIndices(task)) {
         if (activeIndex === excludeIndex) continue
@@ -238,7 +263,13 @@ function activeBranchActorConflict(task: WorkflowTask, candidateMember: string, 
     return null
 }
 
-async function dispatchWorkflowFixOp(ctx: PluginContext, team: Team, task: WorkflowTask, op: FixWorkflowOp, step: WorkflowFixStepArg | undefined, reason: string | undefined, toMember: string | undefined): Promise<string> {
+/** Dispatch a workflow fix operation to the appropriate handler based on op type. */
+async function dispatchWorkflowFixOp(
+    ctx: PluginContext, team: Team, task: WorkflowTask,
+    op: FixWorkflowOp, step: WorkflowFixStepArg | undefined,
+    reason: string | undefined,
+    toMember: string | undefined,
+): Promise<string> {
     switch (op) {
         case "redispatch":
             return await applyRedispatch(ctx, team, task, step)
@@ -260,16 +291,30 @@ async function dispatchWorkflowFixOp(ctx: PluginContext, team: Team, task: Workf
 export function teamFixWorkflowTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Master-only workflow repair tool. Redispatch, skip, advance, or fail a busy or interrupted team_workflow run without cancelling the whole team.",
+            "Master-only workflow repair tool. Redispatch, skip, advance, or fail a busy "
+            + "or interrupted team_workflow run without cancelling the whole team.",
         args: {
             team_id: tool.schema.string().min(1),
             op: tool.schema.enum(["redispatch", "skip", "advance", "fail", "reassign"]),
-            step: tool.schema.union([tool.schema.number().int().min(1), tool.schema.string().min(1)]).optional().describe("1-based workflow step number or stable step id to repair. Defaults to the first active frontier step for redispatch/skip/reassign."),
-            reason: tool.schema.string().min(1).max(200).optional().describe("operator reason used by op='fail'"),
-            to_member: tool.schema.string().min(1).optional().describe("target member name for op='reassign' (must be a live team member)"),
+            step: tool.schema.union([
+                tool.schema.number().int().min(1),
+                tool.schema.string().min(1),
+            ]).optional().describe(
+                "1-based workflow step number or stable step id to repair. "
+                + "Defaults to the first active frontier step for redispatch/skip/reassign.",
+            ),
+            reason: tool.schema.string().min(1).max(200).optional().describe(
+                "operator reason used by op='fail'",
+            ),
+            to_member: tool.schema.string().min(1).optional().describe(
+                "target member name for op='reassign' (must be a live team member)",
+            ),
         },
         async execute(args, context) {
-            const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id, { requireActive: false })
+            const caller = await resolveCallerInTeam(
+                ctx.storageRoot, context.sessionID, args.team_id,
+                { requireActive: false },
+            )
             if (!caller) return "Error: caller is not a member of this team"
             if (!caller.isMaster) return "Error: team_fix_workflow is master-only"
             const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)

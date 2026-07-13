@@ -20,14 +20,30 @@ import { humanApprovalSchemaFields } from "../schema.js"
 export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Run a multi-round structured debate across all members until they reach consensus. Each round, members state positions and emit <consensus>{\"agreed\": true|false}</consensus>; the run ends when all agree, or fails when max_rounds is hit without consensus.",
+            "Run a multi-round structured debate across all members until they reach consensus. "
+            + "Each round, members state positions and emit "
+            + "<consensus>{\"agreed\": true|false}</consensus>; the run ends when all agree, "
+            + "or fails when max_rounds is hit without consensus.",
         args: {
             team_id: tool.schema.string().min(1),
             topic: tool.schema.string().min(1).max(4096).describe("the debate topic"),
             max_rounds: tool.schema.number().min(1).max(20).optional().describe("round limit (default 3)"),
             timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            token_budget: tool.schema
+                .number()
+                .min(1)
+                .optional()
+                .describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .max(5)
+                .optional()
+                .describe(
+                    "re-dispatch grace windows before a sustained-retry member "
+                    + "is marked errored. Default 0.",
+                ),
             ...humanApprovalSchemaFields,
         },
         async execute(args, context) {
@@ -66,7 +82,10 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                 async (team, task) => {
                     const participants = team.members.filter(m => !m.isMaster)
                     for (const m of participants) {
-                        const text = `[Consensus topic] ${args.topic}\n\nRound ${task.currentRound}. State your position. End with <consensus>{"agreed": true|false}</consensus> (or the Chinese <共识>{"agreed": ...}</共识>).`
+                        const text = `[Consensus topic] ${args.topic}\n\n`
+                            + `Round ${task.currentRound}. State your position. End with `
+                            + `<consensus>{"agreed": true|false}</consensus> `
+                            + `(or the Chinese <共识>{"agreed": ...}</共识>).`
                         await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
                     }
                 },

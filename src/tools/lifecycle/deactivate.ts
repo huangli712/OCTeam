@@ -33,7 +33,8 @@ export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
                 return "Error: team_deactivate is master-only (only the team's leader session can deactivate it)"
             }
             if (team.status === "busy" || team.activeTask !== undefined) {
-                return `Error: team "${args.team_id}" is busy with an active orchestration. Wait for it to finish before deactivating.`
+                return `Error: team "${args.team_id}" is busy with an active orchestration. `
+                    + `Wait for it to finish before deactivating.`
             }
 
             let result = ""
@@ -47,7 +48,8 @@ export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
                 await saveTeamState(team).catch((err) =>
                     logSwallowed(ctx, "persist team state failed (deactivate)", err, { team: team.teamName })
                 )
-                result = `Team "${args.team_id}" deactivated. No team is active in this session — call team_activate to pick one.`
+                result = `Team "${args.team_id}" deactivated. No team is active in this session — `
+                    + `call team_activate to pick one.`
             })
             return result
         },

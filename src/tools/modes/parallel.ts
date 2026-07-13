@@ -21,11 +21,17 @@ import { assertMember, validateSignoff } from "../support.js"
 export function teamParallelTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Run a task across all members in parallel. Modes: isolated (same task, no comms), cooperative (per-member tasks, free comms). For multi-round debate to consensus, use team_consensus.",
+            "Run a task across all members in parallel. Modes: isolated "
+            + "(same task, no comms), cooperative (per-member tasks, free comms). "
+            + "For multi-round debate to consensus, use team_consensus.",
         args: {
             team_id: tool.schema.string().min(1),
             mode: tool.schema.enum(["isolated", "cooperative"]),
-            task: tool.schema.string().max(8192).optional().describe("isolated mode: the single task sent to all members"),
+            task: tool.schema
+                .string()
+                .max(8192)
+                .optional()
+                .describe("isolated mode: the single task sent to all members"),
             tasks: tool.schema
                 .record(tool.schema.string(), tool.schema.string().max(8192))
                 .optional()
@@ -43,20 +49,54 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 .string()
                 .max(8192)
                 .optional()
-                .describe("selection criteria when reduce_policy='select' — what 'best' means. Should be method-neutral; otherwise the reducer defaults to its own prior task assignment as the standard."),
+                .describe(
+                    "selection criteria when reduce_policy='select' — what 'best' means. "
+                    + "Should be method-neutral; otherwise the reducer defaults to its own "
+                    + "prior task assignment as the standard.",
+                ),
             reducer_member: tool.schema
                 .string()
                 .optional()
-                .describe("member that performs a real reduce when reduce_policy != summarize. If omitted, the reduce guidance is delivered to master (legacy behavior)."),
+                .describe(
+                    "member that performs a real reduce when reduce_policy != summarize. "
+                    + "If omitted, the reduce guidance is delivered to master "
+                    + "(legacy behavior).",
+                ),
             ...signoffSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
-            max_errored_members: tool.schema.number().int().min(0).optional().describe("tolerate up to N terminally-errored members and still deliver survivors' work. Default 0 (any member error fails the run)."),
-            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            token_budget: tool.schema
+                .number()
+                .min(1)
+                .optional()
+                .describe("optional token cap; orchestration fails if exceeded"),
+            max_errored_members: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .optional()
+                .describe(
+                    "tolerate up to N terminally-errored members and still deliver "
+                    + "survivors' work. Default 0 (any member error fails the run).",
+                ),
+            max_retries: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .max(5)
+                .optional()
+                .describe(
+                    "re-dispatch grace windows before a sustained-retry member "
+                    + "is marked errored. Default 0.",
+                ),
             require_done_ack: tool.schema
                 .boolean()
                 .optional()
-                .describe("when true, the all-idle barrier is replaced by an all-acked barrier. Members must call team_done() to signal completion; members that go idle without acking receive an automatic re-prompt. Prevents premature barrier when a member idles waiting for a dependency. Default false (backward compatible)."),
+                .describe(
+                    "when true, the all-idle barrier is replaced by an all-acked barrier. "
+                    + "Members must call team_done() to signal completion; members that go idle "
+                    + "without acking receive an automatic re-prompt. Prevents premature barrier "
+                    + "when a member idles waiting for a dependency. Default false (backward compatible).",
+                ),
         },
         async execute(args, context) {
             return startOrchestration(
@@ -93,7 +133,8 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     // Force the caller to either name a reducer (autonomous,
                     // verifiable reduce) or use summarize (honest concatenation).
                     if (args.reduce_policy && args.reduce_policy !== "summarize" && !args.reducer_member) {
-                        return `Error: reduce_policy '${args.reduce_policy}' requires reducer_member. Either specify a reducer member, or use reduce_policy 'summarize'.`
+                        return `Error: reduce_policy '${args.reduce_policy}' requires reducer_member. `
+                            + `Either specify a reducer member, or use reduce_policy 'summarize'.`
                     }
                     const signoffErr = validateSignoff(args, team)
                     if (signoffErr) return signoffErr

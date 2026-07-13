@@ -26,7 +26,11 @@ import type { Message } from "../../core/types.js"
 export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Master-only: inject a high-priority directive into a member's mailbox (point-to-point), or broadcast to all members (to: \"*\"), during a running orchestration. The recipient sees it injected FIRST (marked [DIRECTIVE]) on its next turn. Inject-only — it does not re-dispatch members or alter control flow.",
+            "Master-only: inject a high-priority directive into a member's mailbox "
+            + "(point-to-point), or broadcast to all members (to: \"*\"), during a running "
+            + "orchestration. The recipient sees it injected FIRST (marked [DIRECTIVE]) "
+            + "on its next turn. Inject-only — it does not re-dispatch members or alter "
+            + "control flow.",
         args: {
             team_id: tool.schema.string().min(1),
             to: tool.schema.string().min(1).describe("member name, or \"*\" to broadcast to all members"),

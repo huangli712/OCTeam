@@ -103,7 +103,10 @@ function extractAssistantText(raw: unknown): string {
 function evaluatePlannerOutput(output: string, validate: PlannerValidate): EvaluatedOutput {
     const match = TEAM_PLANNER_TAG.exec(output)
     if (match === null) {
-        return { error: 'No <team_planner>...</team_planner> block found. Reply with exactly one <team_planner>{"team":...,"workflow":...}</team_planner> block and nothing else.' }
+        return {
+            error: 'No <team_planner>...</team_planner> block found. Reply with exactly one'
+                + ' <team_planner>{"team":...,"workflow":...}</team_planner> block and nothing else.',
+        }
     }
     const jsonText = (match[1] ?? "").trim()
     let parsed: unknown
@@ -121,7 +124,11 @@ function evaluatePlannerOutput(output: string, validate: PlannerValidate): Evalu
 }
 
 function buildCorrectionPrompt(error: string): string {
-    return `Your previous response was rejected:\n\n${error}\n\nReply again with exactly one <team_planner>{"team":...,"workflow":...}</team_planner> block that fixes this problem. Output only that block.`
+    return (
+        `Your previous response was rejected:\n\n${error}`
+        + `\n\nReply again with exactly one <team_planner>{"team":...,"workflow":...}</team_planner>`
+        + ` block that fixes this problem. Output only that block.`
+    )
 }
 
 /** Poll the child session until it yields assistant text, or throw on timeout. */
@@ -173,7 +180,8 @@ export async function runPlannerSession(ctx: PluginContext, opts: RunPlannerOpti
         dispatchText = buildCorrectionPrompt(evaluated.error)
     }
     throw new Error(
-        `team_planner: planner did not return a valid team/workflow after ${opts.maxRetries + 1} attempt(s). Last error: ${lastError}`,
+        `team_planner: planner did not return a valid team/workflow after`
+            + ` ${opts.maxRetries + 1} attempt(s). Last error: ${lastError}`,
     )
 }
 
@@ -278,7 +286,8 @@ function plannerContract(teamId: string): string {
         "",
         `- team.name MUST equal "${teamId}".`,
         "- team.members: 1-8 members, each with a preset pool name, a role, and a prompt.",
-        "- workflow.steps: task/gate steps. Every member/verifier must be a declared team member, and a gate verifier must differ from the task member it verifies.",
+        "- workflow.steps: task/gate steps. Every member/verifier must be a declared team member,"
+            + " and a gate verifier must differ from the task member it verifies.",
         "- Emit raw JSON inside the tag. Do not use markdown fences or add prose.",
     ].join("\n")
 }
@@ -381,8 +390,12 @@ async function runProposeOp(ctx: PluginContext, sessionID: string, args: TeamPla
         pollMs: PLANNER_POLL_MS,
         maxRetries: PLANNER_MAX_RETRIES,
     })
-    const artifact = formatArtifact({ directory: ctx.directory, teamId: args.team_id, team: result.team, workflow: result.workflow })
-    return `Proposed team + workflow for "${args.team_id}" (nothing written).\n\n${artifact}\n\nReview, then call team_planner op="write" to persist.`
+    const artifact = formatArtifact({
+        directory: ctx.directory, teamId: args.team_id,
+        team: result.team, workflow: result.workflow,
+    })
+    return `Proposed team + workflow for "${args.team_id}" (nothing written).`
+        + `\n\n${artifact}\n\nReview, then call team_planner op="write" to persist.`
 }
 
 async function runReviseOp(ctx: PluginContext, sessionID: string, args: TeamPlannerArgs): Promise<string> {
@@ -407,8 +420,12 @@ async function runReviseOp(ctx: PluginContext, sessionID: string, args: TeamPlan
         pollMs: PLANNER_POLL_MS,
         maxRetries: PLANNER_MAX_RETRIES,
     })
-    const artifact = formatArtifact({ directory: ctx.directory, teamId: args.team_id, team: result.team, workflow: result.workflow })
-    return `Revised team + workflow for "${args.team_id}" (nothing written).\n\n${artifact}\n\nReview, then call team_planner op="write" to persist.`
+    const artifact = formatArtifact({
+        directory: ctx.directory, teamId: args.team_id,
+        team: result.team, workflow: result.workflow,
+    })
+    return `Revised team + workflow for "${args.team_id}" (nothing written).`
+        + `\n\n${artifact}\n\nReview, then call team_planner op="write" to persist.`
 }
 
 async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<string> {
@@ -416,34 +433,57 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
     if (validationError) return validationError
     const teamPath = path.join(ctx.directory, teamFileName(args.team_id))
     const workflowPath = path.join(ctx.directory, workflowFileName(args.team_id))
-    const artifact = formatArtifact({ directory: ctx.directory, teamId: args.team_id, team: args.team, workflow: args.workflow })
+    const artifact = formatArtifact({
+        directory: ctx.directory, teamId: args.team_id,
+        team: args.team, workflow: args.workflow,
+    })
     if (args.dry_run === true) {
         return `Validation OK for "${args.team_id}". Dry run — nothing written.\n\n${artifact}`
     }
     if (args.overwrite !== true && (existsSync(teamPath) || existsSync(workflowPath))) {
-        return `Error: refusing to overwrite existing loader(s). ${teamFileName(args.team_id)} or ${workflowFileName(args.team_id)} already exists; pass overwrite: true to replace both.`
+        return (
+            `Error: refusing to overwrite existing loader(s). ${teamFileName(args.team_id)}`
+            + ` or ${workflowFileName(args.team_id)} already exists; pass overwrite: true to replace both.`
+        )
     }
     await writeFile(teamPath, `${JSON.stringify(args.team, null, 4)}\n`)
     await writeFile(workflowPath, `${JSON.stringify(args.workflow, null, 4)}\n`)
-    return `Wrote ${teamFileName(args.team_id)} and ${workflowFileName(args.team_id)} under ${ctx.directory}.\n\n${artifact}`
+    return (
+        `Wrote ${teamFileName(args.team_id)} and ${workflowFileName(args.team_id)}`
+        + ` under ${ctx.directory}.\n\n${artifact}`
+    )
 }
 
 /** Plan and persist team definitions and workflows via a child oct-metis session. */
 export function teamPlannerTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Master-only planner for authoring a team + team_workflow via an oct-metis child session, with a human-in-the-loop propose/revise/write flow. op='propose' generates a team+workflow from a goal and returns a preview (writes nothing). op='revise' regenerates from previous team/workflow + feedback (writes nothing). op='write' performs deterministic validation only (never calls a model) and persists team.<team_id>.json + workflow.<team_id>.json; supports dry_run, defaults to no-overwrite, and overwrite:true replaces both. Reads no existing team state.",
+            "Master-only planner for authoring a team + team_workflow via an oct-metis child session,"
+            + " with a human-in-the-loop propose/revise/write flow. op='propose' generates a"
+            + " team+workflow from a goal and returns a preview (writes nothing). op='revise'"
+            + " regenerates from previous team/workflow + feedback (writes nothing). op='write'"
+            + " performs deterministic validation only (never calls a model) and persists"
+            + " team.<team_id>.json + workflow.<team_id>.json; supports dry_run, defaults to"
+            + " no-overwrite, and overwrite:true replaces both. Reads no existing team state.",
         args: {
             op: tool.schema.enum(["propose", "revise", "write"]),
-            team_id: tool.schema.string().min(1).describe("Safe lowercase slug; the generated team.name must equal it."),
-            goal: tool.schema.string().optional().describe("propose/revise: the objective the team+workflow must accomplish."),
-            constraints: tool.schema.string().optional().describe("propose: optional extra constraints for the planner."),
+            team_id: tool.schema.string().min(1).describe(
+                "Safe lowercase slug; the generated team.name must equal it.",
+            ),
+            goal: tool.schema.string().optional().describe(
+                "propose/revise: the objective the team+workflow must accomplish.",
+            ),
+            constraints: tool.schema.string().optional().describe(
+                "propose: optional extra constraints for the planner.",
+            ),
             previous_team: tool.schema.unknown().optional().describe("revise: the prior team JSON to revise."),
             previous_workflow: tool.schema.unknown().optional().describe("revise: the prior workflow JSON to revise."),
             feedback: tool.schema.string().optional().describe("revise: what to change about the previous plan."),
             team: tool.schema.unknown().optional().describe("write: the team JSON to validate and persist."),
             workflow: tool.schema.unknown().optional().describe("write: the workflow JSON to validate and persist."),
-            dry_run: tool.schema.boolean().optional().describe("write: validate + preview target paths without writing."),
+            dry_run: tool.schema.boolean().optional().describe(
+                "write: validate + preview target paths without writing.",
+            ),
             overwrite: tool.schema.boolean().optional().describe("write: replace both loaders if they already exist."),
         },
         async execute(args, context) {

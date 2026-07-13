@@ -34,7 +34,10 @@ function formatRunLine(r: RunRecord): string {
 export function teamMetricsTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Aggregate token/message/success metrics across a team's recent run records (read-only, real-time). Sums tokens and messages, folds per-member token usage, groups by orchestration type, and reports the success rate. Token-only — no pricing.",
+            "Aggregate token/message/success metrics across a team's recent run records " +
+                "(read-only, real-time). Sums tokens and messages, folds per-member token " +
+                "usage, groups by orchestration type, and reports the success rate. " +
+                "Token-only — no pricing.",
         args: {
             team_id: tool.schema.string().min(1),
             limit: tool.schema
@@ -110,7 +113,9 @@ export function teamMetricsTool(ctx: PluginContext): ToolDefinition {
             if (workflowStepDurationCount > 0) {
                 lines.push(
                     "",
-                    `Workflow step durations: count=${workflowStepDurationCount}  total=${workflowStepDurationTotal}ms  avg=${Math.round(workflowStepDurationTotal / workflowStepDurationCount)}ms`,
+                    `Workflow step durations: count=${workflowStepDurationCount}` +
+                    `  total=${workflowStepDurationTotal}ms` +
+                    `  avg=${Math.round(workflowStepDurationTotal / workflowStepDurationCount)}ms`,
                 )
             }
 

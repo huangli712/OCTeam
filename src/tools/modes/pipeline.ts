@@ -21,7 +21,8 @@ import { validateSignoff } from "../support.js"
 export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Run a linear pipeline: stage N's output is prefixed onto stage N+1's task. Each stage runs on its named member, in order. The final output is summarized to the leader.",
+            "Run a linear pipeline: stage N's output is prefixed onto stage N+1's task. "
+            + "Each stage runs on its named member, in order. The final output is summarized to the leader.",
         args: {
             team_id: tool.schema.string().min(1),
             stages: tool.schema
@@ -35,8 +36,21 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema.number().min(1).optional().describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema.number().int().min(0).max(5).optional().describe("re-dispatch grace windows before a sustained-retry member is marked errored. Default 0."),
+            token_budget: tool.schema
+                .number()
+                .min(1)
+                .optional()
+                .describe("optional token cap; orchestration fails if exceeded"),
+            max_retries: tool.schema
+                .number()
+                .int()
+                .min(0)
+                .max(5)
+                .optional()
+                .describe(
+                    "re-dispatch grace windows before a sustained-retry member "
+                    + "is marked errored. Default 0.",
+                ),
         },
         async execute(args, context) {
             return startOrchestration(

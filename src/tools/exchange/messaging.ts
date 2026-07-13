@@ -36,13 +36,18 @@ export function isForbiddenLateralMessage(
 export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
     return tool({
         description:
-            "Send a message to a teammate's mailbox (point-to-point), or broadcast to all members (to: \"*\", master-only). The recipient sees the message injected automatically on its next turn.",
+            "Send a message to a teammate's mailbox (point-to-point), or broadcast to all "
+            + "members (to: \"*\", master-only). The recipient sees the message injected "
+            + "automatically on its next turn.",
         args: {
             team_id: tool.schema.string().min(1),
             to: tool.schema.string().min(1).describe("member name, or \"*\" for broadcast (master-only)"),
             body: tool.schema.string().min(1).max(32768),
             summary: tool.schema.string().max(200).optional(),
-            correlation_id: tool.schema.string().max(128).regex(/^[A-Za-z0-9_-]+$/, "correlation_id may contain only letters, digits, hyphen and underscore").optional(),
+            correlation_id: tool.schema.string().max(128).regex(
+                /^[A-Za-z0-9_-]+$/,
+                "correlation_id may contain only letters, digits, hyphen and underscore",
+            ).optional(),
         },
         async execute(args, context) {
             const sender = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)

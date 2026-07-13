@@ -8,7 +8,9 @@ import fs from "node:fs/promises"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import { invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
+import {
+    invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec,
+} from "../../state/store.js"
 import { indexMasterTeam, setActiveTeam, unindexMasterTeam } from "../../state/resolve.js"
 import { teamDir } from "../../state/paths.js"
 import type { TeamSpec } from "../../core/types.js"
@@ -41,7 +43,8 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 return "Error: team_rename is master-only (only the team's leader can rename it)"
             }
             if (team.status !== "live") {
-                return `Error: team "${args.team_id}" status is "${team.status}", not "live". Teams can only be renamed before sessions are spawned.`
+                return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
+                    + `Teams can only be renamed before sessions are spawned.`
             }
             if (args.team_id === args.new_name) {
                 return `Team "${args.team_id}" is already named "${args.new_name}".`
@@ -100,7 +103,8 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
             })
 
             if (staleState) {
-                return `Error: team "${args.team_id}" status is "${team.status}", not "live". Teams can only be renamed before sessions are spawned.`
+                return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
+                    + `Teams can only be renamed before sessions are spawned.`
             }
 
             return `Team "${args.team_id}" renamed to "${args.new_name}".`
