@@ -49,7 +49,9 @@ export function buildGateVerifierPrompt(
 ): string {
     const structuredHint = buildStructuredVerdictHint(step.where);
     const aggregationHint = targetCount > 1
-        ? `This gate verifies an aggregate of multiple target outputs. Emit one verdict for the complete target set; PASS only when every target satisfies the criteria and the targets are mutually consistent.`
+        ? `This gate verifies an aggregate of multiple target outputs. ` +
+            `Emit one verdict for the complete target set; PASS only when every target ` +
+            `satisfies the criteria and the targets are mutually consistent.`
         : "";
     return (
         `[Verification gate] Verify ${targetLabel} output below against the criteria.\n` +
@@ -84,13 +86,17 @@ function buildStructuredVerdictHint(
             break;
         case "has_issue_severity":
             fields.push(
-                "issues: an array of { severity: low|medium|high|critical, message?: string } for every issue you found, ordered by severity",
+                "issues: an array of { severity: low|medium|high|critical, " +
+                    "message?: string } for every issue you found, ordered by severity",
             );
             break;
         default:
             throw new Error(`unhandled workflow condition: ${String(where)}`);
     }
-    return `This gate gates a downstream step on a threshold condition (${formatWorkflowCondition(where)}). Also emit structured fields so the condition can be evaluated:\n- ${fields.join("\n- ")}`;
+    return (
+        `This gate gates a downstream step on a threshold condition (${formatWorkflowCondition(where)}). ` +
+        `Also emit structured fields so the condition can be evaluated:\n- ${fields.join("\n- ")}`
+    );
 }
 
 /** Build a JSON example of a <verdict> block including optional condition fields. */
@@ -201,7 +207,8 @@ export function buildGateProducerOutput(
         const producerStep = steps[targetIndex];
         if (!producerStep || producerStep.kind !== "task") continue;
         blocks.push(
-            `[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n${truncateOutput(producerStep.output ?? "")}`,
+            `[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n` +
+                `${truncateOutput(producerStep.output ?? "")}`,
         );
     }
     return blocks.join("\n\n");
@@ -288,19 +295,64 @@ export function aggregateEnsembleVerdict(step: WorkflowStep): {
     const total = verdicts.length;
     switch (step.ensemblePolicy) {
         case "majority":
-            if (passCount > total / 2) return { verdict: "PASS", parseFailed: false, rationale: `Majority PASS (${passCount}/${total})`, diff: "" };
-            if (failCount > total / 2) return { verdict: "FAIL", parseFailed: false, rationale: `Majority FAIL (${failCount}/${total})`, diff: "" };
-            return { verdict: "INVALID", parseFailed: false, rationale: `No majority (${passCount}P/${failCount}F/${invalidCount}I)`, diff: "" };
+            if (passCount > total / 2) return {
+                verdict: "PASS",
+                parseFailed: false,
+                rationale: `Majority PASS (${passCount}/${total})`,
+                diff: "",
+            };
+            if (failCount > total / 2) return {
+                verdict: "FAIL",
+                parseFailed: false,
+                rationale: `Majority FAIL (${failCount}/${total})`,
+                diff: "",
+            };
+            return {
+                verdict: "INVALID",
+                parseFailed: false,
+                rationale: `No majority (${passCount}P/${failCount}F/${invalidCount}I)`,
+                diff: "",
+            };
         case "quorum": {
             const threshold = step.ensembleQuorum ?? 0.5;
-            if (passCount / total >= threshold) return { verdict: "PASS", parseFailed: false, rationale: `Quorum PASS (${passCount}/${total} >= ${threshold})`, diff: "" };
-            if (failCount / total >= threshold) return { verdict: "FAIL", parseFailed: false, rationale: `Quorum FAIL (${failCount}/${total} >= ${threshold})`, diff: "" };
-            return { verdict: "INVALID", parseFailed: false, rationale: `No quorum (${passCount}P/${failCount}F/${invalidCount}I)`, diff: "" };
+            if (passCount / total >= threshold) return {
+                verdict: "PASS",
+                parseFailed: false,
+                rationale: `Quorum PASS (${passCount}/${total} >= ${threshold})`,
+                diff: "",
+            };
+            if (failCount / total >= threshold) return {
+                verdict: "FAIL",
+                parseFailed: false,
+                rationale: `Quorum FAIL (${failCount}/${total} >= ${threshold})`,
+                diff: "",
+            };
+            return {
+                verdict: "INVALID",
+                parseFailed: false,
+                rationale: `No quorum (${passCount}P/${failCount}F/${invalidCount}I)`,
+                diff: "",
+            };
         }
         case "unanimous":
-            if (passCount === total) return { verdict: "PASS", parseFailed: false, rationale: `Unanimous PASS (${passCount}/${total})`, diff: "" };
-            if (failCount === total) return { verdict: "FAIL", parseFailed: false, rationale: `Unanimous FAIL (${failCount}/${total})`, diff: "" };
-            return { verdict: "INVALID", parseFailed: false, rationale: `Not unanimous (${passCount}P/${failCount}F/${invalidCount}I)`, diff: "" };
+            if (passCount === total) return {
+                verdict: "PASS",
+                parseFailed: false,
+                rationale: `Unanimous PASS (${passCount}/${total})`,
+                diff: "",
+            };
+            if (failCount === total) return {
+                verdict: "FAIL",
+                parseFailed: false,
+                rationale: `Unanimous FAIL (${failCount}/${total})`,
+                diff: "",
+            };
+            return {
+                verdict: "INVALID",
+                parseFailed: false,
+                rationale: `Not unanimous (${passCount}P/${failCount}F/${invalidCount}I)`,
+                diff: "",
+            };
         default:
             return { verdict: "INVALID", parseFailed: false, rationale: `Unknown ensemble policy`, diff: "" };
     }
