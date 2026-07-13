@@ -3,7 +3,7 @@
  * orchestration modes: parallel, pipeline, loop, delegate, consensus, route,
  * arbitrate, recurse, tollgate, workflow, arena).
  *
- * Extracted from shared.ts so that pure validation/utility helpers
+ * Extracted from tools/support.ts so that pure validation/utility helpers
  * (validateMemberName, validateSignoff, defaultBounds, ...) no longer pull in
  * the dispatch/worktree subsystem via ensureMembersReady.
  *

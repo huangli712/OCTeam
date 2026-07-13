@@ -108,66 +108,6 @@ function runJoinMetadata(join: WorkflowStep["join"]): WorkflowRunStep["join"] {
 }
 
 /**
- * Classify each fanout branch as completed, skipped, errored, or pending based
- * on the join's survivor/errored sets and branch-tail step state.
- */
-function workflowBranchStatuses(steps: readonly WorkflowStep[], fanoutIndex: number): Record<string, WorkflowBranchStatus> | undefined {
-    const fanout = steps[fanoutIndex]?.fanout
-    if (fanout === undefined) return undefined
-
-    const join = steps[fanout.joinIndex]?.join
-    const survivorBranchIds = new Set(join?.survivorBranchIds ?? [])
-    const erroredBranchIds = new Set(join?.erroredBranchIds ?? [])
-    const statuses: Record<string, WorkflowBranchStatus> = {}
-
-    for (let branchIndex = 0; branchIndex < fanout.branchIds.length; branchIndex += 1) {
-        const branchId = fanout.branchIds[branchIndex]
-        const range = fanout.branchRanges[branchIndex]
-        if (branchId === undefined || range === undefined) continue
-
-        if (erroredBranchIds.has(branchId)) {
-            statuses[branchId] = "errored"
-            continue
-        }
-        if (survivorBranchIds.has(branchId)) {
-            statuses[branchId] = "completed"
-            continue
-        }
-
-        const tail = steps[range.endIndex]
-        if (tail?.skipped === true) {
-            statuses[branchId] = "skipped"
-        } else if (tail?.completed === true) {
-            statuses[branchId] = "completed"
-        } else {
-            statuses[branchId] = "pending"
-        }
-    }
-
-    return statuses
-}
-
-/** Resolve branch statuses for a step: fanout/join steps delegate to workflowBranchStatuses; task/gate return undefined. */
-function workflowBranchStatusesForStep(
-    steps: readonly WorkflowStep[],
-    index: number,
-    step: WorkflowStep,
-): Record<string, WorkflowBranchStatus> | undefined {
-    switch (step.kind) {
-        case "fanout":
-            return workflowBranchStatuses(steps, index)
-        case "join":
-            return step.join === undefined ? undefined : workflowBranchStatuses(steps, step.join.fanoutIndex)
-        case "task":
-        case "gate":
-            return undefined
-        default:
-            step.kind satisfies never
-            return undefined
-    }
-}
-
-/**
  * Persist the active task as a run record. Called from deliverSummaryToLeader
  * BEFORE activeTask is cleared. No-op if there is no active task. Best-effort:
  * the caller wraps this so a persistence failure never blocks delivery.
@@ -385,4 +325,64 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
     }
     events.sort((a, b) => a.timestamp - b.timestamp)
     return events
+}
+
+/**
+ * Classify each fanout branch as completed, skipped, errored, or pending based
+ * on the join's survivor/errored sets and branch-tail step state.
+ */
+function workflowBranchStatuses(steps: readonly WorkflowStep[], fanoutIndex: number): Record<string, WorkflowBranchStatus> | undefined {
+    const fanout = steps[fanoutIndex]?.fanout
+    if (fanout === undefined) return undefined
+
+    const join = steps[fanout.joinIndex]?.join
+    const survivorBranchIds = new Set(join?.survivorBranchIds ?? [])
+    const erroredBranchIds = new Set(join?.erroredBranchIds ?? [])
+    const statuses: Record<string, WorkflowBranchStatus> = {}
+
+    for (let branchIndex = 0; branchIndex < fanout.branchIds.length; branchIndex += 1) {
+        const branchId = fanout.branchIds[branchIndex]
+        const range = fanout.branchRanges[branchIndex]
+        if (branchId === undefined || range === undefined) continue
+
+        if (erroredBranchIds.has(branchId)) {
+            statuses[branchId] = "errored"
+            continue
+        }
+        if (survivorBranchIds.has(branchId)) {
+            statuses[branchId] = "completed"
+            continue
+        }
+
+        const tail = steps[range.endIndex]
+        if (tail?.skipped === true) {
+            statuses[branchId] = "skipped"
+        } else if (tail?.completed === true) {
+            statuses[branchId] = "completed"
+        } else {
+            statuses[branchId] = "pending"
+        }
+    }
+
+    return statuses
+}
+
+/** Resolve branch statuses for a step: fanout/join steps delegate to workflowBranchStatuses; task/gate return undefined. */
+function workflowBranchStatusesForStep(
+    steps: readonly WorkflowStep[],
+    index: number,
+    step: WorkflowStep,
+): Record<string, WorkflowBranchStatus> | undefined {
+    switch (step.kind) {
+        case "fanout":
+            return workflowBranchStatuses(steps, index)
+        case "join":
+            return step.join === undefined ? undefined : workflowBranchStatuses(steps, step.join.fanoutIndex)
+        case "task":
+        case "gate":
+            return undefined
+        default:
+            step.kind satisfies never
+            return undefined
+    }
 }
