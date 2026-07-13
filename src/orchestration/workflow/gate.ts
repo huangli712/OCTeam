@@ -25,12 +25,14 @@ export type WorkflowJumpTransition = {
     diff?: string;
 };
 
+/** Input values for evaluating a where condition: score, confidence, and issues from the verdict. */
 type ConditionInput = {
     score?: number
     confidence?: number
     issues?: WorkflowIssue[]
 }
 
+/** Result of parsing a raw where object: either a typed condition or an error message. */
 type ParsedCondition =
     | { condition: WorkflowCondition }
     | { error: string }
