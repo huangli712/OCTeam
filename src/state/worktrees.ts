@@ -11,6 +11,7 @@ import { promisify } from "node:util"
 import { logger } from '../core/log.js';
 import { worktreePath } from "./paths.js";
 
+/** Promisified child_process.execFile for git operations. */
 const execFileP = promisify(execFile)
 
 /**

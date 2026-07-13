@@ -37,7 +37,8 @@ export class TaskAlreadyClaimedError extends Error {
 export class MemberHoldsActiveTaskError extends Error {
     constructor(member: string, heldTaskId: string, heldStatus: string) {
         super(
-            `Member ${member} already holds task ${heldTaskId} in ${heldStatus} state; complete it before claiming another`,
+            `Member ${member} already holds task ${heldTaskId} in ${heldStatus} state;`
+            + ` complete it before claiming another`,
         )
         this.name = "MemberHoldsActiveTaskError"
     }
@@ -108,6 +109,7 @@ function isValidTask(value: unknown): value is Task {
     )
 }
 
+/** Read a task file from disk, validate its schema, return null if not found or corrupt. */
 async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task | null> {
     try {
         const raw = await fs.readFile(taskPath(teamDirectory, taskId), "utf8")
@@ -180,7 +182,10 @@ export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
                 return await readTaskFile(teamDirectory, id)
             } catch (err) {
                 // A single corrupt/unreadable task file must not break the listing.
-                logger.warn("listAllTasks: skipping unreadable task", { taskId: id, error: err instanceof Error ? err.message : String(err) })
+                logger.warn(
+                    "listAllTasks: skipping unreadable task",
+                    { taskId: id, error: err instanceof Error ? err.message : String(err) },
+                )
                 return null
             }
         }),

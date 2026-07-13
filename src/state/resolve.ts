@@ -13,7 +13,9 @@ import type { PluginContext } from "../core/context.js"
 import { logSwallowed } from "../core/log.js"
 import { isInteractionForbidden } from "./activation.js"
 
+/** Map of sessionID -> member index entry for non-master team members. */
 const memberIndex = new Map<string, MemberIndexEntry>()
+/** Map of sessionID -> master index entry for team leader sessions. */
 const masterIndex = new Map<string, MasterIndexEntry>()
 
 // --- sessionID -> team index (process-level, O(1) resolve) ---
@@ -23,6 +25,7 @@ const masterIndex = new Map<string, MasterIndexEntry>()
 // MULTIPLE teams (1:many) but interacts with at most one "active" team at a
 // time, so the master index holds a per-team map plus an active pointer.
 
+/** A team member indexed by sessionID. */
 type MemberIndexEntry = {
     teamName: string
     memberName: string
@@ -30,6 +33,7 @@ type MemberIndexEntry = {
     storageRoot: string
 }
 
+/** One team within a master session's team map. */
 type MasterTeamEntry = {
     teamName: string
     leadSessionId?: string
@@ -37,6 +41,7 @@ type MasterTeamEntry = {
     directory: string                  // resolved teamDir (absolute) — unique key
 }
 
+/** A master session's team map and active team pointer. */
 type MasterIndexEntry = {
     teams: Map<string, MasterTeamEntry> // keyed by directory
     activeDirectory?: string            // the ONE available team; undefined ⇒ none active

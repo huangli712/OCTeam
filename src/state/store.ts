@@ -68,7 +68,14 @@ const teamRegistry = new Map<string, Team>()
 
 /** Strip the non-persisted runtime fields, leaving the pure TeamState. */
 function stripRuntimeFields(team: Team): TeamState {
-    const { mutex: _mutex, directory: _directory, deleted: _deleted, spawning: _spawning, _diskSnapshot: _snap, ...state } = team
+    const {
+        mutex: _mutex,
+        directory: _directory,
+        deleted: _deleted,
+        spawning: _spawning,
+        _diskSnapshot: _snap,
+        ...state
+    } = team
     return state
 }
 
@@ -136,6 +143,13 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     }
     return true
 }
+
+/**
+ * Read and parse a JSON file, returning null on ENOENT or schema failure.
+ *
+ * @param filePath    path to the JSON file
+ * @param validate    optional schema guard; null returned on mismatch
+ */
 
 async function readJsonOrNull<T>(
     filePath: string,

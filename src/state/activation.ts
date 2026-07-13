@@ -27,7 +27,9 @@ export function decideActivate(opts: {
     if (opts.outgoingExists) {
         return {
             kind: "error",
-            message: `Cannot activate: team "${opts.outgoingName}" is currently active. Call team_deactivate("${opts.outgoingName}") first — auto-switching is disabled.`,
+            message: `Cannot activate: team "${opts.outgoingName}" is currently active.`
+                + ` Call team_deactivate("${opts.outgoingName}") first`
+                + ` — auto-switching is disabled.`,
         }
     }
     return { kind: "ok" }

@@ -18,7 +18,9 @@ export const RESERVATION_TTL_MS = 30_000
 /** Default task claim TTL (30s). Stale claims are reaped by the sweep timer. */
 export const CLAIM_TTL_MS = 30_000
 
+/** Poll interval (50ms) between lock acquisition retries. */
 const LOCK_POLL_MS = 50
+/** Maximum time (30s) to wait for lock acquisition before timing out. */
 const LOCK_MAX_WAIT_MS = 30_000
 
 /**
@@ -28,6 +30,7 @@ const LOCK_MAX_WAIT_MS = 30_000
  */
 const LOCK_HEARTBEAT_MS = LOCK_TTL_MS / 3
 
+/** Promise-based delay. */
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -119,6 +122,11 @@ export function shouldReapStaleLock(
     return now - mtimeMs > ttl && !ownerAlive
 }
 
+/**
+ * Cross-process lock acquisition via exclusive-create (fs.open "wx").
+ * Spins with polling until the lock is acquired or LOCK_MAX_WAIT_MS elapses.
+ * Writes the current PID into the lock file for ownership tracking.
+ */
 async function acquireLock(lockPath: string): Promise<void> {
     await fs.mkdir(path.dirname(lockPath), { recursive: true }).catch(() => {
         // parent may already exist
