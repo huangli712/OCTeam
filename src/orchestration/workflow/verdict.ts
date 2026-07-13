@@ -173,7 +173,10 @@ async function handleGatePass(
         (await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
             stage: gateIndex,
-            summary: `Completed ${describeStep(step, gateIndex)} with PASS from ${verifierName}. Rationale: ${v.rationale}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
+            summary: `Completed ${describeStep(step, gateIndex)} with PASS`
+                + ` from ${verifierName}. Rationale: ${v.rationale}.`
+                + ` Next: ${describeStep(steps[nextIndex], nextIndex)}.`
+                + ` Review before continuing.`,
         }))
     ) {
         return;
@@ -239,7 +242,9 @@ async function handleGateFail(
                         member: verifierName,
                         stage: gateIndex,
                         stepIndex: gateIndex,
-                        detail: `workflow loop step ${gateIndex + 1} exhausted after ${step.loop.maxIterations} iterations; on_exhaust=continue`,
+                        detail: `workflow loop step ${gateIndex + 1} exhausted`
+                            + ` after ${step.loop.maxIterations} iterations;`
+                            + ` on_exhaust=continue`,
                     });
                     await advanceWorkflowStep(ctx, team);
                     return;
@@ -362,7 +367,10 @@ async function handleGateRetry(
         member: producerStep.dispatchedActor ?? producerStep.member,
         stage: gateIndex,
         stepIndex: producerIdx,
-        detail: `workflow step ${gateIndex + 1} attempt ${step.attempts}/${maxR}; retry target ${stepIndicesLabel(gateTargetIndices(steps, gateIndex))}; retry anchor step ${producerIdx + 1}; verifier ${verifierName}; diff: ${v.diff}`,
+        detail: `workflow step ${gateIndex + 1} attempt ${step.attempts}/${maxR};`
+            + ` retry target ${stepIndicesLabel(gateTargetIndices(steps, gateIndex))};`
+            + ` retry anchor step ${producerIdx + 1}; verifier ${verifierName};`
+            + ` diff: ${v.diff}`,
     });
     await saveTeamState(team);
 }
@@ -496,7 +504,8 @@ export async function handleInvalidVerdict(
             member: verifierName,
             stage: gateIndex,
             stepIndex: gateIndex,
-            detail: `workflow gate step ${gateIndex + 1} skipped after malformed verdict from ${verifierName}: ${rationale}`,
+            detail: `workflow gate step ${gateIndex + 1} skipped after`
+                + ` malformed verdict from ${verifierName}: ${rationale}`,
         });
         await advanceWorkflowStep(ctx, team);
         return;
@@ -543,9 +552,10 @@ export async function handleInvalidVerdict(
         resetWorkflowStepTiming(step);
         if (await maybePauseBeforeWorkflowStep(ctx, team, gateIndex)) return;
         const nudge =
-            `[Verification could not be evaluated — ${isMalformed ? "malformed" : "invalid"} attempt ${attempts}/${maxIR}]\n` +
-            `Reason: ${reason}. Rationale: ${rationale}. Diff: ${diff}.\n` +
-            `Re-evaluate the target output and emit a fresh verdict.`;
+            `[Verification could not be evaluated — `
+            + `${isMalformed ? "malformed" : "invalid"} attempt ${attempts}/${maxIR}]\n`
+            + `Reason: ${reason}. Rationale: ${rationale}. Diff: ${diff}.\n`
+            + `Re-evaluate the target output and emit a fresh verdict.`;
         if (!(await dispatchGateStep(ctx, team, task, gateIndex, nudge))) {
             await handleWorkflowDispatchUnavailable(ctx, team, task, step);
             return;
@@ -556,7 +566,9 @@ export async function handleInvalidVerdict(
             member: step.dispatchedActor ?? step.verifier,
             stage: gateIndex,
             stepIndex: gateIndex,
-            detail: `workflow step ${gateIndex + 1} ${isMalformed ? "malformed" : "invalid"} retry ${attempts}/${maxIR}; verifier ${step.dispatchedActor ?? verifierName}; reason ${reason}: ${rationale}`,
+            detail: `workflow step ${gateIndex + 1}`
+                + ` ${isMalformed ? "malformed" : "invalid"} retry ${attempts}/${maxIR};`
+                + ` verifier ${step.dispatchedActor ?? verifierName}; reason ${reason}: ${rationale}`,
         });
         await saveTeamState(team);
         return;
@@ -567,7 +579,10 @@ export async function handleInvalidVerdict(
         const escalated = await forceApprovalRequest(ctx, team, {
             kind: "workflow_step",
             stage: gateIndex,
-            summary: `Step ${gateIndex + 1} (gate) by ${verifierName} could not be evaluated (${reason}). Rationale: ${rationale}. Approve to override and continue${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""}; reject to fail as workflow_invalid.`,
+            summary: `Step ${gateIndex + 1} (gate) by ${verifierName} could not be evaluated (${reason}).`
+                + ` Rationale: ${rationale}. Approve to override and continue`
+                + `${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""};`
+                + ` reject to fail as workflow_invalid.`,
         });
         if (escalated) {
             // Mark the gate complete so that on team_approve (which calls
