@@ -13,8 +13,8 @@ import { prependStandingInstruction } from "../src/orchestration/control/dispatc
 import type { MemberState } from "../src/core/types.js"
 
 describe("ROLES catalogue", () => {
-    test("has 22 roles, each with a non-empty agent and instruction", () => {
-        expect(ROLE_NAMES.length).toBe(22)
+    test("has 26 roles, each with a non-empty agent and instruction", () => {
+        expect(ROLE_NAMES.length).toBe(26)
         for (const name of ROLE_NAMES) {
             const def = ROLES[name]
             expect(def.agent.length).toBeGreaterThan(0)
@@ -58,7 +58,7 @@ describe("normalizeRole (closed enum, unknown → reviewer)", () => {
 
 describe("roleAgent (role → fixed agent)", () => {
     test("software roles", () => {
-        expect(roleAgent("coder")).toBe("oct-junior")
+        expect(roleAgent("coder")).toBe("oct-deep")
         expect(roleAgent("debugger")).toBe("oct-junior")
         expect(roleAgent("optimizer")).toBe("oct-junior")
         expect(roleAgent("tester")).toBe("oct-junior")
@@ -71,8 +71,8 @@ describe("roleAgent (role → fixed agent)", () => {
 
     test("science roles", () => {
         expect(roleAgent("mathematician")).toBe("oct-junior")
-        expect(roleAgent("physicist")).toBe("oct-junior")
-        expect(roleAgent("simulator")).toBe("oct-junior")
+        expect(roleAgent("physicist")).toBe("oct-deep")
+        expect(roleAgent("simulator")).toBe("oct-deep")
         expect(roleAgent("chemist")).toBe("oct-junior")
         expect(roleAgent("analyst")).toBe("oct-junior")
         expect(roleAgent("visualizer")).toBe("oct-junior")

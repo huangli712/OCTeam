@@ -457,7 +457,7 @@ export const DEFAULT_ROLE = "reviewer"
  * All preset role names (the closed enum of valid roles).
  *
  * @internal Exported only for use by tests/role.test.ts (closed-enum regression
- * on the 22 preset role count + names). Not part of the public API; do not
+ * on the 26 preset role count + names). Not part of the public API; do not
  * consume from production code.
  */
 export const ROLE_NAMES: readonly string[] = Object.freeze(Object.keys(ROLES))
