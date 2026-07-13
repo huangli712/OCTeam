@@ -34,22 +34,13 @@ import type { ActiveTask, DecisionRecord, ReducePolicy, SignoffPolicy } from "..
 // ============================================================
 // Orchestration defaults
 // ============================================================
-// Schema field builders (signoffSchemaFields, humanApprovalSchemaFields) live
-// in tools/shared-schema.ts — the tool-layer concern. The matching ActiveTask
-// field builders below (signoffTaskFields, humanApprovalTaskFields) are the
-// runtime-layer counterpart; they are intentionally kept here because they
-// depend on runtime types (SignoffPolicy, Team).
 
 /** Default orchestration timeout in milliseconds (10 minutes). */
 export const DEFAULT_TIMEOUT_MS = 600_000
+
 /** Default loop orchestration timeout in milliseconds (15 minutes). */
 export const DEFAULT_LOOP_TIMEOUT_MS = 900_000
 
-// Named defaults for orchestration parameters (wf-011). Previously these were
-// scattered as inline `?? N` literals across the Phase-3 commit blocks, which
-// made the effective defaults hard to audit and easy to drift between tools.
-// The numeric defaults live in orchestration/control/defaults.ts (single-sourced for
-// both the tool and handler layers); re-exported here for tool-layer callers.
 /** Re-export named orchestration defaults from defaults.ts for tool-layer callers. */
 export {
     DEFAULT_CONSENSUS_ROUNDS,
@@ -57,8 +48,10 @@ export {
     DEFAULT_RECURSE_DEPTH,
     DEFAULT_RECURSE_SUBTASKS,
 } from "../modes/defaults.js"
+
 /** Default signoff policy: no post-completion review. */
 export const DEFAULT_SIGNOFF_POLICY: SignoffPolicy = "none"
+
 /** Default reduce policy: concatenate member outputs with a header summary. */
 export const DEFAULT_REDUCE_POLICY: ReducePolicy = "summarize"
 
@@ -116,7 +109,7 @@ export function humanApprovalTaskFields(
 }
 
 /**
- * The common ActiveTask base fields shared by all 9 orchestration tools.
+ * The common ActiveTask base fields shared by all orchestration tools.
  * Tool-specific fields (type discriminant, stages, per-mode fields) are added
  * by the caller AFTER spreading this.
  */
@@ -159,10 +152,10 @@ export function baseTaskFields(
 // ============================================================
 
 /**
- * Shared three-phase orchestration startup (wf-004). All nine workflow tools
+ * Shared three-phase orchestration startup. All eleven workflow tools
  * follow the same spine — the per-tool boilerplate has been collapsed into
  * this helper. Phases:
- *   1. master-only auth (resolveCallerInTeam + isMaster), auth-first (wf-009)
+ *   1. master-only auth (resolveCallerInTeam + isMaster), auth-first
  *   2. loadTeamState + activationError gate
  *   3. tool-specific validation (validate callback)
  *   4. Phase 1: busy pre-check under mutex
@@ -189,7 +182,7 @@ export async function startOrchestration(
     dispatch: (team: Team, task: ActiveTask) => Promise<void>,
     successMessage: () => string,
 ): Promise<string> {
-    // Step 1: master-only auth. Auth-first (wf-009): runs before any parameter
+    // Step 1: master-only auth. Auth-first: runs before any parameter
     // validation so a non-master caller never learns whether its arguments
     // were well-formed.
     const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, teamId)
