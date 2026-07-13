@@ -144,7 +144,7 @@ export function worktreePath(teamDirectory: string, memberName: string): string 
 // --- runs/ (per-orchestration result records + full member outputs) ---
 
 /**
- * True iff `s` is a single safe path segment: non-empty, no path separators,
+ * True if `s` is a single safe path segment: non-empty, no path separators,
  * no `..`/`.` traversal, no NUL. Used to validate caller-supplied run_id /
  * member values before they are interpolated into runs/<...> paths, so a value
  * like "../../otherteam/runs/x" cannot escape the team's runs/ directory.
