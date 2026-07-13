@@ -83,7 +83,8 @@ export async function handleWorkflowIdle(
             step.taskAttempts = (step.taskAttempts ?? 0) + 1;
             const maxR = step.maxTaskRetries ?? 0;
             if (step.taskAttempts <= maxR) {
-                const nudge = `[Auto-retry attempt ${step.taskAttempts}/${maxR}] Previous output triggered retry_on condition. Please try again.`;
+                const nudge = `[Auto-retry attempt ${step.taskAttempts}/${maxR}]`
+                    + ` Previous output triggered retry_on condition. Please try again.`;
                 step.output = undefined;
                 step.dispatchedAt = undefined;
                 step.dispatchedActor = undefined;
@@ -94,7 +95,9 @@ export async function handleWorkflowIdle(
                     member: member.name,
                     stage: activeStepIndex,
                     stepIndex: activeStepIndex,
-                    detail: `workflow task step ${activeStepIndex + 1} auto-retry ${step.taskAttempts}/${maxR}; retry_on condition matched`,
+                    detail: `workflow task step ${activeStepIndex + 1}`
+                        + ` auto-retry ${step.taskAttempts}/${maxR};`
+                        + ` retry_on condition matched`,
                 });
                 if (!(await dispatchTaskStep(ctx, team, task, activeStepIndex, nudge))) {
                     await handleWorkflowDispatchUnavailable(ctx, team, task, step);
@@ -130,7 +133,9 @@ export async function handleWorkflowIdle(
             (await maybeRequestApproval(ctx, team, {
                 kind: "workflow_step",
                 stage: activeStepIndex,
-                summary: `Completed ${describeStep(step, activeStepIndex)}. Next: ${describeStep(steps[nextIndex], nextIndex)}. Review before continuing.`,
+                summary: `Completed ${describeStep(step, activeStepIndex)}.`
+                    + ` Next: ${describeStep(steps[nextIndex], nextIndex)}.`
+                    + ` Review before continuing.`,
             }))
         ) {
             return;
