@@ -13,14 +13,14 @@ import type {
     WorkflowFanoutMetadata,
     WorkflowJoinMetadata,
     WorkflowStep,
-} from "../core/types.js"
-import { parseWorkflowCondition } from "../orchestration/workflow/gate.js"
+} from "../../core/types.js"
+import { parseWorkflowCondition } from "../../orchestration/workflow/gate.js"
 import type {
     WorkflowFanoutBranch,
     WorkflowLinearToolStep,
     WorkflowStepRef,
     WorkflowToolStep,
-} from "./workflow.js"
+} from "./tool.js"
 
 // --- lowered types ---
 

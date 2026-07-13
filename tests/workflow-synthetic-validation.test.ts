@@ -13,7 +13,7 @@ import { describe, expect, test } from "bun:test"
 import {
     validateWorkflowStepsAgainstMembers,
     type WorkflowToolStep,
-} from "../src/tools/workflow.js"
+} from "../src/tools/workflow/tool.js"
 
 describe("validateWorkflowStepsAgainstMembers", () => {
     test("passes a valid task + gate against supplied members", () => {

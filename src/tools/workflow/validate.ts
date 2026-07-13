@@ -6,20 +6,20 @@
  * Extracted from tools/workflow.ts. Imports lowering + ref resolution from lower.ts.
  */
 
-import type { MemberState } from "../core/types.js"
-import { parseWorkflowCondition } from "../orchestration/workflow/gate.js"
-import { loadWorkflowFile } from "../orchestration/workflow/loader.js"
-import { defaultBounds, validateSignoff } from "./support.js"
-import { AsyncMutex } from "../state/locks.js"
-import type { Team } from "../state/store.js"
-import type { PluginContext } from "../core/context.js"
+import type { MemberState } from "../../core/types.js"
+import { parseWorkflowCondition } from "../../orchestration/workflow/gate.js"
+import { loadWorkflowFile } from "../../orchestration/workflow/loader.js"
+import { defaultBounds, validateSignoff } from "../support.js"
+import { AsyncMutex } from "../../state/locks.js"
+import type { Team } from "../../state/store.js"
+import type { PluginContext } from "../../core/context.js"
 import type {
     WorkflowFanoutBranch,
     WorkflowFanoutToolStep,
     WorkflowToolStep,
     WorkflowToolArgs,
     ResolvedWorkflowToolArgs,
-} from "./workflow.js"
+} from "./tool.js"
 import {
     assertNever,
     canConsumeWorkflowInput,

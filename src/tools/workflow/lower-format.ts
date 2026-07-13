@@ -7,7 +7,7 @@
  * resolution + step flattening, while this module owns presentation.
  */
 
-import { parseWorkflowCondition, formatWorkflowCondition } from "../orchestration/workflow/gate.js"
+import { parseWorkflowCondition, formatWorkflowCondition } from "../../orchestration/workflow/gate.js"
 import type {
     LoweredWorkflowLinearStep,
     LoweredWorkflowStep,
@@ -18,8 +18,8 @@ import {
     resolveGotoIndex,
     resolveWorkflowInputIndices,
 } from "./lower.js"
-import type { WorkflowStepRef } from "./workflow.js"
-import type { ResolvedWorkflowToolArgs } from "./workflow.js"
+import type { WorkflowStepRef } from "./tool.js"
+import type { ResolvedWorkflowToolArgs } from "./tool.js"
 
 function stepTargetLabel(steps: readonly LoweredWorkflowStep[], gateIndex: number): string {
     const targetIndices = resolveGateTargetIndices(steps, gateIndex)
@@ -44,7 +44,7 @@ function taskInputsLabel(steps: readonly LoweredWorkflowStep[], taskIndex: numbe
     return `inputs=${inputIndices.map(index => workflowStepLabel(steps, index)).join(", ")}`
 }
 
-function whereLabel(where: import("./workflow.js").WorkflowWhere | undefined): string {
+function whereLabel(where: import("./tool.js").WorkflowWhere | undefined): string {
     if (where === undefined) return ""
     const parsed = parseWorkflowCondition(where)
     return "condition" in parsed ? ` when ${formatWorkflowCondition(parsed.condition)}` : ""
