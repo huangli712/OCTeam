@@ -13,10 +13,6 @@ import type { Team } from "../state/store.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
 import type { Bounds, SignoffPolicy } from "../core/types.js"
 
-// ============================================================
-// Bounds + member validation (used by create, add, planner, and orchestration tools)
-// ============================================================
-
 /** Resource bounds with design defaults, overridden by user input. */
 export function defaultBounds(override?: Partial<Bounds>): Bounds {
     return {
@@ -29,6 +25,50 @@ export function defaultBounds(override?: Partial<Bounds>): Bounds {
         messagePayloadMaxBytes: 32768,
         messageUnreadMaxBytes: 1048576,
         ...override,
+    }
+}
+
+/**
+ * Assert that `name` is a member of `team`. Returns a ready-to-return Error
+ * string when the name does not match any member, or null when it is valid.
+ * `label` identifies the offending field in the message (e.g.
+ * "signoff_decider", "decomposer"). The message format is kept identical to the
+ * previous inline checks so existing error-string assertions still hold.
+ */
+export function assertMember(team: Team, name: string, label: string): string | null {
+    if (!team.members.some(m => m.name === name)) {
+        return `Error: ${label} "${name}" is not a member of team "${team.teamName}"`
+    }
+    return null
+}
+
+/**
+ * Abort every running non-master member session and reset all non-master
+ * members to a clean idle state (clears declaredDone / retryingSince). Shared
+ * by team_cancel and team_delete (busy-team teardown), which previously
+ * duplicated this ~12-line block. Best-effort on abort: a failed abort must
+ * not block cancel/delete. Caller MUST already hold team.mutex.
+ */
+export async function abortAndResetMembers(ctx: PluginContext, team: Team): Promise<void> {
+    // Abort running member turns (best-effort).
+    for (const m of team.members) {
+        if (!m.isMaster && m.sessionId && m.status === "running") {
+            await ctx.client.session
+                .abort({
+                    path: { id: m.sessionId },
+                    query: { directory: m.worktreePath ?? ctx.directory },
+                })
+                .catch(() => {
+                    // best-effort: a failed abort must not block teardown
+                })
+        }
+    }
+    // Reset every non-master member to a clean idle state.
+    for (const m of team.members) {
+        if (m.isMaster) continue
+        m.status = "idle"
+        m.declaredDone = false
+        m.retryingSince = undefined
     }
 }
 
@@ -69,20 +109,6 @@ export function validateMemberAgent(agent: string): string | null {
 }
 
 /**
- * Assert that `name` is a member of `team`. Returns a ready-to-return Error
- * string when the name does not match any member, or null when it is valid
- * (wf-008). `label` identifies the offending field in the message (e.g.
- * "signoff_decider", "decomposer"). The message format is kept identical to the
- * previous inline checks so existing error-string assertions still hold.
- */
-export function assertMember(team: Team, name: string, label: string): string | null {
-    if (!team.members.some(m => m.name === name)) {
-        return `Error: ${label} "${name}" is not a member of team "${team.teamName}"`
-    }
-    return null
-}
-
-/**
  * Validate the signoff_policy 'decider' field: requires signoff_decider to be
  * present and name a real team member. Shared by the 7 tools that expose
  * signoff (all except consensus and loop). Returns an error string or null.
@@ -96,34 +122,4 @@ export function validateSignoff(
         return "Error: signoff_policy 'decider' requires signoff_decider (a member name)"
     }
     return assertMember(team, args.signoff_decider, "signoff_decider")
-}
-
-/**
- * Abort every running non-master member session and reset all non-master
- * members to a clean idle state (clears declaredDone / retryingSince). Shared
- * by team_cancel and team_delete (busy-team teardown), which previously
- * duplicated this ~12-line block. Best-effort on abort: a failed abort must
- * not block cancel/delete. Caller MUST already hold team.mutex.
- */
-export async function abortAndResetMembers(ctx: PluginContext, team: Team): Promise<void> {
-    // Abort running member turns (best-effort).
-    for (const m of team.members) {
-        if (!m.isMaster && m.sessionId && m.status === "running") {
-            await ctx.client.session
-                .abort({
-                    path: { id: m.sessionId },
-                    query: { directory: m.worktreePath ?? ctx.directory },
-                })
-                .catch(() => {
-                    // best-effort: a failed abort must not block teardown
-                })
-        }
-    }
-    // Reset every non-master member to a clean idle state.
-    for (const m of team.members) {
-        if (m.isMaster) continue
-        m.status = "idle"
-        m.declaredDone = false
-        m.retryingSince = undefined
-    }
 }
