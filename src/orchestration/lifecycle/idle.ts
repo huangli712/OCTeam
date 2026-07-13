@@ -5,15 +5,15 @@
  * event-handler wrapper acquires the mutex, this function mutates state freely.
  *
  * Steps:
- *   0. Master special case — drain queued results, return (master never dispatches)
- *   1. Flip member to idle
- *   1.5. Role-setup barrier — first idle of uninitialized member marks it ready, returns
- *   2. Token accounting (recompute, never +=)
- *   3. Identity validation (stray idle does not advance pipeline/loop)
- *   4. Capture output (delegated to records/capture.ts)
- *   5. Unread-message wake hint (returns; Transform hook injects content next turn)
- *   6. Dispatch by active-task type
- *   7. Termination checks
+ *   1. Master special case — drain queued results, return (master never dispatches)
+ *   2. Flip member to idle
+ *   3. Role-setup barrier — first idle of uninitialized member marks it ready, returns
+ *   4. Token accounting (recompute, never +=)
+ *   5. Identity validation (stray idle does not advance pipeline/loop)
+ *   6. Capture output (delegated to records/capture.ts)
+ *   7. Unread-message wake hint (returns; Transform hook injects content next turn)
+ *   8. Dispatch by active-task type
+ *   9. Termination checks
  */
 
 import type { PluginContext } from "../../core/context.js"
@@ -44,6 +44,26 @@ import { handleArbitrateIdle } from "../modes/arbitrate.js"
 import { handleWorkflowIdle } from "../workflow/workflow-handler.js"
 import { handleArenaIdle } from "../modes/arena.js"
 import { captureMemberOutput } from "../records/capture.js"
+
+/**
+ * Idle dispatch table. Record<OrchestrationType, ...> enforces compile-time
+ * completeness: adding a new OrchestrationType without a table entry is a
+ * type error. Wrappers adapt heterogeneous handler signatures (some take
+ * member, some don't) to a uniform interface.
+ */
+const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, member: MemberState) => Promise<void>> = {
+    parallel: async (ctx, team) => handleParallelIdle(ctx, team),
+    consensus: async (ctx, team) => handleConsensusIdle(ctx, team),
+    pipeline: async (ctx, team, member) => handlePipelineIdle(ctx, team, member),
+    loop: async (ctx, team, member) => handleLoopIdle(ctx, team, member),
+    delegate: async (ctx, team, member) => handleDelegateIdle(ctx, team, member),
+    route: async (ctx, team) => handleRouteIdle(ctx, team),
+    arbitrate: async (ctx, team) => handleArbitrateIdle(ctx, team),
+    recurse: async (ctx, team, member) => handleRecurseIdle(ctx, team, member),
+    tollgate: async (ctx, team, member) => handleTollgateIdle(ctx, team, member),
+    workflow: async (ctx, team, member) => handleWorkflowIdle(ctx, team, member),
+    arena: async (ctx, team, member) => handleArenaIdle(ctx, team, member),
+}
 
 // --- helpers ---
 
@@ -139,13 +159,13 @@ async function accountAndValidateIdle(
     const msgs = await ctx.client.session.messages({ path: { id: sessionID } })
     const messages = (msgs.data ?? []) as SdkMessage[]
     if (team.activeTask) {
-        // Step 2: Token accounting (recompute from full history, never +=).
+        // Step 4: Token accounting (recompute from full history, never +=).
         team.activeTask.tokensByMember[member.name] = sumMemberTokens(messages)
         team.activeTask.tokensUsed = Object.values(team.activeTask.tokensByMember).reduce(
             (a, b) => a + b,
             0,
         )
-        // Step 3: Identity validation — stray idle must not advance pipeline/loop.
+        // Step 5: Identity validation — stray idle must not advance pipeline/loop.
         const expected = getExpectedMember(team.activeTask)
         if (expected !== null && member.name !== expected) {
             await saveTeamState(team) // persist token tally; do NOT advance
@@ -193,26 +213,6 @@ async function maybeRepromptPrematureIdle(
     return false
 }
 
-/**
- * Idle dispatch table. Record<OrchestrationType, ...> enforces compile-time
- * completeness: adding a new OrchestrationType without a table entry is a
- * type error. Wrappers adapt heterogeneous handler signatures (some take
- * member, some don't) to a uniform interface.
- */
-const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, member: MemberState) => Promise<void>> = {
-    parallel: async (ctx, team) => handleParallelIdle(ctx, team),
-    consensus: async (ctx, team) => handleConsensusIdle(ctx, team),
-    pipeline: async (ctx, team, member) => handlePipelineIdle(ctx, team, member),
-    loop: async (ctx, team, member) => handleLoopIdle(ctx, team, member),
-    delegate: async (ctx, team, member) => handleDelegateIdle(ctx, team, member),
-    route: async (ctx, team) => handleRouteIdle(ctx, team),
-    arbitrate: async (ctx, team) => handleArbitrateIdle(ctx, team),
-    recurse: async (ctx, team, member) => handleRecurseIdle(ctx, team, member),
-    tollgate: async (ctx, team, member) => handleTollgateIdle(ctx, team, member),
-    workflow: async (ctx, team, member) => handleWorkflowIdle(ctx, team, member),
-    arena: async (ctx, team, member) => handleArenaIdle(ctx, team, member),
-}
-
 /** Single entry point for the idle state machine, driven by session.idle events. */
 export async function processIdle(
     ctx: PluginContext,
@@ -226,17 +226,17 @@ export async function processIdle(
     // those all funnel through atomicWrite, whose mkdir({recursive:true}) would
     // otherwise recreate the just-removed directory.
     if (team.deleted) return
-    // Step 0: Master special case — synthetic member, never dispatches.
+    // Step 1: Master special case — synthetic member, never dispatches.
     if (member.isMaster) {
         await deliverQueuedResultsToMaster(ctx, team, sessionID)
         return
     }
 
-    // Step 1: member is now idle.
+    // Step 2: member is now idle.
     member.status = "idle"
     member.retryingSince = undefined // idle clears retry tracking
 
-    // Step 1.5: Role-setup barrier — first idle of an uninitialized member
+    // Step 3: Role-setup barrier — first idle of an uninitialized member
     // marks it ready and returns WITHOUT capturing output or advancing.
     if (!member.initialized) {
         member.initialized = true
@@ -244,11 +244,11 @@ export async function processIdle(
         return
     }
 
-    // Steps 2-3: Token accounting + identity validation.
+    // Steps 4-5: Token accounting + identity validation.
     const messages = await accountAndValidateIdle(ctx, team, member, sessionID)
     if (messages === null) return // stray idle
 
-    // Step 4: Capture output (mode-aware; delegate skips, signoff always captures).
+    // Step 6: Capture output (mode-aware; delegate skips, signoff always captures).
     const task = team.activeTask
     if (
         task?.type !== "workflow"
@@ -260,14 +260,14 @@ export async function processIdle(
 
     await saveTeamState(team)
 
-    // Step 5: Unread messages — wake hint only (Transform hook injects content).
+    // Step 7: Unread messages — wake hint only (Transform hook injects content).
     const unread = await countUnreadMessages(team.directory, member.name)
     if (unread > 0) {
         await sendWakeHint(ctx, sessionID, unread)
         return
     }
 
-    // Step 6: Dispatch by active-task type via the handler table.
+    // Step 8: Dispatch by active-task type via the handler table.
     // Record<OrchestrationType, ...> enforces compile-time completeness:
     // a new mode without a table entry is a type error, not a runtime gap.
     if (!team.activeTask) return
@@ -292,6 +292,6 @@ export async function processIdle(
 
     await idleDispatch[taskType](ctx, team, member)
 
-    // Step 7: Termination checks.
+    // Step 9: Termination checks.
     await checkTermination(ctx, team)
 }
