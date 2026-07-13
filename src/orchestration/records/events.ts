@@ -30,7 +30,7 @@ export function recordEvent(team: Team, event: RunEvent): void {
     // team.deleted. The tombstone flag is set under the team mutex before
     // fs.rm runs (delete.ts:60 / handleSessionDeleted), so this read is
     // consistent with the deletion when recordEvent is called from a path
-    // that holds the mutex (every call site in handlers.ts/summary.ts does).
+    // that holds the mutex (every call site in idle.ts/status.ts/summary.ts does).
     if (team.deleted) return
     const runId = team.activeTask?.runId
     if (!runId) return

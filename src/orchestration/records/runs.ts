@@ -2,7 +2,7 @@
  * Persistent per-orchestration run records.
  *
  * Full member outputs are written to runs/<runId>/<member>.md at CAPTURE time
- * (handlers.ts Step 4). This module writes the run's record.json — a JSON
+ * (idle.ts Step 6). This module writes the run's record.json — a JSON
  * index of metadata + references to those output files — at TERMINATION time,
  * via persistRun, which is called from deliverSummaryToLeader (the single seam
  * that every real termination funnels through). Retention is enforced here

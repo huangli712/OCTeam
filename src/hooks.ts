@@ -297,7 +297,7 @@ export function createTransformHook(
  * Runs the callback under team.mutex. The caller (startSweepTimer) snapshots
  * activeTeams() BEFORE acquiring each team's mutex — a team_delete can complete
  * between the snapshot and us acquiring the lock, so the tombstone guard at
- * the top is load-bearing (see processIdle handlers.ts:117 for the same
+ * the top is load-bearing (see processIdle in idle.ts for the same
  * pattern). `statusMap` is the already-fetched session.status snapshot shared
  * across all teams in this sweep tick.
  */
@@ -314,8 +314,8 @@ export async function sweepTeamOnce(
         // call — those funnel through withLock -> acquireLock ->
         // fs.mkdir({recursive:true}), which would otherwise
         // recreate the just-removed <teamDir>/mailbox/ directory.
-        // Mirrors processIdle (handlers.ts:117) and
-        // handleStatusEvent (handlers.ts:346) guards.
+        // Mirrors processIdle (idle.ts) and
+        // handleStatusEvent (status.ts) tombstone guards.
         if (team.deleted) return
         // 1. Reclaim stale resources.
         await releaseStaleReservations(team.directory, "master")
