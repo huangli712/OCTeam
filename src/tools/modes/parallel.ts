@@ -5,17 +5,17 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { dispatchToMember } from "../orchestration/control/dispatch.js"
+import type { PluginContext } from "../../core/context.js"
+import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 import {
     DEFAULT_REDUCE_POLICY,
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/lifecycle/startup.js"
-import { signoffSchemaFields } from "./shared-schema.js"
-import { assertMember, validateSignoff } from "./support.js"
+} from "../../orchestration/lifecycle/startup.js"
+import { signoffSchemaFields } from "../shared-schema.js"
+import { assertMember, validateSignoff } from "../support.js"
 
 /** Run a task across all team members in parallel with isolated or cooperative mode. */
 export function teamParallelTool(ctx: PluginContext): ToolDefinition {

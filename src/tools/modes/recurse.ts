@@ -6,10 +6,10 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { dispatchToMember } from "../orchestration/control/dispatch.js"
-import { createTask, listAllTasks } from "../state/tasks.js"
-import { buildRecursePrompt } from "../orchestration/modes/recurse.js"
+import type { PluginContext } from "../../core/context.js"
+import { dispatchToMember } from "../../orchestration/control/dispatch.js"
+import { createTask, listAllTasks } from "../../state/tasks.js"
+import { buildRecursePrompt } from "../../orchestration/modes/recurse.js"
 import {
     DEFAULT_RECURSE_DEPTH,
     DEFAULT_RECURSE_SUBTASKS,
@@ -18,9 +18,9 @@ import {
     humanApprovalTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
-import { assertMember, validateSignoff } from "./support.js"
+} from "../../orchestration/lifecycle/startup.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "../shared-schema.js"
+import { assertMember, validateSignoff } from "../support.js"
 
 /** Hierarchical recursive decomposition of a root task into subtasks. */
 export function teamRecurseTool(ctx: PluginContext): ToolDefinition {

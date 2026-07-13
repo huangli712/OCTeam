@@ -4,17 +4,17 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import type { Stage } from "../core/types.js"
-import { dispatchToMember } from "../orchestration/control/dispatch.js"
+import type { PluginContext } from "../../core/context.js"
+import type { Stage } from "../../core/types.js"
+import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 import {
     DEFAULT_LOOP_TIMEOUT_MS,
     baseTaskFields,
     humanApprovalTaskFields,
     startOrchestration,
-} from "../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields } from "./shared-schema.js"
-import { assertMember } from "./support.js"
+} from "../../orchestration/lifecycle/startup.js"
+import { humanApprovalSchemaFields } from "../shared-schema.js"
+import { assertMember } from "../support.js"
 
 /** Run a corrective loop with a decider that reviews and decides whether to continue. */
 export function teamLoopTool(ctx: PluginContext): ToolDefinition {

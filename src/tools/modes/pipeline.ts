@@ -4,18 +4,18 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import type { Stage } from "../core/types.js"
-import { dispatchToMember } from "../orchestration/control/dispatch.js"
+import type { PluginContext } from "../../core/context.js"
+import type { Stage } from "../../core/types.js"
+import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     humanApprovalTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
-import { validateSignoff } from "./support.js"
+} from "../../orchestration/lifecycle/startup.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "../shared-schema.js"
+import { validateSignoff } from "../support.js"
 
 /** Run a linear pipeline where each stage passes its output to the next. */
 export function teamPipelineTool(ctx: PluginContext): ToolDefinition {

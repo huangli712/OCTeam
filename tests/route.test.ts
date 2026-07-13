@@ -10,7 +10,7 @@ import { readRunEvents } from "../src/orchestration/records/runs.js"
 
 import { buildSummary } from "../src/orchestration/records/summary.js"
 import { checkTermination } from "../src/orchestration/lifecycle/termination.js"
-import { buildRouterPrompt, teamRouteTool } from "../src/tools/router.js"
+import { buildRouterPrompt, teamRouteTool } from "../src/tools/modes/router.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import type { ActiveTask, MemberState, RouteBranch, RouteTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"

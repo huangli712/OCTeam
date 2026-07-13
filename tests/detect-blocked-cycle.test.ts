@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "bun:test"
 
-import { detectBlockedByCycle } from "../src/tools/delegate.js"
+import { detectBlockedByCycle } from "../src/tools/modes/delegate.js"
 
 type Task = { ref?: string; blocked_by?: string[] }
 

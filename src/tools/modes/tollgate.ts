@@ -5,18 +5,18 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import type { GatedStage } from "../core/types.js"
-import { advanceToGatedStage } from "../orchestration/modes/tollgate.js"
+import type { PluginContext } from "../../core/context.js"
+import type { GatedStage } from "../../core/types.js"
+import { advanceToGatedStage } from "../../orchestration/modes/tollgate.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     humanApprovalTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
-import { validateSignoff } from "./support.js"
+} from "../../orchestration/lifecycle/startup.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "../shared-schema.js"
+import { validateSignoff } from "../support.js"
 
 /** Run a verdict-gated pipeline where each stage is verified before the next proceeds. */
 export function teamTollgateTool(ctx: PluginContext): ToolDefinition {

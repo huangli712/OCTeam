@@ -15,7 +15,7 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 import { AsyncMutex } from "../src/state/locks.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { teamDir } from "../src/state/paths.js"
-import { teamArenaTool } from "../src/tools/arena.js"
+import { teamArenaTool } from "../src/tools/modes/arena.js"
 import { teamResumeTool } from "../src/tools/resume.js"
 import { teamResultGetTool, teamResultsTool } from "../src/tools/results.js"
 import { getExpectedMember } from "../src/orchestration/lifecycle/idle.js"

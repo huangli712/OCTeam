@@ -7,14 +7,14 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import type { Team } from "../state/store.js"
-import { dispatchToMember } from "../orchestration/control/dispatch.js"
+import type { PluginContext } from "../../core/context.js"
+import type { Team } from "../../state/store.js"
+import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     startOrchestration,
-} from "../orchestration/lifecycle/startup.js"
+} from "../../orchestration/lifecycle/startup.js"
 
 export function teamArenaTool(ctx: PluginContext): ToolDefinition {
     return tool({

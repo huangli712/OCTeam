@@ -5,17 +5,17 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { dispatchToMember } from "../orchestration/control/dispatch.js"
-import { createTask, listAllTasks, updateTask } from "../state/tasks.js"
+import type { PluginContext } from "../../core/context.js"
+import { dispatchToMember } from "../../orchestration/control/dispatch.js"
+import { createTask, listAllTasks, updateTask } from "../../state/tasks.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/lifecycle/startup.js"
-import { signoffSchemaFields } from "./shared-schema.js"
-import { validateSignoff } from "./support.js"
+} from "../../orchestration/lifecycle/startup.js"
+import { signoffSchemaFields } from "../shared-schema.js"
+import { validateSignoff } from "../support.js"
 
 /**
  * Detect a cycle in the blocked_by dependency graph declared by a delegate

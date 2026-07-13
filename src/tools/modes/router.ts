@@ -5,19 +5,19 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import type { RouteBranch } from "../core/types.js"
-import { dispatchToMember } from "../orchestration/control/dispatch.js"
-import { buildRouterPrompt } from "../orchestration/modes/route.js"
+import type { PluginContext } from "../../core/context.js"
+import type { RouteBranch } from "../../core/types.js"
+import { dispatchToMember } from "../../orchestration/control/dispatch.js"
+import { buildRouterPrompt } from "../../orchestration/modes/route.js"
 import {
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     humanApprovalTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
-import { validateSignoff } from "./support.js"
+} from "../../orchestration/lifecycle/startup.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "../shared-schema.js"
+import { validateSignoff } from "../support.js"
 
 // Re-export buildRouterPrompt for any external consumers that historically
 // imported it from this module. The canonical home is orchestration/modes/route.ts.

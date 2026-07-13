@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "recurse-root-task-cap-bypass".
  *
- * Bug: src/tools/recurse.ts:60 calls createTask() to seed the root task
+ * Bug: src/tools/modes/recurse.ts:60 calls createTask() to seed the root task
  * WITHOUT first checking that the shared task list has room under
  * team.bounds.maxTasks. The buildTask callback runs inside startOrchestration
  * (shared.ts:239) BEFORE any maxTasks guard. So starting recurse when the
@@ -24,7 +24,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
-import { teamRecurseTool } from "../src/tools/recurse.js"
+import { teamRecurseTool } from "../src/tools/modes/recurse.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMasterTeam, indexMember, setActiveTeam, unindexSession } from "../src/state/resolve.js"
