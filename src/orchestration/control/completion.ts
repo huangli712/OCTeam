@@ -1,3 +1,8 @@
+/**
+ * Run-completion control: build and deliver the final summary, persist the run
+ * record, emit termination telemetry, then clear the active task.
+ */
+
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import type { RunStatus } from "../../core/types.js"
@@ -6,6 +11,13 @@ import { recordEvent } from "../records/events.js"
 import { persistRun } from "../records/runs.js"
 import { buildSummary } from "../records/summary.js"
 
+/**
+ * Build and deliver the active run summary to the team leader.
+ *
+ * Ordering is intentional: emit the terminal event and persist the run while
+ * activeTask still carries its runId, then wake the leader. Persistence is
+ * best-effort and must not suppress result delivery.
+ */
 export async function deliverSummaryToLeader(
     ctx: PluginContext,
     team: Team,
@@ -35,6 +47,13 @@ export async function deliverSummaryToLeader(
     })
 }
 
+/**
+ * Complete a run through the canonical teardown sequence: deliver the summary,
+ * clear activeTask, then expose the terminal team status.
+ *
+ * Callers that need work between delivery and cleanup must invoke
+ * deliverSummaryToLeader directly and perform the remaining steps themselves.
+ */
 export async function finishRun(
     ctx: PluginContext,
     team: Team,

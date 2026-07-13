@@ -1,24 +1,23 @@
 /**
- * Idempotent barrier primitives shared by the concurrent-flavor handlers
- * (parallel, consensus, route-targets, arbitrate-debate). Extracted from the
- * god-file so the barrier logic can be unit-tested in isolation.
+ * Idempotent barrier primitives shared by concurrent orchestration modes.
+ *
+ * Barriers do not block. They re-check readiness after each idle or explicit
+ * completion acknowledgement and invoke the supplied transition exactly once
+ * when every participant reaches a terminal state for the current phase.
  */
 
 import type { Team } from "../../state/store.js"
 
 /**
- * Idempotent barrier check (NOT blocking). Called from handleParallelIdle on
- * each idle. If all participating members are idle, fires onBarrier exactly
- * once for this phase (the mutex guarantees the status flips are atomic, so a
- * later idle in the same phase sees members already "running" → no double-fire).
+ * Check readiness for one orchestration phase without waiting.
  *
- * require_done_ack mode: the readiness signal is `declaredDone === true`
- * (set by team_done tool) instead of `status === "idle"`. This prevents the
- * barrier from firing when a member goes idle prematurely (e.g. waiting for a
- * dependency); the barrier only fires after every participant has explicitly
- * acknowledged completion.
+ * In the default mode, idle members are ready. When requireDoneAck is enabled
+ * on the active task, members must explicitly call team_done. Errored members
+ * are terminal in both modes so failure-isolation policies can advance with the
+ * surviving participants. Missing members remain not-ready defensively.
  *
- * Exported for direct unit testing of the readiness predicate.
+ * The caller holds the team mutex, so a successful transition cannot fire twice
+ * for the same phase.
  */
 export async function waitForBarrier(
     team: Team,
@@ -27,18 +26,15 @@ export async function waitForBarrier(
 ): Promise<void> {
     const requireDoneAck = team.activeTask?.requireDoneAck === true
     const allReady = memberNames.every(name => {
-        const m = team.members.find(x => x.name === name)
-        if (!m) return false
-        // errored is TERMINAL: it counts toward the barrier so survivors can be
-        // delivered (failure isolation). Checked first so it also unblocks a
-        // require_done_ack run, where an errored member never calls team_done().
-        if (m.status === "errored") return true
+        const member = team.members.find(candidate => candidate.name === name)
+        if (!member) return false
+        if (member.status === "errored") return true
         return requireDoneAck
-            ? m.declaredDone === true
-            : m.status === "idle"
+            ? member.declaredDone === true
+            : member.status === "idle"
     })
     if (allReady) {
         await onBarrier()
     }
-    // else: return — the next idle/ack re-checks. checkTermination + sweep enforce timeouts.
+    // Otherwise the next idle or acknowledgement re-checks readiness.
 }

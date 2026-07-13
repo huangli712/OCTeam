@@ -1,7 +1,9 @@
 /**
- * Human-in-the-loop approval stages. Unlike signoff (post-completion member
- * review), approvalStage is a mid-run pause controlled by the leader via
- * team_approve/team_reject.
+ * Human-in-the-loop approval control for mid-run pauses.
+ *
+ * Unlike post-completion signoff, approval is controlled by the team leader via
+ * team_approve/team_reject. This module owns request creation, persistence,
+ * leader notification, crash-resume notification, and forced gate escalation.
  */
 
 import crypto from "node:crypto"
@@ -21,6 +23,7 @@ type ApprovalRequestInput = {
     subtasks?: ApprovalSubtask[]
 }
 
+/** Build the leader-facing prompt for a persisted approval request. */
 export function buildApprovalPrompt(teamName: string, request: ApprovalRequest): string {
     const stageLabel = request.kind === "workflow_step" ? "step" : "stage"
     const stageDisplay = request.kind === "workflow_step" && request.stage !== undefined
@@ -38,6 +41,7 @@ export function buildApprovalPrompt(teamName: string, request: ApprovalRequest):
         + `or team_reject(team_id="${teamName}", approval_id="${request.id}", feedback="...") to reject.`
 }
 
+/** Notify the team leader without mutating approval state. */
 async function notifyLeader(ctx: PluginContext, team: Team, request: ApprovalRequest): Promise<void> {
     await ctx.client.session.promptAsync({
         path: { id: team.leadSessionId },
@@ -47,6 +51,10 @@ async function notifyLeader(ctx: PluginContext, team: Team, request: ApprovalReq
     })
 }
 
+/**
+ * Persist and announce a human-approval pause when the active task opted into
+ * HITL. Returns true when a pause already exists or a new pause was created.
+ */
 export async function maybeRequestApproval(
     ctx: PluginContext,
     team: Team,
@@ -81,6 +89,7 @@ export async function maybeRequestApproval(
     return true
 }
 
+/** Re-notify the leader about an already persisted approval after resume. */
 export async function resumeApprovalStage(ctx: PluginContext, team: Team): Promise<boolean> {
     const request = team.activeTask?.approvalRequest
     if (!team.activeTask?.approvalStage || !request) return false
@@ -89,9 +98,8 @@ export async function resumeApprovalStage(ctx: PluginContext, team: Team): Promi
 }
 
 /**
- * Force a human-approval pause regardless of the task's `humanApproval` flag.
- * Used by gate-level policies (e.g. workflow on_invalid='escalate') that must
- * escalate to the leader even when global HITL is disabled.
+ * Force a human-approval pause regardless of the task's humanApproval flag.
+ * Gate-level escalation uses this path when global HITL is disabled.
  */
 export async function forceApprovalRequest(
     ctx: PluginContext,
@@ -99,15 +107,13 @@ export async function forceApprovalRequest(
     input: ApprovalRequestInput,
 ): Promise<boolean> {
     if (team.activeTask?.approvalStage && team.activeTask?.approvalRequest) return true
-    // Temporarily enable humanApproval so maybeRequestApproval persists the
-    // pause; restore the original value afterwards to keep global semantics.
     const task = team.activeTask
     if (!task) return false
-    const prev = task.humanApproval
+    const previous = task.humanApproval
     task.humanApproval = true
     try {
         return await maybeRequestApproval(ctx, team, input)
     } finally {
-        task.humanApproval = prev
+        task.humanApproval = previous
     }
 }

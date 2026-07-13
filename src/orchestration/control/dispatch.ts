@@ -1,5 +1,9 @@
 /**
- * Member task-dispatch primitives shared by orchestration modes.
+ * Canonical member-dispatch primitives shared by orchestration modes.
+ *
+ * All synthetic task prompts pass through dispatchToMember so standing
+ * instructions, member state transitions, turn accounting, agent selection,
+ * worktree routing, and dispatch telemetry remain consistent.
  */
 
 import type { PluginContext } from "../../core/context.js";
@@ -9,7 +13,8 @@ import type { Team } from "../../state/store.js";
 import { recordEvent } from "../records/events.js";
 
 /**
- * Prepend the member's standing instruction once per member.
+ * Prefix a member's persistent standing instruction until the first successful
+ * dispatch marks it delivered. Resume and retry paths may call this repeatedly.
  */
 export function prependStandingInstruction(
     member: MemberState,
@@ -20,7 +25,11 @@ export function prependStandingInstruction(
 }
 
 /**
- * Send a synthetic text prompt to a member and mark it running.
+ * Send one synthetic task prompt and transition the member to running.
+ *
+ * Members without sessions are unavailable, and errored members are terminal
+ * until an explicit recovery path resets them. When a Team is supplied, the
+ * dispatch is also appended to the run event stream.
  */
 export async function dispatchToMember(
     ctx: PluginContext,

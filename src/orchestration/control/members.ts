@@ -1,3 +1,10 @@
+/**
+ * Member readiness transaction: create worktrees and sessions, deliver role
+ * prompts, wait for initialization, and roll back partial spawn failures.
+ *
+ * Must run outside team.mutex because idle initialization acquires that mutex.
+ */
+
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -14,10 +21,19 @@ import { buildRolePrompt } from "../protocol/output.js";
 const execFileP = promisify(execFile);
 const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000;
 
+/**
+ * Ensure every non-master member has an initialized session before task
+ * dispatch begins.
+ *
+ * This function must run outside team.mutex. The readiness barrier waits for
+ * idle initialization, whose event handler acquires that mutex. Spawn failures
+ * roll back session indexes, member state, worktrees, and temporary branches.
+ */
 export async function ensureMembersReady(
     ctx: PluginContext,
     team: Team,
 ): Promise<void> {
+    // Phase 1: snapshot both spawn work and the full readiness barrier set.
     const toSpawn = team.members.filter((member) => !member.sessionId);
     const initializationWaitNames = new Set(
         team.members
@@ -35,6 +51,7 @@ export async function ensureMembersReady(
     const specByName = new Map((spec?.members ?? []).map((member) => [member.name, member]));
     const peerNames = (spec?.members ?? []).map((member) => member.name);
 
+    // Phase 2: spawn missing members in bounded parallel batches.
     for (const batch of chunk(toSpawn, team.bounds.maxParallelMembers)) {
         await Promise.all(
             batch.map(async (member) => {
@@ -50,6 +67,7 @@ export async function ensureMembersReady(
                     worktreeCreated = true;
                 }
                 try {
+                    // Session creation and role-prompt delivery form one transaction.
                     const result = await ctx.client.session.create({
                         body: {
                             parentID: team.leadSessionId,
@@ -91,6 +109,7 @@ export async function ensureMembersReady(
                     });
                     member.turnCount = 1;
                 } catch (err) {
+                    // Roll back every side effect before exposing the spawn error.
                     if (member.sessionId) {
                         const sessionId = member.sessionId;
                         await ctx.client.session.delete({
@@ -132,6 +151,7 @@ export async function ensureMembersReady(
         );
     }
 
+    // Phase 3: wait outside the mutex for role-setup idle acknowledgements.
     await waitUntil(
         () =>
             [...initializationWaitNames].every(
@@ -139,6 +159,7 @@ export async function ensureMembersReady(
             ),
         { timeoutMs: ROLE_SETUP_BARRIER_TIMEOUT_MS },
     ).catch(async () => {
+        // Timeout state is persisted under the mutex before aborting startup.
         await team.mutex.runExclusive(async () => {
             for (const name of initializationWaitNames) {
                 const current = team.members.find((member) => member.name === name);

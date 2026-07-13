@@ -1,5 +1,9 @@
 /**
- * Post-completion signoff handling for decider and peer-quorum policies.
+ * Post-completion signoff state machine for decider and peer-quorum policies.
+ *
+ * maybeTriggerSignoff dispatches reviewers before a mode completes;
+ * handleSignoffIdle records each verdict and completes the run when policy
+ * conditions are satisfied.
  */
 
 import type { PluginContext } from "../../core/context.js"
@@ -12,12 +16,17 @@ import { buildSummary } from "../records/summary.js"
 import { finishRun } from "./completion.js"
 import { dispatchToMember } from "./dispatch.js"
 
+/** Build the structured verdict contract shared by live and resumed reviews. */
 export function buildSignoffReviewPrompt(summary: string): string {
     return `[Signoff review] Review the following workflow output. `
         + `If it meets quality standards, emit <signoff>{"approved": true, "rationale": "..."}</signoff>. `
         + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
 }
 
+/**
+ * Enter signoff when configured. Returns true when the caller must stop normal
+ * completion because signoff is already active or reviewers were dispatched.
+ */
 export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promise<boolean> {
     const task = team.activeTask
     if (!task) return false
@@ -72,6 +81,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     return true
 }
 
+/** Capture one reviewer verdict and complete the signoff policy when ready. */
 export async function handleSignoffIdle(
     ctx: PluginContext,
     team: Team,
