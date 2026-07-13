@@ -14,7 +14,7 @@ import { advanceTollgateAfterPass } from "../orchestration/modes/tollgate.js"
 import { approveLoopDone, rejectLoopDone } from "../orchestration/modes/loop.js"
 import { advanceRouteAfterDecision } from "../orchestration/modes/route.js"
 import { approveRecurseDecompose, rejectRecurseDecompose } from "../orchestration/modes/recurse.js"
-import { advanceWorkflowStep } from "../orchestration/workflow/workflow.js"
+import { advanceWorkflowStep } from "../orchestration/workflow/engine.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
 

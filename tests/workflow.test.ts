@@ -13,7 +13,7 @@ import { join } from "node:path";
 
 import { processIdle } from "../src/orchestration/lifecycle/idle.js";
 import { checkTermination } from "../src/orchestration/lifecycle/termination.js";
-import { advanceWorkflowStep } from "../src/orchestration/workflow/workflow.js";
+import { advanceWorkflowStep } from "../src/orchestration/workflow/engine.js";
 import { readRunEvents, readRunRecord } from "../src/orchestration/records/runs.js";
 import type {
     MemberState,

@@ -13,7 +13,7 @@ import {
     describeStep,
     dispatchTaskStep,
     maybePauseAfterWorkflowStep,
-} from "./workflow.js";
+} from "./engine.js";
 import { workflowInvalidReason } from "./reasons.js";
 import { finishRun } from "../control/completion.js";
 import { recordEvent } from "../records/events.js";

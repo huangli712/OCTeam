@@ -28,7 +28,7 @@ import {
     handleTollgateIdle,
     startVerification,
 } from "../modes/tollgate.js";
-import { advanceWorkflowStep, redispatchWorkflowStep } from "../workflow/workflow.js";
+import { advanceWorkflowStep, redispatchWorkflowStep } from "../workflow/engine.js";
 import { handleWorkflowIdle } from "../workflow/handler.js";
 import { handleWorkflowDispatchUnavailable } from "../workflow/fanout.js";
 import {

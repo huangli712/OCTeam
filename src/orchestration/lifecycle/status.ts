@@ -17,7 +17,7 @@ import { handleSignoffIdle } from "../control/signoff.js"
 import { handleParallelIdle } from "../modes/parallel.js"
 import { handleDelegateIdle } from "../modes/delegate.js"
 import { handleRecurseIdle } from "../modes/recurse.js"
-import { advanceWorkflowStep } from "../workflow/workflow.js"
+import { advanceWorkflowStep } from "../workflow/engine.js"
 import { handleArenaIdle } from "../modes/arena.js"
 
 /** Sustained-retry grace window before a member is escalated to "errored". */

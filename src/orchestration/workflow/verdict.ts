@@ -24,7 +24,7 @@ import {
     maybePauseBeforeWorkflowStep,
     moveActiveWorkflowStep,
     resetWorkflowStepTiming,
-} from "./workflow.js";
+} from "./engine.js";
 import {
     aggregateEnsembleVerdict,
     gatedGotoIndex,
