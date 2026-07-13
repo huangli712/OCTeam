@@ -18,13 +18,18 @@ import { advanceWorkflowStep, redispatchWorkflowStep } from "../../orchestration
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 
+/** Workflow fix operation kind: redispatch, skip, advance, fail, or reassign. */
 type FixWorkflowOp = "redispatch" | "skip" | "advance" | "fail" | "reassign"
+
+/** Step argument: 1-based number or stable step id string. */
 type WorkflowFixStepArg = number | string
 
+/** Wraps the workflow task targeted by a fix operation. */
 type WorkflowRepairTarget = {
     readonly task: WorkflowTask
 }
 
+/** Snapshot of a member's mutable state for rollback after a failed fix. */
 type MemberSnapshot = {
     readonly name: string
     readonly status: Team["members"][number]["status"]
@@ -35,6 +40,7 @@ type MemberSnapshot = {
     readonly declaredDone: boolean | undefined
 }
 
+/** Full team snapshot (status + task + members) for atomic rollback on fix failure. */
 type RepairSnapshot = {
     readonly status: Team["status"]
     readonly activeTask: ActiveTask | undefined
@@ -42,10 +48,12 @@ type RepairSnapshot = {
     readonly members: readonly MemberSnapshot[]
 }
 
+/** Type guard: true when the task is a workflow task. */
 function isWorkflowTask(task: ActiveTask | undefined): task is WorkflowTask {
     return task?.type === "workflow"
 }
 
+/** Resolve a step argument (number or id string) to a 0-based index; defaults to the first active step. */
 function stepIndexFromArg(step: WorkflowFixStepArg | undefined, task: WorkflowTask): number | null {
     if (typeof step === "number") return step - 1
     if (typeof step === "string") {
@@ -55,15 +63,18 @@ function stepIndexFromArg(step: WorkflowFixStepArg | undefined, task: WorkflowTa
     return task.activeStepIndices?.[0] ?? task.currentStageIndex
 }
 
+/** Check whether a step index is in the active workflow frontier. */
 function isActiveWorkflowStep(task: WorkflowTask, index: number): boolean {
     return getActiveWorkflowStepIndices(task).includes(index)
 }
 
+/** Deep-clone an ActiveTask (used by snapshot/restore for rollback isolation). */
 function cloneActiveTask(task: ActiveTask | undefined): ActiveTask | undefined {
     if (task === undefined) return undefined
     return structuredClone(task)
 }
 
+/** Capture a deep snapshot of the team's mutable state for rollback. */
 function snapshotTeam(team: Team): RepairSnapshot {
     return {
         status: team.status,
@@ -81,6 +92,7 @@ function snapshotTeam(team: Team): RepairSnapshot {
     }
 }
 
+/** Restore a previously captured snapshot, reverting all mutable fields. */
 function restoreSnapshot(team: Team, snapshot: RepairSnapshot): void {
     team.status = snapshot.status
     team.activeTask = cloneActiveTask(snapshot.activeTask)
@@ -97,6 +109,10 @@ function restoreSnapshot(team: Team, snapshot: RepairSnapshot): void {
     }
 }
 
+/**
+ * Resolve the workflow repair target: a busy workflow, or an interrupted workflow
+ * (promotes it to busy and resets errored members to idle).
+ */
 function workflowRepairTarget(team: Team): WorkflowRepairTarget | null {
     if (team.status === "busy" && isWorkflowTask(team.activeTask)) return { task: team.activeTask }
     if (team.status === "failed" && isWorkflowTask(team.lastInterruptedTask)) {
@@ -114,15 +130,18 @@ function workflowRepairTarget(team: Team): WorkflowRepairTarget | null {
     return null
 }
 
+/** Validate workflow invariants after a fix; returns an error string or null. */
 function validateWorkflowAfterFix(task: WorkflowTask): string | null {
     const check = checkWorkflowInvariants(task)
     return check.ok ? null : `Error: workflow invariant violation after fix: ${check.violations.join("; ")}`
 }
 
+/** Sanitize a free-text reason into a safe reason string (alphanumeric + punctuation, max 80 chars). */
 function sanitizeReason(reason: string | undefined): string {
     return reason?.trim() ? reason.trim().replace(/[^A-Za-z0-9_.:-]+/g, "_").slice(0, 80) : "operator_fix"
 }
 
+/** Redispatch an active workflow step, resetting its dispatch state first. */
 async function applyRedispatch(
     ctx: PluginContext, team: Team, task: WorkflowTask,
     step: WorkflowFixStepArg | undefined,
@@ -142,6 +161,7 @@ async function applyRedispatch(
     return `team_fix_workflow redispatched step ${index + 1}.`
 }
 
+/** Skip an active workflow step, marking it completed+skipped, then advance. */
 async function applySkip(
     ctx: PluginContext, team: Team, task: WorkflowTask,
     step: WorkflowFixStepArg | undefined,
@@ -166,6 +186,7 @@ async function applySkip(
     return `team_fix_workflow skipped step ${index + 1}.`
 }
 
+/** Advance the workflow to the next step unconditionally. */
 async function applyAdvance(ctx: PluginContext, team: Team): Promise<string> {
     await advanceWorkflowStep(ctx, team)
     if (team.activeTask?.type === "workflow") {
@@ -343,6 +364,3 @@ export function teamFixWorkflowTool(ctx: PluginContext): ToolDefinition {
         },
     })
 }
-/**
- * Workflow repair tools for redispatch, skip, advance, fail, and reassign operations.
- */
