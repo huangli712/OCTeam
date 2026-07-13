@@ -19,7 +19,8 @@ export class WorkflowDagInvariantError extends Error {
     }
 }
 
-function assertNever(value: never): never {
+/** Exhaustive-switch guard for WorkflowStepKind. Throws at runtime only if the type system is bypassed. */
+export function assertNeverWorkflowStepKind(value: never): never {
     throw new WorkflowDagInvariantError(value)
 }
 
@@ -44,7 +45,7 @@ export function workflowStepActor(step: WorkflowStep | undefined): string | null
         case "fanout":
             return null
         default:
-            return assertNever(step.kind)
+            return assertNeverWorkflowStepKind(step.kind)
     }
 }
 
@@ -109,7 +110,7 @@ export function isWorkflowJoinSatisfied(steps: readonly WorkflowStep[], joinStep
         case "fanout":
             return false
         default:
-            return assertNever(joinStep.kind)
+            return assertNeverWorkflowStepKind(joinStep.kind)
     }
 }
 
@@ -130,7 +131,7 @@ export function validateWorkflowDag(steps: readonly WorkflowStep[]): WorkflowDag
             case "join":
                 break
             default:
-                assertNever(step.kind)
+                assertNeverWorkflowStepKind(step.kind)
         }
     }
 
@@ -174,7 +175,7 @@ function collectReadyWorkflowStepIndices(
             collectWorkflowSuccessors(steps, index, ready)
             return
         default:
-            assertNever(step.kind)
+            assertNeverWorkflowStepKind(step.kind)
     }
 }
 
@@ -282,7 +283,7 @@ function isInsideAnotherFanout(steps: readonly WorkflowStep[], index: number): b
             case "join":
                 break
             default:
-                assertNever(candidate.kind)
+                assertNeverWorkflowStepKind(candidate.kind)
         }
     }
 

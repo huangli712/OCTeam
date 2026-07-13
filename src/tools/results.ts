@@ -18,6 +18,7 @@ import { truncateOutput } from "../orchestration/protocol/output.js"
 import { formatWorkflowMermaid } from "../orchestration/records/mermaid.js"
 import { resolveCallerInTeam } from "../state/resolve.js"
 import { listRunRecords, readRunRecord } from "../orchestration/records/runs.js"
+import { assertNeverWorkflowStepKind } from "../orchestration/workflow/dag.js"
 import { runMemberOutputPath, isSafePathSegment } from "../state/paths.js"
 import type { RunRecord, WorkflowRunStep } from "../core/types.js"
 
@@ -39,10 +40,6 @@ function workflowVerdictMetrics(step: WorkflowRunStep): string {
 /** Per-issue detail lines for a gate step with structured verdict. Severity-sorted
  * (critical > high > medium > low) so the most actionable issues surface first. */
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
-
-function assertNeverWorkflowStepKind(kind: never): never {
-    throw new Error(`unhandled WorkflowStepKind: ${String(kind)}`)
-}
 
 function formatWorkflowIssueDetail(step: WorkflowRunStep): string {
     const issues = step.issues

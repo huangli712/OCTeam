@@ -45,6 +45,7 @@ import { dispatchToMember } from "../control/dispatch.js";
 import { finishRun } from "../control/completion.js";
 import { recordEvent } from "../records/events.js";
 import {
+    assertNeverWorkflowStepKind,
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
     sortedWorkflowIndices,
@@ -61,10 +62,6 @@ import {
 } from "./fanout.js";
 
 import { buildWorkflowUpstream } from "./upstream.js";
-
-function assertNeverWorkflowStepKind(value: never): never {
-    throw new Error(`unhandled workflow step kind: ${String(value)}`);
-}
 
 export function describeStep(step: WorkflowStep | undefined, index: number): string {
     if (!step) return `step ${index + 1}`;
