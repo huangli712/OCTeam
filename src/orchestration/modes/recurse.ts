@@ -213,9 +213,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
     //   1. A non-decomposer member just idled (woke the decomposer).
     //   2. The decomposer itself idled WITHOUT claiming the root (T was
     //      undefined above — protocol slip; re-dispatch with a stronger
-    //      aggregation instruction). Previously handled by an aggregation
-    //      fallback that faked root completion; removing that fallback means
-    //      we must now actively re-dispatch here.
+    //      aggregation instruction).
     if (task.rootTaskId && task.decomposerMember) {
         const root = tasks.find(t => t.id === task.rootTaskId)
         if (

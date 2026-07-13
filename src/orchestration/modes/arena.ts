@@ -134,7 +134,7 @@ export function buildArenaEvaluatorPrompt(task: ArenaTask, team: Team): string {
  * ignored). Parse its <scoreboard>; on parse failure or no eligible winner,
  * delete the stale response and re-dispatch the evaluator (bounded by
  * maxEvalRetries), else record the deterministic winner and deliver directly
- * (v1 has NO signoff gate).
+ * (arena has no signoff gate).
  */
 export async function handleArenaIdle(
     ctx: PluginContext,
@@ -183,7 +183,7 @@ export async function handleArenaIdle(
             return
         }
         // Success: record the deterministic winner + scoreboard, then deliver
-        // directly. v1 has NO signoff gate (Must-NOT-Have).
+        // directly (arena has no signoff gate).
         task.scoreboard = sb
         task.winner = sel.winner
         await finishRun(ctx, team, "arena_complete", "idle")
