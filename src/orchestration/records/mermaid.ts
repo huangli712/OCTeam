@@ -8,8 +8,10 @@ import type { WorkflowRunStep } from "../../core/types.js"
 /** Visual status classification for a workflow step node in a Mermaid diagram. */
 export type MermaidStepStatus = "done" | "active" | "pending" | "skipped"
 
+/** Mermaid status rendering order (determines classDef emission sequence). */
 const STATUS_ORDER = ["done", "active", "pending", "skipped"] as const
 
+/** Mermaid classDef CSS strings per visual status. */
 const STATUS_CLASS_DEFS: Record<MermaidStepStatus, string> = {
     done: "classDef done fill:#d4edda,stroke:#28a745;",
     active: "classDef active fill:#fff3cd,stroke:#f0ad4e;",
@@ -17,14 +19,17 @@ const STATUS_CLASS_DEFS: Record<MermaidStepStatus, string> = {
     skipped: "classDef skipped fill:#e9ecef,stroke:#adb5bd,stroke-dasharray:3;",
 }
 
+/** Build a deterministic Mermaid node id from a step (s<step_number>). */
 function mermaidNodeId(step: WorkflowRunStep): string {
     return `s${step.step}`
 }
 
+/** Sanitize a branch id for use in Mermaid subgraph names. */
 function mermaidSafeId(value: string): string {
     return value.replace(/[^A-Za-z0-9_]/g, "_") || "branch"
 }
 
+/** Escape a string for safe embedding inside Mermaid double-quoted labels. */
 function mermaidLabel(value: string): string {
     return value
         .replace(/\\/g, "\\\\")
@@ -34,6 +39,7 @@ function mermaidLabel(value: string): string {
         .replace(/[\r\n]+/g, " ")
 }
 
+/** Build the human-readable label for a single workflow step node. */
 function mermaidStepLabel(step: WorkflowRunStep): string {
     const idTag = step.id ? ` (${step.id})` : ""
     switch (step.kind) {
@@ -52,10 +58,12 @@ function mermaidStepLabel(step: WorkflowRunStep): string {
     }
 }
 
+/** Append a Mermaid node line (id["label"]) at the given indent. */
 function appendMermaidNode(lines: string[], step: WorkflowRunStep, indent: string): void {
     lines.push(`${indent}${mermaidNodeId(step)}["${mermaidLabel(mermaidStepLabel(step))}"]`)
 }
 
+/** Emit classDef + class assignment lines for steps that have a known status. */
 function appendMermaidStatusClasses(
     lines: string[],
     steps: readonly WorkflowRunStep[],

@@ -12,6 +12,7 @@ import { truncateOutput } from "../protocol/output.js"
 import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./ledger.js"
 import type { ActiveTask, ArenaCandidateScore } from "../../core/types.js"
 
+/** Render a delegate run: one line per task (status + owner). */
 export async function summarizeDelegate(team: Team, head: string): Promise<string> {
     const tasks = await listAllTasks(team.directory)
     const lines = tasks.map(
@@ -20,6 +21,7 @@ export async function summarizeDelegate(team: Team, head: string): Promise<strin
     return `${head}\n${lines.join("\n")}`
 }
 
+/** Render a loop run: decision history + per-member work outputs. */
 export function summarizeLoop(task: ActiveTask, head: string): string {
     const history = task.decisionHistory ?? []
     const last = history.at(-1)
@@ -35,6 +37,7 @@ export function summarizeLoop(task: ActiveTask, head: string): string {
     return outputs ? `${decisions}\n\n${outputs}` : decisions
 }
 
+/** Render a route run: selected targets' outputs + router rationale. */
 export function summarizeRoute(task: Extract<ActiveTask, { type: "route" }>, head: string): string {
     // Exclude the router's <route> decision JSON (noise); show only the
     // selected targets' outputs plus the router's rationale.
@@ -48,6 +51,7 @@ export function summarizeRoute(task: Extract<ActiveTask, { type: "route" }>, hea
     return `${head}${rationale}\n${outputs}`
 }
 
+/** Render an arbitrate run: binding ruling + debaters' positions. */
 export function summarizeArbitrate(task: Extract<ActiveTask, { type: "arbitrate" }>, head: string): string {
     // Lead with the arbiter's binding ruling; follow with the debaters'
     // final positions. The arbiter's raw <ruling> JSON is excluded.
@@ -63,6 +67,7 @@ export function summarizeArbitrate(task: Extract<ActiveTask, { type: "arbitrate"
     return `${head}\n${ruling}${rationale}\n\n${positions}`
 }
 
+/** Render a recurse run: root task result + depth-indented decomposition tree. */
 export async function summarizeRecurse(team: Team, task: Extract<ActiveTask, { type: "recurse" }>, head: string): Promise<string> {
     // Lead with the root task's result (the final deliverable); follow
     // with the decomposition tree (depth-indented subject/status).
@@ -77,6 +82,7 @@ export async function summarizeRecurse(team: Team, task: Extract<ActiveTask, { t
     return `${head}\nRoot result:\n${truncateOutput(rootResult)}\n\nTask tree:\n${tree}`
 }
 
+/** Render a tollgate run: per-gate verdict table + completed gates' outputs. */
 export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }>, head: string): string {
     // One line per gate: its verdict (or pending), producer, verifier,
     // and FAIL-retry count. Follow with each completed gate's output.
@@ -93,6 +99,7 @@ export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }
         : `${head}\nGates:\n${rows.join("\n")}`
 }
 
+/** Render a pipeline run: concatenated stage outputs in order. */
 export function summarizePipeline(task: ActiveTask, head: string): string {
     // Concatenate stage outputs in order.
     const candidates = Object.entries(task.responses)
@@ -101,9 +108,11 @@ export function summarizePipeline(task: ActiveTask, head: string): string {
     return `${head}\n${candidates}`
 }
 
-// Renders a 1-based per-step ledger plus the task-step outputs (each labeled
-// by step number + member, so a member running multiple task steps does not
-// produce duplicate ### member headers with the wrong output).
+/**
+ * Render a workflow run: 1-based per-step ledger plus task-step outputs (each
+ * labeled by step number + member, so a member running multiple task steps
+ * does not produce duplicate ### member headers with the wrong output).
+ */
 export function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head: string): string {
     const steps = task.steps ?? []
     const rows = formatWorkflowLedgerLines(steps)
@@ -112,6 +121,7 @@ export function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }
     return outputs ? `${head}${ledger}\n\n${outputs}` : `${head}${ledger}`
 }
 
+/** Render a consensus run: concatenated member outputs. */
 export function summarizeConsensus(task: ActiveTask, head: string): string {
     // Consensus has no reducePolicy; concatenate member outputs
     // (the same summarize behavior the old default branch produced).
@@ -121,11 +131,16 @@ export function summarizeConsensus(task: ActiveTask, head: string): string {
     return `${head}\n${candidates}`
 }
 
+/**
+ * Render a parallel run. If the reducer produced a combined result, deliver it
+ * verbatim; otherwise concatenate candidates and switch on reducePolicy to
+ * add policy-specific instructions (summarize / select / merge / rubric).
+ */
 export function summarizeParallel(task: ActiveTask, head: string): string {
-    // #4 real reduce: once the reducer member has produced a combined
-    // result, deliver it verbatim instead of the [Reduce policy:X] header.
-    // (Gated on reducedResult presence, NOT the reason, so reduce_policy
-    // tests that exercise the header path stay green.)
+    // Once the reducer member has produced a combined result, deliver it
+    // verbatim instead of the [Reduce policy:X] header. (Gated on
+    // reducedResult presence, NOT the reason, so reduce_policy tests that
+    // exercise the header path stay green.)
     if (task.reducedResult !== undefined) {
         return `${head}\n${task.reducedResult}`
     }
@@ -189,6 +204,7 @@ export function summarizeParallel(task: ActiveTask, head: string): string {
     }
 }
 
+/** Render an arena run: winner line + evaluator scoreboard + audit note. */
 export function summarizeArena(task: Extract<ActiveTask, { type: "arena" }>, head: string): string {
     // Lead with the winner line (name + selection basis), then the
     // evaluator-attested scoreboard sorted by the winner metric, then a

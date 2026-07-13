@@ -13,6 +13,7 @@ import { truncateOutput } from "../protocol/output.js";
  * (critical > high > medium > low) so the most actionable issues surface first. */
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
 
+/** Whether the step list contains any fanout/join/branch structure. */
 function hasWorkflowBranchTree(steps: readonly WorkflowStep[]): boolean {
     return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
 }
@@ -49,6 +50,7 @@ function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: Workfl
     return tail?.completed === true ? "completed" : "pending"
 }
 
+/** Render a comma-separated branch:status list for a fanout step's join line. */
 function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep): string {
     const fanout = fanoutStep.fanout
     if (fanout === undefined) throw new Error("workflow fanout step missing fanout metadata")
@@ -69,6 +71,7 @@ function formatWorkflowIssueDetail(s: WorkflowStep): string {
     return "\n" + lines.join("\n")
 }
 
+/** Format a single branch line: id, status, and step range. */
 function formatWorkflowBranchLine(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
     const fanout = fanoutStep.fanout
     if (fanout === undefined) throw new Error("workflow fanout step missing fanout metadata")
@@ -153,6 +156,7 @@ export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): strin
     return lines
 }
 
+/** Format a completed task step's output as a markdown section, or null if not applicable. */
 function formatWorkflowTaskOutput(step: WorkflowStep, index: number, headingLevel: "###" | "####"): string | null {
     if (step.kind !== "task" || !step.completed) return null
     return `${headingLevel} Step ${index + 1} - ${step.member ?? "?"}\n${truncateOutput(step.output ?? "")}`

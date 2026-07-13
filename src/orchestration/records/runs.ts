@@ -31,8 +31,7 @@ export const DEFAULT_MAX_RUNS = 20
  * Reason substrings that indicate a FAILED run. Everything else is "completed".
  *
  * IMPORTANT: when a new termination reason is added at any deliverSummaryToLeader
- * call site, classify it here if it represents a failure. The set below mirrors
- * the failed-status reasons in handlers.ts / termination.ts as of #1+#2.
+ * call site, classify it here if it represents a failure.
  */
 const FAILED_REASON_MARKERS = [
     "timeout",
@@ -89,6 +88,7 @@ function parseRunEvent(line: string): RunEvent {
     return result.data
 }
 
+/** Project a runtime join metadata object into the persisted (RunRecord) shape. */
 function runJoinMetadata(join: WorkflowStep["join"]): WorkflowRunStep["join"] {
     if (join === undefined) return undefined
     return {
@@ -107,6 +107,10 @@ function runJoinMetadata(join: WorkflowStep["join"]): WorkflowRunStep["join"] {
     }
 }
 
+/**
+ * Classify each fanout branch as completed, skipped, errored, or pending based
+ * on the join's survivor/errored sets and branch-tail step state.
+ */
 function workflowBranchStatuses(steps: readonly WorkflowStep[], fanoutIndex: number): Record<string, WorkflowBranchStatus> | undefined {
     const fanout = steps[fanoutIndex]?.fanout
     if (fanout === undefined) return undefined
@@ -143,6 +147,7 @@ function workflowBranchStatuses(steps: readonly WorkflowStep[], fanoutIndex: num
     return statuses
 }
 
+/** Resolve branch statuses for a step: fanout/join steps delegate to workflowBranchStatuses; task/gate return undefined. */
 function workflowBranchStatusesForStep(
     steps: readonly WorkflowStep[],
     index: number,

@@ -6,7 +6,7 @@
  * Fire-and-forget (returns void, never awaited at call sites) so observability
  * can never add latency or backpressure to the state machine — same philosophy
  * as logEvent. A missing runId (legacy in-flight task) silently skips the event;
- * since #5 generates runId at orchestration start, that path is effectively dead
+ * runId is now generated at orchestration start, so that path is effectively dead
  * except for tasks persisted by an older build.
  *
  * Readers (team_progress) sort by event.timestamp rather than trusting file
