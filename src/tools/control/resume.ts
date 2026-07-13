@@ -7,23 +7,23 @@
  * 3-phase lock order (mirrors startOrchestration in orchestration/lifecycle/startup.ts, NOT
  * team_cancel which is single-phase):
  *   Phase 1 (mutex): snapshot lastInterruptedTask → local, reset errored→idle,
- *                    save. DO NOT commit activeTask (O1: Phase 2 window safety —
- *                    a stray session.idle during Phase 2 must hit processIdle's
+ *                    save. DO NOT commit activeTask (a stray session.idle
+ *                    during Phase 2 must hit processIdle's
  *                    `!activeTask` early-return, not a premature barrier).
  *   Phase 2 (outside mutex): ensureMembersReady (spawn missing sessions).
  *   Phase 3 (mutex): commit activeTask, dispatch per mode, clear checkpoint.
- * Phase 2+3 wrapped in try/catch (MAJOR-B): on failure ACTIVELY reset to
- * failed + restore checkpoint for retry (passive "stays" is wrong post-commit).
+ * Phase 2+3 wrapped in try/catch: on failure ACTIVELY reset to
+ * failed + restore checkpoint for retry.
  *
  * Per mode:
  *   parallel/consensus: re-dispatch incomplete members; if zero dispatched,
- *                       re-drive the barrier immediately (MAJOR-A: prevents the
+ *                       re-drive the barrier immediately (prevents the
  *                       "all-complete pre-delivery crash" stall to wall-clock).
  *   pipeline/loop: advanceToStage(stages[idx]) — uses responses[] internally,
- *                  NO runs/<runId>/<member>.md read (O3).
- *   delegate: reap stale claims + reset claimed/in_progress→pending (O8).
+ *                  NO runs/<runId>/<member>.md read.
+ *   delegate: reap stale claims + reset claimed/in_progress→pending.
  *
- * parallel incomplete = requireDoneAck ? !declaredDone : !responses (MAJOR-C).
+ * parallel incomplete = requireDoneAck ? !declaredDone : !responses.
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
@@ -79,7 +79,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     }
                     restored = team.lastInterruptedTask
                     // DO NOT clear lastInterruptedTask here — defer to Phase 3 success
-                    // (MAJOR-B: clearing here loses the checkpoint if Phase 2/3 throws).
+                    // (clearing here loses the checkpoint if Phase 2/3 throws).
                     // Reset errored members → idle (errored-is-terminal broken ONLY in
                     // this resume path, intentionally — they were interrupted mid-work).
                     // Arena carve-out (4d): reviving an arena candidate or evaluator
@@ -109,7 +109,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                         }
                     }
                     await saveTeamState(team)
-                    // DO NOT set team.activeTask (O1 BLOCKER: Phase 2 window safety).
+                    // DO NOT set team.activeTask (Phase 2 window safety).
                 })
                 if (resumeRaced || !restored) {
                     return "Error: team state changed during resume"
@@ -151,7 +151,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     : ""
                 return `Resumed ${restored.type} orchestration for team "${team_id}".${workflowHint}`
             } catch (e) {
-                // --- Rollback (MAJOR-B: ACTIVE reset, not passive). ---
+                // --- Rollback (ACTIVE reset, not passive). ---
                 // A post-commit throw (e.g. dispatchToMember rejecting on a dead
                 // session) leaves activeTask set + status busy. Actively reset.
                 await team.mutex.runExclusive(async () => {
