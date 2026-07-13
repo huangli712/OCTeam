@@ -1,5 +1,5 @@
 /**
- * Unit tests for run-schemas.ts — Zod validation schemas for RunRecord /
+ * Unit tests for schemas.ts — Zod validation schemas for RunRecord /
  * RunEvent / WorkflowRun.
  *
  * These schemas are the persistence boundary: structurally-invalid JSON read
@@ -12,7 +12,7 @@
  */
 import { describe, expect, test } from "bun:test"
 
-import { RunEventSchema, RunRecordSchema } from "../src/orchestration/records/run-schemas.js"
+import { RunEventSchema, RunRecordSchema } from "../src/orchestration/records/schemas.js"
 
 // --- helpers ---------------------------------------------------------------
 

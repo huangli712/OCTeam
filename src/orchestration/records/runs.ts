@@ -22,7 +22,7 @@ import { atomicWrite } from "../../state/locks.js"
 import { runsDir, runDir, runRecordPath, runEventsPath } from "../../state/paths.js"
 import type { RunEvent } from "../../core/types.js"
 import { listAllTasks } from "../../state/tasks.js"
-import { RunRecordSchema, RunEventSchema } from "./run-schemas.js"
+import { RunRecordSchema, RunEventSchema } from "./schemas.js"
 
 /** Keep at most this many run records per team; older ones are pruned. */
 export const DEFAULT_MAX_RUNS = 20

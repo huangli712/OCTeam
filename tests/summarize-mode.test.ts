@@ -1,5 +1,5 @@
 /**
- * Unit tests for summarize-mode.ts — per-mode summary renderers.
+ * Unit tests for renderers.ts — per-mode summary renderers.
  *
  * Each function takes an ActiveTask variant + a head string and returns
  * formatted text. Tests verify output structure, key content, and edge cases
@@ -25,7 +25,7 @@ import {
     summarizeRoute,
     summarizeTollgate,
     summarizeWorkflow,
-} from "../src/orchestration/records/summarize-mode.js"
+} from "../src/orchestration/records/renderers.js"
 import { makeTeam, makeWorkflowTask, tmpRoot } from "./helpers.js"
 
 const HEAD = "mode=test reason=test_complete tokens=0 messages=0"

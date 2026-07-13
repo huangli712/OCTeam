@@ -17,7 +17,7 @@ import { listRunRecords, readRunRecord } from "../src/orchestration/records/runs
 
 afterAll(cleanupTmpRoots)
 
-/** A minimal valid RunRecord matching RunRecordSchema (src/orchestration/records/run-schemas.ts). */
+/** A minimal valid RunRecord matching RunRecordSchema (src/orchestration/records/schemas.ts). */
 function validRecord(runId: string, finishedAt: number): string {
     return JSON.stringify({
         version: 1,

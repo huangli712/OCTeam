@@ -17,7 +17,7 @@ import {
     summarizeConsensus,
     summarizeParallel,
     summarizeArena,
-} from "./summarize-mode.js"
+} from "./renderers.js"
 
 /**
  * Mode-aware summary. delegate aggregates from the task list (per-task results
