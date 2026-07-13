@@ -1,5 +1,7 @@
 /**
- * Workflow handler -- deterministic linear step engine.
+ * Workflow step engine -- deterministic linear step dispatch, advance, goto,
+ * and redispatch primitives. handleWorkflowIdle (handler.ts) drives the
+ * top-level idle routing; gate-verdict routing lives in verdict.ts.
  *
  * STATE MACHINE (MVP: linear + gate-driven retry):
  *   steps[i]_dispatch -> steps[i]_idle -> steps[i+1]_dispatch -> ... -> all_complete

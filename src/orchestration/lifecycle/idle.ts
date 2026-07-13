@@ -41,7 +41,7 @@ import { handleRecurseIdle } from "../modes/recurse.js"
 import { handleTollgateIdle } from "../modes/tollgate.js"
 import { handleRouteIdle } from "../modes/route.js"
 import { handleArbitrateIdle } from "../modes/arbitrate.js"
-import { handleWorkflowIdle } from "../workflow/workflow-handler.js"
+import { handleWorkflowIdle } from "../workflow/handler.js"
 import { handleArenaIdle } from "../modes/arena.js"
 import { captureMemberOutput } from "../records/capture.js"
 

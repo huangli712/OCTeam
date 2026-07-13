@@ -29,7 +29,7 @@ import {
     startVerification,
 } from "../modes/tollgate.js";
 import { advanceWorkflowStep, redispatchWorkflowStep } from "../workflow/workflow.js";
-import { handleWorkflowIdle } from "../workflow/workflow-handler.js";
+import { handleWorkflowIdle } from "../workflow/handler.js";
 import { handleWorkflowDispatchUnavailable } from "../workflow/fanout.js";
 import {
     buildArbiterPrompt,

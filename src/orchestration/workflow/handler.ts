@@ -2,7 +2,7 @@
  * Workflow idle handler. handleWorkflowIdle captures the idle member's current
  * turn, validates that the member belongs to the active frontier, and advances
  * only that matching step. Gate-verdict routing, INVALID / parse_failure
- * handling, and ensemble aggregation live in workflow-gate.ts.
+ * handling, and ensemble aggregation live in verdict.ts.
  */
 
 import type { PluginContext } from "../../core/context.js";
@@ -29,7 +29,7 @@ import {
     buildBranchWorkflowOutput,
     handleWorkflowDispatchUnavailable,
 } from "./fanout.js";
-import { handleGateVerdict, resetStepAfterCompletion } from "./workflow-gate.js";
+import { handleGateVerdict, resetStepAfterCompletion } from "./verdict.js";
 
 /** Check whether a task step's output matches its retry_on condition. */
 export function shouldRetryTask(step: WorkflowStep, output: string): boolean {

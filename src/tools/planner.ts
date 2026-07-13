@@ -23,7 +23,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../core/context.js"
 import { isIndexedMember } from "../state/resolve.js"
 import { validateMemberAgent, validateMemberName } from "./support.js"
-import { validateWorkflowSteps } from "../orchestration/workflow/file.js"
+import { validateWorkflowSteps } from "../orchestration/workflow/loader.js"
 import { validateWorkflowStepsAgainstMembers } from "./workflow.js"
 
 const PLANNER_AGENT = "oct-metis"
@@ -340,7 +340,7 @@ function formatArtifact(artifact: PlannerArtifact): string {
     const teamPath = path.join(artifact.directory, teamFileName(artifact.teamId))
     const workflowPath = path.join(artifact.directory, workflowFileName(artifact.teamId))
     return [
-        "Target files:",
+        "Target loaders:",
         `- ${teamPath}`,
         `- ${workflowPath}`,
         "",
@@ -421,7 +421,7 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
         return `Validation OK for "${args.team_id}". Dry run — nothing written.\n\n${artifact}`
     }
     if (args.overwrite !== true && (existsSync(teamPath) || existsSync(workflowPath))) {
-        return `Error: refusing to overwrite existing file(s). ${teamFileName(args.team_id)} or ${workflowFileName(args.team_id)} already exists; pass overwrite: true to replace both.`
+        return `Error: refusing to overwrite existing loader(s). ${teamFileName(args.team_id)} or ${workflowFileName(args.team_id)} already exists; pass overwrite: true to replace both.`
     }
     await writeFile(teamPath, `${JSON.stringify(args.team, null, 4)}\n`)
     await writeFile(workflowPath, `${JSON.stringify(args.workflow, null, 4)}\n`)
@@ -444,11 +444,11 @@ export function teamPlannerTool(ctx: PluginContext): ToolDefinition {
             team: tool.schema.unknown().optional().describe("write: the team JSON to validate and persist."),
             workflow: tool.schema.unknown().optional().describe("write: the workflow JSON to validate and persist."),
             dry_run: tool.schema.boolean().optional().describe("write: validate + preview target paths without writing."),
-            overwrite: tool.schema.boolean().optional().describe("write: replace both files if they already exist."),
+            overwrite: tool.schema.boolean().optional().describe("write: replace both loaders if they already exist."),
         },
         async execute(args, context) {
             // Master-only: reject an indexed member session BEFORE any planner
-            // session is opened or any file is written.
+            // session is opened or any loader is written.
             if (isIndexedMember(context.sessionID)) {
                 return "Error: team_planner is master-only; a team member session cannot run it"
             }

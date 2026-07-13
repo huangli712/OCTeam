@@ -8,7 +8,7 @@
 
 import type { MemberState } from "../core/types.js"
 import { parseWorkflowCondition } from "../orchestration/workflow/gate.js"
-import { loadWorkflowFile } from "../orchestration/workflow/file.js"
+import { loadWorkflowFile } from "../orchestration/workflow/loader.js"
 import { defaultBounds, validateSignoff } from "./support.js"
 import { AsyncMutex } from "../state/locks.js"
 import type { Team } from "../state/store.js"
@@ -661,7 +661,7 @@ export function validateWorkflowSource(args: WorkflowToolArgs): string | null {
     return null
 }
 
-/** Resolve workflow args: load file if needed, expand matrix/foreach, validate source. */
+/** Resolve workflow args: load loader if needed, expand matrix/foreach, validate source. */
 export async function resolveWorkflowArgs(ctx: PluginContext, args: WorkflowToolArgs): Promise<ResolvedWorkflowToolArgs | string> {
     const sourceError = validateWorkflowSource(args)
     if (sourceError) return sourceError

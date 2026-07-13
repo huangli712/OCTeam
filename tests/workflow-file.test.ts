@@ -2,16 +2,16 @@ import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
-import { loadWorkflowFile, validateWorkflowSteps } from "../src/orchestration/workflow/file.js"
+import { loadWorkflowFile, validateWorkflowSteps } from "../src/orchestration/workflow/loader.js"
 import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
 
 // -----------------------------------------------------------------------
 // validateWorkflowSteps - pure workflow step-array validation seam.
 // The helper reuses the existing workflow_file step-array validation but
-// never touches the filesystem: it takes a raw value and returns either
+// never touches the loadersystem: it takes a raw value and returns either
 // parsed steps or a single error string with a stable synthetic location.
 // loadWorkflowFile now routes through the same exported helper, passing the
-// real relative path so its error strings keep naming the actual file.
+// real relative path so its error strings keep naming the actual loader.
 // -----------------------------------------------------------------------
 describe("validateWorkflowSteps", () => {
     test("valid step array is accepted and returned", () => {
@@ -38,7 +38,7 @@ describe("validateWorkflowSteps", () => {
         // When: the pure validator runs.
         const result = validateWorkflowSteps("not an array")
 
-        // Then: a stable synthetic location is used, not a real filesystem path.
+        // Then: a stable synthetic location is used, not a real loadersystem path.
         expect("error" in result).toBe(true)
         if ("error" in result) {
             expect(result.error).toContain("must contain a workflow steps array")
@@ -123,9 +123,9 @@ describe("validateWorkflowSteps", () => {
 describe("loadWorkflowFile error attribution", () => {
     afterAll(cleanupTmpRoots)
 
-    test("valid file returns parsed steps", async () => {
-        // Given: a well-formed workflow file on disk.
-        const root = tmpRoot("wf-file-validate-ok")
+    test("valid loader returns parsed steps", async () => {
+        // Given: a well-formed workflow loader on disk.
+        const root = tmpRoot("wf-loader-validate-ok")
         const dir = join(root, ".octeam", "workflows")
         mkdirSync(dir, { recursive: true })
         const relPath = ".octeam/workflows/ok.json"
@@ -136,7 +136,7 @@ describe("loadWorkflowFile error attribution", () => {
             ],
         }))
 
-        // When: the file is loaded.
+        // When: the loader is loaded.
         const result = await loadWorkflowFile(root, relPath, {})
 
         // Then: the parsed steps are returned unchanged in count.
@@ -147,8 +147,8 @@ describe("loadWorkflowFile error attribution", () => {
     })
 
     test("step validation errors name the real workflow_file path, not the synthetic location", async () => {
-        // Given: a workflow file whose only step has an out-of-range max_retries.
-        const root = tmpRoot("wf-file-validate-relpath")
+        // Given: a workflow loader whose only step has an out-of-range max_retries.
+        const root = tmpRoot("wf-loader-validate-relpath")
         const dir = join(root, ".octeam", "workflows")
         mkdirSync(dir, { recursive: true })
         const relPath = ".octeam/workflows/invalid-step.json"
@@ -156,7 +156,7 @@ describe("loadWorkflowFile error attribution", () => {
             steps: [{ kind: "task", member: "alice", task: "do x", max_retries: 99 }],
         }))
 
-        // When: the file is loaded through loadWorkflowFile.
+        // When: the loader is loaded through loadWorkflowFile.
         const result = await loadWorkflowFile(root, relPath, {})
 
         // Then: the error names the real relative path and the shared field rule,
