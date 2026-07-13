@@ -7,7 +7,10 @@
  * resolution + step flattening, while this module owns presentation.
  */
 
-import { parseWorkflowCondition, formatWorkflowCondition } from "../../orchestration/workflow/gate.js"
+import {
+    parseWorkflowCondition,
+    formatWorkflowCondition
+} from "../../orchestration/workflow/gate.js"
 import type {
     LoweredWorkflowLinearStep,
     LoweredWorkflowStep,
@@ -178,8 +181,11 @@ export function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
     return lines.join("\n")
 }
 
-// Local exhaustiveness guard (same pattern as lower.ts but scoped to this module)
-/** Exhaustiveness check for dry-run formatting. Throws if a new step kind is added without a corresponding case in formatWorkflowDryRun. */
+/**
+ * Local exhaustiveness guard for dry-run formatting (same pattern as lower.ts
+ * but scoped to this module). Throws if a new step kind is added without a
+ * corresponding case in formatWorkflowDryRun.
+ */
 function assertNeverDryRun(value: never): never {
     throw new Error(`Unexpected workflow step kind in dry-run: ${String(value)}`)
 }
