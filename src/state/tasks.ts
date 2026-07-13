@@ -245,6 +245,29 @@ export async function updateTask(
 }
 
 /**
+ * Try to create a claim lock file exclusively (O_CREAT|O_EXCL). Returns true on
+ * success, false on EEXIST (another process holds the lock). Any other error
+ * is thrown. On write failure the lock is rolled back (best-effort unlink).
+ */
+async function tryCreateClaimLock(lockPath: string, owner: string): Promise<boolean> {
+    try {
+        const fh = await fs.open(lockPath, "wx")
+        try {
+            await fh.writeFile(owner)
+        } catch (err) {
+            await fs.unlink(lockPath).catch(() => { /* best-effort rollback */ })
+            throw err
+        } finally {
+            await fh.close()
+        }
+        return true
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
+        return false
+    }
+}
+
+/**
  * Atomically claim a pending task: acquire the persistent claim lock
  * (fs.open 'wx'), double-check status === "pending", then flip to "claimed".
  * Throws TaskAlreadyClaimedError if another member holds a fresh lock or the
@@ -283,18 +306,7 @@ export async function claimTask(
         const lockPath = claimLockPath(teamDirectory, taskId)
 
         // 1. Acquire the persistent claim lock (reap stale entries inline).
-        try {
-            const fh = await fs.open(lockPath, "wx")
-            try {
-                await fh.writeFile(owner)
-            } catch (err) {
-                await fs.unlink(lockPath).catch(() => { /* best-effort rollback */ })
-                throw err
-            } finally {
-                await fh.close()
-            }
-        } catch (err: unknown) {
-            if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
+        if (!await tryCreateClaimLock(lockPath, owner)) {
             if (await lockFresh(lockPath, CLAIM_TTL_MS)) {
                 throw new TaskAlreadyClaimedError(taskId)
             }
@@ -302,18 +314,7 @@ export async function claimTask(
             await fs.unlink(lockPath).catch(() => {
                 // raced
             })
-            try {
-                const fh = await fs.open(lockPath, "wx")
-                try {
-                    await fh.writeFile(owner)
-                } catch (err) {
-                    await fs.unlink(lockPath).catch(() => { /* best-effort rollback */ })
-                    throw err
-                } finally {
-                    await fh.close()
-                }
-            } catch (err: unknown) {
-                if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err
+            if (!await tryCreateClaimLock(lockPath, owner)) {
                 throw new TaskAlreadyClaimedError(taskId)
             }
         }
