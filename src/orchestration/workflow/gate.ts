@@ -25,6 +25,16 @@ export type WorkflowJumpTransition = {
     diff?: string;
 };
 
+type ConditionInput = {
+    score?: number
+    confidence?: number
+    issues?: WorkflowIssue[]
+}
+
+type ParsedCondition =
+    | { condition: WorkflowCondition }
+    | { error: string }
+
 // --- verifier prompt construction ---
 
 /**
@@ -297,16 +307,6 @@ export function aggregateEnsembleVerdict(step: WorkflowStep): {
 }
 
 // --- condition matching (merged from conditions.ts) ---
-
-type ConditionInput = {
-    score?: number
-    confidence?: number
-    issues?: WorkflowIssue[]
-}
-
-type ParsedCondition =
-    | { condition: WorkflowCondition }
-    | { error: string }
 
 /** Map a severity string to its numeric rank for comparison. */
 function severityRank(severity: WorkflowIssueSeverity): number {

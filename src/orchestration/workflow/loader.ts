@@ -84,8 +84,12 @@ function applyTemplateVars(value: unknown, vars: Record<string, string>, strict:
 }
 
 /** Validate an array of workflow step objects. */
-function validateWorkflowStepArray(value: unknown, location: StepLocation): { steps: WorkflowToolStep[] } | { error: string } {
-    if (!Array.isArray(value)) return { error: `Error: workflow_file "${location.filePath}" must contain a workflow steps array` }
+function validateWorkflowStepArray(
+    value: unknown, location: StepLocation,
+): { steps: WorkflowToolStep[] } | { error: string } {
+    if (!Array.isArray(value)) {
+        return { error: `Error: workflow_file "${location.filePath}" must contain a workflow steps array` }
+    }
     const steps: WorkflowToolStep[] = []
     for (let index = 0; index < value.length; index += 1) {
         const step = validateWorkflowStep(value[index], { ...location, prefix: `${location.prefix} ${index + 1}` })
@@ -107,17 +111,27 @@ function validateWorkflowStepArray(value: unknown, location: StepLocation): { st
  * actual file.
  */
 export function validateWorkflowSteps(value: unknown): { steps: WorkflowToolStep[] } | { error: string }
-export function validateWorkflowSteps(value: unknown, sourcePath: string): { steps: WorkflowToolStep[] } | { error: string }
-export function validateWorkflowSteps(value: unknown, sourcePath = "<workflow>"): { steps: WorkflowToolStep[] } | { error: string } {
+export function validateWorkflowSteps(
+    value: unknown, sourcePath: string,
+): { steps: WorkflowToolStep[] } | { error: string }
+export function validateWorkflowSteps(
+    value: unknown, sourcePath = "<workflow>",
+): { steps: WorkflowToolStep[] } | { error: string } {
     return validateWorkflowStepArray(value, { filePath: sourcePath, prefix: "step" })
 }
 
 /** Validate a single workflow step, recursing into fanout branches. */
 function validateWorkflowStep(value: unknown, location: StepLocation): { step: WorkflowToolStep } | { error: string } {
-    if (!isRecord(value)) return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} must be an object` }
+    if (!isRecord(value)) {
+        return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} must be an object` }
+    }
     const kind = value.kind
-    if (kind !== "task" && kind !== "gate" && kind !== "fanout" && kind !== "join") {
-        return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} kind must be task, gate, fanout, or join` }
+    if (kind !== "task" && kind !== "gate"
+        && kind !== "fanout" && kind !== "join") {
+        return {
+            error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                + ` kind must be task, gate, fanout, or join`,
+        }
     }
     const fieldError = validateWorkflowStepFields(value, location)
     if (fieldError !== null) return { error: fieldError }
@@ -135,18 +149,33 @@ function validateWorkflowStep(value: unknown, location: StepLocation): { step: W
 }
 
 /** Validate the branches array of a fanout step. */
-function validateWorkflowBranches(value: unknown, location: StepLocation): { branches: NonNullable<WorkflowToolStep["branches"]> } | { error: string } {
-    if (!Array.isArray(value)) return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} branches must be an array` }
+function validateWorkflowBranches(
+    value: unknown, location: StepLocation,
+): { branches: NonNullable<WorkflowToolStep["branches"]> } | { error: string } {
+    if (!Array.isArray(value)) {
+        return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} branches must be an array` }
+    }
     const branches: Array<{ id: string; steps: WorkflowToolStep[] }> = []
     for (let index = 0; index < value.length; index += 1) {
         const branch = value[index]
-        if (!isRecord(branch)) return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} branch ${index + 1} must be an object` }
+        if (!isRecord(branch)) {
+            return {
+                error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                    + ` branch ${index + 1} must be an object`,
+            }
+        }
         const idValue = branch.id
         if (!isNonEmptyString(idValue) || idValue.length > 64) {
-            return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} branch ${index + 1} id must be a non-empty string up to 64 characters` }
+            return {
+                error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                    + ` branch ${index + 1} id must be a non-empty string up to 64 characters`,
+            }
         }
         const branchId = idValue
-        const steps = validateWorkflowStepArray(branch.steps, { filePath: location.filePath, prefix: `${location.prefix} branch "${branchId}" step` })
+        const steps = validateWorkflowStepArray(branch.steps, {
+            filePath: location.filePath,
+            prefix: `${location.prefix} branch "${branchId}" step`,
+        })
         if ("error" in steps) return steps
         branches.push({ id: branchId, steps: steps.steps })
     }
@@ -155,41 +184,60 @@ function validateWorkflowBranches(value: unknown, location: StepLocation): { bra
 
 /** Validate all field-level constraints on a single workflow step. Returns an error string or null. */
 function validateWorkflowStepFields(step: Record<string, unknown>, location: StepLocation): string | null {
-    for (const field of ["id", "member", "fallback_member", "verifier", "fallback_verifier", "reducer_member"] as const) {
+    for (const field of [
+        "id", "member", "fallback_member", "verifier", "fallback_verifier", "reducer_member",
+    ] as const) {
         if (step[field] !== undefined && (!isNonEmptyString(step[field]) || step[field].length > 64)) {
-            return `Error: workflow_file "${location.filePath}" ${location.prefix} ${field} must be a non-empty string up to 64 characters`
+            return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                + ` ${field} must be a non-empty string up to 64 characters`
         }
     }
     for (const field of ["task", "criteria"] as const) {
         if (step[field] !== undefined && (!isNonEmptyString(step[field]) || step[field].length > 8192)) {
-            return `Error: workflow_file "${location.filePath}" ${location.prefix} ${field} must be a non-empty string up to 8192 characters`
+            return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                + ` ${field} must be a non-empty string up to 8192 characters`
         }
     }
     for (const field of ["target_step", "on_pass_goto", "on_fail_goto", "on_invalid_goto"] as const) {
         if (step[field] !== undefined && !isWorkflowStepRef(step[field])) {
-            return `Error: workflow_file "${location.filePath}" ${location.prefix} ${field} must be a positive integer or non-empty string`
+            return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                + ` ${field} must be a positive integer or non-empty string`
         }
     }
-    if (step.targets !== undefined && (!Array.isArray(step.targets) || step.targets.length === 0 || !step.targets.every(isWorkflowStepRef))) {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} targets must be a non-empty array of positive integers or non-empty strings`
+    if (step.targets !== undefined
+        && (!Array.isArray(step.targets) || step.targets.length === 0
+            || !step.targets.every(isWorkflowStepRef))) {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` targets must be a non-empty array of positive integers or non-empty strings`
     }
-    if (step.inputs !== undefined && (!Array.isArray(step.inputs) || step.inputs.length === 0 || !step.inputs.every(isWorkflowStepRef))) {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} inputs must be a non-empty array of positive integers or non-empty strings`
+    if (step.inputs !== undefined
+        && (!Array.isArray(step.inputs) || step.inputs.length === 0
+            || !step.inputs.every(isWorkflowStepRef))) {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` inputs must be a non-empty array of positive integers or non-empty strings`
     }
     if (step.expose_output !== undefined && typeof step.expose_output !== "boolean") {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} expose_output must be boolean`
     }
-    if (step.on_fail !== undefined && step.on_fail !== "retry" && step.on_fail !== "fail" && step.on_fail !== "skip") {
+    if (step.on_fail !== undefined
+        && step.on_fail !== "retry" && step.on_fail !== "fail"
+        && step.on_fail !== "skip") {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} on_fail must be retry, fail, or skip`
     }
     if (step.max_retries !== undefined && !isIntegerInRange(step.max_retries, 0, 5)) {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} max_retries must be an integer from 0 to 5`
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` max_retries must be an integer from 0 to 5`
     }
-    if (step.on_invalid !== undefined && step.on_invalid !== "fail" && step.on_invalid !== "retry_verifier" && step.on_invalid !== "escalate") {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} on_invalid must be fail, retry_verifier, or escalate`
+    if (step.on_invalid !== undefined
+        && step.on_invalid !== "fail"
+        && step.on_invalid !== "retry_verifier"
+        && step.on_invalid !== "escalate") {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` on_invalid must be fail, retry_verifier, or escalate`
     }
     if (step.max_invalid_retries !== undefined && !isIntegerInRange(step.max_invalid_retries, 0, 5)) {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} max_invalid_retries must be an integer from 0 to 5`
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` max_invalid_retries must be an integer from 0 to 5`
     }
     for (const field of ["approval_before", "approval_after"] as const) {
         if (step[field] !== undefined && typeof step[field] !== "boolean") {
@@ -197,31 +245,44 @@ function validateWorkflowStepFields(step: Record<string, unknown>, location: Ste
         }
     }
     if (step.max_output_bytes !== undefined && !isIntegerAtLeast(step.max_output_bytes, 1)) {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} max_output_bytes must be a positive integer`
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` max_output_bytes must be a positive integer`
     }
     if (step.timeout_ms !== undefined && !isIntegerAtLeast(step.timeout_ms, 1000)) {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} timeout_ms must be an integer >= 1000`
     }
-    if (step.on_timeout !== undefined && step.on_timeout !== "fail" && step.on_timeout !== "retry" && step.on_timeout !== "skip") {
+    if (step.on_timeout !== undefined
+        && step.on_timeout !== "fail" && step.on_timeout !== "retry"
+        && step.on_timeout !== "skip") {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} on_timeout must be fail, retry, or skip`
     }
     if (step.max_timeout_retries !== undefined && !isIntegerInRange(step.max_timeout_retries, 0, 5)) {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} max_timeout_retries must be an integer from 0 to 5`
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` max_timeout_retries must be an integer from 0 to 5`
     }
     if (step.max_jumps !== undefined && !isIntegerInRange(step.max_jumps, 0, 10)) {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} max_jumps must be an integer from 0 to 10`
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` max_jumps must be an integer from 0 to 10`
     }
     if (step.max_errored !== undefined && !isIntegerAtLeast(step.max_errored, 0)) {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} max_errored must be a non-negative integer`
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` max_errored must be a non-negative integer`
     }
     if (step.use_survivors !== undefined && typeof step.use_survivors !== "boolean") {
         return `Error: workflow_file "${location.filePath}" ${location.prefix} use_survivors must be boolean`
     }
-    if (step.join_policy !== undefined && step.join_policy !== "all" && step.join_policy !== "quorum" && step.join_policy !== "any_success" && step.join_policy !== "required_branches" && step.join_policy !== "reduce" && step.join_policy !== "select") {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} join_policy must be all, quorum, any_success, required_branches, reduce, or select`
+    if (step.join_policy !== undefined
+        && step.join_policy !== "all" && step.join_policy !== "quorum"
+        && step.join_policy !== "any_success"
+        && step.join_policy !== "required_branches"
+        && step.join_policy !== "reduce"
+        && step.join_policy !== "select") {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` join_policy must be all, quorum, any_success, required_branches, reduce, or select`
     }
     if (step.where !== undefined && !isValidWhere(step.where)) {
-        return `Error: workflow_file "${location.filePath}" ${location.prefix} where must contain numeric thresholds or a valid issue severity`
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` where must contain numeric thresholds or a valid issue severity`
     }
     return null
 }
@@ -252,12 +313,18 @@ function isValidWhere(value: unknown): boolean {
     if (value.score_gte !== undefined && typeof value.score_gte !== "number") return false
     if (value.score_lt !== undefined && typeof value.score_lt !== "number") return false
     if (value.confidence_gte !== undefined && typeof value.confidence_gte !== "number") return false
-    if (value.has_issue_severity !== undefined && value.has_issue_severity !== "low" && value.has_issue_severity !== "medium" && value.has_issue_severity !== "high" && value.has_issue_severity !== "critical") return false
+    if (value.has_issue_severity !== undefined
+        && value.has_issue_severity !== "low"
+        && value.has_issue_severity !== "medium"
+        && value.has_issue_severity !== "high"
+        && value.has_issue_severity !== "critical") return false
     return true
 }
 
 /** Load, parse, template, and validate a workflow_file JSON from disk. */
-export async function loadWorkflowFile(baseDir: string, relPath: string, vars: Record<string, string>): Promise<WorkflowFileResult> {
+export async function loadWorkflowFile(
+    baseDir: string, relPath: string, vars: Record<string, string>,
+): Promise<WorkflowFileResult> {
     const resolved = resolveWorkflowFilePath(baseDir, relPath)
     if ("error" in resolved) return resolved
 
@@ -284,7 +351,10 @@ export async function loadWorkflowFile(baseDir: string, relPath: string, vars: R
             return applyTemplateVars(parsed, vars, strictVars)
         } catch (e) {
             if (e instanceof UnknownTemplateVarError) {
-                return { __templateError: `Error: workflow_file "${relPath}" references unknown template variable "${e.name}"` }
+                return {
+                    __templateError:
+                        `Error: workflow_file "${relPath}" references unknown template variable "${e.name}"`,
+                }
             }
             throw e
         }
@@ -303,7 +373,12 @@ export async function loadWorkflowFile(baseDir: string, relPath: string, vars: R
             return { error: `Error: workflow_file "${relPath}" version must be an integer` }
         }
         if (!SUPPORTED_WORKFLOW_FILE_VERSIONS.has(templated.version)) {
-            return { error: `Error: workflow_file "${relPath}" version ${templated.version} is unsupported (expected one of: ${[...SUPPORTED_WORKFLOW_FILE_VERSIONS].join(", ")})` }
+            const expectedVersions = [...SUPPORTED_WORKFLOW_FILE_VERSIONS].join(", ")
+            return {
+                error:
+                    `Error: workflow_file "${relPath}" version ${templated.version}`
+                    + ` is unsupported (expected one of: ${expectedVersions})`,
+            }
         }
     }
     const steps = validateWorkflowSteps(templated.steps, relPath)
