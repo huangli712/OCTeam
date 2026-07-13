@@ -22,6 +22,10 @@ import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js
 import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
 import type { RunRecord, WorkflowRunStep } from "../../core/types.js"
 
+/** Per-issue detail lines for a gate step with structured verdict. Severity-sorted
+ * (critical > high > medium > low) so the most actionable issues surface first. */
+const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+
 /** Label for a gate's target step (for display in step lines). */
 function workflowTargetLabel(step: WorkflowRunStep): string {
     if (step.targetSteps !== undefined && step.targetSteps.length > 0) {
@@ -38,10 +42,6 @@ function workflowVerdictMetrics(step: WorkflowRunStep): string {
     if (step.issues !== undefined && step.issues.length > 0) metrics.push(`issues=${step.issues.length}`)
     return metrics.length > 0 ? ` [${metrics.join(", ")}]` : ""
 }
-
-/** Per-issue detail lines for a gate step with structured verdict. Severity-sorted
- * (critical > high > medium > low) so the most actionable issues surface first. */
-const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
 
 function formatWorkflowIssueDetail(step: WorkflowRunStep): string {
     const issues = step.issues
