@@ -43,18 +43,6 @@ function workflowVerdictMetrics(step: WorkflowRunStep): string {
     return metrics.length > 0 ? ` [${metrics.join(", ")}]` : ""
 }
 
-/** Format a gate step's structured issues as severity-sorted detail lines. */
-function formatWorkflowIssueDetail(step: WorkflowRunStep): string {
-    const issues = step.issues
-    if (!issues || issues.length === 0) return ""
-    const sorted = [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99))
-    const lines = sorted.map(issue => {
-        const msg = issue.message && issue.message.trim() !== "" ? `: ${issue.message}` : ""
-        return `    - [${issue.severity}]${msg}`
-    })
-    return "\n" + lines.join("\n")
-}
-
 /** Per-step static control config tag (for post-run audit). Mirrors the
  * dry_run rendering so a reviewer can see which controls a step declared. */
 function workflowStepControlsTag(step: WorkflowRunStep): string {
@@ -80,21 +68,29 @@ function workflowFanoutPolicyTag(fanout: NonNullable<WorkflowRunStep["fanout"]>)
     return controls.length > 0 ? `  [${controls.join(", ")}]` : ""
 }
 
-/** Format branch status map as a comma-separated string. */
-function formatBranchStatusList(statuses: Record<string, string> | undefined): string {
-    if (statuses === undefined) return ""
-    const pairs = Object.entries(statuses).map(([branchId, status]) => `${branchId}:${status}`)
-    return pairs.length > 0 ? pairs.join(", ") : ""
+/** Append a formatted step line and its task output to a lines array. */
+function appendWorkflowStepLines(lines: string[], step: WorkflowRunStep, indent: string): void {
+    lines.push(`${indent}${formatWorkflowStepLine(step)}`)
+    if (step.kind === "task" && step.output) {
+        lines.push(formatIndentedOutput(step.output, indent))
+    }
 }
 
-/** Single branch line for a fanout step in the step tree. */
-function formatWorkflowBranchLine(fanoutStep: WorkflowRunStep, branchId: string, branchIndex: number): string {
-    const range = fanoutStep.fanout?.branchRanges[branchIndex]
-    if (range === undefined) {
-    throw new Error(`workflow fanout step ${fanoutStep.step} missing branch range ${branchIndex}`)
+/** Check whether the step list has any fanout/join/branch steps. */
+function hasWorkflowBranchTree(steps: readonly WorkflowRunStep[]): boolean {
+    return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
 }
-    const status = fanoutStep.branchStatuses?.[branchId] ?? "pending"
-    return `  - Branch ${branchId} [${status}] steps ${range.startIndex + 1}-${range.endIndex + 1}`
+
+/** One-line summary of a run record for the runs list. */
+function formatRunLine(r: RunRecord): string {
+    const mode = r.mode ? `/${r.mode}` : ""
+    const when = new Date(r.finishedAt).toISOString()
+    const members = Object.keys(r.memberOutputs).length
+    const winner = r.arena?.winner ? `  winner=${r.arena.winner}` : ""
+    return (
+        `- ${r.runId}  [${r.type}${mode}] ${r.status}  reason=${r.reason}  ${when}  tokens=${r.tokensUsed}` +
+        `  members=${members}${winner}`
+    )
 }
 
 /** Indent multi-line output by a prefix (for nested step output). */
@@ -102,14 +98,6 @@ function formatIndentedOutput(output: string, indent: string): string {
     const text = truncateOutput(output, 1024)
     if (indent === "") return text
     return text.split("\n").map(line => `${indent}  ${line}`).join("\n")
-}
-
-/** Append a formatted step line and its task output to a lines array. */
-function appendWorkflowStepLines(lines: string[], step: WorkflowRunStep, indent: string): void {
-    lines.push(`${indent}${formatWorkflowStepLine(step)}`)
-    if (step.kind === "task" && step.output) {
-        lines.push(formatIndentedOutput(step.output, indent))
-    }
 }
 
 /** Format a single workflow step into a display line. */
@@ -170,9 +158,26 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
     }
 }
 
-/** Check whether the step list has any fanout/join/branch steps. */
-function hasWorkflowBranchTree(steps: readonly WorkflowRunStep[]): boolean {
-    return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
+/** Single branch line for a fanout step in the step tree. */
+function formatWorkflowBranchLine(fanoutStep: WorkflowRunStep, branchId: string, branchIndex: number): string {
+    const range = fanoutStep.fanout?.branchRanges[branchIndex]
+    if (range === undefined) {
+    throw new Error(`workflow fanout step ${fanoutStep.step} missing branch range ${branchIndex}`)
+}
+    const status = fanoutStep.branchStatuses?.[branchId] ?? "pending"
+    return `  - Branch ${branchId} [${status}] steps ${range.startIndex + 1}-${range.endIndex + 1}`
+}
+
+/** Format a gate step's structured issues as severity-sorted detail lines. */
+function formatWorkflowIssueDetail(step: WorkflowRunStep): string {
+    const issues = step.issues
+    if (!issues || issues.length === 0) return ""
+    const sorted = [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99))
+    const lines = sorted.map(issue => {
+        const msg = issue.message && issue.message.trim() !== "" ? `: ${issue.message}` : ""
+        return `    - [${issue.severity}]${msg}`
+    })
+    return "\n" + lines.join("\n")
 }
 
 /** Render all workflow steps into display lines, handling fanout branch trees. */
@@ -222,18 +227,6 @@ function formatWorkflowStepLines(steps: readonly WorkflowRunStep[]): string[] {
     return lines
 }
 
-/** One-line summary of a run record for the runs list. */
-function formatRunLine(r: RunRecord): string {
-    const mode = r.mode ? `/${r.mode}` : ""
-    const when = new Date(r.finishedAt).toISOString()
-    const members = Object.keys(r.memberOutputs).length
-    const winner = r.arena?.winner ? `  winner=${r.arena.winner}` : ""
-    return (
-        `- ${r.runId}  [${r.type}${mode}] ${r.status}  reason=${r.reason}  ${when}  tokens=${r.tokensUsed}` +
-        `  members=${members}${winner}`
-    )
-}
-
 /** Arena winner + evaluator-attested scoreboard audit trail (4e). The winner is
  * read VERBATIM from record.arena.winner (selection already happened in the
  * evaluate phase) — never re-derived from the scoreboard here. A scored
@@ -256,6 +249,13 @@ function formatArenaPreview(arena: NonNullable<RunRecord["arena"]>, reason: stri
         )
     }
     return `### arena\n${lines.join("\n")}`
+}
+
+/** Format branch status map as a comma-separated string. */
+function formatBranchStatusList(statuses: Record<string, string> | undefined): string {
+    if (statuses === undefined) return ""
+    const pairs = Object.entries(statuses).map(([branchId, status]) => `${branchId}:${status}`)
+    return pairs.length > 0 ? pairs.join(", ") : ""
 }
 
 /** List recent run records for a team with formatted summaries. */
