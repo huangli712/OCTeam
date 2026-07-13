@@ -147,6 +147,170 @@ function collectEnsembleVerdicts(
 }
 
 /**
+ * Handle an unevaluable gate verdict (INVALID or parse failure) according to
+ * the gate's on_invalid / on_malformed policy. Producer-neutral in all cases:
+ * the target task is never retried on INVALID or parse_failure (only the
+ * verifier may be re-dispatched).
+ *
+ *   parse_failure -> routes through on_malformed (with fallback to on_invalid):
+ *     fail          -> terminate as workflow_invalid:<reason>:<verifier>
+ *     retry_verifier-> re-dispatch THIS gate's verifier (bounded by
+ *                      max_malformed_retries, falling back to max_invalid_retries)
+ *     skip          -> mark the gate skipped and advance (on_malformed only)
+ *     escalate      -> force a human-approval pause
+ *   INVALID       -> routes through on_invalid:
+ *     fail          -> terminate as workflow_invalid:<reason>:<verifier>
+ *     retry_verifier-> re-dispatch THIS gate's verifier (bounded by
+ *                      max_invalid_retries), then on exhaust terminate.
+ *     escalate      -> force a human-approval pause; approve marks the gate
+ *                      complete and advances, reject terminates.
+ */
+export async function handleInvalidVerdict(
+    ctx: PluginContext,
+    team: Team,
+    step: WorkflowStep,
+    gateIndex: number,
+    verifierName: string,
+    reason: "INVALID" | "parse_failure",
+    rationale: string,
+    diff: string,
+): Promise<void> {
+    const task = team.activeTask;
+    if (!task || task.type !== "workflow") return;
+    const isMalformed = reason === "parse_failure";
+    // When on_malformed is set, parse_failure uses its own policy and counters.
+    // When on_malformed is unset, parse_failure falls back to on_invalid (same
+    // policy and counters as INVALID).
+    const useMalformedPolicy = isMalformed && step.onMalformed !== undefined;
+    const policy = isMalformed
+        ? (step.onMalformed ?? step.onInvalid ?? "fail")
+        : (step.onInvalid ?? "fail");
+
+    // "skip" is only available via on_malformed (not on_invalid).
+    if (policy === "skip") {
+        delete task.responses[verifierName];
+        resetStepAfterCompletion(step, { completed: true, skipped: true });
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "stage_advanced",
+            member: verifierName,
+            stage: gateIndex,
+            stepIndex: gateIndex,
+            detail: `workflow gate step ${gateIndex + 1} skipped after`
+                + ` malformed verdict from ${verifierName}: ${rationale}`,
+        });
+        await advanceWorkflowStep(ctx, team);
+        return;
+    }
+
+    if (policy === "retry_verifier") {
+        if (useMalformedPolicy) {
+            step.malformedAttempts = (step.malformedAttempts ?? 0) + 1;
+        } else {
+            step.invalidAttempts = (step.invalidAttempts ?? 0) + 1;
+        }
+        // For ensemble gates, clear results so all verifiers are re-dispatched
+        if (step.verifiers !== undefined) {
+            step.ensembleResults = undefined;
+        }
+        const attempts = useMalformedPolicy
+            ? (step.malformedAttempts ?? 0)
+            : (step.invalidAttempts ?? 0);
+        const maxIR = useMalformedPolicy
+            ? (step.maxMalformedRetries ?? 0)
+            : (step.maxInvalidRetries ?? 0);
+        if (attempts > maxIR) {
+            const invGoto = step.onInvalidGoto ?? -1;
+            if (invGoto >= 0) {
+                await gotoWorkflowStep(ctx, team, gateIndex, invGoto, {
+                    reason: isMalformed ? "on_malformed_retry_exhausted" : "on_invalid_retry_exhausted",
+                    verdict: reason === "INVALID" ? "INVALID" : undefined,
+                    rationale,
+                    diff,
+                });
+                return;
+            }
+            await finishRun(
+                ctx,
+                team,
+                workflowInvalidReason(reason, verifierName),
+                "failed",
+            );
+            return;
+        }
+        // Honor gate approval_before on invalid-verifier retry re-dispatch
+        // (parity with FAIL retry and the initial advance path). Reset timing first
+        // so a pause-then-resume does not preserve the prior attempt's startedAt.
+        resetWorkflowStepTiming(step);
+        if (await maybePauseBeforeWorkflowStep(ctx, team, gateIndex)) return;
+        const nudge =
+            `[Verification could not be evaluated — `
+            + `${isMalformed ? "malformed" : "invalid"} attempt ${attempts}/${maxIR}]\n`
+            + `Reason: ${reason}. Rationale: ${rationale}. Diff: ${diff}.\n`
+            + `Re-evaluate the target output and emit a fresh verdict.`;
+        if (!(await dispatchGateStep(ctx, team, task, gateIndex, nudge))) {
+            await handleWorkflowDispatchUnavailable(ctx, team, task, step);
+            return;
+        }
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "retry",
+            member: step.dispatchedActor ?? step.verifier,
+            stage: gateIndex,
+            stepIndex: gateIndex,
+            detail: `workflow step ${gateIndex + 1}`
+                + ` ${isMalformed ? "malformed" : "invalid"} retry ${attempts}/${maxIR};`
+                + ` verifier ${step.dispatchedActor ?? verifierName}; reason ${reason}: ${rationale}`,
+        });
+        await saveTeamState(team);
+        return;
+    }
+
+    if (policy === "escalate") {
+        const nextIndex = (task.steps ?? []).findIndex((s) => !s.completed);
+        const escalated = await forceApprovalRequest(ctx, team, {
+            kind: "workflow_step",
+            stage: gateIndex,
+            summary: `Step ${gateIndex + 1} (gate) by ${verifierName} could not be evaluated (${reason}).`
+                + ` Rationale: ${rationale}. Approve to override and continue`
+                + `${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""};`
+                + ` reject to fail as workflow_invalid.`,
+        });
+        if (escalated) {
+            // Mark the gate complete so that on team_approve (which calls
+            // advanceWorkflowStep) the workflow proceeds past this gate.
+            step.completed = true;
+            step.dispatchedActor = undefined;
+            await saveTeamState(team);
+            return;
+        }
+        // No escalation handler available -> fall through to terminal fail.
+    }
+
+    // on_invalid_goto (incompatible with escalate per validator) jumps instead
+    // of terminating at the INVALID terminal point. Shared by both on_invalid
+    // and on_malformed terminal paths.
+    if (policy !== "escalate") {
+        const invGoto = step.onInvalidGoto ?? -1;
+        if (invGoto >= 0) {
+            await gotoWorkflowStep(ctx, team, gateIndex, invGoto, {
+                reason: isMalformed ? `on_malformed:${reason}` : `on_invalid:${reason}`,
+                verdict: reason === "INVALID" ? "INVALID" : undefined,
+                rationale,
+                diff,
+            });
+            return;
+        }
+    }
+    await finishRun(
+        ctx,
+        team,
+        workflowInvalidReason(reason, verifierName),
+        "failed",
+    );
+}
+
+/**
  * Handle a PASS verdict: mark complete, honor on_pass_goto or approval_after,
  * then advance (or jump) to the next step.
  */
@@ -452,168 +616,4 @@ export async function handleGateVerdict(
     } else {
         await handleGateFail(ctx, team, task, step, gateIndex, steps, verifierName, v);
     }
-}
-
-/**
- * Handle an unevaluable gate verdict (INVALID or parse failure) according to
- * the gate's on_invalid / on_malformed policy. Producer-neutral in all cases:
- * the target task is never retried on INVALID or parse_failure (only the
- * verifier may be re-dispatched).
- *
- *   parse_failure -> routes through on_malformed (with fallback to on_invalid):
- *     fail          -> terminate as workflow_invalid:<reason>:<verifier>
- *     retry_verifier-> re-dispatch THIS gate's verifier (bounded by
- *                      max_malformed_retries, falling back to max_invalid_retries)
- *     skip          -> mark the gate skipped and advance (on_malformed only)
- *     escalate      -> force a human-approval pause
- *   INVALID       -> routes through on_invalid:
- *     fail          -> terminate as workflow_invalid:<reason>:<verifier>
- *     retry_verifier-> re-dispatch THIS gate's verifier (bounded by
- *                      max_invalid_retries), then on exhaust terminate.
- *     escalate      -> force a human-approval pause; approve marks the gate
- *                      complete and advances, reject terminates.
- */
-export async function handleInvalidVerdict(
-    ctx: PluginContext,
-    team: Team,
-    step: WorkflowStep,
-    gateIndex: number,
-    verifierName: string,
-    reason: "INVALID" | "parse_failure",
-    rationale: string,
-    diff: string,
-): Promise<void> {
-    const task = team.activeTask;
-    if (!task || task.type !== "workflow") return;
-    const isMalformed = reason === "parse_failure";
-    // When on_malformed is set, parse_failure uses its own policy and counters.
-    // When on_malformed is unset, parse_failure falls back to on_invalid (same
-    // policy and counters as INVALID).
-    const useMalformedPolicy = isMalformed && step.onMalformed !== undefined;
-    const policy = isMalformed
-        ? (step.onMalformed ?? step.onInvalid ?? "fail")
-        : (step.onInvalid ?? "fail");
-
-    // "skip" is only available via on_malformed (not on_invalid).
-    if (policy === "skip") {
-        delete task.responses[verifierName];
-        resetStepAfterCompletion(step, { completed: true, skipped: true });
-        recordEvent(team, {
-            timestamp: Date.now(),
-            kind: "stage_advanced",
-            member: verifierName,
-            stage: gateIndex,
-            stepIndex: gateIndex,
-            detail: `workflow gate step ${gateIndex + 1} skipped after`
-                + ` malformed verdict from ${verifierName}: ${rationale}`,
-        });
-        await advanceWorkflowStep(ctx, team);
-        return;
-    }
-
-    if (policy === "retry_verifier") {
-        if (useMalformedPolicy) {
-            step.malformedAttempts = (step.malformedAttempts ?? 0) + 1;
-        } else {
-            step.invalidAttempts = (step.invalidAttempts ?? 0) + 1;
-        }
-        // For ensemble gates, clear results so all verifiers are re-dispatched
-        if (step.verifiers !== undefined) {
-            step.ensembleResults = undefined;
-        }
-        const attempts = useMalformedPolicy
-            ? (step.malformedAttempts ?? 0)
-            : (step.invalidAttempts ?? 0);
-        const maxIR = useMalformedPolicy
-            ? (step.maxMalformedRetries ?? 0)
-            : (step.maxInvalidRetries ?? 0);
-        if (attempts > maxIR) {
-            const invGoto = step.onInvalidGoto ?? -1;
-            if (invGoto >= 0) {
-                await gotoWorkflowStep(ctx, team, gateIndex, invGoto, {
-                    reason: isMalformed ? "on_malformed_retry_exhausted" : "on_invalid_retry_exhausted",
-                    verdict: reason === "INVALID" ? "INVALID" : undefined,
-                    rationale,
-                    diff,
-                });
-                return;
-            }
-            await finishRun(
-                ctx,
-                team,
-                workflowInvalidReason(reason, verifierName),
-                "failed",
-            );
-            return;
-        }
-        // Honor gate approval_before on invalid-verifier retry re-dispatch
-        // (parity with FAIL retry and the initial advance path). Reset timing first
-        // so a pause-then-resume does not preserve the prior attempt's startedAt.
-        resetWorkflowStepTiming(step);
-        if (await maybePauseBeforeWorkflowStep(ctx, team, gateIndex)) return;
-        const nudge =
-            `[Verification could not be evaluated — `
-            + `${isMalformed ? "malformed" : "invalid"} attempt ${attempts}/${maxIR}]\n`
-            + `Reason: ${reason}. Rationale: ${rationale}. Diff: ${diff}.\n`
-            + `Re-evaluate the target output and emit a fresh verdict.`;
-        if (!(await dispatchGateStep(ctx, team, task, gateIndex, nudge))) {
-            await handleWorkflowDispatchUnavailable(ctx, team, task, step);
-            return;
-        }
-        recordEvent(team, {
-            timestamp: Date.now(),
-            kind: "retry",
-            member: step.dispatchedActor ?? step.verifier,
-            stage: gateIndex,
-            stepIndex: gateIndex,
-            detail: `workflow step ${gateIndex + 1}`
-                + ` ${isMalformed ? "malformed" : "invalid"} retry ${attempts}/${maxIR};`
-                + ` verifier ${step.dispatchedActor ?? verifierName}; reason ${reason}: ${rationale}`,
-        });
-        await saveTeamState(team);
-        return;
-    }
-
-    if (policy === "escalate") {
-        const nextIndex = (task.steps ?? []).findIndex((s) => !s.completed);
-        const escalated = await forceApprovalRequest(ctx, team, {
-            kind: "workflow_step",
-            stage: gateIndex,
-            summary: `Step ${gateIndex + 1} (gate) by ${verifierName} could not be evaluated (${reason}).`
-                + ` Rationale: ${rationale}. Approve to override and continue`
-                + `${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""};`
-                + ` reject to fail as workflow_invalid.`,
-        });
-        if (escalated) {
-            // Mark the gate complete so that on team_approve (which calls
-            // advanceWorkflowStep) the workflow proceeds past this gate.
-            step.completed = true;
-            step.dispatchedActor = undefined;
-            await saveTeamState(team);
-            return;
-        }
-        // No escalation handler available -> fall through to terminal fail.
-    }
-
-    // on_invalid_goto (incompatible with escalate per validator) jumps instead
-    // of terminating at the INVALID terminal point. Shared by both on_invalid
-    // and on_malformed terminal paths.
-    if (policy !== "escalate") {
-        const invGoto = step.onInvalidGoto ?? -1;
-        if (invGoto >= 0) {
-            await gotoWorkflowStep(ctx, team, gateIndex, invGoto, {
-                reason: isMalformed ? `on_malformed:${reason}` : `on_invalid:${reason}`,
-                verdict: reason === "INVALID" ? "INVALID" : undefined,
-                rationale,
-                diff,
-            });
-            return;
-        }
-    }
-    await finishRun(
-        ctx,
-        team,
-        workflowInvalidReason(reason, verifierName),
-        "failed",
-    );
 }
