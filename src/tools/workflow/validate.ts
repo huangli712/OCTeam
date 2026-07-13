@@ -504,7 +504,8 @@ function validateLoweredTaskStep(
     return null
 }
 
-/** Full semantic validation of a lowered gate step: rejects task fields, validates verifier/ensemble/goto/loop/where constraints, checks team membership. */
+/** Full semantic validation of a lowered gate step: rejects task fields, validates 
+ * verifier/ensemble/goto/loop/where constraints, checks team membership. */
 function validateLoweredGateStep(
     steps: readonly LoweredWorkflowStep[],
     gate: LoweredWorkflowLinearStep,
