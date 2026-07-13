@@ -15,6 +15,7 @@ import { isInteractionForbidden } from "./activation.js"
 
 /** Map of sessionID -> member index entry for non-master team members. */
 const memberIndex = new Map<string, MemberIndexEntry>()
+
 /** Map of sessionID -> master index entry for team leader sessions. */
 const masterIndex = new Map<string, MasterIndexEntry>()
 
