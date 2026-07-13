@@ -46,6 +46,7 @@ import {
     markWorkflowStepCompleted,
 } from "./fanout.js";
 
+/** Alias for the return type of parseVerdict (verdict + metadata or parse failure). */
 type ParsedVerdict = ReturnType<typeof parseVerdict>;
 
 /**
