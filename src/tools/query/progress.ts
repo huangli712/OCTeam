@@ -21,6 +21,76 @@ import { getActiveWorkflowStepIndices } from "../../orchestration/workflow/dag.j
 import type { RunEvent, WorkflowRunStep, WorkflowStep, WorkflowTask } from "../../core/types.js"
 import type { Team } from "../../state/store.js"
 
+/** Join policy tag for the active fanout frontier. */
+function activeFanoutJoinPolicy(task: WorkflowTask): string {
+    const steps = task.steps ?? []
+    for (const index of getActiveWorkflowStepIndices(task)) {
+        const branch = steps[index]?.branch
+        if (branch === undefined) continue
+        const joinPolicy = steps[branch.fanoutIndex]?.fanout?.joinPolicy
+        if (joinPolicy !== undefined) return ` join_policy=${joinPolicy}`
+    }
+    return ""
+}
+
+/** Convert live WorkflowStep[] into WorkflowRunStep[] for mermaid rendering. */
+function liveStepsToRunSteps(steps: readonly WorkflowStep[]): WorkflowRunStep[] {
+    return steps.map((step, index) => ({
+        index,
+        step: index + 1,
+        kind: step.kind,
+        id: step.id,
+        member: step.member,
+        verifier: step.verifier,
+        dispatchedActor: step.dispatchedActor,
+        targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
+        targetSteps: step.targetStepIndices?.map(targetIndex => targetIndex + 1),
+        verdict: step.verdict,
+        score: step.score,
+        confidence: step.confidence,
+        issues: step.issues,
+        attempts: step.attempts,
+        onInvalid: step.onInvalid,
+        invalidAttempts: step.invalidAttempts,
+        jumpCount: step.jumpCount,
+        skipped: step.skipped,
+        completed: step.completed,
+        output: step.output,
+        startedAt: step.startedAt,
+        completedAt: step.completedAt,
+        durationMs: step.durationMs,
+        inputs: step.inputs,
+        exposeOutput: step.exposeOutput,
+        fanout: step.fanout,
+        branch: step.branch,
+        join: step.join,
+        approvalBefore: step.approvalBefore,
+        approvalAfter: step.approvalAfter,
+        maxOutputBytes: step.maxOutputBytes,
+    }))
+}
+
+/** Build a status map (pending/active/done/skipped) by step index. */
+function liveStatusByIndex(task: WorkflowTask): Map<number, MermaidStepStatus> {
+    const active = new Set(getActiveWorkflowStepIndices(task))
+    const statuses = new Map<number, MermaidStepStatus>()
+    const steps = task.steps ?? []
+    for (let index = 0; index < steps.length; index += 1) {
+        const step = steps[index]
+        if (step === undefined) continue
+        if (step.skipped === true) {
+            statuses.set(index, "skipped")
+        } else if (step.completed) {
+            statuses.set(index, "done")
+        } else if (active.has(index)) {
+            statuses.set(index, "active")
+        } else {
+            statuses.set(index, "pending")
+        }
+    }
+    return statuses
+}
+
 /** Elapsed time suffix for a workflow step line. */
 function formatWorkflowStepElapsed(step: WorkflowStep | undefined): string {
     if (step?.startedAt === undefined) return ""
@@ -33,18 +103,6 @@ function formatWorkflowFrontierStep(steps: readonly WorkflowStep[], index: numbe
     const branch = step?.branch
     const branchTag = branch === undefined ? "" : `${branch.branchId}: `
     return `${branchTag}step ${index + 1}/${steps.length}${formatWorkflowStepElapsed(step)}`
-}
-
-/** Join policy tag for the active fanout frontier. */
-function activeFanoutJoinPolicy(task: WorkflowTask): string {
-    const steps = task.steps ?? []
-    for (const index of getActiveWorkflowStepIndices(task)) {
-        const branch = steps[index]?.branch
-        if (branch === undefined) continue
-        const joinPolicy = steps[branch.fanoutIndex]?.fanout?.joinPolicy
-        if (joinPolicy !== undefined) return ` join_policy=${joinPolicy}`
-    }
-    return ""
 }
 
 /** Stage description line for a workflow task (frontier or simple progress). */
@@ -125,64 +183,6 @@ function formatTimeline(events: RunEvent[], runId: string, totalBefore: number):
         ? `Timeline (last ${shown} of ${totalBefore}, run ${runId.slice(0, 8)}…):`
         : `Timeline (${shown} events, run ${runId.slice(0, 8)}…):`
     return [header, ...lines]
-}
-
-/** Convert live WorkflowStep[] into WorkflowRunStep[] for mermaid rendering. */
-function liveStepsToRunSteps(steps: readonly WorkflowStep[]): WorkflowRunStep[] {
-    return steps.map((step, index) => ({
-        index,
-        step: index + 1,
-        kind: step.kind,
-        id: step.id,
-        member: step.member,
-        verifier: step.verifier,
-        dispatchedActor: step.dispatchedActor,
-        targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
-        targetSteps: step.targetStepIndices?.map(targetIndex => targetIndex + 1),
-        verdict: step.verdict,
-        score: step.score,
-        confidence: step.confidence,
-        issues: step.issues,
-        attempts: step.attempts,
-        onInvalid: step.onInvalid,
-        invalidAttempts: step.invalidAttempts,
-        jumpCount: step.jumpCount,
-        skipped: step.skipped,
-        completed: step.completed,
-        output: step.output,
-        startedAt: step.startedAt,
-        completedAt: step.completedAt,
-        durationMs: step.durationMs,
-        inputs: step.inputs,
-        exposeOutput: step.exposeOutput,
-        fanout: step.fanout,
-        branch: step.branch,
-        join: step.join,
-        approvalBefore: step.approvalBefore,
-        approvalAfter: step.approvalAfter,
-        maxOutputBytes: step.maxOutputBytes,
-    }))
-}
-
-/** Build a status map (pending/active/done/skipped) by step index. */
-function liveStatusByIndex(task: WorkflowTask): Map<number, MermaidStepStatus> {
-    const active = new Set(getActiveWorkflowStepIndices(task))
-    const statuses = new Map<number, MermaidStepStatus>()
-    const steps = task.steps ?? []
-    for (let index = 0; index < steps.length; index += 1) {
-        const step = steps[index]
-        if (step === undefined) continue
-        if (step.skipped === true) {
-            statuses.set(index, "skipped")
-        } else if (step.completed) {
-            statuses.set(index, "done")
-        } else if (active.has(index)) {
-            statuses.set(index, "active")
-        } else {
-            statuses.set(index, "pending")
-        }
-    }
-    return statuses
 }
 
 /** Render a live mermaid diagram for an in-progress workflow, or null. */
