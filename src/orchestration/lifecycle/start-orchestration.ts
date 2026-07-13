@@ -56,7 +56,7 @@ export {
     DEFAULT_ARBITRATE_ROUNDS,
     DEFAULT_RECURSE_DEPTH,
     DEFAULT_RECURSE_SUBTASKS,
-} from "../control/defaults.js"
+} from "../modes/defaults.js"
 /** Default signoff policy: no post-completion review. */
 export const DEFAULT_SIGNOFF_POLICY: SignoffPolicy = "none"
 /** Default reduce policy: concatenate member outputs with a header summary. */
