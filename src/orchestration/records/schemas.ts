@@ -11,12 +11,21 @@
 
 import { z } from "zod"
 
+// ============================================================
+// Basic enums (mirror core/types enums)
+// ============================================================
+
 const OrchestrationTypeSchema = z.enum([
-    "parallel", "pipeline", "loop", "delegate", "consensus", "route", "arbitrate", "recurse", "tollgate", "workflow", "arena",
+    "parallel", "pipeline", "loop", "delegate", "consensus",
+    "route", "arbitrate", "recurse", "tollgate", "workflow", "arena",
 ])
 const ParallelModeSchema = z.enum(["isolated", "cooperative"])
 const RunStatusSchema = z.enum(["completed", "failed"])
 const SignoffPolicySchema = z.enum(["none", "decider", "peer-quorum"])
+
+// ============================================================
+// Decision / approval records
+// ============================================================
 
 const DecisionRecordSchema = z.object({
     round: z.number(),
@@ -26,7 +35,10 @@ const DecisionRecordSchema = z.object({
     timestamp: z.number(),
 })
 
-const ApprovalKindSchema = z.enum(["pipeline_stage", "tollgate_gate", "loop_done", "route_decision", "recurse_decompose", "arbitrate_ruling", "consensus_deadlock", "workflow_step"])
+const ApprovalKindSchema = z.enum([
+    "pipeline_stage", "tollgate_gate", "loop_done", "route_decision",
+    "recurse_decompose", "arbitrate_ruling", "consensus_deadlock", "workflow_step",
+])
 const ApprovalDecisionRecordSchema = z.object({
     id: z.string(),
     kind: ApprovalKindSchema,
@@ -35,6 +47,10 @@ const ApprovalDecisionRecordSchema = z.object({
     resolvedAt: z.number(),
     feedback: z.string().optional(),
 })
+
+// ============================================================
+// Workflow step metadata (mirrors runtime WorkflowStep sub-types)
+// ============================================================
 
 const WorkflowStepKindSchema = z.enum(["task", "gate", "fanout", "join"])
 const VerdictSchema = z.enum(["PASS", "FAIL", "INVALID"])
@@ -48,7 +64,11 @@ const WorkflowBranchRangeSchema = z.object({
     startIndex: z.number().int().nonnegative(),
     endIndex: z.number().int().nonnegative(),
 }).refine(range => range.endIndex >= range.startIndex, "branch range endIndex must be >= startIndex")
-const WorkflowJoinPolicySchema = z.enum(["tolerance", "all", "quorum", "any_success", "required_branches", "reduce", "select"])
+const WorkflowJoinPolicySchema = z.enum([
+    "tolerance", "all", "quorum", "any_success", "required_branches", "reduce", "select",
+])
+
+/** Persisted fanout metadata: branch ids, ranges, join pointer, and join policy config. */
 const WorkflowFanoutMetadataSchema = z.object({
     branchIds: z.array(z.string().min(1)),
     branchRanges: z.array(WorkflowBranchRangeSchema),
@@ -59,13 +79,20 @@ const WorkflowFanoutMetadataSchema = z.object({
     requiredBranchIds: z.array(z.string().min(1)).optional(),
     reducerMember: z.string().min(1).optional(),
     useSurvivors: z.boolean().optional(),
-}).refine(fanout => fanout.branchIds.length === fanout.branchRanges.length, "fanout branchIds and branchRanges length mismatch")
+}).refine(
+    fanout => fanout.branchIds.length === fanout.branchRanges.length,
+    "fanout branchIds and branchRanges length mismatch",
+)
+
+/** Persisted branch metadata: links a branch step to its containing fanout and join. */
 const WorkflowBranchMetadataSchema = z.object({
     fanoutIndex: z.number().int().nonnegative(),
     branchId: z.string().min(1),
     branchIndex: z.number().int().nonnegative(),
     joinIndex: z.number().int().nonnegative(),
 })
+
+/** Persisted join metadata: fanout linkage, branch tail indices, and join-resolution results. */
 const WorkflowJoinMetadataSchema = z.object({
     fanoutIndex: z.number().int().nonnegative(),
     branchTailIndices: z.array(z.number().int().nonnegative()),
@@ -80,6 +107,12 @@ const WorkflowJoinMetadataSchema = z.object({
     selectedBranchId: z.string().min(1).optional(),
     selectionRationale: z.string().optional(),
 })
+
+/**
+ * Persisted workflow step: the runtime WorkflowStep projected into the
+ * RunRecord shape. Adds persisted-only fields (index, step number,
+ * outputBytes, durationMs) and omits transient runtime fields.
+ */
 const WorkflowRunStepSchema = z.object({
     index: z.number(),
     step: z.number(),
@@ -120,6 +153,12 @@ const WorkflowRunStepSchema = z.object({
     maxOutputBytes: z.number().optional(),
 })
 
+/**
+ * Persisted workflow run: step array plus cross-step structural validation.
+ * The superRefine checks enforce fanout/join/branch consistency that zod
+ * object schemas alone cannot express (e.g. joinIndex bidirectional pairing,
+ * branch ranges within fanout..join bounds, branch metadata matching).
+ */
 const WorkflowRunSchema = z.object({
     steps: z.array(WorkflowRunStepSchema),
 }).superRefine((workflow, ctx) => {
@@ -140,8 +179,10 @@ const WorkflowRunSchema = z.object({
                     addStepIssue(index, "fanout step requires fanout metadata", ["fanout"])
                     break
                 }
-                if (step.branch !== undefined) addStepIssue(index, "fanout step cannot carry branch metadata", ["branch"])
-                if (step.join !== undefined) addStepIssue(index, "fanout step cannot carry join metadata", ["join"])
+                if (step.branch !== undefined)
+                    addStepIssue(index, "fanout step cannot carry branch metadata", ["branch"])
+                if (step.join !== undefined)
+                    addStepIssue(index, "fanout step cannot carry join metadata", ["join"])
                 const fanout = step.fanout
                 if (new Set(fanout.branchIds).size !== fanout.branchIds.length) {
                     addStepIssue(index, "fanout branch ids must be unique", ["fanout", "branchIds"])
@@ -154,17 +195,37 @@ const WorkflowRunSchema = z.object({
                     const range = fanout.branchRanges[branchIndex]
                     const branchId = fanout.branchIds[branchIndex]
                     if (range === undefined || branchId === undefined) continue
-                    if (range.startIndex <= index || range.endIndex >= fanout.joinIndex || range.endIndex >= steps.length) {
-                        addStepIssue(index, "fanout branch range must be between fanout and join", ["fanout", "branchRanges", branchIndex])
+                    if (
+                        range.startIndex <= index
+                        || range.endIndex >= fanout.joinIndex
+                        || range.endIndex >= steps.length
+                    ) {
+                        addStepIssue(
+                            index,
+                            "fanout branch range must be between fanout and join",
+                            ["fanout", "branchRanges", branchIndex],
+                        )
                         continue
                     }
                     if (joinStep?.join?.branchTailIndices[branchIndex] !== range.endIndex) {
-                        addStepIssue(index, "join branchTailIndices must match fanout branch range tails", ["fanout", "branchRanges", branchIndex])
+                        addStepIssue(
+                            index,
+                            "join branchTailIndices must match fanout branch range tails",
+                            ["fanout", "branchRanges", branchIndex],
+                        )
                     }
-                    for (let branchStepIndex = range.startIndex; branchStepIndex <= range.endIndex; branchStepIndex += 1) {
+                    for (
+                        let branchStepIndex = range.startIndex;
+                        branchStepIndex <= range.endIndex;
+                        branchStepIndex += 1
+                    ) {
                         const branchStep = steps[branchStepIndex]
                         if (branchStep === undefined) {
-                            addStepIssue(index, "fanout branch range points outside workflow steps", ["fanout", "branchRanges", branchIndex])
+                            addStepIssue(
+                                index,
+                                "fanout branch range points outside workflow steps",
+                                ["fanout", "branchRanges", branchIndex],
+                            )
                             continue
                         }
                         if (branchStep.kind === "fanout" || branchStep.kind === "join") {
@@ -176,8 +237,17 @@ const WorkflowRunSchema = z.object({
                             addStepIssue(branchStepIndex, "branch step requires branch metadata", ["branch"])
                             continue
                         }
-                        if (branch.fanoutIndex !== index || branch.branchId !== branchId || branch.branchIndex !== branchIndex || branch.joinIndex !== fanout.joinIndex) {
-                            addStepIssue(branchStepIndex, "branch metadata must match containing fanout range", ["branch"])
+                        if (
+                            branch.fanoutIndex !== index
+                            || branch.branchId !== branchId
+                            || branch.branchIndex !== branchIndex
+                            || branch.joinIndex !== fanout.joinIndex
+                        ) {
+                            addStepIssue(
+                                branchStepIndex,
+                                "branch metadata must match containing fanout range",
+                                ["branch"],
+                            )
                         }
                     }
                 }
@@ -192,38 +262,69 @@ const WorkflowRunSchema = z.object({
                 if (step.branch !== undefined) addStepIssue(index, "join step cannot carry branch metadata", ["branch"])
                 const fanoutStep = steps[step.join.fanoutIndex]
                 if (fanoutStep?.kind !== "fanout" || fanoutStep.fanout?.joinIndex !== index) {
-                    addStepIssue(index, "join fanoutIndex must point to a matching fanout step", ["join", "fanoutIndex"])
+                    addStepIssue(
+                        index,
+                        "join fanoutIndex must point to a matching fanout step",
+                        ["join", "fanoutIndex"],
+                    )
                     break
                 }
                 const fanout = fanoutStep.fanout
                 if (fanout.branchRanges.length !== step.join.branchTailIndices.length) {
-                    addStepIssue(index, "join branchTailIndices length must match fanout branches", ["join", "branchTailIndices"])
+                    addStepIssue(
+                        index,
+                        "join branchTailIndices length must match fanout branches",
+                        ["join", "branchTailIndices"],
+                    )
                 }
                 const branchIds = new Set(fanout.branchIds)
                 const survivorBranchIds = step.join.survivorBranchIds ?? []
                 const erroredBranchIds = step.join.erroredBranchIds ?? []
                 for (const branchId of survivorBranchIds) {
-                    if (!branchIds.has(branchId)) addStepIssue(index, "join survivorBranchIds must reference known fanout branches", ["join", "survivorBranchIds"])
+                    if (!branchIds.has(branchId))
+                        addStepIssue(
+                            index,
+                            "join survivorBranchIds must reference known fanout branches",
+                            ["join", "survivorBranchIds"],
+                        )
                 }
                 for (const branchId of erroredBranchIds) {
-                    if (!branchIds.has(branchId)) addStepIssue(index, "join erroredBranchIds must reference known fanout branches", ["join", "erroredBranchIds"])
-                    if (survivorBranchIds.includes(branchId)) addStepIssue(index, "join branch cannot be both survivor and errored", ["join"])
+                    if (!branchIds.has(branchId))
+                        addStepIssue(
+                            index,
+                            "join erroredBranchIds must reference known fanout branches",
+                            ["join", "erroredBranchIds"],
+                        )
+                    if (survivorBranchIds.includes(branchId))
+                        addStepIssue(index, "join branch cannot be both survivor and errored", ["join"])
                 }
                 break
             }
             case "task":
             case "gate": {
-                if (step.fanout !== undefined) addStepIssue(index, "task/gate step cannot carry fanout metadata", ["fanout"])
-                if (step.join !== undefined) addStepIssue(index, "task/gate step cannot carry join metadata", ["join"])
+                if (step.fanout !== undefined)
+                    addStepIssue(index, "task/gate step cannot carry fanout metadata", ["fanout"])
+                if (step.join !== undefined)
+                    addStepIssue(index, "task/gate step cannot carry join metadata", ["join"])
                 if (step.branch === undefined) break
                 const fanoutStep = steps[step.branch.fanoutIndex]
                 if (fanoutStep?.kind !== "fanout" || fanoutStep.fanout === undefined) {
-                    addStepIssue(index, "branch fanoutIndex must point to a matching fanout step", ["branch", "fanoutIndex"])
+                    addStepIssue(
+                        index,
+                        "branch fanoutIndex must point to a matching fanout step",
+                        ["branch", "fanoutIndex"],
+                    )
                     break
                 }
                 const range = fanoutStep.fanout.branchRanges[step.branch.branchIndex]
                 const branchId = fanoutStep.fanout.branchIds[step.branch.branchIndex]
-                if (range === undefined || branchId !== step.branch.branchId || step.branch.joinIndex !== fanoutStep.fanout.joinIndex || index < range.startIndex || index > range.endIndex) {
+                if (
+                    range === undefined
+                    || branchId !== step.branch.branchId
+                    || step.branch.joinIndex !== fanoutStep.fanout.joinIndex
+                    || index < range.startIndex
+                    || index > range.endIndex
+                ) {
                     addStepIssue(index, "branch metadata must match containing fanout range", ["branch"])
                 }
                 break
@@ -233,6 +334,10 @@ const WorkflowRunSchema = z.object({
         }
     }
 })
+
+// ============================================================
+// Arena scoreboard
+// ============================================================
 
 const ArenaCandidateScoreSchema = z.object({
     member: z.string(),
@@ -246,6 +351,11 @@ const ArenaScoreboardSchema = z.object({
     rationale: z.string().optional(),
 })
 
+// ============================================================
+// Exported top-level schemas (public API for runs.ts)
+// ============================================================
+
+/** Validates a persisted RunRecord (record.json) read back from disk. */
 export const RunRecordSchema = z.object({
     version: z.literal(1),
     runId: z.string(),
@@ -285,11 +395,14 @@ export const RunRecordSchema = z.object({
     }).optional(),
 })
 
+/** Validates a single RunEvent line from the events.jsonl timeline. */
 export const RunEventSchema = z.object({
     timestamp: z.number(),
     kind: z.enum([
         "dispatched", "captured", "retry", "errored", "stage_advanced", "round",
-        "signoff", "approval_requested", "approval_resolved", "terminated", "routed", "arbitrated", "decomposed", "aggregated", "aggregation_stalled", "verdict", "repaired",
+        "signoff", "approval_requested", "approval_resolved", "terminated",
+        "routed", "arbitrated", "decomposed", "aggregated",
+        "aggregation_stalled", "verdict", "repaired",
     ]),
     member: z.string().optional(),
     stage: z.number().optional(),
