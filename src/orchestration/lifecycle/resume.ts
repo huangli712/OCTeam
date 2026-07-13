@@ -5,7 +5,7 @@
  *
  * Semantics (mirrors resume.ts's contract, NOT processIdle):
  *   parallel/consensus: re-dispatch incomplete members; zero-dispatch re-drives
- *                       the barrier (MAJOR-A).
+ *                       the barrier.
  *   pipeline/loop: advanceToStage(stages[idx]); all-complete → deliver + clear.
  *   delegate/recurse: reap stale claims + reset claimed/in_progress→pending.
  *   route/arbitrate: Phase A re-dispatch or Phase B re-drive barrier.
@@ -85,7 +85,7 @@ async function resumeConcurrentDispatch(
 /**
  * Reset interrupted task claims: reap stale locks + reset any claimed/in_progress
  * tasks back to pending so idle members can re-claim them. Shared by the
- * delegate and recurse resume paths (O8).
+ * delegate and recurse resume paths.
  */
 async function resetInterruptedClaims(team: Team): Promise<void> {
     await reapStaleClaims(team.directory);
@@ -108,11 +108,11 @@ async function resumeSignoffReduceStage(
     team: Team,
     task: ActiveTask,
 ): Promise<boolean> {
-    // Mirrors processIdle priority ordering in handlers.ts:176-186. A crash
-    // can occur while these special stages are in flight. On resume, restore
-    // the reviewers/reducer by re-triggering the same maybeTrigger* idempotent
-    // entry points the live path uses, then bail — the type switch below is
-    // for the per-mode MAP work, not these sub-stages.
+    // Mirrors processIdle priority ordering. A crash can occur while these
+    // special stages are in flight. On resume, restore the reviewers/reducer
+    // by re-triggering the same maybeTrigger* idempotent entry points the
+    // live path uses, then bail — the type switch below is for the per-mode
+    // MAP work, not these sub-stages.
     if (task.reduceStage) {
         const reducer = team.members.find(
             (m) => m.name === task.reducerMember && !m.isMaster,
@@ -167,12 +167,17 @@ async function resumeSignoffReduceStage(
     return false;
 }
 
+/**
+ * Parallel resume: re-dispatch members that have not yet responded (or have
+ * not acked under require_done_ack); a zero-dispatch re-drives the barrier so
+ * an all-complete crash edge does not stall the run.
+ */
 async function resumeParallelMode(
     ctx: PluginContext,
     team: Team,
     task: Extract<ActiveTask, { type: "parallel" }>,
 ): Promise<void> {
-    // MAJOR-C: mode-dependent completion criterion. MAJOR-A: zero-dispatch re-drives barrier.
+    // Completion criterion depends on require_done_ack; a zero-dispatch re-drives the barrier.
     await resumeConcurrentDispatch(
         ctx, team, team.members,
         (m) => task.requireDoneAck ? !m.declaredDone : !task.responses[m.name],
@@ -181,6 +186,11 @@ async function resumeParallelMode(
     );
 }
 
+/**
+ * Consensus resume: if max rounds is already reached, re-drive the barrier to
+ * settle the round; otherwise re-dispatch members without responses for the
+ * current round.
+ */
 async function resumeConsensusMode(
     ctx: PluginContext,
     team: Team,
@@ -200,6 +210,11 @@ async function resumeConsensusMode(
     );
 }
 
+/**
+ * Pipeline/loop resume: re-dispatch the current stage (advanceToStage reads
+ * responses[] internally); an all-complete index means the crash happened
+ * before delivery, so finish the run.
+ */
 async function resumeSequentialMode(
     ctx: PluginContext,
     team: Team,
@@ -209,17 +224,21 @@ async function resumeSequentialMode(
         // All-complete edge (crash before delivery).
         await finishRun(ctx, team, `${task.type}_complete`, "idle");
     } else {
-        // O3: advanceToStage uses responses[] internally;
+        // advanceToStage uses responses[] internally;
         // pass the Stage OBJECT (stages[idx]), NOT the index.
         await advanceToStage(ctx, team, task.stages[task.currentStageIndex]);
     }
 }
 
+/**
+ * Delegate resume: reset interrupted task claims back to pending, then
+ * re-dispatch every idle member to pull fresh work from the shared tasklist.
+ */
 async function resumeDelegateMode(
     ctx: PluginContext,
     team: Team,
 ): Promise<void> {
-    // O8: reset claimed AND in_progress -> pending (claiming member's
+    // Reset claimed AND in_progress -> pending (claiming member's
     // turn was interrupted). reapStaleClaims handles stale locks;
     // fresh claimed locks linger up to CLAIM_TTL_MS (documented).
     await resetInterruptedClaims(team);
@@ -235,6 +254,11 @@ async function resumeDelegateMode(
     }
 }
 
+/**
+ * Route resume. Phase A: if the router's output is captured, re-run the
+ * routing decision; otherwise re-dispatch the router. Phase B: re-dispatch
+ * targets without responses; a zero-dispatch re-drives the barrier.
+ */
 async function resumeRouteMode(
     ctx: PluginContext,
     team: Team,
@@ -277,6 +301,11 @@ async function resumeRouteMode(
     );
 }
 
+/**
+ * Arbitrate resume. Phase A (debate): re-dispatch debaters without responses;
+ * a zero-dispatch re-drives the barrier. Phase B (ruling): if the arbiter
+ * responded, re-run the ruling parse; otherwise re-dispatch the arbiter.
+ */
 async function resumeArbitrateMode(
     ctx: PluginContext,
     team: Team,
@@ -314,6 +343,10 @@ async function resumeArbitrateMode(
     }
 }
 
+/**
+ * Recurse resume: reset interrupted task claims, then re-dispatch every idle
+ * member with the recursive contract (same recovery shape as delegate).
+ */
 async function resumeRecurseMode(
     ctx: PluginContext,
     team: Team,
@@ -333,6 +366,12 @@ async function resumeRecurseMode(
     }
 }
 
+/**
+ * Tollgate resume across its three phases. verify: replay the verdict parse if
+ * the verifier's output is captured, else re-dispatch the verifier.
+ * escalate: re-dispatch the escalation handler. produce: re-dispatch the
+ * current gate's producer.
+ */
 async function resumeTollgateMode(
     ctx: PluginContext,
     team: Team,
@@ -370,10 +409,12 @@ async function resumeTollgateMode(
     }
 }
 
-// Re-drives the workflow after a crash. If the current step's actor already
-// produced output pre-crash, re-run the handler to process it (parse verdict /
-// mark complete + advance); otherwise dispatch the first incomplete step, or
-// deliver if all steps are already complete (all-complete crash edge).
+/**
+ * Re-drive the workflow after a crash. If the current step's actor already
+ * produced output pre-crash, re-run the handler to process it (parse verdict /
+ * mark complete + advance); otherwise dispatch the first incomplete step, or
+ * deliver if all steps are already complete (all-complete crash edge).
+ */
 async function resumeWorkflowMode(
     ctx: PluginContext,
     team: Team,
@@ -461,14 +502,14 @@ async function resumeWorkflowMode(
 /**
  * Arena resume for BOTH phases. Implement/undefined: re-dispatch only
  * unfinished LIVE candidates (skip running/errored/no-session/already-
- * responded); a no-op dispatch is NOT counted, so a zero real
- * dispatch re-drives the barrier via handleArenaIdle with the FIRST candidate
+ * responded); a no-op dispatch is NOT counted, so a zero real dispatch
+ * re-drives the barrier via handleArenaIdle with the FIRST candidate
  * regardless of status — errored candidates count as terminal-ready in
- * maybeAdvanceBarrier, so termination 3b delivers arena_failed:no_survivors instead
- * of hanging to wall-clock. Evaluate: an errored evaluator fails closed (its
- * state is preserved across resume by 4d); a missing evaluator response is
- * re-dispatched; an already-present response is parsed exactly once (2c deletes
- * + re-dispatches bad output, so a second resume cannot re-consume it).
+ * maybeAdvanceBarrier, so checkTermination delivers arena_failed:no_survivors
+ * instead of hanging to wall-clock. Evaluate: an errored evaluator fails
+ * closed; a missing evaluator response is re-dispatched; an already-present
+ * response is parsed exactly once (handleArenaIdle deletes and re-dispatches
+ * bad output, so a second resume cannot re-consume it).
  */
 async function resumeArenaMode(
     ctx: PluginContext,
