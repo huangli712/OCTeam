@@ -21,6 +21,9 @@ import { CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./locks.js"
 import { claimLockPath, claimMutexPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./paths.js"
 import type { Task, TaskStatus } from "../core/types.js"
 
+/** Task lifecycle status: pending, claimed, in_progress, completed, or deleted. */
+export type { TaskStatus }
+
 /** Error thrown when a task is already claimed or not in claimable state. */
 export class TaskAlreadyClaimedError extends Error {
     constructor(taskId: string) {
@@ -376,6 +379,3 @@ export async function reapStaleClaims(teamDirectory: string): Promise<void> {
         }
     }
 }
-
-/** Task lifecycle status: pending, claimed, in_progress, completed, or deleted. */
-export type { TaskStatus }
