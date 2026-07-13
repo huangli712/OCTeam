@@ -28,14 +28,19 @@ import { validateWorkflowStepsAgainstMembers } from "./engine.js"
 
 /** Agent name for planner child sessions. */
 const PLANNER_AGENT = "oct-metis"
+
 /** Maximum wall-clock wait (ms) for a single planner attempt. */
 const PLANNER_TIMEOUT_MS = 300_000
+
 /** Poll interval (ms) while awaiting planner output. */
 const PLANNER_POLL_MS = 2_000
+
 /** Number of correction rounds before failing the planner session. */
 const PLANNER_MAX_RETRIES = 2
+
 /** Regex for a safe lowercase-slug team_id. */
 const TEAM_ID_SLUG = /^[a-z0-9-]+$/
+
 /** Regex to extract the <team_planner> JSON block from assistant output. */
 const TEAM_PLANNER_TAG = /<team_planner>([\s\S]*?)<\/team_planner>/
 
