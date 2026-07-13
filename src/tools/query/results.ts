@@ -43,6 +43,7 @@ function workflowVerdictMetrics(step: WorkflowRunStep): string {
     return metrics.length > 0 ? ` [${metrics.join(", ")}]` : ""
 }
 
+/** Format a gate step's structured issues as severity-sorted detail lines. */
 function formatWorkflowIssueDetail(step: WorkflowRunStep): string {
     const issues = step.issues
     if (!issues || issues.length === 0) return ""
