@@ -109,7 +109,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     if (args.mode === "cooperative" && !args.tasks) {
                         return "Error: cooperative mode requires `tasks`"
                     }
-                    // wf-010: every key in the cooperative `tasks` map must
+                    // Every key in the cooperative `tasks` map must
                     // name a real non-master member. An unknown key is a typo
                     // whose task would never be dispatched, so reject it
                     // instead of silently ignoring it.
@@ -120,7 +120,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                             }
                         }
                     }
-                    // wf-007: reduce_policy 'rubric' scores outputs against
+                    // reduce_policy 'rubric' scores outputs against
                     // reduce_rubric, so the rubric text must be present.
                     if (args.reduce_policy === "rubric" && !args.reduce_rubric) {
                         return "Error: reduce_policy 'rubric' requires reduce_rubric (the scoring rubric)"

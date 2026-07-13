@@ -132,7 +132,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                             }
                         }
                     }
-                    // wf-006: reject blocked_by cycles. The ref-existence
+                    // Reject blocked_by cycles. The ref-existence
                     // check above only proves each dependency target exists; a
                     // cycle (A blocked_by B, B blocked_by A) still passes it
                     // but leaves every task in the cycle permanently
@@ -147,8 +147,8 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     return null
                 },
                 // buildTask: enforce the task cap BEFORE creating any task, then
-                // create all tasks BEFORE committing activeTask/status (wf-002,
-                // wf-003 -- a mid-loop failure leaves the team idle rather than
+                // create all tasks BEFORE committing activeTask/status
+                // (a mid-loop failure leaves the team idle rather than
                 // wedged in "busy" with an unpersisted activeTask). Counting +
                 // creating both run under the mutex so the count cannot be
                 // raced by a concurrent create.

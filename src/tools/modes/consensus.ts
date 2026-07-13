@@ -51,7 +51,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                 args.team_id, context, ctx, "team_consensus",
                 // validate
                 (team) => {
-                    // wf-016: a consensus needs at least two participants to be
+                    // A consensus needs at least two participants to be
                     // meaningful -- a single member trivially "agrees" with
                     // itself.
                     const consensusParticipants = team.members.filter(m => !m.isMaster)
@@ -71,7 +71,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                     // aborts after round 1.
                     maxRounds: args.max_rounds ?? DEFAULT_CONSENSUS_ROUNDS,
                     currentRound: 1,
-                    // wf-013: consensus intentionally has no signoff gate. The
+                    // Consensus intentionally has no signoff gate. The
                     // run itself is an allMembersAgree mechanism -- it only
                     // succeeds when every participant emits agreed=true -- so a
                     // separate post-completion signoff stage would be redundant.
