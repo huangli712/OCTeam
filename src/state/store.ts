@@ -44,6 +44,13 @@ export type Team = TeamState & {
     _diskSnapshot?: TeamState  // last known on-disk state (for three-way merge in saveTeamState)
 }
 
+// Process-level registry: resolved teamDir (absolute path) -> Team (with its
+// singleton mutex). Keying by the RESOLVED directory — not teamName — is what
+// keeps team "aaa" under session ses_x distinct from "aaa" under ses_y, and
+// project-scope "aaa" distinct from user-scope "aaa". Rebuilt lazily on plugin
+// restart; first access creates the entry, later accesses keep the mutex.
+const teamRegistry = new Map<string, Team>()
+
 /**
  * Clear the active task while preserving its mode in `lastMode` for sidebar
  * display. Called at every orchestration completion/termination site.
@@ -58,13 +65,6 @@ export function clearActiveTask(team: Team): void {
     }
     team.activeTask = undefined
 }
-
-// Process-level registry: resolved teamDir (absolute path) -> Team (with its
-// singleton mutex). Keying by the RESOLVED directory — not teamName — is what
-// keeps team "aaa" under session ses_x distinct from "aaa" under ses_y, and
-// project-scope "aaa" distinct from user-scope "aaa". Rebuilt lazily on plugin
-// restart; first access creates the entry, later accesses keep the mutex.
-const teamRegistry = new Map<string, Team>()
 
 /** Strip the non-persisted runtime fields, leaving the pure TeamState. */
 function stripRuntimeFields(team: Team): TeamState {
