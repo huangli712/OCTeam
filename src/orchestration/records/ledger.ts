@@ -13,10 +13,6 @@ import { truncateOutput } from "../protocol/output.js";
  * (critical > high > medium > low) so the most actionable issues surface first. */
 const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
 
-function assertNeverWorkflowStepKind(kind: never): never {
-    throw new Error(`unhandled WorkflowStepKind: ${String(kind)}`)
-}
-
 function hasWorkflowBranchTree(steps: readonly WorkflowStep[]): boolean {
     return steps.some(step => step.kind === "fanout" || step.kind === "join" || step.branch !== undefined)
 }
@@ -112,7 +108,7 @@ export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: W
             return `${index + 1}. [join]${idTag} fanout step ${join.fanoutIndex + 1}${statusTag}${joinedBytes}`
         }
         default:
-            return assertNeverWorkflowStepKind(step.kind)
+            throw new Error(`unhandled WorkflowStepKind: ${String(step.kind)}`)
     }
 }
 
@@ -151,7 +147,7 @@ export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): strin
                 lines.push(formatWorkflowLedgerStep(steps, step, index))
                 break
             default:
-                assertNeverWorkflowStepKind(step.kind)
+                throw new Error(`unhandled WorkflowStepKind: ${String(step.kind)}`)
         }
     }
     return lines
@@ -210,7 +206,7 @@ export function formatWorkflowOutputSections(steps: readonly WorkflowStep[]): st
             case "gate":
                 break
             default:
-                assertNeverWorkflowStepKind(step.kind)
+                throw new Error(`unhandled WorkflowStepKind: ${String(step.kind)}`)
         }
     }
     return sections

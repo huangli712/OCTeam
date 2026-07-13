@@ -17,10 +17,6 @@ const STATUS_CLASS_DEFS: Record<MermaidStepStatus, string> = {
     skipped: "classDef skipped fill:#e9ecef,stroke:#adb5bd,stroke-dasharray:3;",
 }
 
-function assertNeverWorkflowStepKind(kind: never): never {
-    throw new Error(`unhandled WorkflowStepKind: ${String(kind)}`)
-}
-
 function mermaidNodeId(step: WorkflowRunStep): string {
     return `s${step.step}`
 }
@@ -52,7 +48,7 @@ function mermaidStepLabel(step: WorkflowRunStep): string {
             return `${step.step}. join${idTag}${selected}`
         }
         default:
-            return assertNeverWorkflowStepKind(step.kind)
+            throw new Error(`unhandled WorkflowStepKind: ${String(step.kind)}`)
     }
 }
 
