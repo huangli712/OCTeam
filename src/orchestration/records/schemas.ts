@@ -19,14 +19,18 @@ const OrchestrationTypeSchema = z.enum([
     "parallel", "pipeline", "loop", "delegate", "consensus",
     "route", "arbitrate", "recurse", "tollgate", "workflow", "arena",
 ])
+
 const ParallelModeSchema = z.enum(["isolated", "cooperative"])
+
 const RunStatusSchema = z.enum(["completed", "failed"])
+
 const SignoffPolicySchema = z.enum(["none", "decider", "peer-quorum"])
 
 // ============================================================
 // Decision / approval records
 // ============================================================
 
+/** A loop decider's structured decision: continue/done, rationale, and next-action items. */
 const DecisionRecordSchema = z.object({
     round: z.number(),
     decision: z.enum(["continue", "done"]),
@@ -39,6 +43,8 @@ const ApprovalKindSchema = z.enum([
     "pipeline_stage", "tollgate_gate", "loop_done", "route_decision",
     "recurse_decompose", "arbitrate_ruling", "consensus_deadlock", "workflow_step",
 ])
+
+/** A resolved HITL approval: id, kind, approved/rejected, timestamps, optional feedback. */
 const ApprovalDecisionRecordSchema = z.object({
     id: z.string(),
     kind: ApprovalKindSchema,
@@ -53,17 +59,25 @@ const ApprovalDecisionRecordSchema = z.object({
 // ============================================================
 
 const WorkflowStepKindSchema = z.enum(["task", "gate", "fanout", "join"])
+
 const VerdictSchema = z.enum(["PASS", "FAIL", "INVALID"])
+
 const WorkflowOnInvalidSchema = z.enum(["fail", "retry_verifier", "escalate"])
+
 const WorkflowBranchStatusSchema = z.enum(["pending", "completed", "skipped", "errored"])
+
+/** A structured issue from a gate verifier: severity plus an optional human-readable message. */
 const WorkflowIssueSchema = z.object({
     severity: z.enum(["low", "medium", "high", "critical"]),
     message: z.string().optional(),
 })
+
+/** A fanout branch's step range; refined so endIndex >= startIndex. */
 const WorkflowBranchRangeSchema = z.object({
     startIndex: z.number().int().nonnegative(),
     endIndex: z.number().int().nonnegative(),
 }).refine(range => range.endIndex >= range.startIndex, "branch range endIndex must be >= startIndex")
+
 const WorkflowJoinPolicySchema = z.enum([
     "tolerance", "all", "quorum", "any_success", "required_branches", "reduce", "select",
 ])
@@ -339,6 +353,7 @@ const WorkflowRunSchema = z.object({
 // Arena scoreboard
 // ============================================================
 
+/** A single candidate's arena score: numeric score, custom metrics, pass/fail flag, rationale. */
 const ArenaCandidateScoreSchema = z.object({
     member: z.string(),
     score: z.number().optional(),
@@ -346,6 +361,7 @@ const ArenaCandidateScoreSchema = z.object({
     passed: z.boolean().optional(),
     rationale: z.string().optional(),
 })
+
 const ArenaScoreboardSchema = z.object({
     scores: z.array(ArenaCandidateScoreSchema),
     rationale: z.string().optional(),
