@@ -12,6 +12,23 @@
  * used to inline, so persisted run records and existing tests are unaffected.
  */
 
+/**
+ * Substrings that mark a workflow run as failed. Mirrored into the global
+ * FAILED_REASON_MARKERS classifier in runs.ts — keep both in sync when adding
+ * a new failure reason.
+ */
+export const WORKFLOW_FAILED_REASON_PREFIXES = [
+    "workflow_failed",
+    "workflow_invalid",
+    "workflow_timeout",
+] as const
+
+/** Stable workflow reason prefixes (success + failure) for tests and UI. */
+export const WORKFLOW_REASON_PREFIXES = [
+    "workflow_complete",
+    ...WORKFLOW_FAILED_REASON_PREFIXES,
+] as const
+
 /** Reason emitted when every step completes and signoff (if any) passes. */
 export function workflowCompleteReason(): string {
     return "workflow_complete"
@@ -56,20 +73,3 @@ export function workflowFanoutOverToleranceReason(fanoutDisplayStep: number): st
 export function workflowOperatorFailReason(sanitizedReason: string): string {
     return `workflow_failed:${sanitizedReason}`
 }
-
-/**
- * Substrings that mark a workflow run as failed. Mirrored into the global
- * FAILED_REASON_MARKERS classifier in runs.ts — keep both in sync when adding
- * a new failure reason.
- */
-export const WORKFLOW_FAILED_REASON_PREFIXES = [
-    "workflow_failed",
-    "workflow_invalid",
-    "workflow_timeout",
-] as const
-
-/** Stable workflow reason prefixes (success + failure) for tests and UI. */
-export const WORKFLOW_REASON_PREFIXES = [
-    "workflow_complete",
-    ...WORKFLOW_FAILED_REASON_PREFIXES,
-] as const
