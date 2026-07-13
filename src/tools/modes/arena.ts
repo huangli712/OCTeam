@@ -15,6 +15,7 @@ import {
     baseTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
+import { commonOrchestrationFields } from "../schema.js"
 
 /** Competitive arena with multiple candidates and a dedicated evaluator. */
 export function teamArenaTool(ctx: PluginContext): ToolDefinition {
@@ -76,22 +77,7 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                     "candidate failure isolation: tolerate up to N errored candidates "
                     + "during implement. Default 0.",
                 ),
-            timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema
-                .number()
-                .min(1)
-                .optional()
-                .describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema
-                .number()
-                .int()
-                .min(0)
-                .max(5)
-                .optional()
-                .describe(
-                    "re-dispatch grace windows before a sustained-retry member "
-                    + "is marked errored. Default 0.",
-                ),
+            ...commonOrchestrationFields,
         },
         async execute(args, context) {
             // Resolve candidates once (shared by validate, buildTask, and the

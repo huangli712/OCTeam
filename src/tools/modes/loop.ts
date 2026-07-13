@@ -13,7 +13,7 @@ import {
     humanApprovalTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields } from "../schema.js"
+import { commonOrchestrationFields, humanApprovalSchemaFields } from "../schema.js"
 import { assertMember } from "../support.js"
 
 /** Run a corrective loop with a decider that reviews and decides whether to continue. */
@@ -37,22 +37,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             decider: tool.schema.string().min(1).describe("member name of the decider (NOT \"master\")"),
             max_rounds: tool.schema.number().min(1).max(50),
             initial_task: tool.schema.string().min(1).max(8192),
-            timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema
-                .number()
-                .min(1)
-                .optional()
-                .describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema
-                .number()
-                .int()
-                .min(0)
-                .max(5)
-                .optional()
-                .describe(
-                    "re-dispatch grace windows before a sustained-retry member "
-                    + "is marked errored. Default 0.",
-                ),
+            ...commonOrchestrationFields,
             ...humanApprovalSchemaFields,
         },
         async execute(args, context) {

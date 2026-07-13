@@ -16,7 +16,7 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
+import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { validateSignoff } from "../support.js"
 
 /** Run a binding arbitration with structured debate between members and a ruling arbiter. */
@@ -42,22 +42,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                 .describe("debate round limit before the ruling (default 1)"),
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
-            timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema
-                .number()
-                .min(1)
-                .optional()
-                .describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema
-                .number()
-                .int()
-                .min(0)
-                .max(5)
-                .optional()
-                .describe(
-                    "re-dispatch grace windows before a sustained-retry member "
-                    + "is marked errored. Default 0.",
-                ),
+            ...commonOrchestrationFields,
         },
         async execute(args, context) {
             return startOrchestration(

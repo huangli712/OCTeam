@@ -52,3 +52,26 @@ export const humanApprovalSchemaFields = {
             "team_approve/team_reject before continuing.",
         ),
 }
+
+/**
+ * Common orchestration schema fields shared by every mode tool: timeout, token
+ * budget, and member-retry grace windows. Spread into a tool's schema.object().
+ */
+export const commonOrchestrationFields = {
+    timeout_ms: tool.schema.number().min(1000).optional(),
+    token_budget: tool.schema
+        .number()
+        .min(1)
+        .optional()
+        .describe("optional token cap; orchestration fails if exceeded"),
+    max_retries: tool.schema
+        .number()
+        .int()
+        .min(0)
+        .max(5)
+        .optional()
+        .describe(
+            "re-dispatch grace windows before a sustained-retry member " +
+            "is marked errored. Default 0.",
+        ),
+}

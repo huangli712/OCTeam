@@ -14,7 +14,7 @@ import {
     humanApprovalTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields } from "../schema.js"
+import { commonOrchestrationFields, humanApprovalSchemaFields } from "../schema.js"
 
 /** Run a multi-round structured debate until all members reach consensus. */
 export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
@@ -28,22 +28,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
             team_id: tool.schema.string().min(1),
             topic: tool.schema.string().min(1).max(4096).describe("the debate topic"),
             max_rounds: tool.schema.number().min(1).max(20).optional().describe("round limit (default 3)"),
-            timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema
-                .number()
-                .min(1)
-                .optional()
-                .describe("optional token cap; orchestration fails if exceeded"),
-            max_retries: tool.schema
-                .number()
-                .int()
-                .min(0)
-                .max(5)
-                .optional()
-                .describe(
-                    "re-dispatch grace windows before a sustained-retry member "
-                    + "is marked errored. Default 0.",
-                ),
+            ...commonOrchestrationFields,
             ...humanApprovalSchemaFields,
         },
         async execute(args, context) {
