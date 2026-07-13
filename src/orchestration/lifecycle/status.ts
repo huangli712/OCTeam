@@ -72,6 +72,15 @@ export async function handleStatusEvent(
                     reason: live.error,
                 })
                 await checkTermination(ctx, team)
+                // Re-drive the state machine after the errored member was
+                // escalated. This block ONLY reaches for concurrent or
+                // multi-phase modes whose barrier can continue with survivors
+                // (parallel / delegate / recurse / workflow / arena). The other
+                // modes (consensus / pipeline / loop / route / arbitrate /
+                // tollgate) have tolerance 0 in checkTermination, so the
+                // checkTermination call above already ran finishRun + cleared
+                // activeTask, and the `if (team.activeTask)` guard below is
+                // false for them. They are intentionally absent from the switch.
                 if (team.activeTask) {
                     if (team.activeTask.reduceStage) {
                         await handleReduceIdle(ctx, team, live)
