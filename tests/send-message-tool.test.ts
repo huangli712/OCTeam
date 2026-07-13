@@ -1,6 +1,6 @@
 /**
  * Coverage-gap regression tests for teamSendMessageTool.execute
- * (src/tools/coordination/messaging.ts).
+ * (src/tools/exchange/messaging.ts).
  *
  * GAP CLOSED: messaging.test.ts only covers the pure isForbiddenLateralMessage
  * predicate and the Transform hook — the tool's execute BODY (auth, payload cap,
@@ -11,7 +11,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
-import { teamSendMessageTool } from "../src/tools/coordination/messaging.js"
+import { teamSendMessageTool } from "../src/tools/exchange/messaging.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"

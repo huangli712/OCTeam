@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test"
 
-import { isForbiddenLateralMessage } from "../src/tools/coordination/messaging.js"
+import { isForbiddenLateralMessage } from "../src/tools/exchange/messaging.js"
 
 import fs from "node:fs/promises"
 

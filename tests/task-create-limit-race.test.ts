@@ -1,8 +1,8 @@
 /**
  * Regression test for confirmed finding "task-create-limit-race".
  *
- * Bug: src/tools/coordination/task.ts:51 counts live tasks via listAllTasks() and
- * src/tools/coordination/task.ts:72 calls createTask() — these two operations are NOT
+ * Bug: src/tools/exchange/task.ts:51 counts live tasks via listAllTasks() and
+ * src/tools/exchange/task.ts:72 calls createTask() — these two operations are NOT
  * covered by a shared lock. Two concurrent team_task_create calls can both
  * read the same live-task count, both pass the maxTasks check, and both
  * create a task — bypassing team.bounds.maxTasks.
@@ -26,7 +26,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
-import { teamTaskCreateTool } from "../src/tools/coordination/task.js"
+import { teamTaskCreateTool } from "../src/tools/exchange/task.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"

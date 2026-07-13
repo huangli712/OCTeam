@@ -1,5 +1,5 @@
 /**
- * Coverage-gap tests for src/tools/coordination/task.ts — error paths in teamTaskCreateTool
+ * Coverage-gap tests for src/tools/exchange/task.ts — error paths in teamTaskCreateTool
  * and teamTaskUpdateTool that task-tools.test.ts doesn't reach:
  *   - team not found (line 46)
  *   - invalid blocked_by format (line 79)
@@ -9,7 +9,7 @@
  */
 import { afterAll, describe, expect, test } from "bun:test"
 
-import { teamTaskCreateTool, teamTaskUpdateTool } from "../src/tools/coordination/task.js"
+import { teamTaskCreateTool, teamTaskUpdateTool } from "../src/tools/exchange/task.js"
 import { initTeamState, invalidateTeam } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { createTask } from "../src/state/tasks.js"
