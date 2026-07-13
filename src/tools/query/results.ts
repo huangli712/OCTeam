@@ -13,14 +13,14 @@ import fs from "node:fs/promises"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { truncateOutput } from "../orchestration/protocol/output.js"
-import { formatWorkflowMermaid } from "../orchestration/records/mermaid.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import { listRunRecords, readRunRecord } from "../orchestration/records/runs.js"
-import { assertNeverWorkflowStepKind } from "../orchestration/workflow/dag.js"
-import { runMemberOutputPath, isSafePathSegment } from "../state/paths.js"
-import type { RunRecord, WorkflowRunStep } from "../core/types.js"
+import type { PluginContext } from "../../core/context.js"
+import { truncateOutput } from "../../orchestration/protocol/output.js"
+import { formatWorkflowMermaid } from "../../orchestration/records/mermaid.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import { listRunRecords, readRunRecord } from "../../orchestration/records/runs.js"
+import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js"
+import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
+import type { RunRecord, WorkflowRunStep } from "../../core/types.js"
 
 function workflowTargetLabel(step: WorkflowRunStep): string {
     if (step.targetSteps !== undefined && step.targetSteps.length > 0) {

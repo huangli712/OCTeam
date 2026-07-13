@@ -11,15 +11,15 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { formatWorkflowMermaid, type MermaidStepStatus } from "../orchestration/records/mermaid.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import { loadTeamState } from "../state/store.js"
-import { listRunRecords, readRunEvents } from "../orchestration/records/runs.js"
-import { isSafePathSegment } from "../state/paths.js"
-import { getActiveWorkflowStepIndices } from "../orchestration/workflow/dag.js"
-import type { RunEvent, WorkflowRunStep, WorkflowStep, WorkflowTask } from "../core/types.js"
-import type { Team } from "../state/store.js"
+import type { PluginContext } from "../../core/context.js"
+import { formatWorkflowMermaid, type MermaidStepStatus } from "../../orchestration/records/mermaid.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import { loadTeamState } from "../../state/store.js"
+import { listRunRecords, readRunEvents } from "../../orchestration/records/runs.js"
+import { isSafePathSegment } from "../../state/paths.js"
+import { getActiveWorkflowStepIndices } from "../../orchestration/workflow/dag.js"
+import type { RunEvent, WorkflowRunStep, WorkflowStep, WorkflowTask } from "../../core/types.js"
+import type { Team } from "../../state/store.js"
 
 function formatWorkflowStepElapsed(step: WorkflowStep | undefined): string {
     if (step?.startedAt === undefined) return ""

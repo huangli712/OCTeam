@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "mailbox-backpressure-allows-overflow".
  *
- * Bug: src/tools/messaging.ts:90-93 checks the recipient's CURRENT unread inbox
+ * Bug: src/tools/coordination/messaging.ts:90-93 checks the recipient's CURRENT unread inbox
  * byte size and rejects only when `bytes > messageUnreadMaxBytes`. It does NOT
  * add the size of the NEW message being sent. So a mailbox that is near the
  * limit (e.g. 990 bytes with a 1000-byte cap) passes the check, then the new
@@ -27,7 +27,7 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
-import { teamSendMessageTool } from "../src/tools/messaging.js"
+import { teamSendMessageTool } from "../src/tools/coordination/messaging.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
 import { writeMailboxMessage } from "../src/messaging/mailbox.js"

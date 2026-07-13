@@ -3,7 +3,7 @@
  * NO direct execute() coverage (audit 2026-06-30 Context Mining finding):
  *   - teamActivateTool        (src/tools/lifecycle/activate.ts) — 0% handler covered
  *   - teamDoneTool            (src/tools/control/done.ts)     — 0% handler covered
- *   - teamResultsTool         (src/tools/results.ts)  — 0% handler covered
+ *   - teamResultsTool         (src/tools/query/results.ts)  — 0% handler covered
  *
  * Each tool's underlying logic (decideActivate, barrier mechanics, run-record
  * I/O) is tested elsewhere. These tests exercise the tool's execute() body
@@ -14,7 +14,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import type { ActiveTask, MemberState, RunRecord, TeamState } from "../src/core/types.js"
 import { teamActivateTool } from "../src/tools/lifecycle/activate.js"
 import { teamDoneTool } from "../src/tools/control/done.js"
-import { teamResultGetTool, teamResultsTool } from "../src/tools/results.js"
+import { teamResultGetTool, teamResultsTool } from "../src/tools/query/results.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { setActiveTeam } from "../src/state/resolve.js"

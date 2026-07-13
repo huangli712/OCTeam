@@ -12,9 +12,9 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import { loadTeamState } from "../state/store.js"
+import type { PluginContext } from "../../core/context.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import { loadTeamState } from "../../state/store.js"
 import {
     TASK_ID_PATTERN,
     MemberHoldsActiveTaskError,
@@ -25,8 +25,8 @@ import {
     getTask,
     listAllTasks,
     updateTask,
-} from "../state/tasks.js"
-import type { TaskStatus } from "../state/tasks.js"
+} from "../../state/tasks.js"
+import type { TaskStatus } from "../../state/tasks.js"
 
 /** Create a new task on the team's shared task list. */
 export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {

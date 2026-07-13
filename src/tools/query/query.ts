@@ -4,10 +4,10 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { loadTeamState, readTeamSpec } from "../state/store.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import { safeMemberAgent } from "../core/role.js"
+import type { PluginContext } from "../../core/context.js"
+import { loadTeamState, readTeamSpec } from "../../state/store.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import { safeMemberAgent } from "../../core/role.js"
 
 /** Query detailed information about a specific team member. */
 export function teamQueryTool(ctx: PluginContext): ToolDefinition {

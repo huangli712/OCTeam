@@ -15,16 +15,16 @@ import { teamDeleteTool } from "./lifecycle/delete.js"
 import { teamDetailsTool } from "./lifecycle/details.js"
 import { teamFixMemberTool } from "./lifecycle/fixmember.js"
 import { teamListTool } from "./lifecycle/list.js"
-import { teamQueryTool } from "./query.js"
+import { teamQueryTool } from "./query/query.js"
 import { teamRemoveMemberTool } from "./lifecycle/remove.js"
 import { teamRenameTool } from "./lifecycle/rename.js"
-import { teamSendMessageTool } from "./messaging.js"
+import { teamSendMessageTool } from "./coordination/messaging.js"
 import {
     teamTaskCreateTool,
     teamTaskGetTool,
     teamTaskListTool,
     teamTaskUpdateTool,
-} from "./task.js"
+} from "./coordination/task.js"
 import { teamConsensusTool } from "./modes/consensus.js"
 import { teamDelegateTool } from "./modes/delegate.js"
 import { teamLoopTool } from "./modes/loop.js"
@@ -39,10 +39,10 @@ import { teamWorkflowTool } from "./workflow/tool.js"
 import { teamFixWorkflowTool } from "./control/fixflow.js"
 import { teamPlannerTool } from "./workflow/planner.js"
 import { teamDoneTool } from "./control/done.js"
-import { teamResultsTool, teamResultGetTool } from "./results.js"
-import { teamProgressTool } from "./progress.js"
+import { teamResultsTool, teamResultGetTool } from "./query/results.js"
+import { teamProgressTool } from "./query/progress.js"
 import { teamInterveneTool } from "./control/intervene.js"
-import { teamMetricsTool } from "./metrics.js"
+import { teamMetricsTool } from "./query/metrics.js"
 import { teamResumeTool } from "./control/resume.js"
 import { teamApproveTool, teamRejectTool } from "./control/approve.js"
 

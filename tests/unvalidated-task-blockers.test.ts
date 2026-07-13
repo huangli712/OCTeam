@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "unvalidated-task-blockers".
  *
- * Bug: src/tools/task.ts:38 accepts arbitrary blocked_by strings
+ * Bug: src/tools/coordination/task.ts:38 accepts arbitrary blocked_by strings
  * (tool.schema.array(tool.schema.string()) — no UUID format or existence
  * validation), and task.ts:81 persists them verbatim via createTask.
  * src/orchestration/modes/delegate.ts:62 then requires every blocker to match a
@@ -29,7 +29,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
-import { teamTaskCreateTool } from "../src/tools/task.js"
+import { teamTaskCreateTool } from "../src/tools/coordination/task.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"

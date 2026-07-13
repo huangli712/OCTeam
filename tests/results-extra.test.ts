@@ -1,5 +1,5 @@
 /**
- * Coverage-gap tests for src/tools/results.ts — the member-output-missing and
+ * Coverage-gap tests for src/tools/query/results.ts — the member-output-missing and
  * tasks-rendering branches (lines 88-95, 128, 130-131) that review-fixes.test.ts
  * doesn't reach.
  */
@@ -8,7 +8,7 @@ import fs from "node:fs/promises"
 import { afterAll, describe, expect, test } from "bun:test"
 
 import type { RunRecord } from "../src/core/types.js"
-import { teamResultGetTool } from "../src/tools/results.js"
+import { teamResultGetTool } from "../src/tools/query/results.js"
 import { initTeamState, invalidateTeam } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { runDir, runRecordPath, teamDir } from "../src/state/paths.js"

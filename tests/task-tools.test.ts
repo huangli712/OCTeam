@@ -5,7 +5,7 @@ import {
     teamTaskGetTool,
     teamTaskListTool,
     teamTaskUpdateTool,
-} from "../src/tools/task.js"
+} from "../src/tools/coordination/task.js"
 import { createTask, getTask, updateTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"

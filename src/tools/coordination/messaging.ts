@@ -10,12 +10,12 @@
 import crypto from "node:crypto"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import { loadTeamState, saveTeamState } from "../state/store.js"
-import { unreadInboxBytes } from "../messaging/mailbox.js"
-import { deliverToRecipients } from "../messaging/deliver.js"
-import type { Message, ParallelMode } from "../core/types.js"
+import type { PluginContext } from "../../core/context.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import { loadTeamState, saveTeamState } from "../../state/store.js"
+import { unreadInboxBytes } from "../../messaging/mailbox.js"
+import { deliverToRecipients } from "../../messaging/deliver.js"
+import type { Message, ParallelMode } from "../../core/types.js"
 
 /**
  * isolated-mode comms gate: in an isolated parallel run, members may not send

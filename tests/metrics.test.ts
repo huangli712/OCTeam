@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 
 import type { RunRecord } from "../src/core/types.js"
-import { teamMetricsTool } from "../src/tools/metrics.js"
+import { teamMetricsTool } from "../src/tools/query/metrics.js"
 import { initTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { teamDir, runDir, runRecordPath } from "../src/state/paths.js"

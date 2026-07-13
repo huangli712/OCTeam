@@ -1,6 +1,6 @@
 /**
  * Coverage-gap regression tests for teamProgressTool.execute
- * (src/tools/progress.ts). Audit 2026-06-30 finding #6: 29.07% line coverage
+ * (src/tools/query/progress.ts). Audit 2026-06-30 finding #6: 29.07% line coverage
  * on the execute body. formatSnapshot / formatTimeline have implicit coverage
  * via team_details and result-get, but the tool's execute() — auth, path-
  * traversal check, runId resolution, since/limit pagination — had none.
@@ -8,7 +8,7 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
 import type { ActiveTask, MemberState, RunEvent, TeamState } from "../src/core/types.js"
-import { teamProgressTool } from "../src/tools/progress.js"
+import { teamProgressTool } from "../src/tools/query/progress.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { appendJsonl } from "../src/state/locks.js"
