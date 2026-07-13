@@ -212,6 +212,11 @@ export function parseScoreboard(
     }
 }
 
+/**
+ * Parse a raw `issues` array from a verdict payload into typed WorkflowIssue
+ * objects. Drops entries missing a valid severity. Returns undefined when the
+ * input is not an array or no valid issues remain.
+ */
 function parseWorkflowIssues(raw: unknown): WorkflowIssue[] | undefined {
     if (!Array.isArray(raw)) return undefined
     const issues: WorkflowIssue[] = []
