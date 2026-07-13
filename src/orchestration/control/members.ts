@@ -19,7 +19,10 @@ import { type Team, readTeamSpec, saveTeamState } from "../../state/store.js"
 import { cleanWorktree, createWorktree } from "../../state/worktrees.js"
 import { buildRolePrompt } from "../protocol/output.js"
 
+// Promisified execFile for git branch deletion during worktree cleanup.
 const execFileP = promisify(execFile)
+
+// Max milliseconds to wait for all non-master members to reach initialized state.
 const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000
 
 /**
