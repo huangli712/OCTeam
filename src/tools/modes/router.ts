@@ -16,7 +16,7 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields, signoffSchemaFields } from "../shared-schema.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { validateSignoff } from "../support.js"
 
 // Re-export buildRouterPrompt for any external consumers that historically

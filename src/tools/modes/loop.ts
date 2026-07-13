@@ -13,7 +13,7 @@ import {
     humanApprovalTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields } from "../shared-schema.js"
+import { humanApprovalSchemaFields } from "../schema.js"
 import { assertMember } from "../support.js"
 
 /** Run a corrective loop with a decider that reviews and decides whether to continue. */

@@ -19,7 +19,7 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields, signoffSchemaFields } from "../shared-schema.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { assertMember, validateSignoff } from "../support.js"
 
 /** Hierarchical recursive decomposition of a root task into subtasks. */

@@ -15,7 +15,7 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { humanApprovalSchemaFields, signoffSchemaFields } from "../shared-schema.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { validateSignoff } from "../support.js"
 
 /** Run a verdict-gated pipeline where each stage is verified before the next proceeds. */

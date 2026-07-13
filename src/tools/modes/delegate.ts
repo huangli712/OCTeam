@@ -14,7 +14,7 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { signoffSchemaFields } from "../shared-schema.js"
+import { signoffSchemaFields } from "../schema.js"
 import { validateSignoff } from "../support.js"
 
 /**

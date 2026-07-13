@@ -81,7 +81,7 @@ export function effectiveTimeoutMs(
  * post-completion review. Consensus has its own built-in agreement gate, so it
  * hardcodes DEFAULT_SIGNOFF_POLICY and omits decider/quorum.
  *
- * Runtime counterpart of signoffSchemaFields (tools/shared-schema.ts).
+ * Runtime counterpart of signoffSchemaFields (tools/schema.ts).
  */
 export function signoffTaskFields(
     args: { signoff_policy?: SignoffPolicy; signoff_decider?: string; signoff_quorum?: number },
@@ -97,7 +97,7 @@ export function signoffTaskFields(
  * Build human approval task fields (approval flag + empty history) for
  * ActiveTask construction.
  *
- * Runtime counterpart of humanApprovalSchemaFields (tools/shared-schema.ts).
+ * Runtime counterpart of humanApprovalSchemaFields (tools/schema.ts).
  */
 export function humanApprovalTaskFields(
     args: { human_approval?: boolean },

@@ -14,7 +14,7 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { signoffSchemaFields } from "../shared-schema.js"
+import { signoffSchemaFields } from "../schema.js"
 import { assertMember, validateSignoff } from "../support.js"
 
 /** Run a task across all team members in parallel with isolated or cooperative mode. */
