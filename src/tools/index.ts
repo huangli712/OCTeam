@@ -4,20 +4,33 @@
  * shared PluginContext.
  */
 
-import type { PluginContext } from "../core/context.js"
 import type { ToolDefinition } from "@opencode-ai/plugin"
+
+import type { PluginContext } from "../core/context.js"
+//
+import { teamCancelTool } from "./control/cancel.js"
+import { teamFixWorkflowTool } from "./control/fixflow.js"
+import { teamDoneTool } from "./control/done.js"
+import { teamInterveneTool } from "./control/intervene.js"
+import { teamResumeTool } from "./control/resume.js"
+import { teamApproveTool, teamRejectTool } from "./control/approve.js"
+//
 import { teamActivateTool } from "./lifecycle/activate.js"
 import { teamAddMemberTool } from "./lifecycle/add.js"
-import { teamCancelTool } from "./control/cancel.js"
 import { teamCreateTool } from "./lifecycle/create.js"
 import { teamDeactivateTool } from "./lifecycle/deactivate.js"
 import { teamDeleteTool } from "./lifecycle/delete.js"
 import { teamDetailsTool } from "./lifecycle/details.js"
 import { teamFixMemberTool } from "./lifecycle/fixmember.js"
 import { teamListTool } from "./lifecycle/list.js"
-import { teamQueryTool } from "./query/inspect.js"
 import { teamRemoveMemberTool } from "./lifecycle/remove.js"
 import { teamRenameTool } from "./lifecycle/rename.js"
+//
+import { teamQueryTool } from "./query/inspect.js"
+import { teamMetricsTool } from "./query/metrics.js"
+import { teamResultsTool, teamResultGetTool } from "./query/results.js"
+import { teamProgressTool } from "./query/progress.js"
+//
 import { teamSendMessageTool } from "./exchange/messaging.js"
 import {
     teamTaskCreateTool,
@@ -25,6 +38,7 @@ import {
     teamTaskListTool,
     teamTaskUpdateTool,
 } from "./exchange/task.js"
+//
 import { teamConsensusTool } from "./modes/consensus.js"
 import { teamDelegateTool } from "./modes/delegate.js"
 import { teamLoopTool } from "./modes/loop.js"
@@ -35,17 +49,9 @@ import { teamArbitrateTool } from "./modes/arbitrate.js"
 import { teamArenaTool } from "./modes/arena.js"
 import { teamRecurseTool } from "./modes/recurse.js"
 import { teamTollgateTool } from "./modes/tollgate.js"
+//
 import { teamWorkflowTool } from "./workflow/engine.js"
-import { teamFixWorkflowTool } from "./control/fixflow.js"
 import { teamPlannerTool } from "./workflow/planner.js"
-import { teamDoneTool } from "./control/done.js"
-import { teamResultsTool, teamResultGetTool } from "./query/results.js"
-import { teamProgressTool } from "./query/progress.js"
-import { teamInterveneTool } from "./control/intervene.js"
-import { teamMetricsTool } from "./query/metrics.js"
-import { teamResumeTool } from "./control/resume.js"
-import { teamApproveTool, teamRejectTool } from "./control/approve.js"
-
 
 /** Build and return all team orchestration tools keyed by name. */
 export function createTools(ctx: PluginContext): Record<string, ToolDefinition> {
