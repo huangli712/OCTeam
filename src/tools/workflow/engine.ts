@@ -70,7 +70,8 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         tool.schema.number().int().min(1),
         tool.schema.string().min(1),
     ])
-/** Shared field definitions for all workflow step types (task, gate, fanout, join) used in the tool schema. */
+    /** Shared field definitions for all workflow step types (task, gate, fanout, join)
+     *  used in the tool schema. */
     const workflowStepSchemaFields = {
         id: tool.schema.string().min(1).max(64).optional().describe(
             "optional stable step identifier; gates may reference a task step by this id"
