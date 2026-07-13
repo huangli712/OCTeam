@@ -135,7 +135,7 @@ async function checkWorkflowStepTimeouts(ctx: PluginContext, team: Team, task: W
 async function handleWorkflowStepTimeout(ctx: PluginContext, team: Team, task: WorkflowTask, step: WorkflowStep, index: number, now: number): Promise<void> {
     const policy = step.onTimeout ?? "fail"
     if (step.branch !== undefined) {
-        const actor = workflowStepActor(step)
+        const actor = workflowTimeoutStepActor(step)
         if (actor === undefined) {
             await finishRun(ctx, team, workflowTimeoutStepReason(index + 1), "failed")
             return
@@ -174,7 +174,7 @@ async function handleWorkflowStepTimeout(ctx: PluginContext, team: Team, task: W
             }
             step.dispatchedAt = undefined
             if (!await redispatchWorkflowStep(ctx, team, index)) {
-                await finishRun(ctx, team, workflowNoSessionReason(workflowStepActor(step)), "failed")
+                await finishRun(ctx, team, workflowNoSessionReason(workflowTimeoutStepActor(step)), "failed")
             }
             step.dispatchedAt = now
             return
@@ -184,7 +184,15 @@ async function handleWorkflowStepTimeout(ctx: PluginContext, team: Team, task: W
     }
 }
 
-function workflowStepActor(step: WorkflowStep): string | undefined {
+/**
+ * Resolve the actor name for a workflow step in the timeout context.
+ *
+ * Differs from the general-purpose workflowStepActor (dag.ts): join is
+ * deliberately treated as no-actor (returns undefined), because a join is a
+ * convergence point — on timeout the run should fail directly rather than
+ * treat the reducer as a branch member to mark errored.
+ */
+function workflowTimeoutStepActor(step: WorkflowStep): string | undefined {
     switch (step.kind) {
         case "task":
             return step.dispatchedActor ?? step.member
