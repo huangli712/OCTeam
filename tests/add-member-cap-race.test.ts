@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "add-member-cap-race".
  *
- * Bug: src/tools/add.ts:43 checks team.members.length >= team.bounds.maxMembers
+ * Bug: src/tools/lifecycle/add.ts:43 checks team.members.length >= team.bounds.maxMembers
  * BEFORE acquiring team.mutex (line 97). The inside-mutex revalidation
  * (lines 102-105) only re-checks team.status, NOT the member count. Two
  * concurrent team_add_member calls can both read the same members.length
@@ -26,7 +26,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { TeamSpec } from "../src/core/types.js"
-import { teamAddMemberTool } from "../src/tools/add.js"
+import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"

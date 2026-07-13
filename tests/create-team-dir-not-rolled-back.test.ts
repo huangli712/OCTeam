@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "create-team-dir-not-rolled-back".
  *
- * Bug: src/tools/create.ts:167 — fs.mkdir(teamDir(...), { recursive: false })
+ * Bug: src/tools/lifecycle/create.ts:167 — fs.mkdir(teamDir(...), { recursive: false })
  * atomically claims the team directory BEFORE the later config/model/state
  * writes. If any of those later writes throw — writeTeamSpec (:206),
  * initTeamState (:217), or indexMasterTeam (:230) — the just-created directory
@@ -60,7 +60,7 @@ mock.module("../src/state/store.js", () => ({
     },
 }))
 
-import { teamCreateTool } from "../src/tools/create.js"
+import { teamCreateTool } from "../src/tools/lifecycle/create.js"
 
 
 async function pathExists(p: string): Promise<boolean> {

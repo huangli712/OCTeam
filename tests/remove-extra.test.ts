@@ -1,5 +1,5 @@
 /**
- * Coverage-gap tests for src/tools/remove.ts — the mutex-internal revalidation
+ * Coverage-gap tests for src/tools/lifecycle/remove.ts — the mutex-internal revalidation
  * branches that the happy-path tests in member-add-remove.test.ts don't reach:
  *   - team not found (line 26)
  *   - spec read throws / returns null inside mutex (lines 60-61, 65-66)
@@ -14,7 +14,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 
 import type { TeamSpec } from "../src/core/types.js"
 import { normalizeRole } from "../src/core/role.js"
-import { teamRemoveMemberTool } from "../src/tools/remove.js"
+import { teamRemoveMemberTool } from "../src/tools/lifecycle/remove.js"
 import { initTeamState, invalidateTeam, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { configPath } from "../src/state/paths.js"
 import { unindexSession } from "../src/state/resolve.js"

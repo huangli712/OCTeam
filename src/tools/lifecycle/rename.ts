@@ -7,11 +7,11 @@ import fs from "node:fs/promises"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../state/store.js"
-import { indexMasterTeam, setActiveTeam, unindexMasterTeam } from "../state/resolve.js"
-import { teamDir } from "../state/paths.js"
-import type { TeamSpec } from "../core/types.js"
+import type { PluginContext } from "../../core/context.js"
+import { invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
+import { indexMasterTeam, setActiveTeam, unindexMasterTeam } from "../../state/resolve.js"
+import { teamDir } from "../../state/paths.js"
+import type { TeamSpec } from "../../core/types.js"
 
 /** Rename a live team, updating its directory and all stored references. */
 export function teamRenameTool(ctx: PluginContext): ToolDefinition {

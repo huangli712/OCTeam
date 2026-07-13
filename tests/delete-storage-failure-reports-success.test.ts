@@ -8,7 +8,7 @@
  * It ALWAYS resolves (never throws), regardless of whether the directory was
  * actually removed.
  *
- * src/tools/delete.ts:90-93 then unconditionally:
+ * src/tools/lifecycle/delete.ts:90-93 then unconditionally:
  *   :91  invalidateTeam(team.directory)  // removes in-memory registry entry
  *   :93  return `Team "${team_id}" deleted (forced).`  // reports success
  *
@@ -72,7 +72,7 @@ const mockedFs = {
 mock.module("node:fs/promises", () => ({ ...mockedFs, default: mockedFs }))
 
 // Dynamic imports AFTER mock.module so all modules resolve the MOCKED fs.
-const { teamDeleteTool } = await import("../src/tools/delete.js")
+const { teamDeleteTool } = await import("../src/tools/lifecycle/delete.js")
 const { initTeamState } = await import("../src/state/store.js")
 
 import type { ToolContext } from "@opencode-ai/plugin"

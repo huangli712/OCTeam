@@ -1,5 +1,5 @@
 /**
- * Coverage-gap tests for src/tools/rename.ts — team-not-found (line 36),
+ * Coverage-gap tests for src/tools/lifecycle/rename.ts — team-not-found (line 36),
  * staleState inside mutex (lines 71-72), and wasActive→setActiveTeam (line 94).
  *
  * member-add-remove.test.ts covers the happy path and collision/404 errors;
@@ -9,7 +9,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 
 import type { TeamSpec } from "../src/core/types.js"
 import { normalizeRole } from "../src/core/role.js"
-import { teamRenameTool } from "../src/tools/rename.js"
+import { teamRenameTool } from "../src/tools/lifecycle/rename.js"
 import { initTeamState, invalidateTeam, writeTeamSpec } from "../src/state/store.js"
 import { indexMasterTeam, resolveTeamMember, setActiveTeam, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"

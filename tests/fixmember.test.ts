@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
-import { teamFixMemberTool } from "../src/tools/fixmember.js"
+import { teamFixMemberTool } from "../src/tools/lifecycle/fixmember.js"
 import { initTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"

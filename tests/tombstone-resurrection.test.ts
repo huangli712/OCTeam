@@ -28,7 +28,7 @@ import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { runEventsPath, runsDir, runDir, runMemberOutputPath, statePath } from "../src/state/paths.js"
 import { initTeamState, invalidateTeam, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamDir } from "../src/state/paths.js"
-import { teamDeleteTool } from "../src/tools/delete.js"
+import { teamDeleteTool } from "../src/tools/lifecycle/delete.js"
 import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 /** True iff no entry exists at `p` (resolves ENOENT as absent). */

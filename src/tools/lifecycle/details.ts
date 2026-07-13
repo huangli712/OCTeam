@@ -5,11 +5,11 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { loadTeamState } from "../state/store.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import { countUnreadMessages } from "../messaging/mailbox.js"
-import { listAllTasks } from "../state/tasks.js"
+import type { PluginContext } from "../../core/context.js"
+import { loadTeamState } from "../../state/store.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import { countUnreadMessages } from "../../messaging/mailbox.js"
+import { listAllTasks } from "../../state/tasks.js"
 
 /** Show a team's current status, orchestration progress, member states, and token usage. */
 export function teamDetailsTool(ctx: PluginContext): ToolDefinition {

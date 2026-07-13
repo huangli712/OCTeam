@@ -1,6 +1,6 @@
 /**
  * Regression test for finding duplicated-member-validation:
- *   src/tools/create.ts:117 and src/tools/add.ts:55 duplicate the member
+ *   src/tools/lifecycle/create.ts:117 and src/tools/lifecycle/add.ts:55 duplicate the member
  *   reserved-name / name-pool / agent-override validation rules.
  *
  * The duplication is itself the defect. Two inline copies of the same rules
@@ -25,8 +25,8 @@ import { describe, expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 
-const CREATE_PATH = path.resolve("src/tools/create.ts")
-const ADD_PATH = path.resolve("src/tools/add.ts")
+const CREATE_PATH = path.resolve("src/tools/lifecycle/create.ts")
+const ADD_PATH = path.resolve("src/tools/lifecycle/add.ts")
 
 async function readSource(rel: string): Promise<string> {
     return readFile(rel, "utf8")

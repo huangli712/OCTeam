@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "live-mutators-stale-state-check".
  *
- * Bug: src/tools/add.ts:40, remove.ts:32, rename.ts:42, and fix.ts:43 check
+ * Bug: src/tools/lifecycle/add.ts:40, remove.ts:32, rename.ts:42, and fix.ts:43 check
  * live/idle preconditions BEFORE taking team.mutex, then mutate member/team
  * state INSIDE the lock without rechecking. startOrchestration (shared.ts)
  * flips team.status from "live" to "busy" and commits team.activeTask UNDER
@@ -28,7 +28,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { ParallelTask } from "../src/core/types.js"
-import { teamAddMemberTool } from "../src/tools/add.js"
+import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"

@@ -7,13 +7,13 @@ import fs from "node:fs/promises"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../state/store.js"
-import { indexMember, resolveCallerInTeam, unindexSession } from "../state/resolve.js"
-import { inboxPath } from "../state/paths.js"
-import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../core/role.js"
-import type { TeamSpec } from "../core/types.js"
-import { MEMBER_NAME_POOL } from "../state/naming.js"
+import type { PluginContext } from "../../core/context.js"
+import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
+import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
+import { inboxPath } from "../../state/paths.js"
+import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../../core/role.js"
+import type { TeamSpec } from "../../core/types.js"
+import { MEMBER_NAME_POOL } from "../../state/naming.js"
 
 /** Modify a team member's name, role, prompt, or agent. */
 export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {

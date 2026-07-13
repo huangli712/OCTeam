@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "create-max-members-bypass".
  *
- * Bug: src/tools/create.ts:210 persists bounds.maxMembers via
+ * Bug: src/tools/lifecycle/create.ts:210 persists bounds.maxMembers via
  * defaultBounds(args.bounds) WITHOUT validating that the configured cap is at
  * least as large as the initial members.length. The zod schema validates the
  * two inputs independently:
@@ -31,7 +31,7 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
-import { teamCreateTool } from "../src/tools/create.js"
+import { teamCreateTool } from "../src/tools/lifecycle/create.js"
 import { loadTeamState } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, tmpRoot } from "./helpers.js"

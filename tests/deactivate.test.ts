@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask } from "../src/core/types.js"
-import { teamDeactivateTool } from "../src/tools/deactivate.js"
+import { teamDeactivateTool } from "../src/tools/lifecycle/deactivate.js"
 import { initTeamState, invalidateTeam, loadTeamState } from "../src/state/store.js"
 import {
     indexMasterTeam,

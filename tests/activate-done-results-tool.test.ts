@@ -1,7 +1,7 @@
 /**
  * Coverage-gap regression tests for three tool handlers that previously had
  * NO direct execute() coverage (audit 2026-06-30 Context Mining finding):
- *   - teamActivateTool        (src/tools/activate.ts) — 0% handler covered
+ *   - teamActivateTool        (src/tools/lifecycle/activate.ts) — 0% handler covered
  *   - teamDoneTool            (src/tools/done.ts)     — 0% handler covered
  *   - teamResultsTool         (src/tools/results.ts)  — 0% handler covered
  *
@@ -12,7 +12,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ActiveTask, MemberState, RunRecord, TeamState } from "../src/core/types.js"
-import { teamActivateTool } from "../src/tools/activate.js"
+import { teamActivateTool } from "../src/tools/lifecycle/activate.js"
 import { teamDoneTool } from "../src/tools/done.js"
 import { teamResultGetTool, teamResultsTool } from "../src/tools/results.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"

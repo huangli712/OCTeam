@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "stale-team-spec-overwrite".
  *
- * Bug: src/tools/add.ts:49, remove.ts:46, and fix.ts:54 read config.json
+ * Bug: src/tools/lifecycle/add.ts:49, remove.ts:46, and fix.ts:54 read config.json
  * (TeamSpec) BEFORE acquiring team.mutex, then write that stale spec snapshot
  * INSIDE the lock. The mutex serializes the critical sections, but each op
  * mutates its OWN stale spec copy — so the second writer's writeTeamSpec
@@ -36,7 +36,7 @@ import { readFile } from "node:fs/promises"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { TeamSpec } from "../src/core/types.js"
-import { teamAddMemberTool } from "../src/tools/add.js"
+import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { configPath, teamDir } from "../src/state/paths.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"

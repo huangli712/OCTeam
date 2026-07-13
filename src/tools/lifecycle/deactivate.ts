@@ -5,10 +5,10 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
-import { logSwallowed } from "../core/log.js"
-import { clearActiveTeam } from "../state/resolve.js"
+import type { PluginContext } from "../../core/context.js"
+import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
+import { logSwallowed } from "../../core/log.js"
+import { clearActiveTeam } from "../../state/resolve.js"
 
 /** Deactivate the currently active team for this session. */
 export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {

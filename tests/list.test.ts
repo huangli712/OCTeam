@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { TeamSpec } from "../src/core/types.js"
-import { teamListTool } from "../src/tools/list.js"
+import { teamListTool } from "../src/tools/lifecycle/list.js"
 import { initTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';

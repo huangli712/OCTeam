@@ -7,7 +7,7 @@
  * swallowing ALL git worktree-remove failures. Whether git succeeds or fails,
  * cleanWorktree resolves with void and never throws.
  *
- * src/tools/delete.ts:82-83 then proceeds unconditionally: the delete loop
+ * src/tools/lifecycle/delete.ts:82-83 then proceeds unconditionally: the delete loop
  * continues to the next member, unindexes, calls deleteTeamStorage, and
  * returns "Team ... deleted (forced)." at :94. The caller has NO indication
  * that the worktree registration + files remain in the project repo.

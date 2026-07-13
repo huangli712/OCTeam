@@ -19,9 +19,9 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import { teamCreateTool } from "../src/tools/create.js"
-import { teamAddMemberTool } from "../src/tools/add.js"
-import { teamFixMemberTool } from "../src/tools/fixmember.js"
+import { teamCreateTool } from "../src/tools/lifecycle/create.js"
+import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
+import { teamFixMemberTool } from "../src/tools/lifecycle/fixmember.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { indexMasterTeam, setActiveTeam, unindexSession } from "../src/state/resolve.js"
 import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"

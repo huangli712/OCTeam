@@ -4,9 +4,9 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../state/store.js"
-import type { TeamSpec } from "../core/types.js"
+import type { PluginContext } from "../../core/context.js"
+import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
+import type { TeamSpec } from "../../core/types.js"
 
 /** Remove a member from a live team with at least one member remaining. */
 export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {

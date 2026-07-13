@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import { teamCreateTool } from "../src/tools/create.js"
+import { teamCreateTool } from "../src/tools/lifecycle/create.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { resolveTeamMember, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';

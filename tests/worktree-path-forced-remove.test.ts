@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "persisted-worktreepath-forced-remove".
  *
- * Bug: src/tools/delete.ts:81 calls cleanWorktree(ctx.directory,
+ * Bug: src/tools/lifecycle/delete.ts:81 calls cleanWorktree(ctx.directory,
  * m.worktreePath) with the member's worktreePath verbatim.
  * src/state/worktrees.ts:24 then runs `git worktree remove <path> --force`
  * WITHOUT checking that <path> is under the team's own worktrees/ directory.
@@ -37,7 +37,7 @@ import { access } from "node:fs/promises"
 import { promisify } from "node:util"
 
 import type { ToolContext } from "@opencode-ai/plugin"
-import { teamDeleteTool } from "../src/tools/delete.js"
+import { teamDeleteTool } from "../src/tools/lifecycle/delete.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
