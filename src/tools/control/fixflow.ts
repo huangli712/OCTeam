@@ -6,17 +6,17 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import type { ActiveTask, WorkflowTask } from "../core/types.js"
-import { checkWorkflowInvariants } from "../orchestration/workflow/invariants.js"
-import { activationError } from "../state/activation.js"
-import { workflowOperatorFailReason } from "../orchestration/workflow/reasons.js"
-import { getActiveWorkflowStepIndices } from "../orchestration/workflow/dag.js"
-import { finishRun } from "../orchestration/control/completion.js"
-import { recordEvent } from "../orchestration/records/events.js"
-import { advanceWorkflowStep, redispatchWorkflowStep } from "../orchestration/workflow/engine.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
+import type { PluginContext } from "../../core/context.js"
+import type { ActiveTask, WorkflowTask } from "../../core/types.js"
+import { checkWorkflowInvariants } from "../../orchestration/workflow/invariants.js"
+import { activationError } from "../../state/activation.js"
+import { workflowOperatorFailReason } from "../../orchestration/workflow/reasons.js"
+import { getActiveWorkflowStepIndices } from "../../orchestration/workflow/dag.js"
+import { finishRun } from "../../orchestration/control/completion.js"
+import { recordEvent } from "../../orchestration/records/events.js"
+import { advanceWorkflowStep, redispatchWorkflowStep } from "../../orchestration/workflow/engine.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 
 type FixWorkflowOp = "redispatch" | "skip" | "advance" | "fail" | "reassign"
 type WorkflowFixStepArg = number | string

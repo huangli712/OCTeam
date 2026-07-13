@@ -5,7 +5,7 @@ import { checkWorkflowInvariants } from "../src/orchestration/workflow/invariant
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { initTeamState, invalidateTeam, loadTeamState, saveTeamState } from "../src/state/store.js"
 import type { Team } from "../src/state/store.js"
-import { teamFixWorkflowTool } from "../src/tools/fixflow.js"
+import { teamFixWorkflowTool } from "../src/tools/control/fixflow.js"
 import { makeCtx, makeMember, makeState, makeToolContext, makeWorkflowTask, tmpRoot, type DispatchCall } from "./helpers.js"
 
 async function setupTeam(root: string, masterSid: string, task: ActiveTask, members: MemberState[]): Promise<Team> {

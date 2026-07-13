@@ -11,7 +11,7 @@ import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { buildSummary } from "../src/orchestration/records/summary.js"
 import { teamRecurseTool } from "../src/tools/modes/recurse.js"
-import { teamResumeTool } from "../src/tools/resume.js"
+import { teamResumeTool } from "../src/tools/control/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { makeCtx, makeTeam, makeMember, makeState, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js"
 

@@ -28,13 +28,13 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import type { ActiveTask } from "../core/types.js"
-import { activationError } from "../state/activation.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import { ensureMembersReady } from "../orchestration/control/members.js"
-import { loadTeamState, saveTeamState } from "../state/store.js"
-import { resumeDispatch } from "../orchestration/lifecycle/resume.js"
+import type { PluginContext } from "../../core/context.js"
+import type { ActiveTask } from "../../core/types.js"
+import { activationError } from "../../state/activation.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import { ensureMembersReady } from "../../orchestration/control/members.js"
+import { loadTeamState, saveTeamState } from "../../state/store.js"
+import { resumeDispatch } from "../../orchestration/lifecycle/resume.js"
 
 /** Resume an interrupted orchestration from its preserved checkpoint. */
 export function teamResumeTool(ctx: PluginContext): ToolDefinition {

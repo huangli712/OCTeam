@@ -6,10 +6,10 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
-import { finishRun } from "../orchestration/control/completion.js"
-import { abortAndResetMembers } from "./support.js"
+import type { PluginContext } from "../../core/context.js"
+import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
+import { finishRun } from "../../orchestration/control/completion.js"
+import { abortAndResetMembers } from "../support.js"
 
 /** Cancel the active orchestration on a busy team, resetting it to idle. */
 export function teamCancelTool(ctx: PluginContext): ToolDefinition {

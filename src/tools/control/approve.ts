@@ -5,18 +5,18 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import type { ApprovalDecisionRecord, ApprovalRequest } from "../core/types.js"
-import { finishRun } from "../orchestration/control/completion.js"
-import { recordEvent } from "../orchestration/records/events.js"
-import { advancePipelineAfterStage } from "../orchestration/modes/pipeline.js"
-import { advanceTollgateAfterPass } from "../orchestration/modes/tollgate.js"
-import { approveLoopDone, rejectLoopDone } from "../orchestration/modes/loop.js"
-import { advanceRouteAfterDecision } from "../orchestration/modes/route.js"
-import { approveRecurseDecompose, rejectRecurseDecompose } from "../orchestration/modes/recurse.js"
-import { advanceWorkflowStep } from "../orchestration/workflow/engine.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import { loadTeamState, saveTeamState, type Team } from "../state/store.js"
+import type { PluginContext } from "../../core/context.js"
+import type { ApprovalDecisionRecord, ApprovalRequest } from "../../core/types.js"
+import { finishRun } from "../../orchestration/control/completion.js"
+import { recordEvent } from "../../orchestration/records/events.js"
+import { advancePipelineAfterStage } from "../../orchestration/modes/pipeline.js"
+import { advanceTollgateAfterPass } from "../../orchestration/modes/tollgate.js"
+import { approveLoopDone, rejectLoopDone } from "../../orchestration/modes/loop.js"
+import { advanceRouteAfterDecision } from "../../orchestration/modes/route.js"
+import { approveRecurseDecompose, rejectRecurseDecompose } from "../../orchestration/modes/recurse.js"
+import { advanceWorkflowStep } from "../../orchestration/workflow/engine.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 
 type ApprovalDecision = {
     approved: boolean

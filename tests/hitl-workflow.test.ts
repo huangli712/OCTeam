@@ -8,7 +8,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
-import { teamApproveTool, teamRejectTool } from "../src/tools/approve.js"
+import { teamApproveTool, teamRejectTool } from "../src/tools/control/approve.js"
 import { teamProgressTool } from "../src/tools/progress.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"

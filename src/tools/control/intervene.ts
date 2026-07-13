@@ -15,12 +15,12 @@
 import crypto from "node:crypto"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
-import type { PluginContext } from "../core/context.js"
-import { resolveCallerInTeam } from "../state/resolve.js"
-import { loadTeamState } from "../state/store.js"
-import { unreadInboxBytes } from "../messaging/mailbox.js"
-import { deliverToRecipients } from "../messaging/deliver.js"
-import type { Message } from "../core/types.js"
+import type { PluginContext } from "../../core/context.js"
+import { resolveCallerInTeam } from "../../state/resolve.js"
+import { loadTeamState } from "../../state/store.js"
+import { unreadInboxBytes } from "../../messaging/mailbox.js"
+import { deliverToRecipients } from "../../messaging/deliver.js"
+import type { Message } from "../../core/types.js"
 
 /** Inject a high-priority directive into member mailboxes during a run. */
 export function teamInterveneTool(ctx: PluginContext): ToolDefinition {

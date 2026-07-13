@@ -8,7 +8,7 @@ import { parseArbitrationDecision } from "../src/orchestration/protocol/decision
 import { readRunEvents } from "../src/orchestration/records/runs.js"
 import { buildSummary } from "../src/orchestration/records/summary.js"
 import { teamArbitrateTool } from "../src/tools/modes/arbitrate.js"
-import { teamResumeTool } from "../src/tools/resume.js"
+import { teamResumeTool } from "../src/tools/control/resume.js"
 import type { ActiveTask, ArbitrateTask, MemberState } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import type { PluginContext } from "../src/core/context.js"

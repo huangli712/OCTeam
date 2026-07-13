@@ -1,7 +1,7 @@
 /**
  * Regression test for confirmed finding "stale-team-done-ack".
  *
- * Bug: src/tools/done.ts:46 reads team.activeTask OUTSIDE team.mutex and
+ * Bug: src/tools/control/done.ts:46 reads team.activeTask OUTSIDE team.mutex and
  * validates the run (type / mode / requireDoneAck). Then at line 61 it enters
  * the mutex and sets member.declaredDone = true (line 68) WITHOUT revalidating
  * that the active run is still the same one that was validated outside. A stale
@@ -31,7 +31,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { ParallelTask } from "../src/core/types.js"
-import { teamDoneTool } from "../src/tools/done.js"
+import { teamDoneTool } from "../src/tools/control/done.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
 import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"

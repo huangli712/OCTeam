@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import fs from "node:fs/promises"
 
-import { teamInterveneTool } from "../src/tools/intervene.js"
+import { teamInterveneTool } from "../src/tools/control/intervene.js"
 import { initTeamState } from "../src/state/store.js"
 import { writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { inboxPath, teamDir } from "../src/state/paths.js"

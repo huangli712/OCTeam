@@ -13,7 +13,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { rebuildSessionIndex } from "../src/state/resolve.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, makeWorkflowTask as sharedMakeWorkflowTask, type DispatchCall } from "./helpers.js"
-import { teamFixWorkflowTool } from "../src/tools/fixflow.js"
+import { teamFixWorkflowTool } from "../src/tools/control/fixflow.js"
 
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
 
