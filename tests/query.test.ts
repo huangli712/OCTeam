@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import type { TeamSpec } from "../src/core/types.js"
-import { teamQueryTool } from "../src/tools/query/query.js"
+import { teamQueryTool } from "../src/tools/query/inspect.js"
 import { initTeamState, writeTeamSpec } from "../src/state/store.js"
 import { teamDir, worktreesDir } from "../src/state/paths.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
