@@ -40,7 +40,7 @@ import {
     humanApprovalTaskFields,
     signoffTaskFields,
     startOrchestration,
-} from "../orchestration/lifecycle/start-orchestration.js"
+} from "../orchestration/lifecycle/startup.js"
 import { humanApprovalSchemaFields, signoffSchemaFields } from "./shared-schema.js"
 import { lowerWorkflowSteps, toWorkflowStep } from "./lower.js"
 import { formatWorkflowDryRun } from "./lower-format.js"

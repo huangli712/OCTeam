@@ -4,7 +4,7 @@
  * reconcileOne on host restart). Master-only. Requires explicit prior
  * team_activate.
  *
- * 3-phase lock order (mirrors startOrchestration in orchestration/lifecycle/start-orchestration.ts, NOT
+ * 3-phase lock order (mirrors startOrchestration in orchestration/lifecycle/startup.ts, NOT
  * team_cancel which is single-phase):
  *   Phase 1 (mutex): snapshot lastInterruptedTask → local, reset errored→idle,
  *                    save. DO NOT commit activeTask (O1: Phase 2 window safety —

@@ -3,7 +3,7 @@
  * workflow). Pure functions only — no dispatch/worktree dependencies.
  *
  * Orchestration startup logic (startOrchestration, baseTaskFields, schema
- * fields, etc.) lives in orchestration/lifecycle/start-orchestration.ts so that tools importing these
+ * fields, etc.) lives in orchestration/lifecycle/startup.ts so that tools importing these
  * validators do NOT transitively pull in the dispatch/worktree subsystem.
  */
 

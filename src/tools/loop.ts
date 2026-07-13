@@ -12,7 +12,7 @@ import {
     baseTaskFields,
     humanApprovalTaskFields,
     startOrchestration,
-} from "../orchestration/lifecycle/start-orchestration.js"
+} from "../orchestration/lifecycle/startup.js"
 import { humanApprovalSchemaFields } from "./shared-schema.js"
 import { assertMember } from "./support.js"
 
