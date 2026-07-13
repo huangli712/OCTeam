@@ -7,7 +7,7 @@
 
 import type { PluginContext } from "../../core/context.js";
 import { type Team, saveTeamState } from "../../state/store.js";
-import type { MemberState, WorkflowStep } from "../../core/types.js";
+import type { MemberState, WorkflowStep, WorkflowTask } from "../../core/types.js";
 import {
     advanceWorkflowStep,
     describeStep,
@@ -52,6 +52,153 @@ export function shouldRetryTask(step: WorkflowStep, output: string): boolean {
     }
 }
 
+/**
+ * Handle a task step's idle: retry_on auto-retry check, output capture,
+ * approval_after pause, inter-step approval, then advance.
+ */
+async function handleTaskIdle(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+    task: WorkflowTask,
+    steps: WorkflowStep[],
+    step: WorkflowStep,
+    activeStepIndex: number,
+): Promise<void> {
+    const raw = step.output ?? task.responses[member.name] ?? "";
+    // Per-step output cap on the captured snapshot only — the full output
+    // is still persisted to runs/<runId>/<member>.md by captureMemberOutput.
+    if (step.output === undefined) {
+        step.output =
+            step.maxOutputBytes !== undefined
+                ? truncateOutput(raw, step.maxOutputBytes)
+                : raw;
+    }
+    if (shouldRetryTask(step, step.output)) {
+        step.taskAttempts = (step.taskAttempts ?? 0) + 1;
+        const maxR = step.maxTaskRetries ?? 0;
+        if (step.taskAttempts <= maxR) {
+            const nudge = `[Auto-retry attempt ${step.taskAttempts}/${maxR}]`
+                + ` Previous output triggered retry_on condition. Please try again.`;
+            step.output = undefined;
+            step.dispatchedAt = undefined;
+            step.dispatchedActor = undefined;
+            step.correlationId = undefined;
+            recordEvent(team, {
+                timestamp: Date.now(),
+                kind: "retry",
+                member: member.name,
+                stage: activeStepIndex,
+                stepIndex: activeStepIndex,
+                detail: `workflow task step ${activeStepIndex + 1}`
+                    + ` auto-retry ${step.taskAttempts}/${maxR};`
+                    + ` retry_on condition matched`,
+            });
+            if (!(await dispatchTaskStep(ctx, team, task, activeStepIndex, nudge))) {
+                await handleWorkflowDispatchUnavailable(ctx, team, task, step);
+                return;
+            }
+            await saveTeamState(team);
+            return;
+        }
+        // exhausted: fall through to normal completion
+    }
+    // Capture correlationId before the reset clears it; the captured event
+    // below still needs to reference the original dispatch correlation.
+    const capturedCorrelationId = step.correlationId;
+    resetStepAfterCompletion(step, { completed: true });
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "captured",
+        member: member.name,
+        stepIndex: activeStepIndex,
+        correlationId: capturedCorrelationId,
+        bytes: step.output?.length,
+        detail: `workflow step ${activeStepIndex + 1} captured`,
+    });
+    if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex))
+        return;
+    const nextIndex =
+        task.activeStepIndices === undefined
+            ? steps.findIndex((s) => !s.completed)
+            : (readyWorkflowStepIndices(task)[0] ?? -1);
+    if (
+        step.branch === undefined &&
+        nextIndex !== -1 &&
+        (await maybeRequestApproval(ctx, team, {
+            kind: "workflow_step",
+            stage: activeStepIndex,
+            summary: `Completed ${describeStep(step, activeStepIndex)}.`
+                + ` Next: ${describeStep(steps[nextIndex], nextIndex)}.`
+                + ` Review before continuing.`,
+        }))
+    ) {
+        return;
+    }
+    await advanceWorkflowStep(ctx, team);
+}
+
+/**
+ * Handle a join step's idle: synthesize the joined output (select or reduce
+ * policy), capture, then advance.
+ */
+async function handleJoinIdle(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+    task: WorkflowTask,
+    steps: WorkflowStep[],
+    step: WorkflowStep,
+    activeStepIndex: number,
+): Promise<void> {
+    const join = step.join;
+    if (join === undefined) return;
+    const reducerMember = join.reducerMember;
+    const joinPolicy = join.joinPolicy;
+    const joinActor = step.dispatchedActor ?? reducerMember;
+    if ((joinPolicy !== "reduce" && joinPolicy !== "select") || joinActor !== member.name)
+        return;
+    const correlationId = step.correlationId;
+    const response = task.responses[member.name] ?? "";
+    if (joinPolicy === "select") {
+        const selection = parseSelection(response);
+        const branchIds = branchIdsForJoin(steps, join);
+        if (selection.parseFailed || !branchIds.includes(selection.winner)) {
+            await finishRun(ctx, team, workflowInvalidReason("parse_failure", member.name), "failed");
+            return;
+        }
+        const joinedOutput = buildBranchWorkflowOutput(steps, activeStepIndex, selection.winner);
+        if (joinedOutput === "") {
+            await finishRun(ctx, team, workflowInvalidReason("parse_failure", member.name), "failed");
+            return;
+        }
+        step.join = {
+            ...join,
+            selectedBranchId: selection.winner,
+            selectionRationale: selection.rationale,
+            joinedOutput,
+        };
+    } else {
+        step.join = {
+            ...join,
+            joinedOutput: response,
+        };
+    }
+    // join intentionally leaves step.completed false; advanceWorkflowStep
+    // finalizes the join state on the next cycle.
+    resetStepAfterCompletion(step);
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "captured",
+        member: member.name,
+        stepIndex: activeStepIndex,
+        correlationId,
+        bytes: step.join?.joinedOutput?.length,
+        detail: `workflow ${joinPolicy} join step ${activeStepIndex + 1} captured`,
+    });
+    await advanceWorkflowStep(ctx, team);
+}
+
 /** Capture idle member output, validate step membership, and route to task/gate/join completion. */
 export async function handleWorkflowIdle(
     ctx: PluginContext,
@@ -69,133 +216,14 @@ export async function handleWorkflowIdle(
     const step = steps[activeStepIndex];
     if (!step) return;
 
-    if (step.kind === "task") {
-        const raw = step.output ?? task.responses[member.name] ?? "";
-        // Per-step output cap on the captured snapshot only — the full output
-        // is still persisted to runs/<runId>/<member>.md by captureMemberOutput.
-        if (step.output === undefined) {
-            step.output =
-                step.maxOutputBytes !== undefined
-                    ? truncateOutput(raw, step.maxOutputBytes)
-                    : raw;
-        }
-        if (shouldRetryTask(step, step.output)) {
-            step.taskAttempts = (step.taskAttempts ?? 0) + 1;
-            const maxR = step.maxTaskRetries ?? 0;
-            if (step.taskAttempts <= maxR) {
-                const nudge = `[Auto-retry attempt ${step.taskAttempts}/${maxR}]`
-                    + ` Previous output triggered retry_on condition. Please try again.`;
-                step.output = undefined;
-                step.dispatchedAt = undefined;
-                step.dispatchedActor = undefined;
-                step.correlationId = undefined;
-                recordEvent(team, {
-                    timestamp: Date.now(),
-                    kind: "retry",
-                    member: member.name,
-                    stage: activeStepIndex,
-                    stepIndex: activeStepIndex,
-                    detail: `workflow task step ${activeStepIndex + 1}`
-                        + ` auto-retry ${step.taskAttempts}/${maxR};`
-                        + ` retry_on condition matched`,
-                });
-                if (!(await dispatchTaskStep(ctx, team, task, activeStepIndex, nudge))) {
-                    await handleWorkflowDispatchUnavailable(ctx, team, task, step);
-                    return;
-                }
-                await saveTeamState(team);
-                return;
-            }
-            // exhausted: fall through to normal completion
-        }
-        // Capture correlationId before the reset clears it; the captured event
-        // below still needs to reference the original dispatch correlation.
-        const capturedCorrelationId = step.correlationId;
-        resetStepAfterCompletion(step, { completed: true });
-        recordEvent(team, {
-            timestamp: Date.now(),
-            kind: "captured",
-            member: member.name,
-            stepIndex: activeStepIndex,
-            correlationId: capturedCorrelationId,
-            bytes: step.output?.length,
-            detail: `workflow step ${activeStepIndex + 1} captured`,
-        });
-        if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex))
+    switch (step.kind) {
+        case "task":
+            return await handleTaskIdle(ctx, team, member, task, steps, step, activeStepIndex);
+        case "join":
+            return await handleJoinIdle(ctx, team, member, task, steps, step, activeStepIndex);
+        case "gate":
+            return await handleGateVerdict(ctx, team, member, step, activeStepIndex);
+        default:
             return;
-        const nextIndex =
-            task.activeStepIndices === undefined
-                ? steps.findIndex((s) => !s.completed)
-                : (readyWorkflowStepIndices(task)[0] ?? -1);
-        if (
-            step.branch === undefined &&
-            nextIndex !== -1 &&
-            (await maybeRequestApproval(ctx, team, {
-                kind: "workflow_step",
-                stage: activeStepIndex,
-                summary: `Completed ${describeStep(step, activeStepIndex)}.`
-                    + ` Next: ${describeStep(steps[nextIndex], nextIndex)}.`
-                    + ` Review before continuing.`,
-            }))
-        ) {
-            return;
-        }
-        await advanceWorkflowStep(ctx, team);
-        return;
-    }
-
-    if (step.kind === "join") {
-        const join = step.join;
-        if (join === undefined) return;
-        const reducerMember = join.reducerMember;
-        const joinPolicy = join.joinPolicy;
-        const joinActor = step.dispatchedActor ?? reducerMember;
-        if ((joinPolicy !== "reduce" && joinPolicy !== "select") || joinActor !== member.name)
-            return;
-        const correlationId = step.correlationId;
-        const response = task.responses[member.name] ?? "";
-        if (joinPolicy === "select") {
-            const selection = parseSelection(response);
-            const branchIds = branchIdsForJoin(steps, join);
-            if (selection.parseFailed || !branchIds.includes(selection.winner)) {
-                await finishRun(ctx, team, workflowInvalidReason("parse_failure", member.name), "failed");
-                return;
-            }
-            const joinedOutput = buildBranchWorkflowOutput(steps, activeStepIndex, selection.winner);
-            if (joinedOutput === "") {
-                await finishRun(ctx, team, workflowInvalidReason("parse_failure", member.name), "failed");
-                return;
-            }
-            step.join = {
-                ...join,
-                selectedBranchId: selection.winner,
-                selectionRationale: selection.rationale,
-                joinedOutput,
-            };
-        } else {
-            step.join = {
-                ...join,
-                joinedOutput: response,
-            };
-        }
-        // join intentionally leaves step.completed false; advanceWorkflowStep
-        // finalizes the join state on the next cycle.
-        resetStepAfterCompletion(step);
-        recordEvent(team, {
-            timestamp: Date.now(),
-            kind: "captured",
-            member: member.name,
-            stepIndex: activeStepIndex,
-            correlationId,
-            bytes: step.join?.joinedOutput?.length,
-            detail: `workflow ${joinPolicy} join step ${activeStepIndex + 1} captured`,
-        });
-        await advanceWorkflowStep(ctx, team);
-        return;
-    }
-
-    // gate step
-    if (step.kind === "gate") {
-        await handleGateVerdict(ctx, team, member, step, activeStepIndex);
     }
 }
