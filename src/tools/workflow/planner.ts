@@ -26,11 +26,17 @@ import { validateMemberAgent, validateMemberName } from "../support.js"
 import { validateWorkflowSteps } from "../../orchestration/workflow/loader.js"
 import { validateWorkflowStepsAgainstMembers } from "./engine.js"
 
+/** Agent name for planner child sessions. */
 const PLANNER_AGENT = "oct-metis"
+/** Maximum wall-clock wait (ms) for a single planner attempt. */
 const PLANNER_TIMEOUT_MS = 300_000
+/** Poll interval (ms) while awaiting planner output. */
 const PLANNER_POLL_MS = 2_000
+/** Number of correction rounds before failing the planner session. */
 const PLANNER_MAX_RETRIES = 2
+/** Regex for a safe lowercase-slug team_id. */
 const TEAM_ID_SLUG = /^[a-z0-9-]+$/
+/** Regex to extract the <team_planner> JSON block from assistant output. */
 const TEAM_PLANNER_TAG = /<team_planner>([\s\S]*?)<\/team_planner>/
 
 /** The parsed planner payload: the two artifacts the runner returns. */
@@ -42,8 +48,10 @@ type PlannerResult = { team: unknown; workflow: unknown }
  */
 type PlannerValidate = (parsed: PlannerResult) => PlannerResult | { error: string }
 
+/** Polling configuration for awaiting child session output. */
 type PollConfig = { readonly timeoutMs: number; readonly pollMs: number }
 
+/** Options for running a single planner session (team_planner). */
 type RunPlannerOptions = {
     teamId: string
     parentSessionId: string
@@ -54,12 +62,15 @@ type RunPlannerOptions = {
     maxRetries: number
 }
 
+/** Result of evaluating a planner session output: either a parsed result or an error message. */
 type EvaluatedOutput = { value: PlannerResult } | { error: string }
 
+/** Type guard: check if a value is a non-null, non-array object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+/** Promise-based delay helper. */
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -123,6 +134,7 @@ function evaluatePlannerOutput(output: string, validate: PlannerValidate): Evalu
     return { value: { team: result.team, workflow: result.workflow } }
 }
 
+/** Build a re-prompt that tells the planner what was wrong and asks it to try again. */
 function buildCorrectionPrompt(error: string): string {
     return (
         `Your previous response was rejected:\n\n${error}`
@@ -187,6 +199,7 @@ export async function runPlannerSession(ctx: PluginContext, opts: RunPlannerOpti
 
 // --- deterministic validation (shared by the validate seam and op=write) ----
 
+/** Validate that team_id is a safe lowercase slug within length bounds. */
 function validateTeamId(teamId: string): string | null {
     if (teamId.length < 1 || teamId.length > 64 || !TEAM_ID_SLUG.test(teamId)) {
         return `Error: team_id "${teamId}" must be a safe lowercase slug (lowercase letters, digits, and hyphens only)`
@@ -194,6 +207,7 @@ function validateTeamId(teamId: string): string | null {
     return null
 }
 
+/** Validate team bounds object: numeric fields, maxMembers >= member count. */
 function validatePlannerBounds(bounds: unknown, memberCount: number): string | null {
     if (bounds === undefined) return null
     if (!isRecord(bounds)) return "Error: team.bounds must be an object"
@@ -247,6 +261,7 @@ function validatePlannerTeam(teamId: string, team: unknown): { memberNames: stri
     return { memberNames }
 }
 
+/** Validate a planner-produced workflow: version, strict_vars, steps structure, and member references. */
 function validatePlannerWorkflow(teamId: string, workflow: unknown, memberNames: readonly string[]): string | null {
     if (!isRecord(workflow)) return "Error: workflow must be an object"
     if (workflow.version !== undefined && workflow.version !== 1) {
@@ -269,6 +284,7 @@ function validatePlannerPayload(teamId: string, team: unknown, workflow: unknown
     return validatePlannerWorkflow(teamId, workflow, teamResult.memberNames)
 }
 
+/** Create a PlannerValidate closure that validates against the given team_id. */
 function makePlannerValidate(teamId: string): PlannerValidate {
     return parsed => {
         const error = validatePlannerPayload(teamId, parsed.team, parsed.workflow)
@@ -279,6 +295,7 @@ function makePlannerValidate(teamId: string): PlannerValidate {
 
 // --- prompt + preview construction ------------------------------------------
 
+/** Build the formatting contract instruction shown to the planner agent. */
 function plannerContract(teamId: string): string {
     return [
         "Respond with EXACTLY one block and nothing else:",
@@ -292,6 +309,7 @@ function plannerContract(teamId: string): string {
     ].join("\n")
 }
 
+/** Build the initial propose prompt: goal, constraints, and formatting contract. */
 function buildProposePrompt(teamId: string, goal: string, constraints: string | undefined): string {
     const lines = [
         `Design an OpenCode team and a deterministic team_workflow for team "${teamId}".`,
@@ -305,6 +323,7 @@ function buildProposePrompt(teamId: string, goal: string, constraints: string | 
     return lines.join("\n")
 }
 
+/** Request shape for the revise planner operation. */
 type ReviseRequest = {
     readonly teamId: string
     readonly goal: string
@@ -313,6 +332,7 @@ type ReviseRequest = {
     readonly feedback: string
 }
 
+/** Build the revise prompt: goal, feedback, and previous team/workflow as context. */
 function buildRevisePrompt(req: ReviseRequest): string {
     return [
         `Revise the OpenCode team and team_workflow for team "${req.teamId}".`,
@@ -330,14 +350,17 @@ function buildRevisePrompt(req: ReviseRequest): string {
     ].join("\n")
 }
 
+/** Derive the team loader filename from a team_id. */
 function teamFileName(teamId: string): string {
     return `team.${teamId}.json`
 }
 
+/** Derive the workflow loader filename from a team_id. */
 function workflowFileName(teamId: string): string {
     return `workflow.${teamId}.json`
 }
 
+/** Output artifact: team and workflow data ready for serialization. */
 type PlannerArtifact = {
     readonly directory: string
     readonly teamId: string
@@ -345,6 +368,7 @@ type PlannerArtifact = {
     readonly workflow: unknown
 }
 
+/** Format an artifact preview string with file paths and JSON dumps. */
 function formatArtifact(artifact: PlannerArtifact): string {
     const teamPath = path.join(artifact.directory, teamFileName(artifact.teamId))
     const workflowPath = path.join(artifact.directory, workflowFileName(artifact.teamId))
@@ -363,6 +387,7 @@ function formatArtifact(artifact: PlannerArtifact): string {
 
 // --- op handlers ------------------------------------------------------------
 
+/** Parsed arguments for the team_planner tool. */
 type TeamPlannerArgs = {
     op: "propose" | "revise" | "write"
     team_id: string
@@ -377,6 +402,7 @@ type TeamPlannerArgs = {
     overwrite?: boolean
 }
 
+/** Handle op="propose": validate args, run planner session, return a preview. */
 async function runProposeOp(ctx: PluginContext, sessionID: string, args: TeamPlannerArgs): Promise<string> {
     const goal = args.goal
     if (typeof goal !== "string" || goal.length === 0) return "Error: op=propose requires `goal`"
@@ -398,6 +424,7 @@ async function runProposeOp(ctx: PluginContext, sessionID: string, args: TeamPla
         + `\n\n${artifact}\n\nReview, then call team_planner op="write" to persist.`
 }
 
+/** Handle op="revise": validate args, run planner session with feedback, return a preview. */
 async function runReviseOp(ctx: PluginContext, sessionID: string, args: TeamPlannerArgs): Promise<string> {
     const goal = args.goal
     if (typeof goal !== "string" || goal.length === 0) return "Error: op=revise requires `goal`"
@@ -428,6 +455,7 @@ async function runReviseOp(ctx: PluginContext, sessionID: string, args: TeamPlan
         + `\n\n${artifact}\n\nReview, then call team_planner op="write" to persist.`
 }
 
+/** Handle op="write": validate payload deterministically, write loaders to disk. */
 async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<string> {
     const validationError = validatePlannerPayload(args.team_id, args.team, args.workflow)
     if (validationError) return validationError

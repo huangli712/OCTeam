@@ -179,6 +179,7 @@ export function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
 }
 
 // Local exhaustiveness guard (same pattern as lower.ts but scoped to this module)
+/** Exhaustiveness check for dry-run formatting. Throws if a new step kind is added without a corresponding case in formatWorkflowDryRun. */
 function assertNeverDryRun(value: never): never {
     throw new Error(`Unexpected workflow step kind in dry-run: ${String(value)}`)
 }

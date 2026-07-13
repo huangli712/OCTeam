@@ -5,7 +5,7 @@
  *
  * Dry-run preview formatting lives in format.ts.
  *
- * Extracted from tools/workflow.ts.
+ * Extracted from the workflow tool entry point.
  */
 
 import type {

@@ -3,7 +3,7 @@
  * step list. Centralizes linear-engine invariants (unique ids, target resolution,
  * no self-verification, cross-kind field separation, retry caps required).
  *
- * Extracted from tools/workflow.ts. Imports lowering + ref resolution from lower.ts.
+ * Extracted from the workflow tool entry point. Imports lowering + ref resolution from lower.ts.
  */
 
 import type { MemberState } from "../../core/types.js"
@@ -40,10 +40,12 @@ import {
 } from "./lower.js"
 import { expandMatrixForeachFanout } from "./lower.js"
 
+/** Check whether \`name\` is a member of the given team. */
 function isTeamMember(team: Team, name: string): boolean {
     return team.members.some(member => member.name === name)
 }
 
+/** Narrow a \`WorkflowToolStep\` to \`WorkflowFanoutToolStep\` when its kind is \`"fanout"\`. */
 function isFanoutToolStep(step: WorkflowToolStep): step is WorkflowFanoutToolStep {
     return step.kind === "fanout"
 }
@@ -72,6 +74,7 @@ export function validateDuplicateStepIds(steps: readonly WorkflowToolStep[]): st
     return null
 }
 
+/** Check whether \`id\` is already in \`ids\`; return a duplicate error message or null. */
 function validateStepId(ids: Map<string, number>, id: string | undefined, displayStep: number): string | null {
     if (id === undefined) return null
     const previous = ids.get(id)
@@ -129,6 +132,7 @@ export function validateMatrixForeachShapeInSteps(steps: readonly WorkflowToolSt
     return null
 }
 
+/** Validate that a single fanout step does not combine matrix, foreach, and branches. */
 function validateMatrixForeachShape(step: WorkflowToolStep, displayStep: number): string | null {
     const hasMatrix = step.matrix !== undefined
     const hasForeach = step.foreach !== undefined
@@ -149,6 +153,7 @@ function validateMatrixForeachShape(step: WorkflowToolStep, displayStep: number)
 
 // --- fanout validation ---
 
+/** Validate join_policy on a fanout step: known policy, quorum/required_branches/reducer_member consistency. */
 function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: number): string | null {
     const policy = step.join_policy
     if (policy === undefined) return null
@@ -190,6 +195,7 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
     return null
 }
 
+/** Validate fanout branch list: at least one branch, unique IDs, non-empty steps, no crossing constraints. */
 function validateFanoutBranches(step: WorkflowFanoutToolStep, displayStep: number): string | null {
     const branches = step.branches ?? []
     if (branches.length === 0) return `Error: fanout step ${displayStep} requires at least one branch`
@@ -214,6 +220,7 @@ function validateFanoutBranches(step: WorkflowFanoutToolStep, displayStep: numbe
     return null
 }
 
+/** Track which branch a team member has been assigned to; error on concurrent assignment. */
 function registerFanoutBranchActor(
     branchByMember: Map<string, string>,
     member: string | undefined,
@@ -230,6 +237,7 @@ function registerFanoutBranchActor(
     return null
 }
 
+/** Validate that branch task/gate steps do not set prohibited timeout policies. */
 function validateBranchTimeoutPolicy(
     step: WorkflowToolStep,
     fanoutDisplayStep: number,
@@ -247,6 +255,7 @@ function validateBranchTimeoutPolicy(
     return null
 }
 
+/** Validate every step inside a fanout branch: no recursive fanout, no join, no approval, valid actors/targets/gotos. */
 function validateBranchSteps(
     branch: WorkflowFanoutBranch,
     fanoutDisplayStep: number,
@@ -315,6 +324,7 @@ function validateBranchSteps(
     return null
 }
 
+/** Validate gate target_step/targets within a fanout branch: references must stay inside the branch. */
 function validateBranchGateTargets(
     steps: readonly WorkflowToolStep[],
     gateIndex: number,
@@ -347,6 +357,7 @@ function validateBranchGateTargets(
         + ` must reference a previous task step in the same branch`)
 }
 
+/** Validate gate goto fields within a fanout branch: all goto targets must stay inside the branch. */
 function validateBranchGateGotos(
     steps: readonly WorkflowToolStep[],
     gateIndex: number,
@@ -417,6 +428,7 @@ export function resolveAndValidateGateTargets(
     return { indices: targetIndices }
 }
 
+/** Validate that a task step's \`inputs\` reference previous task or join steps within scope. */
 function validateTaskInputs(
     steps: readonly LoweredWorkflowStep[],
     task: LoweredWorkflowLinearStep,
@@ -436,6 +448,7 @@ function validateTaskInputs(
     return null
 }
 
+/** Full semantic validation of a lowered task step: rejects gate fields, validates retry/cap consistency, checks team membership. */
 function validateLoweredTaskStep(
     steps: readonly LoweredWorkflowStep[],
     task: LoweredWorkflowLinearStep,
@@ -491,6 +504,7 @@ function validateLoweredTaskStep(
     return null
 }
 
+/** Full semantic validation of a lowered gate step: rejects task fields, validates verifier/ensemble/goto/loop/where constraints, checks team membership. */
 function validateLoweredGateStep(
     steps: readonly LoweredWorkflowStep[],
     gate: LoweredWorkflowLinearStep,
@@ -646,6 +660,7 @@ function validateLoweredGateStep(
     return null
 }
 
+/** Validate a lowered fanout step: verify reducer_member is a team member when applicable. */
 function validateLoweredFanoutStep(step: LoweredWorkflowFanoutStep, displayStep: number, team: Team): string | null {
     if ((step.fanout.joinPolicy === "reduce" || step.fanout.joinPolicy === "select")
         && step.fanout.reducerMember !== undefined
@@ -739,11 +754,6 @@ export function validateWorkflowStepsAgainstMembers(
 
 // --- source validation + arg resolution ---
 
-/** Check whether args include inline steps (vs. a workflow_file). */
-export function hasInlineSteps(args: WorkflowToolArgs): boolean {
-    return args.steps !== undefined
-}
-
 /** Validate that exactly one of steps or workflow_file is set. */
 export function validateWorkflowSource(args: WorkflowToolArgs): string | null {
     if (hasInlineSteps(args) === (args.workflow_file !== undefined)) {
@@ -751,6 +761,11 @@ export function validateWorkflowSource(args: WorkflowToolArgs): string | null {
     }
     if (args.steps !== undefined && args.steps.length === 0) return "Error: steps must contain at least one step"
     return null
+}
+
+/** Check whether args include inline steps (vs. a workflow_file). */
+export function hasInlineSteps(args: WorkflowToolArgs): boolean {
+    return args.steps !== undefined
 }
 
 /** Resolve workflow args: load loader if needed, expand matrix/foreach, validate source. */
