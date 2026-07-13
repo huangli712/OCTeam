@@ -252,6 +252,19 @@ export function parseDecompose(
     return { subtasks }
 }
 
+/**
+ * Parse a <signoff>{"approved": true|false, "rationale": "..."}</signoff> block
+ * from a reviewer's output. Returns null if no valid signoff tag found.
+ */
+export function parseSignoff(text: string): { approved: boolean; rationale: string } | null {
+    const parsed = extractTaggedJSON(text, "signoff")
+    if (!parsed) return null
+    return {
+        approved: parsed.approved === true,
+        rationale: typeof parsed.rationale === "string" ? parsed.rationale : "",
+    }
+}
+
 /** Loop exit condition 2: every read_only stage emitted a <no_issues/> tag. */
 export function allReadOnlyStagesReportNoIssues(task: ActiveTask): boolean {
     const roStages = task.stages.filter(s => s.action === "read_only")
@@ -269,19 +282,6 @@ export function allMembersAgree(responses: Record<string, string>): boolean {
         const parsed = extractTaggedJSON(t, "consensus", "共识")
         return parsed?.agreed === true
     })
-}
-
-/**
- * Parse a <signoff>{"approved": true|false, "rationale": "..."}</signoff> block
- * from a reviewer's output. Returns null if no valid signoff tag found.
- */
-export function parseSignoff(text: string): { approved: boolean; rationale: string } | null {
-    const parsed = extractTaggedJSON(text, "signoff")
-    if (!parsed) return null
-    return {
-        approved: parsed.approved === true,
-        rationale: typeof parsed.rationale === "string" ? parsed.rationale : "",
-    }
 }
 
 /**

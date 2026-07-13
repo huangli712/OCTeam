@@ -9,6 +9,13 @@ import type { Message, Part, TextPart } from "@opencode-ai/sdk"
 import type { MemberSpec } from "../../core/types.js"
 import { rolePreset } from "../../core/role.js"
 
+/** Tools whose invocations represent member work product (code, commands).
+ * Excludes team-* coordination tools (send_message, task_*, workflow tools). */
+const WORK_TOOLS = new Set([
+    "write", "edit", "bash",
+    "aft_write", "aft_edit", "aft_bash", "aft_apply_patch",
+])
+
 /**
  * Extract concatenated text from message parts (filters type === "text").
  * Skips synthetic parts (injected role prompts / mailbox injections) so they
@@ -26,13 +33,6 @@ export function extractTextFromParts(parts: unknown): string {
         .map(p => p.text)
         .join("\n")
 }
-
-/** Tools whose invocations represent member work product (code, commands).
- * Excludes team-* coordination tools (send_message, task_*, workflow tools). */
-const WORK_TOOLS = new Set([
-    "write", "edit", "bash",
-    "aft_write", "aft_edit", "aft_bash", "aft_apply_patch",
-])
 
 /**
  * Extract member output from an assistant message's parts: text + work-tool
