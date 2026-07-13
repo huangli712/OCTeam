@@ -20,7 +20,7 @@ import type {
     WorkflowLinearToolStep,
     WorkflowStepRef,
     WorkflowToolStep,
-} from "./tool.js"
+} from "./engine.js"
 
 // --- lowered types ---
 

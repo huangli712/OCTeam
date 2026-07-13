@@ -18,8 +18,8 @@ import {
     resolveGotoIndex,
     resolveWorkflowInputIndices,
 } from "./lower.js"
-import type { WorkflowStepRef } from "./tool.js"
-import type { ResolvedWorkflowToolArgs } from "./tool.js"
+import type { WorkflowStepRef } from "./engine.js"
+import type { ResolvedWorkflowToolArgs } from "./engine.js"
 
 /** Format the target step label (with optional id) for a gate in dry-run output. */
 function stepTargetLabel(steps: readonly LoweredWorkflowStep[], gateIndex: number): string {
@@ -48,7 +48,7 @@ function taskInputsLabel(steps: readonly LoweredWorkflowStep[], taskIndex: numbe
 }
 
 /** Format a where clause as a human-readable "when ..." string. */
-function whereLabel(where: import("./tool.js").WorkflowWhere | undefined): string {
+function whereLabel(where: import("./engine.js").WorkflowWhere | undefined): string {
     if (where === undefined) return ""
     const parsed = parseWorkflowCondition(where)
     return "condition" in parsed ? ` when ${formatWorkflowCondition(parsed.condition)}` : ""

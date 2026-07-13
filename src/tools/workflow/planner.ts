@@ -24,7 +24,7 @@ import type { PluginContext } from "../../core/context.js"
 import { isIndexedMember } from "../../state/resolve.js"
 import { validateMemberAgent, validateMemberName } from "../support.js"
 import { validateWorkflowSteps } from "../../orchestration/workflow/loader.js"
-import { validateWorkflowStepsAgainstMembers } from "./tool.js"
+import { validateWorkflowStepsAgainstMembers } from "./engine.js"
 
 const PLANNER_AGENT = "oct-metis"
 const PLANNER_TIMEOUT_MS = 300_000

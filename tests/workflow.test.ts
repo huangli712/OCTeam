@@ -28,7 +28,7 @@ import type { Team } from "../src/state/store.js"
 import {
     teamWorkflowTool,
     type WorkflowToolStep,
-} from "../src/tools/workflow/tool.js";
+} from "../src/tools/workflow/engine.js";
 import type { PluginContext } from "../src/core/context.js";
 import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, makeWorkflowTask, type DispatchCall, waitForEvent } from "./helpers.js";
 
