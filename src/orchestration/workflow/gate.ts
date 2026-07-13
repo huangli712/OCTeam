@@ -83,6 +83,7 @@ function buildStructuredVerdictHint(
     return `This gate gates a downstream step on a threshold condition (${formatWorkflowCondition(where)}). Also emit structured fields so the condition can be evaluated:\n- ${fields.join("\n- ")}`;
 }
 
+/** Build a JSON example of a <verdict> block including optional condition fields. */
 function buildVerdictSchemaExample(
     where: WorkflowCondition | undefined,
 ): string {
@@ -149,6 +150,7 @@ export function gateTargetIndices(steps: WorkflowStep[], gateIndex: number): num
     return nearest < 0 ? [] : [nearest];
 }
 
+/** Check whether a gate can reference a given task step (same-branch check). */
 function canGateReferenceTask(
     steps: WorkflowStep[],
     gateIndex: number,
@@ -228,6 +230,7 @@ export function gatedGotoIndex(
         : -1;
 }
 
+/** Check whether a gate can jump/goto a given step (same-branch or no branch). */
 function canGateGotoStep(
     steps: WorkflowStep[],
     gateIndex: number,
@@ -305,6 +308,7 @@ type ParsedCondition =
     | { condition: WorkflowCondition }
     | { error: string }
 
+/** Map a severity string to its numeric rank for comparison. */
 function severityRank(severity: WorkflowIssueSeverity): number {
     switch (severity) {
         case "low": return 0
@@ -315,10 +319,12 @@ function severityRank(severity: WorkflowIssueSeverity): number {
     }
 }
 
+/** Type guard: check if a string is a valid WorkflowCondition kind. */
 function isConditionKey(key: string): key is WorkflowCondition["kind"] {
     return key === "score_gte" || key === "score_lt" || key === "confidence_gte" || key === "has_issue_severity"
 }
 
+/** Type guard: check if a value is a non-null, non-array object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -367,6 +373,7 @@ export function formatWorkflowCondition(condition: WorkflowCondition): string {
     return `${condition.kind} ${condition.value}`
 }
 
+/** Exhaustive check helper that throws for unhandled condition kinds. */
 function assertNeverCondition(value: never): never {
     throw new Error(`unhandled workflow condition: ${String(value)}`)
 }

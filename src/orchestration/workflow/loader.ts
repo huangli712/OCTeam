@@ -33,19 +33,23 @@ class UnknownTemplateVarError extends Error {
     }
 }
 
+/** Narrow unknown to a non-null non-array object. */
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
+/** Resolve a directory path to its absolute form. */
 function normalizeBase(baseDir: string): string {
     return path.resolve(baseDir)
 }
 
+/** Check that filePath is strictly inside baseDir. */
 function isInside(baseDir: string, filePath: string): boolean {
     const rel = path.relative(baseDir, filePath)
     return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)
 }
 
+/** Resolve a relative workflow_file path, validating it stays within the workspace. */
 function resolveWorkflowFilePath(baseDir: string, relPath: string): { filePath: string } | { error: string } {
     if (path.isAbsolute(relPath)) return { error: "Error: workflow_file must be relative to the workspace" }
     if (!relPath.endsWith(".json")) return { error: "Error: workflow_file must point to a .json file" }
@@ -55,6 +59,7 @@ function resolveWorkflowFilePath(baseDir: string, relPath: string): { filePath: 
     return { filePath }
 }
 
+/** Recursively replace ${name} placeholders in value using the provided vars dictionary. */
 function applyTemplateVars(value: unknown, vars: Record<string, string>, strict: boolean): unknown {
     if (typeof value === "string") {
         return value.replace(/\$\{([A-Za-z0-9_]+)\}/g, (match, name: string) => {
@@ -78,6 +83,7 @@ function applyTemplateVars(value: unknown, vars: Record<string, string>, strict:
     return value
 }
 
+/** Validate an array of workflow step objects. */
 function validateWorkflowStepArray(value: unknown, location: StepLocation): { steps: WorkflowToolStep[] } | { error: string } {
     if (!Array.isArray(value)) return { error: `Error: workflow_file "${location.filePath}" must contain a workflow steps array` }
     const steps: WorkflowToolStep[] = []
@@ -106,6 +112,7 @@ export function validateWorkflowSteps(value: unknown, sourcePath = "<workflow>")
     return validateWorkflowStepArray(value, { filePath: sourcePath, prefix: "step" })
 }
 
+/** Validate a single workflow step, recursing into fanout branches. */
 function validateWorkflowStep(value: unknown, location: StepLocation): { step: WorkflowToolStep } | { error: string } {
     if (!isRecord(value)) return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} must be an object` }
     const kind = value.kind
@@ -127,6 +134,7 @@ function validateWorkflowStep(value: unknown, location: StepLocation): { step: W
     }
 }
 
+/** Validate the branches array of a fanout step. */
 function validateWorkflowBranches(value: unknown, location: StepLocation): { branches: NonNullable<WorkflowToolStep["branches"]> } | { error: string } {
     if (!Array.isArray(value)) return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} branches must be an array` }
     const branches: Array<{ id: string; steps: WorkflowToolStep[] }> = []
@@ -145,6 +153,7 @@ function validateWorkflowBranches(value: unknown, location: StepLocation): { bra
     return { branches }
 }
 
+/** Validate all field-level constraints on a single workflow step. Returns an error string or null. */
 function validateWorkflowStepFields(step: Record<string, unknown>, location: StepLocation): string | null {
     for (const field of ["id", "member", "fallback_member", "verifier", "fallback_verifier", "reducer_member"] as const) {
         if (step[field] !== undefined && (!isNonEmptyString(step[field]) || step[field].length > 64)) {
@@ -217,22 +226,27 @@ function validateWorkflowStepFields(step: Record<string, unknown>, location: Ste
     return null
 }
 
+/** Narrow unknown to a non-empty string. */
 function isNonEmptyString(value: unknown): value is string {
     return typeof value === "string" && value.length > 0
 }
 
+/** Narrow unknown to an integer >= min. */
 function isIntegerAtLeast(value: unknown, min: number): value is number {
     return typeof value === "number" && Number.isInteger(value) && value >= min
 }
 
+/** Narrow unknown to an integer in [min, max]. */
 function isIntegerInRange(value: unknown, min: number, max: number): value is number {
     return isIntegerAtLeast(value, min) && value <= max
 }
 
+/** Check whether value is a valid workflow step ref (positive integer or non-empty string). */
 function isWorkflowStepRef(value: unknown): boolean {
     return isIntegerAtLeast(value, 1) || isNonEmptyString(value)
 }
 
+/** Validate that value is a valid where clause object. */
 function isValidWhere(value: unknown): boolean {
     if (!isRecord(value)) return false
     if (value.score_gte !== undefined && typeof value.score_gte !== "number") return false

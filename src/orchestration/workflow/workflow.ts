@@ -65,6 +65,7 @@ import {
 
 import { buildWorkflowUpstream } from "./upstream.js";
 
+/** Provide a human-readable label for a workflow step, e.g. "step 3 (task) by alice". */
 export function describeStep(step: WorkflowStep | undefined, index: number): string {
     if (!step) return `step ${index + 1}`;
     const idTag = step.id ? ` (${step.id})` : "";
@@ -225,12 +226,14 @@ export async function dispatchGateStep(
     return true;
 }
 
+/** Reset timing metadata on a workflow step so it can be re-dispatched (used by retry/goto). */
 export function resetWorkflowStepTiming(step: WorkflowStep): void { step.startedAt = undefined;
 step.completedAt = undefined;
 step.durationMs = undefined;
 step.dispatchedAt = undefined;
 step.dispatchedActor = undefined; }
 
+/** Move the active-step cursor from one index to another (used by jumps and dynamic fanout). */
 export function moveActiveWorkflowStep(
     task: WorkflowTask,
     fromIndex: number,
@@ -253,6 +256,7 @@ export function moveActiveWorkflowStep(
     task.currentStageIndex = task.activeStepIndices[0] ?? toIndex;
 }
 
+/** Check whether any previously-active step still has a dispatched but uncompleted actor. */
 export function hasWaitingActiveWorkflowActor(
     steps: WorkflowStep[],
     previousActive: ReadonlySet<number>,
@@ -278,6 +282,7 @@ export function hasWaitingActiveWorkflowActor(
     return false;
 }
 
+/** Mark fanout container steps as completed when their expanded branches are ready. */
 export function completeExpandedFanoutMarkers(
     steps: WorkflowStep[],
     readyIndices: readonly number[],

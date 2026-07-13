@@ -58,6 +58,7 @@ export function markWorkflowStepCompleted(step: WorkflowStep): void {
     step.durationMs = Math.max(0, now - step.startedAt);
 }
 
+/** Check if a member has a live (non-errored) session. */
 function hasLiveSession(
     member: MemberState | undefined,
 ): member is MemberState & { sessionId: string } {
@@ -82,6 +83,7 @@ export function liveWorkflowActor(
 
 // --- joined output construction ---
 
+/** Build joined output string from all surviving branches in a fanout. */
 function buildJoinedWorkflowOutput(
     steps: WorkflowStep[],
     joinIndex: number,
@@ -166,6 +168,7 @@ export function buildBranchWorkflowOutput(
 
 // --- reduce/select reducer dispatch ---
 
+/** Build the prompt for a reduce join policy reducer. */
 function buildWorkflowReducePrompt(
     steps: WorkflowStep[],
     joinIndex: number,
@@ -173,6 +176,7 @@ function buildWorkflowReducePrompt(
     return `[Workflow reduce task] You are the reducer for workflow join step ${joinIndex + 1}. Combine the branch outputs below into ONE joined result. Output ONLY the final result, with no preamble.\n\n${buildJoinedWorkflowOutput(steps, joinIndex)}`;
 }
 
+/** Build the prompt for a select join policy selector. */
 function buildWorkflowSelectPrompt(
     steps: WorkflowStep[],
     joinIndex: number,
@@ -220,6 +224,7 @@ export async function dispatchWorkflowJoinReducer(
 
 // --- branch id helpers ---
 
+/** Push a branch id into an array if not already present. */
 function pushUniqueBranchId(
     branchIds: string[],
     branchId: string | undefined,
@@ -243,6 +248,7 @@ export function branchIdsForJoin(
     return branchIds;
 }
 
+/** Collect branch ids that have not yet errored for a given join. */
 function survivorBranchIdsForJoin(
     steps: WorkflowStep[],
     join: NonNullable<WorkflowStep["join"]>,
@@ -253,6 +259,7 @@ function survivorBranchIdsForJoin(
     );
 }
 
+/** Augment join metadata with survivor and errored branch info. */
 function joinWithBranchStatus(
     steps: WorkflowStep[],
     join: NonNullable<WorkflowStep["join"]>,
@@ -327,6 +334,7 @@ export async function completeWorkflowJoinStep(
 
 // --- fanout error evaluation ---
 
+/** Evaluate whether a fanout's error count exceeds its join tolerance policy. */
 function evaluateWorkflowFanoutError(
     steps: WorkflowStep[],
     joinIndex: number,
@@ -366,6 +374,7 @@ function evaluateWorkflowFanoutError(
     return { kind: "within_tolerance" };
 }
 
+/** Mark all non-completed steps in a branch as skipped. */
 function markWorkflowBranchStepsSkipped(
     steps: WorkflowStep[],
     branch: WorkflowBranchMetadata,
@@ -388,6 +397,7 @@ function markWorkflowBranchStepsSkipped(
     }
 }
 
+/** Remove all active steps belonging to a branch from the task's active set. */
 function removeActiveWorkflowBranch(
     task: WorkflowTask,
     branch: WorkflowBranchMetadata,
@@ -403,6 +413,7 @@ function removeActiveWorkflowBranch(
     task.currentStageIndex = task.activeStepIndices[0] ?? branch.joinIndex;
 }
 
+/** Find a branch already recorded as errored for a given member name. */
 function recordedErroredBranchForMember(
     steps: WorkflowStep[],
     memberName: string,
@@ -473,6 +484,7 @@ export async function handleWorkflowDispatchUnavailable(
     return "degraded";
 }
 
+/** Resolve the actor name from a workflow step for dispatch failure reporting. */
 function dispatchFailureActorName(step: WorkflowStep): string | undefined {
     switch (step.kind) {
         case "task":

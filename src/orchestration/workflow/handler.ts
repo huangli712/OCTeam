@@ -52,6 +52,7 @@ export function shouldRetryTask(step: WorkflowStep, output: string): boolean {
     }
 }
 
+/** Capture idle member output, validate step membership, and route to task/gate/join completion. */
 export async function handleWorkflowIdle(
     ctx: PluginContext,
     team: Team,

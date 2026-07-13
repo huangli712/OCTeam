@@ -138,6 +138,7 @@ export function validateWorkflowDag(steps: readonly WorkflowStep[]): WorkflowDag
     return { ok: true }
 }
 
+/** Extract the start index of each branch in a fanout step. */
 function fanoutBranchHeadIndices(step: WorkflowStep): readonly number[] {
     const fanout = step.fanout
     if (fanout === undefined) return []
@@ -145,6 +146,7 @@ function fanoutBranchHeadIndices(step: WorkflowStep): readonly number[] {
     return fanout.branchRanges.map(range => range.startIndex)
 }
 
+/** Recursively collect indices of ready (unblocked, not completed) workflow steps. */
 function collectReadyWorkflowStepIndices(
     steps: readonly WorkflowStep[],
     index: number,
@@ -179,6 +181,7 @@ function collectReadyWorkflowStepIndices(
     }
 }
 
+/** Collect successor step indices from a completed step, respecting branch boundaries. */
 function collectWorkflowSuccessors(
     steps: readonly WorkflowStep[],
     index: number,
@@ -232,10 +235,12 @@ export function workflowStepActorName(step: WorkflowStep): string | undefined {
     }
 }
 
+/** Push an index to the list if not already present. */
 function pushUniqueWorkflowIndex(indices: number[], index: number): void {
     if (!indices.includes(index)) indices.push(index)
 }
 
+/** Check whether a join step's metadata indicates all branches have reached a terminal state. */
 function isJoinMetadataSatisfied(
     steps: readonly WorkflowStep[],
     join: NonNullable<WorkflowStep["join"]>,
@@ -261,10 +266,12 @@ function isJoinMetadataSatisfied(
     return joinPolicySatisfied(join, survivorBranchIds, errors)
 }
 
+/** Check whether a workflow step is in a terminal (completed or skipped) state. */
 function isTerminalWorkflowStep(step: WorkflowStep): boolean {
     return step.completed || step.skipped === true
 }
 
+/** Check whether a step at the given index is nested inside an existing fanout branch. */
 function isInsideAnotherFanout(steps: readonly WorkflowStep[], index: number): boolean {
     for (let candidateIndex = 0; candidateIndex < steps.length; candidateIndex += 1) {
         if (candidateIndex === index) continue
@@ -290,6 +297,7 @@ function isInsideAnotherFanout(steps: readonly WorkflowStep[], index: number): b
     return false
 }
 
+/** Check whether a branch range includes the given index. */
 function includesWorkflowIndex(range: WorkflowBranchRange, index: number): boolean {
     return range.startIndex <= index && index <= range.endIndex
 }
