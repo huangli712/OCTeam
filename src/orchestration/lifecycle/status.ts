@@ -7,7 +7,8 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { loadTeamState, saveTeamState } from "../../state/store.js"
+import type { MemberState } from "../../core/types.js"
+import { type Team, loadTeamState, saveTeamState } from "../../state/store.js"
 import { resolveTeamMember } from "../../state/resolve.js"
 import { recordEvent } from "../records/events.js"
 import { checkTermination } from "./termination.js"
@@ -23,7 +24,66 @@ import { handleArenaIdle } from "../modes/arena.js"
 const RETRY_ESCALATION_MS = 60_000
 
 /**
- * handle session.status events. session.idle carries no error signal and a
+ * Escalate a member to errored after sustained retry, then re-drive the state
+ * machine if the run survived checkTermination.
+ *
+ * The re-drive block only reaches for concurrent or multi-phase modes whose
+ * barrier can continue with survivors (parallel / delegate / recurse /
+ * workflow / arena). The other modes have tolerance 0 in checkTermination, so
+ * by the time we reach here activeTask is already cleared for them — they are
+ * intentionally absent from the switch.
+ */
+async function escalateMemberToErrored(
+    ctx: PluginContext,
+    team: Team,
+    live: MemberState,
+    entry: { type: string; message?: string },
+): Promise<void> {
+    live.status = "errored"
+    live.error =
+        `sustained retry > ${RETRY_ESCALATION_MS}ms`
+        + ((live.retryCount ?? 0) > 0 ? ` after ${live.retryCount} retries` : "")
+        + `: ${entry.message ?? "unknown"}`
+    await saveTeamState(team)
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "errored",
+        member: live.name,
+        reason: live.error,
+    })
+    await checkTermination(ctx, team)
+    if (team.activeTask) {
+        if (team.activeTask.reduceStage) {
+            await handleReduceIdle(ctx, team, live)
+        } else if (team.activeTask.signoffStage) {
+            await handleSignoffIdle(ctx, team, live)
+        } else {
+            switch (team.activeTask.type) {
+                case "parallel":
+                    await handleParallelIdle(ctx, team)
+                    break
+                case "delegate":
+                    await handleDelegateIdle(ctx, team, live)
+                    break
+                case "recurse":
+                    await handleRecurseIdle(ctx, team, live)
+                    break
+                case "workflow":
+                    await advanceWorkflowStep(ctx, team)
+                    break
+                case "arena":
+                    await handleArenaIdle(ctx, team, live)
+                    break
+                default:
+                    break
+            }
+        }
+    }
+    await saveTeamState(team)
+}
+
+/**
+ * Handle session.status events. session.idle carries no error signal and a
  * retrying member never idles, so we subscribe to session.status to catch
  * retry/error and escalate a sustained retry to "errored" (otherwise the
  * barrier would wait forever). Mutates member state under the team mutex.
@@ -64,57 +124,10 @@ export async function handleStatusEvent(
                     await saveTeamState(team)
                     return
                 }
-                // Grace exhausted: escalate the member to errored.
-                live.status = "errored"
-                live.error =
-                    `sustained retry > ${RETRY_ESCALATION_MS}ms`
-                    + ((live.retryCount ?? 0) > 0 ? ` after ${live.retryCount} retries` : "")
-                    + `: ${entry.message ?? "unknown"}`
-                await saveTeamState(team)
-                recordEvent(team, {
-                    timestamp: Date.now(),
-                    kind: "errored",
-                    member: live.name,
-                    reason: live.error,
-                })
-                await checkTermination(ctx, team)
-                // Re-drive the state machine after the errored member was
-                // escalated. This block ONLY reaches for concurrent or
-                // multi-phase modes whose barrier can continue with survivors
-                // (parallel / delegate / recurse / workflow / arena). The other
-                // modes (consensus / pipeline / loop / route / arbitrate /
-                // tollgate) have tolerance 0 in checkTermination, so the
-                // checkTermination call above already ran finishRun + cleared
-                // activeTask, and the `if (team.activeTask)` guard below is
-                // false for them. They are intentionally absent from the switch.
-                if (team.activeTask) {
-                    if (team.activeTask.reduceStage) {
-                        await handleReduceIdle(ctx, team, live)
-                    } else if (team.activeTask.signoffStage) {
-                        await handleSignoffIdle(ctx, team, live)
-                    } else {
-                        switch (team.activeTask.type) {
-                            case "parallel":
-                                await handleParallelIdle(ctx, team)
-                                break
-                            case "delegate":
-                                await handleDelegateIdle(ctx, team, live)
-                                break
-                            case "recurse":
-                                await handleRecurseIdle(ctx, team, live)
-                                break
-                            case "workflow":
-                                await advanceWorkflowStep(ctx, team)
-                                break
-                            case "arena":
-                                await handleArenaIdle(ctx, team, live)
-                                break
-                            default:
-                                break
-                        }
-                    }
-                }
-                await saveTeamState(team)
+                // Grace exhausted: escalate the member to errored, then
+                // re-drive the state machine if the run survived.
+                await escalateMemberToErrored(ctx, team, live, entry)
+                return
             }
         } else if (entry?.type === "idle") {
             // Member returned to idle: the retry storm ended, so clear tracking.
