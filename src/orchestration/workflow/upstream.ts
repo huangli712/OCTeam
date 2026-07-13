@@ -53,6 +53,7 @@ export function buildWorkflowUpstream(
     return blocks.join("\n\n");
 }
 
+/** Build a single upstream-context block for a completed step, or null if it should be skipped. */
 function workflowUpstreamBlock(
     steps: WorkflowStep[],
     uptoIndex: number,
@@ -90,6 +91,11 @@ function workflowUpstreamBlock(
     }
 }
 
+/**
+ * Decide whether a completed task-step's output should appear in the upstream
+ * context of the current step. Skips when exposeOutput is false (non-explicit
+ * context) or when the candidate is on a different branch.
+ */
 function shouldIncludeTaskUpstream(
     steps: WorkflowStep[],
     uptoIndex: number,
@@ -109,6 +115,7 @@ function shouldIncludeTaskUpstream(
     );
 }
 
+/** Include a join output only when the current step is outside all branches. */
 function shouldIncludeJoinUpstream(
     steps: WorkflowStep[],
     uptoIndex: number,
