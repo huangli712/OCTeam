@@ -11,11 +11,19 @@ import { prependStandingInstruction } from "../control/dispatch.js";
 import { truncateOutput } from "../protocol/output.js";
 import { recordEvent } from "../records/events.js";
 
+/** Hard byte cap on assembled upstream context to prevent unbounded prompt growth. */
 const UPSTREAM_TOTAL_CAP = 65_536;
+
+/** Contract injected into read-only stages so a clean report can end the loop early via <no_issues/>. */
 const NO_ISSUES_CONTRACT =
     "If you find NO issues, end your reply with the literal tag <no_issues/> " +
     "(or <无问题/>). Emit it ONLY when truly clean — it ends the loop.";
 
+/**
+ * Assemble upstream context from completed prior stages' outputs, capped at
+ * UPSTREAM_TOTAL_CAP bytes. Returns the concatenated blocks (or an empty
+ * string when no prior stage produced output).
+ */
 export function buildUpstreamContext(
     stages: Stage[],
     responses: Record<string, string>,
@@ -39,6 +47,12 @@ export function buildUpstreamContext(
     return blocks.join("\n\n");
 }
 
+/**
+ * Dispatch the given stage's member with upstream context prepended. Applies
+ * the read-only <no_issues/> contract when the stage action is read_only, and
+ * an optional contextPrefix (e.g. loop decider feedback) before the upstream
+ * block. Transitions the member to running and records a dispatched event.
+ */
 export async function advanceToStage(
     ctx: PluginContext,
     team: Team,

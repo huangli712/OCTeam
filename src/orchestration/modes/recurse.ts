@@ -70,6 +70,7 @@ function buildAggregationPrompt(rootSubject: string, childCount: number): string
     )
 }
 
+/** Resolve the member by name and re-enter the delegate-style tail (used after HITL approval/rejection). */
 async function runRecurseTailFromApproval(ctx: PluginContext, team: Team, memberName: string | undefined): Promise<void> {
     const member = team.members.find(m => m.name === memberName)
     if (!member) return

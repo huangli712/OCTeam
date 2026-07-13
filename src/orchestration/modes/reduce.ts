@@ -12,12 +12,19 @@ import { dispatchToMember } from "../control/dispatch.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { buildSummary } from "../records/summary.js"
 
+/** Build the reducer's dispatch prompt: combine candidate outputs into one final result per the policy. */
 export function buildReducePrompt(body: string): string {
     return `[Reduce task] You are the reducer for a parallel run. Combine the candidate `
         + `outputs below into ONE final result per the policy. Output ONLY the final `
         + `result, with no preamble.\n\n${body}`
 }
 
+/**
+ * Enter the reduce sub-stage when the parallel barrier fired with multiple
+ * responses and a real (non-summarize) reduce policy is configured. Sets
+ * reduceStage, dispatches the reducer, and persists state. Returns true when
+ * the reducer was dispatched (caller must stop); false otherwise.
+ */
 export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promise<boolean> {
     const task = team.activeTask
     if (!task || task.type !== "parallel") return false
@@ -35,6 +42,10 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     return true
 }
 
+/**
+ * Handle the reducer's idle: capture the reduced result, clear reduceStage,
+ * then proceed to signoff (if configured) or deliver the reduced run.
+ */
 export async function handleReduceIdle(
     ctx: PluginContext,
     team: Team,
