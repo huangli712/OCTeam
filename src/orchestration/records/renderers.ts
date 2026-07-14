@@ -92,7 +92,7 @@ export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }
         + (s.attempts > 0 ? ` (${s.attempts} retries)` : ""))
     const outputs = stages
         .filter(s => s.completed)
-        .map(s => `### ${s.member}\n${truncateOutput(task.responses[s.member] ?? "")}`)
+        .map(s => `by ${s.member}:\n${truncateOutput(task.responses[s.member] ?? "")}`)
         .join("\n\n")
     return outputs
         ? `${head}\nGates:\n${rows.join("\n")}\n\n${outputs}`
