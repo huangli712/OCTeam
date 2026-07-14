@@ -1,20 +1,20 @@
-# 综合场景：OCTeam 功能增强 / 修订
+# Comprehensive Scenario: OCTeam Feature Enhancement / Revision
 
-> 给 OCTeam 增加新功能或强化现有功能的端到端工作流：**调研 → 讨论 → 计划 → 实现 → 审计**，5 个独立团队 × 4 种编排原语串联。master 作集成枢纽，团队间彼此隔离、数据手递手。
+> An end-to-end workflow for adding new features to OCTeam or strengthening existing ones: **Research → Discussion → Plan → Implementation → Audit**, 5 independent teams × 4 orchestration primitives chained together. Master acts as the integration hub, teams are isolated from each other with hand-to-hand data passing.
 >
-> **自用模板**：操作对象是 OCTeam 自身（`src/` + `docs/`）。不含评判脚本，最终是否成功**由你自行判断**。
+> **Self-use template**: operates on OCTeam itself (`src/` + `docs/`). No check scripts included; whether the final result succeeds is **for you to judge**.
 
-## 工作流总览
+## Workflow Overview
 
-| 阶段 | 团队 | 编排原语 | 输入 | 产出（交接 marker） |
+| Phase | Team | Orchestration Primitive | Input | Output (handoff marker) |
 |------|------|---------|------|---------------------|
-| ① 调研 | **research-team** | `team_parallel` | OCTeam `src/`+docs（内部）+ GitHub/web（外部） | `<!-- CANDIDATE: <id>:<short> -->` ×≥8 |
-| ② 讨论 | **discussion-team** | `team_consensus` | 8+ 候选作 topic | `<!-- SELECTED: <id> -->` + 理由 |
-| ③ 计划 | **plan-team** | `team_loop` | 选中的功能 | 实施方案，编写→审计→loop 至 decider 通过（`<!-- PLAN-APPROVED -->`） |
-| ④ 实现 | **implement-team** | `team_pipeline` | 通过的方案 | coder→tester→reviewer 顺序产出功能代码+测试 |
-| ⑤ 审计 | **audit-team** | `team_parallel` | 实现后的功能 | 多维并行审计（`<!-- AUDIT: <dim>: pass\|fail -->`）+ peer-quorum 投票（参考） |
+| ① Research | **research-team** | `team_parallel` | OCTeam `src/`+docs (internal) + GitHub/web (external) | `<!-- CANDIDATE: <id>:<short> -->` ×≥8 |
+| ② Discussion | **discussion-team** | `team_consensus` | 8+ candidates as topic | `<!-- SELECTED: <id> -->` + rationale |
+| ③ Plan | **plan-team** | `team_loop` | Selected feature | Implementation plan, write→audit→loop until decider approves (`<!-- PLAN-APPROVED -->`) |
+| ④ Implementation | **implement-team** | `team_pipeline` | Approved plan | coder→tester→reviewer sequential output of feature code+tests |
+| ⑤ Audit | **audit-team** | `team_parallel` | Implemented feature | Multi-dimensional parallel audit (`<!-- AUDIT: <dim>: pass\|fail -->`) + peer-quorum vote (for reference) |
 
-用到 4 种编排：**parallel / consensus / loop / pipeline**（parallel 在调研与审计各用一次）。
+Uses 4 orchestration primitives: **parallel / consensus / loop / pipeline** (parallel is used once each for research and audit).
 
 ```
 OCTeam src/ + docs + GitHub/web
@@ -27,7 +27,7 @@ discussion-team (consensus) ◄──candidates───────┘
         └──SELECTED feature────────────────► master
                                                 │
 plan-team (loop)             ◄────selected──────┘
-        │  编写→审计→...→通过
+        │  Write→Audit→...→Approved
         └──approved plan───────────────────► master
                                                 │
 implement-team (pipeline)    ◄──plan────────────┘
@@ -36,29 +36,29 @@ implement-team (pipeline)    ◄──plan────────────�
                                                 │
 audit-team (parallel)        ◄──feature─────────┘
         │
-        └──audit verdicts + 投票──► master ──► 你判断
+        └──audit verdicts + vote──► master ──► you judge
 ```
 
-## 如何使用
+## How to Use
 
-1. **对象**：本场景增强 OCTeam 自身（`src/` 为画布）。无需占位符。
-2. **依次跑 5 个团队**（§1–§5）。每个团队走完整生命周期：`team_create` → `team_activate` → `team_<mode>` → 收产出 → `team_deactivate`。
-3. **交接**：每个团队的 marker 产出由 master 汇总，作为下一个团队的输入（candidates → topic；selected → plan 任务；approved plan → pipeline 首阶段；feature → audit 对象）。
-4. **判断**：你读取 audit-team 的多维结论与各团队输出，自行裁定成败。本场景**不设评判脚本**。
+1. **Target**: this scenario enhances OCTeam itself (`src/` is the canvas). No placeholders.
+2. **Run 5 teams in sequence** (§1–§5). Each team goes through its full lifecycle: `team_create` → `team_activate` → `team_<mode>` → collect output → `team_deactivate`.
+3. **Handoff**: each team's marker output is summarized by master and passed as the next team's input (candidates → topic; selected → plan task; approved plan → pipeline first stage; feature → audit target).
+4. **Judge**: you read the audit-team's multi-dimensional conclusions and all team outputs, and decide success or failure yourself. This scenario **has no check scripts**.
 
-## team 切换铁律
+## Team Switching Iron Rule
 
-> 同一时刻**仅一个团队** active。`team_activate` 在已有 active 团队时会拒绝——**必须先 `team_deactivate` 再 `team_activate` 下一个**。每个团队段的 master 步骤都已显式写出 deactivate。
+> Only **one team** active at a time. `team_activate` will be rejected if another team is already active — **you must `team_deactivate` before `team_activate` the next**. Each team section's master steps explicitly include deactivate.
 
 ---
 
-## §1 research-team（`team_parallel`）— 调研
+## §1 research-team (`team_parallel`) — Research
 
-### 1.1 阶段说明
+### 1.1 Phase Description
 
-6 名研究员**并行**调研，每人一个维度（维度烤进成员 prompt，parallel 跑 isolated）。覆盖：OCTeam 内部现状、GitHub 同类框架、Web 生态、用户痛点、MCP/插件生态、多智能体协作研究。每人至少提 2 个候选 → 合计 ≥8。
+6 researchers **research in parallel**, each with one dimension (dimension baked into member prompt, parallel runs isolated). Coverage: OCTeam internals current state, GitHub similar frameworks, Web ecosystem, user pain points, MCP/plugin ecosystem, multi-agent collaboration research. Each member proposes at least 2 candidates → total ≥8.
 
-### 1.2 Team 配置
+### 1.2 Team Configuration
 
 ```json
 {
@@ -99,9 +99,9 @@ audit-team (parallel)        ◄──feature─────────┘
 }
 ```
 
-**Role 选择**：alice `explorer`（内部代码扫描，只读深挖），其余 `researcher`/`analyst`（外部调研 + 综合）。6 人对称，差异来自维度 prompt。
+**Role selection**: alice `explorer` (internal code scanning, read-only deep dive), the rest `researcher`/`analyst` (external research + synthesis). 6 symmetric members, differences come from dimension prompts.
 
-### 1.3 Master 启动调用
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -115,34 +115,34 @@ audit-team (parallel)        ◄──feature─────────┘
 }
 ```
 
-**参数选择**：
-- `mode: isolated` + 维度烤进 prompt——6 路并行各扫一个维度，互不重叠。
-- 不设 `signoff_policy`——parallel 默认无 signoff，跑完即汇总。
+**Parameter selection**:
+- `mode: isolated` + dimension baked into prompts — 6 parallel lanes each scan one dimension, with no overlap.
+- No `signoff_policy` set — parallel defaults to no signoff, results are collected when done.
 
-### 1.4 生命周期步骤（master）
+### 1.4 Lifecycle Steps (master)
 
 ```
 team_create(fd-research)
 team_activate(fd-research)
 team_parallel(...)            # §1.3
-# 等待 6 名研究员产出 → team_results 取汇总
+# Wait for 6 researchers' output → team_results for the summary
 team_deactivate(fd-research)
 ```
 
-### 1.5 产出与交接
+### 1.5 Output and Handoff
 
-- master 从 6 份输出抓取所有 `<!-- CANDIDATE: <id>:<short> -->`，汇总成**候选清单**（id + short + 描述，应 ≥8 条）。
-- 这张清单作为 §2 `team_consensus` 的 `topic`。
+- Master extracts all `<!-- CANDIDATE: <id>:<short> -->` from the 6 outputs, compiles a **candidate list** (id + short + description, should be ≥8 items).
+- This list serves as §2 `team_consensus`'s `topic`.
 
 ---
 
-## §2 discussion-team（`team_consensus`）— 讨论
+## §2 discussion-team (`team_consensus`) — Discussion
 
-### 2.1 阶段说明
+### 2.1 Phase Description
 
-5 名 debater（2 reviewer + 2 architect + 1 analyst）多轮辩论候选清单：综合**必要性 / 可行性 / 复杂度**，投票收敛选出 **1 个**要实现的功能。
+5 debaters (2 reviewer + 2 architect + 1 analyst) debate the candidate list across multiple rounds: weighing **necessity / feasibility / complexity**, voting to converge on **1** feature to implement.
 
-### 2.2 Team 配置
+### 2.2 Team Configuration
 
 ```json
 {
@@ -178,54 +178,54 @@ team_deactivate(fd-research)
 }
 ```
 
-**Role 选择**：erin/tom `reviewer`（风险视角），frank/uma `architect`（设计视角），grace `analyst`（成本/价值视角），三视角交叉。
+**Role selection**: erin/tom `reviewer` (risk perspective), frank/uma `architect` (design perspective), grace `analyst` (cost/value perspective), three perspectives intersect.
 
-### 2.3 Master 启动调用
+### 2.3 Master Launch Call
 
 ```json
 {
   "tool": "team_consensus",
   "args": {
     "team_id": "fd-discussion",
-    "topic": "<把 §1.5 候选清单原文粘进来：每条 CANDIDATE id/short/描述>",
+    "topic": "<Paste the §1.5 candidate list verbatim: each CANDIDATE id/short/description>",
     "max_rounds": 4,
     "timeout_ms": 1800000
   }
 }
 ```
 
-**参数选择**：
-- `topic` = 候选清单（master 手递手填入）。
-- `max_rounds: 4`——给足辩论空间收敛到唯一选择。
+**Parameter selection**:
+- `topic` = candidate list (master pastes it in by hand).
+- `max_rounds: 4` — gives sufficient debate space to converge to a single choice.
 
-### 2.4 生命周期步骤（master）
+### 2.4 Lifecycle Steps (master)
 
 ```
 team_create(fd-discussion)
-team_activate(fd-discussion)   # （此时 fd-research 已 deactivate）
-team_consensus(...)            # topic = §1.5 候选清单
-# 等待共识 → team_results 取汇总
-# 若 max_rounds 用尽仍未达成共识（consensus_max_rounds）→ 中断流程，deactivate 后不继续
+team_activate(fd-discussion)   # (fd-research already deactivated at this point)
+team_consensus(...)            # topic = §1.5 candidate list
+# Wait for consensus → team_results for the summary
+# If max_rounds exhausted without reaching consensus (consensus_max_rounds) → abort workflow, do not continue after deactivate
 team_deactivate(fd-discussion)
 ```
 
-### 2.5 产出与交接
+### 2.5 Output and Handoff
 
-- master 抓取 `<!-- SELECTED: <id> -->`（共识后各成员应收敛到同一 id）+ 理由。
-- 选中的功能作为 §3 plan-team 的编写对象。
-- **若 consensus 未达成（consensus_max_rounds），中断流程**——deactivate 后不进入 §3，向你汇报讨论记录。
+- Master extracts `<!-- SELECTED: <id> -->` (members should converge to the same id after consensus) + rationale.
+- The selected feature serves as §3 plan-team's writing target.
+- **If consensus is not reached (consensus_max_rounds), abort the workflow** — do not enter §3 after deactivate, report the discussion record to you.
 
 ---
 
-## §3 plan-team（`team_loop`）— 计划
+## §3 plan-team (`team_loop`) — Plan
 
-### 3.1 阶段说明
+### 3.1 Phase Description
 
-为选中的功能编写**实施方案**。每轮按 **编写（writer）→ 审计（reviewer）** 串行，decider 裁决「方案通过 / 回炉」。通过后产出可交付实现的完整方案。
+Write an **implementation plan** for the selected feature. Each round runs **Write (writer) → Audit (reviewer)** serially; the decider rules "plan approved / rework". When approved, produce a complete plan deliverable for implementation.
 
-> ⚠️ **decider 不能兼任 stage 成员**（team_loop 规则：decider 是 auto-appended 只读，不能出现在 stages 里）。jack 留作 decider，不进 stages。
+> ⚠️ **decider cannot double as a stage member** (team_loop rule: decider is auto-appended read-only, cannot appear in stages). jack is reserved as decider, not in stages.
 
-### 3.2 Team 配置
+### 3.2 Team Configuration
 
 ```json
 {
@@ -251,16 +251,16 @@ team_deactivate(fd-discussion)
 }
 ```
 
-**Role 选择**：henry `writer`（编写方案，modify），iris `auditor`（审计，read_only，backed by oct-momus），jack `reviewer`（decider，auto-appended 只读裁决）。
+**Role selection**: henry `writer` (write plan, modify), iris `auditor` (audit, read_only, backed by oct-momus), jack `reviewer` (decider, auto-appended read-only ruling).
 
-### 3.3 Master 启动调用
+### 3.3 Master Launch Call
 
 ```json
 {
   "tool": "team_loop",
   "args": {
     "team_id": "fd-plan",
-    "initial_task": "Write an implementation plan for the selected OCTeam feature: <SELECTED id + §2.5 理由 + 原候选描述>. Each round: Henry drafts/refines the plan, Iris audits it. Jack decides approve/rework. On approval, emit <!-- PLAN-APPROVED --> with the final plan.",
+    "initial_task": "Write an implementation plan for the selected OCTeam feature: <SELECTED id + §2.5 rationale + original candidate description>. Each round: Henry drafts/refines the plan, Iris audits it. Jack decides approve/rework. On approval, emit <!-- PLAN-APPROVED --> with the final plan.",
     "stages": [
       {
         "member": "henry",
@@ -280,36 +280,36 @@ team_deactivate(fd-discussion)
 }
 ```
 
-**参数选择**：
-- `stages` 顺序：henry(modify，编写) → iris(read_only，审计)，每轮一遍；decider jack 每轮裁决。
-- `max_rounds: 4`——4 轮内未通过则**中断流程**，不进入 §4。
+**Parameter selection**:
+- `stages` order: henry(modify, write) → iris(read_only, audit), one pass per round; decider jack rules each round.
+- `max_rounds: 4` — if not approved within 4 rounds, **abort the workflow**, do not enter §4.
 
-### 3.4 生命周期步骤（master）
+### 3.4 Lifecycle Steps (master)
 
 ```
 team_create(fd-plan)
-team_activate(fd-plan)        # （此时 fd-discussion 已 deactivate）
-team_loop(...)                # initial_task + stages 如上
-# 等待 decider 裁决 approved → team_results 取 PLAN-APPROVED + 方案
-# 若 max_rounds 用尽仍未通过（loop_complete:max_rounds）→ 中断流程，deactivate 后不继续
+team_activate(fd-plan)        # (fd-discussion already deactivated at this point)
+team_loop(...)                # initial_task + stages as above
+# Wait for decider to rule approved → team_results for PLAN-APPROVED + plan
+# If max_rounds exhausted without approval (loop_complete:max_rounds) → abort workflow, do not continue after deactivate
 team_deactivate(fd-plan)
 ```
 
-### 3.5 产出与交接
+### 3.5 Output and Handoff
 
-- master 抓取 `<!-- PLAN-APPROVED -->` + 完整实施方案。
-- 这份方案作为 §4 implement-team pipeline 首阶段（coder）的输入。
-- **若 max_rounds 用尽仍未 approved（loop_complete:max_rounds），中断流程**——deactivate 后不进入 §4，向你汇报方案草案与审计记录。
+- Master extracts `<!-- PLAN-APPROVED -->` + complete implementation plan.
+- This plan serves as §4 implement-team pipeline's first stage (coder) input.
+- **If max_rounds exhausted without approval (loop_complete:max_rounds), abort the workflow** — do not enter §4 after deactivate, report the plan draft and audit records to you.
 
 ---
 
-## §4 implement-team（`team_pipeline`）— 实现
+## §4 implement-team (`team_pipeline`) — Implementation
 
-### 4.1 阶段说明
+### 4.1 Phase Description
 
-按方案**线性流水线**实现：**coder 实现 → tester 写+跑测试 → reviewer 评审**。前 stage 的产出拼进下 stage 的 task，顺序加工。
+Implement according to the plan via a **linear pipeline**: **coder implements → tester writes+runs tests → reviewer reviews**. The preceding stage's output is spliced into the next stage's task, processed in order.
 
-### 4.2 Team 配置
+### 4.2 Team Configuration
 
 ```json
 {
@@ -335,9 +335,9 @@ team_deactivate(fd-plan)
 }
 ```
 
-**Role 选择**：kate `coder`（实现）、leo `tester`（写+跑测试）、mona `reviewer`（评审）。pipeline 各 stage 顺序加工、无 action 字段。
+**Role selection**: kate `coder` (implementation), leo `tester` (write+run tests), mona `reviewer` (review). Pipeline stages are processed in order, no action field.
 
-### 4.3 Master 启动调用
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -347,7 +347,7 @@ team_deactivate(fd-plan)
     "stages": [
       {
         "member": "kate",
-        "task": "Implement the approved plan for the selected OCTeam feature. Plan: <把 §3.5 的 PLAN-APPROVED 方案粘进来>. Make the specified code changes under src/, minimal and convention-following. Output a summary of changed files + key diffs."
+        "task": "Implement the approved plan for the selected OCTeam feature. Plan: <Paste the §3.5 PLAN-APPROVED plan>. Make the specified code changes under src/, minimal and convention-following. Output a summary of changed files + key diffs."
       },
       {
         "member": "leo",
@@ -363,38 +363,38 @@ team_deactivate(fd-plan)
 }
 ```
 
-**参数选择**：
-- pipeline 把每个 stage 的产出**前缀拼进**下一个 stage 的 task——leo 能看到 kate 的改动摘要，mona 能看到 kate 的代码 + leo 的测试结果。
-- 首阶段 task 内嵌 §3.5 的方案。
-- 不设 `signoff_policy`——pipeline 默认 none，三阶段跑完直接交付。
+**Parameter selection**:
+- Pipeline **prefix-splices** each stage's output into the next stage's task — leo can see kate's change summary, mona can see kate's code + leo's test results.
+- The first stage's task embeds §3.5's plan.
+- No `signoff_policy` set — pipeline defaults to none, three stages deliver directly when done.
 
-### 4.4 生命周期步骤（master）
+### 4.4 Lifecycle Steps (master)
 
 ```
-aft_safety(checkpoint, "pre-implement")   # 快照当前代码，便于最后回退
+aft_safety(checkpoint, "pre-implement")   # Snapshot current code, for easy rollback later
 team_create(fd-implement)
-team_activate(fd-implement)   # （此时 fd-plan 已 deactivate）
-team_pipeline(...)            # stages 如上，首阶段 task 含 §3.5 方案
-# 等待三阶段顺序完成 → team_results 取汇总（code + tests + review）
+team_activate(fd-implement)   # (fd-plan already deactivated at this point)
+team_pipeline(...)            # stages as above, first stage task includes §3.5 plan
+# Wait for three stages to complete in order → team_results for the summary (code + tests + review)
 team_deactivate(fd-implement)
 ```
 
-> **为什么在 implement 前 checkpoint**：kate 会直接修改 `src/` 代码。用 `aft_safety`（`op: "checkpoint"`, `name: "pre-implement"`）快照当前文件状态，审计后若需回退可 `aft_safety restore "pre-implement"` 恢复。
+> **Why checkpoint before implement**: kate will directly modify `src/` code. Use `aft_safety` (`op: "checkpoint"`, `name: "pre-implement"`) to snapshot the current file state; after audit, if rollback is needed, use `aft_safety restore "pre-implement"` to restore.
 
-### 4.5 产出与交接
+### 4.5 Output and Handoff
 
-- master 抓取 kate 的改动摘要 + leo 的测试结果 + mona 的评审结论。
-- 实现后的功能（代码 + 测试）作为 §5 audit-team 的审计对象。
+- Master extracts kate's change summary + leo's test results + mona's review conclusion.
+- The implemented feature (code + tests) serves as §5 audit-team's audit target.
 
 ---
 
-## §5 audit-team（`team_parallel`）— 审计
+## §5 audit-team (`team_parallel`) — Audit
 
-### 5.1 阶段说明
+### 5.1 Phase Description
 
-4 名审计员**并行**深审新功能，每人一个维度，独立于 §4 pipeline 内联的 reviewer：**正确性 / 回归 / 测试完备性 / 设计契合**。并行审计完成后，4 人基于全部审计摘要进行 **peer-quorum 投票**（≥50% approve 即通过），投票结果供你参考。
+4 auditors **audit in parallel** the new feature, each with one dimension, independent from §4 pipeline's inline reviewer: **correctness / regression / test completeness / design fit**. After parallel audit completes, the 4 members conduct a **peer-quorum vote** based on all audit summaries (≥50% approve passes), with the vote result provided for your reference.
 
-### 5.2 Team 配置
+### 5.2 Team Configuration
 
 ```json
 {
@@ -425,9 +425,9 @@ team_deactivate(fd-implement)
 }
 ```
 
-**Role 选择**：nina/omar/pat `reviewer`（正确性/回归/测试 三视角，只读深审），quinn `architect`（设计契合视角）。4 人对称，差异来自维度 prompt。
+**Role selection**: nina/omar/pat `reviewer` (correctness/regression/test three perspectives, read-only deep review), quinn `architect` (design fit perspective). 4 symmetric members, differences come from dimension prompts.
 
-### 5.3 Master 启动调用
+### 5.3 Master Launch Call
 
 ```json
 {
@@ -443,60 +443,60 @@ team_deactivate(fd-implement)
 }
 ```
 
-**参数选择**：
-- `mode: isolated` + 维度烤进 prompt——4 路并行各审一个维度。
-- audit-team 看到的是 §4 的实现产出（master 在 task 里给出 changed files 摘要）。
-- `signoff_policy: peer-quorum` + `signoff_quorum: 0.5`——4 路审计完成后，buildSummary 汇总全部审计结论发给每人，各自投 `<signoff>{"approved": true|false}</signoff>`。≥2/4 approve 即通过。投票结果**供你参考**，最终裁定仍由你做。
+**Parameter selection**:
+- `mode: isolated` + dimension baked into prompts — 4 parallel lanes each audit one dimension.
+- audit-team sees §4's implementation output (master gives the changed files summary in the task).
+- `signoff_policy: peer-quorum` + `signoff_quorum: 0.5` — after 4 lanes complete audit, buildSummary aggregates all audit conclusions and sends them to each member, who each cast `<signoff>{"approved": true|false}</signoff>`. ≥2/4 approve passes. The vote result is **for your reference**, the final decision is still yours.
 
-### 5.4 生命周期步骤（master）
+### 5.4 Lifecycle Steps (master)
 
 ```
 team_create(fd-audit)
-team_activate(fd-audit)       # （此时 fd-implement 已 deactivate）
-team_parallel(...)            # §5.3，task 含 §4 实现摘要
-# 等待 4 名审计员产出 → team_results 取汇总
+team_activate(fd-audit)       # (fd-implement already deactivated at this point)
+team_parallel(...)            # §5.3, task includes §4 implementation summary
+# Wait for 4 auditors' output → team_results for the summary
 team_deactivate(fd-audit)
 ```
 
-### 5.5 产出与交接
+### 5.5 Output and Handoff
 
-- master 抓取所有 `<!-- AUDIT: <dim>: pass|fail -->` + findings。
-- master 抓取 peer-quorum 投票结果（signoff_quorum_reached / signoff_quorum_not_reached）。
-- **审计报告与投票结果均为参考；你读取 4 维审计结论 + 投票结果 + 各团队输出，自行裁定整次功能增强的成败。** 若需回退实现，`aft_safety restore "pre-implement"` 恢复到实现前的代码。场景到此结束。
+- Master extracts all `<!-- AUDIT: <dim>: pass|fail -->` + findings.
+- Master extracts the peer-quorum vote result (signoff_quorum_reached / signoff_quorum_not_reached).
+- **The audit report and vote result are for reference only; you read the 4-dimensional audit conclusions + vote result + all team outputs, and decide the success or failure of the entire feature enhancement yourself.** If rollback is needed, use `aft_safety restore "pre-implement"` to restore to the pre-implementation code. The scenario ends here.
 
 ---
 
-## 端到端时序（master 视角）
+## End-to-End Timeline (master perspective)
 
 ```
 T+0    team_create(fd-research) → team_activate → team_parallel
-         6 研究员并行调研（内部+外部）
-T+~15  收 ≥8 candidates → team_deactivate(fd-research)
+         6 researchers research in parallel (internal+external)
+T+~15  Collect ≥8 candidates → team_deactivate(fd-research)
 T+~15  team_create(fd-discussion) → team_activate → team_consensus(topic=candidates)
-         5 debater 辩论投票选 1（≤4 轮）
-T+~30  收 SELECTED → team_deactivate(fd-discussion)
-         ⚠️ 若未达成共识 → 中断流程，不继续
+         5 debaters debate and vote to select 1 (≤4 rounds)
+T+~30  Collect SELECTED → team_deactivate(fd-discussion)
+         ⚠️ If consensus not reached → abort workflow, do not continue
 T+~30  team_create(fd-plan) → team_activate → team_loop
-         每轮 henry 编写 → iris 审计，jack 裁决
-T+~45  收 PLAN-APPROVED → team_deactivate(fd-plan)
-         ⚠️ 若 max_rounds 用尽未通过 → 中断流程，不继续
-T+~45  aft_safety(checkpoint, "pre-implement")   # 快照代码，便于回退
+         Each round: henry writes → iris audits, jack rules
+T+~45  Collect PLAN-APPROVED → team_deactivate(fd-plan)
+         ⚠️ If max_rounds exhausted without approval → abort workflow, do not continue
+T+~45  aft_safety(checkpoint, "pre-implement")   # Snapshot code for rollback
        team_create(fd-implement) → team_activate → team_pipeline
-         kate 实现 → leo 测试 → mona 评审
-T+~70  收 feature+tests → team_deactivate(fd-implement)
+         kate implements → leo tests → mona reviews
+T+~70  Collect feature+tests → team_deactivate(fd-implement)
 T+~70  team_create(fd-audit) → team_activate → team_parallel
-         4 审计员并行深审（正确性/回归/测试/设计）→ peer-quorum 投票
-T+~85  收 audit verdicts + 投票结果 → team_deactivate(fd-audit)
-T+~85  你读取全部输出，裁定结果
+         4 auditors audit in parallel (correctness/regression/test/design) → peer-quorum vote
+T+~85  Collect audit verdicts + vote result → team_deactivate(fd-audit)
+T+~85  You read all output, decide the outcome
 ```
 
-（时长仅为量级估计；功能复杂度越高越久。本场景不设硬性 timeout 上限。）
+(Durations are order-of-magnitude estimates only; higher feature complexity increases time. This scenario has no hard timeout cap.)
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-Start Prompt (Copy and Use)
 
-> 整段粘贴给 master 会话。master 会依次跑 5 个团队，每步按 README 的 JSON 配置执行，团队间数据由 master 手递手。
+> Paste the entire block to the master session. Master will run 5 teams in sequence, executing each step per the README's JSON configuration, with data hand-carried between teams by master.
 
 ```text
 按 demos/composite/feature-dev/README.md 跑一次 OCTeam 功能增强工作流。
@@ -527,10 +527,10 @@ T+~85  你读取全部输出，裁定结果
 
 ---
 
-## 相关文档
+## Related Documents
 
-- [`demos/README.md`](../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
-- [`demos/code-review/README.md`](../code-review/README.md) — 姊妹综合场景：多团队代码评审（同样 4 编排，可对照）
-- parallel / consensus / pipeline / loop 源码：[`src/tools/parallel.ts`](../../src/tools/parallel.ts) / [`consensus.ts`](../../src/tools/consensus.ts) / [`pipeline.ts`](../../src/tools/pipeline.ts) / [`loop.ts`](../../src/tools/loop.ts)
-- delegate / route / arbitrate / tollgate / recurse 源码：[`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`recurse.ts`](../../src/tools/recurse.ts)
-- [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — OCTeam 架构与模块边界（plan/audit 团队需参照）
+- [`demos/README.md`](../README.md) — scenario directory overview (single-primitive 9 modes + this comprehensive scenario)
+- [`demos/code-review/README.md`](../code-review/README.md) — sister comprehensive scenario: multi-team code review (also 4 primitives, for comparison)
+- parallel / consensus / pipeline / loop source: [`src/tools/parallel.ts`](../../src/tools/parallel.ts) / [`consensus.ts`](../../src/tools/consensus.ts) / [`pipeline.ts`](../../src/tools/pipeline.ts) / [`loop.ts`](../../src/tools/loop.ts)
+- delegate / route / arbitrate / tollgate / recurse source: [`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`recurse.ts`](../../src/tools/recurse.ts)
+- [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — OCTeam architecture and module boundaries (plan/audit teams should reference)

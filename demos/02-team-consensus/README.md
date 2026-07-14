@@ -1,35 +1,35 @@
-# team_consensus 编排场景设计
+# team_consensus Orchestration Scenario Design
 
-> **模式**：`team_consensus` — 多轮结构化辩论，所有成员就 `topic` 发表立场并逐轮逼近共识；每轮每成员 emits `<consensus>{"agreed": true|false}</consensus>`，全部 `agreed=true` 即共识达成。无 signoff 闸（全员同意机制本身就是闸）。
-> **源码**：[`src/tools/consensus.ts`](../../src/tools/consensus.ts)
-> **控时设计**：3 成员 × `max_rounds=6`；每轮每成员 2-3 min；总时长 ≈ 6 轮 × 3 min + 调度 ≈ 18-24 min（低于 30 min 上限）。
+> **Mode**: `team_consensus` — Multi-round structured debate, all members state positions on a `topic` and converge toward consensus round by round; each member emits `<consensus>{"agreed": true|false}</consensus>` each round; when all `agreed=true`, consensus is reached. No signoff gate (the all-agree mechanism itself is the gate).
+> **Source**: [`src/tools/consensus.ts`](../../src/tools/consensus.ts)
+> **Time control design**: 3 members × `max_rounds=6`; each round per member 2-3 min; total duration ≈ 6 rounds × 3 min + dispatch ≈ 18-24 min (below the 30 min limit).
 
-## 场景一览
+## Scenario Overview
 
-| # | 方向 | 场景 | 成员数 | Role | max_rounds | 预计总时长 |
+| # | Domain | Scenario | Members | Role | max_rounds | Est. Total Duration |
 |---|------|------|--------|------|------------|-----------|
-| 1 | 数学 | 小数组稳定排序算法选型 | 3 | `mathematician` | 6 | ~24 min |
-| 2 | 计算物理 | 一维热扩散时间格式选择 | 3 | `simulator` | 6 | ~20 min |
-| 3 | 编程 | 短文本串匹配算法选型 | 3 | `coder` | 6 | ~20 min |
-| 4 | 数学 | 60 位 RSA 模数分解算法选型（挑战级） | 6 | `mathematician` | 5 | ~35 min |
+| 1 | Math | Small-array stable sort algorithm selection | 3 | `mathematician` | 6 | ~24 min |
+| 2 | Computational Physics | 1D heat diffusion time scheme selection | 3 | `simulator` | 6 | ~20 min |
+| 3 | Programming | Short-text string matching algorithm selection | 3 | `coder` | 6 | ~20 min |
+| 4 | Math | 60-digit RSA modulus factoring algorithm selection (challenge-level) | 6 | `mathematician` | 5 | ~35 min |
 
 ---
 
-## 场景 1: 小数组稳定排序算法选型
+## Scenario 1: Small-Array Stable Sort Algorithm Selection
 
-### 1.1 场景描述
+### 1.1 Scenario Description
 
-**背景**：当数据量小（n<50）且几乎已排好序，但稳定性是硬性约束时，insertion sort / TimSort / merge sort 三者各有优势。insertion sort 在低逆序对数下接近 O(n)；TimSort 是 hybrid 算法，对小数组有专门优化（minrun + galloping）；merge sort 严格 O(n log n) 但常数大。哪一个是「最优」取决于逆序对密度——这正是适合多轮辩论收敛的开放性问题。
+**Background**: When data is small (n<50) and nearly sorted, but stability is a hard constraint, insertion sort / TimSort / merge sort each have advantages. Insertion sort approaches O(n) with low inversion counts; TimSort is a hybrid algorithm with specialized optimizations for small arrays (minrun + galloping); merge sort is strictly O(n log n) but has larger constants. Which is "optimal" depends on inversion density — precisely the kind of open-ended problem suitable for multi-round debate convergence.
 
-**目标**：3 个成员各辩护一种算法，通过 ≤6 轮辩论收敛到一个共识结论：「命名一个算法 + 一个判据条件」（例：逆序对计数 < n²/16 时 insertion sort，否则 TimSort）。
+**Goal**: 3 members each defend one algorithm, converging through ≤6 rounds of debate to a consensus conclusion: "name one algorithm + one criterion condition" (e.g., insertion sort when inversion count < n²/16, otherwise TimSort).
 
-**成功标准（可机器评判）**：
-- 每个成员最终轮输出含 `<consensus>{"agreed": ..., "choice": "..."}</consensus>` 标记
-- 三成员最终轮全部 `agreed: true`（共识达成，非 max_rounds 耗尽）
-- `choice` 字段值匹配已知算法名（`insertion|timsort|merge`）
-- 三成员的 `choice` 收敛到同一算法名（真正达成共识）
+**Success criteria (machine-verifiable)**:
+- Each member's final-round output contains a `<consensus>{"agreed": ..., "choice": "..."}</consensus>` marker
+- All three members `agreed: true` in the final round (true consensus reached, not max_rounds exhausted)
+- The `choice` field value matches a known algorithm name (`insertion|timsort|merge`)
+- All three members' `choice` converge to the same algorithm name (genuine consensus)
 
-### 1.2 Team 配置
+### 1.2 Team Config
 
 ```json
 {
@@ -55,9 +55,9 @@
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可做复杂度分析、反例构造、数值验证——完全匹配算法选型辩论需求。
+**Role selection rationale**: `mathematician` uses the `oct-junior` agent, capable of complexity analysis, counterexample construction, and numerical verification — perfectly matching the algorithm selection debate needs.
 
-### 1.3 Master 启动调用
+### 1.3 Master Launch Invocation
 
 ```json
 {
@@ -71,13 +71,13 @@
 }
 ```
 
-**参数选择**：
-- `max_rounds: 6` — 算法选型是开放问题，核心论点通常 3 轮内「亮明立场 → 互相反驳 → 收敛」即清，6 轮为收敛余量
-- `timeout_ms: 1800000`（30 min）— 给足余量，正常 ~10 min 收敛
-- 不设 `token_budget` — 论题小，token 自然受限；先求收敛质量
-- 无 `signoff_*` 参数 — `team_consensus` 设计上无 signoff 闸，全员 `agreed=true` 即通过（见源码 wf-013 注释）
+**Parameter selection**:
+- `max_rounds: 6` — algorithm selection is an open question; the core arguments typically resolve within 3 rounds of "state position → mutual rebuttal → converge", with 6 rounds as convergence headroom
+- `timeout_ms: 1800000` (30 min) — ample headroom; normally ~10 min to converge
+- No `token_budget` — the topic is small, tokens are naturally bounded; prioritize convergence quality
+- No `signoff_*` parameters — `team_consensus` by design has no signoff gate; all members `agreed=true` is the pass condition (see source wf-013 comment)
 
-### 1.4 执行流程（时序）
+### 1.4 Execution Flow (Timeline)
 
 ```
 T+0m    master 调用 team_consensus (topic, max_rounds=6)
@@ -90,35 +90,35 @@ T+6~9m  全员 agreed=true，共识达成，运行结束
 T+9m    运行: bun check-math-sort-stability.ts <run_dir>
 ```
 
-### 1.5 评判脚本
+### 1.5 Check Script
 
 [`check-math-sort-stability.ts`](./check-math-sort-stability.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
-- **提取**：全局正则 `<consensus>([\s\S]*?)</consensus>`，取最后一个 tag 为最终轮
-- **断言**：
-  1. 每个成员至少含一个 `<consensus>` tag
-  2. 每个成员最终轮 `agreed: true`（共识真达成，非 max_rounds 耗尽）
-  3. 每个成员最终轮 `choice` 匹配 `/^(insertion|timsort|merge)/i`
-  4. 三成员的 `choice` 收敛到同一算法名（case-insensitive 归一化）
+- **Load**: `runs/<run_id>/{alice,bob,carol}.md`
+- **Extract**: global regex `<consensus>([\s\S]*?)</consensus>`, take the last tag as the final round
+- **Assertions**:
+  1. Each member has at least one `<consensus>` tag
+  2. Each member's final round `agreed: true` (true consensus, not max_rounds exhausted)
+  3. Each member's final round `choice` matches `/^(insertion|timsort|merge)/i`
+  4. All three members' `choice` converge to the same algorithm name (case-insensitive normalized)
 
 ---
 
-## 场景 2: 一维热扩散时间格式选择
+## Scenario 2: 1D Heat Diffusion Time Scheme Selection
 
-### 2.1 场景描述
+### 2.1 Scenario Description
 
-**背景**：一维热传导方程 `u_t = u_xx` 在均匀网格上的有限差分离散，时间积分格式决定稳定性与精度。给定 `dt=0.01`、`dx=0.1`，扩散数 `r = dt/dx² = 0.01/0.01 = 1.0`。显式 FTCS 的 CFL 条件 `r ≤ 0.5` 在此被违反——显式格式数值不稳定，必须换隐式类格式。但隐式（1 阶时间）与 Crank-Nicolson（2 阶时间）在精度与计算成本上仍有取舍。
+**Background**: For the 1D heat equation `u_t = u_xx` discretized via finite differences on a uniform grid, the time integration scheme determines stability and accuracy. Given `dt=0.01`, `dx=0.1`, the diffusion number `r = dt/dx² = 0.01/0.01 = 1.0`. The explicit FTCS CFL condition `r ≤ 0.5` is violated here — the explicit scheme is numerically unstable, requiring an implicit-class scheme instead. But implicit (1st-order in time) and Crank-Nicolson (2nd-order in time) still involve tradeoffs in accuracy vs computational cost.
 
-**目标**：3 个成员各辩护一种格式（显式 FTCS / 全隐式 / Crank-Nicolson），通过 ≤6 轮辩论收敛到一个共识结论：「选定一个格式 + 引用 CFL 稳定性条件（显式 `r = dt/dx² ≤ 0.5`）」。
+**Goal**: 3 members each defend one scheme (explicit FTCS / fully-implicit / Crank-Nicolson), converging through ≤6 rounds of debate to a consensus conclusion: "select one scheme + cite the CFL stability condition (explicit `r = dt/dx² ≤ 0.5`)".
 
-**成功标准（可机器评判）**：
-- 每个成员最终轮输出含 `<consensus>{"agreed": ..., "choice": "..."}</consensus>` 标记
-- 三成员最终轮全部 `agreed: true`
-- `choice` 字段值匹配已知格式名（`explicit|implicit|crank`）
-- 三成员的 `choice` 收敛到同一格式名（显式 FTCS 因 r=1.0>0.5 应被排除，预期收敛到 `implicit` 或 `crank`）
+**Success criteria (machine-verifiable)**:
+- Each member's final-round output contains a `<consensus>{"agreed": ..., "choice": "..."}</consensus>` marker
+- All three members `agreed: true` in the final round
+- The `choice` field value matches a known scheme name (`explicit|implicit|crank`)
+- All three members' `choice` converge to the same scheme name (explicit FTCS should be eliminated because r=1.0>0.5; expected convergence to `implicit` or `crank`)
 
-### 2.2 Team 配置
+### 2.2 Team Config
 
 ```json
 {
@@ -144,9 +144,9 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`simulator` 专为数值仿真设计（PDE/有限差分/稳定性分析），符合热扩散格式选型场景。
+**Role selection rationale**: `simulator` is purpose-built for numerical simulation (PDE/finite difference/stability analysis), fitting the heat diffusion scheme selection scenario.
 
-### 2.3 Master 启动调用
+### 2.3 Master Launch Invocation
 
 ```json
 {
@@ -160,12 +160,12 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `max_rounds: 6` — CFL 判据是硬约束（r=1.0>0.5 直接淘汰显式），剩余 implicit vs Crank-Nicolson 一轮可定，6 轮为收敛余量
-- `timeout_ms: 1800000`（30 min）— 给足余量
-- 无 `signoff_*` 参数 — 共识机制即闸
+**Parameter selection**:
+- `max_rounds: 6` — the CFL criterion is a hard constraint (r=1.0>0.5 directly eliminates explicit), leaving implicit vs Crank-Nicolson resolvable in one round, with 6 rounds as convergence headroom
+- `timeout_ms: 1800000` (30 min) — ample headroom
+- No `signoff_*` parameters — the consensus mechanism is the gate
 
-### 2.4 执行流程（时序）
+### 2.4 Execution Flow (Timeline)
 
 ```
 T+0m    master 调用 team_consensus (topic, max_rounds=6)
@@ -178,36 +178,36 @@ T+6~9m  共识达成
 T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
 ```
 
-### 2.5 评判脚本
+### 2.5 Check Script
 
 [`check-physics-heat-diffusion.ts`](./check-physics-heat-diffusion.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
-- **提取**：全局正则 `<consensus>([\s\S]*?)</consensus>`，取最后一个 tag 为最终轮
-- **断言**：
-  1. 每个成员至少含一个 `<consensus>` tag
-  2. 每个成员最终轮 `agreed: true`
-  3. 每个成员最终轮 `choice` 匹配 `/^(explicit|implicit|crank)/i`
-  4. 三成员的 `choice` 收敛到同一格式名
-  5. 最终共识格式 ≠ `explicit`（因 r=1.0 违反 CFL，显式格式应被排除）
+- **Load**: `runs/<run_id>/{alice,bob,carol}.md`
+- **Extract**: global regex `<consensus>([\s\S]*?)</consensus>`, take the last tag as the final round
+- **Assertions**:
+  1. Each member has at least one `<consensus>` tag
+  2. Each member's final round `agreed: true`
+  3. Each member's final round `choice` matches `/^(explicit|implicit|crank)/i`
+  4. All three members' `choice` converge to the same scheme name
+  5. Final consensus scheme ≠ `explicit` (since r=1.0 violates CFL, the explicit scheme should be eliminated)
 
 ---
 
-## 场景 3: 短文本串匹配算法选型
+## Scenario 3: Short-Text String Matching Algorithm Selection
 
-### 3.1 场景描述
+### 3.1 Scenario Description
 
-**背景**：模式串匹配是基础算法题。当文本很短（<1KB）且模式也短（≤32 字符）时，朴素法、KMP、Boyer-Moore、Sunday 各有适用场景：朴素法常数极小（无预处理），KMP 保证 O(n+m) 最坏情况但预处理对小输入不值，Sunday（Horspool 变体）平均 O(n/m) 子线性，Boyer-Moore 适合较长模式。短文本下「最优」取决于文本/模式长度比——适合多轮辩论。
+**Background**: Pattern matching is a fundamental algorithm problem. When text is very short (<1KB) and patterns are also short (≤32 chars), naive, KMP, Boyer-Moore, and Sunday each have applicable domains: naive has minimal constants (zero preprocessing), KMP guarantees O(n+m) worst case but its preprocessing overhead is not worthwhile for small input, Sunday (Horspool variant) averages O(n/m) sublinear, Boyer-Moore excels for longer patterns. For short text, "optimal" depends on the text/pattern length ratio — ideal for multi-round debate.
 
-**目标**：3 个成员各辩护一种算法（naive / KMP / Sunday），通过 ≤6 轮辩论收敛到一个共识结论：「一个以文本/模式长度为键的决策树」（例：n×m<256 用 naive，否则 Sunday）。
+**Goal**: 3 members each defend one algorithm (naive / KMP / Sunday), converging through ≤6 rounds of debate to a consensus conclusion: "a decision tree keyed on text/pattern lengths" (e.g., naive when n×m<256, otherwise Sunday).
 
-**成功标准（可机器评判）**：
-- 每个成员最终轮输出含 `<consensus>{"agreed": ..., "choice": "..."}</consensus>` 标记
-- 三成员最终轮全部 `agreed: true`
-- `choice` 字段值匹配已知算法名（`naive|kmp|boyer|sunday`）
-- 三成员的 `choice` 收敛到同一算法名
+**Success criteria (machine-verifiable)**:
+- Each member's final-round output contains a `<consensus>{"agreed": ..., "choice": "..."}</consensus>` marker
+- All three members `agreed: true` in the final round
+- The `choice` field value matches a known algorithm name (`naive|kmp|boyer|sunday`)
+- All three members' `choice` converge to the same algorithm name
 
-### 3.2 Team 配置
+### 3.2 Team Config
 
 ```json
 {
@@ -233,9 +233,9 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`coder` 用 `oct-junior` agent，可写基准代码、实测短文本匹配耗时来支撑论点——贴合算法实现辩论。
+**Role selection rationale**: `coder` uses the `oct-junior` agent, capable of writing benchmark code and measuring short-text matching wall-clock times to support arguments — fitting the algorithm implementation debate.
 
-### 3.3 Master 启动调用
+### 3.3 Master Launch Invocation
 
 ```json
 {
@@ -249,12 +249,12 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `max_rounds: 6` — 短文本场景边界清晰（n<1KB），核心对比通常 3 轮内「亮立场 → 实测对比 → 收敛决策树」即成，6 轮为收敛余量
-- `timeout_ms: 1800000`（30 min）— 给足余量，正常 ~8 min 收敛
-- 无 `signoff_*` 参数 — 共识机制即闸
+**Parameter selection**:
+- `max_rounds: 6` — the short-text scenario has clear boundaries (n<1KB); the core comparison typically finishes within 3 rounds of "state position → empirical comparison → converge to decision tree", with 6 rounds as convergence headroom
+- `timeout_ms: 1800000` (30 min) — ample headroom; normally ~8 min to converge
+- No `signoff_*` parameters — the consensus mechanism is the gate
 
-### 3.4 执行流程（时序）
+### 3.4 Execution Flow (Timeline)
 
 ```
 T+0m    master 调用 team_consensus (topic, max_rounds=6)
@@ -267,48 +267,48 @@ T+6~8m  共识达成
 T+8m    运行: bun check-coding-string-match.ts <run_dir>
 ```
 
-### 3.5 评判脚本
+### 3.5 Check Script
 
 [`check-coding-string-match.ts`](./check-coding-string-match.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
-- **提取**：全局正则 `<consensus>([\s\S]*?)</consensus>`，取最后一个 tag 为最终轮
-- **断言**：
-  1. 每个成员至少含一个 `<consensus>` tag
-  2. 每个成员最终轮 `agreed: true`
-  3. 每个成员最终轮 `choice` 匹配 `/^(naive|kmp|boyer|sunday)/i`
-  4. 三成员的 `choice` 收敛到同一算法名（case-insensitive 归一化）
+- **Load**: `runs/<run_id>/{alice,bob,carol}.md`
+- **Extract**: global regex `<consensus>([\s\S]*?)</consensus>`, take the last tag as the final round
+- **Assertions**:
+  1. Each member has at least one `<consensus>` tag
+  2. Each member's final round `agreed: true`
+  3. Each member's final round `choice` matches `/^(naive|kmp|boyer|sunday)/i`
+  4. All three members' `choice` converge to the same algorithm name (case-insensitive normalized)
 
 ---
 
-## 场景 4: 60 位 RSA 模数分解算法选型（挑战级）
+## Scenario 4: 60-Digit RSA Modulus Factoring Algorithm Selection (Challenge-Level)
 
-> **挑战级说明**：本场景刻意突破易级场景「≤4 成员、≤30 min」的规模约束，采用 **6 成员 × `max_rounds=5`** 模拟真实的密码学算法选型辩论——候选方法多、复杂度阶层深、收敛慢。预计总时长 ≈ 35 min。
+> **Challenge-level note**: This scenario deliberately breaks the easy-level constraint of "≤4 members, ≤30 min", using **6 members × `max_rounds=5`** to simulate a realistic cryptographic algorithm selection debate — more candidates, deeper complexity hierarchy, slower convergence. Estimated total duration ≈ 35 min.
 
-### 4.1 场景描述
+### 4.1 Scenario Description
 
-**背景**：分解一个约 60 位十进制（≈200-bit）的 RSA 模数 `N = p·q`（p、q 均为 ~30 位素数），是经典数论与计算数论的标志性问题。六种主流算法各有复杂度阶层与适用域：
+**Background**: Factoring a ~60-digit decimal (~200-bit) RSA modulus `N = p·q` (p, q both ~30-digit primes) is a classic problem in number theory and computational number theory. Six mainstream algorithms each have different complexity classes and domains of applicability:
 
-| 算法 | 复杂度（N 为模数） | 60 位平衡半素数下的适用性 |
+| Algorithm | Complexity (N is modulus) | Applicability for 60-digit balanced semiprime |
 |------|--------------------|-----------------------------|
-| 试除法 trial division | `O(N^(1/2))` ≈ `O(10^30)` | 完全不可行（仅对小因子有效） |
-| Pollard rho | `O(p^(1/2))` ≈ `O(N^(1/4))` ≈ `10^15` | 平衡半素数下不可行（仅对小/中因子强） |
-| Lenstra ECM | `L_p[1/2]`（取决于最小因子 p） | 平衡时被 sieve 系压制（非平衡因子时最强） |
-| 二次筛 QS | `L_N[1/2, 1]`（次指数） | 60 位下因开销低，wall-clock 竞争力强 |
-| 数域筛 NFS | `L_N[1/3, 1.923]`（次指数，渐近最优） | 标准/记录级工具，可扩展性最强 |
-| Shor 量子算法 | `O((log N)^3)`（多项式） | 多项式时间但需容错量子机，目前仅未来相关 |
+| Trial division | `O(N^(1/2))` ≈ `O(10^30)` | Completely infeasible (only effective for small factors) |
+| Pollard rho | `O(p^(1/2))` ≈ `O(N^(1/4))` ≈ `10^15` | Infeasible for balanced semiprime (only strong for small/medium factors) |
+| Lenstra ECM | `L_p[1/2]` (depends on smallest factor p) | Dominated by sieve methods when balanced (strongest for unbalanced factors) |
+| Quadratic sieve QS | `L_N[1/2, 1]` (sub-exponential) | Competitive at 60-digit due to low overhead, strong wall-clock contender |
+| Number field sieve NFS | `L_N[1/3, 1.923]` (sub-exponential, asymptotically optimal) | Standard/record-class tool, strongest scalability |
+| Shor's quantum algorithm | `O((log N)^3)` (polynomial) | Polynomial time but requires fault-tolerant quantum computer, currently future-relevant only |
 
-关键判据：对**平衡**的 60 位 RSA 半素数，试除 / Pollard rho / ECM 都被次指数 sieve 系压制；QS 在 60 位 wall-clock 可能略胜，但 NFS 是渐近最优（`L[1/3]`）、记录保持者、业界标准。Shor 是唯一已知多项式时间算法，但当前缺乏足够规模的容错量子机——属未来相关。
+Key criterion: For a **balanced** 60-digit RSA semiprime, trial division / Pollard rho / ECM are all dominated by the sub-exponential sieve methods; QS may have a slight wall-clock edge at 60-digit, but NFS is asymptotically optimal (`L[1/3]`), the record holder, and the industry standard. Shor's is the only known polynomial-time algorithm, but currently lacks a sufficiently large fault-tolerant quantum computer — it is future-relevant.
 
-**目标**：6 个成员各辩护一种算法，通过 ≤5 轮辩论收敛到一个共识结论：「选定一种最佳**实用经典**方法（预期 NFS）+ 显式承认 Shor 量子算法的未来相关性」。
+**Goal**: 6 members each defend one algorithm, converging through ≤5 rounds of debate to a consensus conclusion: "select one best **practical classical** method (expected NFS) + explicitly acknowledge Shor's quantum algorithm as future-relevant".
 
-**成功标准（可机器评判）**：
-- 每个成员最终轮输出含 `<consensus>{"agreed": ..., "choice": "..."}</consensus>` 标记
-- 六成员最终轮全部 `agreed: true`（共识真达成，非 max_rounds 耗尽）
-- 每个成员最终轮 `choice` ∈ {`nfs`, `number-field-sieve`, `quadratic-sieve`, `qs`, `pollard-rho`, `ecm`, `shor`, `trial-division`}
-- 至少一位成员的论证提及关键词 `{sub-exponential, 60-digit, rsa, quantum}` 之一（确认辩论锚定在 RSA 分解问题上）
+**Success criteria (machine-verifiable)**:
+- Each member's final-round output contains a `<consensus>{"agreed": ..., "choice": "..."}</consensus>` marker
+- All six members `agreed: true` in the final round (true consensus reached, not max_rounds exhausted)
+- Each member's final round `choice` ∈ {`nfs`, `number-field-sieve`, `quadratic-sieve`, `qs`, `pollard-rho`, `ecm`, `shor`, `trial-division`}
+- At least one member's argument mentions one of the keywords `{sub-exponential, 60-digit, rsa, quantum}` (confirming the debate is anchored on the RSA factoring problem)
 
-### 4.2 Team 配置
+### 4.2 Team Config
 
 ```json
 {
@@ -349,11 +349,11 @@ T+8m    运行: bun check-coding-string-match.ts <run_dir>
 }
 ```
 
-**成员→方法映射**：alice→试除法、bob→Pollard rho、carol→二次筛 QS、dave→数域筛 NFS、erin→Lenstra ECM、frank→Shor 量子算法。
+**Member→method mapping**: alice→trial division, bob→Pollard rho, carol→quadratic sieve QS, dave→number field sieve NFS, erin→Lenstra ECM, frank→Shor's quantum algorithm.
 
-**Role 选择理由**：6 成员均用 `mathematician`（`oct-junior` agent），可做复杂度阶层分析（`O` / 次指数 `L[]`）、对数计算、反例构造——完全匹配密码学算法选型的深度辩论需求。
+**Role selection rationale**: All 6 members use `mathematician` (`oct-junior` agent), capable of complexity hierarchy analysis (`O` / sub-exponential `L[]`), logarithmic calculation, and counterexample construction — perfectly matching the deep debate needs of cryptographic algorithm selection.
 
-### 4.3 Master 启动调用
+### 4.3 Master Launch Invocation
 
 ```json
 {
@@ -367,13 +367,13 @@ T+8m    运行: bun check-coding-string-match.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `max_rounds: 5` — 6 种算法、复杂度阶层深，需更多轮次让弱候选（试除 / Pollard rho / ECM）依次让步、QS 与 NFS 充分对比、Shor 定位为「未来相关」
-- `timeout_ms: 2400000`（40 min）— 6 成员 × 5 轮，给足余量，正常 ~35 min 收敛
-- 不设 `token_budget` — 论题深，token 自然受限；先求收敛质量
-- 无 `signoff_*` 参数 — `team_consensus` 设计上无 signoff 闸，全员 `agreed=true` 即通过（见源码 wf-013 注释）
+**Parameter selection**:
+- `max_rounds: 5` — 6 algorithms, deep complexity hierarchy, requires more rounds for weak candidates (trial division / Pollard rho / ECM) to concede sequentially, for QS vs NFS to fully compare, and for Shor to be positioned as "future-relevant"
+- `timeout_ms: 2400000` (40 min) — 6 members × 5 rounds, ample headroom; normally ~35 min to converge
+- No `token_budget` — the topic is deep, tokens are naturally bounded; prioritize convergence quality
+- No `signoff_*` parameters — `team_consensus` by design has no signoff gate; all members `agreed=true` is the pass condition (see source wf-013 comment)
 
-### 4.4 执行流程（时序）
+### 4.4 Execution Flow (Timeline)
 
 ```
 T+0m    master 调用 team_consensus (topic, max_rounds=5)
@@ -388,37 +388,37 @@ T+20~35m 共识达成
 T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 ```
 
-### 4.5 评判脚本
+### 4.5 Check Script
 
 [`check-math-factoring-consensus.ts`](./check-math-factoring-consensus.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md`（6 个成员）
-- **提取**：全局正则 `<consensus>([\s\S]*?)</consensus>`，取最后一个 tag 为最终轮
-- **断言**：
-  1. 每个成员至少含一个 `<consensus>` tag
-  2. 每个成员最终轮 `agreed: true`（共识真达成，非 max_rounds 耗尽）
-  3. 每个成员最终轮 `choice` 归一化后 ∈ 允许集 {`nfs`, `number-field-sieve`, `quadratic-sieve`, `qs`, `pollard-rho`, `ecm`, `shor`, `trial-division`}
-  4. 至少一位成员的全文论证匹配关键词之一 `{sub-exponential, 60-digit, rsa, quantum}`（确认锚定 RSA 分解问题）
+- **Load**: `runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md` (6 members)
+- **Extract**: global regex `<consensus>([\s\S]*?)</consensus>`, take the last tag as the final round
+- **Assertions**:
+  1. Each member has at least one `<consensus>` tag
+  2. Each member's final round `agreed: true` (true consensus, not max_rounds exhausted)
+  3. Each member's final round `choice`, normalized, ∈ allowed set {`nfs`, `number-field-sieve`, `quadratic-sieve`, `qs`, `pollard-rho`, `ecm`, `shor`, `trial-division`}
+  4. At least one member's full argument matches one of the keywords `{sub-exponential, 60-digit, rsa, quantum}` (confirming anchoring on the RSA factoring problem)
 
 ---
 
-## 验收清单
+## Acceptance Checklist
 
-- [ ] 4 个 check 脚本 `tsc -p demos/tsconfig.json` 通过（无类型错误）
-- [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` 均为预设）
-- [ ] 每个 master 调用参数符合 `team_consensus` schema（`team_id` / `topic` / `max_rounds` / `timeout_ms`）
-- [ ] 每个调用**无** `signoff_*` 参数（共识机制即闸，源码 wf-013）
-- [ ] 易级场景（1-3）总时长 ≤ 24 min；挑战级场景 4 ≈ 35 min（6 成员 × `max_rounds=5`，刻意突破标准 30 min 上限作为规模扩展）
-- [ ] 成员 prompt 中明确 `<consensus>` 输出格式约定，评判脚本与之对齐
+- [ ] 4 check scripts pass `tsc -p demos/tsconfig.json` (no type errors)
+- [ ] Each team config has valid roles (`mathematician` / `simulator` / `coder` are all presets)
+- [ ] Each master invocation parameters conform to `team_consensus` schema (`team_id` / `topic` / `max_rounds` / `timeout_ms`)
+- [ ] Each invocation has **no** `signoff_*` parameters (the consensus mechanism is the gate, source wf-013)
+- [ ] Easy-level scenarios (1-3) total duration ≤ 24 min; challenge-level scenario 4 ≈ 35 min (6 members × `max_rounds=5`, deliberately breaking the standard 30 min limit for scale extension)
+- [ ] Member prompts explicitly define `<consensus>` output format conventions, aligned with check scripts
 
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-Start Prompt (Copy and Use)
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成「创建团队 → 激活 → 启动编排 → 等待汇总 → 运行评判脚本」的完整闭环。所有具体配置直接引用本 README 对应小节。
+> Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for aggregation → run check script". All specific configs directly reference the corresponding sections of this README.
 
-### 场景 1: 小规模排序选型（数学）
+### Scenario 1: Small-Scale Sort Selection (Math)
 
 ```text
 执行 demos/02-team-consensus/README.md「场景 1」的完整闭环并自动评判。
@@ -435,7 +435,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 成功标准：所有成员最终轮 emit `"agreed": true`；共识 choice ∈ {insertion, timsort, merge}。
 ```
 
-### 场景 2: 一维热传导时间格式选型（物理）
+### Scenario 2: 1D Heat Conduction Time Scheme Selection (Physics)
 
 ```text
 执行 demos/02-team-consensus/README.md「场景 2」的完整闭环并自动评判。
@@ -452,7 +452,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 成功标准：全员最终轮 `"agreed": true`；共识 choice ∈ {explicit, implicit, crank-nicolson}。
 ```
 
-### 场景 3: 短文本字符串匹配选型（编程）
+### Scenario 3: Short-Text String Matching Selection (Programming)
 
 ```text
 执行 demos/02-team-consensus/README.md「场景 3」的完整闭环并自动评判。
@@ -469,7 +469,7 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 成功标准：全员最终轮 `"agreed": true`；共识 choice ∈ {naive, kmp, boyer, sunday}。
 ```
 
-### 场景 4: 60 位 RSA 模数分解算法选型（挑战级，数学）
+### Scenario 4: 60-Digit RSA Modulus Factoring Algorithm Selection (Challenge-Level, Math)
 
 ```text
 执行 demos/02-team-consensus/README.md「场景 4」的完整闭环并自动评判（挑战级，6 成员 × max_rounds=5，预计 ~35 min）。

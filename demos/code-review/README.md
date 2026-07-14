@@ -1,60 +1,60 @@
-# 综合场景：OCTeam 多团队代码评审
+# Comprehensive Scenario: OCTeam Multi-Team Code Review
 
-3 阶段代码评审链（**审计 → 确认缺陷 → 修复**），由 3 个独立团队 × 3 种编排原语串联完成。audit 一次性审计；triage 与 fix 按 **5 条一组**循环（每组先 triage 辩论、再 fix 逐个修复），直至 findings 处理完。master 作集成枢纽，团队间彼此隔离、数据手递手。**fix-team 每组创建全新实例**（避免单实例累积 tollgate run 性能下降）。
+A 3-stage code review chain (**Audit → Confirm Defects → Fix**), completed by 3 independent teams × 3 orchestration primitives chained together. Audit runs once; triage and fix loop in **groups of 5** (each group first debates via triage, then fixes one by one) until all findings are processed. Master acts as the integration hub, teams are isolated from each other with hand-to-hand data passing. **fix-team creates a fresh instance per group** (to avoid performance degradation from accumulated tollgate runs in a single instance).
 
-**自用模板**：不绑定特定靶子，不含评判脚本。把 `<TARGET>` 替换为你要评审的代码（文件 / 模块 / 目录），按文末 quick-start prompt 跑通；发现的真假与修复的正确性**由你自行判断**。
+**Self-use template**: not bound to a specific target, no check scripts included. Replace `<TARGET>` with the code you want to review (file / module / directory), run using the quick-start prompt at the end of this document; the validity of findings and correctness of fixes are **for you to judge**.
 
-## 工作流总览
+## Workflow Overview
 
-| 阶段 | 团队 | 编排原语 | 输入 | 产出（交接 marker） |
+| Phase | Team | Orchestration Primitive | Input | Output (handoff marker) |
 |------|------|---------|------|---------------------|
-| ① 审计（一次） | **audit-team** | `team_parallel` | `<TARGET>` 源码 | `<!-- FINDING: <id>:<dim>:<severity> -->` |
-| ② 确认缺陷（每组一次，≤5 条） | **triage-team** | `team_arbitrate` | 当前组的 findings | `<!-- CONFIRMED: <id> -->` |
-| ③ 修复（逐个门控，本组 CONFIRMED 串行） | **fix-team** | `team_tollgate` | 本组每个 CONFIRMED 一条流水线 | `<!-- FIXED: <id> -->` + 补丁 |
+| ① Audit (once) | **audit-team** | `team_parallel` | `<TARGET>` source code | `<!-- FINDING: <id>:<dim>:<severity> -->` |
+| ② Confirm Defects (once per group, ≤5 items) | **triage-team** | `team_arbitrate` | Current group's findings | `<!-- CONFIRMED: <id> -->` |
+| ③ Fix (one-by-one gating, serial for current group CONFIRMED) | **fix-team** | `team_tollgate` | One pipeline per CONFIRMED in current group | `<!-- FIXED: <id> -->` + patches |
 
-②③ 按 5 条一组循环 G=⌈N/5⌉ 次（末组可不足 5）。audit 去重合并后**不按 severity 裁剪**，high/medium/low 全保留。
+②③ loop G=⌈N/5⌉ times in groups of 5 (last group may have fewer than 5). After audit deduplication and merging, **do not filter by severity**; high/medium/low are all kept.
 
-用到 3 种编排：**parallel / arbitrate / tollgate**。tollgate 的每道 stage 有独立 verifier（两道门用不同 verifier），FAIL 回退 producer，INVALID 升级到 arbiter，最终由 signoff decider 签字。
+Uses 3 orchestration primitives: **parallel / arbitrate / tollgate**. Each tollgate stage has an independent verifier (different verifiers for the two gates). FAIL rolls back the producer, INVALID escalates to the arbiter, and the signoff decider signs off at the end.
 
 ```
 <TARGET> ──► audit-team (parallel)  ──findings──► master
-                                                     │ 去重合并 + 分组（每组 5，末组可不足 5）
+                                                     │ Deduplicate+merge + group (5 per group, last group may have fewer than 5)
                                                      ▼
-                           ┌─── loop G 组 ────────────────────────┐
-                           │                                      │
-                           │  triage-team (arbitrate)             │
-                           │    ◄── 当前组 findings (≤5) ──       │
-                           │    └── confirmed (本组) ──► master   │
-                           │                                      │
-                           │  fix-team (tollgate)                 │
-                           │    ◄── confirmed (本组) ──           │
-                           │    └── fixed+patches ──► master      │
-                           └──────────────────────────────────────┘
-                                                     │ 全部组完成
+                           ┌─── loop G groups ───────────────────────┐
+                           │                                         │
+                           │  triage-team (arbitrate)                │
+                           │    ◄── current group findings (≤5) ──  │
+                           │    └── confirmed (current group) ──► master │
+                           │                                         │
+                           │  fix-team (tollgate)                    │
+                           │    ◄── confirmed (current group) ──     │
+                           │    └── fixed+patches ──► master         │
+                           └─────────────────────────────────────────┘
+                                                     │ All groups done
                                                      ▼
-                                                     master ──► 你判断
+                                                     master ──► you judge
 ```
 
-## 如何使用
+## How to Use
 
-1. **确定 `<TARGET>`**：你要评审的代码路径（单文件 / 目录 / 模块名）。
-2. **依次跑 3 个团队**（§1–§3）。每个团队走完整生命周期：`team_create` → `team_activate` → `team_<mode>` → 收产出 → `team_deactivate`。
-3. **交接**：audit 的 findings 由 master 去重合并后**分 5 条一组**（不裁剪 severity）；每组 findings → 当前组 arbitrate 的 topic；本组 confirmed → 当前组逐个 tollgate run 的 task。组间 triage→fix 交替循环。
-4. **判断**：你读取 fix-team 的 FIXED marker 与补丁，自行裁定结果。本场景**不设回归门 / 不跑评判脚本**。
+1. **Determine `<TARGET>`**: the code path you want to review (single file / directory / module name).
+2. **Run 3 teams in sequence** (§1–§3). Each team goes through its full lifecycle: `team_create` → `team_activate` → `team_<mode>` → collect output → `team_deactivate`.
+3. **Handoff**: audit findings are deduplicated and merged by master then **grouped in batches of 5** (no severity filtering); each group's findings → current group's arbitrate topic; current group's confirmed → current group's individual tollgate run tasks. Triage→fix alternates between groups.
+4. **Judge**: you read the fix-team's FIXED markers and patches, and decide the outcome yourself. This scenario **has no regression gate / no check scripts**.
 
-## team 切换
+## Team Switching
 
-同一时刻**仅一个团队** active。`team_activate` 在已有 active 团队时会拒绝——**必须先 `team_deactivate` 再 `team_activate` 下一个**。每个团队段的 master 步骤都已显式写出 deactivate。
+Only **one team** active at a time. `team_activate` will be rejected if another team is already active — **you must `team_deactivate` before `team_activate` the next**. Each team section's master steps explicitly include deactivate.
 
 ---
 
-## §1 audit-team（`team_parallel`）— 审计
+## §1 audit-team (`team_parallel`) — Audit
 
-### 1.1 阶段说明
+### 1.1 Phase Description
 
-8 个 reviewer **并行**审计 `<TARGET>`，每人一个专属维度（维度烤进成员 prompt，parallel 跑 isolated）。覆盖：正确性/边界、逻辑/算法、并发/竞态、安全/输入校验、错误处理/资源清理、性能/效率、API 契约/类型安全、可维护性/代码异味。
+8 reviewers **audit** `<TARGET>` in parallel, each with a dedicated dimension (dimension is baked into the member prompt, parallel runs isolated). Coverage: correctness/boundaries, logic/algorithms, concurrency/races, security/input validation, error handling/resource cleanup, performance/efficiency, API contracts/type safety, maintainability/code smells.
 
-### 1.2 Team 配置
+### 1.2 Team Configuration
 
 ```json
 {
@@ -105,9 +105,9 @@
 }
 ```
 
-**Role 选择**：`reviewer` 为只读角色（审计不应改码），8 人对称，差异来自维度 prompt。
+**Role selection**: `reviewer` is a read-only role (audits should not modify code), 8 symmetric members, differences come from dimension prompts.
 
-### 1.3 Master 启动调用
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -123,40 +123,40 @@
 }
 ```
 
-**参数选择**：
-- `mode: isolated` + 维度烤进成员 prompt——8 路并行各自扫一个维度，互不重叠。
-- `reduce_policy: merge` + `reducer_member: pat`——8 路产出**合并**成一份（保留全部维度发现，不摘要/挑选），让 triage-team 拿到完整 findings 清单。reducer 必须是 team 成员之一（工具从 `team.members.find()` 查找）；选 pat 是因 maintainability 维度天然贴合"汇总全局发现"的视角，且 reduce 阶段 prompt 固定为机械合并（不与其审计维度 prompt 冲突）。
-- 不设 `signoff_policy`——parallel 默认无 signoff，跑完即汇总。
+**Parameter selection**:
+- `mode: isolated` + dimension baked into member prompts — 8 parallel lanes each scan one dimension, with no overlap.
+- `reduce_policy: merge` + `reducer_member: pat` — 8 lane outputs are **merged** into one (preserving all dimension findings, no summary/selection), giving the triage-team the complete findings list. The reducer must be a team member (looked up by the tool via `team.members.find()`); pat is chosen because the maintainability dimension naturally fits the perspective of "aggregating global findings", and the reduce phase prompt is fixed as mechanical merging (no conflict with the audit dimension prompt).
+- No `signoff_policy` set — parallel defaults to no signoff, results are collected when done.
 
-### 1.4 生命周期步骤（master）
+### 1.4 Lifecycle Steps (master)
 
 ```
-team_create(cr-audit)         # 用 §1.2 JSON
-team_activate(cr-audit)       # 激活（确认当前无其它 active 团队）
-team_parallel(...)            # 用 §1.3 JSON
-# 等待 8 名 reviewer 产出 → team_results 取汇总
-team_deactivate(cr-audit)     # 释放，为下一个团队让路
+team_create(cr-audit)         # Use §1.2 JSON
+team_activate(cr-audit)       # Activate (confirm no other active team currently)
+team_parallel(...)            # Use §1.3 JSON
+# Wait for 8 reviewers' output → team_results for the summary
+team_deactivate(cr-audit)     # Release, make way for next team
 ```
 
-### 1.5 产出与交接
+### 1.5 Output and Handoff
 
-- master 从 8 份成员输出抓取所有 `<!-- FINDING: <id>:<dim>:<severity> -->`，**汇总成一张 findings 清单**（id + dim + severity + 描述），同时维护 **id → 描述映射**（后续 §3 tollgate task 展开需要）。
-- **去重合并（不按严重度裁剪）**：按 id 去重，同 id 的多维发现合并为一条；**保留全部等级**（high / medium / low 均保留），不丢弃任何低等级发现。severity 仅作为 triage debater 的上下文信息，不用于过滤。
-- 去重后若 **0 条 findings**（没有任何维度的任何发现），master 如实汇报并**中断流程**。
-- **分组（每组 5 条）**：把去重后的清单按合并顺序切成若干组，每组 5 条，最后一组可能不足 5 条。组数 G = ⌈总条数 / 5⌉。
-- 这些组**严格串行**进入 §2 → §3 的循环：每组先 triage 讨论，再 fix 修复；**必须等本组 triage→fix 全部跑完，才进入下一组**——组间**不并行**多组，不交叉。组内顺序与组间顺序均按合并顺序，**不按 severity 重排**。
+- Master extracts all `<!-- FINDING: <id>:<dim>:<severity> -->` from the 8 member outputs, **compiles a findings list** (id + dim + severity + description), and also maintains an **id → description map** (needed later for §3 tollgate task expansion).
+- **Deduplication and merge (no severity filtering)**: deduplicate by id, merge multi-dimension findings with the same id into one entry; **keep all severity levels** (high / medium / low all retained), do not discard any low-level findings. Severity is only used as context info for triage debaters, not for filtering.
+- If after deduplication there are **0 findings** (no findings from any dimension), master reports truthfully and **aborts the workflow**.
+- **Grouping (5 per group)**: split the deduplicated list in merge order into groups of 5; the last group may have fewer than 5. Group count G = ⌈total count / 5⌉.
+- These groups enter the §2 → §3 loop **strictly serially**: each group first goes through triage discussion, then fix repair; **you must wait until the current group's triage→fix is fully completed before entering the next group** — groups are **not parallelized**, no interleaving. Intra-group and inter-group ordering follows merge order, **no reordering by severity**.
 
 ---
 
-## §2 triage-team（`team_arbitrate`）— 确认缺陷（真假辩论）
+## §2 triage-team (`team_arbitrate`) — Confirm Defects (Real-vs-False-Positive Debate)
 
-### 2.1 阶段说明
+### 2.1 Phase Description
 
-> triage-team 在 §1.5 分组循环中**每组运行一次** `team_arbitrate`：每次只辩论当前组的 findings（≤5 条），不混组、不跨组累积。
+> triage-team runs **once per group** in the §1.5 grouping loop using `team_arbitrate`: each run only debates the current group's findings (≤5 items), no mixing across groups, no cumulative cross-group debating.
 
-6 名 debater（2 reviewer + 2 architect + 1 coder + 1 explorer）多轮辩论**当前组的 findings**：**哪些是真问题、哪些是误报**。**本阶段不讨论修复策略**——修复方案交给 §3 fix-team 的 coder 自行决定。辩论结束后，1 名 `almighty` 仲裁（sam）权衡各方立场下达**有约束力裁决**——**只确认 debater 达成共识的发现**（仍有分歧的默认丢弃）。
+6 debaters (2 reviewer + 2 architect + 1 coder + 1 explorer) debate **the current group's findings** across multiple rounds: **which are real issues, which are false positives**. **This phase does not discuss fix strategies** — fix approaches are deferred to §3 fix-team's coder for independent decisions. After the debate, 1 `almighty` arbiter (sam) weighs all positions and issues a **binding ruling** — **only confirms findings where debaters reached consensus** (those with remaining disagreement are discarded by default).
 
-### 2.2 Team 配置
+### 2.2 Team Configuration
 
 ```json
 {
@@ -202,16 +202,16 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 }
 ```
 
-**Role 选择**：erin/frank 用 `reviewer`（只读深审），grace/quinn 用 `architect`（架构视角判断是否真违反不变量/契约）。mona 用 `coder`（实现者视角，默认质疑可触发性）、ruby 用 `explorer`（代码库可达性视角，默认质疑路径可达），两人倾向唱反调——除非被具体证据（触发调用链、缺失防护、可演示失败）说服，否则倾向于判为误报。sam 用 `almighty`（仲裁，非辩手、非 master）——辩论结束后权衡 6 方立场，按「只确认共识发现」的约束力规则下达裁决。辩论焦点统一收敛到"真假"，策略留给后续。
+**Role selection**: erin/frank use `reviewer` (read-only deep review), grace/quinn use `architect` (architectural perspective on whether invariants/contracts are genuinely violated). mona uses `coder` (implementer perspective, default skepticism about triggerability), ruby uses `explorer` (codebase reachability perspective, default skepticism about path reachability), both inclined to play devil's advocate — tend to classify as false positives unless convinced by concrete evidence (triggering call chain, missing guard, demonstrable failure). sam uses `almighty` (arbiter, not a debater, not master) — after the debate, weighs 6 positions and issues a ruling under the binding rule of "only confirm consensus findings". The debate focus converges to "real or false positive", deferring strategy.
 
-### 2.3 Master 启动调用
+### 2.3 Master Launch Call
 
 ```json
 {
   "tool": "team_arbitrate",
   "args": {
     "team_id": "cr-triage",
-    "task": "<把当前组的 findings（≤5 条）原文粘进来：每条 FINDING id/dim/severity/描述>",
+    "task": "<Paste the current group's findings (≤5 items) verbatim: each FINDING id/dim/severity/description>",
     "arbiter": "sam",
     "debaters": ["erin", "frank", "grace", "quinn", "mona", "ruby"],
     "max_rounds": 6,
@@ -220,67 +220,67 @@ team_deactivate(cr-audit)     # 释放，为下一个团队让路
 }
 ```
 
-**参数选择**：
-- `task` = **当前组**的 findings（master 从 §1.5 分组中取出本组 ≤5 条手递手填入）；arbitrate 的 `task` 即争议主题。
-- `arbiter: "sam"`（role=`almighty`）——非 debater、非 master；权衡 6 名 debater 立场后下达有约束力裁决。
-- `debaters`——6 名辩手（erin/frank/grace/quinn/mona/ruby），≥2 且唯一，均不得为 arbiter。
-- `max_rounds: 6`——给足辩论空间，应对大量 findings 时有回旋余量。
-- 不设 `signoff_policy`——arbiter 的裁决本身即为终点（等价 `none` 门）。
+**Parameter selection**:
+- `task` = the **current group's** findings (master extracts ≤5 from §1.5 grouping and pastes them in by hand); arbitrate's `task` is the dispute topic.
+- `arbiter: "sam"` (role=`almighty`) — not a debater, not master; weighs 6 debater positions and issues a binding ruling.
+- `debaters` — 6 debaters (erin/frank/grace/quinn/mona/ruby), ≥2 and unique, none may be the arbiter.
+- `max_rounds: 6` — gives sufficient debate space, with maneuver room for large numbers of findings.
+- No `signoff_policy` set — the arbiter's ruling is itself the endpoint (equivalent to `none` gate).
 
-### 2.4 生命周期步骤（master）
+### 2.4 Lifecycle Steps (master)
 
-triage-team 在循环中每组复用，定义一次、按组激活（同组的 fix-team 紧随其后，见 §3.4）：
+triage-team is reused per group in the loop, defined once, activated per group (the same group's fix-team follows immediately after, see §3.4):
 
 ```
-team_create(cr-triage)         # 循环外定义一次
-# （cr-audit 已 deactivate；cr-fix 可先定义或待第一次 §3.4 再建）
+team_create(cr-triage)         # Defined once outside the loop
+# (cr-audit already deactivated; cr-fix can be defined in advance or at first §3.4)
 
-for each group g in 1..G:        # §1.5 分组循环
-    team_activate(cr-triage)     # 激活（确认当前无其它 active 团队）
-    team_arbitrate(...)          # task = 第 g 组 findings（≤5 条），arbiter=sam
-    # 等待 arbiter 裁决 → team_results 取本组 confirmed
-    team_deactivate(cr-triage)   # 为同组的 fix-team 让路
-    # → 接 §3.4：activate(cr-fix) 跑本组 confirmed 的 tollgate
+for each group g in 1..G:        # §1.5 grouping loop
+    team_activate(cr-triage)     # Activate (confirm no other active team currently)
+    team_arbitrate(...)          # task = group g findings (≤5 items), arbiter=sam
+    # Wait for arbiter's ruling → team_results for current group's confirmed
+    team_deactivate(cr-triage)   # Make way for the same group's fix-team
+    # → Continue to §3.4: activate(cr-fix) to run current group's confirmed tollgate
 ```
 
-### 2.5 产出与交接（当前组）
+### 2.5 Output and Handoff (Current Group)
 
-- master 从**本组** arbiter 裁决输出抓取所有 `<!-- CONFIRMED: <id> -->`，去重成**本组确认缺陷表**。
-- 对每个 CONFIRMED id，从 §1.5 维护的 id → 描述映射查出缺陷描述，组装 §3 每次 tollgate run 的 task。
-- 本组确认缺陷表立即交给 §3 fix-team（在 deactivate triage-team 后 activate fix-team）；**不等其他组**，组内串行修复完才进入下一组的 triage。
+- Master extracts all `<!-- CONFIRMED: <id> -->` from the **current group's** arbiter ruling output, deduplicates into the **current group's confirmed defects table**.
+- For each CONFIRMED id, look up the defect description from the §1.5 id → description map, assemble the task for each §3 tollgate run.
+- The current group's confirmed defects table is immediately handed to §3 fix-team (activate fix-team after deactivating triage-team); **do not wait for other groups**, intra-group serial repair must finish before entering the next group's triage.
 
 ---
 
-## §3 fix-team（`team_tollgate`）— 修复（逐个门控，TDD 顺序）
+## §3 fix-team (`team_tollgate`) — Fix (One-by-One Gating, TDD Order)
 
-### 3.1 阶段说明
+### 3.1 Phase Description
 
-> fix-team 在 §1.5 分组循环中**每组**（triage 完成后）创建一个全新实例：删除上一组的旧 fix-team（如有），team_create 新实例，激活后对本组 CONFIRMED 的每条 finding 逐个跑 tollgate run，跑完 deactivate，进入下一组。
+> fix-team creates a **fresh instance per group** (after each group's triage completes) in the §1.5 grouping loop: delete the previous group's old fix-team (if any), team_create a new instance, activate it, run tollgate individually for each CONFIRMED finding in the current group, deactivate when done, then enter the next group.
 
-5 名成员采用 TDD 门控流水线，**逐个**修复**本组** confirmed finding。master 为本组每条 CONFIRMED **串行启动一次独立的 tollgate run**（本组 N 条 → N 次 run，均在本次新建的 fix-team 内执行）。每次 run 走两道门：
+5 members use a TDD gated pipeline, **individually** fixing **the current group's** confirmed findings. Master launches **one independent tollgate run serially per CONFIRMED** (current group N items → N runs, all within the newly created fix-team instance). Each run goes through two gates:
 
 ```
-Stage 1:  henry 写 failing test  →  iris 验证
-            criteria: 测试准确复现该 bug（FAIL 必须源于此 bug，非泛泛失败）
-            FAIL → 回退 henry 重写        INVALID → escalate leo
+Stage 1:  henry writes failing test  →  iris verifies
+            criteria: test accurately reproduces the bug (FAIL must be caused by this bug, not a generic failure)
+            FAIL → roll back henry for rewrite        INVALID → escalate leo
 
-Stage 2:  jack 修复代码  →  kate 验证
-            criteria: 1) failing test 转 PASS
-                      2) 全量回归无新增失败
-                      3) 修改最小化（无夹带重构）
-                      4) 类型安全（无 as any / @ts-ignore）
-            FAIL → 回退 jack 重修          INVALID → escalate leo
+Stage 2:  jack fixes code  →  kate verifies
+            criteria: 1) failing test turns PASS
+                      2) full regression has no new failures
+                      3) fix is minimal (no bundled refactors)
+                      4) type-safe (no as any / @ts-ignore)
+            FAIL → roll back jack for rework          INVALID → escalate leo
 
-两道门都 PASS → leo 最终签字（signoff_policy: decider）
+Both gates PASS → leo final signoff (signoff_policy: decider)
 ```
 
-**为什么 TDD 顺序（tester 先于 coder）**：完成标准由独立的 tester 提前固化——修复前测试必须 FAIL、修复后必须 PASS。coder 无法写"能 pass 的橡皮图章测试"，测试客观定义了"修好"的标准。
+**Why TDD order (tester before coder)**: completion criteria are locked in by an independent tester upfront — tests must FAIL before the fix and PASS after the fix. The coder cannot write "rubber-stamp tests that pass by design", the test objectively defines what "fixed" means.
 
-**为什么两道门用不同 verifier**：iris 和 kate 分别把守测试门和修复门，避免单一验证者的盲区。
+**Why different verifiers for the two gates**: iris and kate separately guard the test gate and the fix gate, avoiding blind spots from a single verifier.
 
-**为什么逐个串行而非批量**：tollgate 的 stages 是固定单条流水线。逐个串行让每个 bug 独立门控，互不干扰；本组 N 次 run 在同一 fix-team 实例内由 master 串行启动，组间则重建实例。
+**Why serial one-by-one rather than batch**: tollgate's stages are a fixed single pipeline. Serial one-by-one lets each bug be independently gated with no interference; the current group's N runs are launched serially by master within the same fix-team instance, while instances are rebuilt across groups.
 
-### 3.2 Team 配置
+### 3.2 Team Configuration
 
 ```json
 {
@@ -316,9 +316,9 @@ Stage 2:  jack 修复代码  →  kate 验证
 }
 ```
 
-**Role 选择**：henry `tester`（写 failing test），iris/kate/leo `reviewer`（验证 + 仲裁），jack `coder`（修复）。每个 stage 的 verifier ≠ producer（iris≠henry，kate≠jack），leo 不参与任何 stage 只做仲裁签字。
+**Role selection**: henry `tester` (write failing test), iris/kate/leo `reviewer` (verify + arbitrate), jack `coder` (fix). Each stage's verifier ≠ producer (iris≠henry, kate≠jack); leo does not participate in any stage, only arbitrates and signs off.
 
-### 3.3 Master 启动调用（每条 CONFIRMED 一次）
+### 3.3 Master Launch Call (once per CONFIRMED)
 
 ```json
 {
@@ -328,13 +328,13 @@ Stage 2:  jack 修复代码  →  kate 验证
     "stages": [
       {
         "member": "henry",
-        "task": "Write a failing test that reproduces confirmed finding <id>: <一句缺陷描述>. Place it in <TARGET>'s test directory. The test MUST fail on the current (unfixed) code and would pass once the bug is fixed. Do NOT modify production code.",
+        "task": "Write a failing test that reproduces confirmed finding <id>: <one-line defect description>. Place it in <TARGET>'s test directory. The test MUST fail on the current (unfixed) code and would pass once the bug is fixed. Do NOT modify production code.",
         "verifier": "iris",
         "criteria": "The test accurately reproduces confirmed finding <id>: it FAILS on the current code for the right reason (the actual bug, not a trivial/syntax failure, not a different bug). The test is focused and would turn PASS once the bug is fixed."
       },
       {
         "member": "jack",
-        "task": "Apply the MINIMAL fix to <TARGET> that resolves confirmed finding <id>: <一句缺陷描述>. Make the smallest change that turns Henry's failing test PASS without unrelated edits. Do NOT refactor neighboring code.",
+        "task": "Apply the MINIMAL fix to <TARGET> that resolves confirmed finding <id>: <one-line defect description>. Make the smallest change that turns Henry's failing test PASS without unrelated edits. Do NOT refactor neighboring code.",
         "verifier": "kate",
         "criteria": "1. Henry's failing test now PASSES. 2. Full regression suite has no new failures (or no test suite exists). 3. The fix is minimal — no unrelated refactors, no scope creep. 4. Type-safe — no 'as any', no '@ts-ignore', no suppressed errors."
       }
@@ -349,76 +349,76 @@ Stage 2:  jack 修复代码  →  kate 验证
 }
 ```
 
-**参数选择**：
-- 每个 CONFIRMED finding 替换 `<id>` 和 `<一句缺陷描述>`（从 §1.5 的 id → 描述映射查出）。
-- `max_gate_retries: 2`——每道门最多回退 2 次，避免无限循环。
-- `max_invalid_cycles: 3`——INVALID 最多 3 轮后强制升级失败。
-- `signoff_policy: decider` + `signoff_decider: leo`——leo 最终签字放行。
-- `escalate_to: leo`——两道门的 INVALID 都升级到 leo 裁决。
+**Parameter selection**:
+- For each CONFIRMED finding, replace `<id>` and `<one-line defect description>` (looked up from the §1.5 id → description map).
+- `max_gate_retries: 2` — each gate rolls back at most 2 times, avoiding infinite loops.
+- `max_invalid_cycles: 3` — INVALID forced escalation fails after at most 3 rounds.
+- `signoff_policy: decider` + `signoff_decider: leo` — leo provides final signoff.
+- `escalate_to: leo` — INVALID from both gates escalates to leo for ruling.
 
-### 3.4 生命周期步骤（master）
+### 3.4 Lifecycle Steps (master)
 
-fix-team 每组创建全新实例（避免单实例累积过多 tollgate run 导致性能下降），紧跟同组 triage 之后：
+fix-team creates a fresh instance per group (to avoid performance degradation from accumulating too many tollgate runs in a single instance), following immediately after the same group's triage:
 
 ```
-# cr-triage 循环外定义一次（见 §2.4）
-for each group g in 1..G:         # §1.5 分组循环（triage 已为该组跑完）
+# cr-triage defined once outside the loop (see §2.4)
+for each group g in 1..G:         # §1.5 grouping loop (triage already completed for this group)
     if g > 1:
-        team_delete(cr-fix)        # 删除上一组的旧 fix-team（已完成、已 deactivate）
-    team_create(cr-fix)            # 每组创建全新 fix-team（用 §3.2 JSON）
-    team_activate(cr-fix)          # （此时 cr-triage 已 deactivate）
-    for each CONFIRMED in group g: # 逐个串行，本组 N 条 → N 次 run
-        team_tollgate(...)          # 用 §3.3 JSON，替换 <id> 和 <一句缺陷描述>
-        # 等待 signoff → team_results 取该 run 产出
-    team_deactivate(cr-fix)        # 为下一组的 triage 让路
+        team_delete(cr-fix)        # Delete previous group's old fix-team (already completed, already deactivated)
+    team_create(cr-fix)            # Create fresh fix-team per group (use §3.2 JSON)
+    team_activate(cr-fix)          # (cr-triage already deactivated at this point)
+    for each CONFIRMED in group g: # Serial one-by-one, current group N items → N runs
+        team_tollgate(...)          # Use §3.3 JSON, replace <id> and <one-line defect description>
+        # Wait for signoff → team_results for this run's output
+    team_deactivate(cr-fix)        # Make way for next group's triage
 ```
 
-> **为什么每组重建 fix-team**：单个 fix-team 实例连续执行多次 team_tollgate 后性能会下降。每组 triage 确认完 findings 后，删除旧 fix-team（如有）、创建全新的，再执行本组修复。triage-team 不受此影响，仍然循环外定义一次、按组复用。
+> **Why rebuild fix-team per group**: a single fix-team instance degrades in performance after multiple consecutive team_tollgate runs. After each group's triage confirms findings, delete the old fix-team (if any), create a fresh one, then execute the current group's repairs. triage-team is unaffected by this, still defined once outside the loop and reused per group.
 
-### 3.5 产出与交接（当前组）
+### 3.5 Output and Handoff (Current Group)
 
-- master 抓取**本组**每个 run 的 `<!-- FIXED: <id> -->` + 对应补丁。
-- 本组修复完后回到 §2 处理下一组，直至 G 组全部完成。
-- **全部组处理完毕后，你读取所有补丁与 FIXED marker，自行裁定整次评审的成败。** 场景到此结束。
+- Master extracts the **current group's** `<!-- FIXED: <id> -->` + corresponding patches from each run.
+- After the current group's repairs are done, return to §2 to process the next group, until all G groups are completed.
+- **After all groups are processed, you read all patches and FIXED markers, and decide the success or failure of the entire review yourself.** The scenario ends here.
 
 ---
 
-## 端到端时序（master 视角）
+## End-to-End Timeline (master perspective)
 
 ```
 T+0   team_create(cr-audit) → team_activate → team_parallel
-        8 reviewer 并行审计 <TARGET>
-T+~12  收 findings → 去重合并（不裁剪）→ 分组（每组 5 条，末组可不足 5）
+        8 reviewers audit <TARGET> in parallel
+T+~12  Collect findings → deduplicate+merge (no filtering) → group (5 per group, last group may have fewer than 5)
         → team_deactivate(cr-audit)
-        若去重后 0 条 → 中断，如实汇报
-        组数 G = ⌈总条数 / 5⌉
+        If 0 findings after deduplication → abort, report truthfully
+        Group count G = ⌈total count / 5⌉
 
-team_create(cr-triage)   # 循环外定义一次
+team_create(cr-triage)   # Define once outside the loop
 
-for g in 1..G:                          # 分组循环：每组 triage → fix
-    team_activate(cr-triage)              # （另一团队已 deactivate）
-    team_arbitrate(task = 第 g 组 findings，arbiter=sam，≤6 轮)
-        6 debater 辩论本组真假 → arbiter(sam) 只确认共识发现
+for g in 1..G:                          # Grouping loop: per group triage → fix
+    team_activate(cr-triage)              # (the other team already deactivated)
+    team_arbitrate(task = group g findings, arbiter=sam, ≤6 rounds)
+        6 debaters debate current group's real vs false positive → arbiter(sam) only confirms consensus findings
     team_deactivate(cr-triage)
 
     if g > 1:
-        team_delete(cr-fix)                # 删除上一组的旧 fix-team
-    team_create(cr-fix)                    # 每组创建全新 fix-team
-    team_activate(cr-fix)                  # （cr-triage 已 deactivate）
-    for each CONFIRMED in group g（逐个串行）:
-        team_tollgate (henry→iris 写测试门, jack→kate 修复门, leo 签字)
+        team_delete(cr-fix)                # Delete previous group's old fix-team
+    team_create(cr-fix)                    # Create fresh fix-team per group
+    team_activate(cr-fix)                  # (cr-triage already deactivated)
+    for each CONFIRMED in group g (serial one-by-one):
+        team_tollgate (henry→iris write test gate, jack→kate fix gate, leo signoff)
     team_deactivate(cr-fix)
 
-收全部 fixed+patches → 你读取全部输出，裁定结果
+Collect all fixed+patches → you read all output, decide the outcome
 ```
 
-（时长仅为量级估计；`<TARGET>` 越大、组数 G 越多、每组 CONFIRMED 越多越久。N = 全部 CONFIRMED 总条数。）
+(Durations are order-of-magnitude estimates only; larger `<TARGET>`, more groups G, more CONFIRMED per group all increase time. N = total CONFIRMED count.)
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-Start Prompt (Copy and Use)
 
-> 把 `<TARGET>` 替换为你要评审的代码路径，整段粘贴给 master 会话。master 会依次跑 3 个团队，每步按 README 的 JSON 配置执行，团队间数据由 master 手递手。
+> Replace `<TARGET>` with the code path you want to review, paste the entire block to the master session. Master will run 3 teams in sequence, executing each step per the README's JSON configuration, with data hand-carried between teams by master.
 
 ```text
 按 demos/code-review/README.md 跑一次多团队代码评审，目标代码 = <TARGET>。
@@ -446,10 +446,10 @@ for g in 1..G:                          # 分组循环：每组 triage → fix
 
 ---
 
-## 相关文档
+## Related Documents
 
-- [`demos/README.md`](../README.md) — 场景目录总览（单原语 9 模式 + 本综合场景）
-- [`demos/01-team-parallel/README.md`](../01-team-parallel/README.md) — parallel 原语参考
-- [`demos/07-team-arbitrate/README.md`](../07-team-arbitrate/README.md) — arbitrate 原语参考
-- [`demos/09-team-tollgate/README.md`](../09-team-tollgate/README.md) — tollgate 原语参考
-- parallel / arbitrate / tollgate 源码：[`src/orchestration/modes/parallel.ts`](../../src/orchestration/modes/parallel.ts) / [`arbitrate.ts`](../../src/orchestration/modes/arbitrate.ts) / [`tollgate.ts`](../../src/orchestration/modes/tollgate.ts)
+- [`demos/README.md`](../README.md) — scenario directory overview (single-primitive 9 modes + this comprehensive scenario)
+- [`demos/01-team-parallel/README.md`](../01-team-parallel/README.md) — parallel primitive reference
+- [`demos/07-team-arbitrate/README.md`](../07-team-arbitrate/README.md) — arbitrate primitive reference
+- [`demos/09-team-tollgate/README.md`](../09-team-tollgate/README.md) — tollgate primitive reference
+- parallel / arbitrate / tollgate source: [`src/orchestration/modes/parallel.ts`](../../src/orchestration/modes/parallel.ts) / [`arbitrate.ts`](../../src/orchestration/modes/arbitrate.ts) / [`tollgate.ts`](../../src/orchestration/modes/tollgate.ts)

@@ -1,38 +1,38 @@
-# team_workflow 编排场景设计
+# team_workflow Orchestration Scenario Design
 
-> **模式**：`team_workflow` — 声明式、确定性步骤引擎。每个 step 可以是 `task`（一个成员产出）、`gate`（验证者对指定前导 task 给出 PASS / FAIL / INVALID 三值判定）、`fanout` 或 `join`。引擎——而非 master LLM——驱动推进、重试、分支汇合、reduce 聚合和恢复；中间结果默认只进入下游成员上下文，不进 master 上下文。
-> **源码**：[`src/tools/workflow.ts`](../../src/tools/workflow.ts) / [`src/orchestration/workflow/workflow.ts`](../../src/orchestration/workflow/workflow.ts)
-> **控时设计**：每基线场景 2 成员，4 步链（task → gate → task → gate），每步 3-5 min，串行 ≈ 14-18 min（远低于 30 min 上限）。**场景 4 为挑战级**：6 成员、8 步 fanout→join 工作流，约 50 min，演示 workflow 的并行分支集成能力。
+> **Mode**: `team_workflow` — declarative, deterministic step engine. Each step can be a `task` (one member produces output), a `gate` (a verifier issues a three-valued PASS / FAIL / INVALID verdict on a specified preceding task), a `fanout`, or a `join`. The engine — not the master LLM — drives advancement, retries, branch merging, reduce aggregation, and recovery; intermediate results enter only the downstream member context by default, not the master context.
+> **Source**: [`src/tools/workflow.ts`](../../src/tools/workflow.ts) / [`src/orchestration/workflow/workflow.ts`](../../src/orchestration/workflow/workflow.ts)
+> **Time budget**: Each baseline scenario has 2 members, a 4-step chain (task → gate → task → gate), each step 3-5 min, serial ≈ 14-18 min (well under the 30 min ceiling). **Scenario 4 is challenge-level**: 6 members, 8-step fanout→join workflow, ~50 min, demonstrating workflow's parallel branch integration capability.
 
-## 场景一览
+## Scenario Overview
 
-| # | 方向 | 场景 | 成员数 | 成员角色 | step 序列 | 预计总时长 |
+| # | Domain | Scenario | Members | Member Roles | Step Sequence | Est. Duration |
 |---|------|------|--------|---------|-----------|-----------|
-| 1 | 编程 | REST API handler 实现 + 验证 + 重构 + 再验证 | 2 | `coder` / `tester` | task → gate → task → gate | ~16 min |
-| 2 | 数学 | 二分法求根实现 + 验证 + 迭代优化 | 2 | `mathematician` / `reviewer` | task → gate → task → gate | ~14 min |
-| 3 | 计算物理 | 抛体运动 RK4 求解 + 能量验证 + 阻力建模 | 2 | `simulator` / `physicist` | task → gate → task → gate | ~16 min |
-| 4 | 编程（挑战） | 多模块 fanout 并行实现 + join reduce 集成验证 | 6 | `coder` ×4 / `reviewer` / `tester` | task → fanout(3) → join(reduce) → gate | ~50 min |
+| 1 | Programming | REST API handler implementation + verification + refactor + re-verification | 2 | `coder` / `tester` | task → gate → task → gate | ~16 min |
+| 2 | Math | Bisection root-finding implementation + verification + iterative optimization | 2 | `mathematician` / `reviewer` | task → gate → task → gate | ~14 min |
+| 3 | Computational Physics | Projectile motion RK4 solver + energy verification + drag modeling | 2 | `simulator` / `physicist` | task → gate → task → gate | ~16 min |
+| 4 | Programming (challenge) | Multi-module fanout parallel implementation + join reduce integration verification | 6 | `coder` ×4 / `reviewer` / `tester` | task → fanout(3) → join(reduce) → gate | ~50 min |
 
-> 场景 1-3 为基线类型（线性 task/gate 链），提供 check 脚本；场景 4 为挑战级（fanout 并行分支 + join reduce），演示 workflow 的声明式并发集成能力。
+> Scenarios 1-3 are baseline types (linear task/gate chains) with check scripts provided; scenario 4 is challenge-level (fanout parallel branches + join reduce), demonstrating workflow's declarative concurrent integration capability.
 
 ---
 
-## 场景 1: REST API handler 实现 + 验证 + 重构
+## Scenario 1: REST API Handler Implementation + Verification + Refactor
 
-### 1.1 场景描述
+### 1.1 Scenario Description
 
-**背景**：实现一个处理用户注册的 REST handler：参数校验、错误返回、成功路径。先写实现，再独立验证（边界 + 错误处理），验证通过后做一次重构（提取校验函数、改善可读性），重构后再用同一 gate 验证行为不变——保证重构没引入回归。
+**Background**: Implement a REST handler for user registration: parameter validation, error responses, and the success path. First write the implementation, then independently verify (edge cases + error handling), and after passing verification, perform a single refactor (extract a validation function, improve readability). After refactoring, use the same gate to verify that behavior is unchanged, ensuring no regressions were introduced.
 
-**目标**：用一条 `team_workflow` 串起四个异构步骤——`coder` 实现 → `tester` gate 验证 → `coder` 重构 → `tester` gate 再验证——由 engine 确定性推进，master 只在结尾收到汇总。
+**Goal**: Use a single `team_workflow` to chain four heterogeneous steps — `coder` implement → `tester` gate verify → `coder` refactor → `tester` gate re-verify — driven deterministically by the engine, with the master receiving only the final summary.
 
-**成功标准（人工自判）**：
-- step 1（task）：`coder` 产出可加载的 handler 代码块
-- step 2（gate）：`tester` 对 step 1 产出给出 `<verdict>{"result":"PASS",...}</verdict>`
-- step 3（task）：`coder` 基于上游（step 1 产出）做重构，行为不变、可读性提升
-- step 4（gate）：`tester` 对 step 3 重构产出再次验证行为不变，给出 `<verdict>{"result":"PASS",...}</verdict>`
-- 最终 `workflow_complete`，master 收到含四步账本 + 各 task 产出的汇总
+**Success criteria (human-judged)**:
+- step 1 (task): `coder` produces a loadable handler code block
+- step 2 (gate): `tester` issues `<verdict>{"result":"PASS",...}</verdict>` for the step 1 output
+- step 3 (task): `coder` refactors based on upstream (step 1 output), keeping behavior unchanged while improving readability
+- step 4 (gate): `tester` re-verifies the step 3 refactored output for unchanged behavior, issuing `<verdict>{"result":"PASS",...}</verdict>`
+- Final `workflow_complete`, master receives summary with the four-step ledger + each task's output
 
-### 1.2 Team 配置
+### 1.2 Team Configuration
 
 ```json
 {
@@ -58,9 +58,9 @@
 }
 ```
 
-**Role 选择理由**：两个 task 步骤用同一个 `coder`（alice）保证实现→重构的连续性；gate 用独立的 `tester`（bob，只读 agent）做裁判，避免自验证（schema 硬约束：gate 的 verifier 必须不同于前一个 task 的成员）。
+**Role selection rationale**: Both task steps use the same `coder` (alice) to ensure implementation-to-refactor continuity; the gate uses an independent `tester` (bob, a read-only agent) as the judge, avoiding self-verification (schema hard constraint: the gate's verifier must differ from the preceding task's member).
 
-### 1.3 Master 启动调用
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -98,17 +98,17 @@
 }
 ```
 
-**参数选择**：
-- step 1 是 `task`（验证硬约束：首步必须是 task，gate 必须验证前导 task）
-- step 2 的 `verifier: "bob"` ≠ step 1 的 `member: "alice"` —— 满足「禁止自验证」
-- step 2 `on_fail: "retry"` + `max_retries: 1` —— gate FAIL 时把 alice 连同 diff 重派一次（首次实现易漏边界），第二次 FAIL 则整条 run 失败（`workflow_failed`）
-- step 3 是 `task`，engine 自动注入 step 1 的产出作为上游上下文（gate 步骤的判定不计入上游）
-- step 4 是 `gate`，验证 step 3 的重构产出——`verifier: "bob"` ≠ step 3 的 `member: "alice"`，同样满足「禁止自验证」；criteria 复用 step 2 的三用例 + 额外要求提取了 `validate()`，确保重构无回归
-- step 4 `on_fail: "retry"` + `max_retries: 1` —— 重构也可能引入回归，给 alice 一次修正机会
-> 注：step 4 默认验证“最近前导 task”（即 step 3）。如需让 step 4 复用 step 2 已确认的同一组用例但显式验证 step 1 的实现，可加 `target_step: 1`；本场景保持默认以演示最近前导语义。
-- `timeout_ms: 1200000`（20 min）—— 串行四步，正常 16 min 完成，留余量
+**Parameter selection**:
+- step 1 is a `task` (hard constraint: the first step must be a task, and a gate must verify a preceding task)
+- step 2 `verifier: "bob"` ≠ step 1 `member: "alice"` — satisfies "no self-verification"
+- step 2 `on_fail: "retry"` + `max_retries: 1` — on gate FAIL, re-dispatch alice with the diff (first implementations easily miss edge cases); a second FAIL causes the entire run to fail (`workflow_failed`)
+- step 3 is a `task`; the engine automatically injects step 1's output as upstream context (gate step verdicts are not included in upstream)
+- step 4 is a `gate` verifying step 3's refactored output — `verifier: "bob"` ≠ step 3 `member: "alice"`, also satisfying "no self-verification"; criteria reuse step 2's three cases + the additional requirement that `validate()` was extracted, ensuring the refactor introduces no regression
+- step 4 `on_fail: "retry"` + `max_retries: 1` — refactors can also introduce regressions, giving alice one correction chance
+> Note: step 4 defaults to verifying the "most recent preceding task" (i.e. step 3). To have step 4 reuse step 2's already-confirmed set of cases but explicitly verify step 1's implementation, add `target_step: 1`; this scenario keeps the default to demonstrate the most-recent-predecessor semantics.
+- `timeout_ms: 1200000` (20 min) — four serial steps, normal completion in 16 min, with margin
 
-### 1.4 执行流程（时序）
+### 1.4 Execution Flow (Timeline)
 
 ```
 T+0m     master 调用 team_workflow
@@ -127,20 +127,20 @@ T+12~16m bob 再判定 → <verdict>
 T+16m    workflow_complete，汇总交付 master（含四步账本 + task 产出）
 ```
 
-> 期间任意 task/gate 演员缺失 live session（session 未创建或成员已 errored）时：若声明了 `fallback_member` / `fallback_verifier`，engine 自动切换到 fallback 演员继续；若 fallback 也不可用，**fanout 分支内**的步骤降级为 errored 分支（受 `max_errored` / `join_policy` 约束），**顶层**步骤仍以 `workflow_failed:no_session:<member>` 显式终止。engine 把 `workflow.steps` 快照写入 `RunRecord`（每步 kind / member / verifier / dispatchedActor / targetStep / verdict / attempts / completed / output / outputBytes）。`team_result_get` 读取该 run 时会渲染 `### workflow steps` 分组，按 Step N 展示账本 + 各 task 产出快照；`format: "mermaid"` 导出 Mermaid flowchart 图。
+> When any task/gate actor is missing a live session (session not yet created or member already errored): if `fallback_member` / `fallback_verifier` is declared, the engine automatically switches to the fallback actor; if the fallback is also unavailable, steps **inside a fanout branch** degrade to errored branches (subject to `max_errored` / `join_policy` constraints), while **top-level** steps still explicitly terminate as `workflow_failed:no_session:<member>`. The engine writes a `workflow.steps` snapshot into the `RunRecord` (per step: kind / member / verifier / dispatchedActor / targetStep / verdict / attempts / completed / output / outputBytes). `team_result_get` renders `### workflow steps` groups when reading that run, showing the ledger by Step N plus each task's output snapshot; `format: "mermaid"` exports a Mermaid flowchart diagram.
 
-### 1.5 可选：人工审批（HITL）
+### 1.5 Optional: Human Approval (HITL)
 
-在 `team_workflow` 加 `"human_approval": true`，engine 会在每个非终步完成（task 完成、gate PASS）后、推进下一步前暂停，等待 `team_approve` / `team_reject`：
+Add `"human_approval": true` to `team_workflow`, and the engine will pause after every non-terminal step completes (task done, gate PASS) before advancing to the next step, waiting for `team_approve` / `team_reject`:
 
-- `team_approve(team_id, approval_id)` —— 继续下一步
-- `team_reject(team_id, approval_id, feedback)` —— 整条 run 失败（`workflow_human_rejected`）
+- `team_approve(team_id, approval_id)` — continue to the next step
+- `team_reject(team_id, approval_id, feedback)` — entire run fails (`workflow_human_rejected`)
 
-挂钟在暂停期间不计入超时（与其它编排的 HITL 一致）。approval prompt 会显示 `workflow_step (step N)`（1-based）并附上当前完成步骤的 kind / actor / verdict rationale 与下一步摘要，便于 master 直接判断。
+Wall-clock time during the pause does not count toward the timeout (consistent with HITL in other orchestration modes). The approval prompt displays `workflow_step (step N)` (1-based) along with the completed step's kind / actor / verdict rationale and a summary of the next step, making it easy for the master to judge directly.
 
-### 1.6 可选：dry_run 预演
+### 1.6 Optional: dry_run Preview
 
-启动前加 `dry_run: true`，`team_workflow` 只渲染 1-based step 计划，不创建 `activeTask`、不派发成员：
+Add `dry_run: true` before launching, and `team_workflow` will only render a 1-based step plan without creating `activeTask` or dispatching members:
 
 ```json
 {
@@ -148,12 +148,12 @@ T+16m    workflow_complete，汇总交付 master（含四步账本 + task 产出
   "args": {
     "team_id": "register-handler-flow",
     "dry_run": true,
-    "steps": [ /* 同 1.3 */ ]
+    "steps": [ /* same as 1.3 */ ]
   }
 }
 ```
 
-输出形如：
+Output resembles:
 ```
 Workflow dry run for "register-handler-flow" (4 step(s)):
 1. [task] alice: Implement ...
@@ -162,13 +162,13 @@ Workflow dry run for "register-handler-flow" (4 step(s)):
 4. [gate] bob verifies step 3: Re-verify ...; on_fail=retry max_retries=1
 ```
 
-校验失败（如 `on_fail="retry"` 缺 `max_retries`、task/gate 跨字段、`target_step` 指向 gate）也会在此阶段报错，避免半启动的 run。
+Validation failures (e.g. `on_fail="retry"` missing `max_retries`, task/gate cross-fields, `target_step` pointing to a gate) are also caught at this stage, avoiding half-started runs.
 
-### 1.7 可选：workflow_file 模板
+### 1.7 Optional: workflow_file Template
 
-复杂 workflow 可以放进仓库内的 JSON 文件，再用 `vars` 进行模板替换。文件必须是相对工作区路径并以 `.json` 结尾；推荐设置 `version: 1` 和 `strict_vars: true`，让变量拼写错误在启动前失败。
+Complex workflows can be placed in JSON files within the repository and then templated with `vars`. The file must be a relative workspace path ending in `.json`; setting `version: 1` and `strict_vars: true` is recommended so that variable spelling mistakes fail before launch.
 
-本目录提供了可直接预演或启动的模板：[`register-handler.workflow.json`](./register-handler.workflow.json)。启动方式：
+This directory provides a template that can be previewed or launched directly: [`register-handler.workflow.json`](./register-handler.workflow.json). Launch it like this:
 
 ```json
 {
@@ -184,26 +184,26 @@ Workflow dry run for "register-handler-flow" (4 step(s)):
 }
 ```
 
-先加 `dry_run: true` 可以查看变量替换后的 step ledger，确认成员、gate、join policy 和数据流都符合预期，再启动真实编排。
+Add `dry_run: true` first to inspect the variable-substituted step ledger and confirm that members, gates, join policy, and data flow all match expectations before launching the real orchestration.
 
 ---
 
-## 场景 2: 二分法求根实现 + 验证 + 迭代优化
+## Scenario 2: Bisection Root-Finding Implementation + Verification + Iterative Optimization
 
-### 2.1 场景描述
+### 2.1 Scenario Description
 
-**背景**：二分法（bisection method）是数值分析中最基础、最稳健的求根算法。给定连续函数 `f(x)` 和包含单根的区间 `[a,b]`（`f(a)·f(b) < 0`），二分法以对数复杂度收敛到任意精度。虽然简单，但边界处理（符号检查、收敛判据、最大迭代数）是典型陷阱。
+**Background**: The bisection method is the most fundamental and robust root-finding algorithm in numerical analysis. Given a continuous function `f(x)` and an interval `[a,b]` containing a single root (`f(a)·f(b) < 0`), the bisection method converges to arbitrary precision with logarithmic complexity. Though simple, edge-case handling (sign check, convergence criterion, maximum iteration count) is a classic trap.
 
-**目标**：用一条 `team_workflow` 串起四步——`mathematician` 实现 → `reviewer` gate 验证 → `mathematician` 优化迭代次数 → `reviewer` gate 再验证——由 engine 确定性推进。
+**Goal**: Use a single `team_workflow` to chain four steps — `mathematician` implement → `reviewer` gate verify → `mathematician` optimize iteration count → `reviewer` gate re-verify — driven deterministically by the engine.
 
-**成功标准（可机器评判）**：
-- step 1（task）：产出可加载的 `bisect(f, a, b, tol)` TypeScript 函数
-- step 2（gate）：验证 `bisect` 能正确找到 `f(x)=x²-2` 在 `[1,2]` 的根（精度 < 1e-8），并检查 `f(a)·f(b) ≥ 0` 时抛出异常
-- step 3（task）：优化实现——显式 max_iter 保底、提前终止判断符号不变区间
-- step 4（gate）：再验证优化版的两条额外函数：`f(x)=cos(x)-x`（根 ≈ 0.739085）和 `f(x)=x³-5`
-- 最终 `workflow_complete`，两道 gate 均 PASS
+**Success criteria (machine-evaluable)**:
+- step 1 (task): produces a loadable `bisect(f, a, b, tol)` TypeScript function
+- step 2 (gate): verifies `bisect` correctly finds the root of `f(x)=x²-2` on `[1,2]` (accuracy < 1e-8), and checks that `f(a)·f(b) ≥ 0` throws an error
+- step 3 (task): optimizes the implementation — explicit max_iter safeguard, early termination when signs remain unchanged in the interval
+- step 4 (gate): re-verifies the optimized version on two additional functions: `f(x)=cos(x)-x` (root ≈ 0.739085) and `f(x)=x³-5`
+- Final `workflow_complete`, both gates PASS
 
-### 2.2 Team 配置
+### 2.2 Team Configuration
 
 ```json
 {
@@ -229,9 +229,9 @@ Workflow dry run for "register-handler-flow" (4 step(s)):
 }
 ```
 
-**Role 选择理由**：两个 task 步骤用同一个 `mathematician`（alice）保证实现→优化的连续性；gate 用独立的 `reviewer`（bob，只读 agent）做裁判。
+**Role selection rationale**: Both task steps use the same `mathematician` (alice) to ensure implementation-to-optimization continuity; the gate uses an independent `reviewer` (bob, a read-only agent) as the judge.
 
-### 2.3 Master 启动调用
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -269,14 +269,14 @@ Workflow dry run for "register-handler-flow" (4 step(s)):
 }
 ```
 
-**参数选择**：
-- step 1 `verifier: "bob"` ≠ `member: "alice"` —— 满足「禁止自验证」
-- step 2 `on_fail: "retry"` + `max_retries: 1` —— 符号检查边界首次实现易漏
-- step 3 task 复用 alice，engine 自动注入 step 1 产出作上游
-- step 4 验证 step 3 的优化版，新加两条额外测试函数保证优化无回归
-- `timeout_ms: 1200000`（20 min）—— 四步串行，正常 14 min 完成
+**Parameter selection**:
+- step 1 `verifier: "bob"` ≠ `member: "alice"` — satisfies "no self-verification"
+- step 2 `on_fail: "retry"` + `max_retries: 1` — sign-check edge case easily missed on first implementation
+- step 3 task reuses alice; engine automatically injects step 1 output as upstream
+- step 4 verifies step 3's optimized version with two additional test functions to ensure optimization introduces no regression
+- `timeout_ms: 1200000` (20 min) — four serial steps, normal completion in 14 min
 
-### 2.4 执行流程（时序）
+### 2.4 Execution Flow (Timeline)
 
 ```
 T+0m     master 调用 team_workflow
@@ -294,40 +294,40 @@ T+11~14m bob 跑 sqrt(2) + cos(x)-x + x³-5 → <verdict>
 T+14m    workflow_complete，汇总交付 master
 ```
 
-### 2.5 评判脚本
+### 2.5 Check Script
 
 [`check-math-bisect.ts`](./check-math-bisect.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob}.md`
-- **提取**：
-  - producer 代码：抓取 ` ```typescript ... ``` ` 代码块
-  - verifier 判定：`<verdict>{...}</verdict>` 标签 JSON 块（`JSON.parse` 取 `result`）
-- **断言**：
-  1. producer 代码可用 `new Function` 加载为 `bisect` 函数
+- **Load**: `runs/<run_id>/{alice,bob}.md`
+- **Extract**:
+  - Producer code: grab ` ```typescript ... ``` ` code block
+  - Verifier verdict: `<verdict>{...}</verdict>` tagged JSON block (`JSON.parse` to get `result`)
+- **Assertions**:
+  1. Producer code can be loaded via `new Function` as `bisect` function
   2. `abs(bisect(x=>x*x-2, 1, 2, 1e-8) - sqrt(2)) < 1e-7`
-  3. `bisect(x=>x*x-2, 2, 3, 1e-8)` 抛出异常（无符号变化）
+  3. `bisect(x=>x*x-2, 2, 3, 1e-8)` throws (no sign change)
   4. `abs(bisect(x=>Math.cos(x)-x, 0, 1, 1e-8) - 0.739085) < 1e-6`
   5. `abs(bisect(x=>x*x*x-5, 1, 2, 1e-8) - cbrt(5)) < 1e-6`
-  6. 两道 verifier `result` 均为 `PASS`
+  6. Both verifier `result` values are `PASS`
 
 ---
 
-## 场景 3: 抛体运动 RK4 求解 + 能量验证 + 阻力建模
+## Scenario 3: Projectile Motion RK4 Solver + Energy Verification + Drag Modeling
 
-### 3.1 场景描述
+### 3.1 Scenario Description
 
-**背景**：抛体运动是经典力学的入门仿真。二维无阻力抛体（x: 匀速，y: `dv/dt = -g`）有解析解，适合验证求解器正确性；加入空气阻力（`F_drag = -k·v²`）后变为非线性 ODE 系统，无法解析求解，必须依赖数值积分。四阶 Runge-Kutta（RK4）是精度与实现复杂度的黄金平衡点。
+**Background**: Projectile motion is the entry-level simulation of classical mechanics. 2D projectile motion without drag (x: constant velocity, y: `dv/dt = -g`) has an analytic solution, suitable for verifying solver correctness; adding air resistance (`F_drag = -k·v²`) turns it into a nonlinear ODE system that cannot be solved analytically and must rely on numerical integration. The fourth-order Runge-Kutta method (RK4) is the sweet spot between accuracy and implementation complexity.
 
-**目标**：用一条 `team_workflow` 串起四步——`simulator` 实现 RK4 + 无阻力抛体验证 → `physicist` gate 能量守恒判定 → `simulator` 加入空气阻力 → `physicist` gate 验证终端速度行为——由 engine 推进。
+**Goal**: Use a single `team_workflow` to chain four steps — `simulator` implement RK4 + drag-free projectile verification → `physicist` gate energy conservation verdict → `simulator` add air resistance → `physicist` gate verify terminal velocity behavior — driven by the engine.
 
-**成功标准（可机器评判）**：
-- step 1（task）：产出可加载的 `rk4_step(f, y, t, h)` TypeScript 函数 + 无阻力抛体仿真
-- step 2（gate）：验证能量守恒（`|E_final - E0|/E0 < 1e-3`）且最大高度命中 ≈ `v₀²/(2g)`
-- step 3（task）：加入速度平方空气阻力 `F_drag = -k·|v|·v`（k=0.1），重跑仿真
-- step 4（gate）：验证有阻力时能量单调衰减、终端速度趋于定值 `mg/k` 的平方根
-- 最终 `workflow_complete`，两道 gate 均 PASS
+**Success criteria (machine-evaluable)**:
+- step 1 (task): produces a loadable `rk4_step(f, y, t, h)` TypeScript function + drag-free projectile simulation
+- step 2 (gate): verifies energy conservation (`|E_final - E0|/E0 < 1e-3`) and max height ≈ `v₀²/(2g)`
+- step 3 (task): adds velocity-squared air resistance `F_drag = -k·|v|·v` (k=0.1), re-runs simulation
+- step 4 (gate): verifies that with drag, energy decays monotonically and terminal velocity approaches the square root of `mg/k`
+- Final `workflow_complete`, both gates PASS
 
-### 3.2 Team 配置
+### 3.2 Team Configuration
 
 ```json
 {
@@ -353,9 +353,9 @@ T+14m    workflow_complete，汇总交付 master
 }
 ```
 
-**Role 选择理由**：task 用 `simulator`（数值 ODE 仿真专家）；gate 用 `physicist`（懂能量守恒/空气动力学，能独立复算判定）。
+**Role selection rationale**: Task uses `simulator` (numerical ODE simulation expert); gate uses `physicist` (understands energy conservation and aerodynamics, can independently recompute and judge).
 
-### 3.3 Master 启动调用
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -393,13 +393,13 @@ T+14m    workflow_complete，汇总交付 master
 }
 ```
 
-**参数选择**：
-- step 2 `verifier: "bob"` ≠ `member: "alice"` —— 满足「禁止自验证」
-- step 2 `on_fail: "retry"` + `max_retries: 1` —— RK4 的步长/初始条件选错易导致能量漂移超标
-- step 3 task 复用 alice，engine 自动注入 step 1 产出（无阻力仿真）作上游
-- `timeout_ms: 1200000`（20 min）—— 四步串行，正常 16 min 完成
+**Parameter selection**:
+- step 2 `verifier: "bob"` ≠ `member: "alice"` — satisfies "no self-verification"
+- step 2 `on_fail: "retry"` + `max_retries: 1` — wrong step size or initial conditions for RK4 can easily cause excessive energy drift
+- step 3 task reuses alice; engine automatically injects step 1 output (drag-free simulation) as upstream
+- `timeout_ms: 1200000` (20 min) — four serial steps, normal completion in 16 min
 
-### 3.4 执行流程（时序）
+### 3.4 Execution Flow (Timeline)
 
 ```
 T+0m     master 调用 team_workflow
@@ -416,42 +416,42 @@ T+12~16m bob 核对能量单调衰减 + 终端速度 → <verdict>
 T+16m    workflow_complete，汇总交付 master
 ```
 
-### 3.5 评判脚本
+### 3.5 Check Script
 
 [`check-physics-projectile.ts`](./check-physics-projectile.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob}.md`
-- **提取**：
-  - producer 标记：正则 `<!--\s*ENERGY:\s*([\d.eE+-]+)\s*-->` 提取漂移；`<!--\s*DRAG:\s*([\d.eE+-]+)\s*-->` 提取终端速度
-  - verifier 判定：`<verdict>{...}</verdict>` 标签 JSON 块
-- **断言**：
-  1. `drift` 存在且 `Number.isFinite`
-  2. `drift < 1e-3`（RK4 无阻力短时间积分应能量守恒）
-  3. `term_vel` 存在且 > 0
-  4. `abs(term_vel - 9.9) / 9.9 < 0.2`（终端速度接近 `sqrt(mg/k)`）
-  5. 两道 verifier `result` 均为 `PASS`
+- **Load**: `runs/<run_id>/{alice,bob}.md`
+- **Extract**:
+  - Producer markers: regex `<!--\s*ENERGY:\s*([\d.eE+-]+)\s*-->` extracts drift; `<!--\s*DRAG:\s*([\d.eE+-]+)\s*-->` extracts terminal velocity
+  - Verifier verdict: `<verdict>{...}</verdict>` tagged JSON block
+- **Assertions**:
+  1. `drift` exists and `Number.isFinite`
+  2. `drift < 1e-3` (RK4 drag-free short-time integration should conserve energy)
+  3. `term_vel` exists and > 0
+  4. `abs(term_vel - 9.9) / 9.9 < 0.2` (terminal velocity close to `sqrt(mg/k)`)
+  5. Both verifier `result` values are `PASS`
 
 ---
 
-## 场景 4: 多模块 fanout 并行实现 + join reduce 集成验证（挑战级）
+## Scenario 4: Multi-Module Fanout Parallel Implementation + Join Reduce Integration Verification (Challenge-Level)
 
-> **挑战级说明**：本场景突破基线约束（2 成员 / 线性链 / ≤30 min），使用 **6 成员、8 步（含 fanout 三路并行 + join reduce 聚合）**，演示 `team_workflow` 的声明式并行分支与 reduce 聚合能力。约 50 min。
+> **Challenge-level notes**: This scenario breaks baseline constraints (2 members / linear chain / ≤30 min), using **6 members and 8 steps (with fanout three-way parallel + join reduce aggregation)**, demonstrating `team_workflow`'s declarative parallel branching and reduce aggregation capability. ~50 min.
 
-### 4.1 场景描述
+### 4.1 Scenario Description
 
-**背景**：构建一个微型用户管理系统的三个核心模块——认证（auth）、用户 CRUD（users）、审计日志（audit）。模块之间有共享类型依赖（`User`, `AuthToken`, `AuditEntry`），必须先统一定义接口再分头实现，最后集成验证三者协同工作。workflow 的 `fanout` 允许三模块并行实现，`join(reduce)` 将所有分支输出汇总为一个聚合报告，最后 `gate` 做集成测试。
+**Background**: Build three core modules of a micro user management system — authentication (auth), user CRUD (users), and audit logging (audit). The modules share type dependencies (`User`, `AuthToken`, `AuditEntry`), so interfaces must be defined uniformly first before implementing separately, and finally integration-verified for the three to work together. Workflow's `fanout` allows parallel implementation of the three modules, `join(reduce)` aggregates all branch outputs into one consolidated report, and finally a `gate` performs integration testing.
 
-**目标**：用一条 `team_workflow` 串起八步——`coder` 定义共享类型（task）→ `reviewer` 确认类型完备（gate）→ 三路 `fanout` 并行实现模块（auth / users / audit）→ `join(reduce)` 聚合 → `tester` 集成验证（gate）——engine 确定性推进。
+**Goal**: Use a single `team_workflow` to chain eight steps — `coder` define shared types (task) → `reviewer` confirm type completeness (gate) → three-way `fanout` parallel module implementation (auth / users / audit) → `join(reduce)` aggregation → `tester` integration verification (gate) — driven deterministically by the engine.
 
-**成功标准（可机器评判）**：
-- step 1（task: alice）：产出含 `User`, `AuthToken`, `AuditEntry` 三个 TypeScript interface 的类型定义
-- step 2（gate: bob）：验证三个 interface 字段完整且互不冲突
-- step 3-5（fanout 三路并行 task: carol/dave/erin）：分别实现 auth（login/logout/validate）、users（create/find/delete）、audit（log/query）
-- step 6（join reduce: frank）：聚合三个模块的接口清单与依赖图
-- step 7（gate: bob）：集成测试——auth 发放 token → users 用 token 鉴权创建用户 → audit 记录操作 → 验证全链路
-- 最终 `workflow_complete`，所有 gate PASS
+**Success criteria (machine-evaluable)**:
+- step 1 (task: alice): produces type definitions containing three TypeScript interfaces: `User`, `AuthToken`, `AuditEntry`
+- step 2 (gate: bob): verifies all three interface fields are complete and non-conflicting
+- steps 3-5 (fanout three-way parallel task: carol/dave/erin): implement auth (login/logout/validate), users (create/find/delete), and audit (log/query) respectively
+- step 6 (join reduce: frank): aggregates the three modules' interface lists and dependency graph
+- step 7 (gate: bob): integration test — auth issues token → users creates user with token auth → audit records the action → verify the full chain
+- Final `workflow_complete`, all gates PASS
 
-### 4.2 Team 配置
+### 4.2 Team Configuration
 
 ```json
 {
@@ -497,13 +497,13 @@ T+16m    workflow_complete，汇总交付 master
 }
 ```
 
-**Role 选择理由**：
-- `alice`（coder）：定义共享类型，单一权威来源
-- `bob`（reviewer）：gate 验证类型完备 + 集成测试
-- `carol/dave/erin`（coder ×3）：fanout 三路并行实现各自模块
-- `frank`（tester）：join reduce 聚合 + 最终 gate 集成验证
+**Role selection rationale**:
+- `alice` (coder): defines shared types, single source of truth
+- `bob` (reviewer): gate verifies type completeness and performs integration testing
+- `carol/dave/erin` (coder ×3): fanout three-way parallel implementation of each module
+- `frank` (tester): join reduce aggregation + final gate integration verification
 
-### 4.3 Master 启动调用
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -577,14 +577,14 @@ T+16m    workflow_complete，汇总交付 master
 }
 ```
 
-**参数选择**：
-- step 3 是 `fanout`，`join_policy: "reduce"` + `reducer_member: "frank"` —— 三路并行任务完成后由 frank 聚合所有分支输出
-- step 4 `join(reduce)` 是 fanout 的终点——frank 写出聚合报告后 workflow 推进到集成 gate
-- step 5 gate 的 `verifier: "frank"` 与 join 的 reducer 同名但不冲突——join 产出聚合报告后 frank 作为 gate verifier 做集成测试
-- 每 gate `on_fail: "retry"` + `max_retries: 1` —— 类型定义或集成可能首次不全，给一次修正
-- `timeout_ms: 3000000`（50 min）—— 6 成员 + 8 步，fanout 三路并行实现（~12 min）+ join reduce（~8 min）+ 集成 gate（~8 min），串行累计约 50 min
+**Parameter selection**:
+- step 3 is a `fanout`, `join_policy: "reduce"` + `reducer_member: "frank"` — after the three parallel tasks complete, frank aggregates all branch outputs
+- step 4 `join(reduce)` is the fanout's endpoint — after frank produces the aggregated report, the workflow advances to the integration gate
+- step 5 gate's `verifier: "frank"` shares the name with the join reducer but this does not conflict — after the join produces the aggregated report, frank acts as the gate verifier for integration testing
+- Each gate has `on_fail: "retry"` + `max_retries: 1` — type definitions or integration may be incomplete on first pass, so give one correction chance
+- `timeout_ms: 3000000` (50 min) — 6 members + 8 steps, fanout three-way parallel implementation (~12 min) + join reduce (~8 min) + integration gate (~8 min), serial cumulative ~50 min
 
-### 4.4 执行流程（时序）
+### 4.4 Execution Flow (Timeline)
 
 ```
 T+0m     master 调用 team_workflow
@@ -606,44 +606,44 @@ T+27~35m frank 跑 5 条集成用例（token 鉴权 → 创建用户 → 审计�
 T+35m    workflow_complete，汇总交付 master（含所有 8 步账本 + task 产出）
 ```
 
-### 4.5 评判脚本
+### 4.5 Check Script
 
 [`check-coding-modular-cms.ts`](./check-coding-modular-cms.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md`（6 个文件）
-- **提取**：
-  - step 1：alice.md 含三个 interface 的类型定义（正则：`interface User` + `interface AuthToken` + `interface AuditEntry`）
-  - step 2：bob.md `<verdict>{...}</verdict>` gate 判定
-  - step 3-5：carol/dave/erin.md 各含 `<!-- MODULE: {auth|users|audit} -->` 标记
-  - step 5 gate：frank.md `<verdict>{...}</verdict>` gate 判定
-- **断言**：
-  1. alice.md 含全部三个 `interface` 定义
-  2. carol/dave/erin.md 各含对应 `<!-- MODULE -->` 标记且各列出 ≥2 个导出函数
-  3. frank.md 含至少 3 个模块的聚合引用（join reduce 产出）
-  4. 两道 gate verifier `result` 均为 `PASS`（step 2 类型验证 + step 5 集成验证）
+- **Load**: `runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md` (6 files)
+- **Extract**:
+  - step 1: alice.md contains three interface type definitions (regex: `interface User` + `interface AuthToken` + `interface AuditEntry`)
+  - step 2: bob.md `<verdict>{...}</verdict>` gate verdict
+  - steps 3-5: carol/dave/erin.md each contain `<!-- MODULE: {auth|users|audit} -->` markers
+  - step 5 gate: frank.md `<verdict>{...}</verdict>` gate verdict
+- **Assertions**:
+  1. alice.md contains all three `interface` definitions
+  2. carol/dave/erin.md each contain the corresponding `<!-- MODULE -->` marker and list ≥2 exported functions
+  3. frank.md contains aggregated references for at least 3 modules (join reduce output)
+  4. Both gate verifier `result` values are `PASS` (step 2 type verification + step 5 integration verification)
 
-## 恢复与检查点粒度
+## Recovery and Checkpoint Granularity
 
-`team_workflow` 的状态完全保存在 `activeTask`（`steps[]` + `currentStageIndex` 游标）中，因此复用现有的 `team_resume`：进程崩溃后，`team_resume` 会重新驱动当前步骤（若当前步演员已有产出则直接处理，否则重新派发），或若全部步骤已完成则直接交付。
+`team_workflow` state is fully persisted in `activeTask` (`steps[]` + `currentStageIndex` cursor), so it reuses the existing `team_resume`: after a process crash, `team_resume` will re-drive the current step (if the current step's actor already has output, process it directly; otherwise re-dispatch), or deliver directly if all steps are already complete.
 
-**已知限制**（与所有编排一致）：检查点粒度是整条 task，恢复时从**当前步骤**重新开始，而非步骤内部的子进度。恢复覆盖分支（captured task 重放 / no captured response 重派 / all-complete 直接交付 / captured gate verdict 重放）见 `tests/resume-dispatch-branches.test.ts`。
+**Known limitations** (consistent with all orchestration modes): checkpoint granularity is a full task; recovery restarts from the **current step**, not from intra-step sub-progress. For recovery coverage of branches (captured task replay / no captured response re-dispatch / all-complete direct delivery / captured gate verdict replay), see `tests/resume-dispatch-branches.test.ts`.
 
 
-## 验收清单
+## Acceptance Checklist
 
-- [ ] 每个 gate 的 `verifier` ≠ 其验证的 task 的 `member`（满足「禁止自验证」硬约束）
-- [ ] 每个 master 调用参数符合 `team_workflow` schema（首步为 `task`、gate 验证前导 task、`on_fail` 与 `max_retries` 配对等）
-- [ ] 每个 task prompt 与评判脚本标记对齐（场景 1: handler 代码块；场景 2: `<!-- IMPL: bisect -->`；场景 3: `<!-- ENERGY:` / `<!-- DRAG:`；场景 4: `<!-- MODULE:`）
-- [ ] 场景 1-3 总时长 ≤ 20 min（远低于 30 min 上限）；场景 4 为挑战级约 50 min（6 成员、8 步 fanout）
-- [ ] 场景 4 fanout 的所有分支成员互不相同（carol/dave/erin 各实现一个模块）
+- [ ] Every gate's `verifier` ≠ the `member` of the task it verifies (satisfies the "no self-verification" hard constraint)
+- [ ] Every master launch call conforms to the `team_workflow` schema (first step is a `task`, gate verifies preceding task, `on_fail` paired with `max_retries`, etc.)
+- [ ] Every task prompt aligns with check script markers (scenario 1: handler code block; scenario 2: `<!-- IMPL: bisect -->`; scenario 3: `<!-- ENERGY:` / `<!-- DRAG:`; scenario 4: `<!-- MODULE:`)
+- [ ] Scenarios 1-3 total duration ≤ 20 min (well under 30 min ceiling); scenario 4 is challenge-level at ~50 min (6 members, 8-step fanout)
+- [ ] Scenario 4 fanout branch members are all distinct (carol/dave/erin each implement one module)
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-Start Prompt (Copy and Use)
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成「创建团队 → 激活 → 启动编排 → 等待汇总 → 运行 check 脚本」的完整闭环。场景 1-3 均提供 bun 可运行的 check 脚本。
+> Paste any of the following prompts into the master session and the AI will automatically complete the full loop of "create team → activate → launch orchestration → wait for summary → run check script". Scenarios 1-3 all provide bun-runnable check scripts.
 
-### 场景 1: REST API handler 实现 + 验证 + 重构（编程）
+### Scenario 1: REST API Handler Implementation + Verification + Refactor (Programming)
 
 ```text
 执行 demos/10-team-workflow/README.md「场景 1」的完整闭环并自动评判。
@@ -660,7 +660,7 @@ T+35m    workflow_complete，汇总交付 master（含所有 8 步账本 + task 
 成功标准：handleRegister 三路径正确；两道 gate 均 PASS；重构后提取了 validate 函数。
 ```
 
-### 场景 2: 二分法求根实现 + 验证 + 迭代优化（数学）
+### Scenario 2: Bisection Root-Finding Implementation + Verification + Iterative Optimization (Math)
 
 ```text
 执行 demos/10-team-workflow/README.md「场景 2」的完整闭环并自动评判。
@@ -677,7 +677,7 @@ T+35m    workflow_complete，汇总交付 master（含所有 8 步账本 + task 
 成功标准：bisect 在 sqrt(2)、cos(x)-x、x³-5 三个测试上精度 < 1e-6；两道 gate 均 PASS。
 ```
 
-### 场景 3: 抛体运动 RK4 求解 + 能量验证 + 阻力建模（计算物理）
+### Scenario 3: Projectile Motion RK4 Solver + Energy Verification + Drag Modeling (Computational Physics)
 
 ```text
 执行 demos/10-team-workflow/README.md「场景 3」的完整闭环并自动评判。
@@ -694,7 +694,7 @@ T+35m    workflow_complete，汇总交付 master（含所有 8 步账本 + task 
 成功标准：无阻力时能量漂移 < 1e-3；有阻力时终端速度接近 sqrt(mg/k) ≈ 9.9 m/s（误差 < 20%）；两道 gate 均 PASS。
 ```
 
-### 场景 4: 多模块 fanout 并行实现 + join reduce 集成验证（挑战级·编程）
+### Scenario 4: Multi-Module Fanout Parallel Implementation + Join Reduce Integration Verification (Challenge-Level · Programming)
 
 ```text
 执行 demos/10-team-workflow/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、8 步 fanout 工作流）。

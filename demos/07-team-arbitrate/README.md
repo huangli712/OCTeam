@@ -1,36 +1,36 @@
-# team_arbitrate 编排场景设计
+# team_arbitrate Orchestration Scenario Design
 
-> **模式**：`team_arbitrate` — 两名辩手就一项争议辩论至多 `max_rounds` 轮，随后由一名仲裁（非辩手、非 master）权衡各方立场并下达**有约束力的裁决**。
-> **源码**：[`src/tools/arbitrate.ts`](../../src/tools/arbitrate.ts)
-> **控时设计**：每场景 3 成员（2 辩手 + 1 仲裁），`max_rounds=2`；每成员子任务 ≤ 8 min，总时长 ≈ 2 轮辩论 + 最终裁决 ≈ 12-18 min（远低于 30 min 上限）。
+> **Mode**: `team_arbitrate` — Two debaters argue over a dispute for up to `max_rounds` rounds, then an arbiter (not a debater, not master) weighs both sides and issues a **binding ruling**.
+> **Source**: [`src/tools/arbitrate.ts`](../../src/tools/arbitrate.ts)
+> **Time-control design**: Each scenario has 3 members (2 debaters + 1 arbiter), `max_rounds=2`; per-member subtask ≤ 8 min, total time ≈ 2 debate rounds + final ruling ≈ 12-18 min (well under the 30 min cap).
 
-## 场景一览
+## Scenario Overview
 
-| # | 方向 | 场景 | 成员数 | Role | max_rounds | 预计总时长 |
+| # | Domain | Scenario | Members | Role | max_rounds | Est. total time |
 |---|------|------|--------|------|-----------|-----------|
-| 1 | 数学 | 4×4 矩阵求逆法之争（直接 vs 迭代） | 3 | `mathematician` / `reviewer` | 2 | ~15 min |
-| 2 | 计算物理 | 刚性 ODE 格式之争（显式 vs 隐式） | 3 | `simulator` / `physicist` | 2 | ~15 min |
-| 3 | 编程 | 缓存淘汰策略之争（LRU vs LFU） | 3 | `coder` / `reviewer` | 2 | ~12 min |
-| 4 | 计算物理 | 复杂边界 PDE 五方法之争（挑战级） | 6 | `physicist` / `reviewer` | 3 | ~40 min |
+| 1 | Math | 4×4 matrix inversion debate (direct vs iterative) | 3 | `mathematician` / `reviewer` | 2 | ~15 min |
+| 2 | Computational physics | Stiff ODE method debate (explicit vs implicit) | 3 | `simulator` / `physicist` | 2 | ~15 min |
+| 3 | Programming | Cache eviction policy debate (LRU vs LFU) | 3 | `coder` / `reviewer` | 2 | ~12 min |
+| 4 | Computational physics | Complex-boundary PDE five-method debate (challenge-level) | 6 | `physicist` / `reviewer` | 3 | ~40 min |
 
 ---
 
-## 场景 1: 4×4 矩阵求逆法之争
+## Scenario 1: 4×4 Matrix Inversion Debate
 
-### 1.1 场景描述
+### 1.1 Scenario description
 
-**背景**：稠密、良态（条件数 ~10）的小型 4×4 矩阵求逆，经典分歧是「直接法（高斯消元/ Gauss-Jordan）」还是「迭代法（如 Jacobi）」。两种路线在精度、开销、收敛性上的取舍截然不同，是数值线性代数的标准争议。
+**Background**: For inverting a dense, well-conditioned (condition number ~10) small 4×4 matrix, the classic divide is "direct method (Gaussian elimination / Gauss-Jordan)" vs "iterative method (e.g. Jacobi)". The two approaches differ sharply in accuracy, cost, and convergence, making this a standard debate in numerical linear algebra.
 
-**目标**：两名辩手各自捍卫一种路线，仲裁综合双方论据下达裁决。
+**Goal**: Two debaters each defend one approach; the arbiter synthesizes arguments from both sides and issues a ruling.
 
-**争议命题**（即 `task`）：*"For inverting a dense, well-conditioned 4×4 matrix (condition number ~10), should you use direct Gaussian elimination or an iterative method (e.g. Jacobi)?"*
+**Dispute proposition** (the `task`): *"For inverting a dense, well-conditioned 4×4 matrix (condition number ~10), should you use direct Gaussian elimination or an iterative method (e.g. Jacobi)?"*
 
-**成功标准（可机器评判）**：
-- 两名辩手输出各含 `<!-- ARG: <一句话立场> -->` 标注
-- 仲裁输出含 `<ruling>{"decision":"<choice>","rationale":"<text>"}</ruling>` 标签 JSON 块（期望 `decision` = `direct`）
-- `rationale` 非空且提及关键术语（`condition` 或 `dense`）
+**Success criteria (machine-evaluable)**:
+- Both debater outputs each contain `<!-- ARG: <one-line position> -->` marker
+- Arbiter output contains `<ruling>{"decision":"<choice>","rationale":"<text>"}</ruling>` tag JSON block (expected `decision` = `direct`)
+- `rationale` is non-empty and mentions the key term (`condition` or `dense`)
 
-### 1.2 Team 配置
+### 1.2 Team configuration
 
 ```json
 {
@@ -56,9 +56,9 @@
 }
 ```
 
-**Role 选择理由**：辩手用 `mathematician`（`oct-junior` agent，能算 flop 数 / 谱半径佐证论点）；仲裁用 `reviewer`（只读角色，专司权衡证据、下达裁决，不偏袒任一方）。
+**Role selection rationale**: Debaters use `mathematician` (`oct-junior` agent, can compute flop counts / spectral radius to support arguments); arbiter uses `reviewer` (read-only role, specialized in weighing evidence and issuing rulings without favoring either side).
 
-### 1.3 Master 启动调用
+### 1.3 Master launch call
 
 ```json
 {
@@ -74,58 +74,58 @@
 }
 ```
 
-**参数选择**：
-- `arbiter: "carol"` — 指向名为 `carol` 的成员（role=`reviewer`）；仲裁**不得**是辩手或 master
-- `debaters: ["alice", "bob"]` — 恰好 2 名唯一辩手，各持一派
-- `max_rounds: 2` — 立论 + 反驳共两轮，足够暴露分歧（控时）
-- `timeout_ms: 1200000`（20 min）— 2 轮辩论 + 裁决的硬上限，正常 ~15 min 完成
-- 无 `signoff_*` — 仲裁裁决本身即为终点（等价 `none` 门）
+**Parameter selection**:
+- `arbiter: "carol"` — Points to the member named `carol` (role=`reviewer`); arbiter **must not** be a debater or master
+- `debaters: ["alice", "bob"]` — Exactly 2 unique debaters, each holding one position
+- `max_rounds: 2` — Opening statement + rebuttal, two rounds total, sufficient to expose the disagreement (time-controlled)
+- `timeout_ms: 1200000` (20 min) — Hard cap for 2 debate rounds + ruling; normally completes in ~15 min
+- No `signoff_*` — The arbiter's ruling itself is the endpoint (equivalent to `none` gate)
 
-### 1.4 执行流程（时序）
+### 1.4 Execution flow (timeline)
 
 ```
-T+0m    master 调用 team_arbitrate (max_rounds=2)
-T+0m    Round 1: 并行 dispatch 2 名 mathematician 辩手立论
-T+0~4m  各辩手写论据 (flop 数 / 收敛性 / 谱半径) + ARG 标记
-T+4m    仲裁审阅 Round 1 双方输出
-T+5m    Round 2: 并行 dispatch 2 名辩手反驳对方
-T+5~8m  各辩手补充反驳，刷新 ARG 标记
-T+8m    仲裁审阅 Round 2，下达有约束力裁决 (RULING + REASON)
-T+9m    裁决交付 master
-T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
+T+0m    master calls team_arbitrate (max_rounds=2)
+T+0m    Round 1: parallel dispatch 2 mathematician debaters opening statements
+T+0~4m  each debater writes arguments (flop count / convergence / spectral radius) + ARG marker
+T+4m    arbiter reviews Round 1 outputs from both sides
+T+5m    Round 2: parallel dispatch 2 debaters rebutting each other
+T+5~8m  each debater adds rebuttal, refreshes ARG marker
+T+8m    arbiter reviews Round 2, issues binding ruling (RULING + REASON)
+T+9m    ruling delivered to master
+T+9m    Run: bun check-math-matrix-inverse.ts <run_dir>
 ```
 
-### 1.5 评判脚本
+### 1.5 Check script
 
 [`check-math-matrix-inverse.ts`](./check-math-matrix-inverse.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
-- **提取**：
-  - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
-  - 仲裁 `<ruling>{...}</ruling>` 标签 JSON 块（`JSON.parse` 取 `decision` 与 `rationale`）
-- **断言**：
-  1. 两名辩手均产出 `ARG` 标记
-  2. 仲裁 `decision == "direct"`
-  3. `rationale` 非空且包含 `condition` 或 `dense`（不区分大小写）
+- **Load**: `runs/<run_id>/{alice,bob,carol}.md`
+- **Extract**:
+  - Debaters `<!-- ARG:\s*(.+?)\s*-->`
+  - Arbiter `<ruling>{...}</ruling>` tag JSON block (`JSON.parse` to read `decision` and `rationale`)
+- **Assertions**:
+  1. Both debaters produced `ARG` markers
+  2. Arbiter `decision == "direct"`
+  3. `rationale` non-empty and contains `condition` or `dense` (case-insensitive)
 
 ---
 
-## 场景 2: 刚性 ODE 格式之争
+## Scenario 2: Stiff ODE Method Debate
 
-### 2.1 场景描述
+### 2.1 Scenario description
 
-**背景**：刚性方程 `dy/dt = -1000·y`，`y(0)=1`，积分到 `t=1`，是稳定性压倒精度的教科书级例子。显式 RK4 虽高阶却受 CFL 类刚性约束（`dt < 2/1000 = 0.002`）才稳定；隐式后向 Euler 无条件稳定，虽仅一阶但能以大步长推进。
+**Background**: The stiff equation `dy/dt = -1000·y`, `y(0)=1`, integrated to `t=1`, is the textbook example of stability dominating accuracy. Explicit RK4, though high-order, is subject to a CFL-like stiffness constraint (`dt < 2/1000 = 0.002`) to remain stable; implicit backward Euler is unconditionally stable, only first-order but can advance with large step sizes.
 
-**目标**：两名辩手分别捍卫显式与隐式路线，仲裁聚焦「刚性下稳定性 vs 精度」下达裁决。
+**Goal**: Two debaters defend the explicit and implicit approaches respectively; the arbiter focuses on "stability vs accuracy under stiffness" and issues a ruling.
 
-**争议命题**（即 `task`）：*"For the stiff ODE dy/dt = -1000·y, y(0)=1, integrated to t=1, should you use explicit RK4 or implicit backward Euler?"*
+**Dispute proposition** (the `task`): *"For the stiff ODE dy/dt = -1000·y, y(0)=1, integrated to t=1, should you use explicit RK4 or implicit backward Euler?"*
 
-**成功标准（可机器评判）**：
-- 两名辩手输出各含 `<!-- ARG: <一句话立场> -->` 标注
-- 仲裁输出含 `<ruling>{"decision":"implicit","rationale":"<text>"}</ruling>` 标签 JSON 块
-- `rationale` 非空且提及关键术语（`stiff` 或 `stability`）
+**Success criteria (machine-evaluable)**:
+- Both debater outputs each contain `<!-- ARG: <one-line position> -->` marker
+- Arbiter output contains `<ruling>{"decision":"implicit","rationale":"<text>"}</ruling>` tag JSON block
+- `rationale` is non-empty and mentions the key term (`stiff` or `stability`)
 
-### 2.2 Team 配置
+### 2.2 Team configuration
 
 ```json
 {
@@ -151,9 +151,9 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：辩手用 `simulator`（PDE/ODE 数值仿真专家，能推导稳定域、放大因子）；仲裁用 `physicist`（物理直觉判断刚性下稳定性优先于精度）。
+**Role selection rationale**: Debaters use `simulator` (PDE/ODE numerical simulation experts, can derive stability regions and amplification factors); arbiter uses `physicist` (physical intuition to judge that stability outweighs accuracy under stiffness).
 
-### 2.3 Master 启动调用
+### 2.3 Master launch call
 
 ```json
 {
@@ -169,57 +169,57 @@ T+9m    运行: bun check-math-matrix-inverse.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `arbiter: "carol"` — role=`physicist` 的仲裁，裁决刚性 / 稳定性权衡
-- `debaters: ["alice", "bob"]` — 显式派 vs 隐式派，恰好 2 名唯一辩手
-- `max_rounds: 2` — 立论（稳定域推导）+ 反驳（步数对比）两轮
-- `timeout_ms: 1200000`（20 min）— 硬上限
+**Parameter selection**:
+- `arbiter: "carol"` — role=`physicist` arbiter, ruling on stiffness / stability trade-off
+- `debaters: ["alice", "bob"]` — Explicit camp vs implicit camp, exactly 2 unique debaters
+- `max_rounds: 2` — Opening (stability region derivation) + rebuttal (step-count comparison), two rounds
+- `timeout_ms: 1200000` (20 min) — Hard cap
 
-### 2.4 执行流程（时序）
+### 2.4 Execution flow (timeline)
 
 ```
-T+0m    master 调用 team_arbitrate (max_rounds=2)
-T+0m    Round 1: 并行 dispatch 2 名 simulator 辩手立论
-T+0~4m  各辩手推导稳定域 / 放大因子 / 步数估计 + ARG 标记
-T+4m    仲裁 (physicist) 审阅 Round 1
-T+5m    Round 2: 并行 dispatch 2 名辩手反驳
-T+5~8m  各辩手反驳，刷新 ARG 标记
-T+8m    仲裁审阅 Round 2，下达裁决 (RULING=implicit + REASON)
-T+9m    裁决交付 master
-T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
+T+0m    master calls team_arbitrate (max_rounds=2)
+T+0m    Round 1: parallel dispatch 2 simulator debaters opening statements
+T+0~4m  each debater derives stability region / amplification factor / step-count estimate + ARG marker
+T+4m    arbiter (physicist) reviews Round 1
+T+5m    Round 2: parallel dispatch 2 debaters rebutting
+T+5~8m  each debater rebuts, refreshes ARG marker
+T+8m    arbiter reviews Round 2, issues ruling (RULING=implicit + REASON)
+T+9m    ruling delivered to master
+T+9m    Run: bun check-physics-stiff-ode.ts <run_dir>
 ```
 
-### 2.5 评判脚本
+### 2.5 Check script
 
 [`check-physics-stiff-ode.ts`](./check-physics-stiff-ode.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
-- **提取**：
-  - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
-  - 仲裁 `<ruling>{...}</ruling>` 标签 JSON 块（`JSON.parse` 取 `decision` 与 `rationale`）
-- **断言**：
-  1. 两名辩手均产出 `ARG` 标记
-  2. 仲裁 `decision == "implicit"`
-  3. `rationale` 非空且包含 `stiff` 或 `stability`（不区分大小写）
+- **Load**: `runs/<run_id>/{alice,bob,carol}.md`
+- **Extract**:
+  - Debaters `<!-- ARG:\s*(.+?)\s*-->`
+  - Arbiter `<ruling>{...}</ruling>` tag JSON block (`JSON.parse` to read `decision` and `rationale`)
+- **Assertions**:
+  1. Both debaters produced `ARG` markers
+  2. Arbiter `decision == "implicit"`
+  3. `rationale` non-empty and contains `stiff` or `stability` (case-insensitive)
 
 ---
 
-## 场景 3: 缓存淘汰策略之争
+## Scenario 3: Cache Eviction Policy Debate
 
-### 3.1 场景描述
+### 3.1 Scenario description
 
-**背景**：单进程、容量 8 的缓存，工作负载呈强**时间局部性**（最近访问的 key 短期内大概率被再访问）且频率均匀。LRU（最近最少使用）与 LFU（最不常用）对这类负载的命中率差异显著，是缓存设计的经典争议。
+**Background**: A single-process cache of capacity 8 serving a workload with strong **temporal locality** (recently-accessed keys are likely re-accessed soon) and uniform frequencies. LRU (Least Recently Used) and LFU (Least Frequently Used) show significantly different hit rates for this workload — a classic debate in cache design.
 
-**目标**：两名辩手分别捍卫 LRU 与 LFU，仲裁聚焦「时间局部性应优先以 recency 还是 frequency 淘汰」下达裁决。
+**Goal**: Two debaters defend LRU and LFU respectively; the arbiter focuses on "should temporal locality prioritize eviction by recency or frequency" and issues a ruling.
 
-**争议命题**（即 `task`）：*"For a single-process cache of capacity 8 serving a workload with strong temporal locality (recently-accessed keys likely re-accessed soon) and uniform frequencies, should you use LRU or LFU eviction?"*
+**Dispute proposition** (the `task`): *"For a single-process cache of capacity 8 serving a workload with strong temporal locality (recently-accessed keys likely re-accessed soon) and uniform frequencies, should you use LRU or LFU eviction?"*
 
-**成功标准（可机器评判）**：
-- 两名辩手输出各含 `<!-- ARG: <一句话立场> -->` 标注
-- 仲裁输出含 `<ruling>{"decision":"lru","rationale":"<text>"}</ruling>` 标签 JSON 块
-- `rationale` 非空且提及关键术语（`temporal` 或 `recency`）
+**Success criteria (machine-evaluable)**:
+- Both debater outputs each contain `<!-- ARG: <one-line position> -->` marker
+- Arbiter output contains `<ruling>{"decision":"lru","rationale":"<text>"}</ruling>` tag JSON block
+- `rationale` is non-empty and mentions the key term (`temporal` or `recency`)
 
-### 3.2 Team 配置
+### 3.2 Team configuration
 
 ```json
 {
@@ -245,9 +245,9 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：辩手用 `coder`（能讲清 O(1) 实现、链表 + hashmap、scan 抗性等工程细节）；仲裁用 `reviewer`（权衡两派工程论据，下达裁决）。
+**Role selection rationale**: Debaters use `coder` (can articulate O(1) implementation, linked list + hashmap, scan resistance, and other engineering details); arbiter uses `reviewer` (weighs engineering arguments from both camps and issues a ruling).
 
-### 3.3 Master 启动调用
+### 3.3 Master launch call
 
 ```json
 {
@@ -263,60 +263,60 @@ T+9m    运行: bun check-physics-stiff-ode.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `arbiter: "carol"` — role=`reviewer`，裁决局部性 / recency 权衡
-- `debaters: ["alice", "bob"]` — LRU 派 vs LFU 派
-- `max_rounds: 2` — 立论（实现 + 复杂度）+ 反驳（scan 抗性 / 频率均匀）两轮
-- `timeout_ms: 1080000`（18 min）— 纯文字辩论，略短于数值场景
+**Parameter selection**:
+- `arbiter: "carol"` — role=`reviewer`, ruling on locality / recency trade-off
+- `debaters: ["alice", "bob"]` — LRU camp vs LFU camp
+- `max_rounds: 2` — Opening (implementation + complexity) + rebuttal (scan resistance / uniform frequencies), two rounds
+- `timeout_ms: 1080000` (18 min) — Pure text debate, slightly shorter than numerical scenarios
 
-### 3.4 执行流程（时序）
+### 3.4 Execution flow (timeline)
 
 ```
-T+0m    master 调用 team_arbitrate (max_rounds=2)
-T+0m    Round 1: 并行 dispatch 2 名 coder 辩手立论
-T+0~4m  各辩手写淘汰策略论据 (复杂度 / scan 抗性 / 局部性) + ARG 标记
-T+4m    仲裁审阅 Round 1
-T+5m    Round 2: 并行 dispatch 2 名辩手反驳
-T+5~7m  各辩手反驳，刷新 ARG 标记
-T+7m    仲裁审阅 Round 2，下达裁决 (RULING=lru + REASON)
-T+8m    裁决交付 master
-T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
+T+0m    master calls team_arbitrate (max_rounds=2)
+T+0m    Round 1: parallel dispatch 2 coder debaters opening statements
+T+0~4m  each debater writes eviction strategy arguments (complexity / scan resistance / locality) + ARG marker
+T+4m    arbiter reviews Round 1
+T+5m    Round 2: parallel dispatch 2 debaters rebutting
+T+5~7m  each debater rebuts, refreshes ARG marker
+T+7m    arbiter reviews Round 2, issues ruling (RULING=lru + REASON)
+T+8m    ruling delivered to master
+T+8m    Run: bun check-coding-cache-eviction.ts <run_dir>
 ```
 
-### 3.5 评判脚本
+### 3.5 Check script
 
 [`check-coding-cache-eviction.ts`](./check-coding-cache-eviction.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
-- **提取**：
-  - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
-  - 仲裁 `<ruling>{...}</ruling>` 标签 JSON 块（`JSON.parse` 取 `decision` 与 `rationale`）
-- **断言**：
-  1. 两名辩手均产出 `ARG` 标记
-  2. 仲裁 `decision == "lru"`
-  3. `rationale` 非空且包含 `temporal` 或 `recency`（不区分大小写）
+- **Load**: `runs/<run_id>/{alice,bob,carol}.md`
+- **Extract**:
+  - Debaters `<!-- ARG:\s*(.+?)\s*-->`
+  - Arbiter `<ruling>{...}</ruling>` tag JSON block (`JSON.parse` to read `decision` and `rationale`)
+- **Assertions**:
+  1. Both debaters produced `ARG` markers
+  2. Arbiter `decision == "lru"`
+  3. `rationale` non-empty and contains `temporal` or `recency` (case-insensitive)
 
 ---
 
-## 场景 4: 复杂边界 PDE 五方法之争（挑战级）
+## Scenario 4: Complex-Boundary PDE Five-Method Debate (challenge-level)
 
-> **挑战级**：6 成员（5 辩手 + 1 仲裁）、`max_rounds=3`、预计 ~40 min，刻意突破标准模板（≤4 成员 / ≤30 min）以压力测试 `team_arbitrate` 在五派辩论下的扩展性。
+> **Challenge-level**: 6 members (5 debaters + 1 arbiter), `max_rounds=3`, est. ~40 min, deliberately exceeds the standard template (≤4 members / ≤30 min) to stress-test `team_arbitrate` scalability under a five-way debate.
 
-### 4.1 场景描述
+### 4.1 Scenario description
 
-**背景**：一类同时具备三个难点的 PDE——**复杂弯曲边界**（需非结构网格贴合）、**对流占优输运**（易产生数值振荡、需稳定化）、**非线性源项**（排除仅适用于线性问题的方法）。五种主流离散化路线（FEM、FDM、FVM、Spectral、BEM）在几何适应性、对流稳定化、非线性处理上各有取舍，是计算物理中开放性最强的数值方法选择争议之一。
+**Background**: A class of PDEs simultaneously possessing three difficulties — **complex curved boundary** (requires unstructured mesh conformity), **advection-dominated transport** (prone to numerical oscillation, needs stabilization), **nonlinear source term** (rules out methods that only work for linear problems). Five mainstream discretization approaches (FEM, FDM, FVM, Spectral, BEM) each involve trade-offs in geometric adaptability, advection stabilization, and nonlinear handling, making this one of the most open-ended numerical method selection debates in computational physics.
 
-**目标**：五名辩手各自捍卫一种离散化路线，仲裁综合「几何适应性 + 对流稳定化 + 非线性处理」三维度下达裁决。
+**Goal**: Five debaters each defend one discretization approach; the arbiter synthesizes across three dimensions — "geometric adaptability + advection stabilization + nonlinear handling" — and issues a ruling.
 
-**争议命题**（即 `task`）：*"For a PDE with a complex CURVED boundary, advection-dominated transport, AND a nonlinear source term, which numerical method should you choose: FEM, FDM, FVM, Spectral, or BEM?"*
+**Dispute proposition** (the `task`): *"For a PDE with a complex CURVED boundary, advection-dominated transport, AND a nonlinear source term, which numerical method should you choose: FEM, FDM, FVM, Spectral, or BEM?"*
 
-**成功标准（可机器评判）**：
-- 五名辩手输出各含 `<!-- ARG: <一句话立场> -->` 标注
-- 仲裁输出含 `<ruling>{"decision":"<method>","rationale":"<text>"}</ruling>` 标签 JSON 块（`decision` ∈ {fem, fdm, fvm, spectral, bem}）
-- `rationale` 非空且至少提及 `{curved, boundary, advection, nonlinear, flux, mesh}` 中的两项（不区分大小写）
-- **物理预期**：FEM 或 FVM 胜出——两者都能通过非结构网格贴合弯曲边界、通过稳定化 / 通量限制处理对流占优，并自然纳入非线性源项；Spectral 难以适应复杂几何，FDM 在弯曲边界上费力，BEM 仅适用于线性问题（非线性源项直接排除 BEM）。
+**Success criteria (machine-evaluable)**:
+- All five debater outputs each contain `<!-- ARG: <one-line position> -->` marker
+- Arbiter output contains `<ruling>{"decision":"<method>","rationale":"<text>"}</ruling>` tag JSON block (`decision` ∈ {fem, fdm, fvm, spectral, bem})
+- `rationale` non-empty and mentions at least two of `{curved, boundary, advection, nonlinear, flux, mesh}` (case-insensitive)
+- **Physical expectation**: FEM or FVM should win — both can conform to curved boundaries via unstructured meshes, handle advection dominance via stabilization / flux limiting, and naturally incorporate the nonlinear source term; Spectral struggles with complex geometry, FDM is strained on curved boundaries, BEM is only applicable to linear problems (nonlinear source term directly disqualifies BEM).
 
-### 4.2 Team 配置
+### 4.2 Team configuration
 
 ```json
 {
@@ -357,9 +357,9 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：5 名辩手均用 `physicist`（计算物理数值方法专家，能讲清弱形式 / 通量守恒 / 稳定域 / 谱收敛 / Green 函数等论据）；仲裁用 `reviewer`（只读角色，跨五方客观权衡，不偏袒任一方法）。
+**Role selection rationale**: All 5 debaters use `physicist` (computational physics numerical method experts, can articulate arguments about weak form / flux conservation / stability regions / spectral convergence / Green's functions); arbiter uses `reviewer` (read-only role, objectively weighs across five camps without favoring any method).
 
-### 4.3 Master 启动调用
+### 4.3 Master launch call
 
 ```json
 {
@@ -375,61 +375,61 @@ T+8m    运行: bun check-coding-cache-eviction.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `arbiter: "frank"` — role=`reviewer` 的仲裁，非辩手、非 master；裁决几何 / 对流 / 非线性三维权衡
-- `debaters: ["alice", "bob", "carol", "dave", "erin"]` — 恰好 5 名唯一辩手，分持 FEM / FDM / FVM / Spectral / BEM
-- `max_rounds: 3` — 立论 + 交叉反驳 + 终辩共三轮（五派分歧大，两轮不足以暴露全部取舍）
-- `timeout_ms: 2400000`（40 min）— 5 名辩手 × 3 轮 + 裁决的硬上限，挑战级场景刻意放宽
-- 无 `signoff_*` — 仲裁裁决本身即为终点（等价 `none` 门）
+**Parameter selection**:
+- `arbiter: "frank"` — role=`reviewer` arbiter, not a debater, not master; rules on the geometry / advection / nonlinearity three-dimensional trade-off
+- `debaters: ["alice", "bob", "carol", "dave", "erin"]` — Exactly 5 unique debaters, holding FEM / FDM / FVM / Spectral / BEM respectively
+- `max_rounds: 3` — Opening + cross-rebuttal + closing arguments, three rounds total (five-way divergence is large; two rounds are insufficient to expose all trade-offs)
+- `timeout_ms: 2400000` (40 min) — Hard cap for 5 debaters × 3 rounds + ruling; challenge-level scenario deliberately relaxed
+- No `signoff_*` — The arbiter's ruling itself is the endpoint (equivalent to `none` gate)
 
-### 4.4 执行流程（时序）
+### 4.4 Execution flow (timeline)
 
 ```
-T+0m     master 调用 team_arbitrate (max_rounds=3)
-T+0m     Round 1: 并行 dispatch 5 名 physicist 辩手立论
-T+0~6m   各辩手写方法论据 (弱形式 / 通量守恒 / 稳定化 / 谱收敛 / Green 函数) + ARG 标记
-T+6m     仲裁 (reviewer) 审阅 Round 1 五方输出
-T+7m     Round 2: 并行 dispatch 5 名辩手交叉反驳
-T+7~14m  各辩手反驳其余四派，刷新 ARG 标记
-T+14m    仲裁审阅 Round 2
-T+15m    Round 3: 并行 dispatch 5 名辩手终辩
-T+15~22m 各辩手终辩收束，刷新 ARG 标记
-T+22m    仲裁审阅 Round 3，下达有约束力裁决 (RULING + REASON)
-T+24m    裁决交付 master
-T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
+T+0m     master calls team_arbitrate (max_rounds=3)
+T+0m     Round 1: parallel dispatch 5 physicist debaters opening statements
+T+0~6m   each debater writes method arguments (weak form / flux conservation / stabilization / spectral convergence / Green's function) + ARG marker
+T+6m     arbiter (reviewer) reviews Round 1 five-way outputs
+T+7m     Round 2: parallel dispatch 5 debaters cross-rebutting
+T+7~14m  each debater rebuts the other four camps, refreshes ARG marker
+T+14m    arbiter reviews Round 2
+T+15m    Round 3: parallel dispatch 5 debaters closing arguments
+T+15~22m each debater delivers closing arguments, refreshes ARG marker
+T+22m    arbiter reviews Round 3, issues binding ruling (RULING + REASON)
+T+24m    ruling delivered to master
+T+24m    Run: bun check-physics-pde-arbitrate.ts <run_dir>
 ```
 
-### 4.5 评判脚本
+### 4.5 Check script
 
 [`check-physics-pde-arbitrate.ts`](./check-physics-pde-arbitrate.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md`
-- **提取**：
-  - 辩手 `<!-- ARG:\s*(.+?)\s*-->`
-  - 仲裁 `<ruling>{...}</ruling>` 标签 JSON 块（`JSON.parse` 取 `decision` 与 `rationale`）
-- **断言**：
-  1. 五名辩手均产出 `ARG` 标记
-  2. 仲裁 `decision` ∈ {fem, fdm, fvm, spectral, bem}
-  3. `rationale` 非空且至少包含 `{curved, boundary, advection, nonlinear, flux, mesh}` 中的两项（不区分大小写）
+- **Load**: `runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md`
+- **Extract**:
+  - Debaters `<!-- ARG:\s*(.+?)\s*-->`
+  - Arbiter `<ruling>{...}</ruling>` tag JSON block (`JSON.parse` to read `decision` and `rationale`)
+- **Assertions**:
+  1. All five debaters produced `ARG` markers
+  2. Arbiter `decision` ∈ {fem, fdm, fvm, spectral, bem}
+  3. `rationale` non-empty and contains at least two of `{curved, boundary, advection, nonlinear, flux, mesh}` (case-insensitive)
 
 ---
 
-## 验收清单
+## Acceptance Checklist
 
-- [ ] 3 个 check 脚本 `tsc -p demos/tsconfig.json` 通过（无类型错误）
-- [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` / `reviewer` / `physicist` 均为预设）
-- [ ] 每个 master 调用参数符合 `team_arbitrate` schema（`arbiter` 非 master、非辩手；`debaters` ≥2 且唯一）
-- [ ] 每场景总时长 ≤ 18 min（远低于 30 min 上限）
-- [ ] 成员 prompt 中明确输出格式约定（辩手 `<!-- ARG -->`；arbiter `<ruling>{json}</ruling>` 标签块），评判脚本与之对齐
+- [ ] 3 check scripts pass `tsc -p demos/tsconfig.json` (no type errors)
+- [ ] Each team config uses valid roles (`mathematician` / `simulator` / `coder` / `reviewer` / `physicist` are all presets)
+- [ ] Each master call parameters conform to `team_arbitrate` schema (`arbiter` not master, not a debater; `debaters` ≥2 and unique)
+- [ ] Per-scenario total time ≤ 18 min (well under the 30 min cap)
+- [ ] Member prompts explicitly state output format conventions (debater `<!-- ARG -->`; arbiter `<ruling>{json}</ruling>` tag block), check scripts aligned with them
 
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-start Prompts (copy and use)
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成完整闭环。arbitrate 模式评判读 arbiter 成员的最终裁决（含 `<ruling>{"decision":"...","rationale":"..."}</ruling>` 标签 JSON 块）。
+> Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Arbitrate mode evaluation reads the arbiter member's final ruling (containing the `<ruling>{"decision":"...","rationale":"..."}</ruling>` tag JSON block).
 
-### 场景 1: 4×4 矩阵求逆法之争（数学）
+### Scenario 1: 4×4 Matrix Inversion Debate (math)
 
 ```text
 执行 demos/07-team-arbitrate/README.md「场景 1」的完整闭环并自动评判。
@@ -446,7 +446,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 成功标准：arbiter RULING = direct；REASON 含 condition 或 dense（4×4 稠密良态矩阵直接法胜出）。
 ```
 
-### 场景 2: 刚性 ODE 格式之争（物理）
+### Scenario 2: Stiff ODE Method Debate (physics)
 
 ```text
 执行 demos/07-team-arbitrate/README.md「场景 2」的完整闭环并自动评判。
@@ -463,7 +463,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 成功标准：arbiter RULING = implicit；REASON 含 stiff 或 stability（dy/dt=-1000y 显式受 dt<0.002 限制）。
 ```
 
-### 场景 3: 缓存淘汰策略之争（编程）
+### Scenario 3: Cache Eviction Policy Debate (programming)
 
 ```text
 执行 demos/07-team-arbitrate/README.md「场景 3」的完整闭环并自动评判。
@@ -480,7 +480,7 @@ T+24m    运行: bun check-physics-pde-arbitrate.ts <run_dir>
 成功标准：arbiter RULING = lru；REASON 含 temporal 或 recency（强时间局部性 workload 偏好 LRU）。
 ```
 
-### 场景 4: 复杂边界 PDE 五方法之争（物理 · 挑战级）
+### Scenario 4: Complex-Boundary PDE Five-Method Debate (physics · challenge-level)
 
 ```text
 执行 demos/07-team-arbitrate/README.md「场景 4」的完整闭环并自动评判。

@@ -1,35 +1,35 @@
-# team_tollgate 编排场景设计
+# team_tollgate Orchestration Scenario Design
 
-> **模式**：`team_tollgate` — 判定门控流水线。每个 stage 产出后必须经独立 verifier 三值判定（PASS / FAIL / INVALID），PASS 才放行下游；FAIL 把产出连同 diff 退回 producer（最多 `max_gate_retries` 次）；INVALID 隔离问题、升级到 verifier 侧，不惩罚 producer。
-> **源码**：[`src/tools/tollgate.ts`](../../src/tools/tollgate.ts)
-> **控时设计**：每场景 1 个 gate、2 成员（producer + verifier），producer 3-5 min、verifier 2-3 min，串行 ≈ 6-8 min（远低于 30 min 上限）。**场景 4 为挑战级**：6 成员、3 门串行 V&V，约 60 min，演示 tollgate 的多门级联能力。
+> **Mode**: `team_tollgate` — verdict-gated pipeline. After each stage produces output it must pass through an independent verifier who issues a three-valued verdict (PASS / FAIL / INVALID). PASS releases the downstream; FAIL returns the output with the diff back to the producer (up to `max_gate_retries` times); INVALID isolates the issue and escalates to the verifier side without penalizing the producer.
+> **Source**: [`src/tools/tollgate.ts`](../../src/tools/tollgate.ts)
+> **Time budget**: Each scenario has 1 gate, 2 members (producer + verifier), with the producer at 3-5 min and the verifier at 2-3 min, serial total ≈ 6-8 min (well under the 30 min ceiling). **Scenario 4 is challenge-level**: 6 members, 3 serial V&V gates, ~60 min, demonstrating tollgate's multi-gate cascade capability.
 
-## 场景一览
+## Scenario Overview
 
-| # | 方向 | 场景 | 成员数 | Role (producer / verifier) | gate 数 | 预计总时长 |
+| # | Domain | Scenario | Members | Role (producer / verifier) | Gates | Est. Duration |
 |---|------|------|--------|----------------------------|---------|-----------|
-| 1 | 数学 | 快速模幂（二进制平方乘）实现 + 验证 | 2 | `mathematician` / `reviewer` | 1 | ~8 min |
-| 2 | 计算物理 | Velocity Verlet 积分器（能量守恒）实现 + 验证 | 2 | `simulator` / `physicist` | 1 | ~8 min |
-| 3 | 编程 | 字符串反转（Unicode 代理对安全）实现 + 验证 | 2 | `coder` / `tester` | 1 | ~7 min |
-| 4 | 计算物理（挑战） | 二维热传导求解器 V&V 认证（3 门串行） | 6 | `simulator` ×3 / `reviewer` / `physicist` ×2 | 3 | ~60 min |
+| 1 | Math | Fast modular exponentiation (binary square-and-multiply) implementation + verification | 2 | `mathematician` / `reviewer` | 1 | ~8 min |
+| 2 | Computational Physics | Velocity Verlet integrator (energy conservation) implementation + verification | 2 | `simulator` / `physicist` | 1 | ~8 min |
+| 3 | Programming | Unicode-safe string reverse (surrogate pair) implementation + verification | 2 | `coder` / `tester` | 1 | ~7 min |
+| 4 | Computational Physics (challenge) | 2D heat equation solver V&V certification (3 serial gates) | 6 | `simulator` ×3 / `reviewer` / `physicist` ×2 | 3 | ~60 min |
 
 ---
 
-## 场景 1: 快速模幂（二进制平方乘）实现 + 验证
+## Scenario 1: Fast Modular Exponentiation (Binary Square-and-Multiply) Implementation + Verification
 
-### 1.1 场景描述
+### 1.1 Scenario Description
 
-**背景**：快速模幂 `base^exp mod mod` 是 RSA 等公钥密码学的核心原语。朴素循环 `O(exp)` 在大指数下不可行；二进制平方乘（binary exponentiation）把复杂度降到 `O(log exp)`，且全程对 `mod` 取模避免大数溢出。`exp=0` 必须返回 `1`（任意正模数的约定）。
+**Background**: Fast modular exponentiation `base^exp mod mod` is a core primitive in public-key cryptography such as RSA. The naive loop `O(exp)` is infeasible for large exponents; binary exponentiation (square-and-multiply) reduces complexity to `O(log exp)` while taking modulo `mod` throughout to avoid large-number overflow. `exp=0` must return `1` (convention for any positive modulus).
 
-**目标**：producer 用 TypeScript 实现迭代版 `modPow(base, exp, mod)`；verifier 跑三个已知答案的用例并放行/驳回。
+**Goal**: The producer implements an iterative `modPow(base, exp, mod)` in TypeScript; the verifier runs three known-answer test cases and passes or rejects.
 
-**成功标准（可机器评判）**：
-- producer 输出含 `<!-- IMPL: modPow -->` 标注，且嵌入可加载的 ```typescript 代码块
-- 代码通过三例：`modPow(2,10,1000)=24`、`modPow(3,0,7)=1`、`modPow(7,256,13)=9`
-- `exp=0` 返回 `1`
-- verifier 输出含 `<verdict>{"result":"PASS",...}</verdict>` 标签 JSON 块
+**Success criteria (machine-evaluable)**:
+- Producer output contains `<!-- IMPL: modPow -->` marker and embeds a loadable ```typescript code block
+- Code passes three cases: `modPow(2,10,1000)=24`, `modPow(3,0,7)=1`, `modPow(7,256,13)=9`
+- `exp=0` returns `1`
+- Verifier output contains `<verdict>{"result":"PASS",...}</verdict>` tagged JSON block
 
-### 1.2 Team 配置
+### 1.2 Team Configuration
 
 ```json
 {
@@ -50,9 +50,9 @@
 }
 ```
 
-**Role 选择理由**：producer 用 `mathematician`（`oct-junior` agent，可写码+做数值验证）；verifier 用 `reviewer`（只读 agent，独立裁判，避免与 producer 同 agent 的偏见）。
+**Role selection rationale**: Producer uses `mathematician` (`oct-junior` agent, can write code and do numerical verification); verifier uses `reviewer` (read-only agent, independent judge, avoids same-agent bias with the producer).
 
-### 1.3 Master 启动调用
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -73,13 +73,13 @@
 }
 ```
 
-**参数选择**：
-- 单 stage（implement → verify）— tollgate 最小有意义单元；门控即终点
-- `verifier != member`（`bob` ≠ `alice`）— 满足「禁止自验证」硬约束
-- `max_gate_retries: 1` — 给 producer 一次 FAIL 后修正的机会（首次实现易漏 `exp=0` 边界）
-- `timeout_ms: 900000`（15 min）— 串行两跳，正常 8 min 完成，留余量
+**Parameter selection**:
+- Single stage (implement → verify) — tollgate's minimal meaningful unit; gate is the endpoint
+- `verifier != member` (`bob` ≠ `alice`) — satisfies the "no self-verification" hard constraint
+- `max_gate_retries: 1` — gives the producer one chance to fix after FAIL (novice implementations easily miss the `exp=0` edge case)
+- `timeout_ms: 900000` (15 min) — serial two-hop, normal completion in 8 min, with margin
 
-### 1.4 执行流程（时序）
+### 1.4 Execution Flow (Timeline)
 
 ```
 T+0m    master 调用 team_tollgate
@@ -91,37 +91,37 @@ T+8m    PASS → 流水线结束，结果交付 master
 T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 ```
 
-（若 FAIL 且 `attempts < max_gate_retries`，producer 连同 diff 退回重做，再走一次 gate。）
+(If FAIL and `attempts < max_gate_retries`, the producer is sent back with the diff to redo, then goes through the gate once more.)
 
-### 1.5 评判脚本
+### 1.5 Check Script
 
 [`check-math-fast-pow.ts`](./check-math-fast-pow.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob}.md`
-- **提取**：
-  - producer 代码：抓取 ` ```typescript ... ``` ` 代码块
-  - verifier 判定：`<verdict>{...}</verdict>` 标签 JSON 块（`JSON.parse` 取 `result`）
-- **断言**：
-  1. producer 代码可用 `new Function` 加载为 `modPow` 函数
-  2. `modPow(2,10,1000)===24`、`modPow(3,0,7)===1`、`modPow(7,256,13)===9`
-  3. verifier `result` 为 `PASS`
+- **Load**: `runs/<run_id>/{alice,bob}.md`
+- **Extract**:
+  - Producer code: grab ` ```typescript ... ``` ` code block
+  - Verifier verdict: `<verdict>{...}</verdict>` tagged JSON block (`JSON.parse` to get `result`)
+- **Assertions**:
+  1. Producer code can be loaded via `new Function` as `modPow` function
+  2. `modPow(2,10,1000)===24`, `modPow(3,0,7)===1`, `modPow(7,256,13)===9`
+  3. Verifier `result` is `PASS`
 
 ---
 
-## 场景 2: Velocity Verlet 积分器（能量守恒）实现 + 验证
+## Scenario 2: Velocity Verlet Integrator (Energy Conservation) Implementation + Verification
 
-### 2.1 场景描述
+### 2.1 Scenario Description
 
-**背景**：谐振子 `ẍ = -ω²x`（取 ω=1，初始 `x0=1, v0=0`）是能量守恒系统的标准测试题，理论能量 `E = ½(x² + v²) = 0.5` 恒定。Velocity Verlet 是**辛（symplectic）格式**，在有限步长下能量有界振荡而非系统性漂移——这是它与显式 Euler 的本质区别。
+**Background**: The harmonic oscillator `ẍ = -ω²x` (with ω=1, initial `x0=1, v0=0`) is a standard test problem for energy-conserving systems, with theoretical energy `E = ½(x² + v²) = 0.5` constant. Velocity Verlet is a **symplectic integrator**; under finite step sizes its energy exhibits bounded oscillation rather than systematic drift — this is its essential difference from explicit Euler.
 
-**目标**：producer 实现 Velocity Verlet，跑 1000 步（h=0.01），报告相对能量漂移；verifier 核对漂移是否满足辛格式的守恒界。
+**Goal**: The producer implements Velocity Verlet, runs 1000 steps (h=0.01), and reports the relative energy drift; the verifier checks whether the drift satisfies the symplectic conservation bound.
 
-**成功标准（可机器评判）**：
-- producer 输出含 `<!-- DRIFT: <数值> -->` 标注（相对漂移 `|E_end - E0|/E0`）
-- 漂移 `< 1e-3`（辛格式的标志）
-- verifier 输出含 `<verdict>{"result":"PASS",...}</verdict>` 标签 JSON 块
+**Success criteria (machine-evaluable)**:
+- Producer output contains `<!-- DRIFT: <value> -->` marker (relative drift `|E_end - E0|/E0`)
+- Drift `< 1e-3` (hallmark of a symplectic integrator)
+- Verifier output contains `<verdict>{"result":"PASS",...}</verdict>` tagged JSON block
 
-### 2.2 Team 配置
+### 2.2 Team Configuration
 
 ```json
 {
@@ -142,9 +142,9 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：producer 用 `simulator`（数值模拟专用）；verifier 用 `physicist`（懂辛格式/能量守恒，能独立复算判定）。
+**Role selection rationale**: Producer uses `simulator` (specialized in numerical simulation); verifier uses `physicist` (understands symplectic integrators and energy conservation, can independently recompute and judge).
 
-### 2.3 Master 启动调用
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -165,11 +165,11 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `max_gate_retries: 1` — 辛格式实现易在「先更新位置还是速度」上犯错（破坏辛性），给一次修正机会
-- verifier 用 `physicist` 角色可独立复算漂移，而非盲信 producer 报数
+**Parameter selection**:
+- `max_gate_retries: 1` — symplectic integrator implementations easily make mistakes in "update position first or velocity first" order (breaking symplecticity), so give one correction chance
+- Verifier uses `physicist` role to independently recompute drift rather than blindly trusting the producer's reported number
 
-### 2.4 执行流程（时序）
+### 2.4 Execution Flow (Timeline)
 
 ```
 T+0m    master 调用 team_tollgate
@@ -181,35 +181,35 @@ T+8m    PASS → 结果交付 master
 T+8m    运行: bun check-physics-verlet.ts <run_dir>
 ```
 
-### 2.5 评判脚本
+### 2.5 Check Script
 
 [`check-physics-verlet.ts`](./check-physics-verlet.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob}.md`
-- **提取**：
-  - producer 漂移：正则 `<!--\s*DRIFT:\s*([\d.eE+-]+)\s*-->`
-  - verifier 判定：`<verdict>{...}</verdict>` 标签 JSON 块（`JSON.parse` 取 `result`）
-- **断言**：
-  1. 漂移值存在且 `Number.isFinite`
-  2. `drift < 1e-3`（辛格式守恒界）
-  3. verifier `result` 为 `PASS`
+- **Load**: `runs/<run_id>/{alice,bob}.md`
+- **Extract**:
+  - Producer drift: regex `<!--\s*DRIFT:\s*([\d.eE+-]+)\s*-->`
+  - Verifier verdict: `<verdict>{...}</verdict>` tagged JSON block (`JSON.parse` to get `result`)
+- **Assertions**:
+  1. Drift value exists and `Number.isFinite`
+  2. `drift < 1e-3` (symplectic conservation bound)
+  3. Verifier `result` is `PASS`
 
 ---
 
-## 场景 3: 字符串反转（Unicode 代理对安全）实现 + 验证
+## Scenario 3: Unicode-Safe String Reverse (Surrogate Pair) Implementation + Verification
 
-### 3.1 场景描述
+### 3.1 Scenario Description
 
-**背景**：JavaScript 字符串按 UTF-16 码元存储。emoji（如 `🚀`，U+1F680）由一对代理项（surrogate pair）表示。朴素 `s.split('').reverse().join('')` 会拆散代理对，反转后产生乱码。正确做法须按**码点（code point）**反转——如 `[...s].reverse().join('')` 或显式 `for...of`。
+**Background**: JavaScript strings are stored as UTF-16 code units. Emoji (e.g. `🚀`, U+1F680) are represented by a surrogate pair. The naive `s.split('').reverse().join('')` breaks apart surrogate pairs, producing garbled output after reversal. The correct approach must reverse by **code points** — e.g. `[...s].reverse().join('')` or an explicit `for...of` loop.
 
-**目标**：producer 实现 `reverseStr(s: string): string`，正确处理 ASCII、空串与代理对；verifier 跑三个用例（含 emoji）。
+**Goal**: The producer implements `reverseStr(s: string): string` that correctly handles ASCII, the empty string, and surrogate pairs; the verifier runs three test cases (including an emoji).
 
-**成功标准（可机器评判）**：
-- producer 输出含 `<!-- IMPL: reverseStr -->` 标注，嵌入可加载代码块
-- `reverseStr('abc')==='cba'`、`reverseStr('')===''`、`reverseStr('a🚀b')==='b🚀a'`（代理对保持完整）
-- verifier 输出含 `<verdict>{"result":"PASS",...}</verdict>` 标签 JSON 块
+**Success criteria (machine-evaluable)**:
+- Producer output contains `<!-- IMPL: reverseStr -->` marker, embedding a loadable code block
+- `reverseStr('abc')==='cba'`, `reverseStr('')===''`, `reverseStr('a🚀b')==='b🚀a'` (surrogate pair stays intact)
+- Verifier output contains `<verdict>{"result":"PASS",...}</verdict>` tagged JSON block
 
-### 3.2 Team 配置
+### 3.2 Team Configuration
 
 ```json
 {
@@ -230,9 +230,9 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：producer 用 `coder`（专注实现）；verifier 用 `tester`（专门跑测试用例，含边界）。
+**Role selection rationale**: Producer uses `coder` (focused on implementation); verifier uses `tester` (specialized in running test cases, including edge cases).
 
-### 3.3 Master 启动调用
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -253,11 +253,11 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- 代理对边界是典型陷阱（朴素 split 即错），`max_gate_retries: 1` 给一次补救
-- verifier 用 `tester` 角色，三个用例（含空串、emoji）直接编码在 `criteria` 里
+**Parameter selection**:
+- The surrogate pair edge case is a classic trap (naive split is wrong), `max_gate_retries: 1` gives one correction chance
+- Verifier uses `tester` role, with the three test cases (including empty string and emoji) encoded directly in `criteria`
 
-### 3.4 执行流程（时序）
+### 3.4 Execution Flow (Timeline)
 
 ```
 T+0m    master 调用 team_tollgate
@@ -269,41 +269,41 @@ T+7m    PASS → 结果交付 master
 T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 ```
 
-### 3.5 评判脚本
+### 3.5 Check Script
 
 [`check-coding-reverse-str.ts`](./check-coding-reverse-str.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob}.md`
-- **提取**：
-  - producer 代码：抓取 ` ```typescript ... ``` ` 代码块
-  - verifier 判定：`<verdict>{...}</verdict>` 标签 JSON 块（`JSON.parse` 取 `result`）
-- **断言**：
-  1. producer 代码可用 `new Function` 加载为 `reverseStr` 函数
-  2. `reverseStr('abc')==='cba'`、`reverseStr('')===''`、`reverseStr('a🚀b')==='b🚀a'`
-  3. verifier `result` 为 `PASS`
+- **Load**: `runs/<run_id>/{alice,bob}.md`
+- **Extract**:
+  - Producer code: grab ` ```typescript ... ``` ` code block
+  - Verifier verdict: `<verdict>{...}</verdict>` tagged JSON block (`JSON.parse` to get `result`)
+- **Assertions**:
+  1. Producer code can be loaded via `new Function` as `reverseStr` function
+  2. `reverseStr('abc')==='cba'`, `reverseStr('')===''`, `reverseStr('a🚀b')==='b🚀a'`
+  3. Verifier `result` is `PASS`
 
 ---
 
-## 场景 4: 二维热传导求解器 V&V 认证（挑战级）
+## Scenario 4: 2D Heat Equation Solver V&V Certification (Challenge-Level)
 
-> **挑战级说明**：本场景突破场景 1-3 的基线约束（2 成员 / 1 门 / ≤8 min），使用 **6 成员、3 门串行**，完整演示 release 前的 V&V（Verification & Validation）认证流程。三门分别检验求解器的三个独立属性：**正确性 → 收敛阶 → 守恒性**，任一门 FAIL 则不予 release。
+> **Challenge-level notes**: This scenario breaks the baseline constraints of scenarios 1-3 (2 members / 1 gate / ≤8 min), using **6 members and 3 serial gates** to fully demonstrate a pre-release V&V (Verification & Validation) certification workflow. The three gates independently verify three distinct properties of the solver: **correctness → convergence order → conservation**. If any gate fails, release is denied.
 
-### 4.1 场景描述
+### 4.1 Scenario Description
 
-**背景**：二维热传导方程 `∂u/∂t = α(∂²u/∂x² + ∂²u/∂y²)` 是抛物型 PDE 的标准基准。显式 FTCS（forward-time, centered-space）格式在空间上二阶、时间上一阶：`u^{n+1}_{ij} = u^n_{ij} + dt·α·(δ²x u + δ²y u)/dx²`。release 前须通过三重独立 V&V：
-1. **正确性（manufactured solution）**：取解析解 `u_ex = sin(πx)·sin(πy)·exp(-2πα²t)`，比较数值解与精确解的最大误差。
-2. **网格收敛阶（grid convergence study）**：在 3 套网格（如 21×21、41×41、81×81）上跑同一边值问题，用 Richardson/log-log 回归估收敛阶——空间二阶格式应给出 p ≥ 2。
-3. **守恒性（heat conservation）**：零通量（Neumann）边界下，总热量 `Σu·dx·dy` 应守恒；1000 步后相对漂移须 < 1e-4。
+**Background**: The 2D heat equation `∂u/∂t = α(∂²u/∂x² + ∂²u/∂y²)` is a standard benchmark for parabolic PDEs. The explicit FTCS (forward-time, centered-space) scheme is second-order in space and first-order in time: `u^{n+1}_{ij} = u^n_{ij} + dt·α·(δ²x u + δ²y u)/dx²`. Before release, the solver must pass three independent V&V checks:
+1. **Correctness (manufactured solution)**: Choose the analytic solution `u_ex = sin(πx)·sin(πy)·exp(-2πα²t)` and compare the maximum error between the numerical and exact solutions.
+2. **Grid convergence order (grid convergence study)**: Run the same boundary-value problem on 3 meshes (e.g. 21×21, 41×41, 81×81) and estimate the convergence order using Richardson extrapolation or log-log regression — a second-order spatial scheme should yield p ≥ 2.
+3. **Conservation (heat conservation)**: Under zero-flux (Neumann) boundaries, total heat `Σu·dx·dy` should be conserved; after 1000 steps the relative drift must be < 1e-4.
 
-**目标**：6 名成员组成 V&V 认证组，3 个门串行推进——每门由一名 producer 产出证据、一名独立 verifier 裁定 PASS/FAIL，全 PASS 才予 release。
+**Goal**: Six members form a V&V certification team; 3 gates advance serially — each gate has one producer producing evidence and one independent verifier issuing PASS/FAIL. Release is granted only if all three pass.
 
-**成功标准（可机器评判）**：
-- G1 producer（alice）输出含 `<!-- GATE1_RESULT: <max_error> -->`；G1 verifier（bob）输出含 `<verdict>{"result":"PASS",...}</verdict>`
-- G2 producer（carol）输出含 `<!-- GATE2_RESULT: <order> -->`；G2 verifier（dave）输出含 `<verdict>{"result":"PASS",...}</verdict>`
-- G3 producer（erin）输出含 `<!-- GATE3_RESULT: <drift> -->`；G3 verifier（frank）输出含 `<verdict>{"result":"PASS",...}</verdict>`
-- 交叉核对：G1 `max_error < 1e-3`、G2 `order ≥ 2`、G3 `drift < 1e-4`
+**Success criteria (machine-evaluable)**:
+- G1 producer (alice) output contains `<!-- GATE1_RESULT: <max_error> -->`; G1 verifier (bob) output contains `<verdict>{"result":"PASS",...}</verdict>`
+- G2 producer (carol) output contains `<!-- GATE2_RESULT: <order> -->`; G2 verifier (dave) output contains `<verdict>{"result":"PASS",...}</verdict>`
+- G3 producer (erin) output contains `<!-- GATE3_RESULT: <drift> -->`; G3 verifier (frank) output contains `<verdict>{"result":"PASS",...}</verdict>`
+- Cross-check: G1 `max_error < 1e-3`, G2 `order ≥ 2`, G3 `drift < 1e-4`
 
-### 4.2 Team 配置
+### 4.2 Team Configuration
 
 ```json
 {
@@ -344,9 +344,9 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：3 名 `simulator`（alice/carol/erin）各负责一个 V&V 维度的数值产出；1 名 `reviewer`（bob）独立核对正确性；2 名 `physicist`（dave/frank）凭物理知识核对收敛阶与守恒律。每门的 verifier 角色与 producer 不同人，满足 tollgate 硬约束。
+**Role selection rationale**: Three `simulator` members (alice/carol/erin) each handle numerical output for one V&V dimension; one `reviewer` (bob) independently checks correctness; two `physicist` members (dave/frank) use physics knowledge to check convergence order and conservation law. Each gate's verifier role is a different person from the producer, satisfying tollgate's hard constraint.
 
-### 4.3 Master 启动调用
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -379,13 +379,13 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- 3 个门**串行**（correctness → convergence → conservation）——后者依赖前者建立的求解器可信度，tollgate 的级联语义天然表达此依赖
-- 每门 `verifier != member`（bob≠alice、dave≠carol、frank≠erin）——满足「禁止自验证」硬约束
-- `max_gate_retries: 1`——V&V 挑战级，给每门一次 FAIL 后修正机会（FTCS 的 CFL 条件、Neumann 边界实现均易首次出错）
-- `timeout_ms: 3600000`（60 min）——3 门 ×（producer ~10 min + verifier ~7 min）串行 ≈ 50 min，留 10 min 余量
+**Parameter selection**:
+- 3 gates run **serially** (correctness → convergence → conservation) — the latter gates depend on the solver credibility established by the former; tollgate's cascade semantics naturally express this dependency
+- Each gate has `verifier != member` (bob≠alice, dave≠carol, frank≠erin) — satisfies the "no self-verification" hard constraint
+- `max_gate_retries: 1` — V&V challenge-level, give each gate one chance to fix after FAIL (FTCS CFL condition and Neumann boundary implementation are both easy to get wrong on first attempt)
+- `timeout_ms: 3600000` (60 min) — 3 gates × (producer ~10 min + verifier ~7 min) serial ≈ 50 min, with 10 min margin
 
-### 4.4 执行流程（时序）
+### 4.4 Execution Flow (Timeline)
 
 ```
 T+0m     master 调用 team_tollgate (3 gates)
@@ -405,44 +405,44 @@ T+57m    G3 PASS → 流水线结束，结果交付 master
 T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 ```
 
-（任一门 FAIL 且 attempts <= max_gate_retries，producer 连同 diff 退回重做，再走该门 gate；超过 retries 则整条流水线失败。）
+(If any gate fails and attempts <= max_gate_retries, the producer is sent back with the diff to redo and go through that gate again; exceeding retries causes the entire pipeline to fail.)
 
-### 4.5 评判脚本
+### 4.5 Check Script
 
 [`check-physics-heat-vv.ts`](./check-physics-heat-vv.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md`（6 个文件）
-- **提取**：
-  - G1 误差：alice.md 正则 `<!--\s*GATE1_RESULT:\s*([\d.eE+-]+)\s*-->`
-  - G1 判定：bob.md `<verdict>{...}</verdict>` 标签 JSON 块
-  - G2 阶：carol.md 正则 `<!--\s*GATE2_RESULT:\s*([\d.eE+-]+)\s*-->`
-  - G2 判定：dave.md `<verdict>{...}</verdict>` 标签 JSON 块
-  - G3 漂移：erin.md 正则 `<!--\s*GATE3_RESULT:\s*([\d.eE+-]+)\s*-->`
-  - G3 判定：frank.md `<verdict>{...}</verdict>` 标签 JSON 块
-- **断言**：
-  1. 三个 GATE_RESULT 值均为有限数
-  2. 交叉核对阈值：G1 `max_error < 1e-3`、G2 `order >= 2`、G3 `drift < 1e-4`
-  3. 三个 verifier `result` 均为 `PASS`
+- **Load**: `runs/<run_id>/{alice,bob,carol,dave,erin,frank}.md` (6 files)
+- **Extract**:
+  - G1 error: alice.md regex `<!--\s*GATE1_RESULT:\s*([\d.eE+-]+)\s*-->`
+  - G1 verdict: bob.md `<verdict>{...}</verdict>` tagged JSON block
+  - G2 order: carol.md regex `<!--\s*GATE2_RESULT:\s*([\d.eE+-]+)\s*-->`
+  - G2 verdict: dave.md `<verdict>{...}</verdict>` tagged JSON block
+  - G3 drift: erin.md regex `<!--\s*GATE3_RESULT:\s*([\d.eE+-]+)\s*-->`
+  - G3 verdict: frank.md `<verdict>{...}</verdict>` tagged JSON block
+- **Assertions**:
+  1. All three GATE_RESULT values are finite numbers
+  2. Cross-check thresholds: G1 `max_error < 1e-3`, G2 `order >= 2`, G3 `drift < 1e-4`
+  3. All three verifier `result` values are `PASS`
 
 ---
 
-## 验收清单
+## Acceptance Checklist
 
-- [ ] 4 个 check 脚本 `tsc -p demos/tsconfig.json` 通过（无类型错误）
-- [ ] 每个 team 配置 role 合法（`mathematician` / `reviewer` / `simulator` / `physicist` / `coder` / `tester` 均为预设）
-- [ ] 每个 stage 的 `verifier != member`（`bob` ≠ `alice`，满足 tollgate 硬约束）
-- [ ] 每个 master 调用参数符合 `team_tollgate` schema（`stages[].{member,task,verifier,criteria}`）
-- [ ] 场景 1-3 总时长 ≤ 8 min（远低于 30 min 上限）；场景 4 为挑战级约 60 min（6 成员、3 门串行）
-- [ ] 成员 prompt 与评判脚本标记对齐：场景 1-3 producer 发 `IMPL`/`DRIFT`、verifier 发 `<verdict>` 标签 JSON 块；场景 4 producer 发 `GATE<n>_RESULT`、verifier 发 `<verdict>` 标签 JSON 块
+- [ ] All 4 check scripts pass `tsc -p demos/tsconfig.json` (no type errors)
+- [ ] Every team configuration uses valid roles (`mathematician` / `reviewer` / `simulator` / `physicist` / `coder` / `tester` are all presets)
+- [ ] Every stage has `verifier != member` (`bob` ≠ `alice`, satisfying tollgate's hard constraint)
+- [ ] Every master launch call conforms to the `team_tollgate` schema (`stages[].{member,task,verifier,criteria}`)
+- [ ] Scenarios 1-3 total duration ≤ 8 min (well under the 30 min ceiling); scenario 4 is challenge-level at ~60 min (6 members, 3 serial gates)
+- [ ] Member prompts align with check script markers: scenarios 1-3 producers emit `IMPL`/`DRIFT`, verifiers emit `<verdict>` tagged JSON blocks; scenario 4 producers emit `GATE<n>_RESULT`, verifiers emit `<verdict>` tagged JSON blocks
 
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-Start Prompt (Copy and Use)
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成完整闭环。tollgate 模式评判读 **producer + verifier** 两个成员的 .md：producer 的实现/数值结果 + verifier 的 VERDICT。
+> Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In tollgate mode, evaluation reads the **producer + verifier** members' .md files: the producer's implementation/numerical results + the verifier's VERDICT.
 
-### 场景 1: 实现快速幂 + 验证（数学）
+### Scenario 1: Implement Fast Power + Verify (Math)
 
 ```text
 执行 demos/09-team-tollgate/README.md「场景 1」的完整闭环并自动评判。
@@ -459,7 +459,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 成功标准：producer 的 modPow 通过 3 用例（2^10 mod 1000 = 24、3^0 mod 7 = 1、7^256 mod 13 = 9）；verifier VERDICT = PASS。
 ```
 
-### 场景 2: 实现 Verlet 求解器 + 验证（物理）
+### Scenario 2: Implement Verlet Solver + Verify (Physics)
 
 ```text
 执行 demos/09-team-tollgate/README.md「场景 2」的完整闭环并自动评判。
@@ -476,7 +476,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 成功标准：producer 报 DRIFT < 1e-3（Verlet 辛格式守恒）；verifier VERDICT = PASS。
 ```
 
-### 场景 3: 实现字符串反转 + 验证（编程）
+### Scenario 3: Implement String Reverse + Verify (Programming)
 
 ```text
 执行 demos/09-team-tollgate/README.md「场景 3」的完整闭环并自动评判。
@@ -493,7 +493,7 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 成功标准：producer 的 reverseStr 通过 3 用例（'abc'→'cba'、''→''、'a🚀b'→'b🚀a' 含 surrogate pair intact）；verifier VERDICT = PASS。
 ```
 
-### 场景 4: 二维热传导求解器 V&V 认证（挑战级）
+### Scenario 4: 2D Heat Equation Solver V&V Certification (Challenge-Level)
 
 ```text
 执行 demos/09-team-tollgate/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、3 门串行 V&V）。

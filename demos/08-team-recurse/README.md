@@ -1,33 +1,33 @@
-# team_recurse 编排场景设计
+# team_recurse Orchestration Scenario Design
 
-> **模式**：`team_recurse` — 层次化递归分解：根任务被分解为子任务（子任务可继续分解至 `max_depth`），子任务结果自底向上聚合，最终解出根任务。使用共享任务列表 + blockedBy DAG 实现分层聚合。
-> **源码**：[`src/tools/recurse.ts`](../../src/tools/recurse.ts)
-> **控时设计**：`max_depth=2`、`max_subtasks=3`，根 → 3 个叶节点（成员并行认领），每叶 ≤ 8 min；decomposer 汇总 ≈ 最慢叶 + 聚合 ≈ 10-12 min（远低于 30 min 上限）。
+> **Mode**: `team_recurse` — Hierarchical recursive decomposition: a root task is broken down into subtasks (which may be further decomposed up to `max_depth`), subtask results are aggregated bottom-up, ultimately solving the root task. Uses a shared task list + blockedBy DAG for layered aggregation.
+> **Source**: [`src/tools/recurse.ts`](../../src/tools/recurse.ts)
+> **Time-control design**: `max_depth=2`, `max_subtasks=3`, root → 3 leaf nodes (members claim in parallel), each leaf ≤ 8 min; decomposer summary ≈ slowest leaf + aggregation ≈ 10-12 min (well under the 30 min cap).
 
-## 场景一览
+## Scenario Overview
 
-| # | 方向 | 场景 | 成员数 | Role | key param | 预计总时长 |
+| # | Domain | Scenario | Members | Role | Key param | Est. total time |
 |---|------|------|--------|------|-----------|-----------|
-| 1 | 数学 | 错排数 D_n 三法推导聚合 | 3 | `mathematician` | `max_depth=2, max_subtasks=3` | ~12 min |
-| 2 | 计算物理 | 阻尼摆小角分段模型聚合 | 3 | `simulator` | `max_depth=2, max_subtasks=3` | ~12 min |
-| 3 | 编程 | 单文件 Markdown→HTML 模块化构建 | 3 | `coder` | `max_depth=2, max_subtasks=3` | ~10 min |
-| 4 | 数学（挑战级） | Vandermonde 恒等式多层证明 | 6 | `mathematician` | `max_depth=4, max_subtasks=4` | ~50 min |
+| 1 | Math | Derangement D_n three-method derivation aggregation | 3 | `mathematician` | `max_depth=2, max_subtasks=3` | ~12 min |
+| 2 | Computational physics | Damped pendulum piecewise small-angle model aggregation | 3 | `simulator` | `max_depth=2, max_subtasks=3` | ~12 min |
+| 3 | Programming | Single-file Markdown→HTML modular build | 3 | `coder` | `max_depth=2, max_subtasks=3` | ~10 min |
+| 4 | Math (challenge-level) | Vandermonde identity multi-layer proof | 6 | `mathematician` | `max_depth=4, max_subtasks=4` | ~50 min |
 
 ---
 
-## 场景 1: 错排数 D_n 三法推导聚合
+## Scenario 1: Derangement D_n Three-Method Derivation Aggregation
 
-### 1.1 场景描述
+### 1.1 Scenario description
 
-**背景**：错排数 D_n（n 个元素全不在原位的排列数）有三条经典独立推导路径，结论须收敛到同一闭式。递归分解天然适合：把「推导 D_n」拆成 3 个独立证明子任务，再由 decomposer 自底向上聚合。
+**Background**: The derangement number D_n (the count of permutations of n elements with no fixed points) has three classic independent derivation paths, and all conclusions must converge to the same closed form. Recursive decomposition fits naturally: break "derive D_n" into 3 independent proof subtasks, then have the decomposer aggregate them bottom-up.
 
-**目标**：decomposer 把根任务拆为 3 个子任务——容斥原理、递推 D_n=(n-1)(D_{n-1}+D_{n-2})、指数型母函数——3 个成员各认领一法独立推导 D_4，最后 decomposer 聚合闭式 D_n = n!·Σ_{k=0}^{n} (-1)^k/k! 与数值 D_4 = 9。
+**Goal**: The decomposer splits the root task into 3 subtasks — inclusion-exclusion, recurrence D_n=(n-1)(D_{n-1}+D_{n-2}), exponential generating function — 3 members each claim one method and independently derive D_4; finally the decomposer aggregates the closed form D_n = n!·Σ_{k=0}^{n} (-1)^k/k! and the numeric value D_4 = 9.
 
-**成功标准（可机器评判）**：
-- decomposer（`alice`）输出含 `<!-- D4_FINAL: 9 -->`（三法聚合后的闭式数值）
-- 其余成员中至少 1 人输出含 `<!-- D4_VALUE: 9 -->`（各自方法算出的 D_4）
+**Success criteria (machine-evaluable)**:
+- Decomposer (`alice`) output contains `<!-- D4_FINAL: 9 -->` (the numeric closed-form value after three-method aggregation)
+- At least 1 of the other members outputs `<!-- D4_VALUE: 9 -->` (D_4 computed via their respective method)
 
-### 1.2 Team 配置
+### 1.2 Team configuration
 
 ```json
 {
@@ -53,9 +53,9 @@
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可推导、算数值、写证明——完全匹配本场景。`alice` 兼任 decomposer（既是合法成员，又承担聚合）。
+**Role selection rationale**: `mathematician` uses the `oct-junior` agent, capable of deriving, computing numeric values, and writing proofs — a perfect fit for this scenario. `alice` also serves as the decomposer (both a valid member and the aggregator).
 
-### 1.3 Master 启动调用
+### 1.3 Master launch call
 
 ```json
 {
@@ -72,51 +72,51 @@
 }
 ```
 
-**参数选择**：
-- `decomposer: alice` — 必须是成员名，不能是 `master`；选 `alice`（容斥法天然导出闭式，便于聚合）
-- `max_depth: 2` — 根（深度 0）→ 3 个叶证明（深度 1），叶节点直接产出结论，无需再拆
-- `max_subtasks: 3` — 恰好对应三条独立证明路径，控制扇出
-- `timeout_ms: 900000`（15 min）— 给足余量，正常 ~8 min 完成
-- `max_retries: 0` — 推导任务确定性高，失败即整体失败
+**Parameter selection**:
+- `decomposer: alice` — Must be a member name, not `master`; chosen because inclusion-exclusion naturally yields the closed form, convenient for aggregation
+- `max_depth: 2` — Root (depth 0) → 3 leaf proofs (depth 1), leaf nodes directly produce conclusions, no further decomposition needed
+- `max_subtasks: 3` — Exactly matches the three independent proof paths, controlling fan-out
+- `timeout_ms: 900000` (15 min) — Generous margin; normal completion ~8 min
+- `max_retries: 0` — Derivation tasks are high-certainty; failure means overall failure
 
-### 1.4 执行流程（时序）
+### 1.4 Execution flow (timeline)
 
 ```
-T+0m    master 调用 team_recurse；root task 入共享任务列表（depth=0）
-T+0m    仅 dispatch decomposer (alice)，附带递归契约
-T+0~1m  alice 分解 root → 创建 3 个 subtask（blockedBy DAG）
-T+1m    bob / carol 被尾部的 re-prompt 唤醒，认领各自 subtask
-T+1~7m  三成员并行推导：alice=容斥, bob=递推, carol=母函数
-T+7m    三叶 subtask 完成、回填结果 → 触发 root 聚合
-T+8m    alice 聚合三法 → 闭式 D_n 与 D_4=9，写 D4_FINAL
-T+9m    运行: bun check-math-derangement.ts <run_dir>
+T+0m    master calls team_recurse; root task enters shared task list (depth=0)
+T+0m    only decomposer (alice) dispatched, with recursion contract
+T+0~1m  alice decomposes root → creates 3 subtasks (blockedBy DAG)
+T+1m    bob / carol awakened by tail re-prompt, claim respective subtasks
+T+1~7m  three members derive in parallel: alice=inclusion-exclusion, bob=recurrence, carol=generating-function
+T+7m    three leaf subtasks complete, results backfilled → triggers root aggregation
+T+8m    alice aggregates three methods → closed form D_n and D_4=9, writes D4_FINAL
+T+9m    Run: bun check-math-derangement.ts <run_dir>
 ```
 
-### 1.5 评判脚本
+### 1.5 Check script
 
 [`check-math-derangement.ts`](./check-math-derangement.ts)
 
-- **加载**：读取 `<run_dir>/` 下全部 `*.md`（recurse 输出散落在任务列表 + 各成员报告）
-- **提取**：正则 `<!-- D4_FINAL:\s*(\d+)\s*-->` 与 `<!-- D4_VALUE:\s*(\d+)\s*-->`
-- **断言**：
-  1. decomposer（`alice.md`）存在且含 `D4_FINAL: 9`
-  2. 其余成员中至少 1 人含 `D4_VALUE: 9`（证明至少一条独立路径算出了同一数值）
+- **Load**: Read all `*.md` under `<run_dir>/` (recurse output scattered across task list + member reports)
+- **Extract**: Regex `<!-- D4_FINAL:\s*(\d+)\s*-->` and `<!-- D4_VALUE:\s*(\d+)\s*-->`
+- **Assertions**:
+  1. Decomposer (`alice.md`) exists and contains `D4_FINAL: 9`
+  2. At least 1 other member contains `D4_VALUE: 9` (proving at least one independent path computed the same value)
 
 ---
 
-## 场景 2: 阻尼摆小角分段模型聚合
+## Scenario 2: Damped Pendulum Piecewise Small-Angle Model Aggregation
 
-### 2.1 场景描述
+### 2.1 Scenario description
 
-**背景**：阻尼摆方程 θ̈ + γθ̇ + (g/L)sin(θ) 在小角度下可分层近似：无阻尼简谐解 → 线性阻尼包络 → 非线性 sin 修正。三部分可独立求解，再由 decomposer 聚合为分段有效模型。
+**Background**: The damped pendulum equation θ̈ + γθ̇ + (g/L)sin(θ) can be approximated in layers at small angles: undamped simple harmonic solution → linear damping envelope → nonlinear sin correction. The three parts can be solved independently, then aggregated by the decomposer into a piecewise valid model.
 
-**目标**：decomposer 把根任务拆为 3 子任务——无阻尼 SHO 解 θ₀cos(ωt)、线性阻尼包络 e^{-(γ/2)t}、非线性 sin 修正（单摄动项）——成员各认领其一，最后聚合为「γ 小、θ 小」时分段有效的模型。
+**Goal**: The decomposer splits the root task into 3 subtasks — undamped SHO solution θ₀cos(ωt), linear damping envelope e^{-(γ/2)t}, nonlinear sin correction (single perturbation term) — members each claim one, and finally aggregate into a piecewise model valid when "γ small, θ small".
 
-**成功标准（可机器评判）**：
-- decomposer（`alice`）输出含 `<!-- MODEL_VALID: true -->`（聚合模型在有效域内自洽）
-- 其余成员中至少 1 人输出含 `<!-- ENVELOPE_DECAY: <数值> -->`，数值 = γ/2 = 0.1（γ=0.2 时阻尼包络 e^{-(γ/2)t} 的衰减常数）
+**Success criteria (machine-evaluable)**:
+- Decomposer (`alice`) output contains `<!-- MODEL_VALID: true -->` (aggregated model is self-consistent within its valid domain)
+- At least 1 other member outputs `<!-- ENVELOPE_DECAY: <value> -->`, value = γ/2 = 0.1 (the decay constant of the damping envelope e^{-(γ/2)t} at γ=0.2)
 
-### 2.2 Team 配置
+### 2.2 Team configuration
 
 ```json
 {
@@ -142,9 +142,9 @@ T+9m    运行: bun check-math-derangement.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`simulator` 专为数值/解析模拟设计，符合物理建模场景。`alice` 兼任 decomposer。
+**Role selection rationale**: `simulator` is designed for numerical/analytical simulation, fitting the physics modeling scenario. `alice` also serves as the decomposer.
 
-### 2.3 Master 启动调用
+### 2.3 Master launch call
 
 ```json
 {
@@ -161,51 +161,51 @@ T+9m    运行: bun check-math-derangement.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `decomposer: alice` — 无阻尼 SHO 是聚合模型的主干（其余两项是它的扰动），适合做聚合锚点
-- `max_depth: 2` — 根 → 3 个独立建模子任务，叶节点直接产出解析式
-- `max_subtasks: 3` — 对应无阻尼 / 线性阻尼 / 非线性修正三段
-- `timeout_ms: 900000`（15 min）— 解析推导 + 聚合的充裕上限
+**Parameter selection**:
+- `decomposer: alice` — The undamped SHO is the backbone of the aggregated model (the other two are perturbations to it), making it a suitable aggregation anchor
+- `max_depth: 2` — Root → 3 independent modeling subtasks, leaf nodes directly produce analytical expressions
+- `max_subtasks: 3` — Corresponding to undamped / linear damping / nonlinear correction three segments
+- `timeout_ms: 900000` (15 min) — Generous cap for analytical derivation + aggregation
 
-### 2.4 执行流程（时序）
+### 2.4 Execution flow (timeline)
 
 ```
-T+0m    master 调用 team_recurse；root task 入共享任务列表（depth=0）
-T+0m    仅 dispatch decomposer (alice)，附带递归契约
-T+0~1m  alice 分解 root → 创建 3 个 subtask（blockedBy DAG）
-T+1m    bob / carol 被 re-prompt 唤醒，认领各自 subtask
-T+1~7m  三成员并行建模：alice=无阻尼 SHO, bob=包络, carol=修正
-T+7m    三叶 subtask 完成、回填 → 触发 root 聚合
-T+8m    alice 聚合分段模型，校验有效域，写 MODEL_VALID
-T+9m    运行: bun check-physics-damped-pendulum.ts <run_dir>
+T+0m    master calls team_recurse; root task enters shared task list (depth=0)
+T+0m    only decomposer (alice) dispatched, with recursion contract
+T+0~1m  alice decomposes root → creates 3 subtasks (blockedBy DAG)
+T+1m    bob / carol awakened by re-prompt, claim respective subtasks
+T+1~7m  three members model in parallel: alice=undamped SHO, bob=envelope, carol=correction
+T+7m    three leaf subtasks complete, backfilled → triggers root aggregation
+T+8m    alice aggregates piecewise model, validates domain, writes MODEL_VALID
+T+9m    Run: bun check-physics-damped-pendulum.ts <run_dir>
 ```
 
-### 2.5 评判脚本
+### 2.5 Check script
 
 [`check-physics-damped-pendulum.ts`](./check-physics-damped-pendulum.ts)
 
-- **加载**：读取 `<run_dir>/` 下全部 `*.md`
-- **提取**：正则 `<!-- MODEL_VALID:\s*(true|false)\s*-->` 与 `<!-- ENVELOPE_DECAY:\s*([\d.eE+-]+)\s*-->`
-- **断言**：
-  1. decomposer（`alice.md`）含 `MODEL_VALID: true`
-  2. 其余成员中至少 1 人含 `ENVELOPE_DECAY`，数值 ≈ 0.1（±0.01，即 γ/2 = 0.1）
+- **Load**: Read all `*.md` under `<run_dir>/`
+- **Extract**: Regex `<!-- MODEL_VALID:\s*(true|false)\s*-->` and `<!-- ENVELOPE_DECAY:\s*([\d.eE+-]+)\s*-->`
+- **Assertions**:
+  1. Decomposer (`alice.md`) contains `MODEL_VALID: true`
+  2. At least 1 other member contains `ENVELOPE_DECAY`, value ≈ 0.1 (±0.01, i.e., γ/2 = 0.1)
 
 ---
 
-## 场景 3: 单文件 Markdown→HTML 模块化构建
+## Scenario 3: Single-File Markdown→HTML Modular Build
 
-### 3.1 场景描述
+### 3.1 Scenario description
 
-**背景**：单文件 Markdown→HTML 转换器可按解析层级模块化：块级解析（标题 + 列表）、行内解析（粗体 + 行内代码）、测试用例。三模块天然有依赖（测试依赖前两者），递归分解配合 blockedBy DAG 能正确排序。
+**Background**: A single-file Markdown→HTML converter can be modularized by parse level: block-level parsing (headings + lists), inline parsing (bold + inline code), test cases. The three modules naturally have dependencies (tests depend on the first two); recursive decomposition with blockedBy DAG correctly orders them.
 
-**目标**：decomposer 把根任务拆为 3 子任务——块级解析器（headings + lists）、行内解析器（bold + code）、测试用例——成员各认领其一，最后聚合出一个可运行的 `convert(markdown: string): string`。
+**Goal**: The decomposer splits the root task into 3 subtasks — block parser (headings + lists), inline parser (bold + code), test cases — members each claim one, and finally aggregate into a runnable `convert(markdown: string): string`.
 
-**成功标准（可机器评判）**：
-- decomposer（`alice`）输出含 `<!-- CONVERTS: true -->`（聚合出可用 convert）
-- 测试成员（`carol`）输出含 `<!-- PASS_COUNT: <n> -->`，n ≥ 5（覆盖 5 项特性且全部通过）
-- 独立从任一成员报告中提取 `convert` 函数并执行：`convert("# Hi")` 含 `<h1`；`convert("**bold**")` 含 `<strong>` 或 `<b>`
+**Success criteria (machine-evaluable)**:
+- Decomposer (`alice`) output contains `<!-- CONVERTS: true -->` (a usable convert was aggregated)
+- Test member (`carol`) output contains `<!-- PASS_COUNT: <n> -->`, n ≥ 5 (covers 5 features with all passing)
+- Independently extract the `convert` function from any member's report and execute: `convert("# Hi")` contains `<h1`; `convert("**bold**")` contains `<strong>` or `<b>`
 
-### 3.2 Team 配置
+### 3.2 Team configuration
 
 ```json
 {
@@ -231,9 +231,9 @@ T+9m    运行: bun check-physics-damped-pendulum.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`coder` 用 `oct-junior` agent，专注实现、最小变更——贴合模块化构建。`alice` 兼任 decomposer（它拥有顶层 `convert` 的组装职责）。
+**Role selection rationale**: `coder` uses the `oct-junior` agent, focused on implementation with minimal changes — fitting the modular build scenario. `alice` also serves as the decomposer (it holds the top-level `convert` assembly responsibility).
 
-### 3.3 Master 启动调用
+### 3.3 Master launch call
 
 ```json
 {
@@ -250,57 +250,57 @@ T+9m    运行: bun check-physics-damped-pendulum.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `decomposer: alice` — 块级解析是 convert 的入口，由其组装最终 convert 最自然
-- `max_depth: 2` — 根 → 3 个模块子任务；测试子任务通过 blockedBy 排在两个 parser 之后
-- `max_subtasks: 3` — 块级 / 行内 / 测试三模块
-- `timeout_ms: 900000`（15 min）— 含 blockedBy 串行等待（测试在 parser 之后），仍远低于上限
+**Parameter selection**:
+- `decomposer: alice` — Block parsing is the entry point of convert, making its assembly of the final convert most natural
+- `max_depth: 2` — Root → 3 module subtasks; test subtask is sequenced after both parsers via blockedBy
+- `max_subtasks: 3` — Block / inline / test three modules
+- `timeout_ms: 900000` (15 min) — Includes blockedBy serial wait (tests after parsers), still well under cap
 
-### 3.4 执行流程（时序）
+### 3.4 Execution flow (timeline)
 
 ```
-T+0m    master 调用 team_recurse；root task 入共享任务列表（depth=0）
-T+0m    仅 dispatch decomposer (alice)，附带递归契约
-T+0~1m  alice 分解 root → 创建 3 个 subtask（carol blockedBy 两个 parser）
-T+1m    bob 被 re-prompt 唤醒并认领 (b)；alice 自做 (a)
-T+1~5m  alice 与 bob 并行实现
-T+5m    两 parser 完成 → carol 的 blockedBy 解除，被唤醒认领 (c)
-T+5~8m  carol 组装 convert、跑测试套件、回填 PASS_COUNT
-T+8m    alice 聚合最终 convert，写 CONVERTS
-T+9m    运行: bun check-coding-md-converter.ts <run_dir>
+T+0m    master calls team_recurse; root task enters shared task list (depth=0)
+T+0m    only decomposer (alice) dispatched, with recursion contract
+T+0~1m  alice decomposes root → creates 3 subtasks (carol blockedBy two parsers)
+T+1m    bob awakened by re-prompt and claims (b); alice does (a) herself
+T+1~5m  alice and bob implement in parallel
+T+5m    both parsers complete → carol's blockedBy resolved, awakened to claim (c)
+T+5~8m  carol assembles convert, runs test suite, backfills PASS_COUNT
+T+8m    alice aggregates final convert, writes CONVERTS
+T+9m    Run: bun check-coding-md-converter.ts <run_dir>
 ```
 
-### 3.5 评判脚本
+### 3.5 Check script
 
 [`check-coding-md-converter.ts`](./check-coding-md-converter.ts)
 
-- **加载**：读取 `<run_dir>/` 下全部 `*.md`
-- **提取**：
-  - 标记：正则 `<!-- CONVERTS:\s*(true|false)\s*-->`、`<!-- PASS_COUNT:\s*(\d+)\s*-->`
-  - 代码：扫描各 `*.md` 的 ` ```typescript ... ``` ` 块，定位含 `convert` 定义的块
-- **断言**：
-  1. decomposer（`alice.md`）含 `CONVERTS: true`
-  2. `carol.md` 含 `PASS_COUNT: <n>`，n ≥ 5（覆盖 5 项特性且全过）
-  3. 提取到的 `convert` 函数：`convert("# Hi")` 含 `<h1`；`convert("**bold**")` 含 `<strong>` 或 `<b>`
+- **Load**: Read all `*.md` under `<run_dir>/`
+- **Extract**:
+  - Markers: Regex `<!-- CONVERTS:\s*(true|false)\s*-->`, `<!-- PASS_COUNT:\s*(\d+)\s*-->`
+  - Code: Scan each `*.md` for ` ```typescript ... ``` ` blocks, locate the block containing the `convert` definition
+- **Assertions**:
+  1. Decomposer (`alice.md`) contains `CONVERTS: true`
+  2. `carol.md` contains `PASS_COUNT: <n>`, n ≥ 5 (covers 5 features with all passing)
+  3. Extracted `convert` function: `convert("# Hi")` contains `<h1`; `convert("**bold**")` contains `<strong>` or `<b>`
 
 ---
 
-## 场景 4: Vandermonde 恒等式多层证明（挑战级）
+## Scenario 4: Vandermonde Identity Multi-Layer Proof (challenge-level)
 
-> **挑战级**：本场景刻意突破标准预算（30 min 总时长 / ≤4 成员 / `max_depth=2`），用于压测 `team_recurse` 在更深（`max_depth=4`）、更宽（`max_subtasks=4`）、更多成员（6 人）下的多层递归分解与自底向上聚合能力。
+> **Challenge-level**: This scenario deliberately exceeds the standard budget (30 min total / ≤4 members / `max_depth=2`) to stress-test `team_recurse` under deeper (`max_depth=4`), wider (`max_subtasks=4`), and more members (6 people) for multi-layer recursive decomposition and bottom-up aggregation.
 
-### 4.1 场景描述
+### 4.1 Scenario description
 
-**背景**：Vandermonde 恒等式 C(m+n, k) = Σ_{i=0}^{k} C(m,i)·C(n, k-i) 是组合数学的核心恒等式之一，拥有三条相互独立的标准证明路径——代数（二项式展开）、组合（双射计数）、母函数（(1+x)^{m+n} 系数提取）。每条路径又可拆为 2-3 个子引理（如代数路径：先证 (1+x)^{m+n}=(1+x)^m·(1+x)^n，再比对 x^k 系数）。这种「根 → 多路径 → 子引理 → 基础等式」的多层结构天然适配 `team_recurse` 的深度递归分解。
+**Background**: The Vandermonde identity C(m+n, k) = Σ_{i=0}^{k} C(m,i)·C(n, k-i) is one of the core identities in combinatorics, with three mutually independent standard proof paths — algebraic (binomial expansion), combinatorial (bijective counting), generating-function (coefficient extraction from (1+x)^{m+n}). Each path can be further broken into 2-3 sub-lemmas (e.g., algebraic path: first prove (1+x)^{m+n}=(1+x)^m·(1+x)^n, then equate x^k coefficients). This "root → multiple paths → sub-lemmas → base identities" multi-layer structure is a natural fit for `team_recurse`'s deep recursive decomposition.
 
-**目标**：decomposer（`alice`）把根任务拆为 3 条独立证明路径（代数 / 组合 / 母函数），每条路径再分解为 2-3 个子引理，必要时继续下钻至基础等式（最深至 depth=4）；6 名成员沿路径并行认领叶节点引理并各自证毕；最终由 `alice` 自底向上聚合，确认三路殊途同归，给出 Vandermonde 恒等式的完整证明。
+**Goal**: The decomposer (`alice`) splits the root task into 3 independent proof paths (algebraic / combinatorial / generating-function), each path further decomposed into 2-3 sub-lemmas, drilling down to base identities if needed (deepest to depth=4); 6 members claim leaf-node lemmas along paths in parallel and each complete their proofs; finally `alice` aggregates bottom-up, confirming all three paths converge, producing a complete proof of the Vandermonde identity.
 
-**成功标准（可机器评判）**：
-- decomposer（`alice`）输出含 `<!-- VANDERMONDE_PROVEN: true -->`（三路聚合后判定恒等式成立）
-- 全部成员的叶节点中收集到的 `<!-- APPROACH: <name> -->` 出现 ≥2 个不同路径名（至少含 `algebraic` 与 `combinatorial`）
-- 所有出现的 `<!-- LEMMA_HOLDS: ... -->` 标记均为 `true`（无任何叶引理证伪）
+**Success criteria (machine-evaluable)**:
+- Decomposer (`alice`) output contains `<!-- VANDERMONDE_PROVEN: true -->` (identity confirmed after three-path aggregation)
+- `<!-- APPROACH: <name> -->` markers collected from all members' leaf nodes show ≥2 distinct path names (must include at least `algebraic` and `combinatorial`)
+- All `<!-- LEMMA_HOLDS: ... -->` markers found are `true` (no leaf lemma falsified)
 
-### 4.2 Team 配置
+### 4.2 Team configuration
 
 ```json
 {
@@ -341,9 +341,9 @@ T+9m    运行: bun check-coding-md-converter.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可独立推导、证引理、写多层证明——完全匹配本场景。6 人均为 `mathematician`；`alice` 兼任 decomposer（既是合法成员，又承担根聚合）。成员分工沿三条路径分布：algebraic（alice + bob）、combinatorial（carol + dave）、generating-function（erin + frank），每路径 2 个叶引理。
+**Role selection rationale**: `mathematician` uses the `oct-junior` agent, capable of independent derivation, lemma proofs, and multi-layer proofs — a perfect fit for this scenario. All 6 are `mathematician`; `alice` also serves as the decomposer (both a valid member and the root aggregator). Member assignments are distributed along three paths: algebraic (alice + bob), combinatorial (carol + dave), generating-function (erin + frank), with 2 leaf lemmas per path.
 
-### 4.3 Master 启动调用
+### 4.3 Master launch call
 
 ```json
 {
@@ -360,61 +360,61 @@ T+9m    运行: bun check-coding-md-converter.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `decomposer: alice` — 必须是成员名，不能是 `master`；选 `alice`（兼做代数路径一叶，便于聚合锚定）
-- `max_depth: 4` — 根(0) → 路径(1) → 子引理(2) → 基础等式(3) → 深叶(4)；刻意比标准场景的 depth=2 更深，压测多层逐级聚合
-- `max_subtasks: 4` — 允许每层最多 4 个子任务，容纳 3 路径 × 2-3 子引理的扇出；比标准 `max_subtasks=3` 更宽
-- `timeout_ms: 3000000`（50 min）— 6 成员并行 + 多层逐级聚合的充裕上限（挑战级，超出标准 30 min 预算）
-- `max_retries: 0` — 数学证明确定性高，失败即整体失败
+**Parameter selection**:
+- `decomposer: alice` — Must be a member name, not `master`; chosen because alice also handles one algebraic leaf, convenient for aggregation anchoring
+- `max_depth: 4` — Root(0) → paths(1) → sub-lemmas(2) → base identities(3) → deep leaves(4); deliberately deeper than the standard depth=2 to stress-test multi-layer stepwise aggregation
+- `max_subtasks: 4` — Allows up to 4 subtasks per level, accommodating the fan-out of 3 paths × 2-3 sub-lemmas; wider than the standard `max_subtasks=3`
+- `timeout_ms: 3000000` (50 min) — Generous cap for 6 members parallel + multi-layer stepwise aggregation (challenge-level, exceeding the standard 30 min budget)
+- `max_retries: 0` — Mathematical proofs are high-certainty; failure means overall failure
 
-### 4.4 执行流程（时序）
+### 4.4 Execution flow (timeline)
 
 ```
-T+0m     master 调用 team_recurse；root task 入共享任务列表（depth=0）
-T+0m     仅 dispatch decomposer (alice)，附带递归契约
-T+0~3m   alice 分解 root → 3 条路径任务（depth=1：algebraic / combinatorial / generating-function）
-T+3~6m   各路径继续分解为 2-3 子引理（depth=2）；部分子引理下钻至基础等式（depth=3），个别达 depth-4 叶
-T+6m     bob / carol / dave / erin / frank 被尾部 re-prompt 唤醒，认领各自叶引理
-T+6~38m  六成员并行证明叶引理（alice 兼做 algebraic 一叶），各自回填 LEMMA_HOLDS + APPROACH
-T+38m    全部叶引理完成 → 触发 depth-3 → depth-2 → depth-1 逐层聚合
-T+38~46m 路径级聚合：三路径各自收敛到 C(m+n,k) = Σ_i C(m,i)·C(n,k-i)
-T+46m    alice 聚合三路殊途同归，写 VANDERMONDE_PROVEN
-T+50m    运行: bun check-math-vandermonde.ts <run_dir>
+T+0m     master calls team_recurse; root task enters shared task list (depth=0)
+T+0m     only decomposer (alice) dispatched, with recursion contract
+T+0~3m   alice decomposes root → 3 path tasks (depth=1: algebraic / combinatorial / generating-function)
+T+3~6m   each path further decomposed into 2-3 sub-lemmas (depth=2); some sub-lemmas drill down to base identities (depth=3), individual ones reach depth-4 leaves
+T+6m     bob / carol / dave / erin / frank awakened by tail re-prompt, claim respective leaf lemmas
+T+6~38m  six members prove leaf lemmas in parallel (alice also handles one algebraic leaf), each backfills LEMMA_HOLDS + APPROACH
+T+38m    all leaf lemmas complete → triggers depth-3 → depth-2 → depth-1 stepwise aggregation
+T+38~46m path-level aggregation: three paths each converge to C(m+n,k) = Σ_i C(m,i)·C(n,k-i)
+T+46m    alice aggregates three paths all roads leading to Rome, writes VANDERMONDE_PROVEN
+T+50m    Run: bun check-math-vandermonde.ts <run_dir>
 ```
 
-### 4.5 评判脚本
+### 4.5 Check script
 
 [`check-math-vandermonde.ts`](./check-math-vandermonde.ts)
 
-- **加载**：读取 `<run_dir>/` 下全部 `*.md`（6 名成员的叶引理报告散落于任务列表 + 各成员输出）
-- **提取**：
-  - 根聚合标记：正则 `<!-- VANDERMONDE_PROVEN:\s*(true|false)\s*-->`
-  - 叶路径标记：全局正则 `<!-- APPROACH:\s*([A-Za-z0-9_-]+)\s*-->`
-  - 叶结论标记：全局正则 `<!-- LEMMA_HOLDS:\s*(true|false)\s*-->`
-- **断言**：
-  1. decomposer（`alice.md`）存在且含 `VANDERMONDE_PROVEN: true`
-  2. 全部成员中收集到的 APPROACH 名称去重后 ≥2 个，且必含 `algebraic` 与 `combinatorial`（证明 ≥2 条独立路径走通）
-  3. 所有出现的 LEMMA_HOLDS 标记均为 `true`（无叶引理证伪）
+- **Load**: Read all `*.md` under `<run_dir>/` (6 members' leaf lemma reports scattered across task list + member outputs)
+- **Extract**:
+  - Root aggregation marker: Regex `<!-- VANDERMONDE_PROVEN:\s*(true|false)\s*-->`
+  - Leaf path markers: Global regex `<!-- APPROACH:\s*([A-Za-z0-9_-]+)\s*-->`
+  - Leaf conclusion markers: Global regex `<!-- LEMMA_HOLDS:\s*(true|false)\s*-->`
+- **Assertions**:
+  1. Decomposer (`alice.md`) exists and contains `VANDERMONDE_PROVEN: true`
+  2. APPROACH names collected from all members, deduplicated, ≥2 distinct, and must include both `algebraic` and `combinatorial` (proving ≥2 independent paths succeeded)
+  3. All LEMMA_HOLDS markers found are `true` (no leaf lemma falsified)
 
 ---
 
-## 验收清单
+## Acceptance Checklist
 
-- [ ] 3 个 check 脚本 `tsc -p demos/tsconfig.json` 通过（无类型错误）
-- [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` 均为预设）
-- [ ] 每个 master 调用参数符合 `team_recurse` schema（`decomposer` 为成员名，非 `master`；`max_depth=2`、`max_subtasks=3`）
-- [ ] 每场景总时长 ≤ 15 min（远低于 30 min 上限）
-- [ ] 成员 prompt 中明确输出格式约定（marker），评判脚本与之对齐
-- [ ] decomposer prompt 使用 `<decompose>` 标签块（非手动 team_task_create）；聚合 marker（D4_FINAL / MODEL_VALID / CONVERTS / VANDERMONDE_PROVEN）与至少一个叶节点 marker 来自不同成员
+- [ ] 3 check scripts pass `tsc -p demos/tsconfig.json` (no type errors)
+- [ ] Each team config uses valid roles (`mathematician` / `simulator` / `coder` are all presets)
+- [ ] Each master call parameters conform to `team_recurse` schema (`decomposer` is a member name, not `master`; `max_depth=2`, `max_subtasks=3`)
+- [ ] Per-scenario total time ≤ 15 min (well under the 30 min cap)
+- [ ] Member prompts explicitly state output format conventions (markers), check scripts aligned with them
+- [ ] Decomposer prompt uses `<decompose>` tag block (not manual team_task_create); aggregation markers (D4_FINAL / MODEL_VALID / CONVERTS / VANDERMONDE_PROVEN) and at least one leaf-node marker come from different members
 
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-start Prompts (copy and use)
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成完整闭环。recurse 模式评判扫 **所有成员** 的 .md：找 decomposer 的聚合 marker + 至少 1 个叶子的子结果 marker。
+> Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Recurse mode evaluation scans **all members'** .md files: finds the decomposer's aggregation marker + at least 1 leaf's sub-result marker.
 
-### 场景 1: 错排数 D_n 推导（数学）
+### Scenario 1: Derangement D_n Derivation (math)
 
 ```text
 执行 demos/08-team-recurse/README.md「场景 1」的完整闭环并自动评判。
@@ -431,7 +431,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 成功标准：decomposer 的 D4_FINAL = 9；且至少 1 个叶子成员 D4_VALUE = 9（容斥/递推/生成函数三路均应得 9）。
 ```
 
-### 场景 2: 阻尼单摆建模（物理）
+### Scenario 2: Damped Pendulum Modeling (physics)
 
 ```text
 执行 demos/08-team-recurse/README.md「场景 2」的完整闭环并自动评判。
@@ -448,7 +448,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 成功标准：decomposer 的 MODEL_VALID = true；且至少 1 叶子报 ENVELOPE_DECAY（γ=0.2 时 e-folding 常数 ≈ 0.1，即 2/γ）。
 ```
 
-### 场景 3: 单页 Markdown→HTML 转换器（编程）
+### Scenario 3: Single-Page Markdown→HTML Converter (programming)
 
 ```text
 执行 demos/08-team-recurse/README.md「场景 3」的完整闭环并自动评判。
@@ -465,7 +465,7 @@ T+50m    运行: bun check-math-vandermonde.ts <run_dir>
 成功标准：decomposer 的 CONVERTS = true；且聚合出的 convert() 通过：convert("# Hi") 含 <h1>、convert("**b**") 含 <strong> 或 <b>。
 ```
 
-### 场景 4: Vandermonde 恒等式多层证明（数学·挑战级）
+### Scenario 4: Vandermonde Identity Multi-Layer Proof (math · challenge-level)
 
 ```text
 执行 demos/08-team-recurse/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、max_depth=4，预计 ~50 min）。

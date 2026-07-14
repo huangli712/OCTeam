@@ -1,39 +1,39 @@
-# team_pipeline 编排场景设计
+# team_pipeline Orchestration Scenario Design
 
-> **模式**：`team_pipeline` — 线性流水线：stage N 的输出被前缀追加到 stage N+1 的任务上，逐级串行；最终 stage 的输出汇总交付 leader。
-> **源码**：[`src/tools/pipeline.ts`](../../src/tools/pipeline.ts)
-> **控时设计**：3 stage 串行执行，每 stage 子任务 3-5 min；总时长 ≈ Σ(stage) + summarize ≈ 12-15 min（远低于 30 min 上限，每成员子任务 ≤ 8 min）。
+> **Pattern**: `team_pipeline` — Linear pipeline: stage N's output is prefixed and appended to stage N+1's task, serial progression stage by stage; the final stage's output is summarized and delivered to the leader.
+> **Source**: [`src/tools/pipeline.ts`](../../src/tools/pipeline.ts)
+> **Timing Design**: 3 stages execute serially, each stage subtask 3-5 min; total duration ≈ Σ(stage) + summarize ≈ 12-15 min (well under the 30 min ceiling, subtask per member ≤ 8 min).
 
-## 场景一览
+## Scenario Overview
 
-| # | 方向 | 场景 | 成员数 | Role | stages（串行） | 预计总时长 |
+| # | Domain | Scenario | Members | Role | Stages (serial) | Estimated Duration |
 |---|------|------|--------|------|----------------|-----------|
-| 1 | 数学 | 高斯定积分三段流水线 | 3 | `mathematician` | alice → bob → carol | ~12 min |
-| 2 | 计算物理 | 小角度单摆仿真链 | 3 | `simulator` | alice → bob → carol | ~14 min |
-| 3 | 编程 | `fib(n)` TDD 流水线 | 3 | `coder` | alice → bob → carol | ~10 min |
-| 4 | 计算物理（挑战级） | Lennard-Jones 分子动力学完整仿真链 | 8 | `simulator` | alice → bob → carol → dave → erin → frank → grace → henry | ~60 min |
+| 1 | Math | Gaussian integral three-stage pipeline | 3 | `mathematician` | alice → bob → carol | ~12 min |
+| 2 | Computational Physics | Small-angle pendulum simulation chain | 3 | `simulator` | alice → bob → carol | ~14 min |
+| 3 | Programming | `fib(n)` TDD pipeline | 3 | `coder` | alice → bob → carol | ~10 min |
+| 4 | Computational Physics (Challenge-level) | Lennard-Jones molecular dynamics full simulation chain | 8 | `simulator` | alice → bob → carol → dave → erin → frank → grace → henry | ~60 min |
 
-> **流水线语义**：stage N+1 的任务前缀自动追加 stage N 的完整 markdown 输出；最终 `leader` 收到的是 stage 3 的输出（经 summarize）。评判脚本读取**末段成员**的 `<member>.md`（末段输出即流水线产物）。
+> **Pipeline semantics**: Stage N+1's task prefix is automatically prepended with stage N's full markdown output; the `leader` ultimately receives stage 3's output (via summarize). The check script reads the **final-stage member's** `<member>.md` (final-stage output is the pipeline product).
 
 ---
 
-## 场景 1: 高斯定积分三段流水线
+## Scenario 1: Gaussian Integral Three-Stage Pipeline
 
-### 1.1 场景描述
+### 1.1 Scenario Description
 
-**背景**：高斯积分 `I = ∫₀¹ e^(-x²) dx` 无初等闭式原函数，但可用误差函数精确表出 `(√π/2)·erf(1)`。该问题是「符号简化 → 数值求积 → 误差界」三段流水线的经典案例。
+**Background**: The Gaussian integral `I = ∫₀¹ e^(-x²) dx` has no elementary closed-form antiderivative, but can be expressed exactly via the error function as `(√π/2)·erf(1)`. This problem is a classic case for a "symbolic simplification → numerical quadrature → error bound" three-stage pipeline.
 
-**目标**：3 个成员串行接力——
-- stage-1（`alice`）：证明无初等闭式，归约为 `(√π/2)·erf(1)`，并给出紧致数值界。
-- stage-2（`bob`）：用 **Gauss–Legendre 求积（n=8 节点）** 在 `[0,1]` 上数值计算 `I`，给到 10 位有效数字。
-- stage-3（`carol`）：将数值结果与闭式参考值 `(√π/2)·erf(1) ≈ 0.7468241328` 对比，报告绝对误差。
+**Goal**: 3 members relay serially—
+- stage-1 (`alice`): Prove there is no elementary closed form, reduce to `(√π/2)·erf(1)`, and give a tight numerical bound.
+- stage-2 (`bob`): Use **Gauss–Legendre quadrature (n=8 nodes)** on `[0,1]` to numerically compute `I` to 10 significant digits.
+- stage-3 (`carol`): Compare the numerical result to the closed-form reference `(√π/2)·erf(1) ≈ 0.7468241328`, reporting the absolute error.
 
-**成功标准（可机器评判）**：
-- stage-2 输出含 `<!-- VALUE: <数值> -->` 标注（10 位数值）
-- stage-3 输出含 `<!-- ERROR: <数值> -->` 标注
-- `error < 1e-8`（Gauss–Legendre n=8 对低阶多项式精确；`e^(-x²)` 在 `[0,1]` 上收敛极快，误差应远小于 1e-8）
+**Success Criteria (Machine-Verifiable)**:
+- stage-2 output contains `<!-- VALUE: <value> -->` marker (10-digit value)
+- stage-3 output contains `<!-- ERROR: <value> -->` marker
+- `error < 1e-8` (Gauss–Legendre n=8 is exact for low-order polynomials; `e^(-x²)` converges extremely fast on `[0,1]`, error should be well under 1e-8)
 
-### 1.2 Team 配置
+### 1.2 Team Configuration
 
 ```json
 {
@@ -59,9 +59,9 @@
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可写代码、运行、做数值验证——完全匹配符号推导 + 数值求积 + 误差分析的需求。
+**Role Selection Rationale**: `mathematician` uses the `oct-junior` agent, capable of writing code, running it, and performing numerical verification — fully matching the needs of symbolic derivation + numerical quadrature + error analysis.
 
-### 1.3 Master 启动调用
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -87,57 +87,57 @@
 }
 ```
 
-**参数选择**：
-- `stages` 三成员**唯一**（流水线硬性要求：`alice` / `bob` / `carol` 互不重复）
-- `signoff_policy` 默认 `none` — 小场景直接交付，无需评审门
-- `timeout_ms: 900000`（15 min）— 3 stage 串行 + 余量，正常 ~10 min 完成
-- stage N+1 的 `task` 仅写本 stage 指令；stage N 的输出由框架自动前缀追加，无需手动拼接
+**Parameter Selection**:
+- `stages` three members **unique** (pipeline strict requirement: `alice` / `bob` / `carol` must not repeat)
+- `signoff_policy` default `none` — small scenario, direct delivery, no review gate needed
+- `timeout_ms: 900000` (15 min) — 3 stages serial + margin, normally ~10 min to complete
+- Stage N+1's `task` only writes the current stage instructions; stage N's output is automatically prefixed by the framework, no manual concatenation needed
 
-### 1.4 执行流程（时序）
+### 1.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_pipeline (3 stages)
-T+0m    OCTeam dispatch stage-1 (alice)
-T+0~4m  alice：符号推导 + CLOSED_FORM 标记 → idle
-T+4m    stage-1 输出前缀追加到 stage-2 任务 → dispatch bob
-T+4~8m  bob：Gauss-Legendre n=8 代码 → 运行 → VALUE 标记 → idle
-T+8m    stage-2 输出前缀追加到 stage-3 任务 → dispatch carol
-T+8~12m carol：对比参考值 → ERROR 标记 → idle
-T+12m   末段输出 summarize 交付 master
-T+12m   运行: bun check-math-gaussian-integral.ts <run_dir>
+T+0m    master calls team_pipeline (3 stages)
+T+0m    OCTeam dispatches stage-1 (alice)
+T+0~4m  alice: symbolic derivation + CLOSED_FORM marker → idle
+T+4m    stage-1 output prefixed to stage-2 task → dispatch bob
+T+4~8m  bob: Gauss-Legendre n=8 code → run → VALUE marker → idle
+T+8m    stage-2 output prefixed to stage-3 task → dispatch carol
+T+8~12m carol: compare against reference → ERROR marker → idle
+T+12m   final-stage output summarized, delivered to master
+T+12m   run: bun check-math-gaussian-integral.ts <run_dir>
 ```
 
-### 1.5 评判脚本
+### 1.5 Check Script
 
 [`check-math-gaussian-integral.ts`](./check-math-gaussian-integral.ts)
 
-- **加载**：`runs/<run_id>/carol.md`（末段成员）
-- **提取**：正则 `<!--\s*ERROR:\s*([\d.eE+-]+)\s*-->`
-- **断言**：
-  1. marker 存在且可解析
-  2. `error < 1e-8`（Gauss–Legendre n=8 对 `e^(-x²)` 在 `[0,1]` 上误差远小于此）
+- **Load**: `runs/<run_id>/carol.md` (final-stage member)
+- **Extract**: regex `<!--\s*ERROR:\s*([\d.eE+-]+)\s*-->`
+- **Assert**:
+  1. marker exists and is parseable
+  2. `error < 1e-8` (Gauss–Legendre n=8 error for `e^(-x²)` on `[0,1]` is well below this)
 
 ---
 
-## 场景 2: 小角度单摆仿真链
+## Scenario 2: Small-Angle Pendulum Simulation Chain
 
-### 2.1 场景描述
+### 2.1 Scenario Description
 
-**背景**：小角度单摆（`θ̈ = -(g/L)θ`，线性化）是可解析的 ODE，常用于验证数值积分器的精度与相图守恒性。一条完整仿真链包含：建模 → 积分 → 相图采样。
+**Background**: The small-angle pendulum (`θ̈ = -(g/L)θ`, linearized) is an analytically solvable ODE, commonly used to verify numerical integrator accuracy and phase-portrait conservation. A complete simulation chain includes: modeling → integration → phase-portrait sampling.
 
-**目标**：3 个 `simulator` 成员串行——
-- stage-1（`alice`）：导出 ODE、解析解 `θ(t) = θ₀·cos(√(g/L)·t)` 与周期 `T = 2π·√(L/g)`。
-- stage-2（`bob`）：用 **经典 RK4** 从 `t=0` 积到 `t=T`，步长 `h=0.001`；输出 `θ(T)`（应 ≈ `θ₀`）。
-- stage-3（`carol`）：在 `[0,T]` 上等距取 100 点，比较 RK4 数值 `θ` 与解析 `θ`，输出最大偏差。
+**Goal**: 3 `simulator` members serially—
+- stage-1 (`alice`): Derive the ODE, analytic solution `θ(t) = θ₀·cos(√(g/L)·t)`, and period `T = 2π·√(L/g)`.
+- stage-2 (`bob`): Use **classical RK4** to integrate from `t=0` to `t=T`, step `h=0.001`; output `θ(T)` (should ≈ `θ₀`).
+- stage-3 (`carol`): Sample 100 equally spaced points over `[0,T]`, compare RK4 numerical `θ` against analytic `θ`, output max deviation.
 
-**参数**：`g = 9.81 m/s²`，`L = 1.0 m`，`θ₀ = 0.1 rad`（小角度），`θ̇₀ = 0`。
+**Parameters**: `g = 9.81 m/s²`, `L = 1.0 m`, `θ₀ = 0.1 rad` (small angle), `θ̇₀ = 0`.
 
-**成功标准（可机器评判）**：
-- stage-2 输出含 `<!-- THETA_END: <数值> -->` 标注
-- stage-3 输出含 `<!-- MAX_ERR: <数值> -->` 标注
-- `max_err < 1e-4`（RK4 在 `h=0.001`、一个周期内的局部截断误差 O(h⁴) 累积远小于 1e-4）
+**Success Criteria (Machine-Verifiable)**:
+- stage-2 output contains `<!-- THETA_END: <value> -->` marker
+- stage-3 output contains `<!-- MAX_ERR: <value> -->` marker
+- `max_err < 1e-4` (RK4 at `h=0.001`, one period; local truncation error O(h⁴) accumulation well under 1e-4)
 
-### 2.2 Team 配置
+### 2.2 Team Configuration
 
 ```json
 {
@@ -163,9 +163,9 @@ T+12m   运行: bun check-math-gaussian-integral.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`simulator` 专为数值模拟设计（PDE/MC/MD/HPC），符合 ODE 积分与相图采样场景。
+**Role Selection Rationale**: `simulator` is designed specifically for numerical simulation (PDE/MC/MD/HPC), fitting the ODE integration and phase-portrait sampling scenario.
 
-### 2.3 Master 启动调用
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -191,55 +191,55 @@ T+12m   运行: bun check-math-gaussian-integral.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `stages` 三成员唯一（`alice` / `bob` / `carol`）
-- `signoff_policy` 默认 `none`
-- `timeout_ms: 900000`（15 min）— RK4 在 `h=0.001`、一周期约 2000 步，运行极快，瓶颈在串行 dispatch
+**Parameter Selection**:
+- `stages` three members unique (`alice` / `bob` / `carol`)
+- `signoff_policy` default `none`
+- `timeout_ms: 900000` (15 min) — RK4 at `h=0.001` runs ~2000 steps per period, runs very fast; bottleneck is serial dispatch
 
-### 2.4 执行流程（时序）
+### 2.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_pipeline (3 stages)
+T+0m    master calls team_pipeline (3 stages)
 T+0m    dispatch stage-1 (alice)
-T+0~4m  alice：推导 ODE + 解析解 + PERIOD 标记 → idle
-T+4m    stage-1 输出前缀追加到 stage-2 → dispatch bob
-T+4~9m  bob：RK4 h=0.001 跑一周期 → THETA_END 标记 → idle
-T+9m    stage-2 输出前缀追加到 stage-3 → dispatch carol
-T+9~14m carol：100 点采样 + 最大偏差 → MAX_ERR 标记 → idle
-T+14m   末段输出 summarize 交付 master
-T+14m   运行: bun check-physics-pendulum.ts <run_dir>
+T+0~4m  alice: derive ODE + analytic solution + PERIOD marker → idle
+T+4m    stage-1 output prefixed to stage-2 → dispatch bob
+T+4~9m  bob: RK4 h=0.001 run one period → THETA_END marker → idle
+T+9m    stage-2 output prefixed to stage-3 → dispatch carol
+T+9~14m carol: 100-point sampling + max deviation → MAX_ERR marker → idle
+T+14m   final-stage output summarized, delivered to master
+T+14m   run: bun check-physics-pendulum.ts <run_dir>
 ```
 
-### 2.5 评判脚本
+### 2.5 Check Script
 
 [`check-physics-pendulum.ts`](./check-physics-pendulum.ts)
 
-- **加载**：`runs/<run_id>/carol.md`（末段成员）
-- **提取**：正则 `<!--\s*MAX_ERR:\s*([\d.eE+-]+)\s*-->`
-- **断言**：
-  1. marker 存在且可解析
-  2. `max_err < 1e-4`（RK4 在 `h=0.001`、一周期内的累积误差远低于此）
+- **Load**: `runs/<run_id>/carol.md` (final-stage member)
+- **Extract**: regex `<!--\s*MAX_ERR:\s*([\d.eE+-]+)\s*-->`
+- **Assert**:
+  1. marker exists and is parseable
+  2. `max_err < 1e-4` (RK4 at `h=0.001`, cumulative error over one period is well below this)
 
 ---
 
-## 场景 3: `fib(n)` TDD 流水线
+## Scenario 3: `fib(n)` TDD Pipeline
 
-### 3.1 场景描述
+### 3.1 Scenario Description
 
-**背景**：TDD（测试驱动开发）天然是流水线——先写测试（红）、再写最小实现（绿）、最后重构（不改行为）。以 `fib(n)` 为载体可清晰演示三段接力。
+**Background**: TDD (Test-Driven Development) is naturally a pipeline — write tests first (red), then minimal implementation (green), finally refactor (unchanged behavior). Using `fib(n)` as a vehicle clearly demonstrates the three-stage relay.
 
-**目标**：3 个 `coder` 成员串行——
-- stage-1（`alice`）：写 4 个 `fib` 测试用例（`(0)→0`、`(1)→1`、`(10)→55`、`(20)→6765`）作为断言，嵌入代码块。
-- stage-2（`bob`）：写最小的 `function fib(n: number): number` 通过全部 4 例，嵌入代码块。
-- stage-3（`carol`）：取 stage-2 代码做清晰度重构（**不改算法**），重新验证 4 例仍通过，嵌入重构后代码。
+**Goal**: 3 `coder` members serially—
+- stage-1 (`alice`): Write 4 `fib` test cases (`(0)→0`, `(1)→1`, `(10)→55`, `(20)→6765`) as assertions, embedded in a code block.
+- stage-2 (`bob`): Write the minimal `function fib(n: number): number` that passes all 4 cases, embedded in a code block.
+- stage-3 (`carol`): Take stage-2's code and refactor for clarity (**no algorithm change**), re-verify all 4 cases still pass, embed the refactored code.
 
-**成功标准（可机器评判）**：
-- stage-1 输出 `<!-- CASES: 4 -->`
-- stage-2 输出 `<!-- IMPLEMENTS: fib -->`
-- stage-3 输出 `<!-- PASSES: 4 -->`
-- 从 stage-3 的 markdown 抽取重构后代码，`new Function` 加载为 `fib`，4 个用例全部通过
+**Success Criteria (Machine-Verifiable)**:
+- stage-1 outputs `<!-- CASES: 4 -->`
+- stage-2 outputs `<!-- IMPLEMENTS: fib -->`
+- stage-3 outputs `<!-- PASSES: 4 -->`
+- Extract the refactored code from stage-3's markdown, load as `fib` via `new Function`, all 4 cases pass
 
-### 3.2 Team 配置
+### 3.2 Team Configuration
 
 ```json
 {
@@ -265,9 +265,9 @@ T+14m   运行: bun check-physics-pendulum.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`coder` 用 `oct-junior` agent，专注实现、最小变更——贴合 TDD 三段式需求。
+**Role Selection Rationale**: `coder` uses the `oct-junior` agent, focused on implementation with minimal changes — fitting the three-stage TDD requirements.
 
-### 3.3 Master 启动调用
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -293,68 +293,68 @@ T+14m   运行: bun check-physics-pendulum.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `stages` 三成员唯一（`alice` / `bob` / `carol`）
-- `signoff_policy` 默认 `none`
-- `timeout_ms: 600000`（10 min）— 单成员任务 < 4 min，三段串行总时长富余
+**Parameter Selection**:
+- `stages` three members unique (`alice` / `bob` / `carol`)
+- `signoff_policy` default `none`
+- `timeout_ms: 600000` (10 min) — single member task < 4 min, three stages serial with ample total time
 
-### 3.4 执行流程（时序）
+### 3.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_pipeline (3 stages)
+T+0m    master calls team_pipeline (3 stages)
 T+0m    dispatch stage-1 (alice)
-T+0~3m  alice：写 4 断言 + CASES 标记 → idle
-T+3m    stage-1 输出前缀追加到 stage-2 → dispatch bob
-T+3~6m  bob：最小 fib 实现 + IMPLEMENTS 标记 → idle
-T+6m    stage-2 输出前缀追加到 stage-3 → dispatch carol
-T+6~10m carol：重构 + 重验 4 例 + PASSES 标记 → idle
-T+10m   末段输出 summarize 交付 master
-T+10m   运行: bun check-coding-fib-tdd.ts <run_dir>
+T+0~3m  alice: write 4 assertions + CASES marker → idle
+T+3m    stage-1 output prefixed to stage-2 → dispatch bob
+T+3~6m  bob: minimal fib implementation + IMPLEMENTS marker → idle
+T+6m    stage-2 output prefixed to stage-3 → dispatch carol
+T+6~10m carol: refactor + re-verify 4 cases + PASSES marker → idle
+T+10m   final-stage output summarized, delivered to master
+T+10m   run: bun check-coding-fib-tdd.ts <run_dir>
 ```
 
-### 3.5 评判脚本
+### 3.5 Check Script
 
 [`check-coding-fib-tdd.ts`](./check-coding-fib-tdd.ts)
 
-- **加载**：`runs/<run_id>/carol.md`（末段成员）
-- **提取**：
-  - 代码：抓取 ` ```typescript ... ``` ` 代码块（取最后一个，应对 stage-2 前缀被引用的情形）
-  - 标记：正则 `<!--\s*PASSES:\s*(\d+)\s*-->`
-- **处理**：剥离 TypeScript 类型注解（`new Function` 不识别 `: number` 等语法）
-- **断言**：
-  1. `PASSES` 标记存在且为 4
-  2. 代码能 `new Function` 加载为 `fib`
-  3. 4 个用例全部通过：`fib(0)=0`、`fib(1)=1`、`fib(10)=55`、`fib(20)=6765`
+- **Load**: `runs/<run_id>/carol.md` (final-stage member)
+- **Extract**:
+  - Code: grab the ` ```typescript ... ``` ` code block (take the last one, handling the case where stage-2's prefix is referenced)
+  - Marker: regex `<!--\s*PASSES:\s*(\d+)\s*-->`
+- **Process**: Strip TypeScript type annotations (`new Function` doesn't recognize `: number` syntax)
+- **Assert**:
+  1. `PASSES` marker exists and equals 4
+  2. Code can be loaded as `fib` via `new Function`
+  3. All 4 cases pass: `fib(0)=0`, `fib(1)=1`, `fib(10)=55`, `fib(20)=6765`
 
 ---
 
-## 场景 4: Lennard-Jones 分子动力学完整仿真链（挑战级）
+## Scenario 4: Lennard-Jones Molecular Dynamics Full Simulation Chain (Challenge-Level)
 
-> **挑战级说明**：本场景突破常规 30 min / ≤4 成员上限，使用 **8 段串行流水线**完成一次完整的 Lennard-Jones 分子动力学仿真（力场 → 初始化 → 能量极小化 → NVT 平衡 → NVT 采样 → RDF 分析 → 汇总报告）。每段子任务约 5-8 min，总时长约 60 min，timeout 设 90 min 留余量。仅作能力演示，不作为常规基准。
+> **Challenge-level note**: This scenario breaks the conventional 30 min / ≤4 member ceiling, using an **8-stage serial pipeline** to complete a full Lennard-Jones molecular dynamics simulation (force field → initialization → energy minimization → NVT equilibration → NVT sampling → RDF analysis → summary report). Each stage subtask approximately 5-8 min, total duration ~60 min, timeout set to 90 min with margin. For capability demonstration only, not a regular benchmark.
 
-### 4.1 场景描述
+### 4.1 Scenario Description
 
-**背景**：液氩（Ar）的经典分子动力学仿真是统计物理教学的标杆体系。原子间相互作用用 Lennard-Jones（LJ）势描述 `V(r) = 4ε[(σ/r)¹² − (σ/r)⁶]`，配合周期性边界条件（PBC）与速度 Verlet 积分，可复现液态氩的径向分布函数 g(r) 与能量守恒性。一条完整、可复现的仿真链涵盖：力场定义 → 初始构型 → 能量极小化 → NVT 平衡 → NVE/NVT 采样 → 轨迹采样 → 后处理（g(r)）→ 报告。
+**Background**: Classical molecular dynamics simulation of liquid argon (Ar) is a benchmark system for statistical physics education. Interatomic interactions are described by the Lennard-Jones (LJ) potential `V(r) = 4ε[(σ/r)¹² − (σ/r)⁶]`, combined with periodic boundary conditions (PBC) and velocity Verlet integration, capable of reproducing liquid argon's radial distribution function g(r) and energy conservation. A complete, reproducible simulation chain covers: force field definition → initial configuration → energy minimization → NVT equilibration → NVE/NVT sampling → trajectory sampling → post-processing (g(r)) → report.
 
-**体系参数**：100 个氩原子，立方盒子周期性边界，密度 ρ = 1.38 g/cm³（液态氩典型值），初始温度 T₀ = 120 K。LJ 参数 ε = 0.998 kJ/mol（≈ 119.8 K·k_B），σ = 3.40 Å，截断半径 r_cut = 2.5σ。
+**System parameters**: 100 argon atoms, cubic box with periodic boundary conditions, density ρ = 1.38 g/cm³ (typical liquid argon value), initial temperature T₀ = 120 K. LJ parameters ε = 0.998 kJ/mol (≈ 119.8 K·k_B), σ = 3.40 Å, cutoff radius r_cut = 2.5σ.
 
-**目标**：8 个 `simulator` 成员串行接力——
-- stage-1（`alice`，force-field）：定义 LJ 力场参数（ε=0.998 kJ/mol、σ=3.40 Å、r_cut=2.5σ），给出势能、力的解析表达式，并约定 reduced unit（σ、ε、原子质量 m_Ar）换算。
-- stage-2（`bob`，init）：按 ρ=1.38 g/cm³ 与 100 个原子构建立方盒子（含 PBC），在 **FCC 格子**上排布原子（注意 100 不是 FCC 完整 filling，须说明取舍），按 Maxwell–Boltzmann 分布在 T₀=120 K 初始化速度并去质心速度。
-- stage-3（`carol`，minimize）：对初始构型做**最速下降法**能量极小化，直到最大原子受力 `F < 1e-4`（reduced 或 SI 一致即可），消除格点重叠带来的高能。
-- stage-4（`dave`，equilibrate）：在 **NVT @ 120 K** 下平衡 **10⁴ 步**，步长 h=2 fs（可用 velocity Verlet + Berendsen 或 Langevin 恒温器），使温度、能量进入稳态。
-- stage-5（`erin`，produce）：切换到 **NVE**（微正则）产出 **10⁵ 步**，步长 h=2 fs，velocity Verlet 积分；记录总能量曲线用于评估能量漂移。
-- stage-6（`frank`，sample）：从产出轨迹等距抽取 **1000 帧**构型，按 PBC 最小镜像约定整理，作为 g(r) 计算输入。
-- stage-7（`grace`，rdf）：基于 1000 帧计算**径向分布函数 g(r)**（bin 宽 0.02σ，区间 [0, L/2]），报告 g(r) 第一峰位置 r_peak（Å）。
-- stage-8（`henry`，report）：汇总产出阶段平均温度 `<T>`、平均总能量 `<E>`、g(r) 第一峰位置，并计算产出阶段总能量相对漂移 `ΔE/<E>`，形成最终报告。
+**Goal**: 8 `simulator` members relay serially—
+- stage-1 (`alice`, force-field): Define LJ force-field parameters (ε=0.998 kJ/mol, σ=3.40 Å, r_cut=2.5σ), give analytic expressions for potential energy and force, and specify the reduced unit (σ, ε, atomic mass m_Ar) conversion.
+- stage-2 (`bob`, init): Build the cubic box (with PBC) from ρ=1.38 g/cm³ and 100 atoms, place atoms on an **FCC lattice** (note 100 is not a perfect FCC filling; must explain the rounding choice), initialize velocities via Maxwell–Boltzmann distribution at T₀=120 K and remove center-of-mass velocity.
+- stage-3 (`carol`, minimize): Apply **steepest descent** energy minimization to the initial configuration until maximum per-atom force `F < 1e-4` (reduced or SI consistent), removing high energy from lattice overlaps.
+- stage-4 (`dave`, equilibrate): Equilibrate under **NVT @ 120 K** for **10⁴ steps**, timestep h=2 fs (can use velocity Verlet + Berendsen or Langevin thermostat), bringing temperature and energy to steady state.
+- stage-5 (`erin`, produce): Switch to **NVE** (microcanonical) production for **10⁵ steps**, timestep h=2 fs, velocity Verlet integration; record total energy curve for drift assessment.
+- stage-6 (`frank`, sample): Down-sample the production trajectory to **1000 equally spaced frames**, wrap by PBC minimum-image convention, as input for g(r) calculation.
+- stage-7 (`grace`, rdf): Compute the **radial distribution function g(r)** from the 1000 frames (bin width 0.02σ, range [0, L/2]), report the first peak position r_peak (Å).
+- stage-8 (`henry`, report): Synthesize mean temperature `<T>`, mean total energy `<E>`, g(r) first peak position over the production phase, and compute the total-energy relative drift `ΔE/<E>`, producing a final report.
 
-**成功标准（可机器评判）**：
-- stage-8（`henry`）输出含 `<!-- TEMP_K: <数值> -->` 标注（产出阶段平均温度，期望 ≈ 120 K ± 20）
-- stage-8 输出含 `<!-- RDF_PEAK_A: <数值> -->` 标注（g(r) 第一峰位置，单位 Å，期望 3.50–3.80 Å；稠密 LJ 液体 g(r) 第一峰文献值 3.65–3.90 Å，仿真结果与之吻合，并非 σ 处）
-- stage-8 输出含 `<!-- ENERGY_DRIFT: <数值> -->` 标注（产出 NVE 阶段总能量相对漂移 `|ΔE|/|<E>|`，期望 < 0.05）
-- 评判脚本只读末段 `henry.md`（流水线语义：前 7 段输出会被框架自动前缀追加到 `henry` 的任务上，故末段即完整产物）
+**Success Criteria (Machine-Verifiable)**:
+- stage-8 (`henry`) output contains `<!-- TEMP_K: <value> -->` marker (mean production temperature, expected ≈ 120 K ± 20)
+- stage-8 output contains `<!-- RDF_PEAK_A: <value> -->` marker (g(r) first peak position, unit Å, expected 3.50–3.80 Å; dense LJ liquid g(r) first peak literature values 3.65–3.90 Å, simulation results are consistent with these, not at σ)
+- stage-8 output contains `<!-- ENERGY_DRIFT: <value> -->` marker (NVE production phase total-energy relative drift `|ΔE|/|<E>|`, expected < 0.05)
+- Check script only reads the final-stage `henry.md` (pipeline semantics: the first 7 stage outputs are auto-prefixed by the framework onto `henry`'s task, so the final-stage output is the complete product)
 
-### 4.2 Team 配置
+### 4.2 Team Configuration
 
 ```json
 {
@@ -405,9 +405,9 @@ T+10m   运行: bun check-coding-fib-tdd.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：8 段均为数值模拟（力场、初始化、极小化、NVT/NVE 积分、采样、RDF 后处理、报告），`simulator` 专为 PDE/MC/MD/HPC 数值模拟设计，全程一致无需切 role，且 `oct-junior` agent 可写码 + 运行 + 数值验证。
+**Role Selection Rationale**: All 8 stages are numerical simulation (force field, initialization, minimization, NVT/NVE integration, sampling, RDF post-processing, report). `simulator` is designed specifically for PDE/MC/MD/HPC numerical simulation, consistently used throughout without role switching, and the `oct-junior` agent can write code + run + perform numerical verification.
 
-### 4.3 Master 启动调用
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -429,68 +429,68 @@ T+10m   运行: bun check-coding-fib-tdd.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `stages` 八成员**唯一**（流水线硬性要求：`alice` / `bob` / `carol` / `dave` / `erin` / `frank` / `grace` / `henry` 互不重复）
-- `signoff_policy` 默认 `none` — 长链流水线靠末段汇总产物，不加评审门以免进一步拉长
-- `timeout_ms: 5400000`（90 min）— 8 段串行预计 ~60 min（每段 5-8 min 含 dispatch + 运行），留 50% 余量
-- 每个 stage 的 `task` 仅写本 stage 指令；前序 stage 的 markdown 输出由框架自动前缀追加，无需手动拼接
+**Parameter Selection**:
+- `stages` eight members **unique** (pipeline strict requirement: `alice` / `bob` / `carol` / `dave` / `erin` / `frank` / `grace` / `henry` must not repeat)
+- `signoff_policy` default `none` — the long pipeline relies on final-stage summary product; no review gate added to avoid further lengthening
+- `timeout_ms: 5400000` (90 min) — 8 stages serial, estimated ~60 min (each stage 5-8 min including dispatch + run), 50% margin
+- Each stage's `task` only writes current stage instructions; prior stage markdown output is auto-prefixed by the framework, no manual concatenation needed
 
-### 4.4 执行流程（时序）
+### 4.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_pipeline (8 stages)
+T+0m     master calls team_pipeline (8 stages)
 T+0m     dispatch stage-1 (alice)
-T+0~7m   alice：LJ 力场 + reduced unit + 盒长 → FORCE_FIELD 标记 → idle
-T+7m     stage-1 输出前缀追加到 stage-2 → dispatch bob
-T+7~14m  bob：FCC 初始化 + Maxwell 速度 → INIT 标记 → idle
+T+0~7m   alice: LJ force field + reduced units + box length → FORCE_FIELD marker → idle
+T+7m     stage-1 output prefixed to stage-2 → dispatch bob
+T+7~14m  bob: FCC init + Maxwell velocities → INIT marker → idle
 T+14m    → dispatch carol
-T+14~21m carol：最速下降极小化 → MINIMIZE 标记 → idle
+T+14~21m carol: steepest descent minimization → MINIMIZE marker → idle
 T+21m    → dispatch dave
-T+21~30m dave：NVT 平衡 10^4 步 → EQUIL 标记 → idle
+T+21~30m dave: NVT equilibration 10^4 steps → EQUIL marker → idle
 T+30m    → dispatch erin
-T+30~40m erin：NVE 产出 10^5 步 + 能量漂移 → PRODUCE 标记 → idle
+T+30~40m erin: NVE production 10^5 steps + energy drift → PRODUCE marker → idle
 T+40m    → dispatch frank
-T+40~46m frank：抽取 1000 帧 → SAMPLE 标记 → idle
+T+40~46m frank: extract 1000 frames → SAMPLE marker → idle
 T+46m    → dispatch grace
-T+46~54m grace：g(r) + 第一峰 → RDF_PEAK 标记 → idle
+T+46~54m grace: g(r) + first peak → RDF_PEAK marker → idle
 T+54m    → dispatch henry
-T+54~60m henry：汇总 <T>/<E>/g(r) 峰/能量漂移 → 三标记 → idle
-T+60m    末段输出 summarize 交付 master
-T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
+T+54~60m henry: synthesize <T>/<E>/g(r) peak/energy drift → three markers → idle
+T+60m    final-stage output summarized, delivered to master
+T+60m    run: bun check-physics-md-pipeline.ts <run_dir>
 ```
 
-### 4.5 评判脚本
+### 4.5 Check Script
 
 [`check-physics-md-pipeline.ts`](./check-physics-md-pipeline.ts)
 
-- **加载**：`runs/<run_id>/henry.md`（末段成员；流水线语义下前 7 段输出已被框架前缀追加到 henry 任务，故末段输出即完整产物，评判只读这一份）
-- **提取**：三条正则
+- **Load**: `runs/<run_id>/henry.md` (final-stage member; under pipeline semantics the first 7 stage outputs are already prefixed onto henry's task by the framework, so the final-stage output is the complete product; the check reads only this one file)
+- **Extract**: three regexes
   - `<!--\s*TEMP_K:\s*([\d.eE+-]+)\s*-->`
   - `<!--\s*RDF_PEAK_A:\s*([\d.eE+-]+)\s*-->`
   - `<!--\s*ENERGY_DRIFT:\s*([\d.eE+-]+)\s*-->`
-- **断言**：
-  1. 三条 marker 均存在且可解析为数值
-  2. `100 <= TEMP_K <= 140`（NVT 锁定 120 K，NVE 产出期间温度浮动 ±20 K 内）
-  3. `3.50 <= RDF_PEAK_A <= 3.80`（稠密 LJ 液体 g(r) 第一峰文献值 3.65–3.90 Å（Yarnell 1973 中子衍射 3.68 Å、Lund 1974 3.65–3.75 Å、Smelser 1969 3.85 Å），窗口覆盖已发表基准值加 bin 量化容差）
-  4. `ENERGY_DRIFT < 0.05`（velocity Verlet 在 h=2 fs、10⁵ 步内的相对能量漂移）
+- **Assert**:
+  1. All three markers exist and are parseable as numbers
+  2. `100 <= TEMP_K <= 140` (NVT locked at 120 K, NVE production temperature fluctuation within ±20 K)
+  3. `3.50 <= RDF_PEAK_A <= 3.80` (dense LJ liquid g(r) first peak literature values 3.65–3.90 Å (Yarnell 1973 neutron diffraction 3.68 Å, Lund 1974 3.65–3.75 Å, Smelser 1969 3.85 Å), the window covers published baselines plus bin quantization tolerance)
+  4. `ENERGY_DRIFT < 0.05` (velocity Verlet relative energy drift over h=2 fs, 10⁵ steps)
 
 ---
 
-## 验收清单
+## Acceptance Checklist
 
-- [ ] 4 个 check 脚本 `tsc --noEmit` 通过（无类型错误）
-- [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` 均为预设）
-- [ ] 每个 master 调用参数符合 `team_pipeline` schema（`stages[].member` 唯一）
-- [ ] 场景 1-3 总时长 ≤ 15 min（远低于 30 min 上限；每成员子任务 ≤ 8 min）；场景 4 为挑战级（8 段、~60 min、timeout 90 min），单独标注
-- [ ] 成员 prompt 中明确输出格式约定（marker），评判脚本读取**末段成员**输出并与之对齐
+- [ ] 4 check scripts pass `tsc --noEmit` (no type errors)
+- [ ] Each team config role is valid (`mathematician` / `simulator` / `coder` are all presets)
+- [ ] Each master call parameters conform to `team_pipeline` schema (`stages[].member` unique)
+- [ ] Scenarios 1-3 total duration ≤ 15 min (well under 30 min ceiling; subtask per member ≤ 8 min); Scenario 4 is challenge-level (8 stages, ~60 min, timeout 90 min), separately noted
+- [ ] Member prompts explicitly specify output format conventions (marker); check scripts read **final-stage member** output and align with it
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-Start Prompt (Copy and Use)
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成完整闭环。pipeline 的评判只读「末阶段成员」的输出（前序阶段输出会自动拼到末阶段任务前）。
+> Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. Pipeline evaluation reads only the **final-stage member's** output (prior stage outputs are automatically prepended to the final-stage task).
 
-### 场景 1: 高斯定积分全流程（数学）
+### Scenario 1: Gaussian Integral Full Pipeline (Math)
 
 ```text
 执行 demos/03-team-pipeline/README.md「场景 1」的完整闭环并自动评判。
@@ -507,7 +507,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 成功标准：末阶段（carol）报 ERROR < 1e-8（Gauss-Legendre n=8 对 e^(-x²) 精度极高）。
 ```
 
-### 场景 2: 单摆小角度仿真（物理）
+### Scenario 2: Pendulum Small-Angle Simulation (Physics)
 
 ```text
 执行 demos/03-team-pipeline/README.md「场景 2」的完整闭环并自动评判。
@@ -524,7 +524,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 成功标准：末阶段（carol）报 MAX_ERR < 1e-4（RK4 h=0.001 跑一个周期）。
 ```
 
-### 场景 3: Fibonacci TDD 线（编程）
+### Scenario 3: Fibonacci TDD Line (Programming)
 
 ```text
 执行 demos/03-team-pipeline/README.md「场景 3」的完整闭环并自动评判。
@@ -541,7 +541,7 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 成功标准：末阶段（carol）代码通过 4 用例：fib(0)=0、fib(1)=1、fib(10)=55、fib(20)=6765。
 ```
 
-### 场景 4: Lennard-Jones 分子动力学完整仿真链（挑战级，物理）
+### Scenario 4: Lennard-Jones Molecular Dynamics Full Simulation Chain (Challenge-Level, Physics)
 
 ```text
 执行 demos/03-team-pipeline/README.md「场景 4」的完整闭环并自动评判（挑战级：8 段串行，约 60 min）。

@@ -1,33 +1,33 @@
-# 综合场景：大规模矩阵本征值求解器开发
+# Comprehensive Scenario: Large-Scale Matrix Eigenvalue Solver Development
 
-用 Rust 开发一个 1000×1000 稠密矩阵本征值求解器的端到端工作流：**方法调研 → 方案比选 → 计划+评审 → 实现 → 优化重构 → 代码评审**，6 个独立团队 × 5 种编排原语串联。master 作集成枢纽，团队间彼此隔离、数据手递手。
+An end-to-end workflow for developing a 1000×1000 dense matrix eigenvalue solver in Rust: **Method Research → Approach Selection → Plan+Review → Implementation → Optimization+Refactoring → Code Review**, 6 independent teams × 5 orchestration primitives chained together. Master acts as the integration hub, teams are isolated from each other with hand-to-hand data passing.
 
-**自用模板**：不含评判脚本，最终求解器是否正确、性能是否达标**由你自行判断**。
+**Self-use template**: no check scripts included; whether the final solver is correct and whether performance meets expectations is **for you to judge**.
 
-## 核心约束
+## Core Constraints
 
-| 维度 | 约束 |
+| Dimension | Constraint |
 |------|------|
-| 矩阵规模 | 1000 × 1000 稠密实矩阵 |
-| 语言 | Rust |
-| 加速限制 | 不使用 GPU / 并行加速（纯 CPU 单线程） |
-| 基线 | 优化重构后必须通过全部已有测试，保证结果正确性 |
+| Matrix size | 1000 × 1000 dense real matrix |
+| Language | Rust |
+| Acceleration limit | No GPU / parallel acceleration (pure CPU single-threaded) |
+| Baseline | After optimization and refactoring, all existing tests must pass, ensuring result correctness |
 
-## 工作流总览
+## Workflow Overview
 
-| 阶段 | 团队 | 编排原语 | 输入 | 产出（交接 marker） |
+| Phase | Team | Orchestration Primitive | Input | Output (handoff marker) |
 |------|------|---------|------|---------------------|
-| ① 方法调研 | **research-team** | `team_parallel` | 需求文档 + 外部文献/竞品 | `<!-- METHOD: <id>:<name> -->` × ≥8 |
-| ② 方案比选 | **selection-team** | `team_consensus` | 方法清单 | `<!-- SHORTLISTED: <id> -->` 精确 3 条 |
-| ③ 计划+评审 | **plan-team** | `team_tollgate` | 3 条入选方案 | `<!-- PLAN-APPROVED -->` |
-| ④ 实现 | **implement-team** | `team_pipeline` | 批准的计划 | 求解器代码 + 测试 |
-| ⑤ 优化重构 | **optimize-team** | `team_loop` | 已实现的代码 | 优化后代码 + 基线通过（`<!-- OPTIMIZED -->`） |
-| ⑥ 代码评审 | **review-team** | `team_parallel` | 优化后的代码 | `<!-- REVIEW: <dim>: pass|fail -->` × 4 维 |
+| ① Method Research | **research-team** | `team_parallel` | Requirements doc + external literature/competitors | `<!-- METHOD: <id>:<name> -->` × ≥8 |
+| ② Approach Selection | **selection-team** | `team_consensus` | Methods list | `<!-- SHORTLISTED: <id> -->` exactly 3 items |
+| ③ Plan+Review | **plan-team** | `team_tollgate` | 3 shortlisted approaches | `<!-- PLAN-APPROVED -->` |
+| ④ Implementation | **implement-team** | `team_pipeline` | Approved plan | Solver code + tests |
+| ⑤ Optimization+Refactoring | **optimize-team** | `team_loop` | Implemented code | Optimized code + baseline passing (`<!-- OPTIMIZED -->`) |
+| ⑥ Code Review | **review-team** | `team_parallel` | Optimized code | `<!-- REVIEW: <dim>: pass|fail -->` × 4 dimensions |
 
-用到 5 种编排：**parallel / consensus / tollgate / pipeline / loop**（parallel 在调研与评审各用一次，tollgate 用于计划的多评审人门控）。
+Uses 5 orchestration primitives: **parallel / consensus / tollgate / pipeline / loop** (parallel is used once each for research and review; tollgate is used for the plan's multi-reviewer gating).
 
 ```
-需求文档 + 外部文献/竞品
+Requirements doc + external literature/competitors
         │
         ▼
 research-team (parallel)    ──≥8 methods──► master
@@ -37,7 +37,7 @@ selection-team (consensus)  ◄──methods──────────┘
         └──3 shortlisted──────────────────► master
                                                 │
 plan-team (tollgate)        ◄──3 shortlisted────┘
-        │  编写→审1→改→审2→改→审3（全部通过）
+        │  Write→Review1→Revise→Review2→Revise→Review3 (all pass)
         └──PLAN-APPROVED──────────────────► master
                                                 │
 implement-team (pipeline)   ◄──plan─────────────┘
@@ -45,34 +45,34 @@ implement-team (pipeline)   ◄──plan─────────────
         └──code+tests─────────────────────► master
                                                 │
 optimize-team (loop)        ◄──code─────────────┘
-        │  优化→测试→裁决（基线保证）
+        │  Optimize→Test→Decide (baseline guarantee)
         └──OPTIMIZED──────────────────────► master
                                                 │
 review-team (parallel)      ◄──optimized code───┘
         │
-        └──review verdicts────────────────► master ──► 你判断
+        └──review verdicts────────────────► master ──► you judge
 ```
 
-## 如何使用
+## How to Use
 
-1. **对象**：本场景生成一个 Rust 矩阵本征值求解器。无需占位符——求解器从零构建。
-2. **依次跑 6 个团队**（§1–§6）。每个团队走完整生命周期：`team_create` → `team_activate` → `team_<mode>` → 收产出 → `team_deactivate`。
-3. **交接**：每个团队的 marker 产出由 master 汇总，作为下一个团队的输入（methods → topic；shortlisted → plan 输入；approved plan → tollgate 输出到 pipeline；code → loop 输入；optimized code → audit 对象）。
-4. **判断**：你读取 review-team 的多维结论与各团队输出，自行裁定求解器是否达到预期。本场景**不设评判脚本**。
+1. **Target**: this scenario generates a Rust matrix eigenvalue solver. No placeholders — the solver is built from scratch.
+2. **Run 6 teams in sequence** (§1–§6). Each team goes through its full lifecycle: `team_create` → `team_activate` → `team_<mode>` → collect output → `team_deactivate`.
+3. **Handoff**: each team's marker output is summarized by master and passed as the next team's input (methods → topic; shortlisted → plan input; approved plan → tollgate output to pipeline; code → loop input; optimized code → audit target).
+4. **Judge**: you read the review-team's multi-dimensional conclusions and all team outputs, and decide yourself whether the solver meets expectations. This scenario **has no check scripts**.
 
-## team 切换铁律
+## Team Switching Iron Rule
 
-同一时刻**仅一个团队** active。`team_activate` 在已有 active 团队时会拒绝——**必须先 `team_deactivate` 再 `team_activate` 下一个**。每个团队段的 master 步骤都已显式写出 deactivate。
+Only **one team** active at a time. `team_activate` will be rejected if another team is already active — **you must `team_deactivate` before `team_activate` the next**. Each team section's master steps explicitly include deactivate.
 
 ---
 
-## §1 research-team（`team_parallel`）— 方法调研
+## §1 research-team (`team_parallel`) — Method Research
 
-### 1.1 阶段说明
+### 1.1 Phase Description
 
-5 名研究员**并行**调研，每人一个维度（维度烤进成员 prompt，parallel 跑 isolated）。覆盖：经典算法（QR、分治、二分法、Jacobi）、竞品库（LAPACK、ARPACK、SLEPc、Eigen）、Rust 生态（nalgebra、faer、lax、gemm）、数值稳定性考量、问题特定优化。每人至少提 3 个候选方法 → 合计 ≥8 （剔除重复项之后）。
+5 researchers **research in parallel**, each with one dimension (dimension baked into member prompt, parallel runs isolated). Coverage: classic algorithms (QR, divide-and-conquer, bisection, Jacobi), competitor libraries (LAPACK, ARPACK, SLEPc, Eigen), Rust ecosystem (nalgebra, faer, lax, gemm), numerical stability considerations, problem-specific optimizations. Each member proposes at least 3 candidate methods → total ≥8 (after removing duplicates).
 
-### 1.2 Team 配置
+### 1.2 Team Configuration
 
 ```json
 {
@@ -108,9 +108,9 @@ review-team (parallel)      ◄──optimized code───┘
 }
 ```
 
-**Role 选择**：alice/bob/carol/dave 用 `researcher`（外部调研），erin 用 `analyst`（综合优化分析）。5 人对称，差异来自维度 prompt。
+**Role selection**: alice/bob/carol/dave use `researcher` (external research), erin uses `analyst` (comprehensive optimization analysis). 5 symmetric members, differences come from dimension prompts.
 
-### 1.3 Master 启动调用
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -124,34 +124,34 @@ review-team (parallel)      ◄──optimized code───┘
 }
 ```
 
-**参数选择**：
-- `mode: isolated` + 维度烤进 prompt——5 路并行各扫一个维度，互不重叠。
-- 不设 `signoff_policy`——parallel 默认无 signoff，跑完即汇总。
+**Parameter selection**:
+- `mode: isolated` + dimension baked into prompts — 5 parallel lanes each scan one dimension, with no overlap.
+- No `signoff_policy` set — parallel defaults to no signoff, results are collected when done.
 
-### 1.4 生命周期步骤（master）
+### 1.4 Lifecycle Steps (master)
 
 ```
 team_create(es-research)
 team_activate(es-research)
 team_parallel(...)            # §1.3
-# 等待 5 名研究员产出 → team_results 取汇总
+# Wait for 5 researchers' output → team_results for the summary
 team_deactivate(es-research)
 ```
 
-### 1.5 产出与交接
+### 1.5 Output and Handoff
 
-- master 从 5 份输出抓取所有 `<!-- METHOD: <id>:<name> -->`，汇总成**方法候选清单**（id + name + 各维度分析，应 ≥8 条）。
-- 这张清单作为 §2 `team_consensus` 的 `topic`。
+- Master extracts all `<!-- METHOD: <id>:<name> -->` from the 5 outputs, compiles a **methods candidate list** (id + name + per-dimension analysis, should be ≥8 items).
+- This list serves as §2 `team_consensus`'s `topic`.
 
 ---
 
-## §2 selection-team（`team_consensus`）— 方案比选
+## §2 selection-team (`team_consensus`) — Approach Selection
 
-### 2.1 阶段说明
+### 2.1 Phase Description
 
-5 名 debater（2 researcher + 2 architect + 1 analyst）多轮辩论候选方法，综合**数值稳定性 / 实现复杂度 / 性能 / 可维护性**，收敛选出**精确 3 条**最具可行性的算法/技术路线。
+5 debaters (2 researcher + 2 architect + 1 analyst) debate candidate methods across multiple rounds, weighing **numerical stability / implementation complexity / performance / maintainability**, converging to select **exactly 3** most viable algorithm/technical approaches.
 
-### 2.2 Team 配置
+### 2.2 Team Configuration
 
 ```json
 {
@@ -187,58 +187,58 @@ team_deactivate(es-research)
 }
 ```
 
-**Role 选择**：frank/henry `researcher`（稳定性/性能视角），grace/iris `architect`（复杂度/可维护性视角），jack `analyst`（综合权衡）。五视角交叉。
+**Role selection**: frank/henry `researcher` (stability/performance perspectives), grace/iris `architect` (complexity/maintainability perspectives), jack `analyst` (comprehensive tradeoff). Five perspectives intersect.
 
-### 2.3 Master 启动调用
+### 2.3 Master Launch Call
 
 ```json
 {
   "tool": "team_consensus",
   "args": {
     "team_id": "es-selection",
-    "topic": "<把 §1.5 的方法候选清单原文粘进来：每条 METHOD id/name/各维度分析>. From these candidates, select EXACTLY THREE approaches to implement a 1000×1000 dense eigen-solver in Rust (no GPU/parallel). Weigh numerical stability, implementation complexity, performance, and maintainability. Each member must emit <!-- SHORTLISTED: <id> --> for exactly 3 candidates in their final message, all converging to the same 3.",
+    "topic": "<Paste the §1.5 methods candidate list verbatim: each METHOD id/name/per-dimension analysis>. From these candidates, select EXACTLY THREE approaches to implement a 1000×1000 dense eigen-solver in Rust (no GPU/parallel). Weigh numerical stability, implementation complexity, performance, and maintainability. Each member must emit <!-- SHORTLISTED: <id> --> for exactly 3 candidates in their final message, all converging to the same 3.",
     "max_rounds": 5,
     "timeout_ms": 2400000
   }
 }
 ```
 
-**参数选择**：
-- `topic` = 候选清单（master 手递手填入）。
-- `max_rounds: 5`——给足辩论空间收敛到精确 3 个。
+**Parameter selection**:
+- `topic` = candidate list (master pastes it in by hand).
+- `max_rounds: 5` — gives sufficient debate space to converge to exactly 3.
 
-### 2.4 生命周期步骤（master）
+### 2.4 Lifecycle Steps (master)
 
 ```
 team_create(es-selection)
-team_activate(es-selection)   # （此时 es-research 已 deactivate）
-team_consensus(...)           # topic = §1.5 候选清单
-# 等待共识 → team_results 取汇总
+team_activate(es-selection)   # (es-research already deactivated at this point)
+team_consensus(...)           # topic = §1.5 candidate list
+# Wait for consensus → team_results for the summary
 team_deactivate(es-selection)
 ```
 
-### 2.5 产出与交接
+### 2.5 Output and Handoff
 
-- master 抓取所有 `<!-- SHORTLISTED: <id> -->`，确认收敛到同一组 3 个 id。
-- 这 3 条入选方案作为 §3 plan-team 的输入（tollgate 各阶段需据此编写计划）。
+- Master extracts all `<!-- SHORTLISTED: <id> -->`, confirms convergence to the same set of 3 ids.
+- These 3 selected approaches serve as §3 plan-team's input (tollgate stages need to write plans based on them).
 
 ---
 
-## §3 plan-team（`team_tollgate`）— 计划 + 评审
+## §3 plan-team (`team_tollgate`) — Plan + Review
 
-### 3.1 阶段说明
+### 3.1 Phase Description
 
-为入选的 3 条算法编写**实施计划**。每条方案分别撰写计划（含架构、数据结构和测试策略），然后依次通过 3 个评审人的门控。每个评审人专注不同维度：
+Write an **implementation plan** for the 3 selected algorithms. Each approach has its own plan written (covering architecture, data structures, and test strategy), then passes through 3 reviewer gates in sequence. Each reviewer focuses on a different dimension:
 
-- **评审人 1（完整性与范围）**：计划是否覆盖了全部必要的模块？
-- **评审人 2（技术正确性）**：算法伪代码是否正确？复杂度分析是否合理？
-- **评审人 3（可测性与风险）**：测试策略是否完备？风险是否被识别？
+- **Reviewer 1 (Completeness & Scope)**: does the plan cover all necessary modules?
+- **Reviewer 2 (Technical Correctness)**: is the algorithm pseudocode correct? is the complexity analysis reasonable?
+- **Reviewer 3 (Testability & Risk)**: is the test strategy complete? are risks identified?
 
-任意评审人 FAIL 计划即回退到编写阶段修改，**三人都必须 PASS**（串联门控）。最多允许各评审人各 2 次重试。
+If any reviewer FAILs the plan, it rolls back to the writing phase for revision; **all three must PASS** (serial gating). Each reviewer is allowed at most 2 retries.
 
-> ⚠️ **tollgate 规则**：每个 stage 的 `verifier` 不能等于该 stage 的 `member`。各 verifier 独立不重复。
+> ⚠️ **tollgate rule**: each stage's `verifier` cannot equal that stage's `member`. All verifiers are independent and non-duplicate.
 
-### 3.2 Team 配置
+### 3.2 Team Configuration
 
 ```json
 {
@@ -269,9 +269,9 @@ team_deactivate(es-selection)
 }
 ```
 
-**Role 选择**：kate `coder`（编写计划，modify），leo/mona/nina `reviewer`（只读门控评审）。
+**Role selection**: kate `coder` (write plan, modify), leo/mona/nina `reviewer` (read-only gated review).
 
-### 3.3 Master 启动调用
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -281,7 +281,7 @@ team_deactivate(es-selection)
     "stages": [
       {
         "member": "kate",
-        "task": "Write a comprehensive implementation plan for the 3 selected eigen-solver approaches. Selected methods (from §2): <把 §2.5 的 3 条 SHORTLISTED id+描述粘进来>. For each method, produce: algorithm pseudocode, data structures, module breakdown, function signatures, convergence criteria, test strategy, accuracy baseline, risks/mitigations.",
+        "task": "Write a comprehensive implementation plan for the 3 selected eigen-solver approaches. Selected methods (from §2): <Paste the §2.5 3 SHORTLISTED ids+descriptions>. For each method, produce: algorithm pseudocode, data structures, module breakdown, function signatures, convergence criteria, test strategy, accuracy baseline, risks/mitigations.",
         "verifier": "leo",
         "criteria": "Check the plan for COMPLETENESS: does it cover ALL necessary modules? matrix operations, reduction (Hessenberg/tridiagonal), iteration kernel, eigenvector computation, convergence check, driver API. Are module boundaries clear? Emit PASS if fully complete, FAIL naming what is missing."
       },
@@ -305,38 +305,38 @@ team_deactivate(es-selection)
 }
 ```
 
-**参数选择**：
-- `stages` 串行 3 个门控：kate 编写/修订 → leo 完整门 → kate 修订 → mona 正确门 → kate 修订 → nina 可测门。前一门 FAIL 才触发修订 PASS 则跳过修订直接到下一门。
-- `max_gate_retries: 2`——每个评审人最多退回 2 次，超过则整体失败。
-- `max_invalid_cycles: 2`——防止评审标准争议导致无限循环。
-- 不设 `signoff_policy`——tollgate 的 PASS/FAIL 机制本身就是终止门。
+**Parameter selection**:
+- `stages` serial 3 gates: kate writes/revises → leo completeness gate → kate revises → mona correctness gate → kate revises → nina testability gate. FAIL in the preceding gate triggers revision; PASS skips revision and goes directly to the next gate.
+- `max_gate_retries: 2` — each reviewer can reject at most 2 times; exceeding triggers overall failure.
+- `max_invalid_cycles: 2` — prevents infinite loops from review criteria disputes.
+- No `signoff_policy` set — tollgate's PASS/FAIL mechanism is itself the terminating gate.
 
-### 3.4 生命周期步骤（master）
+### 3.4 Lifecycle Steps (master)
 
 ```
 team_create(es-plan)
-team_activate(es-plan)        # （此时 es-selection 已 deactivate）
-team_tollgate(...)            # stages 如上，含 §2.5 的 3 个入选方案
-# 等待三个门全部 PASS 或任一耗尽重试 → team_results 取最终计划
+team_activate(es-plan)        # (es-selection already deactivated at this point)
+team_tollgate(...)            # stages as above, includes §2.5's 3 selected approaches
+# Wait for all three gates to PASS or any to exhaust retries → team_results for the final plan
 team_deactivate(es-plan)
 ```
 
-### 3.5 产出与交接
+### 3.5 Output and Handoff
 
-- master 抓取 kate 的最终计划（3 条方案的完整实施方案），确认 `<!-- PLAN-APPROVED -->` 已由成员最终消息中的认可标记（若 tollgate 全部 PASS 即可视为计划获批，master 在 task 内要求 emit `<!-- PLAN-APPROVED -->`）。
-- 这份计划作为 §4 implement-team pipeline 首阶段（coder）的输入。
+- Master extracts kate's final plan (complete implementation plan for the 3 approaches), confirming that `<!-- PLAN-APPROVED -->` has been emitted via the member's final message approval marker (if tollgate all PASS, the plan is considered approved; master requests `<!-- PLAN-APPROVED -->` emit in the task).
+- This plan serves as §4 implement-team pipeline's first stage (coder) input.
 
-为了可靠捕获 PLAN-APPROVED 标记，在 kate 的 task 中要求：当所有门 PASS 后，在最终修订版末尾加上 `<!-- PLAN-APPROVED -->`。
+To reliably capture the PLAN-APPROVED marker, kate's task requires: when all gates PASS, append `<!-- PLAN-APPROVED -->` at the end of the final revision.
 
 ---
 
-## §4 implement-team（`team_pipeline`）— 实现
+## §4 implement-team (`team_pipeline`) — Implementation
 
-### 4.1 阶段说明
+### 4.1 Phase Description
 
-按批准的计划**线性流水线**实现：**coder 实现求解器 → tester 写+跑测试**。前 stage 的产出拼进下 stage 的 task，顺序加工。
+Implement according to the approved plan via a **linear pipeline**: **coder implements solver → tester writes+runs tests**. The preceding stage's output is spliced into the next stage's task, processed in order.
 
-### 4.2 Team 配置
+### 4.2 Team Configuration
 
 ```json
 {
@@ -357,9 +357,9 @@ team_deactivate(es-plan)
 }
 ```
 
-**Role 选择**：omar `coder`（实现）、pat `tester`（写+跑测试）。pipeline 各 stage 顺序加工、无 action 字段。
+**Role selection**: omar `coder` (implementation), pat `tester` (write+run tests). Pipeline stages are processed in order, no action field.
 
-### 4.3 Master 启动调用
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -369,7 +369,7 @@ team_deactivate(es-plan)
     "stages": [
       {
         "member": "omar",
-        "task": "Implement the approved eigen-solver plan in Rust for a 1000×1000 dense real matrix. Plan: <把 §3.5 的批准计划粘进来>. Create a Cargo project under projects/eigen-solver/. Implement the 3 selected algorithms as separate modules, each exposing a consistent API. Must compile with `cargo build`. Output a summary of files, key decisions, and build instructions."
+        "task": "Implement the approved eigen-solver plan in Rust for a 1000×1000 dense real matrix. Plan: <Paste the §3.5 approved plan>. Create a Cargo project under projects/eigen-solver/. Implement the 3 selected algorithms as separate modules, each exposing a consistent API. Must compile with `cargo build`. Output a summary of files, key decisions, and build instructions."
       },
       {
         "member": "pat",
@@ -381,37 +381,37 @@ team_deactivate(es-plan)
 }
 ```
 
-**参数选择**：
-- pipeline 把前 stage 的产出**前缀拼进**下 stage 的 task——pat 能看到 omar 的代码结构和构建说明。
-- 首阶段 task 内嵌 §3.5 的完整计划。
-- 不设 `signoff_policy`——pipeline 默认 none，两阶段跑完直接交付。
+**Parameter selection**:
+- Pipeline **prefix-splices** the preceding stage's output into the next stage's task — pat can see omar's code structure and build instructions.
+- The first stage's task embeds §3.5's complete plan.
+- No `signoff_policy` set — pipeline defaults to none, the two stages deliver directly when done.
 
-### 4.4 生命周期步骤（master）
+### 4.4 Lifecycle Steps (master)
 
 ```
 team_create(es-implement)
-team_activate(es-implement)   # （此时 es-plan 已 deactivate）
-team_pipeline(...)            # stages 如上，首阶段 task 含 §3.5 计划
-# 等待两阶段顺序完成 → team_results 取汇总（code + tests）
+team_activate(es-implement)   # (es-plan already deactivated at this point)
+team_pipeline(...)            # stages as above, first stage task includes §3.5 plan
+# Wait for both stages to complete in order → team_results for the summary (code + tests)
 team_deactivate(es-implement)
 ```
 
-### 4.5 产出与交接
+### 4.5 Output and Handoff
 
-- master 抓取 omar 的代码产出 + pat 的测试结果。
-- 实现后的求解器代码 + 测试作为 §5 optimize-team 的优化对象。
+- Master extracts omar's code output + pat's test results.
+- The implemented solver code + tests serve as §5 optimize-team's optimization target.
 
 ---
 
-## §5 optimize-team（`team_loop`）— 优化重构
+## §5 optimize-team (`team_loop`) — Optimization+Refactoring
 
-### 5.1 阶段说明
+### 5.1 Phase Description
 
-在**保证基线**（全部已有测试通过）的前提下优化代码。每轮按 **优化（optimizer，修改代码）→ 验证（tester，运行测试+检查基线）** 串行，decider 裁决「基线通过 & 性能有提升 → 完成 / 还需继续」。最多 4 轮。
+Optimize the code while **preserving the baseline** (all existing tests must pass). Each round runs **Optimize (optimizer, modify code) → Verify (tester, run tests+check baseline)** serially; the decider rules "baseline passes & performance improved → done / needs more work". At most 4 rounds.
 
-> ⚠️ **decider 不能兼任 stage 成员**（team_loop 规则：decider 是 auto-appended 只读，不能出现在 stages 里）。tom 留作 decider，不进 stages。
+> ⚠️ **decider cannot double as a stage member** (team_loop rule: decider is auto-appended read-only, cannot appear in stages). tom is reserved as decider, not in stages.
 
-### 5.2 Team 配置
+### 5.2 Team Configuration
 
 ```json
 {
@@ -437,9 +437,9 @@ team_deactivate(es-implement)
 }
 ```
 
-**Role 选择**：ruby `coder`（优化代码，modify）、sam `tester`（验证基线，modify）、tom `reviewer`（decider，auto-appended 只读裁决）。
+**Role selection**: ruby `coder` (optimize code, modify), sam `tester` (verify baseline, modify), tom `reviewer` (decider, auto-appended read-only ruling).
 
-### 5.3 Master 启动调用
+### 5.3 Master Launch Call
 
 ```json
 {
@@ -466,34 +466,34 @@ team_deactivate(es-implement)
 }
 ```
 
-**参数选择**：
-- `stages` 顺序：ruby(modify，优化) → sam(modify，运行测试验证)，每轮一遍；decider tom 每轮裁决。
-- `max_rounds: 4`——4 轮内未优化到位则交回你处理。
+**Parameter selection**:
+- `stages` order: ruby(modify, optimize) → sam(modify, run test verification), one pass per round; decider tom rules each round.
+- `max_rounds: 4` — if not optimized adequately within 4 rounds, return to you for handling.
 
-### 5.4 生命周期步骤（master）
+### 5.4 Lifecycle Steps (master)
 
 ```
 team_create(es-optimize)
-team_activate(es-optimize)    # （此时 es-implement 已 deactivate）
-team_loop(...)                # initial_task + stages 如上
-# 等待 decider 裁决 done / 达 max_rounds → team_results 取 OPTIMIZED 标记
+team_activate(es-optimize)    # (es-implement already deactivated at this point)
+team_loop(...)                # initial_task + stages as above
+# Wait for decider to rule done / max_rounds reached → team_results for OPTIMIZED marker
 team_deactivate(es-optimize)
 ```
 
-### 5.5 产出与交接
+### 5.5 Output and Handoff
 
-- master 确认 `<!-- OPTIMIZED -->` 标记 + rubys 的优化记录 + sam 的基线测试通过报告。
-- 优化后的代码作为 §6 review-team 的评审对象。
+- Master confirms `<!-- OPTIMIZED -->` marker + ruby's optimization records + sam's baseline test pass report.
+- The optimized code serves as §6 review-team's review target.
 
 ---
 
-## §6 review-team（`team_parallel`）— 代码评审
+## §6 review-team (`team_parallel`) — Code Review
 
-### 6.1 阶段说明
+### 6.1 Phase Description
 
-4 名评审员**并行**深审优化后的求解器代码，每人一个维度：**正确性 / 安全性（unsafe Rust） / 性能 / 代码风格与可维护性**。
+4 reviewers **review in parallel** the optimized solver code, each with one dimension: **correctness / safety (unsafe Rust) / performance / code quality & maintainability**.
 
-### 6.2 Team 配置
+### 6.2 Team Configuration
 
 ```json
 {
@@ -524,9 +524,9 @@ team_deactivate(es-optimize)
 }
 ```
 
-**Role 选择**：全部 `reviewer`（只读深审，不改码），4 人对称差异来自维度 prompt。
+**Role selection**: all `reviewer` (read-only deep review, no code modification), 4 symmetric members, differences come from dimension prompts.
 
-### 6.3 Master 启动调用
+### 6.3 Master Launch Call
 
 ```json
 {
@@ -540,58 +540,58 @@ team_deactivate(es-optimize)
 }
 ```
 
-**参数选择**：
-- `mode: isolated` + 维度烤进 prompt——4 路并行各审一个维度。
-- review-team 看到的是 §5 优化后的最终代码（master 在 task 里给出代码路径）。
+**Parameter selection**:
+- `mode: isolated` + dimension baked into prompts — 4 parallel lanes each review one dimension.
+- review-team sees §5's optimized final code (master gives the code path in the task).
 
-### 6.4 生命周期步骤（master）
+### 6.4 Lifecycle Steps (master)
 
 ```
 team_create(es-review)
-team_activate(es-review)      # （此时 es-optimize 已 deactivate）
-team_parallel(...)            # §6.3，task 含 §5 代码路径
-# 等待 4 名评审员产出 → team_results 取汇总
+team_activate(es-review)      # (es-optimize already deactivated at this point)
+team_parallel(...)            # §6.3, task includes §5 code path
+# Wait for 4 reviewers' output → team_results for the summary
 team_deactivate(es-review)
 ```
 
-### 6.5 产出与交接
+### 6.5 Output and Handoff
 
-- master 抓取所有 `<!-- REVIEW: <dim>: pass|fail -->` + findings。
-- **你读取这 4 维评审结论 + 全部 6 个团队的产出，自行裁定求解器开发的成败。** 场景到此结束。
+- Master extracts all `<!-- REVIEW: <dim>: pass|fail -->` + findings.
+- **You read these 4-dimensional review conclusions + all 6 teams' outputs, and decide the success or failure of the solver development yourself.** The scenario ends here.
 
 ---
 
-## 端到端时序（master 视角）
+## End-to-End Timeline (master perspective)
 
 ```
 T+0    team_create(es-research) → team_activate → team_parallel
-         5 研究员并行调研方法（经典算法/竞品/Rust生态/稳定性/优化）
-T+~15  收 ≥8 methods → team_deactivate(es-research)
+         5 researchers research methods in parallel (classic algorithms/competitors/Rust ecosystem/stability/optimization)
+T+~15  Collect ≥8 methods → team_deactivate(es-research)
 T+~15  team_create(es-selection) → team_activate → team_consensus(topic=methods)
-         5 debater 辩论选 3（≤5 轮）
-T+~30  收 3 SHORTLISTED → team_deactivate(es-selection)
+         5 debaters debate to select 3 (≤5 rounds)
+T+~30  Collect 3 SHORTLISTED → team_deactivate(es-selection)
 T+~30  team_create(es-plan) → team_activate → team_tollgate
-         kate 编写 → leo 完整门 → mona 正确门 → nina 可测门（串联，可重试）
-T+~50  收 PLAN-APPROVED → team_deactivate(es-plan)
+         kate writes → leo completeness gate → mona correctness gate → nina testability gate (serial, retryable)
+T+~50  Collect PLAN-APPROVED → team_deactivate(es-plan)
 T+~50  team_create(es-implement) → team_activate → team_pipeline
-         omar 实现求解器 → pat 写+跑测试
-T+~80  收 code+tests → team_deactivate(es-implement)
+         omar implements solver → pat writes+runs tests
+T+~80  Collect code+tests → team_deactivate(es-implement)
 T+~80  team_create(es-optimize) → team_activate → team_loop
-         每轮 ruby 优化 → sam 基线验证，tom 裁决
-T+~105 收 OPTIMIZED → team_deactivate(es-optimize)
+         Each round: ruby optimizes → sam baseline verification, tom rules
+T+~105 Collect OPTIMIZED → team_deactivate(es-optimize)
 T+~105 team_create(es-review) → team_activate → team_parallel
-         4 评审员并行深审（正确性/unsafe安全/性能/代码质量）
-T+~120 收 review verdicts → team_deactivate(es-review)
-T+~120 你读取全部输出，裁定结果
+         4 reviewers audit in parallel (correctness/unsafe safety/performance/code quality)
+T+~120 Collect review verdicts → team_deactivate(es-review)
+T+~120 You read all output, decide the outcome
 ```
 
-（时长仅为量级估计；实现和优化阶段依赖实际代码工作量。本场景不设硬性 timeout 上限。）
+(Durations are order-of-magnitude estimates only; implementation and optimization phases depend on actual code workload. This scenario has no hard timeout cap.)
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-Start Prompt (Copy and Use)
 
-> 整段粘贴给 master 会话。master 会依次跑 6 个团队，每步按 README 的 JSON 配置执行，团队间数据由 master 手递手。
+> Paste the entire block to the master session. Master will run 6 teams in sequence, executing each step per the README's JSON configuration, with data hand-carried between teams by master.
 
 ```text
 按 demos/composite/eigen-solver/README.md 跑一次大规模矩阵本征值求解器开发工作流。
@@ -627,13 +627,13 @@ T+~120 你读取全部输出，裁定结果
 
 ---
 
-## 相关文档
+## Related Documents
 
-- [`demos/README.md`](../README.md) — 场景目录总览（单原语 9 模式 + 综合场景三类）
-- [`demos/code-review/README.md`](../code-review/README.md) — 姊妹综合场景：多团队代码评审
-- [`demos/feature-dev/README.md`](../feature-dev/README.md) — 姊妹综合场景：OCTeam 功能增强
-- [`demos/01-team-parallel/README.md`](../01-team-parallel/README.md) — parallel 原语参考
-- [`demos/04-team-loop/README.md`](../04-team-loop/README.md) — loop 原语参考
-- [`demos/09-team-tollgate/README.md`](../09-team-tollgate/README.md) — tollgate 原语参考（验证门流水线）
-- parallel / consensus / pipeline / loop 源码：[`src/tools/parallel.ts`](../../src/tools/parallel.ts) / [`consensus.ts`](../../src/tools/consensus.ts) / [`pipeline.ts`](../../src/tools/pipeline.ts) / [`loop.ts`](../../src/tools/loop.ts)
-- delegate / route / arbitrate / tollgate / recurse 源码：[`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`recurse.ts`](../../src/tools/recurse.ts)
+- [`demos/README.md`](../README.md) — scenario directory overview (single-primitive 9 modes + 3 comprehensive scenarios)
+- [`demos/code-review/README.md`](../code-review/README.md) — sister comprehensive scenario: multi-team code review
+- [`demos/feature-dev/README.md`](../feature-dev/README.md) — sister comprehensive scenario: OCTeam feature enhancement
+- [`demos/01-team-parallel/README.md`](../01-team-parallel/README.md) — parallel primitive reference
+- [`demos/04-team-loop/README.md`](../04-team-loop/README.md) — loop primitive reference
+- [`demos/09-team-tollgate/README.md`](../09-team-tollgate/README.md) — tollgate primitive reference (verification gate pipeline)
+- parallel / consensus / pipeline / loop source: [`src/tools/parallel.ts`](../../src/tools/parallel.ts) / [`consensus.ts`](../../src/tools/consensus.ts) / [`pipeline.ts`](../../src/tools/pipeline.ts) / [`loop.ts`](../../src/tools/loop.ts)
+- delegate / route / arbitrate / tollgate / recurse source: [`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`recurse.ts`](../../src/tools/recurse.ts)

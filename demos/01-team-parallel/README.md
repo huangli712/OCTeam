@@ -1,38 +1,38 @@
-# team_parallel 编排场景设计
+# team_parallel Orchestration Scenario Design
 
-> **模式**：`team_parallel` — 在所有成员上并行运行任务（`isolated` 同任务 / `cooperative` 各自任务），可选 reduce 策略汇总输出。
-> **源码**：[`src/tools/parallel.ts`](../../src/tools/parallel.ts)（`teamParallelTool`）
-> **控时设计**：3 成员并行，每成员子任务 5-8 min；总时长 ≈ 最慢成员 + reduce ≈ 10-15 min（远低于 30 min 上限）。
+> **Mode**: `team_parallel` — Run tasks in parallel across all members (`isolated` same task / `cooperative` per-member tasks), with optional reduce strategy to aggregate output.
+> **Source**: [`src/tools/parallel.ts`](../../src/tools/parallel.ts) (`teamParallelTool`)
+> **Time control design**: 3 members parallel, per-member subtask 5-8 min; total duration ≈ slowest member + reduce ≈ 10-15 min (well below the 30 min limit).
 
-## 场景一览
+## Scenario Overview
 
-| # | 方向 | 场景 | 成员数 | Role | reduce_policy | 预计总时长 |
+| # | Domain | Scenario | Members | Role | reduce_policy | Est. Total Duration |
 |---|------|------|--------|------|---------------|-----------|
-| 1 | 数学 | Monte Carlo π 三方法对比 | 3 | `mathematician` | `merge` | ~12 min |
-| 2 | 计算物理 | 谐振子三积分器能量漂移 | 3 | `simulator` | `select` | ~12 min |
-| 3 | 编程 | 两数和多解法复杂度对比 | 3 | `coder` | `rubric` | ~10 min |
-| 4 | 编程（挑战级） | 8 种排序算法 10⁶ 三数据集基准 | 8 | `coder` | `merge` | ~40 min |
+| 1 | Math | Monte Carlo pi: 3-method comparison | 3 | `mathematician` | `merge` | ~12 min |
+| 2 | Computational Physics | Harmonic oscillator: 3 integrators energy drift | 3 | `simulator` | `select` | ~12 min |
+| 3 | Programming | Two-sum: multi-solution complexity comparison | 3 | `coder` | `rubric` | ~10 min |
+| 4 | Programming (challenge-level) | 8 sorting algorithms 10⁶ three-dataset benchmark | 8 | `coder` | `merge` | ~40 min |
 
 ---
 
-## 场景 1: Monte Carlo π 三方法对比
+## Scenario 1: Monte Carlo Pi 3-Method Comparison
 
-### 1.1 场景描述
+### 1.1 Scenario Description
 
-**背景**：圆周率 π 有多种基于随机采样的估算方法，方差特性差异显著。在相同样本量（10⁶）下对比能直观展示方法优劣。
+**Background**: Pi (π) has multiple estimation methods based on random sampling, with significantly different variance characteristics. Comparing them at the same sample size (10⁶) intuitively reveals method quality.
 
-**目标**：3 个成员各用一种方法估算 π，汇总成误差对比表。
+**Goal**: 3 members each use a different method to estimate pi, then aggregate into an error comparison table.
 
-- 方法 A：朴素 Monte Carlo（单位圆内投点）
-- 方法 B：分层抽样（100×100 网格，每格 100 点）
-- 方法 C：Buffon 投针（L = d）
+- Method A: Naive Monte Carlo (point-in-unit-circle)
+- Method B: Stratified sampling (100×100 grid, 100 points per cell)
+- Method C: Buffon's needle (L = d)
 
-**成功标准（可机器评判）**：
-- 每个成员输出含 `<!-- PI_EST: <数值> -->` 标注
-- 三方法 `|π_est - π| < 0.05`
-- 分层抽样的误差 ≤ 朴素 MC（方差理论保证）
+**Success criteria (machine-verifiable)**:
+- Each member's output contains a `<!-- PI_EST: <value> -->` marker
+- All three methods: `|π_est - π| < 0.05`
+- Stratified sampling error ≤ naive MC (guaranteed by variance theory)
 
-### 1.2 Team 配置
+### 1.2 Team Config
 
 ```json
 {
@@ -58,9 +58,9 @@
 }
 ```
 
-**Role 选择理由**：`mathematician` 用 `oct-junior` agent，可写代码、运行、做数值验证——完全匹配本场景需求。
+**Role selection rationale**: `mathematician` uses the `oct-junior` agent, capable of writing code, running it, and doing numerical verification — exactly matches this scenario's needs.
 
-### 1.3 Master 启动调用
+### 1.3 Master Launch Invocation
 
 ```json
 {
@@ -81,14 +81,14 @@
 }
 ```
 
-**参数选择**：
-- `mode: cooperative` — 三方法不同，必须各自任务
-- `reduce_policy: merge` — 保留三方法独立结果做对比（非 select 单选）
-- `reducer_member: alice` — 非 summarize 策略必须指定 reducer_member（否则工具拒绝执行）；指定 alice 做合并汇总
-- `timeout_ms: 900000`（15 min）— 给足余量，正常 8 min 完成
-- `max_errored_members: 0` — 任一成员失败即整体失败（三方法缺一不完整）
+**Parameter selection**:
+- `mode: cooperative` — the three methods differ, each needs its own task
+- `reduce_policy: merge` — keep all three independent results for comparison (not select single-winner)
+- `reducer_member: alice` — non-summarize strategies must specify reducer_member (otherwise the tool rejects execution); assign alice to merge and aggregate
+- `timeout_ms: 900000` (15 min) — ample headroom; normally completes in 8 min
+- `max_errored_members: 0` — any member failure means total failure (losing one of three methods is incomplete)
 
-### 1.4 执行流程（时序）
+### 1.4 Execution Flow (Timeline)
 
 ```
 T+0m    master 调用 team_parallel (cooperative)
@@ -99,35 +99,35 @@ T+9m    汇总报告交付 master
 T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
 ```
 
-### 1.5 评判脚本
+### 1.5 Check Script
 
 [`check-math-montecarlo-pi.ts`](./check-math-montecarlo-pi.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
-- **提取**：正则 `<!-- PI_EST:\s*([\d.]+)\s*-->`
-- **断言**：
-  1. 三个估算值都存在
-  2. 每个值 `|est - π| < 0.05`
-  3. `bob` 的误差 ≤ `alice` 的误差
+- **Load**: `runs/<run_id>/{alice,bob,carol}.md`
+- **Extract**: regex `<!-- PI_EST:\s*([\d.]+)\s*-->`
+- **Assertions**:
+  1. All three estimates exist
+  2. Each value `|est - π| < 0.05`
+  3. `bob`'s error ≤ `alice`'s error
 
 ---
 
-## 场景 2: 谐振子三积分器能量漂移
+## Scenario 2: Harmonic Oscillator 3 Integrators Energy Drift
 
-### 2.1 场景描述
+### 2.1 Scenario Description
 
-**背景**：简谐振子（`ẍ = -ω²x`，取 ω=1）是能量守恒系统的标准测试题。不同数值积分器在有限步长下的能量漂移差异巨大，是检验积分器品质的经典基准。
+**Background**: The simple harmonic oscillator (`ẍ = -ω²x`, with ω=1) is a standard test case for energy-conserving systems. Different numerical integrators exhibit vastly different energy drift under finite step sizes, making it a classic benchmark for integrator quality.
 
-**目标**：3 个成员各用一种积分器（显式 Euler / Velocity Verlet / 经典 RK4）模拟 1000 步（步长 h=0.01），报告相对能量漂移。
+**Goal**: 3 members each use a different integrator (explicit Euler / Velocity Verlet / classical RK4) to simulate 1000 steps (step size h=0.01), reporting relative energy drift.
 
-**成功标准**：
-- 每个成员输出含 `<!-- ENERGY_DRIFT: <数值> -->` 标注（相对漂移 |E_end - E_0|/E_0）
-- 显式 Euler 漂移显著（理论 > 0.01）
-- Velocity Verlet 漂移极小（< 1e-3，辛格式）
-- RK4 漂移 < Euler（高阶）
-- `bob.drift < alice.drift` 且 `carol.drift < alice.drift`
+**Success criteria**:
+- Each member's output contains an `<!-- ENERGY_DRIFT: <value> -->` marker (relative drift |E_end - E_0|/E_0)
+- Explicit Euler drift is significant (theoretically > 0.01)
+- Velocity Verlet drift is extremely small (< 1e-3, symplectic scheme)
+- RK4 drift < Euler (higher-order method)
+- `bob.drift < alice.drift` and `carol.drift < alice.drift`
 
-### 2.2 Team 配置
+### 2.2 Team Config
 
 ```json
 {
@@ -153,9 +153,9 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`simulator` 专为数值模拟设计（PDE/MC/MD/HPC），符合物理仿真场景。
+**Role selection rationale**: `simulator` is purpose-built for numerical simulation (PDE/MC/MD/HPC), fitting the physics simulation scenario.
 
-### 2.3 Master 启动调用
+### 2.3 Master Launch Invocation
 
 ```json
 {
@@ -176,12 +176,12 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `reduce_policy: select` — 让一个成员（alice）做综合评判，选出能量守恒最优
-- `reduce_select`（方法中立）— 明确「最优 = ENERGY_DRIFT 绝对值最小」，防止 reducer 把自己收到的任务（实现 显式 Euler）当成评判标准而永远选自己。这是 select 策略的关键参数：没有它，reducer 会退化为「谁的解符合我自己的方法就选谁」
-- `reducer_member: alice` — 指定 alice 汇总（避免默认交给 master）
+**Parameter selection**:
+- `reduce_policy: select` — let one member (alice) do comprehensive evaluation, selecting the best energy-conserving option
+- `reduce_select` (method-neutral) — explicitly states "best = smallest absolute ENERGY_DRIFT value", preventing the reducer from treating their own assigned task (implementing explicit Euler) as the judging standard and always selecting themselves. This is the key parameter for the select strategy: without it, the reducer degrades to "pick whoever's solution matches my own method"
+- `reducer_member: alice` — assign alice to aggregate (avoid defaulting to master)
 
-### 2.4 执行流程（时序）
+### 2.4 Execution Flow (Timeline)
 
 ```
 T+0m    master 调用 team_parallel (cooperative)
@@ -192,34 +192,34 @@ T+7m    alice 汇总对比，交付 master
 T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 ```
 
-### 2.5 评判脚本
+### 2.5 Check Script
 
 [`check-physics-harmonic-integrator.ts`](./check-physics-harmonic-integrator.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
-- **提取**：正则 `<!-- ENERGY_DRIFT:\s*([\d.eE+-]+)\s*-->`
-- **断言**：
-  1. 三个漂移值都存在
-  2. `alice.drift > 1e-3`（显式 Euler 在 h=0.01/1000 步必有可见漂移）
-  3. `bob.drift < alice.drift`（辛格式守恒优于显式）
-  4. `carol.drift < alice.drift`（高阶方法优于低阶）
+- **Load**: `runs/<run_id>/{alice,bob,carol}.md`
+- **Extract**: regex `<!-- ENERGY_DRIFT:\s*([\d.eE+-]+)\s*-->`
+- **Assertions**:
+  1. All three drift values exist
+  2. `alice.drift > 1e-3` (explicit Euler at h=0.01/1000 steps must have visible drift)
+  3. `bob.drift < alice.drift` (symplectic scheme conserves better than explicit)
+  4. `carol.drift < alice.drift` (higher-order method beats lower-order)
 
 ---
 
-## 场景 3: 两数和多解法复杂度对比
+## Scenario 3: Two-Sum Multi-Solution Complexity Comparison
 
-### 3.1 场景描述
+### 3.1 Scenario Description
 
-**背景**：LeetCode 经典题「两数和」（给定整数数组 `nums` 和目标 `target`，返回和为 target 的两元素下标）。同一问题有多种解法，复杂度差异大，是算法教学的标准案例。
+**Background**: LeetCode's classic "Two Sum" problem (given integer array `nums` and target `target`, return indices of the two elements summing to target). The same problem has multiple solutions with significantly different complexities, making it a standard case study in algorithm teaching.
 
-**目标**：3 个成员各实现一种解法（暴力 O(n²) / 哈希 O(n) / 排序+双指针 O(n log n)），自报复杂度并通过统一测试用例。
+**Goal**: 3 members each implement a different solution (brute-force O(n²) / hash map O(n) / sort+two-pointer O(n log n)), self-report complexity, and pass unified test cases.
 
-**成功标准**：
-- 每个成员输出含 `<!-- COMPLEXITY: <BigO> -->` 标注
-- 每个成员的代码通过 3 个预设测试用例
-- 复杂度标注正确（alice=O(n^2)、bob=O(n)、carol=O(n log n)）
+**Success criteria**:
+- Each member's output contains a `<!-- COMPLEXITY: <BigO> -->` marker
+- Each member's code passes 3 preset test cases
+- Complexity annotations are correct (alice=O(n^2), bob=O(n), carol=O(n log n))
 
-### 3.2 Team 配置
+### 3.2 Team Config
 
 ```json
 {
@@ -245,9 +245,9 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：`coder` 用 `oct-junior` agent，专注实现，最小变更——贴合算法题实现需求。
+**Role selection rationale**: `coder` uses the `oct-junior` agent, focusing on implementation with minimal changes — fitting the algorithm-task implementation needs.
 
-### 3.3 Master 启动调用
+### 3.3 Master Launch Invocation
 
 ```json
 {
@@ -268,12 +268,12 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 }
 ```
 
-**参数选择**：
-- `reduce_policy: rubric` — 按明确评分表对比（非简单合并）
-- `reduce_rubric` 直接嵌入测试用例 — 让 reducer 用同一标准评判
-- `reducer_member: alice` — 指定 alice 做评分排名。非 summarize 策略**必须**指定 reducer_member，否则评分指引无人执行（工具会报错拒绝）
+**Parameter selection**:
+- `reduce_policy: rubric` — compare by an explicit scoring table (not simple merging)
+- `reduce_rubric` embeds test cases directly — lets the reducer judge with a unified standard
+- `reducer_member: alice` — assign alice to score and rank. Non-summarize strategies **must** specify reducer_member, otherwise the scoring guidance is left unexecuted (the tool will error and reject)
 
-### 3.4 执行流程（时序）
+### 3.4 Execution Flow (Timeline)
 
 ```
 T+0m    master 调用 team_parallel (cooperative)
@@ -284,59 +284,59 @@ T+6m    alice 按评分表打分排名，产出 reducedResult
 T+6m    运行: bun check-coding-twosum.ts <run_dir>
 ```
 
-### 3.5 评判脚本
+### 3.5 Check Script
 
 [`check-coding-twosum.ts`](./check-coding-twosum.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol}.md`
-- **提取**：
-  - 代码：抓取 ` ```typescript ... ``` ` 代码块
-  - 复杂度：正则 `<!-- COMPLEXITY:\s*(O\([^)]+\))\s*-->`
-- **断言**：
-  1. 三段代码都能用 `new Function` 加载为 `twoSum` 函数
-  2. 每个函数在 3 个测试用例上返回正确下标
-  3. 复杂度标注匹配期望（alice=O(n^2)、bob=O(n)、carol=O(n log n)）
+- **Load**: `runs/<run_id>/{alice,bob,carol}.md`
+- **Extract**:
+  - Code: capture ` ```typescript ... ``` ` code block
+  - Complexity: regex `<!-- COMPLEXITY:\s*(O\([^)]+\))\s*-->`
+- **Assertions**:
+  1. All three code blocks can be loaded as `twoSum` functions via `new Function`
+  2. Each function returns correct indices on 3 test cases
+  3. Complexity annotations match expectations (alice=O(n^2), bob=O(n), carol=O(n log n))
 
 ---
 
-## 场景 4: 8 种排序算法大数据基准（挑战级）
+## Scenario 4: 8 Sorting Algorithms Large-Data Benchmark (Challenge-Level)
 
-> **挑战级提示**：本场景规模（8 成员 × 10⁶ × 3 数据集）刻意超出第 1–3 场景的常规上限（≤ 4 成员 / ≤ 30 min），用于压测 8 成员满编团队与 60 min 级 timeout 的端到端编排能力。
+> **Challenge-level note**: This scenario's scale (8 members × 10⁶ × 3 datasets) deliberately exceeds the normal limits of Scenarios 1-3 (≤ 4 members / ≤ 30 min), used to stress-test end-to-end orchestration capability with an 8-member full team and 60-min-class timeout.
 
-### 4.1 场景描述
+### 4.1 Scenario Description
 
-**背景**：排序算法是算法工程的「基准母题」。在 10⁶ 规模 × 三种典型分布（均匀随机 / 近似有序 / 逆序）下横向对比 8 种主流排序，能同时检验算法实现正确性与各算法对输入分布的敏感度。
+**Background**: Sorting algorithms are the "benchmark mother problem" of algorithm engineering. Cross-comparing 8 mainstream sorting algorithms at 10⁶ scale × three typical distributions (uniform random / nearly sorted / reversed) simultaneously tests implementation correctness and each algorithm's sensitivity to input distribution.
 
-**目标**：8 个 coder 成员各实现 **一种** 排序算法，各自在 3 个 10⁶ 数据集上运行、计时、并与平台原生排序逐元素比对正确性，最终汇总成一张 8×3 基准对比表。
+**Goal**: 8 coder members each implement **one** sorting algorithm, run it on 3 datasets of 10⁶ integers each, time it, verify element-by-element correctness against the platform's native sort, and finally aggregate into an 8×3 benchmark comparison table.
 
-**成员 ↔ 算法映射**（按 `MEMBER_NAME_POOL` 顺序）
+**Member ↔ Algorithm mapping** (in `MEMBER_NAME_POOL` order)
 
-| 成员 | 算法 |
+| Member | Algorithm |
 |------|------|
-| alice | quicksort（三数取中快排 + 小分区插入排序兜底） |
-| bob | mergesort（自顶向下，稳定，O(n) 辅助缓冲） |
-| carol | heapsort（原地二叉堆） |
-| dave | radixsort（LSD base-256，4 趟 for 32-bit 非负整数） |
-| erin | timsort（minrun + 二分插入 + galloping merge） |
-| frank | shellsort（Marcin Ciura 增量序列） |
-| grace | introsort（快排 + 深度上限转 heapsort + 小分区插入） |
-| henry | counting-sort（按 [min,max] 计数；注意随机集跨度 ~10⁹ 的内存压力） |
+| alice | quicksort (median-of-three + insertion sort fallback for small partitions) |
+| bob | mergesort (top-down, stable, O(n) auxiliary buffer) |
+| carol | heapsort (in-place binary heap) |
+| dave | radixsort (LSD base-256, 4 passes for 32-bit non-negative integers) |
+| erin | timsort (minrun + binary insertion + galloping merge) |
+| frank | shellsort (Marcin Ciura gap sequence) |
+| grace | introsort (quicksort + depth-limit switch to heapsort + insertion for small partitions) |
+| henry | counting-sort (count over [min,max]; note ~10⁹ span memory pressure for random dataset) |
 
-**数据集**（每个成员都跑，均为确定性的 seed=42）
+**Datasets** (every member runs all, deterministic seed=42)
 
-- **(a) RANDOM**：10⁶ 个 `[0, 10⁹)` 均匀随机整数（seed=42 的确定性 PRNG，如 mulberry32 / LCG）。
-- **(b) NEARLY**：把 RANDOM 升序排序后，执行恰好 10,000 次随机交换（10⁶ 的 1%），PRNG 复位 seed=42。
-- **(c) REVERSE**：RANDOM 降序排序。
+- **(a) RANDOM**: 10⁶ uniform random integers in `[0, 10⁹)` (deterministic PRNG with seed=42, e.g. mulberry32 / LCG).
+- **(b) NEARLY**: Take RANDOM sorted ascending, then perform exactly 10,000 random swaps (1% of 10⁶), PRNG reset to seed=42.
+- **(c) REVERSE**: RANDOM sorted descending.
 
-**成功标准（可机器评判）**
+**Success criteria (machine-verifiable)**
 
-- 8 个成员每个都输出 `<!-- SORT_OK: true -->`（3 个数据集与原生排序逐元素一致）
-- 8 个成员每个都输出 `<!-- TIME_RANDOM: <ms> -->` / `<!-- TIME_NEARLY: <ms> -->` / `<!-- TIME_REVERSE: <ms> -->` —— 共 8×3 = 24 个 TIME 标记
-- reduce（`merge` 策略）汇总输出包含一张 8 算法 × 3 数据集的对比表（人工目视，非机器断言）
+- All 8 members each output `<!-- SORT_OK: true -->` (all 3 datasets match native sort element-by-element)
+- All 8 members each output `<!-- TIME_RANDOM: <ms> -->` / `<!-- TIME_NEARLY: <ms> -->` / `<!-- TIME_REVERSE: <ms> -->` — totaling 8×3 = 24 TIME markers
+- The reduce (`merge` strategy) aggregate output contains an 8-algorithm × 3-dataset comparison table (human visual check, not machine assertion)
 
-**预计时长：~40 min**（成员并行写实现 + 生成 3×10⁶ 数据集 + 排序 + 比对 + 计时；最慢成员 ~35 min，加 reduce 与 check ≈ 40 min）。
+**Estimated duration: ~40 min** (members implement in parallel + generate 3×10⁶ datasets + sort + verify + time; slowest member ~35 min, plus reduce and check ≈ 40 min).
 
-### 4.2 Team 配置
+### 4.2 Team Config
 
 ```json
 {
@@ -387,9 +387,9 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 }
 ```
 
-**Role 选择理由**：8 名成员全部用 `coder`（`oct-junior` agent，能写代码、运行、做正确性验证），完全匹配「实现 + 跑基准 + 自检」的挑战需求。成员名取 `MEMBER_NAME_POOL` 前 8 位（alice..henry），团队满编（上限 8）。
+**Role selection rationale**: All 8 members use `coder` (`oct-junior` agent, capable of writing code, running it, and doing correctness verification), perfectly matching the "implement + run benchmarks + self-check" challenge needs. Member names use the first 8 entries from `MEMBER_NAME_POOL` (alice..henry), the team is at full capacity (limit 8).
 
-### 4.3 Master 启动调用
+### 4.3 Master Launch Invocation
 
 ```json
 {
@@ -415,15 +415,15 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 }
 ```
 
-**参数选择**
+**Parameter selection**
 
-- `mode: cooperative` — 8 种算法各不相同，必须每成员独立任务
-- `reduce_policy: merge` — 保留 8 份独立结果以组装对比表（非 select 单选 / rubric 评分）
-- `reducer_member: alice` — 非 summarize 策略必须指定 reducer_member（否则工具拒绝执行）；指定 alice 做合并汇总
-- `timeout_ms: 3600000`（60 min）— 挑战级给足余量；正常 ~35 min 完成，含 timsort / counting-sort 等较重实现
-- `max_errored_members: 0` — 8 算法缺一对比表不完整，任一失败即整体失败
+- `mode: cooperative` — 8 algorithms are all different, each needs its own independent task
+- `reduce_policy: merge` — keep 8 independent results to assemble a comparison table (not select single-winner / rubric scoring)
+- `reducer_member: alice` — non-summarize strategies must specify reducer_member (otherwise the tool rejects execution); assign alice to merge and aggregate
+- `timeout_ms: 3600000` (60 min) — ample headroom for challenge-level; normally ~35 min to complete, including heavier implementations like timsort / counting-sort
+- `max_errored_members: 0` — missing any of the 8 algorithms makes the comparison table incomplete; any member failure means total failure
 
-### 4.4 执行流程（时序）
+### 4.4 Execution Flow (Timeline)
 
 ```
 T+0m     master 调用 team_parallel (cooperative, 8 members)
@@ -434,38 +434,38 @@ T+38m    合并的 8×3 对比表交付 master
 T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 ```
 
-### 4.5 评判脚本
+### 4.5 Check Script
 
 [`check-coding-sort-benchmark.ts`](./check-coding-sort-benchmark.ts)
 
-- **加载**：`runs/<run_id>/{alice,bob,carol,dave,erin,frank,grace,henry}.md`（共 8 个）
-- **提取**：
-  - 正确性：`<!-- SORT_OK:\s*(true|false)\s*-->`
-  - 计时：`<!-- TIME_RANDOM:\s*([\d.]+)\s*-->`、`<!-- TIME_NEARLY:\s*([\d.]+)\s*-->`、`<!-- TIME_REVERSE:\s*([\d.]+)\s*-->`
-- **断言**：
-  1. 8 个成员 `SORT_OK=true`（8/8 数据集全部与原生排序一致）
-  2. 24 个 TIME 标记全部存在（8 成员 × 3 数据集）且均为非负数值
-  3. 打印 8×3 基准对比表（供 reduce 汇总的人工目视对照）
-- reduce 输出中的对比表为人工目视项，非机器断言
+- **Load**: `runs/<run_id>/{alice,bob,carol,dave,erin,frank,grace,henry}.md` (8 files total)
+- **Extract**:
+  - Correctness: `<!-- SORT_OK:\s*(true|false)\s*-->`
+  - Timing: `<!-- TIME_RANDOM:\s*([\d.]+)\s*-->`, `<!-- TIME_NEARLY:\s*([\d.]+)\s*-->`, `<!-- TIME_REVERSE:\s*([\d.]+)\s*-->`
+- **Assertions**:
+  1. All 8 members `SORT_OK=true` (all 8/8 datasets match native sort)
+  2. All 24 TIME markers present (8 members × 3 datasets) and all are non-negative numbers
+  3. Print 8×3 benchmark comparison table (for human visual cross-check against reduce aggregation)
+- The comparison table in reduce output is a human visual check item, not a machine assertion
 
 ---
 
-## 验收清单
+## Acceptance Checklist
 
-- [ ] 3 个 check 脚本 `tsc --noEmit` 通过（无类型错误）
-- [ ] 每个 team 配置 role 合法（`mathematician` / `simulator` / `coder` 均为预设）
-- [ ] 每个 master 调用参数符合 `team_parallel` schema
-- [ ] 每场景总时长 ≤ 15 min（远低于 30 min 上限）
-- [ ] 成员 prompt 中明确输出格式约定（marker），评判脚本与之对齐
+- [ ] 3 check scripts pass `tsc --noEmit` (no type errors)
+- [ ] Each team config has valid roles (`mathematician` / `simulator` / `coder` are all presets)
+- [ ] Each master invocation parameters conform to `team_parallel` schema
+- [ ] Each scenario total duration ≤ 15 min (well below the 30 min limit)
+- [ ] Member prompts explicitly define output format conventions (markers), aligned with check scripts
 
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-Start Prompt (Copy and Use)
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成「创建团队 → 激活 → 启动编排 → 等待汇总 → 运行评判脚本」的完整闭环，并按退出码报告 PASS / FAIL。所有具体配置（team_create、team_parallel 参数）直接引用本 README 对应小节，无需手动复制 JSON。
+> Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for aggregation → run check script", reporting PASS / FAIL by exit code. All specific configs (team_create, team_parallel parameters) directly reference the corresponding sections of this README — no manual JSON copying needed.
 
-### 场景 1: Monte Carlo π 三方法对比
+### Scenario 1: Monte Carlo Pi 3-Method Comparison
 
 ```text
 执行 demos/01-team-parallel/README.md「场景 1: Monte Carlo π 三方法对比」的完整闭环并自动评判。
@@ -483,7 +483,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 成功标准：三方法 |π_est − π| < 0.05；且分层抽样误差 ≤ 朴素 Monte Carlo。
 ```
 
-### 场景 2: 谐振子三积分器能量漂移
+### Scenario 2: Harmonic Oscillator 3 Integrators Energy Drift
 
 ```text
 执行 demos/01-team-parallel/README.md「场景 2: 谐振子三积分器能量漂移」的完整闭环并自动评判。
@@ -500,7 +500,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 成功标准：显式 Euler 能量漂移 > 1e-3（体现病理）；Verlet 与 RK4 的漂移均 < Euler。
 ```
 
-### 场景 3: 两数和多解法复杂度对比
+### Scenario 3: Two-Sum Multi-Solution Complexity Comparison
 
 ```text
 执行 demos/01-team-parallel/README.md「场景 3: 两数和多解法复杂度对比」的完整闭环并自动评判。
@@ -517,7 +517,7 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 成功标准：3 个测试用例（[2,7,11,15]/9、[3,2,4]/6、[3,3]/6）全通过；复杂度标注正确（alice=O(n²)、bob=O(n)、carol=O(n log n)）。
 ```
 
-### 场景 4: 8 种排序算法大数据基准（挑战级）
+### Scenario 4: 8 Sorting Algorithms Large-Data Benchmark (Challenge-Level)
 
 ```text
 执行 demos/01-team-parallel/README.md「场景 4: 8 种排序算法大数据基准（挑战级）」的完整闭环并自动评判。

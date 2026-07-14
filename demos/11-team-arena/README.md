@@ -1,50 +1,50 @@
-# team_arena 编排场景设计
+# team_arena Orchestration Scenario Design
 
-> **模式**：`team_arena` —— 竞争擂台。N 名候选成员在各自的隔离 git worktree 中实现同一任务的竞争方案（implement 阶段）；随后一名独立 evaluator 对每位候选人的输出运行相同的客观评估，产出结构化 `<scoreboard>` 评分；引擎按 `winner_metric` 和 `score_direction` 选出确定性胜者并直接交付（v1 无 signoff 门控）。
-> **源码**：[`src/tools/arena.ts`](../../src/tools/arena.ts)
-> **控时设计**：每基线场景 3 名候选 + 1 名 evaluator，候选实现 5-8 min、evaluator 评估 3-5 min，并行 implement + 串行 evaluate ≈ 10-13 min（远低于 30 min 上限）。**场景 4 为挑战级**：5 名候选 + 1 名 evaluator，规模放大至 5 求解器 × 1000×1000 稀疏系统综合擂台，约 40 min，演示 arena 在多候选、高计算密度下的扩展性。
+> **Mode**: `team_arena` — competitive arena. N candidate members implement competing solutions for the same task in their own isolated git worktrees (implement phase); then a single independent evaluator runs the same objective evaluation against every candidate's output and produces a structured `<scoreboard>` rating; the engine selects a deterministic winner by `winner_metric` and `score_direction` and delivers directly (v1 has no signoff gate).
+> **Source**: [`src/tools/arena.ts`](../../src/tools/arena.ts)
+> **Time budget**: Each baseline scenario has 3 candidates + 1 evaluator, with candidates implementing for 5-8 min and the evaluator assessing for 3-5 min, parallel implement + serial evaluate ≈ 10-13 min (well under the 30 min ceiling). **Scenario 4 is challenge-level**: 5 candidates + 1 evaluator, scaled up to 5 solvers × 1000×1000 sparse system comprehensive arena, ~40 min, demonstrating arena's scalability under many candidates and high compute density.
 
-## 场景一览
+## Scenario Overview
 
-| # | 方向 | 场景 | 候选数 | 评估基准 | 胜出指标 | 预计总时长 |
+| # | Domain | Scenario | Candidates | Evaluation Benchmark | Winner Metric | Est. Duration |
 |---|------|------|--------|---------|---------|-----------|
-| 1 | 编程 | 三种排序实现基准选最快 | 3 | `eval_command` 跑基准脚本 | 吞吐量（`score_direction: "max"`） | ~10 min |
-| 2 | 计算物理 | 三种积分器按能量漂移选最稳 | 3 | `eval_criteria` 能量守恒判定 | 能量漂移（`score_direction: "min"`） | ~12 min |
-| 3 | 数学 | 定积分三求积方法精度对决 | 3 | `eval_criteria` 与精确解对比 | 绝对误差（`score_direction: "min"`） | ~12 min |
-| 4 | 计算物理（挑战） | 泊松方程五求解器综合擂台 | 5 | `eval_command` 跑收敛基准 | 收敛迭代数（`score_direction: "min"`） | ~40 min |
+| 1 | Programming | Three sorting implementations benchmarked for fastest | 3 | `eval_command` runs benchmark script | Throughput (`score_direction: "max"`) | ~10 min |
+| 2 | Computational Physics | Three integrators compared by energy drift for most stable | 3 | `eval_criteria` energy conservation verdict | Energy drift (`score_direction: "min"`) | ~12 min |
+| 3 | Math | Three quadrature methods compete on definite integral accuracy | 3 | `eval_criteria` comparison against exact solution | Absolute error (`score_direction: "min"`) | ~12 min |
+| 4 | Computational Physics (challenge) | Five Poisson equation solvers comprehensive arena | 5 | `eval_command` runs convergence benchmark | Convergence iterations (`score_direction: "min"`) | ~40 min |
 
 ---
 
-## 前置约束
+## Prerequisites
 
-**v1 边界**：`team_arena`（v1）有以下硬性假设与限制，使用时必须遵守：
+**v1 boundaries**: `team_arena` (v1) has the following hard assumptions and restrictions that must be observed when using it:
 
-1. **候选须有 worktree**：每位 candidate 必须在 `team_add_member` 时设置 `worktree: true`，否则 arena 启动时直接报错退出。
-2. **至少 2 名候选**：`candidates` 显式列表或自动推断（除 evaluator 以外的所有非 master 成员）须 ≥ 2。
-3. **至少一种评估基准**：`eval_command` 或 `eval_criteria` 必须至少填一个（可同时提供）。
-4. **evaluator 不在候选列表中**：evaluator 不能同时是候选成员。
-5. **单轮、客观比分**：v1 只做一轮 implement → evaluate；evaluator 输出 `<scoreboard>` 必须为有效 JSON；引擎按 `winner_metric` 的单值比较选胜者，不做多轮演化或 tie-break 协商。
-6. **无 signoff、无自动合并、无 loser 清理**：这些是 v1 明确不提供的功能。
+1. **Candidates must have worktrees**: Every candidate must set `worktree: true` when adding members via `team_add_member`, otherwise arena aborts with an error on launch.
+2. **At least 2 candidates**: The `candidates` explicit list or auto-inference (all non-master, non-evaluator members) must have ≥ 2 candidates.
+3. **At least one evaluation benchmark**: Either `eval_command` or `eval_criteria` must be provided (both can be provided together).
+4. **Evaluator is not in the candidate list**: The evaluator cannot also be a candidate member.
+5. **Single round, objective scoring**: v1 does only one round of implement → evaluate; the evaluator's `<scoreboard>` output must be valid JSON; the engine selects the winner by single-value comparison of `winner_metric`, with no multi-round evolution or tie-break negotiation.
+6. **No signoff, no auto-merge, no loser cleanup**: These are features explicitly not provided in v1.
 
-**关键假设（Metis 标注）**：evaluator 在自己的 worktree 中运行，但读取 candidates 的 **绝对 worktree 路径**（含未提交的 agent 编辑）。这要求宿主机 **不** sandbox 成员到其自身目录内——evaluator 必须能通过绝对路径访问其他候选人的 worktree 文件。
+**Key assumption (Metis annotation)**: The evaluator runs in its own worktree but reads candidates' **absolute worktree paths** (including uncommitted agent edits). This requires that the host **not** sandbox members within their own directories — the evaluator must be able to access other candidates' worktree files via absolute paths.
 
 ---
 
-## 场景 1: 三种排序实现基准选最快
+## Scenario 1: Three Sorting Implementations Benchmark for Fastest
 
-### 1.1 场景描述
+### 1.1 Scenario Description
 
-**背景**：排序是每个程序员都写过的基础操作。不同规模、不同数据分布（随机、已近排序、逆序）下，不同算法（快速排序、归并排序、内省排序）的实际 wall‑clock 吞吐量差异显著。「最快」不是一种理论判断，而是**同一硬件、同一数据、同一基准脚本**下的可测量事实。
+**Background**: Sorting is a fundamental operation every programmer has written. Across different sizes and data distributions (random, nearly sorted, reverse order), different algorithms (quicksort, mergesort, introsort) show significantly different actual wall-clock throughput. "Fastest" is not a theoretical judgment but a **measurable fact under the same hardware, same data, same benchmark script**.
 
-**目标**：三名候选（`coder` 角色）各实现一种排序算法；evaluator 运行基准脚本 `benchmark.bun.ts` 对每份实现跑相同的数据集，产出每候选的 `throughput_ops_per_sec` 指标；引擎按 `score_direction: "max"` 选吞吐量最高者。
+**Goal**: Three candidates (`coder` role) each implement one sorting algorithm; the evaluator runs the benchmark script `benchmark.bun.ts` against each implementation with the same dataset and produces a `throughput_ops_per_sec` metric per candidate; the engine selects the candidate with the highest throughput using `score_direction: "max"`.
 
-**成功标准（可机器评判）**：
-- 每位候选输出含 `<!-- IMPL: sort -->` 标注，嵌入可加载代码块
-- evaluator 输出含 `<scoreboard>{...}</scoreboard>` 标签 JSON 块
-- scoreboard 的 `scores` 数组长度为候选人数，每项含 `member`、`score`（number）、`passed`（bool）、`rationale`（string）
-- 引擎选出 `score` 最大的候选为胜者
+**Success criteria (machine-evaluable)**:
+- Each candidate output contains `<!-- IMPL: sort -->` marker, embedding a loadable code block
+- Evaluator output contains `<scoreboard>{...}</scoreboard>` tagged JSON block
+- The scoreboard's `scores` array length equals the number of candidates; each entry contains `member`, `score` (number), `passed` (bool), `rationale` (string)
+- The engine selects the candidate with the highest `score` as the winner
 
-### 1.2 Team 配置
+### 1.2 Team Configuration
 
 ```json
 {
@@ -79,9 +79,9 @@
 }
 ```
 
-**Role 选择理由**：前三名候选统一用 `coder`（`oct-junior` agent，可写码+跑测试）在独立 worktree 中实现各自的排序方案；evaluator 用 `reviewer`（只读 agent，专注跑客观基准并产出结构化比分）。
+**Role selection rationale**: The first three candidates uniformly use `coder` (`oct-junior` agent, can write code and run tests) in independent worktrees to implement their respective sorting approaches; evaluator uses `reviewer` (read-only agent, focused on running the objective benchmark and producing a structured scoreboard).
 
-### 1.3 Master 启动调用
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -100,15 +100,15 @@
 }
 ```
 
-**参数选择**：
-- `evaluator: "dave"` —— 不在 `candidates` 列表中，满足「evaluator ≠ candidate」硬约束
-- `candidates` 显式列出 3 名 —— 刚好够多方法对比，又不超基线成员数
-- `eval_command: "bun run benchmark.bun.ts"` —— 客观基准脚本；evaluator 在每名候选的 worktree 下执行相同命令
-- `winner_metric: "throughput_ops_per_sec"` + `score_direction: "max"` —— 吞吐量越高越好
-- `max_eval_retries: 1` —— evaluator scoreboard 格式错误或解析失败时给一次重试
-- `timeout_ms: 900000`（15 min）—— 候选并行 8 min + 评估串行 3 min，留余量
+**Parameter selection**:
+- `evaluator: "dave"` — not in the `candidates` list, satisfying the "evaluator ≠ candidate" hard constraint
+- `candidates` explicitly lists 3 — just enough for multi-method comparison without exceeding the baseline member count
+- `eval_command: "bun run benchmark.bun.ts"` — objective benchmark script; the evaluator runs the same command in each candidate's worktree
+- `winner_metric: "throughput_ops_per_sec"` + `score_direction: "max"` — higher throughput is better
+- `max_eval_retries: 1` — give the evaluator one retry on scoreboard format error or parse failure
+- `timeout_ms: 900000` (15 min) — parallel candidate implementation 8 min + serial evaluation 3 min, with margin
 
-### 1.4 执行流程（时序）
+### 1.4 Execution Flow (Timeline)
 
 ```
 T+0m     master 调用 team_arena (3 candidates + evaluator)
@@ -121,39 +121,39 @@ T+8~11m  dave 为每名候选跑 `bun run benchmark.bun.ts` → 收集吞吐量 
 T+11m    引擎解析 scoreboard → selectArenaWinner → 结果交付 master
 ```
 
-（若候选实现出错导致 `max_errored_members` 超限，arena 整体失败；evaluator scoreboard 解析失败且 attempts < max_eval_retries，evaluator 退回重评。）
+(If candidate implementation errors cause `max_errored_members` to be exceeded, the arena fails entirely; if evaluator scoreboard parse fails and attempts < max_eval_retries, the evaluator is sent back for re-evaluation.)
 
-### 1.5 评判脚本
+### 1.5 Check Script
 
-> 本场景未绑独立 check 脚本；评判依托 evaluator 产出的 `<scoreboard>` JSON 和引擎的 `selectArenaWinner` 内建逻辑。如需外部验证，读取 `runs/<run_id>/dave.md`（evaluator 输出），提取 scoreboard JSON，交叉核对 `scores[].score` 值为有限数且 `passed` 为 `true`。
+> This scenario does not have a standalone check script; evaluation relies on the evaluator's `<scoreboard>` JSON output and the engine's built-in `selectArenaWinner` logic. For external verification, read `runs/<run_id>/dave.md` (evaluator output), extract the scoreboard JSON, and cross-check that `scores[].score` values are finite numbers and `passed` is `true`.
 
-### 1.6 评估器 scoreboard 示例
+### 1.6 Evaluator Scoreboard Example
 
-evaluator（dave）在跑完三份基准后应产出如下格式的 scoreboard：
+The evaluator (dave), after running the three benchmarks, should produce a scoreboard in the following format:
 
 ```
 <scoreboard>{"scores":[{"member":"alice","score":12450000,"metrics":{"throughput_ops_per_sec":12450000,"algorithm":"quickSort","dataset_size":1000000},"passed":true,"rationale":"quickSort on random 10^6: 12.45M ops/sec, fastest of three"},{"member":"bob","score":8700000,"metrics":{"throughput_ops_per_sec":8700000,"algorithm":"mergeSort","dataset_size":1000000},"passed":true,"rationale":"mergeSort on random 10^6: 8.70M ops/sec, stable but slower due to allocation"},{"member":"carol","score":11200000,"metrics":{"throughput_ops_per_sec":11200000,"algorithm":"introSort","dataset_size":1000000},"passed":true,"rationale":"introSort on random 10^6: 11.20M ops/sec, close second to quickSort"}],"rationale":"Benchmark: bun run benchmark.bun.ts on random 10^6-int array. Alice wins with quickSort at 12.45M ops/sec; introSort is 10% slower; mergeSort trails due to extra allocation. Winner metric: max throughput_ops_per_sec."}</scoreboard>
 ```
 
-引擎会解析此 JSON，按 `winner_metric: "throughput_ops_per_sec"` 和 `score_direction: "max"` 选出 `alice` 为胜者。
+The engine parses this JSON and selects `alice` as the winner by `winner_metric: "throughput_ops_per_sec"` and `score_direction: "max"`.
 
 ---
 
-## 场景 2: 三种积分器按能量漂移选最稳
+## Scenario 2: Three Integrators Compared by Energy Drift for Most Stable
 
-### 2.1 场景描述
+### 2.1 Scenario Description
 
-**背景**：谐振子 `ẍ = -ω²x`（ω=1，初值 `x0=1, v0=0`）是能量守恒系统的标准测试题，理论能量 `E = ½(x² + v²) = 0.5` 恒定。不同数值积分器的能量守恒特性迥异：**显式 Euler** 能量系统性增长、**隐式 Euler** 能量系统性衰减、**Velocity Verlet** 能量在平衡值附近有界振荡。在长时间仿真中，积分器的**能量漂移**（相对漂移 `|E_end - E0|/E0`）是区分稳定性的直接指标。
+**Background**: The harmonic oscillator `ẍ = -ω²x` (ω=1, initial `x0=1, v0=0`) is a standard test problem for energy-conserving systems, with theoretical energy `E = ½(x² + v²) = 0.5` constant. Different numerical integrators have vastly different energy conservation properties: **explicit Euler** exhibits systematic energy growth, **implicit Euler** systematic energy decay, and **Velocity Verlet** exhibits bounded oscillation near the equilibrium value. In long-time simulations, an integrator's **energy drift** (relative drift `|E_end - E0|/E0`) is a direct indicator of stability.
 
-**目标**：三名候选（`simulator` 角色）各实现一种积分器，跑相同步数报告相对能量漂移；evaluator 按 `eval_criteria` 判定每份实现的漂移是否满足辛格式守恒界，按漂移值打分，引擎选漂移最小者为胜。
+**Goal**: Three candidates (`simulator` role) each implement one integrator, run the same number of steps, and report the relative energy drift; the evaluator judges whether each implementation's drift meets the symplectic conservation bound per `eval_criteria`, scores by drift value, and the engine selects the candidate with the smallest drift as the winner.
 
-**成功标准（可机器评判）**：
-- 每位候选输出含 `<!-- DRIFT: <数值> -->` 标注
-- evaluator 输出含 `<scoreboard>{...}</scoreboard>` 标签 JSON 块
-- scoreboard 的每项 `score` 为相对能量漂移值（number），`passed` 依据 `eval_criteria` 判定
-- 引擎按 `score_direction: "min"` 选出漂移最小的候选为胜者
+**Success criteria (machine-evaluable)**:
+- Each candidate output contains `<!-- DRIFT: <value> -->` marker
+- Evaluator output contains `<scoreboard>{...}</scoreboard>` tagged JSON block
+- Each scoreboard entry's `score` is the relative energy drift value (number); `passed` is determined by `eval_criteria`
+- The engine selects the candidate with the smallest drift as the winner using `score_direction: "min"`
 
-### 2.2 Team 配置
+### 2.2 Team Configuration
 
 ```json
 {
@@ -188,9 +188,9 @@ evaluator（dave）在跑完三份基准后应产出如下格式的 scoreboard�
 }
 ```
 
-**Role 选择理由**：前三名候选用 `simulator`（数值模拟专用，`oct-junior` agent）在独立 worktree 中实现各自的积分器；evaluator 用 `physicist`（懂能量守恒/辛格式，能独立复算判定漂移）。
+**Role selection rationale**: The first three candidates use `simulator` (specialized in numerical simulation, `oct-junior` agent) in independent worktrees to implement their respective integrators; evaluator uses `physicist` (understands energy conservation and symplectic integrators, can independently recompute and judge drift).
 
-### 2.3 Master 启动调用
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -209,13 +209,13 @@ evaluator（dave）在跑完三份基准后应产出如下格式的 scoreboard�
 }
 ```
 
-**参数选择**：
-- `eval_criteria` 而非 `eval_command` —— 物理判定不需要跑外部基准脚本；evaluator 凭候选 DRIFT 标记和物理知识即可打分
-- `winner_metric` 用默认值 `"score"`，候选的 `score` 即其能量漂移值
-- `score_direction: "min"` —— 漂移越小越好
-- `max_eval_retries: 1` —— evaluator 评分失败给一次重试
+**Parameter selection**:
+- `eval_criteria` rather than `eval_command` — physics judgment does not require running an external benchmark script; the evaluator can score from the candidates' DRIFT markers and physics knowledge
+- `winner_metric` uses the default `"score"`; each candidate's `score` is their energy drift value
+- `score_direction: "min"` — smaller drift is better
+- `max_eval_retries: 1` — give the evaluator one retry on scoring failure
 
-### 2.4 执行流程（时序）
+### 2.4 Execution Flow (Timeline)
 
 ```
 T+0m     master 调用 team_arena (3 candidates + evaluator)
@@ -228,37 +228,37 @@ T+8~12m  dave 读每名候选的 DRIFT 值 → 可选复算代码 → 按 eval_c
 T+12m    引擎解析 scoreboard → selectArenaWinner → 按 score_direction: "min" 选最小漂移者 → 结果交付 master
 ```
 
-### 2.5 评判脚本
+### 2.5 Check Script
 
-> 本场景依托 evaluator 产出的 `<scoreboard>` JSON 和引擎内建选优逻辑。外部验证：读取 `runs/<run_id>/dave.md`，提取 scoreboard JSON，交叉核对每名候选的 `score` 值与其 DRIFT 标记一致，且 `score` 最小的候选 `passed` 为 `true`。
+> This scenario relies on the evaluator's `<scoreboard>` JSON output and the engine's built-in winner selection logic. External verification: read `runs/<run_id>/dave.md`, extract the scoreboard JSON, and cross-check that each candidate's `score` value matches their DRIFT marker, and the candidate with the smallest `score` has `passed` as `true`.
 
-### 2.6 评估器 scoreboard 示例
+### 2.6 Evaluator Scoreboard Example
 
-evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard：
+The evaluator (dave), after reviewing the three implementations, should produce a scoreboard in the following format:
 
 ```
 <scoreboard>{"scores":[{"member":"alice","score":0.239,"metrics":{"drift":0.239,"method":"explicit Euler","E_final":0.6195},"passed":false,"rationale":"Explicit Euler: energy grows systematically from 0.5 to 0.6195 (drift 0.239 >> 1e-3). Non-conservative, fails symplecticity check."},{"member":"bob","score":0.318,"metrics":{"drift":0.318,"method":"implicit Euler","E_final":0.341},"passed":false,"rationale":"Implicit Euler: energy decays from 0.5 to 0.341 (drift 0.318 >> 1e-3). Non-conservative, fails symplecticity check."},{"member":"carol","score":0.00041,"metrics":{"drift":0.00041,"method":"Velocity Verlet","E_final":0.499795},"passed":true,"rationale":"Velocity Verlet: energy oscillates near 0.5, relative drift 4.1e-4 < 1e-3. Symplectic behavior confirmed. Pass."}],"rationale":"Evaluated drift from <!-- DRIFT --> markers + recomputation. Carol's Velocity Verlet stays within symplectic bound (drift 4.1e-4). Alice and Bob both exceed 1e-3 threshold by 2+ orders of magnitude. Winner metric: min drift."}</scoreboard>
 ```
 
-引擎会按 `score_direction: "min"` 选出 `carol`（漂移 0.00041）为胜者。
+The engine selects `carol` (drift 0.00041) as the winner using `score_direction: "min"`.
 
 ---
 
-## 场景 3: 定积分三求积方法精度对决
+## Scenario 3: Three Quadrature Methods Compete on Definite Integral Accuracy
 
-### 3.1 场景描述
+### 3.1 Scenario Description
 
-**背景**：数值求积（numerical quadrature）是计算数学的基石。同一个定积分，用不同求积公式（梯形法、辛普森法、高斯-勒让德法）在同样多的函数求值次数下，精度可以差数个数量级。`∫₀¹ 1/(1+x²) dx = π/4 ≈ 0.7853981633974483` 是一个光滑、无奇点的标准测试积分，不同方法的误差差异直观可测。
+**Background**: Numerical quadrature is a cornerstone of computational mathematics. For the same definite integral, different quadrature formulas (trapezoidal rule, Simpson's rule, Gauss-Legendre) can differ by several orders of magnitude in accuracy given the same number of function evaluations. `∫₀¹ 1/(1+x²) dx = π/4 ≈ 0.7853981633974483` is a smooth, singularity-free standard test integral whose error differences across methods are intuitively measurable.
 
-**目标**：三名候选（`coder` 角色）各实现一种求积方法，在相同的被积函数和区间上计算积分近似值，报告绝对误差 `|I_num - π/4|`；evaluator 按 `eval_criteria` 判定每份实现是否达到所属方法的期望精度阶，按误差打分，引擎选误差最小者为胜。
+**Goal**: Three candidates (`coder` role) each implement one quadrature method, computing an approximate integral value on the same integrand and interval and reporting the absolute error `|I_num - π/4|`; the evaluator judges per `eval_criteria` whether each implementation achieves the expected accuracy order for its method, scores by error, and the engine selects the candidate with the smallest error as the winner.
 
-**成功标准（可机器评判）**：
-- 每位候选输出含 `<!-- QUAD: <数值误差> -->` 标注（绝对误差）
-- evaluator 输出含 `<scoreboard>{...}</scoreboard>` 标签 JSON 块
-- scoreboard 的每项 `score` 为绝对误差值（number），`passed` 依据 `eval_criteria` 判定
-- 引擎按 `score_direction: "min"` 选出误差最小的候选为胜者
+**Success criteria (machine-evaluable)**:
+- Each candidate output contains `<!-- QUAD: <numeric error> -->` marker (absolute error)
+- Evaluator output contains `<scoreboard>{...}</scoreboard>` tagged JSON block
+- Each scoreboard entry's `score` is the absolute error value (number); `passed` is determined by `eval_criteria`
+- The engine selects the candidate with the smallest error as the winner using `score_direction: "min"`
 
-### 3.2 Team 配置
+### 3.2 Team Configuration
 
 ```json
 {
@@ -293,9 +293,9 @@ evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard�
 }
 ```
 
-**Role 选择理由**：前三名候选统一用 `coder`（`oct-junior` agent，可写码+跑测试）在独立 worktree 中实现各自的求积方法；evaluator 用 `mathematician`（懂数值分析，能识辨不同方法的理论误差阶）。
+**Role selection rationale**: The first three candidates uniformly use `coder` (`oct-junior` agent, can write code and run tests) in independent worktrees to implement their respective quadrature methods; evaluator uses `mathematician` (understands numerical analysis, can recognize the theoretical error orders of different methods).
 
-### 3.3 Master 启动调用
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -314,13 +314,13 @@ evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard�
 }
 ```
 
-**参数选择**：
-- `eval_criteria` 而非 `eval_command` —— 评估只需核对候选报告的误差是否与所声称的方法的期望精度阶一致，不需跑外部基准
-- `winner_metric` 用默认值 `"score"`，候选的 `score` 即其绝对误差
-- `score_direction: "min"` —— 误差越小越好
-- `max_eval_retries: 1` —— evaluator 评分失败给一次重试
+**Parameter selection**:
+- `eval_criteria` rather than `eval_command` — evaluation only needs to check whether each candidate's reported error is consistent with the claimed method's expected accuracy order, without running an external benchmark
+- `winner_metric` uses the default `"score"`; each candidate's `score` is their absolute error
+- `score_direction: "min"` — smaller error is better
+- `max_eval_retries: 1` — give the evaluator one retry on scoring failure
 
-### 3.4 执行流程（时序）
+### 3.4 Execution Flow (Timeline)
 
 ```
 T+0m     master 调用 team_arena (3 candidates + evaluator)
@@ -333,39 +333,39 @@ T+8~12m  dave 读每名候选的 QUAD 误差 → 可选复算代码 → 按 eval
 T+12m    引擎解析 scoreboard → selectArenaWinner → 按 score_direction: "min" 选最小误差者 → 结果交付 master
 ```
 
-### 3.5 评判脚本
+### 3.5 Check Script
 
-> 本场景依托 evaluator 产出的 `<scoreboard>` JSON 和引擎内建选优逻辑。外部验证：读取 `runs/<run_id>/dave.md`，提取 scoreboard JSON，交叉核对每名候选的 `score` 值与其 QUAD 标记一致，且 `score` 最小的候选 `passed` 为 `true`。
+> This scenario relies on the evaluator's `<scoreboard>` JSON output and the engine's built-in winner selection logic. External verification: read `runs/<run_id>/dave.md`, extract the scoreboard JSON, and cross-check that each candidate's `score` value matches their QUAD marker, and the candidate with the smallest `score` has `passed` as `true`.
 
-### 3.6 评估器 scoreboard 示例
+### 3.6 Evaluator Scoreboard Example
 
-evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard：
+The evaluator (dave), after reviewing the three implementations, should produce a scoreboard in the following format:
 
 ```
 <scoreboard>{"scores":[{"member":"alice","score":0.000785,"metrics":{"error":0.000785,"method":"composite trapezoidal (n=100)","exact":0.785398}，"passed":false,"rationale":"Trapezoidal rule: O(h²) convergence, 100 subintervals gives error ~7.85e-4 >> 1e-5. Fails accuracy threshold."},{"member":"bob","score":6.5e-8,"metrics":{"error":6.5e-8,"method":"composite Simpson's (n=100)","exact":0.785398},"passed":true,"rationale":"Simpson's rule: O(h⁴) convergence on this smooth integrand, 100 subintervals yields error ~6.5e-8 < 1e-5. Pass."},{"member":"carol","score":1.1e-16,"metrics":{"error":1.1e-16,"method":"5-point Gaussian-Legendre","exact":0.785398},"passed":true,"rationale":"Gaussian-Legendre (n=5): exact for polynomials up to degree 9, so this smooth integrand is integrated near machine precision. Error ~1.1e-16 < 1e-5. Pass."}],"rationale":"Evaluated absolute error from <!-- QUAD --> markers. Carol's Gaussian-Legendre achieves machine-precision accuracy (1.1e-16); Bob's Simpson's is 8 orders of magnitude worse but still below 1e-5; Alice's trapezoidal is 4 orders above threshold. Winner metric: min error."}</scoreboard>
 ```
 
-引擎会按 `score_direction: "min"` 选出 `carol`（误差 1.1e-16）为胜者。
+The engine selects `carol` (error 1.1e-16) as the winner using `score_direction: "min"`.
 
 ---
 
-## 场景 4: 泊松方程五求解器综合擂台（挑战级）
+## Scenario 4: Five Poisson Equation Solvers Comprehensive Arena (Challenge-Level)
 
-> **挑战级说明**：本场景突破基线约束（3 候选 / ≤4 成员 / ≤30 min），使用 **5 名候选 + 1 名 evaluator**，各候选在独立 worktree 中实现不同的线性系统求解器，evaluator 运行统一收敛基准脚本，按收敛迭代数打分。约 40 min，演示 arena 在多候选、高计算密度下的扩展性。
+> **Challenge-level notes**: This scenario breaks baseline constraints (3 candidates / ≤4 members / ≤30 min), using **5 candidates + 1 evaluator**, with each candidate implementing a different linear system solver in an independent worktree, and the evaluator running a unified convergence benchmark script, scoring by convergence iteration count. ~40 min, demonstrating arena's scalability under many candidates and high compute density.
 
-### 4.1 场景描述
+### 4.1 Scenario Description
 
-**背景**：二维泊松方程 `∇²u = -2π²sin(πx)sin(πy)`（精确解 `u = sin(πx)sin(πy)`）在 `(N+1)×(N+1)` 网格上用标准五点差分离散化，得到 `N² × N²` 稀疏线性系统 `Au = f`。求解这类大规模稀疏系统是科学计算的核心：不同迭代法在收敛速度、每步开销、实现复杂度上差异巨大。雅可比迭代收敛极慢，共轭梯度显著加速，多重网格近乎最优。
+**Background**: The 2D Poisson equation `∇²u = -2π²sin(πx)sin(πy)` (exact solution `u = sin(πx)sin(πy)`) discretized with the standard five-point stencil on an `(N+1)×(N+1)` grid yields an `N² × N²` sparse linear system `Au = f`. Solving such large-scale sparse systems is at the heart of scientific computing: different iterative methods differ enormously in convergence speed, per-step cost, and implementation complexity. Jacobi iteration converges extremely slowly, conjugate gradient provides significant acceleration, and multigrid is near-optimal.
 
-**目标**：五名候选（`simulator` 角色）各实现一种迭代求解器，在 `N=100`（10000×10000 稀疏矩阵）的统一问题上跑至残差 `||r||₂/||b||₂ < 1e-6`；evaluator 运行收敛基准脚本 `bun run convergence.ts`，对每名候选的求解器测迭代数，按迭代数打分，引擎选迭代数最少者为胜。
+**Goal**: Five candidates (`simulator` role) each implement one iterative solver, running on a unified N=100 problem (10000×10000 sparse matrix) to a residual of `||r||₂/||b||₂ < 1e-6`; the evaluator runs the convergence benchmark script `bun run convergence.ts`, measuring the iteration count for each candidate's solver, scoring by iteration count, and the engine selects the candidate with the fewest iterations as the winner.
 
-**成功标准（可机器评判）**：
-- 每位候选输出含 `<!-- CONV: <迭代数> -->` 标注
-- evaluator 输出含 `<scoreboard>{...}</scoreboard>` 标签 JSON 块
-- scoreboard 的每项 `score` 为收敛所需迭代数（number），`passed` 依据 `eval_criteria` 判定
-- 引擎按 `score_direction: "min"` 选出迭代数最少的候选为胜者
+**Success criteria (machine-evaluable)**:
+- Each candidate output contains `<!-- CONV: <iteration count> -->` marker
+- Evaluator output contains `<scoreboard>{...}</scoreboard>` tagged JSON block
+- Each scoreboard entry's `score` is the number of iterations to convergence (number); `passed` is determined by `eval_criteria`
+- The engine selects the candidate with the fewest iterations as the winner using `score_direction: "min"`
 
-### 4.2 Team 配置
+### 4.2 Team Configuration
 
 ```json
 {
@@ -412,9 +412,9 @@ evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard�
 }
 ```
 
-**Role 选择理由**：五名候选统一用 `simulator`（数值模拟专用，`oct-junior` agent）在独立 worktree 中实现各自的迭代求解器；evaluator 用 `physicist`（懂 PDE 数值方法，能独立判定收敛性），注意 6 名成员（5 候选 + 1 evaluator）已达 arena v1 的推荐上限。
+**Role selection rationale**: The five candidates uniformly use `simulator` (specialized in numerical simulation, `oct-junior` agent) in independent worktrees to implement their respective iterative solvers; evaluator uses `physicist` (understands PDE numerical methods, can independently judge convergence). Note that 6 members (5 candidates + 1 evaluator) reaches arena v1's recommended ceiling.
 
-### 4.3 Master 启动调用
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -434,15 +434,15 @@ evaluator（dave）在审阅三份实现后应产出如下格式的 scoreboard�
 }
 ```
 
-**参数选择**：
-- `evaluator: "frank"` —— 不在 `candidates` 列表中，满足「evaluator ≠ candidate」硬约束
-- `candidates` 显式列出 5 名 —— 刚好覆盖 5 种主流迭代法的代表性对比
-- `eval_command` 与 `eval_criteria` **同时提供** —— 基准脚本确保一致度量，criteria 做阈值判定（迭代 > 100k 视作发散）
-- `winner_metric: "iterations"` + `score_direction: "min"` —— 迭代数越少越好
-- `max_eval_retries: 1` —— evaluator 评分失败给一次重试
-- `timeout_ms: 2400000`（40 min）—— 5 名候选并行 10 min + 评估串行 20 min（每候选的 N=100 收敛需数次迭代，耗时不一），留足余量
+**Parameter selection**:
+- `evaluator: "frank"` — not in the `candidates` list, satisfying the "evaluator ≠ candidate" hard constraint
+- `candidates` explicitly lists 5 — just enough to cover a representative comparison of 5 mainstream iterative methods
+- `eval_command` and `eval_criteria` **provided together** — the benchmark script ensures consistent measurement, the criteria provide threshold judgment (iterations > 100k treated as divergent)
+- `winner_metric: "iterations"` + `score_direction: "min"` — fewer iterations is better
+- `max_eval_retries: 1` — give the evaluator one retry on scoring failure
+- `timeout_ms: 2400000` (40 min) — 5 candidates parallel 10 min + serial evaluation 20 min (each candidate's N=100 convergence needs several iterations with varying runtimes), with ample margin
 
-### 4.4 执行流程（时序）
+### 4.4 Execution Flow (Timeline)
 
 ```
 T+0m     master 调用 team_arena (5 candidates + evaluator)
@@ -455,41 +455,41 @@ T+10~30m frank 为每名候选跑 `bun run convergence.ts` → 收集各求解�
 T+30m    引擎解析 scoreboard → selectArenaWinner → 按 score_direction: "min" 选最少迭代数者 → 结果交付 master
 ```
 
-（5 候选并行实现，单一 evaluator 串行评估各候选 worktree；N=100 的 Poisson 问题上 Jacobi ≈ 6000 迭代、Gauss-Seidel ≈ 3000 迭代、SOR(ω=1.9) ≈ 300 迭代、CG ≈ 300 迭代、Multigrid V(2,2) ≈ 10 迭代——收敛速度差距巨大，arena 评分的区分度极高。）
+(5 candidates implement in parallel, a single evaluator serially evaluates each candidate's worktree; on the N=100 Poisson problem, Jacobi ≈ 6000 iterations, Gauss-Seidel ≈ 3000 iterations, SOR(ω=1.9) ≈ 300 iterations, CG ≈ 300 iterations, Multigrid V(2,2) ≈ 10 iterations — convergence speed gaps are enormous, giving the arena scoreboard extremely high discrimination.)
 
-### 4.5 评判脚本
+### 4.5 Check Script
 
-> 本场景依托 evaluator 产出的 `<scoreboard>` JSON 和引擎内建选优逻辑。外部验证：读取 `runs/<run_id>/frank.md`，提取 scoreboard JSON，交叉核对每名候选的迭代数与 CONV 标记一致，物理预期 Multigrid 胜出（≤20 迭代）且 Jacobi 垫底（≥5000 迭代）。
+> This scenario relies on the evaluator's `<scoreboard>` JSON output and the engine's built-in winner selection logic. External verification: read `runs/<run_id>/frank.md`, extract the scoreboard JSON, cross-check that each candidate's iteration count matches their CONV marker, and the physics expectation is that Multigrid wins (≤20 iterations) and Jacobi comes last (≥5000 iterations).
 
-### 4.6 评估器 scoreboard 示例
+### 4.6 Evaluator Scoreboard Example
 
-evaluator（frank）在跑完五份基准后应产出如下格式的 scoreboard：
+The evaluator (frank), after running the five benchmarks, should produce a scoreboard in the following format:
 
 ```
 <scoreboard>{"scores":[{"member":"alice","score":6120,"metrics":{"iterations":6120,"method":"Jacobi","residual":9.87e-7},"passed":true,"rationale":"Jacobi: slow convergence (~6k iterations), typical for simple relaxation on 100x100 grid. < 100k => pass."},{"member":"bob","score":2980,"metrics":{"iterations":2980,"method":"Gauss-Seidel","residual":9.92e-7},"passed":true,"rationale":"Gauss-Seidel: ~2x faster than Jacobi due to immediate use of updated values, ~3k iterations on 100x100. Pass."},{"member":"carol","score":312,"metrics":{"iterations":312,"method":"SOR (ω=1.9)","residual":9.65e-7},"passed":true,"rationale":"SOR with near-optimal ω≈1.9: convergence accelerated ~10x vs GS, ~300 iterations. Excellent for this problem class. Pass."},{"member":"dave","score":295,"metrics":{"iterations":295,"method":"Conjugate Gradient","residual":9.88e-7},"passed":true,"rationale":"CG: Krylov-subspace optimal, ~300 iterations on 100x100 SPD system. Comparable to optimal SOR. Pass."},{"member":"erin","score":9,"metrics":{"iterations":9,"method":"Multigrid V(2,2)","residual":8.73e-7},"passed":true,"rationale":"Multigrid V-cycle (2 pre/2 post smoothing, full-weighting restriction, bilinear prolongation): mesh-independent convergence! Only 9 iterations to reach sub-1e-6 residual. Near-optimal O(N) solver. Pass."}],"rationale":"Convergence benchmark via bun run convergence.ts on N=100 Poisson problem (10000 unknowns). Erin's Multigrid dominates at 9 iterations (O(N) optimal); SOR/CG compete at ~300; Gauss-Seidel trails at ~3k; Jacobi bottom at ~6k. Winner metric: min iterations."}</scoreboard>
 ```
 
-引擎会按 `score_direction: "min"` 选出 `erin`（9 次迭代）为胜者——多重网格的近乎最优收敛在 10000 未知数的系统上展现出数量级优势。
+The engine selects `erin` (9 iterations) as the winner using `score_direction: "min"` — multigrid's near-optimal convergence demonstrates an order-of-magnitude advantage on a 10000-unknown system.
 
 ---
 
-## 验收清单
+## Acceptance Checklist
 
-- [ ] 每个 team 配置中所有 candidate 均设置 `worktree: true`（arena 硬性要求）
-- [ ] `evaluator` 不在 `candidates` 列表中（满足「evaluator ≠ candidate」约束）
-- [ ] 每个 master 调用参数符合 `team_arena` schema（`team_id`, `task`, `evaluator`, `candidates`, `eval_command` 或 `eval_criteria`, `winner_metric`, `score_direction` 等）
-- [ ] 至少一种评估基准（`eval_command` 或 `eval_criteria`）已提供
-- [ ] `score_direction` 与场景目标一致（场景 1: `"max"` 吞吐量；场景 2: `"min"` 漂移；场景 3: `"min"` 误差；场景 4: `"min"` 迭代数）
-- [ ] 候选 prompt 与 evaluator 的 scoreboard 字段标记对齐（场景 1: `IMPL` 标记；场景 2: `DRIFT` 标记；场景 3: `QUAD` 标记；场景 4: `CONV` 标记；evaluator 统一发 `<scoreboard>` JSON）
-- [ ] 场景 1-3 总时长 ≤ 15 min（远低于 30 min 上限）；场景 4 为挑战级约 40 min（5 候选、N=100 大型稀疏系统）
+- [ ] Every team configuration has `worktree: true` set for all candidates (arena hard requirement)
+- [ ] `evaluator` is not in the `candidates` list (satisfies the "evaluator ≠ candidate" constraint)
+- [ ] Every master launch call conforms to the `team_arena` schema (`team_id`, `task`, `evaluator`, `candidates`, `eval_command` or `eval_criteria`, `winner_metric`, `score_direction`, etc.)
+- [ ] At least one evaluation benchmark (`eval_command` or `eval_criteria`) is provided
+- [ ] `score_direction` matches the scenario's goal (scenario 1: `"max"` throughput; scenario 2: `"min"` drift; scenario 3: `"min"` error; scenario 4: `"min"` iterations)
+- [ ] Candidate prompts align with the evaluator's scoreboard field markers (scenario 1: `IMPL` marker; scenario 2: `DRIFT` marker; scenario 3: `QUAD` marker; scenario 4: `CONV` marker; evaluator uniformly emits `<scoreboard>` JSON)
+- [ ] Scenarios 1-3 total duration ≤ 15 min (well under 30 min ceiling); scenario 4 is challenge-level at ~40 min (5 candidates, N=100 large sparse system)
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-Start Prompt (Copy and Use)
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成完整闭环。arena 模式评判读取 **evaluator** 成员的 .md 中的 `<scoreboard>` JSON + 引擎 `selectArenaWinner` 内建选优逻辑。
+> Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In arena mode, evaluation reads the **evaluator** member's .md file for the `<scoreboard>` JSON + the engine's built-in `selectArenaWinner` logic.
 
-### 场景 1: 三种排序基准选最快（编程）
+### Scenario 1: Three Sorting Implementations Benchmark for Fastest (Programming)
 
 ```text
 执行 demos/11-team-arena/README.md「场景 1」的完整闭环并自动评分。
@@ -505,7 +505,7 @@ evaluator（frank）在跑完五份基准后应产出如下格式的 scoreboard�
 成功标准：evaluator 产出合法 <scoreboard> JSON；引擎按 throughput_ops_per_sec max 选出吞吐最高者。至少 2 名候选 passed=true。
 ```
 
-### 场景 2: 三种积分器按能量漂移选最稳（计算物理）
+### Scenario 2: Three Integrators Compared by Energy Drift for Most Stable (Computational Physics)
 
 ```text
 执行 demos/11-team-arena/README.md「场景 2」的完整闭环并自动评分。
@@ -521,7 +521,7 @@ evaluator（frank）在跑完五份基准后应产出如下格式的 scoreboard�
 成功标准：evaluator 产出合法 <scoreboard> JSON；引擎按 score min 选出漂移最小的辛格式积分器。Velocity Verlet 候选 passed=true 且 score < 1e-3。
 ```
 
-### 场景 3: 定积分三求积方法精度对决（数学）
+### Scenario 3: Three Quadrature Methods Compete on Definite Integral Accuracy (Math)
 
 ```text
 执行 demos/11-team-arena/README.md「场景 3」的完整闭环并自动评分。
@@ -537,7 +537,7 @@ evaluator（frank）在跑完五份基准后应产出如下格式的 scoreboard�
 成功标准：evaluator 产出合法 <scoreboard> JSON；引擎按 score min 选出误差最小的求积方法。Gaussian-Legendre 候选 passed=true 且 score < 1e-10（高斯求积在光滑被积函数上应达机器精度）。
 ```
 
-### 场景 4: 泊松方程五求解器综合擂台（挑战级·计算物理）
+### Scenario 4: Five Poisson Equation Solvers Comprehensive Arena (Challenge-Level · Computational Physics)
 
 ```text
 执行 demos/11-team-arena/README.md「场景 4」的完整闭环并自动评分（挑战级：5 名候选 + 1 名 evaluator，N=100 大型稀疏系统）。

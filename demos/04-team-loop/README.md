@@ -1,25 +1,25 @@
-# team_loop 编排场景设计
+# team_loop Orchestration Scenario Design
 
-> **模式**：`team_loop` — 运行修正闭环 `代码 → 评审 → 决策 → 重复`。每轮由各 stage 成员依次产出，`decider`（一名成员，非 master）emit `<decision>{"decision":"done"|"continue",...}</decision>`；`decider` 说 `done`、达到 `max_rounds`、超时或连续 3 次解析失败时停止。
-> **源码**：[`src/tools/loop.ts`](../../src/tools/loop.ts)（`teamLoopTool`）
-> **控时设计**：3 成员（2 stage + 1 decider），`max_rounds=3`；典型 1-2 轮收敛，每轮各 stage ≤ 5 min，总时长 ≈ 10-15 min（远低于 30 min 上限）。
+> **Pattern**: `team_loop` — Runs a corrective loop `code → review → decide → repeat`. Each round the stage members produce output in sequence, the `decider` (a member, not master) emits `<decision>{"decision":"done"|"continue",...}</decision>`; stops when the `decider` says `done`, reaches `max_rounds`, times out, or has 3 consecutive parse failures.
+> **Source**: [`src/tools/loop.ts`](../../src/tools/loop.ts) (`teamLoopTool`)
+> **Timing Design**: 3 members (2 stage + 1 decider), `max_rounds=3`; typically converges in 1-2 rounds, each stage per round ≤ 5 min, total duration ≈ 10-15 min (well under 30 min ceiling).
 
-## 场景一览
+## Scenario Overview
 
-| # | 方向 | 场景 | 成员数 | Role | key param | 预计总时长 |
+| # | Domain | Scenario | Members | Role | Key Param | Estimated Duration |
 |---|------|------|--------|------|-----------|-----------|
-| 1 | 数学 | 二分法求根边界 bug 修复 | 3 | `coder` / `tester` / `reviewer` | `max_rounds=3` | ~12 min |
-| 2 | 计算物理 | 弹簧-质点能量漂移调试 | 3 | `simulator` / `analyst` / `reviewer` | `max_rounds=3` | ~13 min |
-| 3 | 编程 | 区间合并 off-by-one 修复 | 3 | `coder` / `tester` / `reviewer` | `max_rounds=3` | ~10 min |
-| 4 | 编程 | Lock-free Queue 四类并发 bug 修复（挑战级） | 7 | `coder` ×4 / `tester` ×2 / `reviewer` | `max_rounds=5` | ~60 min |
+| 1 | Math | Bisection root-finding boundary bug fix | 3 | `coder` / `tester` / `reviewer` | `max_rounds=3` | ~12 min |
+| 2 | Computational Physics | Spring-mass energy drift debugging | 3 | `simulator` / `analyst` / `reviewer` | `max_rounds=3` | ~13 min |
+| 3 | Programming | Interval merge off-by-one fix | 3 | `coder` / `tester` / `reviewer` | `max_rounds=3` | ~10 min |
+| 4 | Programming | Lock-free Queue four-class concurrency bug fix (Challenge-level) | 7 | `coder` ×4 / `tester` ×2 / `reviewer` | `max_rounds=5` | ~60 min |
 
 ---
 
-## 场景 1: 二分法求根边界 bug 修复
+## Scenario 1: Bisection Root-Finding Boundary Bug Fix
 
-### 1.1 场景描述
+### 1.1 Scenario Description
 
-**背景**：二分法（bisection）是求连续函数单根的经典稳健方法，但其正确性强依赖三个前提：输入有效（非 NaN）、区间端点函数值异号（保证有根）、收敛判据应基于区间半宽而非函数残差（否则在平缓函数上过早返回）。下列初始实现同时违反这三条：
+**Background**: Bisection is a classic robust method for finding single roots of continuous functions, but its correctness strongly depends on three preconditions: valid inputs (non-NaN), opposite signs at interval endpoints (ensuring a root exists), and convergence criteria based on bracket half-width rather than function residual (otherwise it returns prematurely on flat functions). The following initial implementation violates all three:
 
 ```typescript
 // Buggy bisection — three latent defects (A/B/C).
@@ -38,14 +38,14 @@ function bisect(f: (x: number) => number, a: number, b: number, tol: number, max
 }
 ```
 
-**目标**：`alice` 最小修复三处缺陷；`bob` 跑边界用例集（NaN、同号区间、平缓函数阈值）；`carol` 评审后决策是否收敛。
+**Goal**: `alice` minimally fixes the three defects; `bob` runs the edge-case suite (NaN, same-sign interval, flat-function threshold); `carol` reviews and decides whether to converge.
 
-**成功标准（可机器评判）**：
-- `alice` 输出以 `<!-- FIXES: <count> -->` 结尾
-- `bob` 输出以 `<!-- FAILING: <count> -->` 结尾
-- `carol` 最终 `<decision>` JSON 含 `"decision": "done"` 且 `"testsPass": true`
+**Success Criteria (Machine-Verifiable)**:
+- `alice` output ends with `<!-- FIXES: <count> -->`
+- `bob` output ends with `<!-- FAILING: <count> -->`
+- `carol`'s final `<decision>` JSON contains `"decision": "done"` and `"testsPass": true`
 
-### 1.2 Team 配置
+### 1.2 Team Configuration
 
 ```json
 {
@@ -71,9 +71,9 @@ function bisect(f: (x: number) => number, a: number, b: number, tol: number, max
 }
 ```
 
-**Role 选择理由**：`coder`（`oct-junior` agent，可改代码）、`tester`（只读评审/运行）、`reviewer`（默认只读，适合做决策者）——三者职责与 `team_loop` 的 `modify` / `read_only` / `read_only` 三段天然对齐。
+**Role Selection Rationale**: `coder` (`oct-junior` agent, can modify code), `tester` (read-only review/run), `reviewer` (default read-only, suitable as decider) — the three responsibilities naturally align with `team_loop`'s `modify` / `read_only` / `read_only` three stages.
 
-### 1.3 Master 启动调用
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -91,43 +91,43 @@ function bisect(f: (x: number) => number, a: number, b: number, tol: number, max
 }
 ```
 
-**参数选择**：
-- `stages` 只列 `alice`（`modify`）与 `bob`（`read_only`）——`decider` 不在 stages 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `loop.ts` buildTask 分支）。
-- `decider: "carol"` ——成员名，非 master（schema 强制）。
-- `max_rounds: 3` ——典型 1 轮即收敛；3 轮上限兜底偶发回归。
-- `initial_task` ——包含完整 buggy 代码，round 1 派发给 stages[0]（alice）。
-- stage 成员名唯一（`alice` / `bob`），符合 schema 校验。
+**Parameter Selection**:
+- `stages` only lists `alice` (`modify`) and `bob` (`read_only`) — the `decider` is not in stages; OCTeam auto-appends it as the final `read_only` stage (source: `loop.ts` buildTask branch).
+- `decider: "carol"` — member name, not master (schema enforced).
+- `max_rounds: 3` — typically converges in 1 round; 3-round cap as safety for occasional regression.
+- `initial_task` — contains the full buggy code, dispatched to stages[0] (alice) for round 1.
+- Stage member names unique (`alice` / `bob`), conforming to schema validation.
 
-### 1.4 执行流程（时序）
+### 1.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_loop；round 1 启动
-T+0m     alice (modify) 收到 initial_task -> 修复三处缺陷 -> 写 alice.md + FIXES 标记
-T+3m     bob (read_only) 读 alice.md -> 跑 3 边界用例 -> 写 bob.md + FAILING 标记
-T+5m     carol (decider, read_only) 读 alice+bob -> emit <decision>
-         若 testsPass=true -> decision="done" -> 循环结束（典型路径）
-         若 testsPass=false -> decision="continue" -> round 2 重派 alice
-T+5~12m  至多 3 轮；done 或 max_rounds 触发停止
-T+12m    运行: bun check-math-bisection-fix.ts <run_dir>
+T+0m     master calls team_loop; round 1 starts
+T+0m     alice (modify) receives initial_task -> fixes three defects -> writes alice.md + FIXES marker
+T+3m     bob (read_only) reads alice.md -> runs 3 edge cases -> writes bob.md + FAILING marker
+T+5m     carol (decider, read_only) reads alice+bob -> emits <decision>
+         if testsPass=true -> decision="done" -> loop ends (typical path)
+         if testsPass=false -> decision="continue" -> round 2 redispatches alice
+T+5~12m  at most 3 rounds; done or max_rounds triggers stop
+T+12m    run: bun check-math-bisection-fix.ts <run_dir>
 ```
 
-### 1.5 评判脚本
+### 1.5 Check Script
 
 [`check-math-bisection-fix.ts`](./check-math-bisection-fix.ts)
 
-- **加载**：`runs/<run_id>/carol.md`（decider），附带 `alice.md` / `bob.md` 做诊断
-- **提取**：正则 `<decision>([\s\S]*?)</decision>` 取最后一处（最终轮），`JSON.parse`
-- **断言**：
+- **Load**: `runs/<run_id>/carol.md` (decider), with `alice.md` / `bob.md` for diagnostics
+- **Extract**: regex `<decision>([\s\S]*?)</decision>` take the last occurrence (final round), `JSON.parse`
+- **Assert**:
   1. `decision.decision === "done"`
-  2. `decision.testsPass === true`（布尔存在且为真）
+  2. `decision.testsPass === true` (boolean exists and is true)
 
 ---
 
-## 场景 2: 弹簧-质点能量漂移调试
+## Scenario 2: Spring-Mass Energy Drift Debugging
 
-### 2.1 场景描述
+### 2.1 Scenario Description
 
-**背景**：无阻尼弹簧-质点系统（`k=1, m=1`，即 `ẍ = -x`，角频率 ω=1）能量 `E = ½(x² + ẋ²)` 应严格守恒。初始条件 `x0=1, v0=0`，故 `E0 = 0.5`。**显式 Euler** 积分一步放大矩阵 `[[1,h],[-h,1]]` 的特征值模为 `√(1+h²) > 1`，能量单调发散——取 `h=0.05`、1000 步，能量放大约 12×（相对漂移约 1100%，远超可接受范围）。**Velocity Verlet** 是辛格式，能量有界振荡，漂移 ≪ 1e-3。
+**Background**: The undamped spring-mass system (`k=1, m=1`, i.e. `ẍ = -x`, angular frequency ω=1) should strictly conserve energy `E = ½(x² + ẋ²)`. Initial conditions `x0=1, v0=0`, so `E0 = 0.5`. **Explicit Euler** integration has a one-step amplification matrix `[[1,h],[-h,1]]` whose eigenvalue modulus is `√(1+h²) > 1`, causing energy to diverge monotonically — at `h=0.05`, 1000 steps, energy amplifies ~12× (relative drift ~1100%, well beyond acceptable range). **Velocity Verlet** is a symplectic integrator, energy oscillates bounded, drift ≪ 1e-3.
 
 ```typescript
 // Buggy integrator: EXPLICIT (forward) Euler on the spring-mass system.
@@ -145,15 +145,15 @@ function simulate(h: number, steps: number): { x: number; v: number } {
 // E = 0.5*(x*x + v*v); E0 = 0.5; relative drift = |E_end - E0|/E0.
 ```
 
-**目标**：`alice` 将显式 Euler 替换为 Velocity Verlet（最小变更）；`bob` 计算修复前后两版的相对能量漂移；`carol` 评审后决策。
+**Goal**: `alice` replaces explicit Euler with Velocity Verlet (minimal change); `bob` computes the relative energy drift before and after the fix; `carol` reviews and decides.
 
-**成功标准（可机器评判）**：
-- `alice` 输出以 `<!-- INTEGRATOR: <name> -->` 结尾（应为 Velocity Verlet）
-- `bob` 输出以 `<!-- DRIFT_AFTER: <number> -->` 结尾（并含 `<!-- DRIFT_BEFORE: <number> -->`）
-- `carol` 最终 `<decision>` JSON 含 `"decision": "done"` 且 `"driftAcceptable": true`
-- `bob` 的 `DRIFT_AFTER < 1e-3`（辛格式门槛）
+**Success Criteria (Machine-Verifiable)**:
+- `alice` output ends with `<!-- INTEGRATOR: <name> -->` (should be Velocity Verlet)
+- `bob` output ends with `<!-- DRIFT_AFTER: <number> -->` (and contains `<!-- DRIFT_BEFORE: <number> -->`)
+- `carol`'s final `<decision>` JSON contains `"decision": "done"` and `"driftAcceptable": true`
+- `bob`'s `DRIFT_AFTER < 1e-3` (symplectic integrator threshold)
 
-### 2.2 Team 配置
+### 2.2 Team Configuration
 
 ```json
 {
@@ -179,9 +179,9 @@ function simulate(h: number, steps: number): { x: number; v: number } {
 }
 ```
 
-**Role 选择理由**：`simulator`（数值仿真专责）、`analyst`（数据测算只读）、`reviewer`（决策者）——与 stage 的 `modify` / `read_only` / `read_only` 对齐。
+**Role Selection Rationale**: `simulator` (numerical simulation specialist), `analyst` (read-only data measurement), `reviewer` (decider) — aligned with `modify` / `read_only` / `read_only` stages.
 
-### 2.3 Master 启动调用
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -199,45 +199,45 @@ function simulate(h: number, steps: number): { x: number; v: number } {
 }
 ```
 
-**参数选择**：
-- `stages` 只列 `alice`（`modify`）与 `bob`（`read_only`）；`decider` 自动追加。
-- `max_rounds: 3` —— Verlet 替换通常一轮达标；余量兜底。
-- `initial_task` 内嵌完整 Euler 代码 + 物理参数，确保 `alice` 与 `bob` 引用同一基准。
+**Parameter Selection**:
+- `stages` only lists `alice` (`modify`) and `bob` (`read_only`); `decider` auto-appended.
+- `max_rounds: 3` — Verlet replacement typically qualifies in one round; margin as safety.
+- `initial_task` embeds full Euler code + physical parameters, ensuring `alice` and `bob` reference the same baseline.
 
-### 2.4 执行流程（时序）
+### 2.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_loop；round 1 启动
-T+0m     alice (modify) 收到 initial_task -> 改写为 Velocity Verlet -> alice.md + INTEGRATOR
-T+4m     bob (read_only) 读 alice.md -> 跑 Euler 与 Verlet 各 1000 步 -> bob.md + DRIFT_BEFORE/AFTER
-T+7m     carol (decider) 读两份输出 -> emit <decision>
-         若 driftAcceptable=true -> decision="done"（典型路径）
-         否则 -> decision="continue" -> round 2
-T+7~13m  至多 3 轮
-T+13m    运行: bun check-physics-spring-energy.ts <run_dir>
+T+0m     master calls team_loop; round 1 starts
+T+0m     alice (modify) receives initial_task -> rewrites to Velocity Verlet -> alice.md + INTEGRATOR
+T+4m     bob (read_only) reads alice.md -> runs Euler and Verlet each 1000 steps -> bob.md + DRIFT_BEFORE/AFTER
+T+7m     carol (decider) reads both outputs -> emits <decision>
+         if driftAcceptable=true -> decision="done" (typical path)
+         otherwise -> decision="continue" -> round 2
+T+7~13m  at most 3 rounds
+T+13m    run: bun check-physics-spring-energy.ts <run_dir>
 ```
 
-### 2.5 评判脚本
+### 2.5 Check Script
 
 [`check-physics-spring-energy.ts`](./check-physics-spring-energy.ts)
 
-- **加载**：`runs/<run_id>/carol.md`（decider）与 `bob.md`（交叉核验），附带 `alice.md` 诊断
-- **提取**：
-  - decider：正则 `<decision>([\s\S]*?)</decision>` 取最后一处，`JSON.parse`
-  - bob：正则 `<!-- DRIFT_BEFORE:\s*([\d.eE+-]+)\s*-->` 与 `<!-- DRIFT_AFTER:\s*([\d.eE+-]+)\s*-->`
-- **断言**：
-  1. `bob` `DRIFT_AFTER < DRIFT_BEFORE`（修复确实降低漂移）
-  2. `bob` `DRIFT_AFTER < 1e-3`（辛格式门槛）
+- **Load**: `runs/<run_id>/carol.md` (decider) and `bob.md` (cross-verification), with `alice.md` for diagnostics
+- **Extract**:
+  - decider: regex `<decision>([\s\S]*?)</decision>` take the last occurrence, `JSON.parse`
+  - bob: regex `<!-- DRIFT_BEFORE:\s*([\d.eE+-]+)\s*-->` and `<!-- DRIFT_AFTER:\s*([\d.eE+-]+)\s*-->`
+- **Assert**:
+  1. `bob` `DRIFT_AFTER < DRIFT_BEFORE` (fix indeed reduces drift)
+  2. `bob` `DRIFT_AFTER < 1e-3` (symplectic integrator threshold)
   3. `decision.decision === "done"`
   4. `decision.driftAcceptable === true`
 
 ---
 
-## 场景 3: 区间合并 off-by-one 修复
+## Scenario 3: Interval Merge Off-by-One Fix
 
-### 3.1 场景描述
+### 3.1 Scenario Description
 
-**背景**：合并重叠/相邻区间是调度、基因组、排版等领域的原语。标准实现先按起点排序，再逐个合并：当前区间起点 ≤ 上一合并区间终点时合并。下列实现把 `<=` 误写为 `<`，导致**恰好相邻**的区间（如 `[[1,3],[3,5]]`，应合并为 `[[1,5]]`）被错误地保留为两个区间——典型的 off-by-one。
+**Background**: Merging overlapping/adjacent intervals is a primitive in scheduling, genomics, typesetting, and other domains. The standard implementation sorts by start first, then merges sequentially: merge when the current interval's start ≤ the last merged interval's end. The following implementation mistakenly writes `<=` as `<`, causing **exactly adjacent** intervals (e.g. `[[1,3],[3,5]]`, which should merge to `[[1,5]]`) to be incorrectly kept as two intervals — a classic off-by-one.
 
 ```typescript
 // Buggy interval merge — off-by-one in the overlap test.
@@ -258,14 +258,14 @@ function mergeIntervals(intervals: number[][]): number[][] {
 }
 ```
 
-**目标**：`alice` 最小修复（`<` → `<=`）；`bob` 跑隐藏 5 例（含相邻区间关键用例）；`carol` 评审后决策。
+**Goal**: `alice` minimally fixes (`<` → `<=`); `bob` runs a hidden 5-case suite (including the touching-interval critical case); `carol` reviews and decides.
 
-**成功标准（可机器评判）**：
-- `alice` 输出以 `<!-- BUGFIX: <one-line-description> -->` 结尾
-- `bob` 输出以 `<!-- PASS_COUNT: <n>/5 -->` 结尾
-- `carol` 最终 `<decision>` JSON 含 `"decision": "done"` 且 `"allPass": true`
+**Success Criteria (Machine-Verifiable)**:
+- `alice` output ends with `<!-- BUGFIX: <one-line-description> -->`
+- `bob` output ends with `<!-- PASS_COUNT: <n>/5 -->`
+- `carol`'s final `<decision>` JSON contains `"decision": "done"` and `"allPass": true`
 
-### 3.2 Team 配置
+### 3.2 Team Configuration
 
 ```json
 {
@@ -291,9 +291,9 @@ function mergeIntervals(intervals: number[][]): number[][] {
 }
 ```
 
-**Role 选择理由**：`coder`（最小修复）、`tester`（隐藏用例只读运行）、`reviewer`（决策者）——三段映射清晰。
+**Role Selection Rationale**: `coder` (minimal fix), `tester` (hidden tests read-only run), `reviewer` (decider) — three-stage mapping is clear.
 
-### 3.3 Master 启动调用
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -311,46 +311,46 @@ function mergeIntervals(intervals: number[][]): number[][] {
 }
 ```
 
-**参数选择**：
-- `stages` 只列 `alice`（`modify`）与 `bob`（`read_only`）；`decider` 自动追加。
-- `max_rounds: 3` ——单字符修复通常一轮 5/5；余量兜底偶发笔误。
-- `initial_task` 内嵌完整 buggy 代码并点明 `<` → `<=`，约束 `alice` 做最小变更。
+**Parameter Selection**:
+- `stages` only lists `alice` (`modify`) and `bob` (`read_only`); `decider` auto-appended.
+- `max_rounds: 3` — single-character fix typically passes 5/5 in one round; margin for occasional typos.
+- `initial_task` embeds full buggy code and explicitly notes `<` → `<=`, constraining `alice` to make minimal change.
 
-### 3.4 执行流程（时序）
+### 3.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_loop；round 1 启动
-T+0m     alice (modify) 收到 initial_task -> < 改为 <= -> alice.md + BUGFIX
-T+2m     bob (read_only) 读 alice.md -> 跑 5 例（含相邻区间关键用例）-> bob.md + PASS_COUNT
-T+4m     carol (decider) 读两份输出 -> emit <decision>
-         若 allPass=true -> decision="done"（典型路径）
-         否则 -> decision="continue" -> round 2
-T+4~10m  至多 3 轮
-T+10m    运行: bun check-coding-interval-merge.ts <run_dir>
+T+0m     master calls team_loop; round 1 starts
+T+0m     alice (modify) receives initial_task -> changes < to <= -> alice.md + BUGFIX
+T+2m     bob (read_only) reads alice.md -> runs 5 cases (including touching-interval critical case) -> bob.md + PASS_COUNT
+T+4m     carol (decider) reads both outputs -> emits <decision>
+         if allPass=true -> decision="done" (typical path)
+         otherwise -> decision="continue" -> round 2
+T+4~10m  at most 3 rounds
+T+10m    run: bun check-coding-interval-merge.ts <run_dir>
 ```
 
-### 3.5 评判脚本
+### 3.5 Check Script
 
 [`check-coding-interval-merge.ts`](./check-coding-interval-merge.ts)
 
-- **加载**：`runs/<run_id>/carol.md`（decider），附带 `alice.md` / `bob.md` 做诊断
-- **提取**：正则 `<decision>([\s\S]*?)</decision>` 取最后一处（最终轮），`JSON.parse`
-- **断言**：
+- **Load**: `runs/<run_id>/carol.md` (decider), with `alice.md` / `bob.md` for diagnostics
+- **Extract**: regex `<decision>([\s\S]*?)</decision>` take the last occurrence (final round), `JSON.parse`
+- **Assert**:
   1. `decision.decision === "done"`
-  2. `decision.allPass === true`（布尔存在且为真）
+  2. `decision.allPass === true` (boolean exists and is true)
 
 ---
 
-## 场景 4: Lock-free Queue 四类并发 bug 修复（挑战级）
+## Scenario 4: Lock-free Queue Four-Class Concurrency Bug Fix (Challenge-Level)
 
-### 4.1 场景描述
+### 4.1 Scenario Description
 
-**背景**：Michael-Scott 风格的无锁 MPSC（多生产者单消费者）队列是并发原语的经典考题。下列 TypeScript 教学实现用 `AtomicRef`（含版本 `tag`）模拟真实运行时（`Atomics` over `SharedArrayBuffer`）的原子语义，**同时埋下四类互不相关的 bug**：
+**Background**: The Michael-Scott style lock-free MPSC (multiple-producer single-consumer) queue is a classic concurrency primitive test case. The following TypeScript pedagogical implementation uses `AtomicRef` (with version `tag`) to simulate atomic semantics of real runtimes (`Atomics` over `SharedArrayBuffer`), **embedding four mutually independent bug classes**:
 
-- **(A) ABA on head pointer**：`AtomicRef.cas()` 仅比较 `ref` 同一性、忽略版本 `tag`——回收的 sentinel 对象会让 CAS 假性成功，破坏队列。
-- **(B) missing acquire-load on tail->next**：`dequeue()` 读取生产者发布的 `sentinel.next` 时缺少 acquire 屏障，可能看到 `next` 已置位但节点字段为陈旧值（重排/撕裂读）。
-- **(C) empty-queue spin does not yield**：队列为空时 `while (sentinel.next === null)` 忙等不让出，饿死事件循环、阻塞生产者推进。
-- **(D) dequeue returns success on null sentinel**：弹出 `value === null` 的 sentinel 时仍返回 `{ ok: true, value: null }`，把空队列误报为成功。
+- **(A) ABA on head pointer**: `AtomicRef.cas()` compares only `ref` identity, ignoring the version `tag` — a recycled sentinel object can cause CAS to spuriously succeed, corrupting the queue.
+- **(B) missing acquire-load on tail->next**: `dequeue()` reads the producer-published `sentinel.next` without an acquire barrier, potentially seeing `next` set but node fields as stale values (reordering/torn reads).
+- **(C) empty-queue spin does not yield**: When the queue is empty, `while (sentinel.next === null)` busy-waits without yielding, starving the event loop and blocking producer progress.
+- **(D) dequeue returns success on null sentinel**: When popping a sentinel with `value === null`, it still returns `{ ok: true, value: null }`, misreporting an empty queue as success.
 
 ```typescript
 // Buggy Michael-Scott-style MPSC lock-free queue.
@@ -427,15 +427,15 @@ export class MPSCQueue<T> {
 }
 ```
 
-**目标**：4 名 `coder` 各自**最小修复一类 bug**（互不重叠），沿 stage 链式叠加——`alice` 修 A、`bob` 在 `alice` 基础上修 B、`carol` 再修 C、`dave` 再修 D；`erin` 写属性测试、`frank` 跑 10^7 压力测试；`grace`（decider）评审后决策是否收敛。
+**Goal**: 4 `coder` members each **minimally fix one bug class** (non-overlapping), layered along the stage chain — `alice` fixes A, `bob` on top of `alice` fixes B, `carol` on top fixes C, `dave` on top fixes D; `erin` writes a property test, `frank` runs a 10^7 stress test; `grace` (decider) reviews and decides convergence.
 
-**成功标准（可机器评判）**：
-- 4 名 coder 各自输出以 `<!-- FIX_APPLIED: <bug-class> -->` 结尾（四个 bug-class 互异：`ABA-HEAD` / `ACQUIRE-TAIL-NEXT` / `YIELD-SPIN` / `NULL-SENTINEL`）
-- `erin` 输出以 `<!-- PROP_TEST: <pass|fail> -->` 结尾
-- `frank` 输出含 `<!-- STRESS_OPS: 10000000 -->` 且以 `<!-- STRESS_RESULT: <pass|fail> -->` 结尾
-- `grace` 最终 `<decision>` JSON 含 `"decision": "done"`、`"allFixed": true` 且 `"stressPass": true`
+**Success Criteria (Machine-Verifiable)**:
+- 4 coders each output ending with `<!-- FIX_APPLIED: <bug-class> -->` (four distinct bug-classes: `ABA-HEAD` / `ACQUIRE-TAIL-NEXT` / `YIELD-SPIN` / `NULL-SENTINEL`)
+- `erin` output ends with `<!-- PROP_TEST: <pass|fail> -->`
+- `frank` output contains `<!-- STRESS_OPS: 10000000 -->` and ends with `<!-- STRESS_RESULT: <pass|fail> -->`
+- `grace`'s final `<decision>` JSON contains `"decision": "done"`, `"allFixed": true`, and `"stressPass": true`
 
-### 4.2 Team 配置
+### 4.2 Team Configuration
 
 ```json
 {
@@ -481,9 +481,9 @@ export class MPSCQueue<T> {
 }
 ```
 
-**Role 选择理由**：4 名 `coder`（`oct-junior` agent，可改代码，`modify`）对应四类 bug 的最小修复；2 名 `tester`（只读，`read_only`）分别承担属性测试与 10^7 压测；`reviewer`（默认只读）担任 decider——`grace` 不在 `stages` 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `loop.ts` buildTask 分支）。
+**Role Selection Rationale**: 4 `coder` members (`oct-junior` agent, can modify code, `modify`) correspond to minimal fixes for four bug classes; 2 `tester` members (read-only, `read_only`) respectively handle property testing and 10^7 stress testing; `reviewer` (default read-only) serves as decider — `grace` is not in `stages`; OCTeam auto-appends it as the final `read_only` stage (source: `loop.ts` buildTask branch).
 
-### 4.3 Master 启动调用
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -506,63 +506,63 @@ export class MPSCQueue<T> {
 }
 ```
 
-**参数选择**：
-- `stages` 列 6 个 stage（4 coder `modify` + 2 tester `read_only`）；`decider: "grace"` 不在 `stages` 中，由 OCTeam 自动追加为末尾 `read_only` 阶段（源码 `loop.ts` buildTask 分支：`if (!stages.some(s => s.member === args.decider))` push）。
-- stage 成员名唯一（`alice` / `bob` / `carol` / `dave` / `erin` / `frank`），符合 schema 校验；`decider` 与六者互异，符合"非 master、不在 stages 中"约束。
-- `max_rounds: 5` ——挑战级：4 类 bug 的最小修复 + 属性测试 + 10^7 压测通常 2-3 轮收敛；5 轮上限兜底偶发回归（如某 coder 误改相邻 bug、压测抖动）。
-- `timeout_ms: 1800000` ——显式设至 OCTeam 硬上限（`bounds.maxWallClockMinutes=30`，由 `effectiveTimeoutMs` 钳制）。场景 4 含 7 成员串行 + frank 的 10^7 压测（单次 ~100 s+），单轮典型 ~15 min；若用默认 timeout（15 min）会在 frank 压测阶段超时终止（实测：frank 跑到 ~107 s 时即被 default timeout 杀掉，`frank.md`/`grace.md` 缺失）。注意：本场景预估总时长 ~60 min 超过此 30 min 硬上限，多轮收敛场景需依赖 decider 尽早 `done`（典型 round 1 即收敛）。
-- `initial_task` 内嵌完整 buggy 代码（四类 bug 均在）并点名每人只修一类，约束链式叠加的最小变更。
-- 7 成员（≤ 8 上限），四类 bug 与四个 coder 一一对应，职责无重叠。
+**Parameter Selection**:
+- `stages` lists 6 stages (4 coder `modify` + 2 tester `read_only`); `decider: "grace"` is not in `stages`; OCTeam auto-appends it as the final `read_only` stage (source: `loop.ts` buildTask branch: `if (!stages.some(s => s.member === args.decider))` push).
+- Stage member names unique (`alice` / `bob` / `carol` / `dave` / `erin` / `frank`), conforming to schema validation; `decider` differs from all six, conforming to "not master, not in stages" constraint.
+- `max_rounds: 5` — challenge-level: 4 bug-class minimal fixes + property test + 10^7 stress typically converges in 2-3 rounds; 5-round cap as safety for occasional regression (e.g. a coder accidentally modifies adjacent bug, stress flakiness).
+- `timeout_ms: 1800000` — explicitly set to OCTeam's hard ceiling (`bounds.maxWallClockMinutes=30`, clamped by `effectiveTimeoutMs`). Scenario 4 includes 7 members serial + frank's 10^7 stress (single run ~100 s+), single round typically ~15 min; using default timeout (15 min) would terminate during frank's stress phase (observed: frank running to ~107 s was killed by default timeout, `frank.md`/`grace.md` missing). Note: this scenario's estimated total ~60 min exceeds the 30 min hard ceiling; multi-round convergence scenarios need the decider to `done` early (typically round 1 converges).
+- `initial_task` embeds full buggy code (all four bug classes present) and explicitly names each person's single fix, constraining the layered minimal changes.
+- 7 members (≤ 8 ceiling), four bug classes one-to-one with four coders, no overlapping responsibilities.
 
-### 4.4 执行流程（时序）
+### 4.4 Execution Flow (Timeline)
 
 ```
-T+0m      master 调用 team_loop；round 1 启动
-T+0m      alice  (modify)   收到 initial_task -> 修 bug A (ABA-head)        -> alice.md + FIX_APPLIED: ABA-HEAD
-T+5m      bob    (modify)   读 alice.md -> 在其基础上修 bug B               -> bob.md   + FIX_APPLIED: ACQUIRE-TAIL-NEXT
-T+10m     carol  (modify)   读 bob.md   -> 在其基础上修 bug C               -> carol.md + FIX_APPLIED: YIELD-SPIN
-T+15m     dave   (modify)   读 carol.md -> 在其基础上修 bug D               -> dave.md  + FIX_APPLIED: NULL-SENTINEL
-T+20m     erin   (read_only) 读 dave.md  -> 写属性测试并运行                 -> erin.md  + PROP_TEST
-T+30m     frank  (read_only) 读 dave/erin -> 跑 10^7 压力                    -> frank.md + STRESS_OPS / STRESS_RESULT
-T+45m     grace  (decider, read_only) 读 6 份输出 -> emit <decision>
-                   若 allFixed=true 且 stressPass=true -> decision="done"（典型路径）
-                   否则 -> decision="continue" + nextActions 指名某 coder 重做 -> round 2
-T+45~60m  至多 5 轮；done 或 max_rounds 触发停止
-T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
+T+0m      master calls team_loop; round 1 starts
+T+0m      alice  (modify)   receives initial_task -> fixes bug A (ABA-head)        -> alice.md + FIX_APPLIED: ABA-HEAD
+T+5m      bob    (modify)   reads alice.md -> fixes bug B on top                  -> bob.md   + FIX_APPLIED: ACQUIRE-TAIL-NEXT
+T+10m     carol  (modify)   reads bob.md   -> fixes bug C on top                  -> carol.md + FIX_APPLIED: YIELD-SPIN
+T+15m     dave   (modify)   reads carol.md -> fixes bug D on top                  -> dave.md  + FIX_APPLIED: NULL-SENTINEL
+T+20m     erin   (read_only) reads dave.md  -> writes property test and runs       -> erin.md  + PROP_TEST
+T+30m     frank  (read_only) reads dave/erin -> runs 10^7 stress                    -> frank.md + STRESS_OPS / STRESS_RESULT
+T+45m     grace  (decider, read_only) reads 6 outputs -> emits <decision>
+                   if allFixed=true and stressPass=true -> decision="done" (typical path)
+                   otherwise -> decision="continue" + nextActions naming a coder to redo -> round 2
+T+45~60m  at most 5 rounds; done or max_rounds triggers stop
+T+60m     run: bun check-coding-lockfree-queue.ts <run_dir>
 ```
 
-### 4.5 评判脚本
+### 4.5 Check Script
 
 [`check-coding-lockfree-queue.ts`](./check-coding-lockfree-queue.ts)
 
-- **加载**：`runs/<run_id>/grace.md`（decider）与 `frank.md`（交叉核验），附带 `alice/bob/carol/dave.md`（4 个 FIX_APPLIED 诊断）与 `erin.md`（PROP_TEST 诊断）
-- **提取**：
-  - decider：正则 `<decision>([\s\S]*?)</decision>` 取最后一处（最终轮），`JSON.parse`
-  - frank：正则 `<!--\s*STRESS_OPS:\s*(\d+)\s*-->` 与 `<!--\s*STRESS_RESULT:\s*(pass|fail)\s*-->`
-- **断言**：
-  1. `frank` `STRESS_OPS >= 10^7`（10^7 门槛）
-  2. `frank` `STRESS_RESULT === "pass"`（10^7 压测无 FIFO 违例）
+- **Load**: `runs/<run_id>/grace.md` (decider) and `frank.md` (cross-verification), with `alice/bob/carol/dave.md` (4 FIX_APPLIED diagnostics) and `erin.md` (PROP_TEST diagnostics)
+- **Extract**:
+  - decider: regex `<decision>([\s\S]*?)</decision>` take the last occurrence (final round), `JSON.parse`
+  - frank: regex `<!--\s*STRESS_OPS:\s*(\d+)\s*-->` and `<!--\s*STRESS_RESULT:\s*(pass|fail)\s*-->`
+- **Assert**:
+  1. `frank` `STRESS_OPS >= 10^7` (10^7 threshold)
+  2. `frank` `STRESS_RESULT === "pass"` (10^7 stress no FIFO violations)
   3. `decision.decision === "done"`
-  4. `decision.allFixed === true`（四类 bug 均修）
-  5. `decision.stressPass === true` 且与 `frank` 的 `STRESS_RESULT` 一致（交叉核验：decider 与压测者口径吻合）
+  4. `decision.allFixed === true` (all four bug classes fixed)
+  5. `decision.stressPass === true` and consistent with `frank`'s `STRESS_RESULT` (cross-verification: decider and stress tester agree)
 
 ---
 
-## 验收清单
+## Acceptance Checklist
 
-- [ ] 4 个 check 脚本 `bunx tsc -p demos/tsconfig.json` 通过（无类型错误）
-- [ ] 每个 team 配置 role 合法（`coder` / `tester` / `simulator` / `analyst` / `reviewer` 均为预设）
-- [ ] 每个 master 调用参数符合 `team_loop` schema（`stages` 成员名唯一、`decider` 非 master 且不在 stages 中、`max_rounds` / `initial_task` 齐备）
-- [ ] 场景 1-3 总时长 ≤ 15 min（远低于 30 min 上限；`max_rounds=3` 兜底）；场景 4（挑战级）≈ 60 min、7 成员、`max_rounds=5`，为有意突破标准控时上限的加难样本
-- [ ] 成员 prompt 中明确输出格式约定（marker），decider prompt 明确模式专属布尔字段，评判脚本与之对齐
+- [ ] 4 check scripts pass `bunx tsc -p demos/tsconfig.json` (no type errors)
+- [ ] Each team config role is valid (`coder` / `tester` / `simulator` / `analyst` / `reviewer` are all presets)
+- [ ] Each master call parameters conform to `team_loop` schema (`stages` member names unique, `decider` not master and not in stages, `max_rounds` / `initial_task` present)
+- [ ] Scenarios 1-3 total duration ≤ 15 min (well under 30 min ceiling; `max_rounds=3` safety); Scenario 4 (challenge-level) ≈ 60 min, 7 members, `max_rounds=5`, deliberately exceeds standard timing ceiling as a harder sample
+- [ ] Member prompts explicitly specify output format conventions (marker), decider prompt explicitly specifies mode-specific boolean fields, check scripts aligned with them
 
 ---
 
-## 快速启动 Prompt（复制即用）
+## Quick-Start Prompt (Copy and Use)
 
-> 将以下任一 prompt 粘贴给 master 会话，AI 会自动完成完整闭环。loop 模式的评判读 **decider** 成员的最终轮输出（含 `<decision>` 块）。
+> Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. The loop mode's evaluation reads the **decider** member's final-round output (containing the `<decision>` block).
 
-### 场景 1: 修正二分求根边界 bug（数学）
+### Scenario 1: Fix Bisection Root-Finding Boundary Bugs (Math)
 
 ```text
 执行 demos/04-team-loop/README.md「场景 1」的完整闭环并自动评判。
@@ -579,7 +579,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 成功标准：decider 最终轮 `"decision": "done"` 且 `"testsPass": true`（NaN / 单侧区间 / 收敛阈值三类边界 bug 全修）。
 ```
 
-### 场景 2: 调试弹簧-质点能量漂移（物理）
+### Scenario 2: Debug Spring-Mass Energy Drift (Physics)
 
 ```text
 执行 demos/04-team-loop/README.md「场景 2」的完整闭环并自动评判。
@@ -596,7 +596,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 成功标准：decider decision="done" 且 `"driftAcceptable": true`；analyst 报 DRIFT_AFTER < 1e-3（Verlet 替换 Euler 后）。
 ```
 
-### 场景 3: 修 off-by-one 区间合并 bug（编程）
+### Scenario 3: Fix Off-by-One Interval Merge Bug (Programming)
 
 ```text
 执行 demos/04-team-loop/README.md「场景 3」的完整闭环并自动评判。
@@ -613,7 +613,7 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 成功标准：decider decision="done" 且 `"allPass": true`（5 个用例含 [[1,3],[3,5]] 这类 touching 区间正确合并）。
 ```
 
-### 场景 4: 修 Lock-free Queue 四类并发 bug（挑战级）
+### Scenario 4: Fix Lock-free Queue Four-Class Concurrency Bugs (Challenge-Level)
 
 ```text
 执行 demos/04-team-loop/README.md「场景 4」的完整闭环并自动评判。
