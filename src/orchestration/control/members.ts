@@ -105,7 +105,7 @@ async function spawnMemberSafely(
                     {
                         type: "text",
                         text: `${rolePrompt}\n<!-- OMO_INTERNAL_INITIATOR -->`,
-                        synthetic: true,
+                        synthetic: false,
                     },
                 ],
                 agent: safeMemberAgent(member.agent),
