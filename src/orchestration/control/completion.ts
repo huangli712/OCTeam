@@ -39,7 +39,8 @@ export async function deliverSummaryToLeader(
             parts: [
                 {
                     type: "text",
-                    text: `<team_result team="${team.teamName}">\n${summary}\n</team_result>`,
+                    text: `<team_result team="${team.teamName}">\n${summary}\n</team_result>\n` +
+                        `<!-- OMO_INTERNAL_INITIATOR -->`,
                     synthetic: false,
                 },
             ],
