@@ -121,4 +121,4 @@ Baseline scenarios follow:
 - [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) — Official definitions and state persistence model for the 11 orchestration primitives
 - parallel / consensus / pipeline / loop tool source: [`src/tools/parallel.ts`](../src/tools/parallel.ts) / [`consensus.ts`](../src/tools/consensus.ts) / [`pipeline.ts`](../src/tools/pipeline.ts) / [`loop.ts`](../src/tools/loop.ts)
 - delegate / route / arbitrate / tollgate / arena / recurse / workflow tool source: [`src/tools/delegate.ts`](../src/tools/delegate.ts) / [`router.ts`](../src/tools/router.ts) / [`arbitrate.ts`](../src/tools/arbitrate.ts) / [`tollgate.ts`](../src/tools/tollgate.ts) / [`arena.ts`](../src/tools/arena.ts) / [`recurse.ts`](../src/tools/recurse.ts) / [`workflow.ts`](../src/tools/workflow.ts)
-- [`src/core/role.ts`](../src/core/role.ts) — 18 role presets and their agent mappings
+- [`src/core/role.ts`](../src/core/role.ts) — 22 role presets and their agent mappings
