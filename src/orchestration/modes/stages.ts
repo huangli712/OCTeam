@@ -79,7 +79,7 @@ export async function advanceToStage(
     await ctx.client.session.promptAsync({
         path: { id: member.sessionId },
         body: {
-            parts: [{ type: "text", text, synthetic: true }],
+            parts: [{ type: "text", text, synthetic: false }],
             agent: safeMemberAgent(member.agent),
         },
         query: { directory: member.worktreePath ?? ctx.directory },

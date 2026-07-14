@@ -556,7 +556,6 @@ T+60m     运行: bun check-coding-lockfree-queue.ts <run_dir>
 - [ ] 场景 1-3 总时长 ≤ 15 min（远低于 30 min 上限；`max_rounds=3` 兜底）；场景 4（挑战级）≈ 60 min、7 成员、`max_rounds=5`，为有意突破标准控时上限的加难样本
 - [ ] 成员 prompt 中明确输出格式约定（marker），decider prompt 明确模式专属布尔字段，评判脚本与之对齐
 
-
 ---
 
 ## 快速启动 Prompt（复制即用）
