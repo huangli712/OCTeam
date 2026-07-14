@@ -228,7 +228,7 @@ describe("advanceToStage", () => {
         expect(captured).toContain("do B")
     })
 
-    test("standing-instruction is prepended exactly once on first advanceToStage dispatch", async () => {
+    test("task-instruction is prepended exactly once on first advanceToStage dispatch", async () => {
         const root = tmpRoot("ats-si")
         const sid = "ses_ats_si"
         tracked.push(sid)
@@ -247,7 +247,7 @@ describe("advanceToStage", () => {
         await advanceToStage(ctx, team, stage)
 
         expect(captured).toHaveLength(1)
-        expect(captured[0]).toContain("<standing-instruction>")
+        expect(captured[0]).toContain("<task-instruction>")
         expect(captured[0]).toContain("You are the verifier.")
         expect(captured[0]).toContain("do thing")
         expect(alice.promptDelivered).toBe(true)
@@ -416,7 +416,7 @@ describe("ensureMembersReady", () => {
         expect(alice.status).toBe("running")
         expect(alice.turnCount).toBe(1)
         // spec.prompt is captured onto member.prompt for the FIRST real dispatch
-        // (delivered as <standing-instruction>); role-setup is identity-only.
+        // (delivered as <task-instruction>); role-setup is identity-only.
         expect(alice.prompt).toBe("You are the coder.")
         expect(alice.promptDelivered).toBe(false)
         expect(alice.initialized).toBe(true)

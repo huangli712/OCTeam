@@ -136,9 +136,9 @@ describe("dispatchToMember unit", () => {
         expect((req as { query: { directory: string } }).query.directory).toBe("/project")
     })
 
-    test("prepends <standing-instruction> on FIRST dispatch then no-ops (promptDelivered wiring)", async () => {
+    test("prepends <task-instruction> on FIRST dispatch then no-ops (promptDelivered wiring)", async () => {
         // Regression for the role-setup/task decoupling: member.prompt must be
-        // delivered as <standing-instruction> on the first real dispatch (NOT in
+        // delivered as <task-instruction> on the first real dispatch (NOT in
         // role-setup), exactly once, then never again.
         const captured: string[] = []
         const promptAsync = mock(async (req: any) => {
@@ -154,10 +154,10 @@ describe("dispatchToMember unit", () => {
             turnCount: 0,
             prompt: "You are the sort engineer. Use median-of-three.",
         }
-        // First dispatch: prompt is prepended as <standing-instruction>
+        // First dispatch: prompt is prepended as <task-instruction>
         await dispatchToMember(ctx, member, "[Your task]\nRun quicksort.", "/app")
         expect(captured).toHaveLength(1)
-        expect(captured[0]).toContain("<standing-instruction>")
+        expect(captured[0]).toContain("<task-instruction>")
         expect(captured[0]).toContain("You are the sort engineer. Use median-of-three.")
         expect(captured[0]).toContain("[Your task]\nRun quicksort.")
         // Wiring: the flag flips after the dispatch so it is not re-delivered
@@ -166,7 +166,7 @@ describe("dispatchToMember unit", () => {
         // Second dispatch: prompt must NOT be re-prepended (delivered exactly once)
         await dispatchToMember(ctx, member, "[Your task]\nRun it again.", "/app")
         expect(captured).toHaveLength(2)
-        expect(captured[1]).not.toContain("<standing-instruction>")
+        expect(captured[1]).not.toContain("<task-instruction>")
         expect(captured[1]).toBe("[Your task]\nRun it again.")
     })
 
@@ -187,7 +187,7 @@ describe("dispatchToMember unit", () => {
         }
         await dispatchToMember(ctx, member, "do work", "/app")
         expect(captured[0]).toBe("do work")
-        expect(captured[0]).not.toContain("<standing-instruction>")
+        expect(captured[0]).not.toContain("<task-instruction>")
     })
 })
 

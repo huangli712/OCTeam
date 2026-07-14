@@ -122,7 +122,7 @@ export type MemberState = {
     declaredDone?: boolean             // require_done_ack: member has called team_done() this run
     retryCount?: number                // OCTeam-level grace-extension windows consumed this run (reset to 0 at task commit)
     prompt?: string                    // member's standing instruction (copied from MemberSpec.prompt at
-                                       // spawn). Delivered as <standing-instruction> on the member's FIRST
+                                       // spawn). Delivered as <task-instruction> on the member's FIRST
                                        // real task dispatch (NOT during role-setup, which is identity-only).
     promptDelivered?: boolean          // true after prompt has been prepended to a dispatch once
 }

@@ -125,7 +125,7 @@ describe("buildRolePrompt role-instruction injection", () => {
         expect(out).toContain("<role-instruction>")
         expect(out).toContain(ROLES.coder.instruction)
         // Role-setup is identity-only: the member's task (spec.prompt) is delivered
-        // later as <standing-instruction> on first dispatch, NOT during role-setup.
+        // later as <task-instruction> on first dispatch, NOT during role-setup.
         // Embedding it here caused members to execute the full task during the
         // role-setup barrier window (120s), blowing the barrier for heavy tasks.
         expect(out).not.toContain("<user-instruction>")
@@ -162,10 +162,10 @@ describe("prependStandingInstruction", () => {
         return { name: "alice", status: "idle", initialized: true, turnCount: 0, ...overrides }
     }
 
-    test("prepends <standing-instruction> on first dispatch (promptDelivered falsy)", () => {
+    test("prepends <task-instruction> on first dispatch (promptDelivered falsy)", () => {
         const member = mkMember({ prompt: "You are the sort engineer." })
         const out = prependStandingInstruction(member, baseText)
-        expect(out).toContain("<standing-instruction>")
+        expect(out).toContain("<task-instruction>")
         expect(out).toContain("You are the sort engineer.")
         expect(out.endsWith(baseText)).toBe(true)
         // pure transform: does not flip the flag itself (callers do, after promptAsync)
