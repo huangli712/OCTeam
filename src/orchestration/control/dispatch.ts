@@ -45,7 +45,13 @@ export async function dispatchToMember(
     await ctx.client.session.promptAsync({
         path: { id: member.sessionId },
         body: {
-            parts: [{ type: "text", text: dispatchedText, synthetic: true }],
+            parts: [
+                { 
+                    type: "text",
+                    text: `${dispatchedText}\n<!-- OMO_INTERNAL_INITIATOR -->`,
+                    synthetic: false,
+                },
+            ],
             agent: safeMemberAgent(member.agent),
         },
         query: { directory },
