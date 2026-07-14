@@ -53,7 +53,7 @@ export async function advancePipelineAfterStage(ctx: PluginContext, team: Team):
     await ctx.client.session.promptAsync({
         path: { id: nextMember.sessionId },
         body: {
-            parts: [{ type: "text", text: fullTask, synthetic: true }],
+            parts: [{ type: "text", text: fullTask, synthetic: false }],
             agent: safeMemberAgent(nextMember.agent),
         },
         query: { directory: nextMember.worktreePath ?? ctx.directory },
