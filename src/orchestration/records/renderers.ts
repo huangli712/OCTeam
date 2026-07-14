@@ -56,7 +56,7 @@ export function summarizeArbitrate(task: Extract<ActiveTask, { type: "arbitrate"
     // Lead with the arbiter's binding ruling; follow with the debaters'
     // final positions. The arbiter's raw <ruling> JSON is excluded.
     const positions = (task.disputants ?? [])
-        .map(name => `### ${name}\n${truncateOutput(task.responses[name] ?? "")}`)
+        .map(name => `by ${name}:\n${truncateOutput(task.responses[name] ?? "")}`)
         .join("\n\n")
     const ruling = task.arbitrationRuling
         ? `Ruling: ${task.arbitrationRuling}`
