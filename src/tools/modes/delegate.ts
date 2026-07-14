@@ -188,7 +188,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 async (team) => {
                     for (const m of team.members.filter(x => !x.isMaster)) {
                     const text =
-                        `[Team Orchestrator] You are on team "${team.teamName}" in delegate mode. `
+                        `You are on team "${team.teamName}" in delegate mode. `
                         + `${args.tasks.length} task(s) published. `
                         + `Use team_task_list to view, team_task_update (status "claimed") to claim, `
                         + `execute, then team_send_message to report results to master. `

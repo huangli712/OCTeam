@@ -17,6 +17,8 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
+import { safeMemberAgent } from "../../core/role.js"
+import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../../core/types.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import { countUnreadMessages } from "../../messaging/mailbox.js"
 import { sendWakeHint } from "../../messaging/wake-hint.js"
@@ -26,12 +28,10 @@ import {
     getActiveWorkflowStepActors,
     getActiveWorkflowStepIndices,
 } from "../workflow/dag.js"
-import { safeMemberAgent } from "../../core/role.js"
-import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../../core/types.js"
 import { deliverQueuedResultsToMaster } from "../control/delivery.js"
+import { handleSignoffIdle } from "../control/signoff.js"
 import { checkTermination } from "./termination.js"
 import { handleReduceIdle } from "../modes/reduce.js"
-import { handleSignoffIdle } from "../control/signoff.js"
 import { handleConsensusIdle } from "../modes/consensus.js"
 import { handleParallelIdle } from "../modes/parallel.js"
 import { handlePipelineIdle } from "../modes/pipeline.js"
@@ -41,8 +41,8 @@ import { handleRecurseIdle } from "../modes/recurse.js"
 import { handleTollgateIdle } from "../modes/tollgate.js"
 import { handleRouteIdle } from "../modes/route.js"
 import { handleArbitrateIdle } from "../modes/arbitrate.js"
-import { handleWorkflowIdle } from "../workflow/handler.js"
 import { handleArenaIdle } from "../modes/arena.js"
+import { handleWorkflowIdle } from "../workflow/handler.js"
 import { captureMemberOutput } from "../records/capture.js"
 
 /**
