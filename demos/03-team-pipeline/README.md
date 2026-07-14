@@ -484,7 +484,6 @@ T+60m    运行: bun check-physics-md-pipeline.ts <run_dir>
 - [ ] 场景 1-3 总时长 ≤ 15 min（远低于 30 min 上限；每成员子任务 ≤ 8 min）；场景 4 为挑战级（8 段、~60 min、timeout 90 min），单独标注
 - [ ] 成员 prompt 中明确输出格式约定（marker），评判脚本读取**末段成员**输出并与之对齐
 
-
 ---
 
 ## 快速启动 Prompt（复制即用）
