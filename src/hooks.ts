@@ -285,7 +285,7 @@ export function createTransformHook(
             if (targetIdx < 0) return // nothing to attach to; leave reserved for retry (do NOT ack)
             const target = messages[targetIdx]
             const parts = (target.parts = target.parts ?? [])
-            parts.push({ type: "text", text: injection, synthetic: false })
+            parts.push({ type: "text", text: injection, synthetic: true })
         }
 
         // ACK the FULL reserved set, inject-or-not. Acking only the
