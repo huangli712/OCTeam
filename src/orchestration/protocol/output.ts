@@ -103,7 +103,7 @@ export function truncateOutput(text: string, maxBytes: number = 8192): string {
     while (tailStart < buf.length && (buf[tailStart] & 0xc0) === 0x80) tailStart++
 
     const omitted = buf.length - headEnd - (buf.length - tailStart)
-    const sep = `\n…[truncated ${omitted} middle bytes]…\n`
+    const sep = `\n...[truncated ${omitted} middle bytes]...\n`
     return buf.toString("utf8", 0, headEnd) + sep + buf.toString("utf8", tailStart)
 }
 
