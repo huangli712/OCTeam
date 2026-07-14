@@ -8,11 +8,17 @@
 
 import type { PluginContext } from "../core/context.js"
 
+// Minimum gap between wake hints sent to the same session. Prevents wake loops
+// where a long unread backlog keeps re-triggering promptAsync on every sweep.
 const WAKE_HINT_THROTTLE_MS = 30_000
+
 // Cap on tracked sessions. When exceeded, the oldest entries are evicted to
 // bound memory growth for long-lived hosts where sessions end without a
 // team_delete (the only path that calls clearWakeHint).
 const WAKE_HINT_MAP_CAP = 64
+
+// sessionID -> last wake-hint timestamp. Used to enforce WAKE_HINT_THROTTLE_MS.
+// Size bounded by WAKE_HINT_MAP_CAP via evictStaleWakeHints().
 const wakeHintLastSent = new Map<string, number>()
 
 /** Evict the oldest throttle entries once the map exceeds the cap. */
@@ -49,7 +55,7 @@ export async function sendWakeHint(
                     {
                         type: "text",
                         text: `[Team Orchestrator] You have ${unread} new team message(s). They will be injected on your next turn.`,
-                        synthetic: true,
+                        synthetic: false,
                     },
                 ],
             },

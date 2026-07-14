@@ -61,7 +61,7 @@ export async function persistTeamState(
 }
 
 /**
- * Compaction-context suppression (Q2 guard). The `experimental.chat.messages.transform`
+ * Compaction-context suppression. The `experimental.chat.messages.transform`
  * hook fires both on live prompt turns AND during session compaction (where it
  * receives a structuredClone of the head messages — see decompiled trigger site).
  * Injecting into the clone is lost, but pollMailbox+ackMessages have REAL side
@@ -74,7 +74,7 @@ const compacting = new Map<string, number>() // sessionID -> expiresAt
 const COMPACTING_FLAG_TTL_MS = 15_000
 
 /**
- * Marks a session as currently compacting (Q2 guard). Registered under
+ * Marks a session as currently compacting. Registered under
  * experimental.session.compacting in server init. The transform hook consumes
  * this flag once to skip the compaction-clone turn.
  */
@@ -185,7 +185,7 @@ function masterPseudoMember(): MemberState & { isMaster: true } {
  * synthetic text part on the last user message. Uses the same reservation
  * protocol as the master drain path → exactly-once delivery.
  *
- * sessionID source (Q1 fix): the SDK types this hook's `input` as `{}` and the
+ * sessionID source: the SDK types this hook's `input` as `{}` and the
  * runtime passes `{}` at BOTH trigger sites (main loop + compaction), so the old
  * `input.sessionID` read was always undefined → the hook early-returned every
  * time and the mailbox was never drained. Each Message (UserMessage |
@@ -197,7 +197,7 @@ export function createTransformHook(
     ctx: PluginContext,
 ): NonNullable<Hooks["experimental.chat.messages.transform"]> {
     return async (_input, output) => {
-        // Q1: read sessionID from the messages (input is `{}`). All messages in a
+        // Read sessionID from the messages (input is `{}`). All messages in a
         // single transform call share one sessionID.
         const messages = output.messages as SdkMessage[]
         const sessionID = messages.find(m => m.info?.sessionID)?.info?.sessionID
@@ -206,12 +206,12 @@ export function createTransformHook(
         const member = await resolveTeamMember(ctx.storageRoot, sessionID)
         if (!member) return
 
-        // Q3: the master (leader) mailbox is drained by the event handler's
+        // The master (leader) mailbox is drained by the event handler's
         // deliverQueuedResultsToMaster (promptAsync, distinct turn). Skip it here
         // to avoid inline-injecting team results into the user's interactive turn.
         if (member.isMaster) return
 
-        // Q2: compaction guard. This hook also fires on a structuredClone of the
+        // Compaction guard. This hook also fires on a structuredClone of the
         // head during compaction — injecting there is lost, but pollMailbox +
         // ackMessages have real side effects → silent message loss. Consume the
         // compacting flag once and skip the clone turn (TTL bounds a stuck flag).
@@ -224,7 +224,7 @@ export function createTransformHook(
         const unread = await pollMailbox(member.directory, member.name)
         if (unread.length === 0) return
 
-        // T5: runId-scoped directive filtering. A directive carrying a runId
+        // runId-scoped directive filtering. A directive carrying a runId
         // belongs to one specific orchestration run; once that run ends the
         // directive is stale and must be dropped (not injected). Only consult
         // team state when at least one runId-scoped directive is present — this
@@ -246,7 +246,7 @@ export function createTransformHook(
             }
             toInject = unread.filter(m => {
                 // Non-directives, and directives without a runId, always pass
-                // (backward-compat with pre-T5 messages).
+                // (backward-compat with unscoped directives).
                 if (m.kind !== "directive" || m.runId === undefined) return true
                 // Scoped directive: inject only when it matches the active run;
                 // a mismatch is a stale directive from an ended run → skip.
@@ -281,7 +281,7 @@ export function createTransformHook(
             parts.push({ type: "text", text: injection, synthetic: true })
         }
 
-        // ACK the FULL reserved set (T5 Part C), inject-or-not. Acking only the
+        // ACK the FULL reserved set, inject-or-not. Acking only the
         // injected subset would strand skipped stale directives in `reserved` →
         // releaseStaleReservations returns them after the TTL → pollMailbox
         // re-reserves → infinite loop. Ack-all drops stale directives exactly once.

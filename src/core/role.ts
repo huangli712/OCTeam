@@ -35,6 +35,7 @@
  * not consult agent mode -- see dispatch.ts). Permissions are therefore fixed
  * by the oct-* definitions in this repo, not by host configuration.
  */
+
 /** A role's fixed agent and preset instruction text. */
 export type RoleDef = { agent: string; instruction: string }
 
