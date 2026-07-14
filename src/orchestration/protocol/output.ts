@@ -138,11 +138,13 @@ export function buildRolePrompt(
     const lines: string[] = [
         `[Team Orchestrator] You are now a member of team "${teamName}".`,
         "",
+        "<basic-instruction>",
         `Your name: ${spec.name}`,
         `Your role: ${spec.role}`,
     ]
     if (spec.model) lines.push(`Your model: ${spec.model}`)
     if (peers.length > 0) lines.push(`Your teammates: ${peers.join(", ")}`)
+    lines.push("</basic-instruction>")
     // Preset role guidance (by role label), injected before the user's task
     // instruction. Every role resolves to an instruction (reviewer fallback).
     lines.push("", "<role-instruction>", rolePreset(spec.role), "</role-instruction>")
