@@ -115,8 +115,8 @@ export function buildArenaEvaluatorPrompt(task: ArenaTask, team: Team): string {
         + `${basis.join("\n")}\n`
         + `Winner metric: "${task.winnerMetric}", selected by ${task.scoreDirection}.\n\n`
         + `Run the eval command against EACH candidate's WORKING TREE at the absolute path `
-        + `above (include uncommitted agent edits; do NOT check out a committed ref). Read `
-        + `each candidate's files at the path shown and score them all identically.\n`
+        + `above (include uncommitted agent edits; do NOT check out a committed ref).\n`
+        + `Read each candidate's files at the path shown and score them all identically.\n`
         + `Emit EXACTLY one scoreboard block and nothing after it:\n`
         + `<scoreboard>{"scores":[{"member":"...","score":<n>,"metrics":{...},"passed":true|false,"rationale":"..."}],"rationale":"..."}</scoreboard>`
     )
