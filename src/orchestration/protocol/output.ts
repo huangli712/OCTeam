@@ -158,12 +158,15 @@ export function buildRolePrompt(
     // ack). Role-setup is now identity-only: members ack and idle in seconds.
     lines.push(
         "",
+        "<toos-instruction>",
         "You collaborate via the team tools available to you:",
         "- team_send_message: send a message to a teammate (point-to-point).",
         "- team_task_create / team_task_list / team_task_update / team_task_get: coordinate shared work.",
         "Messages from teammates and the orchestrator are injected automatically each turn — you do not need to read them manually.",
+        "</tools-instruction>",
         "",
-        "When you have no work, you will idle and be re-prompted when needed. Acknowledge your role in one sentence, then stop.",
+        "When you have no work, you will idle and be re-prompted when needed.",
+        "Acknowledge your role in one sentence, then stop.",
     )
     return lines.join("\n")
 }
