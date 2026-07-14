@@ -493,67 +493,67 @@ T+60m    run: bun check-physics-md-pipeline.ts <run_dir>
 ### Scenario 1: Gaussian Integral Full Pipeline (Math)
 
 ```text
-执行 demos/03-team-pipeline/README.md「场景 1」的完整闭环并自动评判。
+Run the full closed loop of demos/03-team-pipeline/README.md "Scenario 1" and auto-evaluate.
 
-步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「1.3 Master 启动调用」，按 team_pipeline JSON 启动编排（3 阶段顺序）
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>（末阶段成员的 .md 即最终输出）
-6. 运行：bun demos/03-team-pipeline/check-math-gaussian-integral.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "1.2 Team Config", create the team using the team_create JSON
+2. team_activate
+3. Read README "1.3 Master Launch Invocation", start the orchestration using the team_pipeline JSON (3 stages sequential)
+4. team_results poll until master receives summary
+5. Locate <run_dir> (final-stage member's .md is the final output)
+6. Run: bun demos/03-team-pipeline/check-math-gaussian-integral.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：末阶段（carol）报 ERROR < 1e-8（Gauss-Legendre n=8 对 e^(-x²) 精度极高）。
+Success criteria: final stage (carol) reports ERROR < 1e-8 (Gauss-Legendre n=8 has extremely high precision for e^(-x²)).
 ```
 
 ### Scenario 2: Pendulum Small-Angle Simulation (Physics)
 
 ```text
-执行 demos/03-team-pipeline/README.md「场景 2」的完整闭环并自动评判。
+Run the full closed loop of demos/03-team-pipeline/README.md "Scenario 2" and auto-evaluate.
 
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_pipeline JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/03-team-pipeline/check-physics-pendulum.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "2.2 Team Config", create the team using the team_create JSON
+2. team_activate
+3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_pipeline JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/03-team-pipeline/check-physics-pendulum.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：末阶段（carol）报 MAX_ERR < 1e-4（RK4 h=0.001 跑一个周期）。
+Success criteria: final stage (carol) reports MAX_ERR < 1e-4 (RK4 h=0.001 run one period).
 ```
 
 ### Scenario 3: Fibonacci TDD Line (Programming)
 
 ```text
-执行 demos/03-team-pipeline/README.md「场景 3」的完整闭环并自动评判。
+Run the full closed loop of demos/03-team-pipeline/README.md "Scenario 3" and auto-evaluate.
 
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_pipeline JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>（末阶段 carol 成员的 .md）
-6. 运行：bun demos/03-team-pipeline/check-coding-fib-tdd.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "3.2 Team Config", create the team using the team_create JSON
+2. team_activate
+3. Read README "3.3 Master Launch Invocation", start the orchestration using the team_pipeline JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir> (final-stage member carol's .md)
+6. Run: bun demos/03-team-pipeline/check-coding-fib-tdd.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：末阶段（carol）代码通过 4 用例：fib(0)=0、fib(1)=1、fib(10)=55、fib(20)=6765。
+Success criteria: final stage (carol) code passes 4 test cases: fib(0)=0, fib(1)=1, fib(10)=55, fib(20)=6765.
 ```
 
 ### Scenario 4: Lennard-Jones Molecular Dynamics Full Simulation Chain (Challenge-Level, Physics)
 
 ```text
-执行 demos/03-team-pipeline/README.md「场景 4」的完整闭环并自动评判（挑战级：8 段串行，约 60 min）。
+Run the full closed loop of demos/03-team-pipeline/README.md "Scenario 4" and auto-evaluate (challenge-level: 8 stages serial, ~60 min).
 
-步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（8 个 simulator 成员 alice..henry）
-2. team_activate 激活
-3. 读 README「4.3 Master 启动调用」，按 team_pipeline JSON 启动编排（8 阶段顺序，timeout_ms=5400000）
-4. team_results 轮询至 master 收到汇总（注意耗时较长，可拉长轮询间隔）
-5. 定位 <run_dir>（末阶段成员 henry.md 即最终输出；前 7 段输出已自动拼到 henry 任务前）
-6. 运行：bun demos/03-team-pipeline/check-physics-md-pipeline.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "4.2 Team Config", create the team using the team_create JSON (8 simulator members alice..henry)
+2. team_activate
+3. Read README "4.3 Master Launch Invocation", start the orchestration using the team_pipeline JSON (8 stages sequential, timeout_ms=5400000)
+4. team_results poll until master receives summary (note long duration; can lengthen poll interval)
+5. Locate <run_dir> (final-stage member henry.md is the final output; previous 7 stage outputs are auto-prepended to henry's task)
+6. Run: bun demos/03-team-pipeline/check-physics-md-pipeline.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：末阶段（henry）报 TEMP_K ∈ [100,140] K、RDF_PEAK_A ∈ [3.50,3.80] Å、ENERGY_DRIFT < 0.05。
+Success criteria: final stage (henry) reports TEMP_K ∈ [100,140] K, RDF_PEAK_A ∈ [3.50,3.80] Å, ENERGY_DRIFT < 0.05.
 ```

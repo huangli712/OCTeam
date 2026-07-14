@@ -475,67 +475,67 @@ T+~20m    Run: bun check-coding-multi-ticket-router.ts <run_dir>
 ### Scenario 1: Math problem classification routing (math)
 
 ```text
-执行 demos/06-team-route/README.md「场景 1」的完整闭环并自动评判。
+Execute the complete closed loop for demos/06-team-route/README.md "Scenario 1" and auto-evaluate.
 
-步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（1 router + 4 分支成员）
-2. team_activate 激活
-3. 读 README「1.3 Master 启动调用」，按 team_route JSON 启动编排（input 是一道具体数学题）
-4. team_results 轮询至 master 收到汇总（router 先决策，命中分支再执行）
-5. 定位 <run_dir>（含 router 与各分支成员 .md）
-6. 运行：bun demos/06-team-route/check-math-problem-router.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "1.2 Team Configuration", create the team using the team_create JSON (1 router + 4 branch members)
+2. team_activate to activate
+3. Read README "1.3 Master Launch Call", start the orchestration using the team_route JSON (input is a concrete math problem)
+4. team_results poll until master receives summary (router decides first, then matched branch executes)
+5. Locate <run_dir> (contains router and each branch member .md)
+6. Run: bun demos/06-team-route/check-math-problem-router.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：router 选 calculus 分支；bob 的 ANSWER 含 3x²·sin(x)+x³·cos(x)（或等价导数表达式）。
+Success criteria: router selects calculus branch; bob's ANSWER contains 3x²·sin(x)+x³·cos(x) (or equivalent derivative expression).
 ```
 
 ### Scenario 2: PDE type routing (physics)
 
 ```text
-执行 demos/06-team-route/README.md「场景 2」的完整闭环并自动评判。
+Execute the complete closed loop for demos/06-team-route/README.md "Scenario 2" and auto-evaluate.
 
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_route JSON 启动编排（input 是一个具体 PDE）
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/06-team-route/check-physics-pde-router.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "2.2 Team Configuration", create the team using the team_create JSON
+2. team_activate to activate
+3. Read README "2.3 Master Launch Call", start the orchestration using the team_route JSON (input is a concrete PDE)
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/06-team-route/check-physics-pde-router.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：router 选 parabolic 分支（热扩散方程 u_t=u_xx+u_yy）；METHOD ∈ {crank-nicolson, implicit, ftcs}。
+Success criteria: router selects parabolic branch (heat diffusion equation u_t=u_xx+u_yy); METHOD ∈ {crank-nicolson, implicit, ftcs}.
 ```
 
 ### Scenario 3: GitHub issue triage (programming)
 
 ```text
-执行 demos/06-team-route/README.md「场景 3」的完整闭环并自动评判。
+Execute the complete closed loop for demos/06-team-route/README.md "Scenario 3" and auto-evaluate.
 
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_route JSON 启动编排（input 是一段 issue 正文）
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/06-team-route/check-coding-issue-router.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "3.2 Team Configuration", create the team using the team_create JSON
+2. team_activate to activate
+3. Read README "3.3 Master Launch Call", start the orchestration using the team_route JSON (input is an issue body)
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/06-team-route/check-coding-issue-router.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：router 选 bug 分支；FIX_STRATEGY 含 guard / throw / RangeError 之一（针对负 id 的修复思路）。
+Success criteria: router selects bug branch; FIX_STRATEGY contains one of guard / throw / RangeError (fix approach for negative id).
 ```
 
 ### Scenario 4: Multi-faceted ticket nine-way routing (challenge-level, programming)
 
 ```text
-执行 demos/06-team-route/README.md「场景 4」的完整闭环并自动评判（挑战级，9 成员、8 分支多选）。
+Execute the complete closed loop for demos/06-team-route/README.md "Scenario 4" and auto-evaluate (challenge-level, 9 members, 8-branch multi-select).
 
-步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（1 router + 8 分支成员）
-2. team_activate 激活
-3. 读 README「4.3 Master 启动调用」，按 team_route JSON 启动编排（input 是一段 200 字多面性工单）
-4. team_results 轮询至 master 收到汇总（router 先多选分类，命中分支并行执行）
-5. 定位 <run_dir>（含 router 与各命中分支成员 .md）
-6. 运行：bun demos/06-team-route/check-coding-multi-ticket-router.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "4.2 Team Configuration", create the team using the team_create JSON (1 router + 8 branch members)
+2. team_activate to activate
+3. Read README "4.3 Master Launch Call", start the orchestration using the team_route JSON (input is a ~200-word multi-faceted ticket)
+4. team_results poll until master receives summary (router first multi-selects categories, matched branches execute in parallel)
+5. Locate <run_dir> (contains router and each matched branch member .md)
+6. Run: bun demos/06-team-route/check-coding-multi-ticket-router.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：router 以 {"branches":[...]} 选中 ≥4 分支（至少含 bug/refactor/test/docs/perf 中 4 个）；每个命中分支产 ACTION 计划；bug 分支的 ACTION 含 guard/throw/empty/null/undefined/check 之一。
+Success criteria: router selects >=4 branches via {"branches":[...]} (at least 4 of bug/refactor/test/docs/perf); each matched branch produces an ACTION plan; bug branch ACTION contains one of guard/throw/empty/null/undefined/check.
 ```

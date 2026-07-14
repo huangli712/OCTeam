@@ -111,20 +111,20 @@
 ### 1.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_workflow
-T+0m     engine dispatch step 1 (alice, task): 实现 handleRegister
-T+0~5m   alice 产出 handler 代码 → idle
-T+5m     engine 推进到 step 2 (gate): dispatch bob，喂入 step 1 产出 + criteria
-T+5~8m   bob 判定 → <verdict>
-         PASS  -> engine 推进到 step 3
-         FAIL  -> 重派 alice（带 diff），attempts++；再走一次 gate；第二次 FAIL -> workflow_failed
-T+8m     engine dispatch step 3 (alice, task): 重构，注入 step 1 产出作上游
-T+8~12m  alice 产出重构代码 → idle
-T+12m    engine 推进到 step 4 (gate): dispatch bob，喂入 step 3 重构产出 + criteria
-T+12~16m bob 再判定 → <verdict>
-         PASS  -> 所有步骤完成 -> workflow_complete
-         FAIL  -> 重派 alice（带 diff），attempts++；再走一次 gate；第二次 FAIL -> workflow_failed
-T+16m    workflow_complete，汇总交付 master（含四步账本 + task 产出）
+T+0m     master calls team_workflow
+T+0m     engine dispatch step 1 (alice, task): implement handleRegister
+T+0~5m   alice produces handler code → idle
+T+5m     engine advances to step 2 (gate): dispatch bob, feeds step 1 output + criteria
+T+5~8m   bob judges → <verdict>
+         PASS  -> engine advances to step 3
+         FAIL  -> re-dispatches alice (with diff), attempts++; runs gate again; second FAIL -> workflow_failed
+T+8m     engine dispatch step 3 (alice, task): refactor, injects step 1 output as upstream
+T+8~12m  alice produces refactored code → idle
+T+12m    engine advances to step 4 (gate): dispatch bob, feeds step 3 refactored output + criteria
+T+12~16m bob re-judges → <verdict>
+         PASS  -> all steps complete -> workflow_complete
+         FAIL  -> re-dispatches alice (with diff), attempts++; runs gate again; second FAIL -> workflow_failed
+T+16m    workflow_complete, summary delivered to master (with four-step ledger + task outputs)
 ```
 
 > When any task/gate actor is missing a live session (session not yet created or member already errored): if `fallback_member` / `fallback_verifier` is declared, the engine automatically switches to the fallback actor; if the fallback is also unavailable, steps **inside a fanout branch** degrade to errored branches (subject to `max_errored` / `join_policy` constraints), while **top-level** steps still explicitly terminate as `workflow_failed:no_session:<member>`. The engine writes a `workflow.steps` snapshot into the `RunRecord` (per step: kind / member / verifier / dispatchedActor / targetStep / verdict / attempts / completed / output / outputBytes). `team_result_get` renders `### workflow steps` groups when reading that run, showing the ledger by Step N plus each task's output snapshot; `format: "mermaid"` exports a Mermaid flowchart diagram.
@@ -279,19 +279,19 @@ Add `dry_run: true` first to inspect the variable-substituted step ledger and co
 ### 2.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_workflow
-T+0m     engine dispatch step 1 (alice, task): 实现 bisect
-T+0~5m   alice 产出 bisect 代码 + IMPL 标记 → idle
-T+5m     engine 推进到 step 2 (gate): dispatch bob，喂入 step 1 产出 + criteria
-T+5~8m   bob 跑 sqrt(2) 用例 + 符号检查 → <verdict>
-         PASS  -> engine 推进到 step 3
-         FAIL  -> 重派 alice（带 diff），再走一次 gate；第二次 FAIL -> workflow_failed
-T+8m     engine dispatch step 3 (alice, task): 优化 bisect，注入 step 1 产出作上游
-T+8~11m  alice 产出优化版代码 → idle
-T+11m    engine 推进到 step 4 (gate): dispatch bob，喂入 step 3 产出 + 三条用例
-T+11~14m bob 跑 sqrt(2) + cos(x)-x + x³-5 → <verdict>
+T+0m     master calls team_workflow
+T+0m     engine dispatch step 1 (alice, task): implement bisect
+T+0~5m   alice produces bisect code + IMPL marker → idle
+T+5m     engine advances to step 2 (gate): dispatch bob, feeds step 1 output + criteria
+T+5~8m   bob runs sqrt(2) test case + sign check → <verdict>
+         PASS  -> engine advances to step 3
+         FAIL  -> re-dispatches alice (with diff), runs gate again; second FAIL -> workflow_failed
+T+8m     engine dispatch step 3 (alice, task): optimize bisect, injects step 1 output as upstream
+T+8~11m  alice produces optimized code → idle
+T+11m    engine advances to step 4 (gate): dispatch bob, feeds step 3 output + three test cases
+T+11~14m bob runs sqrt(2) + cos(x)-x + x³-5 → <verdict>
          PASS  -> workflow_complete
-T+14m    workflow_complete，汇总交付 master
+T+14m    workflow_complete, summary delivered to master
 ```
 
 ### 2.5 Check Script
@@ -402,18 +402,18 @@ T+14m    workflow_complete，汇总交付 master
 ### 3.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_workflow
-T+0m     engine dispatch step 1 (alice, task): 实现 RK4 抛体
-T+0~5m   alice 产出 RK4 + 无阻力仿真 + ENERGY 标记 → idle
-T+5m     engine 推进到 step 2 (gate): dispatch bob，喂入 step 1 产出
-T+5~8m   bob 核对能量守恒 + 最大高度 → <verdict>
-         PASS  -> engine 推进到 step 3
-T+8m     engine dispatch step 3 (alice, task): 加入空气阻力
-T+8~12m  alice 产出含阻力仿真代码 + DRAG 标记 → idle
-T+12m    engine 推进到 step 4 (gate): dispatch bob
-T+12~16m bob 核对能量单调衰减 + 终端速度 → <verdict>
+T+0m     master calls team_workflow
+T+0m     engine dispatch step 1 (alice, task): implement RK4 projectile
+T+0~5m   alice produces RK4 + drag-free simulation + ENERGY marker → idle
+T+5m     engine advances to step 2 (gate): dispatch bob, feeds step 1 output
+T+5~8m   bob checks energy conservation + max height → <verdict>
+         PASS  -> engine advances to step 3
+T+8m     engine dispatch step 3 (alice, task): add air resistance
+T+8~12m  alice produces drag simulation code + DRAG marker → idle
+T+12m    engine advances to step 4 (gate): dispatch bob
+T+12~16m bob checks monotonic energy decay + terminal velocity → <verdict>
          PASS  -> workflow_complete
-T+16m    workflow_complete，汇总交付 master
+T+16m    workflow_complete, summary delivered to master
 ```
 
 ### 3.5 Check Script
@@ -587,23 +587,23 @@ T+16m    workflow_complete，汇总交付 master
 ### 4.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_workflow
-T+0m     engine dispatch step 1 (alice, task): 定义共享类型
-T+0~4m   alice 产出 User / AuthToken / AuditEntry 接口 → idle
-T+4m     engine 推进到 step 2 (gate): dispatch bob 验证类型完备
-T+4~7m   bob 核对三接口字段完整 → <verdict>
-         PASS  -> engine 推进到 step 3 (fanout)
-         FAIL  -> 重派 alice，再走 gate；二次 FAIL -> workflow_failed
-T+7m     engine 展开 fanout: 并行 dispatch carol(auth), dave(users), erin(audit)
-T+7~19m  三人各自实现模块（并行，12 min 上限）→ idle
-T+19m    barrier: 所有分支完成 → engine 推进到 step 4 (join reduce)
-T+19m    dispatch frank（reducer），喂入三路产出
-T+19~27m frank 聚合三个模块，产出接口清单 + 依赖图 → idle
-T+27m    engine 推进到 step 5 (gate): dispatch frank(verifier)，喂入集成上下文
-T+27~35m frank 跑 5 条集成用例（token 鉴权 → 创建用户 → 审计记录）→ <verdict>
+T+0m     master calls team_workflow
+T+0m     engine dispatch step 1 (alice, task): define shared types
+T+0~4m   alice produces User / AuthToken / AuditEntry interfaces → idle
+T+4m     engine advances to step 2 (gate): dispatch bob verifies type completeness
+T+4~7m   bob checks three interface field completeness → <verdict>
+         PASS  -> engine advances to step 3 (fanout)
+         FAIL  -> re-dispatches alice, runs gate again; second FAIL -> workflow_failed
+T+7m     engine expands fanout: parallel dispatch carol(auth), dave(users), erin(audit)
+T+7~19m  three implement respective modules (parallel, 12 min cap) → idle
+T+19m    barrier: all branches complete → engine advances to step 4 (join reduce)
+T+19m    dispatch frank (reducer), feeds three branch outputs
+T+19~27m frank aggregates three modules, produces interface list + dependency graph → idle
+T+27m    engine advances to step 5 (gate): dispatch frank (verifier), feeds integration context
+T+27~35m frank runs 5 integration test cases (token auth → create user → audit record) → <verdict>
          PASS  -> workflow_complete
-         FAIL  -> 回路修正（重派对应 producer），再走 gate
-T+35m    workflow_complete，汇总交付 master（含所有 8 步账本 + task 产出）
+         FAIL  -> loop correction (re-dispatch corresponding producer), runs gate again
+T+35m    workflow_complete, summary delivered to master (with all 8-step ledger + task outputs)
 ```
 
 ### 4.5 Check Script
@@ -646,67 +646,59 @@ T+35m    workflow_complete，汇总交付 master（含所有 8 步账本 + task 
 ### Scenario 1: REST API Handler Implementation + Verification + Refactor (Programming)
 
 ```text
-执行 demos/10-team-workflow/README.md「场景 1」的完整闭环并自动评判。
-
-步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（2 名成员：alice=coder、bob=tester）
-2. team_activate 激活
-3. 读 README「1.3 Master 启动调用」，按 team_workflow JSON 启动编排（4 步链：task(implement) → gate(verify) → task(refactor) → gate(re-verify)）
-4. team_results 轮询至 master 收到汇总（engine 驱动每步推进）
-5. 定位 <run_dir>（含 alice 与 bob 的 .md）
-6. 运行：bun demos/10-team-workflow/check-coding-handler.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
-
-成功标准：handleRegister 三路径正确；两道 gate 均 PASS；重构后提取了 validate 函数。
+Run the complete closed loop for demos/10-team-workflow/README.md "Scenario 1" and auto-evaluate.
+Steps:
+1. Read README "1.2 Team Configuration", create team per team_create JSON (2 members: alice=coder, bob=tester)
+2. team_activate to activate
+3. Read README "1.3 Master Launch Call", start orchestration per team_workflow JSON (4-step chain: task(implement) → gate(verify) → task(refactor) → gate(re-verify))
+4. Poll team_results until master receives summary (engine drives each step's advancement)
+5. Locate <run_dir> (contains alice and bob's .md)
+6. Run: bun demos/10-team-workflow/check-coding-handler.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
+Success criteria: handleRegister three paths correct; both gates PASS; validate function extracted after refactoring.
 ```
 
 ### Scenario 2: Bisection Root-Finding Implementation + Verification + Iterative Optimization (Math)
 
 ```text
-执行 demos/10-team-workflow/README.md「场景 2」的完整闭环并自动评判。
-
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队（2 名成员：alice=mathematician、bob=reviewer）
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_workflow JSON 启动编排（4 步链：task(implement bisect) → gate(verify sqrt2+sign check) → task(optimize) → gate(re-verify 3 functions)）
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>（含 alice 与 bob 的 .md）
-6. 运行：bun demos/10-team-workflow/check-math-bisect.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
-
-成功标准：bisect 在 sqrt(2)、cos(x)-x、x³-5 三个测试上精度 < 1e-6；两道 gate 均 PASS。
+Run the complete closed loop for demos/10-team-workflow/README.md "Scenario 2" and auto-evaluate.
+Steps:
+1. Read README "2.2 Team Configuration", create team per team_create JSON (2 members: alice=mathematician, bob=reviewer)
+2. team_activate to activate
+3. Read README "2.3 Master Launch Call", start orchestration per team_workflow JSON (4-step chain: task(implement bisect) → gate(verify sqrt2+sign check) → task(optimize) → gate(re-verify 3 functions))
+4. Poll team_results until master receives summary
+5. Locate <run_dir> (contains alice and bob's .md)
+6. Run: bun demos/10-team-workflow/check-math-bisect.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
+Success criteria: bisect achieves precision < 1e-6 on all three tests: sqrt(2), cos(x)-x, x³-5; both gates PASS.
 ```
 
 ### Scenario 3: Projectile Motion RK4 Solver + Energy Verification + Drag Modeling (Computational Physics)
 
 ```text
-执行 demos/10-team-workflow/README.md「场景 3」的完整闭环并自动评判。
-
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队（2 名成员：alice=simulator、bob=physicist）
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_workflow JSON 启动编排（4 步链：task(RK4 projectile) → gate(verify energy) → task(add drag) → gate(verify terminal velocity)）
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>（含 alice 与 bob 的 .md）
-6. 运行：bun demos/10-team-workflow/check-physics-projectile.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
-
-成功标准：无阻力时能量漂移 < 1e-3；有阻力时终端速度接近 sqrt(mg/k) ≈ 9.9 m/s（误差 < 20%）；两道 gate 均 PASS。
+Run the complete closed loop for demos/10-team-workflow/README.md "Scenario 3" and auto-evaluate.
+Steps:
+1. Read README "3.2 Team Configuration", create team per team_create JSON (2 members: alice=simulator, bob=physicist)
+2. team_activate to activate
+3. Read README "3.3 Master Launch Call", start orchestration per team_workflow JSON (4-step chain: task(RK4 projectile) → gate(verify energy) → task(add drag) → gate(verify terminal velocity))
+4. Poll team_results until master receives summary
+5. Locate <run_dir> (contains alice and bob's .md)
+6. Run: bun demos/10-team-workflow/check-physics-projectile.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
+Success criteria: energy drift < 1e-3 without drag; terminal velocity with drag approaches sqrt(mg/k) ≈ 9.9 m/s (error < 20%); both gates PASS.
 ```
 
 ### Scenario 4: Multi-Module Fanout Parallel Implementation + Join Reduce Integration Verification (Challenge-Level · Programming)
 
 ```text
-执行 demos/10-team-workflow/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、8 步 fanout 工作流）。
-
-步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（6 名成员：alice=coder, bob=reviewer, carol/dave/erin=coder, frank=tester）
-2. team_activate 激活
-3. 读 README「4.3 Master 启动调用」，按 team_workflow JSON 启动编排（8 步：task(types) → gate(verify types) → fanout(3 parallel modules) → join(reduce) → gate(integration test)）
-4. team_results 轮询至 master 收到汇总（engine 推进：alice 定义类型 → bob gate 验证 → carol/dave/erin 并行实现三模块 → frank join reduce 聚合 → frank gate 集成测试）
-5. 定位 <run_dir>（含 6 个成员的 .md：alice/bob/carol/dave/erin/frank）
-6. 运行：bun demos/10-team-workflow/check-coding-modular-cms.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
-
-成功标准：三个 interface 定义完整；三个模块各有 `<!-- MODULE -->` 标记；join reduce 产出跨模块聚合；集成测试 5 条用例全 PASS。
+Run the complete closed loop for demos/10-team-workflow/README.md "Scenario 4" and auto-evaluate (challenge-level: 6 members, 8-step fanout workflow).
+Steps:
+1. Read README "4.2 Team Configuration", create team per team_create JSON (6 members: alice=coder, bob=reviewer, carol/dave/erin=coder, frank=tester)
+2. team_activate to activate
+3. Read README "4.3 Master Launch Call", start orchestration per team_workflow JSON (8 steps: task(types) → gate(verify types) → fanout(3 parallel modules) → join(reduce) → gate(integration test))
+4. Poll team_results until master receives summary (engine advances: alice defines types → bob gate verifies → carol/dave/erin implement three modules in parallel → frank join reduce aggregates → frank gate integration test)
+5. Locate <run_dir> (contains 6 members' .md: alice/bob/carol/dave/erin/frank)
+6. Run: bun demos/10-team-workflow/check-coding-modular-cms.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
+Success criteria: three interface definitions complete; three modules each have `<!-- MODULE -->` marker; join reduce produces cross-module aggregation; integration test 5 cases all PASS.
 ```

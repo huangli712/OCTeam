@@ -80,14 +80,14 @@
 ### 1.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_consensus (topic, max_rounds=6)
-T+0m    OCTeam 并行 dispatch 3 个 mathematician，Round 1：各陈立场
-T+0~3m  各成员读题 → 给出算法辩护 + 复杂度论据 + <consensus agreed=false>
-T+3m    Round 2：成员互相读取他方论点 → 反驳 / 让步
-T+3~6m  各成员调整立场，部分让步 + <consensus agreed=true|false>
-T+6m    Round 3（若需要）：收敛到共同结论
-T+6~9m  全员 agreed=true，共识达成，运行结束
-T+9m    运行: bun check-math-sort-stability.ts <run_dir>
+T+0m    master calls team_consensus (topic, max_rounds=6)
+T+0m    OCTeam dispatches 3 mathematicians in parallel, Round 1: each states position
+T+0~3m  each member reads topic → gives algorithm defense + complexity arguments + <consensus agreed=false>
+T+3m    Round 2: members read each other's arguments → rebut / concede
+T+3~6m  each member adjusts position, partial concession + <consensus agreed=true|false>
+T+6m    Round 3 (if needed): converge to common conclusion
+T+6~9m  all agreed=true, consensus reached, run ends
+T+9m    run: bun check-math-sort-stability.ts <run_dir>
 ```
 
 ### 1.5 Check Script
@@ -168,14 +168,14 @@ T+9m    运行: bun check-math-sort-stability.ts <run_dir>
 ### 2.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_consensus (topic, max_rounds=6)
-T+0m    OCTeam 并行 dispatch 3 个 simulator，Round 1：各陈立场 + 算 r
-T+0~3m  各成员算 CFL: r=1.0>0.5 → 显式被自我否决
-T+3m    Round 2：alice 让步；implicit vs crank 辩精度
-T+3~6m  成员收敛到无条件稳定格式（implicit 或 crank）
-T+6m    Round 3（若需要）：全员 agreed=true
-T+6~9m  共识达成
-T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
+T+0m    master calls team_consensus (topic, max_rounds=6)
+T+0m    OCTeam dispatches 3 simulators in parallel, Round 1: each states position + compute r
+T+0~3m  each member computes CFL: r=1.0>0.5 → explicit self-eliminated
+T+3m    Round 2: alice concedes; implicit vs crank debate accuracy
+T+3~6m  members converge to unconditionally stable scheme (implicit or crank)
+T+6m    Round 3 (if needed): all agreed=true
+T+6~9m  consensus reached
+T+9m    run: bun check-physics-heat-diffusion.ts <run_dir>
 ```
 
 ### 2.5 Check Script
@@ -257,14 +257,14 @@ T+9m    运行: bun check-physics-heat-diffusion.ts <run_dir>
 ### 3.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_consensus (topic, max_rounds=6)
-T+0m    OCTeam 并行 dispatch 3 个 coder，Round 1：各陈立场
-T+0~3m  各成员给算法分析（复杂度 + 适用边界）
-T+3m    Round 2：成员可写基准实测短文本耗时 → 用数据反驳
-T+3~6m  成员按文本/模式长度划分适用域
-T+6m    Round 3（若需要）：收敛到决策树，全员 agreed=true
-T+6~8m  共识达成
-T+8m    运行: bun check-coding-string-match.ts <run_dir>
+T+0m    master calls team_consensus (topic, max_rounds=6)
+T+0m    OCTeam dispatches 3 coders in parallel, Round 1: each states position
+T+0~3m  each member gives algorithm analysis (complexity + applicable boundaries)
+T+3m    Round 2: members may write benchmarks to measure short-text wall-clock → rebut with data
+T+3~6m  members partition applicable domains by text/pattern length
+T+6m    Round 3 (if needed): converge to decision tree, all agreed=true
+T+6~8m  consensus reached
+T+8m    run: bun check-coding-string-match.ts <run_dir>
 ```
 
 ### 3.5 Check Script
@@ -376,16 +376,16 @@ Key criterion: For a **balanced** 60-digit RSA semiprime, trial division / Polla
 ### 4.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_consensus (topic, max_rounds=5)
-T+0m    OCTeam 并行 dispatch 6 个 mathematician，Round 1：各陈立场 + 复杂度阶层
-T+0~5m  各成员给复杂度（O / 次指数 L[]）+ 60 位下的可行性判据
-T+5m    Round 2：试除 / Pollard rho 自我否决（不可行）；ECM 让步
-T+5~12m 弱候选承认被 sieve 系压制
-T+12m   Round 3：QS vs NFS 辩 wall-clock vs 渐近；Shor 定位「未来相关」
-T+12~20m 成员逐步收敛到 NFS（标准 / 可扩展 / 记录级）
-T+20m   Round 4-5：全员 agreed=true，显式承认 Shor 未来相关性
-T+20~35m 共识达成
-T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
+T+0m    master calls team_consensus (topic, max_rounds=5)
+T+0m    OCTeam dispatches 6 mathematicians in parallel, Round 1: each states position + complexity hierarchy
+T+0~5m  each member gives complexity (O / sub-exponential L[]) + feasibility criteria for 60-digit
+T+5m    Round 2: trial division / Pollard rho self-eliminate (infeasible); ECM concedes
+T+5~12m weak candidates acknowledge dominance by sieve family
+T+12m   Round 3: QS vs NFS debate wall-clock vs asymptotic; Shor positioned as "future-relevant"
+T+12~20m members gradually converge to NFS (standard / scalable / record-class)
+T+20m   Round 4-5: all agreed=true, explicitly acknowledge Shor future relevance
+T+20~35m consensus reached
+T+35m   run: bun check-math-factoring-consensus.ts <run_dir>
 ```
 
 ### 4.5 Check Script
@@ -421,67 +421,67 @@ T+35m   运行: bun check-math-factoring-consensus.ts <run_dir>
 ### Scenario 1: Small-Scale Sort Selection (Math)
 
 ```text
-执行 demos/02-team-consensus/README.md「场景 1」的完整闭环并自动评判。
+Run the full closed loop of demos/02-team-consensus/README.md "Scenario 1" and auto-evaluate.
 
-步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「1.3 Master 启动调用」，按 team_consensus JSON 启动编排
-4. team_results 轮询至 master 收到汇总（consensus 最多 max_rounds 轮）
-5. 定位 <run_dir>（含各成员 <member>.md）
-6. 运行：bun demos/02-team-consensus/check-math-sort-stability.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "1.2 Team Config", create the team using the team_create JSON
+2. team_activate
+3. Read README "1.3 Master Launch Invocation", start the orchestration using the team_consensus JSON
+4. team_results poll until master receives summary (consensus at most max_rounds rounds)
+5. Locate <run_dir> (contains each member <member>.md)
+6. Run: bun demos/02-team-consensus/check-math-sort-stability.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：所有成员最终轮 emit `"agreed": true`；共识 choice ∈ {insertion, timsort, merge}。
+Success criteria: all members emit `"agreed": true` in final round; consensus choice ∈ {insertion, timsort, merge}.
 ```
 
 ### Scenario 2: 1D Heat Conduction Time Scheme Selection (Physics)
 
 ```text
-执行 demos/02-team-consensus/README.md「场景 2」的完整闭环并自动评判。
+Run the full closed loop of demos/02-team-consensus/README.md "Scenario 2" and auto-evaluate.
 
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_consensus JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/02-team-consensus/check-physics-heat-diffusion.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "2.2 Team Config", create the team using the team_create JSON
+2. team_activate
+3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_consensus JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/02-team-consensus/check-physics-heat-diffusion.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：全员最终轮 `"agreed": true`；共识 choice ∈ {explicit, implicit, crank-nicolson}。
+Success criteria: all members `"agreed": true` in final round; consensus choice ∈ {explicit, implicit, crank-nicolson}.
 ```
 
 ### Scenario 3: Short-Text String Matching Selection (Programming)
 
 ```text
-执行 demos/02-team-consensus/README.md「场景 3」的完整闭环并自动评判。
+Run the full closed loop of demos/02-team-consensus/README.md "Scenario 3" and auto-evaluate.
 
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_consensus JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/02-team-consensus/check-coding-string-match.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "3.2 Team Config", create the team using the team_create JSON
+2. team_activate
+3. Read README "3.3 Master Launch Invocation", start the orchestration using the team_consensus JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/02-team-consensus/check-coding-string-match.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：全员最终轮 `"agreed": true`；共识 choice ∈ {naive, kmp, boyer, sunday}。
+Success criteria: all members `"agreed": true` in final round; consensus choice ∈ {naive, kmp, boyer, sunday}.
 ```
 
 ### Scenario 4: 60-Digit RSA Modulus Factoring Algorithm Selection (Challenge-Level, Math)
 
 ```text
-执行 demos/02-team-consensus/README.md「场景 4」的完整闭环并自动评判（挑战级，6 成员 × max_rounds=5，预计 ~35 min）。
+Run the full closed loop of demos/02-team-consensus/README.md "Scenario 4" and auto-evaluate (challenge-level, 6 members × max_rounds=5, estimated ~35 min).
 
-步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（6 个 mathematician）
-2. team_activate 激活
-3. 读 README「4.3 Master 启动调用」，按 team_consensus JSON 启动编排（max_rounds=5）
-4. team_results 轮询至 master 收到汇总（consensus 最多 5 轮，需较长等待）
-5. 定位 <run_dir>（含 6 个成员 <member>.md）
-6. 运行：bun demos/02-team-consensus/check-math-factoring-consensus.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "4.2 Team Config", create the team using the team_create JSON (6 mathematicians)
+2. team_activate
+3. Read README "4.3 Master Launch Invocation", start the orchestration using the team_consensus JSON (max_rounds=5)
+4. team_results poll until master receives summary (consensus at most 5 rounds, longer wait expected)
+5. Locate <run_dir> (contains 6 member <member>.md files)
+6. Run: bun demos/02-team-consensus/check-math-factoring-consensus.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：6 成员最终轮全部 `"agreed": true`；每个 choice ∈ {nfs, number-field-sieve, quadratic-sieve, qs, pollard-rho, ecm, shor, trial-division}；至少一位成员论证提及 {sub-exponential, 60-digit, rsa, quantum} 之一。预期共识收敛到 NFS，并承认 Shor 量子算法的未来相关性。
+Success criteria: all 6 members `"agreed": true` in final round; each choice ∈ {nfs, number-field-sieve, quadratic-sieve, qs, pollard-rho, ecm, shor, trial-division}; at least one member's argument mentions one of {sub-exponential, 60-digit, rsa, quantum}. Expected consensus converges to NFS, acknowledging Shor's quantum algorithm as future-relevant.
 ```

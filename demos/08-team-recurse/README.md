@@ -417,67 +417,67 @@ T+50m    Run: bun check-math-vandermonde.ts <run_dir>
 ### Scenario 1: Derangement D_n Derivation (math)
 
 ```text
-执行 demos/08-team-recurse/README.md「场景 1」的完整闭环并自动评判。
+Execute the full closed loop for demos/08-team-recurse/README.md "Scenario 1" with automatic evaluation.
 
-步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（3 个 mathematician，decomposer 由团队配置指定）
-2. team_activate 激活
-3. 读 README「1.3 Master 启动调用」，按 team_recurse JSON 启动编排（root task = 推导 D_n）
-4. team_results 轮询至 master 收到汇总（decomposer 拆子任务 → 成员自取 → 底层聚合回根）
-5. 定位 <run_dir>（含所有成员 .md）
-6. 运行：bun demos/08-team-recurse/check-math-derangement.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "1.2 Team Configuration", create the team with team_create JSON (3 mathematicians, decomposer specified by team config)
+2. team_activate to activate
+3. Read README "1.3 Master Launch Call", start orchestration with the team_recurse JSON (root task = derive D_n)
+4. team_results poll until master receives summary (decomposer splits into subtasks → members self-claim → bottom-up aggregation to root)
+5. Locate <run_dir> (containing all member .md files)
+6. Run: bun demos/08-team-recurse/check-math-derangement.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：decomposer 的 D4_FINAL = 9；且至少 1 个叶子成员 D4_VALUE = 9（容斥/递推/生成函数三路均应得 9）。
+Success criteria: decomposer D4_FINAL = 9; and at least 1 leaf member D4_VALUE = 9 (all three paths: inclusion-exclusion / recurrence / generating-function should yield 9).
 ```
 
 ### Scenario 2: Damped Pendulum Modeling (physics)
 
 ```text
-执行 demos/08-team-recurse/README.md「场景 2」的完整闭环并自动评判。
+Execute the full closed loop for demos/08-team-recurse/README.md "Scenario 2" with automatic evaluation.
 
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_recurse JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/08-team-recurse/check-physics-damped-pendulum.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "2.2 Team Configuration", create the team with team_create JSON
+2. team_activate to activate
+3. Read README "2.3 Master Launch Call", start orchestration with the team_recurse JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/08-team-recurse/check-physics-damped-pendulum.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：decomposer 的 MODEL_VALID = true；且至少 1 叶子报 ENVELOPE_DECAY（γ=0.2 时 e-folding 常数 ≈ 0.1，即 2/γ）。
+Success criteria: decomposer MODEL_VALID = true; and at least 1 leaf reports ENVELOPE_DECAY (at γ=0.2 the e-folding constant ≈ 0.1, i.e. 2/γ).
 ```
 
 ### Scenario 3: Single-Page Markdown→HTML Converter (programming)
 
 ```text
-执行 demos/08-team-recurse/README.md「场景 3」的完整闭环并自动评判。
+Execute the full closed loop for demos/08-team-recurse/README.md "Scenario 3" with automatic evaluation.
 
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_recurse JSON 启动编排（root = 构建转换器）
-4. team_results 轮询至 master 收到汇总（子任务：alice / bob / carol）
-5. 定位 <run_dir>
-6. 运行：bun demos/08-team-recurse/check-coding-md-converter.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "3.2 Team Configuration", create the team with team_create JSON
+2. team_activate to activate
+3. Read README "3.3 Master Launch Call", start orchestration with the team_recurse JSON (root = build converter)
+4. team_results poll until master receives summary (subtasks: alice / bob / carol)
+5. Locate <run_dir>
+6. Run: bun demos/08-team-recurse/check-coding-md-converter.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：decomposer 的 CONVERTS = true；且聚合出的 convert() 通过：convert("# Hi") 含 <h1>、convert("**b**") 含 <strong> 或 <b>。
+Success criteria: decomposer CONVERTS = true; and the aggregated convert() passes: convert("# Hi") contains <h1>, convert("**b**") contains <strong> or <b>.
 ```
 
 ### Scenario 4: Vandermonde Identity Multi-Layer Proof (math · challenge-level)
 
 ```text
-执行 demos/08-team-recurse/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、max_depth=4，预计 ~50 min）。
+Execute the full closed loop for demos/08-team-recurse/README.md "Scenario 4" with automatic evaluation (challenge-level: 6 members, max_depth=4, estimated ~50 min).
 
-步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（6 个 mathematician，decomposer 为 alice）
-2. team_activate 激活
-3. 读 README「4.3 Master 启动调用」，按 team_recurse JSON 启动编排（root = 证明 Vandermonde 恒等式；max_depth=4, max_subtasks=4）
-4. team_results 轮询至 master 收到汇总（alice 拆 3 路径 → 各路径拆子引理 → 成员认领叶引理 → 自底向上逐层聚合回根）
-5. 定位 <run_dir>（含所有 6 名成员 .md）
-6. 运行：bun demos/08-team-recurse/check-math-vandermonde.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "4.2 Team Configuration", create the team with team_create JSON (6 mathematicians, decomposer is alice)
+2. team_activate to activate
+3. Read README "4.3 Master Launch Call", start orchestration with the team_recurse JSON (root = prove Vandermonde identity; max_depth=4, max_subtasks=4)
+4. team_results poll until master receives summary (alice splits into 3 paths → each path splits into sub-lemmas → members claim leaf lemmas → bottom-up layered aggregation back to root)
+5. Locate <run_dir> (containing all 6 member .md files)
+6. Run: bun demos/08-team-recurse/check-math-vandermonde.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：alice 的 VANDERMONDE_PROVEN = true；叶节点 APPROACH 出现 ≥2 个不同名称（必含 algebraic 与 combinatorial）；所有 LEMMA_HOLDS 均为 true。
+Success criteria: alice VANDERMONDE_PROVEN = true; leaf node APPROACH shows ≥2 distinct names (must include algebraic and combinatorial); all LEMMA_HOLDS are true.
 ```

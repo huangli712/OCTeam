@@ -82,13 +82,13 @@
 ### 1.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_tollgate
-T+0m    OCTeam dispatch stage-0 producer (alice, mathematician)
-T+0~5m  alice 写 modPow → 嵌入 ```typescript 块 + IMPL 标记 → idle
-T+5m    gate 触发：dispatch verifier (bob, reviewer)，喂入 producer 输出 + criteria
-T+5~8m  bob 跑三用例 → 输出 VERDICT 标记
-T+8m    PASS → 流水线结束，结果交付 master
-T+8m    运行: bun check-math-fast-pow.ts <run_dir>
+T+0m    master calls team_tollgate
+T+0m    OCTeam dispatches stage-0 producer (alice, mathematician)
+T+0~5m  alice writes modPow → embeds ```typescript block + IMPL marker → idle
+T+5m    gate triggers: dispatches verifier (bob, reviewer), feeds producer output + criteria
+T+5~8m  bob runs three test cases → outputs VERDICT marker
+T+8m    PASS → pipeline ends, result delivered to master
+T+8m    Run: bun check-math-fast-pow.ts <run_dir>
 ```
 
 (If FAIL and `attempts < max_gate_retries`, the producer is sent back with the diff to redo, then goes through the gate once more.)
@@ -172,13 +172,13 @@ T+8m    运行: bun check-math-fast-pow.ts <run_dir>
 ### 2.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_tollgate
-T+0m    dispatch producer (alice, simulator)
-T+0~5m  alice 写 Velocity Verlet → 跑 1000 步 → 报告 DRIFT 标记 → idle
-T+5m    gate 触发：dispatch verifier (bob, physicist)
-T+5~8m  bob 复算/核对漂移 < 1e-3 → 输出 VERDICT 标记
-T+8m    PASS → 结果交付 master
-T+8m    运行: bun check-physics-verlet.ts <run_dir>
+T+0m    master calls team_tollgate
+T+0m    dispatches producer (alice, simulator)
+T+0~5m  alice writes Velocity Verlet → runs 1000 steps → reports DRIFT marker → idle
+T+5m    gate triggers: dispatches verifier (bob, physicist)
+T+5~8m  bob recomputes/verifies drift < 1e-3 → outputs VERDICT marker
+T+8m    PASS → result delivered to master
+T+8m    Run: bun check-physics-verlet.ts <run_dir>
 ```
 
 ### 2.5 Check Script
@@ -260,13 +260,13 @@ T+8m    运行: bun check-physics-verlet.ts <run_dir>
 ### 3.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_tollgate
-T+0m    dispatch producer (alice)
-T+0~4m  alice 写 reverseStr → 嵌入代码 + IMPL 标记 → idle
-T+4m    gate 触发：dispatch verifier (bob, tester)
-T+4~7m  bob 跑三用例（含 emoji） → 输出 VERDICT 标记
-T+7m    PASS → 结果交付 master
-T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
+T+0m    master calls team_tollgate
+T+0m    dispatches producer (alice)
+T+0~4m  alice writes reverseStr → embeds code + IMPL marker → idle
+T+4m    gate triggers: dispatches verifier (bob, tester)
+T+4~7m  bob runs three test cases (including emoji) → outputs VERDICT marker
+T+7m    PASS → result delivered to master
+T+7m    Run: bun check-coding-reverse-str.ts <run_dir>
 ```
 
 ### 3.5 Check Script
@@ -388,21 +388,21 @@ T+7m    运行: bun check-coding-reverse-str.ts <run_dir>
 ### 4.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_tollgate (3 gates)
-T+0m     dispatch G1 producer (alice, simulator)
-T+0~12m  alice 实现 FTCS 求解器 → 跑 manufactured solution → 报 GATE1_RESULT → idle
-T+12m    G1 gate: dispatch verifier (bob, reviewer)
-T+12~19m bob 核对 max-error < 1e-3 → 输出 VERDICT1
-T+19m    G1 PASS → G2 producer 启动 (carol, simulator)
-T+19~31m carol 跑 3 套网格收敛研究 → 报 GATE2_RESULT → idle
-T+31m    G2 gate: dispatch verifier (dave, physicist)
-T+31~38m dave 核对 order >= 2 → 输出 VERDICT2
-T+38m    G2 PASS → G3 producer 启动 (erin, simulator)
-T+38~50m erin 跑 1000 步守恒检验 → 报 GATE3_RESULT → idle
-T+50m    G3 gate: dispatch verifier (frank, physicist)
-T+50~57m frank 核对 drift < 1e-4 → 输出 VERDICT3
-T+57m    G3 PASS → 流水线结束，结果交付 master
-T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
+T+0m     master calls team_tollgate (3 gates)
+T+0m     dispatches G1 producer (alice, simulator)
+T+0~12m  alice implements FTCS solver → runs manufactured solution → reports GATE1_RESULT → idle
+T+12m    G1 gate: dispatches verifier (bob, reviewer)
+T+12~19m bob checks max-error < 1e-3 → outputs VERDICT1
+T+19m    G1 PASS → G2 producer starts (carol, simulator)
+T+19~31m carol runs 3-mesh grid convergence study → reports GATE2_RESULT → idle
+T+31m    G2 gate: dispatches verifier (dave, physicist)
+T+31~38m dave checks order >= 2 → outputs VERDICT2
+T+38m    G2 PASS → G3 producer starts (erin, simulator)
+T+38~50m erin runs 1000-step conservation check → reports GATE3_RESULT → idle
+T+50m    G3 gate: dispatches verifier (frank, physicist)
+T+50~57m frank checks drift < 1e-4 → outputs VERDICT3
+T+57m    G3 PASS → pipeline ends, result delivered to master
+T+57m    Run: bun check-physics-heat-vv.ts <run_dir>
 ```
 
 (If any gate fails and attempts <= max_gate_retries, the producer is sent back with the diff to redo and go through that gate again; exceeding retries causes the entire pipeline to fail.)
@@ -445,67 +445,67 @@ T+57m    运行: bun check-physics-heat-vv.ts <run_dir>
 ### Scenario 1: Implement Fast Power + Verify (Math)
 
 ```text
-执行 demos/09-team-tollgate/README.md「场景 1」的完整闭环并自动评判。
+Execute the full closed loop for demos/09-team-tollgate/README.md "Scenario 1" with automatic evaluation.
 
-步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（producer + verifier 两个成员）
-2. team_activate 激活
-3. 读 README「1.3 Master 启动调用」，按 team_tollgate JSON 启动编排（1 个门：implement → verify）
-4. team_results 轮询至 master 收到汇总（verifier PASS 才交付；FAIL 回退 producer 重做，受 max_gate_retries 限制）
-5. 定位 <run_dir>（含 producer 与 verifier 的 .md）
-6. 运行：bun demos/09-team-tollgate/check-math-fast-pow.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "1.2 Team Configuration", create the team with team_create JSON (producer + verifier, 2 members)
+2. team_activate to activate
+3. Read README "1.3 Master Launch Call", start orchestration with the team_tollgate JSON (1 gate: implement → verify)
+4. team_results poll until master receives summary (verifier PASS before delivery; FAIL sends producer back to redo, constrained by max_gate_retries)
+5. Locate <run_dir> (containing producer and verifier .md files)
+6. Run: bun demos/09-team-tollgate/check-math-fast-pow.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：producer 的 modPow 通过 3 用例（2^10 mod 1000 = 24、3^0 mod 7 = 1、7^256 mod 13 = 9）；verifier VERDICT = PASS。
+Success criteria: producer modPow passes 3 test cases (2^10 mod 1000 = 24, 3^0 mod 7 = 1, 7^256 mod 13 = 9); verifier VERDICT = PASS.
 ```
 
 ### Scenario 2: Implement Verlet Solver + Verify (Physics)
 
 ```text
-执行 demos/09-team-tollgate/README.md「场景 2」的完整闭环并自动评判。
+Execute the full closed loop for demos/09-team-tollgate/README.md "Scenario 2" with automatic evaluation.
 
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_tollgate JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/09-team-tollgate/check-physics-verlet.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "2.2 Team Configuration", create the team with team_create JSON
+2. team_activate to activate
+3. Read README "2.3 Master Launch Call", start orchestration with the team_tollgate JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/09-team-tollgate/check-physics-verlet.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：producer 报 DRIFT < 1e-3（Verlet 辛格式守恒）；verifier VERDICT = PASS。
+Success criteria: producer reports DRIFT < 1e-3 (Verlet is symplectic/conserving); verifier VERDICT = PASS.
 ```
 
 ### Scenario 3: Implement String Reverse + Verify (Programming)
 
 ```text
-执行 demos/09-team-tollgate/README.md「场景 3」的完整闭环并自动评判。
+Execute the full closed loop for demos/09-team-tollgate/README.md "Scenario 3" with automatic evaluation.
 
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_tollgate JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/09-team-tollgate/check-coding-reverse-str.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "3.2 Team Configuration", create the team with team_create JSON
+2. team_activate to activate
+3. Read README "3.3 Master Launch Call", start orchestration with the team_tollgate JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/09-team-tollgate/check-coding-reverse-str.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：producer 的 reverseStr 通过 3 用例（'abc'→'cba'、''→''、'a🚀b'→'b🚀a' 含 surrogate pair intact）；verifier VERDICT = PASS。
+Success criteria: producer reverseStr passes 3 test cases ('abc'→'cba', ''→'', 'a🚀b'→'b🚀a' with surrogate pair intact); verifier VERDICT = PASS.
 ```
 
 ### Scenario 4: 2D Heat Equation Solver V&V Certification (Challenge-Level)
 
 ```text
-执行 demos/09-team-tollgate/README.md「场景 4」的完整闭环并自动评判（挑战级：6 成员、3 门串行 V&V）。
+Execute the full closed loop for demos/09-team-tollgate/README.md "Scenario 4" with automatic evaluation (challenge-level: 6 members, 3 serial V&V gates).
 
-步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（6 名成员：alice/bob/carol/dave/erin/frank）
-2. team_activate 激活
-3. 读 README「4.3 Master 启动调用」，按 team_tollgate JSON 启动编排（3 门串行：correctness -> convergence -> conservation）
-4. team_results 轮询至 master 收到汇总（每门 verifier PASS 才放行下一门；FAIL 回退 producer 重做，受 max_gate_retries=1 限制）
-5. 定位 <run_dir>（含 6 个成员的 .md：alice/bob/carol/dave/erin/frank）
-6. 运行：bun demos/09-team-tollgate/check-physics-heat-vv.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "4.2 Team Configuration", create the team with team_create JSON (6 members: alice/bob/carol/dave/erin/frank)
+2. team_activate to activate
+3. Read README "4.3 Master Launch Call", start orchestration with the team_tollgate JSON (3 serial gates: correctness -> convergence -> conservation)
+4. team_results poll until master receives summary (each gate verifier must PASS before the next gate proceeds; FAIL sends producer back to redo, constrained by max_gate_retries=1)
+5. Locate <run_dir> (containing 6 member .md files: alice/bob/carol/dave/erin/frank)
+6. Run: bun demos/09-team-tollgate/check-physics-heat-vv.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：G1 max-error < 1e-3 且 VERDICT1 = PASS；G2 convergence order >= 2 且 VERDICT2 = PASS；G3 heat drift < 1e-4 且 VERDICT3 = PASS。三门全 PASS 才判 PASS。
+Success criteria: G1 max-error < 1e-3 AND VERDICT1 = PASS; G2 convergence order >= 2 AND VERDICT2 = PASS; G3 heat drift < 1e-4 AND VERDICT3 = PASS. All three gates must PASS for overall PASS.
 ```

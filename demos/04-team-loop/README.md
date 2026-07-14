@@ -565,67 +565,67 @@ T+60m     run: bun check-coding-lockfree-queue.ts <run_dir>
 ### Scenario 1: Fix Bisection Root-Finding Boundary Bugs (Math)
 
 ```text
-执行 demos/04-team-loop/README.md「场景 1」的完整闭环并自动评判。
+Execute the complete closed loop for demos/04-team-loop/README.md "Scenario 1" and auto-evaluate.
 
-步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「1.3 Master 启动调用」，按 team_loop JSON 启动编排（注意 initial_task 是待修的 buggy 代码）
-4. team_results 轮询至 master 收到汇总（最多 max_rounds 轮，decider 说 done 即停）
-5. 定位 <run_dir>（含 decider 成员的 .md）
-6. 运行：bun demos/04-team-loop/check-math-bisection-fix.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "1.2 Team Configuration", create the team using the team_create JSON
+2. team_activate to activate
+3. Read README "1.3 Master Launch Call", start the orchestration using the team_loop JSON (note: initial_task is the buggy code to fix)
+4. team_results poll until master receives summary (max max_rounds rounds, stops when decider says done)
+5. Locate <run_dir> (contains decider member's .md)
+6. Run: bun demos/04-team-loop/check-math-bisection-fix.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：decider 最终轮 `"decision": "done"` 且 `"testsPass": true`（NaN / 单侧区间 / 收敛阈值三类边界 bug 全修）。
+Success criteria: decider final round `"decision": "done"` and `"testsPass": true` (all three boundary bugs fixed: NaN / same-sign interval / convergence threshold).
 ```
 
 ### Scenario 2: Debug Spring-Mass Energy Drift (Physics)
 
 ```text
-执行 demos/04-team-loop/README.md「场景 2」的完整闭环并自动评判。
+Execute the complete closed loop for demos/04-team-loop/README.md "Scenario 2" and auto-evaluate.
 
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_loop JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>（含 decider 与 analyst 成员的 .md）
-6. 运行：bun demos/04-team-loop/check-physics-spring-energy.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "2.2 Team Configuration", create the team using the team_create JSON
+2. team_activate to activate
+3. Read README "2.3 Master Launch Call", start the orchestration using the team_loop JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir> (contains decider and analyst member .md)
+6. Run: bun demos/04-team-loop/check-physics-spring-energy.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：decider decision="done" 且 `"driftAcceptable": true`；analyst 报 DRIFT_AFTER < 1e-3（Verlet 替换 Euler 后）。
+Success criteria: decider decision="done" and `"driftAcceptable": true`; analyst reports DRIFT_AFTER < 1e-3 (after Verlet replaces Euler).
 ```
 
 ### Scenario 3: Fix Off-by-One Interval Merge Bug (Programming)
 
 ```text
-执行 demos/04-team-loop/README.md「场景 3」的完整闭环并自动评判。
+Execute the complete closed loop for demos/04-team-loop/README.md "Scenario 3" and auto-evaluate.
 
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_loop JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/04-team-loop/check-coding-interval-merge.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "3.2 Team Configuration", create the team using the team_create JSON
+2. team_activate to activate
+3. Read README "3.3 Master Launch Call", start the orchestration using the team_loop JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/04-team-loop/check-coding-interval-merge.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：decider decision="done" 且 `"allPass": true`（5 个用例含 [[1,3],[3,5]] 这类 touching 区间正确合并）。
+Success criteria: decider decision="done" and `"allPass": true` (5 test cases including [[1,3],[3,5]] touching interval correctly merged).
 ```
 
 ### Scenario 4: Fix Lock-free Queue Four-Class Concurrency Bugs (Challenge-Level)
 
 ```text
-执行 demos/04-team-loop/README.md「场景 4」的完整闭环并自动评判。
+Execute the complete closed loop for demos/04-team-loop/README.md "Scenario 4" and auto-evaluate.
 
-步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（7 成员：alice/bob/carol/dave 为 coder，erin/frank 为 tester，grace 为 reviewer）
-2. team_activate 激活
-3. 读 README「4.3 Master 启动调用」，按 team_loop JSON 启动编排（注意 initial_task 是含四类 bug 的 MPSCQueue；stages 共 6 个，decider=grace 由 OCTeam 自动追加）
-4. team_results 轮询至 master 收到汇总（最多 max_rounds=5 轮，decider 说 done 即停）
-5. 定位 <run_dir>（含 grace/frank 等 7 个成员的 .md）
-6. 运行：bun demos/04-team-loop/check-coding-lockfree-queue.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "4.2 Team Configuration", create the team using the team_create JSON (7 members: alice/bob/carol/dave as coder, erin/frank as tester, grace as reviewer)
+2. team_activate to activate
+3. Read README "4.3 Master Launch Call", start the orchestration using the team_loop JSON (note: initial_task is the MPSCQueue with four bug classes; stages total 6, decider=grace auto-appended by OCTeam)
+4. team_results poll until master receives summary (max max_rounds=5 rounds, stops when decider says done)
+5. Locate <run_dir> (contains grace/frank etc. 7 member .md files)
+6. Run: bun demos/04-team-loop/check-coding-lockfree-queue.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：decider decision="done" 且 `"allFixed": true` 且 `"stressPass": true`；frank 报 STRESS_OPS=10^7 且 STRESS_RESULT=pass（四类并发 bug ABA/acquire/yield/null-sentinel 全修，10^7 FIFO 压测无违例）。
+Success criteria: decider decision="done" and `"allFixed": true` and `"stressPass": true`; frank reports STRESS_OPS=10^7 and STRESS_RESULT=pass (all four concurrency bugs ABA/acquire/yield/null-sentinel fixed, 10^7 FIFO stress no violations).
 ```

@@ -499,30 +499,30 @@ T+~85  You read all output, decide the outcome
 > Paste the entire block to the master session. Master will run 5 teams in sequence, executing each step per the README's JSON configuration, with data hand-carried between teams by master.
 
 ```text
-按 demos/composite/feature-dev/README.md 跑一次 OCTeam 功能增强工作流。
+Follow demos/composite/feature-dev/README.md to run an OCTeam feature enhancement workflow.
 
-执行 5 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
+Execute 5 teams, each going through the full lifecycle: team_create → team_activate → team_<mode> → team_results → team_deactivate. Only one active team at a time — must deactivate before switching.
 
-1. research-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。6 名研究员并行调研（内部 src/docs + GitHub/web 外部）。完成后 deactivate。汇总所有 <!-- CANDIDATE: <id>:<short> --> marker 成候选清单（应 ≥8 条）。
+1. research-team (team_parallel, §1): Follow §1.2 team_create, §1.3 team_parallel. 6 researchers survey in parallel (internal src/docs + GitHub/web external). Deactivate when done. Compile all <!-- CANDIDATE: <id>:<short> --> markers into a candidate list (should be ≥8 items).
 
-2. discussion-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步候选清单，max_rounds=4）。5 名 debater 综合必要性/可行性/复杂度投票选 1。完成后 deactivate。抓取 <!-- SELECTED: <id> --> + 理由。**若未达成共识（consensus_max_rounds），deactivate 后中断流程，不继续。**
+2. discussion-team (team_consensus, §2): Follow §2.2 team_create, §2.3 team_consensus (topic = previous candidate list, max_rounds=4). 5 debaters weigh necessity/feasibility/complexity and vote on 1. Deactivate when done. Capture <!-- SELECTED: <id> --> + rationale. **If consensus is not reached (consensus_max_rounds), abort the workflow after deactivate, do not continue.**
 
-3. plan-team (team_loop，§3)：按 §3.2 team_create，§3.3 team_loop（initial_task 含 SELECTED 功能）。每轮 henry 编写 → iris 审计，jack 裁决。完成后 deactivate。抓取 <!-- PLAN-APPROVED --> + 完整方案。**若 max_rounds 用尽仍未通过（loop_complete:max_rounds），deactivate 后中断流程，不继续。**
+3. plan-team (team_loop, §3): Follow §3.2 team_create, §3.3 team_loop (initial_task includes SELECTED feature). Each round: henry drafts → iris audits, jack decides. Deactivate when done. Capture <!-- PLAN-APPROVED --> + complete plan. **If max_rounds exhausted without approval (loop_complete:max_rounds), abort the workflow after deactivate, do not continue.**
 
-4. implement-team (team_pipeline，§4)：**先 aft_safety(checkpoint, "pre-implement") 快照当前代码（便于最后回退）**，再按 §4.2 team_create，§4.3 team_pipeline（首阶段 task 内嵌 §3.5 方案）。kate 实现 → leo 写+跑测试 → mona 评审。完成后 deactivate。汇总改动摘要 + 测试结果 + 评审结论。
+4. implement-team (team_pipeline, §4): **First aft_safety(checkpoint, "pre-implement") to snapshot current code (for easy rollback later)**, then follow §4.2 team_create, §4.3 team_pipeline (first stage task embeds §3.5 plan). kate implements → leo writes+runs tests → mona reviews. Deactivate when done. Compile change summary + test results + review conclusions.
 
-5. audit-team (team_parallel，§5)：按 §5.2 team_create，§5.3 team_parallel（task 含 §4 实现摘要，signoff_policy=peer-quorum，signoff_quorum=0.5）。4 名审计员并行深审后全员投票。完成后 deactivate。汇总所有 <!-- AUDIT: <dim>: pass|fail --> marker + 投票结果（参考）。
+5. audit-team (team_parallel, §5): Follow §5.2 team_create, §5.3 team_parallel (task includes §4 implementation summary, signoff_policy=peer-quorum, signoff_quorum=0.5). 4 auditors deeply audit in parallel then all vote. Deactivate when done. Compile all <!-- AUDIT: <dim>: pass|fail --> markers + vote result (for reference).
 
-全部完成后，把每个团队的产出（candidates / selected / plan / implementation / audit verdicts）整理给我，由我裁定结果。不跑评判脚本。
+Once all are complete, organize each team's output (candidates / selected / plan / implementation / audit verdicts) for me; I will judge the results. Do not run the check scripts.
 
-注意：
-- 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby/sam/tom/uma...），角色必须用 explorer/researcher/analyst/reviewer/architect/writer/coder/tester 等预设值。
-- 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
-- plan-team 的 decider（jack）不能出现在 stages 里。
-- pipeline 模式无 action 字段；各 stage 顺序加工，前 stage 产出自动拼进下 stage task。
-- 当 team 在运行中时，轮询 team_progress/team_results 的间隔为 30 秒，不要更频繁。
-- **discussion-team 未达成共识或 plan-team 方案未通过时，立即中断流程**，deactivate 当前团队后不继续后续阶段。
-- implement-team 启动前一定先 `aft_safety(checkpoint)` 快照代码，审计后可按需 `restore` 回退。
+Note:
+- Member names must come from the 32-name preset pool (alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby/sam/tom/uma...), roles must use preset values: explorer/researcher/analyst/reviewer/architect/writer/coder/tester etc.
+- Always team_deactivate the current team before switching, otherwise team_activate will be rejected.
+- plan-team's decider (jack) cannot appear in stages.
+- Pipeline mode has no action field; stages process sequentially, preceding stage output is auto-spliced into the next stage's task.
+- When a team is running, the polling interval for team_progress/team_results is 30 seconds; do not poll more frequently.
+- **If discussion-team fails to reach consensus or plan-team plan is not approved, immediately abort the workflow**, do not continue to subsequent phases after deactivating the current team.
+- Before starting implement-team, always take an `aft_safety(checkpoint)` snapshot of the code; after audit, you can `restore` to rollback as needed.
 ```
 
 ---

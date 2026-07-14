@@ -91,12 +91,12 @@
 ### 1.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_parallel (cooperative)
-T+0m    OCTeam 并行 dispatch 3 个 mathematician 成员
-T+0~8m  各成员独立：写代码 → 运行 10^6 采样 → 写 markdown 报告 + PI_EST 标记
-T+8m    最慢成员 idle → 触发 reduce (merge policy)
-T+9m    汇总报告交付 master
-T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
+T+0m    master calls team_parallel (cooperative)
+T+0m    OCTeam dispatches 3 mathematician members in parallel
+T+0~8m  each member independently: write code → run 10^6 samples → write markdown report + PI_EST marker
+T+8m    slowest member idle → trigger reduce (merge policy)
+T+9m    aggregated report delivered to master
+T+9m    run: bun check-math-montecarlo-pi.ts <run_dir>
 ```
 
 ### 1.5 Check Script
@@ -184,12 +184,12 @@ T+9m    运行: bun check-math-montecarlo-pi.ts <run_dir>
 ### 2.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_parallel (cooperative)
-T+0m    3 个 simulator 成员并行 dispatch
-T+0~6m  各成员写积分器代码 → 跑 1000 步 → 报告 ENERGY_DRIFT
-T+6m    三成员 idle → reduce (select policy, reducer=alice)
-T+7m    alice 汇总对比，交付 master
-T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
+T+0m    master calls team_parallel (cooperative)
+T+0m    3 simulator members dispatched in parallel
+T+0~6m  each member writes integrator code → run 1000 steps → report ENERGY_DRIFT
+T+6m    all three members idle → reduce (select policy, reducer=alice)
+T+7m    alice aggregates & compares, delivers to master
+T+7m    run: bun check-physics-harmonic-integrator.ts <run_dir>
 ```
 
 ### 2.5 Check Script
@@ -276,12 +276,12 @@ T+7m    运行: bun check-physics-harmonic-integrator.ts <run_dir>
 ### 3.4 Execution Flow (Timeline)
 
 ```
-T+0m    master 调用 team_parallel (cooperative)
-T+0m    3 个 coder 成员并行 dispatch
-T+0~5m  各成员写 Two Sum 实现 + 嵌入代码 + 复杂度标注
-T+5m    三成员 idle → reduce (rubric policy, reducer=alice)
-T+6m    alice 按评分表打分排名，产出 reducedResult
-T+6m    运行: bun check-coding-twosum.ts <run_dir>
+T+0m    master calls team_parallel (cooperative)
+T+0m    3 coder members dispatched in parallel
+T+0~5m  each member writes Two Sum implementation + embed code + complexity annotation
+T+5m    all three members idle → reduce (rubric policy, reducer=alice)
+T+6m    alice scores & ranks by rubric, produces reducedResult
+T+6m    run: bun check-coding-twosum.ts <run_dir>
 ```
 
 ### 3.5 Check Script
@@ -426,12 +426,12 @@ T+6m    运行: bun check-coding-twosum.ts <run_dir>
 ### 4.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_parallel (cooperative, 8 members)
-T+0m     OCTeam 并行 dispatch 8 个 coder 成员（满编团队）
-T+0~35m  各成员独立：实现算法 → 生成 3×10^6 数据集 (seed=42) → 排序 + 计时 → 与原生排序逐元素比对 → 写 markdown 报告 + 4 标记
-T+35m    最慢成员 idle → 触发 reduce (merge policy, reducer=alice)
-T+38m    合并的 8×3 对比表交付 master
-T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
+T+0m     master calls team_parallel (cooperative, 8 members)
+T+0m     OCTeam dispatches 8 coder members in parallel (full team)
+T+0~35m  each member independently: implement algorithm → generate 3×10^6 datasets (seed=42) → sort + time → element-by-element verification against native sort → write markdown report + 4 markers
+T+35m    slowest member idle → trigger reduce (merge policy, reducer=alice)
+T+38m    merged 8×3 comparison table delivered to master
+T+38m    run: bun check-coding-sort-benchmark.ts <run_dir>
 ```
 
 ### 4.5 Check Script
@@ -468,69 +468,69 @@ T+38m    运行: bun check-coding-sort-benchmark.ts <run_dir>
 ### Scenario 1: Monte Carlo Pi 3-Method Comparison
 
 ```text
-执行 demos/01-team-parallel/README.md「场景 1: Monte Carlo π 三方法对比」的完整闭环并自动评判。
+Run the full closed loop of demos/01-team-parallel/README.md "Scenario 1: Monte Carlo Pi 3-Method Comparison" and auto-evaluate.
 
-步骤：
-1. 读 README「1.2 Team 配置」，按其中的 team_create JSON 创建团队
-2. team_activate 激活（team_id = 上一步创建的团队名）
-3. 读 README「1.3 Master 启动调用」，按其中的 team_parallel JSON 启动编排
-4. team_results 轮询，等待编排完成、master 收到汇总
-5. 定位本次 run 的输出目录 <run_dir>（含 alice.md / bob.md / carol.md）
-6. 运行评判：
+Steps:
+1. Read README "1.2 Team Config", create the team using the team_create JSON
+2. team_activate (team_id = the team name created in the previous step)
+3. Read README "1.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
+4. team_results poll, wait for orchestration to complete and master to receive summary
+5. Locate the output directory <run_dir> for this run (contains alice.md / bob.md / carol.md)
+6. Run evaluation:
    bun demos/01-team-parallel/check-math-montecarlo-pi.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：三方法 |π_est − π| < 0.05；且分层抽样误差 ≤ 朴素 Monte Carlo。
+Success criteria: all three methods |π_est − π| < 0.05; and stratified sampling error ≤ naive Monte Carlo.
 ```
 
 ### Scenario 2: Harmonic Oscillator 3 Integrators Energy Drift
 
 ```text
-执行 demos/01-team-parallel/README.md「场景 2: 谐振子三积分器能量漂移」的完整闭环并自动评判。
+Run the full closed loop of demos/01-team-parallel/README.md "Scenario 2: Harmonic Oscillator 3 Integrators Energy Drift" and auto-evaluate.
 
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_parallel JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>（含 alice.md / bob.md / carol.md）
-6. 运行：bun demos/01-team-parallel/check-physics-harmonic-integrator.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "2.2 Team Config", create the team using the team_create JSON
+2. team_activate
+3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
+6. Run: bun demos/01-team-parallel/check-physics-harmonic-integrator.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：显式 Euler 能量漂移 > 1e-3（体现病理）；Verlet 与 RK4 的漂移均 < Euler。
+Success criteria: explicit Euler energy drift > 1e-3 (demonstrates pathology); both Verlet and RK4 drift < Euler.
 ```
 
 ### Scenario 3: Two-Sum Multi-Solution Complexity Comparison
 
 ```text
-执行 demos/01-team-parallel/README.md「场景 3: 两数和多解法复杂度对比」的完整闭环并自动评判。
+Run the full closed loop of demos/01-team-parallel/README.md "Scenario 3: Two-Sum Multi-Solution Complexity Comparison" and auto-evaluate.
 
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_parallel JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>（含 alice.md / bob.md / carol.md）
-6. 运行：bun demos/01-team-parallel/check-coding-twosum.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "3.2 Team Config", create the team using the team_create JSON
+2. team_activate
+3. Read README "3.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
+6. Run: bun demos/01-team-parallel/check-coding-twosum.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：3 个测试用例（[2,7,11,15]/9、[3,2,4]/6、[3,3]/6）全通过；复杂度标注正确（alice=O(n²)、bob=O(n)、carol=O(n log n)）。
+Success criteria: all 3 test cases ([2,7,11,15]/9, [3,2,4]/6, [3,3]/6) pass; complexity annotations correct (alice=O(n²), bob=O(n), carol=O(n log n)).
 ```
 
 ### Scenario 4: 8 Sorting Algorithms Large-Data Benchmark (Challenge-Level)
 
 ```text
-执行 demos/01-team-parallel/README.md「场景 4: 8 种排序算法大数据基准（挑战级）」的完整闭环并自动评判。
+Run the full closed loop of demos/01-team-parallel/README.md "Scenario 4: 8 Sorting Algorithms Large-Data Benchmark (Challenge-Level)" and auto-evaluate.
 
-步骤：
-1. 读 README「4.2 Team 配置」，按其中的 team_create JSON 创建团队（8 名 coder 成员，alice..henry）
-2. team_activate 激活（team_id = sort-bench）
-3. 读 README「4.3 Master 启动调用」，按其中的 team_parallel JSON 启动编排（timeout_ms=3600000，给足 60 min）
-4. team_results 轮询，等待编排完成、master 收到 merge 汇总（含 8×3 对比表）
-5. 定位本次 run 的输出目录 <run_dir>（含 alice.md ... henry.md，共 8 个）
-6. 运行评判：
+Steps:
+1. Read README "4.2 Team Config", create the team using the team_create JSON (8 coder members, alice..henry)
+2. team_activate (team_id = sort-bench)
+3. Read README "4.3 Master Launch Invocation", start the orchestration using the team_parallel JSON (timeout_ms=3600000, allowing 60 min)
+4. team_results poll, wait for orchestration to complete and master to receive merge summary (includes 8×3 comparison table)
+5. Locate the output directory <run_dir> for this run (contains alice.md ... henry.md, 8 files total)
+6. Run evaluation:
    bun demos/01-team-parallel/check-coding-sort-benchmark.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：8 个成员各自 SORT_OK=true（3 个 10^6 数据集均与原生排序一致）；且 24 个 TIME 标记（8 成员 × 3 数据集）全部存在。
+Success criteria: all 8 members SORT_OK=true (all 3 datasets of 10^6 match native sort); and all 24 TIME markers (8 members × 3 datasets) are present.
 ```

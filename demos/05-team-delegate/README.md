@@ -534,67 +534,67 @@ T+90m    run: bun demos/05-team-delegate/check-math-100-problems.ts <run_dir>
 ### Scenario 1: 5 Number-Theory Problems (Math)
 
 ```text
-执行 demos/05-team-delegate/README.md「场景 1」的完整闭环并自动评判。
+Execute the complete closed loop for demos/05-team-delegate/README.md "Scenario 1" and auto-evaluate.
 
-步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「1.3 Master 启动调用」，按 team_delegate JSON 启动编排（5 个独立任务发布到 tasklist）
-4. team_results 轮询至 master 收到汇总（成员自取自报，无任务即停）
-5. 定位 <run_dir>（含各成员 .md，ANSWER marker 分布其中）
-6. 运行：bun demos/05-team-delegate/check-math-number-theory.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "1.2 Team Configuration", create the team using the team_create JSON
+2. team_activate to activate
+3. Read README "1.3 Master Launch Call", start the orchestration using the team_delegate JSON (5 independent tasks published to tasklist)
+4. team_results poll until master receives summary (members self-claim, stop when no tasks remain)
+5. Locate <run_dir> (contains each member .md, ANSWER markers distributed within)
+6. Run: bun demos/05-team-delegate/check-math-number-theory.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：5 个 ANSWER marker 全对（25, 21, true, 56, 4）。
+Success criteria: 5 ANSWER markers all correct (25, 21, true, 56, 4).
 ```
 
 ### Scenario 2: 3 Classic ODE Short Simulations (Physics)
 
 ```text
-执行 demos/05-team-delegate/README.md「场景 2」的完整闭环并自动评判。
+Execute the complete closed loop for demos/05-team-delegate/README.md "Scenario 2" and auto-evaluate.
 
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_delegate JSON 启动编排（3 个独立 ODE 任务）
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/05-team-delegate/check-physics-ode-suite.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "2.2 Team Configuration", create the team using the team_create JSON
+2. team_activate to activate
+3. Read README "2.3 Master Launch Call", start the orchestration using the team_delegate JSON (3 independent ODE tasks)
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/05-team-delegate/check-physics-ode-suite.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：3 个结果 marker 落在预期范围（Lotka-Volterra prey(20)≈4.5；Van der Pol 振幅≈2.0；阻尼振荡 underdamped=yes）。
+Success criteria: 3 result markers fall within expected ranges (Lotka-Volterra prey(20)≈4.5; Van der Pol amplitude≈2.0; damped oscillator underdamped=yes).
 ```
 
 ### Scenario 3: Mini CLI Calculator (Programming, blockedBy DAG)
 
 ```text
-执行 demos/05-team-delegate/README.md「场景 3」的完整闭环并自动评判。
+Execute the complete closed loop for demos/05-team-delegate/README.md "Scenario 3" and auto-evaluate.
 
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_delegate JSON 启动编排（4 个任务含 blockedBy 依赖：api → core/output → tests）
-4. team_results 轮询至 master 收到汇总（依赖解锁后下游任务才可被认领）
-5. 定位 <run_dir>
-6. 运行：bun demos/05-team-delegate/check-coding-cli-calc.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "3.2 Team Configuration", create the team using the team_create JSON
+2. team_activate to activate
+3. Read README "3.3 Master Launch Call", start the orchestration using the team_delegate JSON (4 tasks with blockedBy dependencies: api -> core/output -> tests)
+4. team_results poll until master receives summary (downstream tasks claimable only after dependencies unlock)
+5. Locate <run_dir>
+6. Run: bun demos/05-team-delegate/check-coding-cli-calc.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：4 个 marker 齐全（SPEC_OK=true、IMPL: calculate、IMPL: format、PASS_COUNT=4/4），且 calculate 通过 4 用例（2+3=5、10-4=6、3*7=21、20/4=5）。
+Success criteria: 4 markers all present (SPEC_OK=true, IMPL: calculate, IMPL: format, PASS_COUNT=4/4), and calculate passes 4 test cases (2+3=5, 10-4=6, 3*7=21, 20/4=5).
 ```
 
 ### Scenario 4: 100 Programmatic Number-Theory Problems (Challenge-Level, 8 Members)
 
 ```text
-执行 demos/05-team-delegate/README.md「场景 4」的完整闭环并自动评判。注意：此为挑战级场景，预计 ~90 min、8 成员并发。
+Execute the complete closed loop for demos/05-team-delegate/README.md "Scenario 4" and auto-evaluate. Note: challenge-level scenario, ~90 min estimated, 8 members concurrent.
 
-步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（8 个 mathematician 成员 alice..henry，含 erin）
-2. team_activate 激活
-3. 读 README「4.3 Master 启动调用」+ Ref scheme 表，按 team_delegate JSON 启动编排：tasks[] 需展开为 100 条（p1..p100），按 4 个 family 模板生成（π(10·k) / σ(101..125) / 2^k mod 1e9+7 / φ(201..225)），全部无 blocked_by
-4. team_results 轮询至 master 收到汇总（成员自取自报，无任务即停；100 题 / 8 成员 ≈ 13 轮）
-5. 定位 <run_dir>（含 8 个成员 .md，ANSWER_n marker 分布其中）
-6. 运行：bun demos/05-team-delegate/check-math-100-problems.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "4.2 Team Configuration", create the team using the team_create JSON (8 mathematician members alice..henry, including erin)
+2. team_activate to activate
+3. Read README "4.3 Master Launch Call" + Ref scheme table, start the orchestration using the team_delegate JSON: tasks[] must be expanded to 100 entries (p1..p100), generated from 4 family templates (π(10·k) / σ(101..125) / 2^k mod 1e9+7 / φ(201..225)), all with no blocked_by
+4. team_results poll until master receives summary (members self-claim, stop when no tasks remain; 100 problems / 8 members ≈ 13 rounds)
+5. Locate <run_dir> (contains 8 member .md files, ANSWER_n markers distributed within)
+6. Run: bun demos/05-team-delegate/check-math-100-problems.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：100 题 ≥ 95 答案正确（脚本独立用筛法/除数和/modPow/totient 算 ground truth，容忍少量 flaky claim）。
+Success criteria: 100 problems, >= 95 answers correct (script independently computes ground truth via sieve/divisor sum/modPow/totient, tolerating a few flaky claims).
 ```

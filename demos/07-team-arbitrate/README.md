@@ -432,67 +432,67 @@ T+24m    Run: bun check-physics-pde-arbitrate.ts <run_dir>
 ### Scenario 1: 4×4 Matrix Inversion Debate (math)
 
 ```text
-执行 demos/07-team-arbitrate/README.md「场景 1」的完整闭环并自动评判。
+Execute the full closed loop for demos/07-team-arbitrate/README.md "Scenario 1" with automatic evaluation.
 
-步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（2 debater + 1 arbiter）
-2. team_activate 激活
-3. 读 README「1.3 Master 启动调用」，按 team_arbitrate JSON 启动编排
-4. team_results 轮询至 master 收到汇总（辩手辩论后 arbiter 出裁决）
-5. 定位 <run_dir>（含 carol 成员 .md）
-6. 运行：bun demos/07-team-arbitrate/check-math-matrix-inverse.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "1.2 Team Configuration", create the team with team_create JSON (2 debaters + 1 arbiter)
+2. team_activate to activate
+3. Read README "1.3 Master Launch Call", start orchestration with the team_arbitrate JSON
+4. team_results poll until master receives summary (arbiter issues ruling after debaters debate)
+5. Locate <run_dir> (containing carol member .md)
+6. Run: bun demos/07-team-arbitrate/check-math-matrix-inverse.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：arbiter RULING = direct；REASON 含 condition 或 dense（4×4 稠密良态矩阵直接法胜出）。
+Success criteria: arbiter RULING = direct; REASON contains condition or dense (direct method wins for the 4x4 dense well-conditioned matrix).
 ```
 
 ### Scenario 2: Stiff ODE Method Debate (physics)
 
 ```text
-执行 demos/07-team-arbitrate/README.md「场景 2」的完整闭环并自动评判。
+Execute the full closed loop for demos/07-team-arbitrate/README.md "Scenario 2" with automatic evaluation.
 
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_arbitrate JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/07-team-arbitrate/check-physics-stiff-ode.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "2.2 Team Configuration", create the team with team_create JSON
+2. team_activate to activate
+3. Read README "2.3 Master Launch Call", start orchestration with the team_arbitrate JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/07-team-arbitrate/check-physics-stiff-ode.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：arbiter RULING = implicit；REASON 含 stiff 或 stability（dy/dt=-1000y 显式受 dt<0.002 限制）。
+Success criteria: arbiter RULING = implicit; REASON contains stiff or stability (explicit method for dy/dt=-1000y is constrained by dt<0.002).
 ```
 
 ### Scenario 3: Cache Eviction Policy Debate (programming)
 
 ```text
-执行 demos/07-team-arbitrate/README.md「场景 3」的完整闭环并自动评判。
+Execute the full closed loop for demos/07-team-arbitrate/README.md "Scenario 3" with automatic evaluation.
 
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_arbitrate JSON 启动编排
-4. team_results 轮询至 master 收到汇总
-5. 定位 <run_dir>
-6. 运行：bun demos/07-team-arbitrate/check-coding-cache-eviction.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "3.2 Team Configuration", create the team with team_create JSON
+2. team_activate to activate
+3. Read README "3.3 Master Launch Call", start orchestration with the team_arbitrate JSON
+4. team_results poll until master receives summary
+5. Locate <run_dir>
+6. Run: bun demos/07-team-arbitrate/check-coding-cache-eviction.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：arbiter RULING = lru；REASON 含 temporal 或 recency（强时间局部性 workload 偏好 LRU）。
+Success criteria: arbiter RULING = lru; REASON contains temporal or recency (strong temporal locality workload favors LRU).
 ```
 
 ### Scenario 4: Complex-Boundary PDE Five-Method Debate (physics · challenge-level)
 
 ```text
-执行 demos/07-team-arbitrate/README.md「场景 4」的完整闭环并自动评判。
+Execute the full closed loop for demos/07-team-arbitrate/README.md "Scenario 4" with automatic evaluation.
 
-步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（5 debater + 1 arbiter，挑战级）
-2. team_activate 激活
-3. 读 README「4.3 Master 启动调用」，按 team_arbitrate JSON 启动编排（max_rounds=3）
-4. team_results 轮询至 master 收到汇总（五方三轮辩论后 arbiter 出裁决）
-5. 定位 <run_dir>（含 frank 成员 .md）
-6. 运行：bun demos/07-team-arbitrate/check-physics-pde-arbitrate.ts <run_dir>
-7. 按退出码报告：0 = PASS，1 = FAIL，2 = 用法/IO 错误
+Steps:
+1. Read README "4.2 Team Configuration", create the team with team_create JSON (5 debaters + 1 arbiter, challenge-level)
+2. team_activate to activate
+3. Read README "4.3 Master Launch Call", start orchestration with the team_arbitrate JSON (max_rounds=3)
+4. team_results poll until master receives summary (arbiter issues ruling after five-way three-round debate)
+5. Locate <run_dir> (containing frank member .md)
+6. Run: bun demos/07-team-arbitrate/check-physics-pde-arbitrate.ts <run_dir>
+7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-成功标准：arbiter RULING ∈ {fem, fdm, fvm, spectral, bem}；REASON 至少含 {curved, boundary, advection, nonlinear, flux, mesh} 中两项（复杂边界 + 对流占优 + 非线性源项，物理预期 FEM/FVM 胜出）。
+Success criteria: arbiter RULING ∈ {fem, fdm, fvm, spectral, bem}; REASON contains at least two of {curved, boundary, advection, nonlinear, flux, mesh} (complex boundary + advection-dominated + nonlinear source term, physically FEM/FVM expected to win).
 ```

@@ -594,35 +594,35 @@ T+~120 You read all output, decide the outcome
 > Paste the entire block to the master session. Master will run 6 teams in sequence, executing each step per the README's JSON configuration, with data hand-carried between teams by master.
 
 ```text
-按 demos/composite/eigen-solver/README.md 跑一次大规模矩阵本征值求解器开发工作流。
+Follow demos/composite/eigen-solver/README.md to run a large-scale matrix eigenvalue solver development workflow.
 
-执行 6 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
+Execute 6 teams, each going through the full lifecycle: team_create → team_activate → team_<mode> → team_results → team_deactivate. Only one active team at a time — must deactivate before switching.
 
-每个 phas 的产出由你（master）手递手传给下一阶段。
+Each phase's output is hand-carried by you (master) to the next phase.
 
-1. research-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。5 名研究员并行调研（经典算法/竞品/Rust生态/数值稳定性/问题优化）。完成后 deactivate。汇总所有 <!-- METHOD: <id>:<name> --> marker 成方法候选清单（应 ≥8 条）。
+1. research-team (team_parallel, §1): Follow §1.2 team_create, §1.3 team_parallel. 5 researchers survey in parallel (classic algorithms/competitors/Rust ecosystem/numerical stability/problem-specific optimization). Deactivate when done. Compile all <!-- METHOD: <id>:<name> --> markers into a methods candidate list (should be ≥8 items).
 
-2. selection-team (team_consensus，§2)：按 §2.2 team_create，§2.3 team_consensus（topic = 上一步候选清单，max_rounds=5）。5 名 debater 综合稳定性/复杂度/性能/可维护性，精确选 3 条。完成后 deactivate。抓取 3 条 <!-- SHORTLISTED: <id> --> + 理由。
+2. selection-team (team_consensus, §2): Follow §2.2 team_create, §2.3 team_consensus (topic = previous candidate list, max_rounds=5). 5 debaters weigh stability/complexity/performance/maintainability and select exactly 3. Deactivate when done. Capture the 3 <!-- SHORTLISTED: <id> --> items + rationale.
 
-3. plan-team (team_tollgate，§3)：按 §3.2 team_create，§3.3 team_tollgate（stages 含 3 个门控：kate 编写 → leo 完整门 → kate(修订) → mona 正确门 → kate(修订) → nina 可测门）。3 个评审人都必须 PASS。完成后 deactivate。抓取最终计划（包含 <!-- PLAN-APPROVED -->）。
+3. plan-team (team_tollgate, §3): Follow §3.2 team_create, §3.3 team_tollgate (stages include 3 gates: kate drafts → leo completeness gate → kate(revision) → mona correctness gate → kate(revision) → nina testability gate). All 3 reviewers must PASS. Deactivate when done. Capture the final plan (containing <!-- PLAN-APPROVED -->).
 
-4. implement-team (team_pipeline，§4)：按 §4.2 team_create，§4.3 team_pipeline（首阶段 task 内嵌 §3 的 PLAN-APPROVED 方案）。omar 编写求解器代码 → pat 写+跑 cargo test。完成后 deactivate。汇总代码产出 + 测试结果。
+4. implement-team (team_pipeline, §4): Follow §4.2 team_create, §4.3 team_pipeline (first stage task embeds §3's PLAN-APPROVED plan). omar codes the solver → pat writes+runs cargo test. Deactivate when done. Compile code output + test results.
 
-5. optimize-team (team_loop，§5)：按 §5.2 team_create，§5.3 team_loop（initial_task 含 §4 代码路径）。每轮 ruby 优化代码 → sam 运行 cargo build + cargo test 验证基线，tom 裁决。完成后 deactivate。确认 <!-- OPTIMIZED --> 标记 + 基线测试通过报告。
+5. optimize-team (team_loop, §5): Follow §5.2 team_create, §5.3 team_loop (initial_task includes §4 code path). Each round: ruby optimizes code → sam runs cargo build + cargo test to verify baseline, tom decides. Deactivate when done. Confirm <!-- OPTIMIZED --> marker + baseline test pass report.
 
-6. review-team (team_parallel，§6)：按 §6.2 team_create，§6.3 team_parallel（task 含 §5 优化后代码路径）。4 名评审员并行深审（正确性/unsafe安全/性能/代码质量）。完成后 deactivate。汇总所有 <!-- REVIEW: <dim>: pass|fail -->。
+6. review-team (team_parallel, §6): Follow §6.2 team_create, §6.3 team_parallel (task includes §5's optimized code path). 4 reviewers audit in parallel (correctness/unsafe safety/performance/code quality). Deactivate when done. Compile all <!-- REVIEW: <dim>: pass|fail --> markers.
 
-全部完成后，把每个团队的产出（methods / shortlisted / plan / implementation / optimized / review verdicts）整理给我，由我裁定结果。不跑评判脚本。
+Once all are complete, organize each team's output (methods / shortlisted / plan / implementation / optimized / review verdicts) for me; I will judge the results. Do not run the check scripts.
 
-注意：
-- 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby/sam/tom/uma/victor/wendy/xander...），角色必须用 researcher/analyst/reviewer/architect/coder/tester 等预设值。
-- 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
-- plan-team 的 tollgate 模式：每个 stage 的 verifier 不能等于 member。3 个评审人 leo/mona/nina 各自独立。
-- optimize-team 的 decider（tom）不能出现在 stages 里。
-- pipeline 模式无 action 字段；各 stage 顺序加工，前 stage 产出自动拼进下 stage task。
-- 如果 selection-team 无法收敛到精确 3 条，可增加 max_rounds。
-- 如果 plan-team 某评审人耗尽 max_gate_retries，需要手动介入调整计划。
-- 当 team 在运行中时不要频繁轮询 team_progress/team_results，等待 OCTeam 通知完成即可。
+Note:
+- Member names must come from the 32-name preset pool (alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby/sam/tom/uma/victor/wendy/xander...), roles must use preset values: researcher/analyst/reviewer/architect/coder/tester etc.
+- Always team_deactivate the current team before switching, otherwise team_activate will be rejected.
+- plan-team's tollgate mode: each stage's verifier cannot equal that stage's member. The 3 reviewers leo/mona/nina are independent of each other.
+- optimize-team's decider (tom) cannot appear in stages.
+- Pipeline mode has no action field; stages process sequentially, preceding stage output is auto-spliced into the next stage's task.
+- If selection-team cannot converge on exactly 3 items, increase max_rounds.
+- If plan-team exhausts a reviewer's max_gate_retries, manual intervention is needed to adjust the plan.
+- When a team is running, do not poll team_progress/team_results frequently; wait for OCTeam to notify completion.
 ```
 
 ---

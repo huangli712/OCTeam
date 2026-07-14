@@ -111,14 +111,14 @@
 ### 1.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_arena (3 candidates + evaluator)
-T+0m     implement 阶段: 并行 dispatch alice, bob, carol (各在独立 worktree)
-T+0~8m   三名候选各自实现排序算法 → 输出 IMPL 标记 → idle
-T+8m     barrier: 所有候选 idle → arena 阶段切换至 evaluate
-T+8m     evaluator prompt 构建: 列出候选人名 + 绝对 worktree 路径 + eval_command + winner_metric
+T+0m     master calls team_arena (3 candidates + evaluator)
+T+0m     implement phase: parallel dispatch alice, bob, carol (each in independent worktree)
+T+0~8m   three candidates each implement sorting algorithm → output IMPL marker → idle
+T+8m     barrier: all candidates idle → arena phase switches to evaluate
+T+8m     evaluator prompt build: list candidate names + absolute worktree paths + eval_command + winner_metric
 T+8m     dispatch evaluator (dave, reviewer)
-T+8~11m  dave 为每名候选跑 `bun run benchmark.bun.ts` → 收集吞吐量 → 产出 <scoreboard> JSON
-T+11m    引擎解析 scoreboard → selectArenaWinner → 结果交付 master
+T+8~11m  dave runs `bun run benchmark.bun.ts` per candidate → collects throughput → produces <scoreboard> JSON
+T+11m    engine parses scoreboard → selectArenaWinner → result delivered to master
 ```
 
 (If candidate implementation errors cause `max_errored_members` to be exceeded, the arena fails entirely; if evaluator scoreboard parse fails and attempts < max_eval_retries, the evaluator is sent back for re-evaluation.)
@@ -218,14 +218,14 @@ The engine parses this JSON and selects `alice` as the winner by `winner_metric:
 ### 2.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_arena (3 candidates + evaluator)
-T+0m     implement 阶段: 并行 dispatch alice, bob, carol (各在独立 worktree)
-T+0~8m   三名候选各自实现积分器 → 跑 1000 步 → 报告 DRIFT 标记 → idle
-T+8m     barrier: 所有候选 idle → arena 阶段切换至 evaluate
-T+8m     evaluator prompt 构建: 列出候选人名 + 绝对 worktree 路径 + eval_criteria + winner_metric
+T+0m     master calls team_arena (3 candidates + evaluator)
+T+0m     implement phase: parallel dispatch alice, bob, carol (each in independent worktree)
+T+0~8m   three candidates each implement integrator → run 1000 steps → report DRIFT marker → idle
+T+8m     barrier: all candidates idle → arena phase switches to evaluate
+T+8m     evaluator prompt build: list candidate names + absolute worktree paths + eval_criteria + winner_metric
 T+8m     dispatch evaluator (dave, physicist)
-T+8~12m  dave 读每名候选的 DRIFT 值 → 可选复算代码 → 按 eval_criteria 打分 → 产出 <scoreboard> JSON
-T+12m    引擎解析 scoreboard → selectArenaWinner → 按 score_direction: "min" 选最小漂移者 → 结果交付 master
+T+8~12m  dave reads each candidate's DRIFT value → optionally re-runs code → scores per eval_criteria → produces <scoreboard> JSON
+T+12m    engine parses scoreboard → selectArenaWinner → selects lowest drift by score_direction: "min" → result delivered to master
 ```
 
 ### 2.5 Check Script
@@ -323,14 +323,14 @@ The engine selects `carol` (drift 0.00041) as the winner using `score_direction:
 ### 3.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_arena (3 candidates + evaluator)
-T+0m     implement 阶段: 并行 dispatch alice, bob, carol (各在独立 worktree)
-T+0~8m   三名候选各自实现求积方法 → 算积分 → 报告 QUAD 标记 → idle
-T+8m     barrier: 所有候选 idle → arena 阶段切换至 evaluate
-T+8m     evaluator prompt 构建: 列出候选人名 + 绝对 worktree 路径 + eval_criteria + winner_metric
+T+0m     master calls team_arena (3 candidates + evaluator)
+T+0m     implement phase: parallel dispatch alice, bob, carol (each in independent worktree)
+T+0~8m   three candidates each implement quadrature method → compute integral → report QUAD marker → idle
+T+8m     barrier: all candidates idle → arena phase switches to evaluate
+T+8m     evaluator prompt build: list candidate names + absolute worktree paths + eval_criteria + winner_metric
 T+8m     dispatch evaluator (dave, mathematician)
-T+8~12m  dave 读每名候选的 QUAD 误差 → 可选复算代码 → 按 eval_criteria 打分 → 产出 <scoreboard> JSON
-T+12m    引擎解析 scoreboard → selectArenaWinner → 按 score_direction: "min" 选最小误差者 → 结果交付 master
+T+8~12m  dave reads each candidate's QUAD error → optionally re-runs code → scores per eval_criteria → produces <scoreboard> JSON
+T+12m    engine parses scoreboard → selectArenaWinner → selects smallest error by score_direction: "min" → result delivered to master
 ```
 
 ### 3.5 Check Script
@@ -342,7 +342,7 @@ T+12m    引擎解析 scoreboard → selectArenaWinner → 按 score_direction: 
 The evaluator (dave), after reviewing the three implementations, should produce a scoreboard in the following format:
 
 ```
-<scoreboard>{"scores":[{"member":"alice","score":0.000785,"metrics":{"error":0.000785,"method":"composite trapezoidal (n=100)","exact":0.785398}，"passed":false,"rationale":"Trapezoidal rule: O(h²) convergence, 100 subintervals gives error ~7.85e-4 >> 1e-5. Fails accuracy threshold."},{"member":"bob","score":6.5e-8,"metrics":{"error":6.5e-8,"method":"composite Simpson's (n=100)","exact":0.785398},"passed":true,"rationale":"Simpson's rule: O(h⁴) convergence on this smooth integrand, 100 subintervals yields error ~6.5e-8 < 1e-5. Pass."},{"member":"carol","score":1.1e-16,"metrics":{"error":1.1e-16,"method":"5-point Gaussian-Legendre","exact":0.785398},"passed":true,"rationale":"Gaussian-Legendre (n=5): exact for polynomials up to degree 9, so this smooth integrand is integrated near machine precision. Error ~1.1e-16 < 1e-5. Pass."}],"rationale":"Evaluated absolute error from <!-- QUAD --> markers. Carol's Gaussian-Legendre achieves machine-precision accuracy (1.1e-16); Bob's Simpson's is 8 orders of magnitude worse but still below 1e-5; Alice's trapezoidal is 4 orders above threshold. Winner metric: min error."}</scoreboard>
+<scoreboard>{"scores":[{"member":"alice","score":0.000785,"metrics":{"error":0.000785,"method":"composite trapezoidal (n=100)","exact":0.785398},"passed":false,"rationale":"Trapezoidal rule: O(h²) convergence, 100 subintervals gives error ~7.85e-4 >> 1e-5. Fails accuracy threshold."},{"member":"bob","score":6.5e-8,"metrics":{"error":6.5e-8,"method":"composite Simpson's (n=100)","exact":0.785398},"passed":true,"rationale":"Simpson's rule: O(h⁴) convergence on this smooth integrand, 100 subintervals yields error ~6.5e-8 < 1e-5. Pass."},{"member":"carol","score":1.1e-16,"metrics":{"error":1.1e-16,"method":"5-point Gaussian-Legendre","exact":0.785398},"passed":true,"rationale":"Gaussian-Legendre (n=5): exact for polynomials up to degree 9, so this smooth integrand is integrated near machine precision. Error ~1.1e-16 < 1e-5. Pass."}],"rationale":"Evaluated absolute error from <!-- QUAD --> markers. Carol's Gaussian-Legendre achieves machine-precision accuracy (1.1e-16); Bob's Simpson's is 8 orders of magnitude worse but still below 1e-5; Alice's trapezoidal is 4 orders above threshold. Winner metric: min error."}</scoreboard>
 ```
 
 The engine selects `carol` (error 1.1e-16) as the winner using `score_direction: "min"`.
@@ -445,14 +445,14 @@ The engine selects `carol` (error 1.1e-16) as the winner using `score_direction:
 ### 4.4 Execution Flow (Timeline)
 
 ```
-T+0m     master 调用 team_arena (5 candidates + evaluator)
-T+0m     implement 阶段: 并行 dispatch alice, bob, carol, dave, erin (各在独立 worktree)
-T+0~10m  五名候选各自实现迭代求解器 → 跑收敛 → 报告 CONV 标记 → idle
-T+10m    barrier: 所有候选 idle → arena 阶段切换至 evaluate
-T+10m    evaluator prompt 构建: 列出候选人名 + 绝对 worktree 路径 + eval_command + eval_criteria + winner_metric
+T+0m     master calls team_arena (5 candidates + evaluator)
+T+0m     implement phase: parallel dispatch alice, bob, carol, dave, erin (each in independent worktree)
+T+0~10m  five candidates each implement iterative solver → run convergence → report CONV marker → idle
+T+10m    barrier: all candidates idle → arena phase switches to evaluate
+T+10m    evaluator prompt build: list candidate names + absolute worktree paths + eval_command + eval_criteria + winner_metric
 T+10m    dispatch evaluator (frank, physicist)
-T+10~30m frank 为每名候选跑 `bun run convergence.ts` → 收集各求解器迭代数 → 产出 <scoreboard> JSON
-T+30m    引擎解析 scoreboard → selectArenaWinner → 按 score_direction: "min" 选最少迭代数者 → 结果交付 master
+T+10~30m frank runs `bun run convergence.ts` per candidate → collects each solver's iteration count → produces <scoreboard> JSON
+T+30m    engine parses scoreboard → selectArenaWinner → selects fewest iterations by score_direction: "min" → result delivered to master
 ```
 
 (5 candidates implement in parallel, a single evaluator serially evaluates each candidate's worktree; on the N=100 Poisson problem, Jacobi ≈ 6000 iterations, Gauss-Seidel ≈ 3000 iterations, SOR(ω=1.9) ≈ 300 iterations, CG ≈ 300 iterations, Multigrid V(2,2) ≈ 10 iterations — convergence speed gaps are enormous, giving the arena scoreboard extremely high discrimination.)
@@ -492,63 +492,55 @@ The engine selects `erin` (9 iterations) as the winner using `score_direction: "
 ### Scenario 1: Three Sorting Implementations Benchmark for Fastest (Programming)
 
 ```text
-执行 demos/11-team-arena/README.md「场景 1」的完整闭环并自动评分。
-
-步骤：
-1. 读 README「1.2 Team 配置」，按 team_create JSON 创建团队（3 名候选 coder + 1 名 evaluator reviewer，每名候选 worktree: true，evaluator 也设 worktree: true）
-2. team_activate 激活
-3. 读 README「1.3 Master 启动调用」，按 team_arena JSON 启动擂台（implement → evaluate，eval_command 跑基准脚本）
-4. team_results 轮询至 master 收到汇总（所有候选 idle 后 evaluator 跑基准、出 scoreboard；引擎自动选胜者）
-5. 定位 <run_dir>（含 evaluator dave.md）
-6. 读取 dave.md，提取 <scoreboard> JSON，查看胜者与各候选得分
-
-成功标准：evaluator 产出合法 <scoreboard> JSON；引擎按 throughput_ops_per_sec max 选出吞吐最高者。至少 2 名候选 passed=true。
+Run the complete closed loop for demos/11-team-arena/README.md "Scenario 1" and auto-score.
+Steps:
+1. Read README "1.2 Team Configuration", create team per team_create JSON (3 candidate coders + 1 evaluator reviewer, each candidate worktree: true, evaluator also set worktree: true)
+2. team_activate to activate
+3. Read README "1.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_command runs benchmark script)
+4. Poll team_results until master receives summary (after all candidates idle, evaluator runs benchmark, produces scoreboard; engine auto-selects winner)
+5. Locate <run_dir> (contains evaluator dave.md)
+6. Read dave.md, extract <scoreboard> JSON, view winner and each candidate's score
+Success criteria: evaluator produces valid <scoreboard> JSON; engine selects highest throughput by throughput_ops_per_sec max. At least 2 candidates passed=true.
 ```
 
 ### Scenario 2: Three Integrators Compared by Energy Drift for Most Stable (Computational Physics)
 
 ```text
-执行 demos/11-team-arena/README.md「场景 2」的完整闭环并自动评分。
-
-步骤：
-1. 读 README「2.2 Team 配置」，按 team_create JSON 创建团队（3 名候选 simulator + 1 名 evaluator physicist，每名候选 worktree: true，evaluator 也设 worktree: true）
-2. team_activate 激活
-3. 读 README「2.3 Master 启动调用」，按 team_arena JSON 启动擂台（implement → evaluate，eval_criteria 能量守恒判定）
-4. team_results 轮询至 master 收到汇总（所有候选 idle 后 evaluator 审阅 DRIFT、出 scoreboard；引擎自动选胜者）
-5. 定位 <run_dir>（含 evaluator dave.md）
-6. 读取 dave.md，提取 <scoreboard> JSON，查看胜者与各候选漂移值
-
-成功标准：evaluator 产出合法 <scoreboard> JSON；引擎按 score min 选出漂移最小的辛格式积分器。Velocity Verlet 候选 passed=true 且 score < 1e-3。
+Run the complete closed loop for demos/11-team-arena/README.md "Scenario 2" and auto-score.
+Steps:
+1. Read README "2.2 Team Configuration", create team per team_create JSON (3 candidate simulators + 1 evaluator physicist, each candidate worktree: true, evaluator also set worktree: true)
+2. team_activate to activate
+3. Read README "2.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_criteria energy conservation judgment)
+4. Poll team_results until master receives summary (after all candidates idle, evaluator reviews DRIFT, produces scoreboard; engine auto-selects winner)
+5. Locate <run_dir> (contains evaluator dave.md)
+6. Read dave.md, extract <scoreboard> JSON, view winner and each candidate's drift value
+Success criteria: evaluator produces valid <scoreboard> JSON; engine selects symplectic integrator with smallest drift by score min. Velocity Verlet candidate passed=true and score < 1e-3.
 ```
 
 ### Scenario 3: Three Quadrature Methods Compete on Definite Integral Accuracy (Math)
 
 ```text
-执行 demos/11-team-arena/README.md「场景 3」的完整闭环并自动评分。
-
-步骤：
-1. 读 README「3.2 Team 配置」，按 team_create JSON 创建团队（3 名候选 coder + 1 名 evaluator mathematician，每名候选 worktree: true，evaluator 也设 worktree: true）
-2. team_activate 激活
-3. 读 README「3.3 Master 启动调用」，按 team_arena JSON 启动擂台（implement → evaluate，eval_criteria 精度判定）
-4. team_results 轮询至 master 收到汇总（所有候选 idle 后 evaluator 审阅 QUAD、出 scoreboard；引擎自动选胜者）
-5. 定位 <run_dir>（含 evaluator dave.md）
-6. 读取 dave.md，提取 <scoreboard> JSON，查看胜者与各候选误差
-
-成功标准：evaluator 产出合法 <scoreboard> JSON；引擎按 score min 选出误差最小的求积方法。Gaussian-Legendre 候选 passed=true 且 score < 1e-10（高斯求积在光滑被积函数上应达机器精度）。
+Run the complete closed loop for demos/11-team-arena/README.md "Scenario 3" and auto-score.
+Steps:
+1. Read README "3.2 Team Configuration", create team per team_create JSON (3 candidate coders + 1 evaluator mathematician, each candidate worktree: true, evaluator also set worktree: true)
+2. team_activate to activate
+3. Read README "3.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_criteria accuracy judgment)
+4. Poll team_results until master receives summary (after all candidates idle, evaluator reviews QUAD, produces scoreboard; engine auto-selects winner)
+5. Locate <run_dir> (contains evaluator dave.md)
+6. Read dave.md, extract <scoreboard> JSON, view winner and each candidate's error
+Success criteria: evaluator produces valid <scoreboard> JSON; engine selects quadrature method with smallest error by score min. Gaussian-Legendre candidate passed=true and score < 1e-10 (Gaussian quadrature should reach machine precision on smooth integrand).
 ```
 
 ### Scenario 4: Five Poisson Equation Solvers Comprehensive Arena (Challenge-Level · Computational Physics)
 
 ```text
-执行 demos/11-team-arena/README.md「场景 4」的完整闭环并自动评分（挑战级：5 名候选 + 1 名 evaluator，N=100 大型稀疏系统）。
-
-步骤：
-1. 读 README「4.2 Team 配置」，按 team_create JSON 创建团队（5 名候选 simulator + 1 名 evaluator physicist，每名候选 worktree: true，evaluator 也设 worktree: true）
-2. team_activate 激活
-3. 读 README「4.3 Master 启动调用」，按 team_arena JSON 启动擂台（implement → evaluate，eval_command + eval_criteria 双基准）
-4. team_results 轮询至 master 收到汇总（所有候选 idle 后 evaluator 跑收敛基准、出 scoreboard；引擎自动选胜者）
-5. 定位 <run_dir>（含 evaluator frank.md）
-6. 读取 frank.md，提取 <scoreboard> JSON，查看胜者与各候选迭代数
-
-成功标准：evaluator 产出合法 <scoreboard> JSON；引擎按 iterations min 选出收敛最快的求解器。Multigrid V 循环候选应 ≤20 迭代、Jacobi 应 ≥5000 迭代（验证收敛速度的数量级区分度）。至少 3 名候选 passed=true。
+Run the complete closed loop for demos/11-team-arena/README.md "Scenario 4" and auto-score (challenge-level: 5 candidates + 1 evaluator, N=100 large sparse system).
+Steps:
+1. Read README "4.2 Team Configuration", create team per team_create JSON (5 candidate simulators + 1 evaluator physicist, each candidate worktree: true, evaluator also set worktree: true)
+2. team_activate to activate
+3. Read README "4.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_command + eval_criteria dual benchmark)
+4. Poll team_results until master receives summary (after all candidates idle, evaluator runs convergence benchmark, produces scoreboard; engine auto-selects winner)
+5. Locate <run_dir> (contains evaluator frank.md)
+6. Read frank.md, extract <scoreboard> JSON, view winner and each candidate's iteration count
+Success criteria: evaluator produces valid <scoreboard> JSON; engine selects fastest-converging solver by iterations min. Multigrid V-cycle candidate should have ≤20 iterations, Jacobi should have ≥5000 iterations (verifying order-of-magnitude discrimination of convergence speed). At least 3 candidates passed=true.
 ```

@@ -421,27 +421,22 @@ Collect all fixed+patches → you read all output, decide the outcome
 > Replace `<TARGET>` with the code path you want to review, paste the entire block to the master session. Master will run 3 teams in sequence, executing each step per the README's JSON configuration, with data hand-carried between teams by master.
 
 ```text
-按 demos/code-review/README.md 跑一次多团队代码评审，目标代码 = <TARGET>。
-
-执行 3 个团队，每个走「team_create → team_activate → team_<mode> → team_results → team_deactivate」完整生命周期。同一时刻只允许一个 active 团队——切换前必须先 deactivate。
-
-1. audit-team (team_parallel，§1)：按 §1.2 team_create，§1.3 team_parallel。8 名 reviewer 并行审计 <TARGET>。完成后 deactivate。汇总所有 <!-- FINDING: ... --> marker 成 findings 清单，同时维护 id→描述映射。**只去重合并，不按 severity 裁剪**（high/medium/low 全保留）。去重后若 0 条则中断流程。然后**分组：每组 5 条，末组可不足 5 条**，组数 G = ⌈总条数/5⌉。
-
-2. triage-team (team_arbitrate，§2) + fix-team (team_tollgate，§3) 交替循环 G 组：
-   循环前：team_create(cr-triage) 一次。
+Run a multi-team code review per demos/code-review/README.md, target code = <TARGET>.
+Execute 3 teams, each follows the full lifecycle of "team_create → team_activate → team_<mode> → team_results → team_deactivate". Only one active team allowed at a time — must deactivate before switching.
+1. audit-team (team_parallel, §1): per §1.2 team_create, §1.3 team_parallel. 8 reviewers audit <TARGET> in parallel. Deactivate when done. Compile all <!-- FINDING: ... --> markers into a findings list, maintaining an id→description map. **Only deduplicate + merge, no severity filtering** (high/medium/low all retained). If 0 after dedup → abort workflow. Then **group: 5 per group, last group may have fewer than 5**, group count G = ⌈total count / 5⌉.
+2. triage-team (team_arbitrate, §2) + fix-team (team_tollgate, §3) alternate looping over G groups:
+   Before loop: team_create(cr-triage) once.
    for g in 1..G:
-     - activate cr-triage → team_arbitrate（task = 第 g 组 findings（≤5 条），arbiter=sam，max_rounds=6）。6 名 debater 辩论本组哪些是真问题、哪些是误报——不讨论修复策略；arbiter 只确认达成共识的发现。deactivate cr-triage。汇总本组 <!-- CONFIRMED: <id> -->。
-     - 若 g>1 先 team_delete(cr-fix) 删除上一组的旧 fix-team；然后 team_create(cr-fix) 创建全新实例 → activate cr-fix → 对本组每个 CONFIRMED finding 串行启动一次 team_tollgate run（替换 <id> 和缺陷描述）。每次 run 两道门：henry 写 failing test → iris 验证；jack 修复 → kate 验证；leo 仲裁签字。max_gate_retries=2，signoff_policy=decider，signoff_decider=leo。本组跑完 deactivate cr-fix。
-
-3. 全部 G 组处理完毕后，把每个团队的产出（findings / confirmed / fixed+patches）整理给我，由我裁定结果。不跑评判脚本、不设回归门。
-
-注意：
-- 成员名必须取自 32 字预设池（alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby/sam...），角色必须用 reviewer/architect/coder/tester 等预设值。
-- 切换团队前一定先 team_deactivate 当前团队，否则 team_activate 会被拒绝。
-- **不按 severity 裁剪**：去重后 high/medium/low 全保留，每组 5 条（末组可不足 5），组与组之间 triage→fix 交替循环。
-- **组间严格串行不并行**：一组 triage→fix 全部跑完才进入下一组。严禁同时跑多组的 triage、或多组的 fix、或一组的 triage 与另一组的 fix 交叉。
-- fix-team 每组新建：每组 triage 完成后删除旧 fix-team（如有）、team_create 全新实例。本组内逐个串行跑 tollgate：每个 CONFIRMED 一次独立 run。不要批量塞进单次 run。
-- 当 team 在运行中时，轮询 team_progress/team_results 的间隔为 30 秒，不要更频繁。
+     - activate cr-triage → team_arbitrate (task = group g findings (≤5 items), arbiter=sam, max_rounds=6). 6 debaters debate which are real issues and which are false positives — no fix strategy discussion; arbiter only confirms consensus findings. Deactivate cr-triage. Compile current group's <!-- CONFIRMED: <id> -->.
+     - If g>1 first team_delete(cr-fix) to remove previous group's old fix-team; then team_create(cr-fix) fresh instance → activate cr-fix → for each CONFIRMED finding in current group, launch one serial team_tollgate run (replace <id> and defect description). Each run has two gates: henry writes failing test → iris verifies; jack fixes → kate verifies; leo arbitrates and signs off. max_gate_retries=2, signoff_policy=decider, signoff_decider=leo. After current group done, deactivate cr-fix.
+3. After all G groups are processed, compile each team's outputs (findings / confirmed / fixed+patches) and present them to me for my judgment. No evaluation script, no regression gate.
+Notes:
+- Member names must come from the 32-name preset pool (alice/bob/carol/dave/erin/frank/grace/henry/iris/jack/kate/leo/mona/nina/omar/pat/quinn/ruby/sam...), roles must use preset values like reviewer/architect/coder/tester.
+- Always team_deactivate the current team before switching, otherwise team_activate will be rejected.
+- **No severity filtering**: after dedup, keep high/medium/low all retained, 5 per group (last group may have fewer than 5), triage→fix alternates between groups.
+- **Strict serial between groups, no parallelism**: one group's triage→fix fully completes before entering the next group. Never run triage for multiple groups concurrently, or fix for multiple groups concurrently, or one group's triage overlapping with another group's fix.
+- fix-team rebuilt per group: after each group's triage completes, delete old fix-team (if any), team_create fresh instance. Within the group, run tollgate serially one by one: one independent run per CONFIRMED. Do not batch into a single run.
+- When a team is running, poll team_progress/team_results at 30-second intervals, no more frequent.
 ```
 
 ---
