@@ -23,9 +23,29 @@ import type { MemberState, SdkMessage } from "./core/types.js"
 import { logEvent, logSwallowed } from "./core/log.js"
 import { handleSessionDeleted } from "./orchestration/lifecycle/reconcile.js"
 
+// Period between sweep-timer ticks (missed-idle reconciliation, termination enforcement).
 const SWEEP_INTERVAL_MS = 15_000
+
+// Max retry attempts for persistTeamState on transient disk failures.
 const SAVE_MAX_ATTEMPTS = 3
+
+// Backoff between persistTeamState retry attempts.
 const SAVE_BACKOFF_MS = 100
+
+/**
+ * Compaction-context suppression. The `experimental.chat.messages.transform`
+ * hook fires both on live prompt turns AND during session compaction (where it
+ * receives a structuredClone of the head messages — see decompiled trigger site).
+ * Injecting into the clone is lost, but pollMailbox+ackMessages have REAL side
+ * effects → silent message loss. We can't distinguish the two from input (`{}`),
+ * so we mark a session as "compacting" via the experimental.session.compacting
+ * hook and consume-once-skip the very next transform for it. TTL bounds a stuck
+ * flag (if compaction aborts before transform) to a single delayed turn.
+ */
+const compacting = new Map<string, number>() // sessionID -> expiresAt
+
+// TTL for compacting flags; bounds a stuck flag if compaction aborts before transform.
+const COMPACTING_FLAG_TTL_MS = 15_000
 
 /**
  * Save team state with bounded retry. Transient disk failures (EIO, ENOSPC)
@@ -59,19 +79,6 @@ export async function persistTeamState(
     }
     logSwallowed(ctx, label, lastErr, { ...extra, attempts: SAVE_MAX_ATTEMPTS }, "error")
 }
-
-/**
- * Compaction-context suppression. The `experimental.chat.messages.transform`
- * hook fires both on live prompt turns AND during session compaction (where it
- * receives a structuredClone of the head messages — see decompiled trigger site).
- * Injecting into the clone is lost, but pollMailbox+ackMessages have REAL side
- * effects → silent message loss. We can't distinguish the two from input (`{}`),
- * so we mark a session as "compacting" via the experimental.session.compacting
- * hook and consume-once-skip the very next transform for it. TTL bounds a stuck
- * flag (if compaction aborts before transform) to a single delayed turn.
- */
-const compacting = new Map<string, number>() // sessionID -> expiresAt
-const COMPACTING_FLAG_TTL_MS = 15_000
 
 /**
  * Marks a session as currently compacting. Registered under
@@ -278,7 +285,7 @@ export function createTransformHook(
             if (targetIdx < 0) return // nothing to attach to; leave reserved for retry (do NOT ack)
             const target = messages[targetIdx]
             const parts = (target.parts = target.parts ?? [])
-            parts.push({ type: "text", text: injection, synthetic: true })
+            parts.push({ type: "text", text: injection, synthetic: false })
         }
 
         // ACK the FULL reserved set, inject-or-not. Acking only the
