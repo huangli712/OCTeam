@@ -185,7 +185,13 @@ export async function runPlannerSession(ctx: PluginContext, opts: RunPlannerOpti
         await ctx.client.session.promptAsync({
             path: { id: childId },
             body: {
-                parts: [{ type: "text", text: dispatchText, synthetic: true }],
+                parts: [
+                    {
+                        type: "text",
+                        text: dispatchText,
+                        synthetic: false,
+                    }
+                ],
                 agent: PLANNER_AGENT,
             },
             query: { directory: ctx.directory },

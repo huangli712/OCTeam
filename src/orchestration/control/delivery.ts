@@ -36,7 +36,13 @@ export async function deliverQueuedResultsToMaster(
         await ctx.client.session.promptAsync({
             path: { id: masterSessionId },
             body: {
-                parts: [{ type: "text", text: formatMailboxInjection(safe), synthetic: true }],
+                parts: [
+                    {
+                        type: "text",
+                        text: formatMailboxInjection(safe),
+                        synthetic: false,
+                    }
+                ],
             },
         }).catch(err => {
             delivered = false

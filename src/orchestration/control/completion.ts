@@ -40,7 +40,7 @@ export async function deliverSummaryToLeader(
                 {
                     type: "text",
                     text: `<team_result team="${team.teamName}">\n${summary}\n</team_result>`,
-                    synthetic: true,
+                    synthetic: false,
                 },
             ],
         },

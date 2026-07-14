@@ -29,7 +29,13 @@ async function notifyLeader(ctx: PluginContext, team: Team, request: ApprovalReq
     await ctx.client.session.promptAsync({
         path: { id: team.leadSessionId },
         body: {
-            parts: [{ type: "text", text: buildApprovalPrompt(team.teamName, request), synthetic: true }],
+            parts: [
+                { 
+                    type: "text",
+                    text: buildApprovalPrompt(team.teamName, request),
+                    synthetic: false,
+                }
+            ],
         },
     })
 }
