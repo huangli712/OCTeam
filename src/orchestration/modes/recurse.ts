@@ -33,7 +33,8 @@ import { maybeRequestApproval } from "../control/approval.js"
  */
 export function buildRecursePrompt(): string {
     return (
-        `[Recursive task] You MUST claim a task FIRST (team_task_update status="claimed"), then read it (team_task_get).\n`
+        `[Recursive task]\n`
+        + `You MUST claim a task FIRST (team_task_update status="claimed"), then read it (team_task_get).\n`
         + `Until you claim a task, any <decompose> block you emit is IGNORED — the orchestrator\n`
         + `only inspects output from members who currently hold a claimed/in_progress task.\n`
         + `Then EITHER:\n`
