@@ -158,7 +158,7 @@ export function buildRolePrompt(
     // ack). Role-setup is now identity-only: members ack and idle in seconds.
     lines.push(
         "",
-        "<toos-instruction>",
+        "<tools-instruction>",
         "You collaborate via the team tools available to you:",
         "- team_send_message: send a message to a teammate (point-to-point).",
         "- team_task_create / team_task_list / team_task_update / team_task_get: coordinate shared work.",
