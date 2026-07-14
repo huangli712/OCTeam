@@ -131,7 +131,8 @@ export async function runDelegateStyleTail(
 /** Delegate idle handler: runs the delegate-style tail with "delegate" label. */
 export async function handleDelegateIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
     await runDelegateStyleTail(ctx, team, member, "delegate", n =>
-        `[Team Orchestrator] You have completed your task. ${n} task(s) available. `
+        `[Team Orchestrator]\n` 
+        + `You have completed your task. ${n} task(s) available. `
         + `Use team_task_list to check, team_task_update to claim, execute, then team_send_message `
         + `to report to master. Repeat until no tasks remain.`)
 }

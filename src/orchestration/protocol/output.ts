@@ -136,7 +136,8 @@ export function buildRolePrompt(
 ): string {
     const peers = peerNames.filter(n => n !== spec.name)
     const lines: string[] = [
-        `[Team Orchestrator] You are now a member of team "${teamName}".`,
+        `[Team Orchestrator]`,
+        `You are now a member of team "${teamName}".`,
         "",
         "<basic-instruction>",
         `Your name: ${spec.name}`,

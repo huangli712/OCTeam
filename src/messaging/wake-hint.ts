@@ -54,9 +54,10 @@ export async function sendWakeHint(
                 parts: [
                     {
                         type: "text",
-                        text: `[Team Orchestrator] You have ${unread} new team message(s). ` +
-                            `They will be injected on your next turn.\n` +
-                            `<!-- OMO_INTERNAL_INITIATOR -->`,
+                        text: `[Team Orchestrator]\n` 
+                            + `You have ${unread} new team message(s). `
+                            + `They will be injected on your next turn.\n`
+                            + `<!-- OMO_INTERNAL_INITIATOR -->`,
                         synthetic: false,
                     },
                 ],

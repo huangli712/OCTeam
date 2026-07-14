@@ -130,7 +130,8 @@ export function getExpectedMember(task: ActiveTask): string | null {
  * case so the prompt copy lives in one named place rather than inline.
  */
 function buildPrematureIdleReprompt(teamName: string): string {
-    return `[Team Orchestrator] You went idle on team "${teamName}" without calling `
+    return `[Team Orchestrator]\n` 
+        + `You went idle on team "${teamName}" without calling `
         + `team_done(team_id="${teamName}"). This run uses require_done_ack: the `
         + `barrier fires ONLY after every participant calls team_done. `
         + `If your work is complete (including required messages and self-verification), `
