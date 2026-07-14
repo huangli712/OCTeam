@@ -37,13 +37,13 @@ export function buildDebatePrompt(task: ActiveTask): string {
     const round = task.currentRound ?? 1
     if (round <= 1) {
         return (
-            `[Arbitration debate — Round 1] Subject:\n${task.task ?? ""}\n\n`
+            `[Arbitration debate — Round 1]\nSubject:\n${task.task ?? ""}\n\n`
             + `State your position with reasoning. An arbiter will weigh all positions and issue a binding ruling.`
         )
     }
     const positions = buildRoundSummary(task.responses)
     return (
-        `[Arbitration debate — Round ${round}] Other positions:\n${positions}\n\n`
+        `[Arbitration debate — Round ${round}]\nOther positions:\n${positions}\n\n`
         + `Rebut or refine your position.`
     )
 }
