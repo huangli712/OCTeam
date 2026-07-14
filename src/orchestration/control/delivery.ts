@@ -39,7 +39,7 @@ export async function deliverQueuedResultsToMaster(
                 parts: [
                     {
                         type: "text",
-                        text: formatMailboxInjection(safe) +
+                        text: formatMailboxInjection(safe) + `\n` +
                             `<!-- OMO_INTERNAL_INITIATOR -->`,
                         synthetic: false,
                     }
