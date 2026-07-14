@@ -40,7 +40,8 @@ export function buildRouterPrompt(teamName: string, input: string, branches: Rou
         })
         .join("\n")
     return (
-        `[Route task] You are the router for team "${teamName}". Analyze the input below and `
+        `[Route task]\n`
+        + `You are the router for team "${teamName}". Analyze the input below and `
         + `select which branch(es) should handle it. Available branches:\n${list}\n\n`
         + `Emit your decision as:\n`
         + `<route>{"branch": "<name>", "rationale": "<why>"}</route>\n`
