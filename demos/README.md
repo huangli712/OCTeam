@@ -1,6 +1,6 @@
 # OCTeam Orchestration Scenario Catalog
 
-A set of 11 orchestration primitive scenarios plus 4 feature-specific scenario sets, designed for real applications. Each primitive includes 4 sub-scenarios (math / computational physics / programming × 3 baseline + 1 challenge-level), complete with team configs, master invocations, execution timeline sequences, and runnable TypeScript check scripts. The feature-specific sets cross-cut multiple modes to demonstrate `human_approval` (HITL), `signoff_policy` (post-completion review), advanced tollgate gate parameters (INVALID escalation, reference comparison, retry), and advanced workflow engine features (loops, ensemble verifiers, join_policy variants).
+A set of 11 orchestration primitive scenarios plus 6 feature-specific scenario sets, designed for real applications. Each primitive includes 4 sub-scenarios (math / computational physics / programming × 3 baseline + 1 challenge-level), complete with team configs, master invocations, execution timeline sequences, and runnable TypeScript check scripts. The feature-specific sets cross-cut multiple modes to demonstrate `human_approval` (HITL), `signoff_policy` (post-completion review), advanced tollgate gate parameters (INVALID escalation, reference comparison, retry), advanced workflow engine features (loops, ensemble verifiers, join_policy variants), workflow engine automation (retry_on, foreach, conditional jumps, resilience), and parallel isolated mode (same-task broadcast, done-ack barrier, fault tolerance).
 >
 > Scenario domains covered: **math / computational physics / programming**.
 
@@ -23,6 +23,8 @@ A set of 11 orchestration primitive scenarios plus 4 feature-specific scenario s
 | 13 | `signoff_policy` | Post-completion review (decider / peer-quorum) | Delegate/parallel/pipeline with signoff gate | [`13-team-signoff/`](./13-team-signoff/) |
 | 14 | `team_tollgate` (advanced) | Three-valued gate: reference / escalate_to / retry / INVALID cap | INVALID escalation, FAIL retry, golden-reference comparison | [`14-team-tollgate/`](./14-team-tollgate/) |
 | 15 | `team_workflow` (advanced) | Declarative engine: loops / ensemble / join_policy variants | on_fail_goto loops, ensemble verifiers, select-join | [`15-team-workflow/`](./15-team-workflow/) |
+| 16 | `team_workflow` (engine automation) | Engine auto-retry / foreach / conditional jumps / resilience | retry_on, foreach, on_pass_goto+where, on_timeout+fallback | [`16-team-workflow-engine/`](./16-team-workflow-engine/) |
+| 17 | `team_parallel` (isolated) | Same-task broadcast / done-ack barrier / fault tolerance | isolated mode, require_done_ack, max_errored_members | [`17-team-parallel-isolated/`](./17-team-parallel-isolated/) |
 
 ## Scenario Matrix
 
@@ -52,7 +54,7 @@ Beyond the 11 single-primitive scenarios above, there is another category: **com
 
 ## Feature-Specific Scenarios (Cross-Mode Parameters)
 
-Beyond the 11 single-primitive scenarios, there are **feature-specific scenario sets** that demonstrate powerful cross-mode parameters not covered by the baseline demos: `human_approval` (HITL pause gates), `signoff_policy` (post-completion review), advanced tollgate gate parameters, and advanced workflow engine features. Each set includes 3 baseline + 1 challenge-level scenario with check scripts.
+Beyond the 11 single-primitive scenarios, there are **feature-specific scenario sets** that demonstrate powerful cross-mode parameters not covered by the baseline demos: `human_approval` (HITL pause gates), `signoff_policy` (post-completion review), advanced tollgate gate parameters, advanced workflow engine features, workflow engine automation, and parallel isolated mode. Each set includes 3 baseline + 1 challenge-level scenario with check scripts.
 
 | Feature | Parameter | What It Demonstrates | Modes Covered | Directory |
 |---------|-----------|---------------------|---------------|-----------|
@@ -60,6 +62,8 @@ Beyond the 11 single-primitive scenarios, there are **feature-specific scenario 
 | Post-Completion Signoff | `signoff_policy: "decider"` / `"peer-quorum"` | Reviewer(s) inspect output before delivery; decider or quorum vote | delegate / parallel / pipeline | [`13-team-signoff/`](./13-team-signoff/) |
 | Advanced Tollgate Gates | `reference` / `escalate_to` / `max_gate_retries` / `max_invalid_cycles` | Three-valued gate INVALID escalation, FAIL retry, golden-reference comparison | tollgate | [`14-team-tollgate/`](./14-team-tollgate/) |
 | Advanced Workflow Engine | `on_fail_goto` + `loop` / `verifiers` ensemble / `join_policy: "select"` | Engine-driven fix-verify loops, multi-verifier voting, competitive branch selection | workflow | [`15-team-workflow/`](./15-team-workflow/) |
+| Workflow Engine Automation | `retry_on` / `foreach` / `on_pass_goto` + `where` / `on_timeout` + `fallback_member` / `on_malformed` | Auto-retry on output conditions, parameterized fanout, conditional quality-based jumps, timeout/fallback resilience | workflow | [`16-team-workflow-engine/`](./16-team-workflow-engine/) |
+| Parallel Isolated Mode | `mode: "isolated"` / `require_done_ack` / `max_errored_members` | Same-task broadcast to all members, explicit done-ack barrier, fault-tolerant redundancy | parallel | [`17-team-parallel-isolated/`](./17-team-parallel-isolated/) |
 
 ## Scenario Directory Structure
 

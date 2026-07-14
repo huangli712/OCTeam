@@ -103,7 +103,7 @@ export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }
 export function summarizePipeline(task: ActiveTask, head: string): string {
     // Concatenate stage outputs in order.
     const candidates = Object.entries(task.responses)
-        .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+        .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
         .join("\n\n")
     return `${head}\n${candidates}`
 }
