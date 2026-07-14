@@ -56,7 +56,8 @@ export function buildGateVerifierPrompt(
             `satisfies the criteria and the targets are mutually consistent.`
         : "";
     return (
-        `[Verification gate] Verify ${targetLabel} output below against the criteria.\n` +
+        `[Verification gate]\n` +
+        `Verify ${targetLabel} output below against the criteria.\n` +
         `Criteria: ${step.criteria ?? ""}\n\n` +
         `Producer output:\n${producerOutput}\n\n` +
         (aggregationHint ? `${aggregationHint}\n\n` : "") +

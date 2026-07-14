@@ -39,7 +39,8 @@ function buildVerifierPrompt(task: ActiveTask, stage: GatedStage): string {
     const output = truncateOutput(task.responses[stage.member] ?? "")
     const ref = stage.reference ? `\n\nGolden reference: ${stage.reference}` : ""
     return (
-        `[Verification gate] Verify the producer's output below against the criteria.\n`
+        `[Verification gate]\n` 
+        + `Verify the producer's output below against the criteria.\n`
         + `Criteria: ${stage.criteria}${ref}\n\n`
         + `Producer output:\n${output}\n\n`
         + `If a reference is given, ALIGN by declared dimensions (grid points / time steps / `
