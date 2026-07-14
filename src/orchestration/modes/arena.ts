@@ -109,7 +109,8 @@ export function buildArenaEvaluatorPrompt(task: ArenaTask, team: Team): string {
     if (task.evalCommand) basis.push(`Eval command: ${task.evalCommand}`)
     if (task.evalCriteria) basis.push(`Eval criteria: ${task.evalCriteria}`)
     return (
-        `[Arena evaluation] Objectively score every candidate below on the same basis.\n`
+        `[Arena evaluation]\n` 
+        + `Objectively score every candidate below on the same basis.\n`
         + `Candidates (name: absolute worktree path):\n${rows}\n\n`
         + `${basis.join("\n")}\n`
         + `Winner metric: "${task.winnerMetric}", selected by ${task.scoreDirection}.\n\n`
