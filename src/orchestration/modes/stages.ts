@@ -75,11 +75,17 @@ export async function advanceToStage(
         ? `${upstream}\n\n[Your task]\n${stage.task}${readOnlyContract}`
         : `${stage.task}${readOnlyContract}`;
     const rawText = contextPrefix ? `${contextPrefix}\n\n${base}` : base;
-    const text = prependStandingInstruction(member, rawText);
+    const newText = prependStandingInstruction(member, rawText);
     await ctx.client.session.promptAsync({
         path: { id: member.sessionId },
         body: {
-            parts: [{ type: "text", text, synthetic: false }],
+            parts: [
+                {
+                    type: "text",
+                    text: `${newText}\n<!-- OMO_INTERNAL_INITIATOR -->`,
+                    synthetic: false,
+                }
+            ],
             agent: safeMemberAgent(member.agent),
         },
         query: { directory: member.worktreePath ?? ctx.directory },
