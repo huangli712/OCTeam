@@ -1,6 +1,6 @@
 # OCTeam Orchestration Scenario Catalog
 
-A set of 11 orchestration primitive scenarios designed for real applications. Each primitive includes 4 sub-scenarios (math / computational physics / programming × 3 baseline + 1 challenge-level), complete with team configs, master invocations, execution timeline sequences, and runnable TypeScript check scripts.
+A set of 11 orchestration primitive scenarios plus 2 feature-specific scenario sets, designed for real applications. Each primitive includes 4 sub-scenarios (math / computational physics / programming × 3 baseline + 1 challenge-level), complete with team configs, master invocations, execution timeline sequences, and runnable TypeScript check scripts. The feature-specific sets cross-cut multiple modes to demonstrate `human_approval` (HITL) and `signoff_policy` (post-completion review).
 >
 > Scenario domains covered: **math / computational physics / programming**.
 
@@ -19,6 +19,8 @@ A set of 11 orchestration primitive scenarios designed for real applications. Ea
 | 09 | `team_tollgate` | Verification-gate pipeline | Per-stage quality gating | [`09-team-tollgate/`](./09-team-tollgate/) |
 | 10 | `team_workflow` | Declarative step engine (task/gate/fanout/join) | task→gate chains + fanout parallel integration | [`10-team-workflow/`](./10-team-workflow/) |
 | 11 | `team_arena` | Competitive arena: N candidate implementations + evaluator scoring to select best | Multi-solution competition, objective benchmark selection | [`11-team-arena/`](./11-team-arena/) |
+| 12 | `human_approval` | Human-in-the-loop approval gates across modes | Pipeline/tollgate/arbitrate/workflow with leader approval pauses | [`12-team-hitl/`](./12-team-hitl/) |
+| 13 | `signoff_policy` | Post-completion review (decider / peer-quorum) | Delegate/parallel/pipeline with signoff gate | [`13-team-signoff/`](./13-team-signoff/) |
 
 ## Scenario Matrix
 
@@ -45,6 +47,15 @@ Beyond the 11 single-primitive scenarios above, there is another category: **com
 | Multi-team code review | Audit → Confirm → Plan → Fix → Review | parallel / consensus / delegate / loop | [`code-review/`](./code-review/) |
 | OCTeam feature enhancement | Research → Discuss → Plan → Implement → Audit | parallel / consensus / loop / pipeline | [`feature-dev/`](./feature-dev/) |
 | Matrix eigenvalue solver development | Research → Compare → Plan+Review → Implement → Optimize+Refactor → Code review | parallel / consensus / tollgate / pipeline / loop | [`eigen-solver/`](./eigen-solver/) |
+
+## Feature-Specific Scenarios (Cross-Mode Parameters)
+
+Beyond the 11 single-primitive scenarios, there are **feature-specific scenario sets** that demonstrate powerful cross-mode parameters not covered by the baseline demos: `human_approval` (HITL pause gates) and `signoff_policy` (post-completion review). Each set includes 3 baseline + 1 challenge-level scenario with check scripts.
+
+| Feature | Parameter | What It Demonstrates | Modes Covered | Directory |
+|---------|-----------|---------------------|---------------|-----------|
+| Human-in-the-Loop | `human_approval: true` | Leader pauses at mid-run boundaries; approve via `team_approve` or reject via `team_reject` | pipeline / tollgate / arbitrate / workflow | [`12-team-hitl/`](./12-team-hitl/) |
+| Post-Completion Signoff | `signoff_policy: "decider"` / `"peer-quorum"` | Reviewer(s) inspect output before delivery; decider or quorum vote | delegate / parallel / pipeline | [`13-team-signoff/`](./13-team-signoff/) |
 
 ## Scenario Directory Structure
 
