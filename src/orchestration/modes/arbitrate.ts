@@ -54,10 +54,10 @@ export function buildDebatePrompt(task: ActiveTask): string {
  */
 export function buildArbiterPrompt(task: ArbitrateTask): string {
     const positions = (task.disputants ?? [])
-        .map(name => `### ${name}\n${truncateOutput(task.responses[name] ?? "")}`)
+        .map(name => `\nby ${name}:\n${truncateOutput(task.responses[name] ?? "")}`)
         .join("\n\n")
     return (
-        `[Arbitration ruling] Dispute:\n${task.task ?? ""}\n\n`
+        `[Arbitration ruling]\nDispute:\n${task.task ?? ""}\n\n`
         + `Debater positions:\n${positions}\n\n`
         + `Weigh impartially and issue a BINDING ruling. Emit exactly one:\n`
         + `<ruling>{"decision":"...","rationale":"..."}</ruling> (Chinese <裁决> also accepted)`
