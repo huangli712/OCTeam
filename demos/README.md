@@ -1,6 +1,6 @@
 # OCTeam Orchestration Scenario Catalog
 
-A set of 11 orchestration primitive scenarios plus 2 feature-specific scenario sets, designed for real applications. Each primitive includes 4 sub-scenarios (math / computational physics / programming × 3 baseline + 1 challenge-level), complete with team configs, master invocations, execution timeline sequences, and runnable TypeScript check scripts. The feature-specific sets cross-cut multiple modes to demonstrate `human_approval` (HITL) and `signoff_policy` (post-completion review).
+A set of 11 orchestration primitive scenarios plus 4 feature-specific scenario sets, designed for real applications. Each primitive includes 4 sub-scenarios (math / computational physics / programming × 3 baseline + 1 challenge-level), complete with team configs, master invocations, execution timeline sequences, and runnable TypeScript check scripts. The feature-specific sets cross-cut multiple modes to demonstrate `human_approval` (HITL), `signoff_policy` (post-completion review), advanced tollgate gate parameters (INVALID escalation, reference comparison, retry), and advanced workflow engine features (loops, ensemble verifiers, join_policy variants).
 >
 > Scenario domains covered: **math / computational physics / programming**.
 
@@ -21,6 +21,8 @@ A set of 11 orchestration primitive scenarios plus 2 feature-specific scenario s
 | 11 | `team_arena` | Competitive arena: N candidate implementations + evaluator scoring to select best | Multi-solution competition, objective benchmark selection | [`11-team-arena/`](./11-team-arena/) |
 | 12 | `human_approval` | Human-in-the-loop approval gates across modes | Pipeline/tollgate/arbitrate/workflow with leader approval pauses | [`12-team-hitl/`](./12-team-hitl/) |
 | 13 | `signoff_policy` | Post-completion review (decider / peer-quorum) | Delegate/parallel/pipeline with signoff gate | [`13-team-signoff/`](./13-team-signoff/) |
+| 14 | `team_tollgate` (advanced) | Three-valued gate: reference / escalate_to / retry / INVALID cap | INVALID escalation, FAIL retry, golden-reference comparison | [`14-team-tollgate/`](./14-team-tollgate/) |
+| 15 | `team_workflow` (advanced) | Declarative engine: loops / ensemble / join_policy variants | on_fail_goto loops, ensemble verifiers, select-join | [`15-team-workflow/`](./15-team-workflow/) |
 
 ## Scenario Matrix
 
@@ -50,12 +52,14 @@ Beyond the 11 single-primitive scenarios above, there is another category: **com
 
 ## Feature-Specific Scenarios (Cross-Mode Parameters)
 
-Beyond the 11 single-primitive scenarios, there are **feature-specific scenario sets** that demonstrate powerful cross-mode parameters not covered by the baseline demos: `human_approval` (HITL pause gates) and `signoff_policy` (post-completion review). Each set includes 3 baseline + 1 challenge-level scenario with check scripts.
+Beyond the 11 single-primitive scenarios, there are **feature-specific scenario sets** that demonstrate powerful cross-mode parameters not covered by the baseline demos: `human_approval` (HITL pause gates), `signoff_policy` (post-completion review), advanced tollgate gate parameters, and advanced workflow engine features. Each set includes 3 baseline + 1 challenge-level scenario with check scripts.
 
 | Feature | Parameter | What It Demonstrates | Modes Covered | Directory |
 |---------|-----------|---------------------|---------------|-----------|
 | Human-in-the-Loop | `human_approval: true` | Leader pauses at mid-run boundaries; approve via `team_approve` or reject via `team_reject` | pipeline / tollgate / arbitrate / workflow | [`12-team-hitl/`](./12-team-hitl/) |
 | Post-Completion Signoff | `signoff_policy: "decider"` / `"peer-quorum"` | Reviewer(s) inspect output before delivery; decider or quorum vote | delegate / parallel / pipeline | [`13-team-signoff/`](./13-team-signoff/) |
+| Advanced Tollgate Gates | `reference` / `escalate_to` / `max_gate_retries` / `max_invalid_cycles` | Three-valued gate INVALID escalation, FAIL retry, golden-reference comparison | tollgate | [`14-team-tollgate/`](./14-team-tollgate/) |
+| Advanced Workflow Engine | `on_fail_goto` + `loop` / `verifiers` ensemble / `join_policy: "select"` | Engine-driven fix-verify loops, multi-verifier voting, competitive branch selection | workflow | [`15-team-workflow/`](./15-team-workflow/) |
 
 ## Scenario Directory Structure
 

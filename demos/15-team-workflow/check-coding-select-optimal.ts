@@ -1,0 +1,193 @@
+/**
+ * Check script: competitive selection workflow (Scenario 4 · challenge).
+ *
+ * Validates the select-join workflow in a team_workflow run with 5 members:
+ *   - alice.md, bob.md, carol.md: each contain <!-- APPROACH: <name> --> markers
+ *   - frank.md (reducer): selects a winner with <!-- SELECTED: <name> --> marker
+ *   - dave.md: contains a PASS <verdict> gate decision
+ *   - The selected approach's fibonacci function computes correct values
+ *
+ * Usage:  bun check-coding-select-optimal.ts <run_dir>
+ *   <run_dir>  directory containing alice/bob/carol/frank/dave.md
+ *
+ * Exit codes:  0 PASS  |  1 FAIL (assertions)  |  2 usage / IO error
+ */
+
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
+const CODE_RE = /```typescript\s*\n([\s\S]*?)```/g;
+const VERDICT_RE = /<verdict>\s*(\{[\s\S]*?\})\s*<\/verdict>/g;
+const APPROACH_RE = /<!--\s*APPROACH:\s*(\S+)\s*-->/;
+const SELECTED_RE = /<!--\s*SELECTED:\s*(\S+)\s*-->/;
+
+function fail(msg: string): never {
+    console.error(`FAIL: ${msg}`);
+    process.exit(1);
+}
+
+interface Verdict {
+    result: string;
+    rationale: string;
+    diff: string;
+}
+
+function parseVerdicts(raw: string): Verdict[] {
+    const verdicts: Verdict[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = VERDICT_RE.exec(raw)) !== null) {
+        try {
+            const obj = JSON.parse(m[1]) as Record<string, string>;
+            const result = (obj.result ?? "").trim().toUpperCase();
+            if (!result) fail("verdict JSON lacks a non-empty 'result' field");
+            verdicts.push({
+                result,
+                rationale: (obj.rationale ?? "").trim(),
+                diff: (obj.diff ?? "").trim(),
+            });
+        } catch {
+            fail(`verdict block is not valid JSON: ${m[1].substring(0, 200)}`);
+        }
+    }
+    return verdicts;
+}
+
+function extractCodeBlocks(raw: string): string[] {
+    const blocks: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = CODE_RE.exec(raw)) !== null) {
+        blocks.push(m[1]);
+    }
+    return blocks;
+}
+
+function loadFibonacci(codeBlock: string): (n: number) => number {
+    const transpiler = new Bun.Transpiler({ loader: "ts" });
+    const jsCode = transpiler.transformSync(codeBlock);
+    const fn = new Function(`${jsCode}\nreturn fibonacci;`)() as unknown;
+    if (typeof fn !== "function") {
+        fail("fibonacci was not exported as a function from the code block");
+    }
+    return fn as (n: number) => number;
+}
+
+function extractApproach(raw: string): string | null {
+    const m = raw.match(APPROACH_RE);
+    return m ? m[1] : null;
+}
+
+function extractSelected(raw: string): string | null {
+    const m = raw.match(SELECTED_RE);
+    return m ? m[1] : null;
+}
+
+async function main(): Promise<void> {
+    const runDir = process.argv[2];
+    if (!runDir) {
+        console.error("Usage: bun check-coding-select-optimal.ts <run_dir>");
+        process.exit(2);
+    }
+
+    // --- Load all 5 member files ---
+    const members = ["alice", "bob", "carol", "frank", "dave"];
+    const files: Record<string, string> = {};
+
+    for (const name of members) {
+        try {
+            files[name] = await readFile(join(runDir, `${name}.md`), "utf8");
+        } catch (err) {
+            console.error(`IO error reading ${name}.md: ${(err as Error).message}`);
+            process.exit(2);
+        }
+    }
+
+    // Assertion 1: each coder has an APPROACH marker matching their assigned approach.
+    const expectedApproaches: Record<string, string> = {
+        alice: "iterative",
+        bob: "recursive-memo",
+        carol: "binet",
+    };
+
+    const coderToCode: Record<string, string> = {};
+
+    for (const [coder, expected] of Object.entries(expectedApproaches)) {
+        const approach = extractApproach(files[coder]);
+        if (!approach) {
+            fail(`${coder}.md does not contain <!-- APPROACH: ${expected} --> marker`);
+        }
+        if (approach !== expected) {
+            fail(`${coder}.md APPROACH is "${approach}", expected "${expected}"`);
+        }
+        console.log(`  ${coder}: APPROACH: ${approach} ✓`);
+
+        // Extract code block for later testing of the selected approach.
+        const blocks = extractCodeBlocks(files[coder]);
+        if (blocks.length === 0) {
+            fail(`${coder}.md has no code block`);
+        }
+        coderToCode[coder] = blocks[blocks.length - 1];
+    }
+
+    // Assertion 2: frank (reducer) selected a winner.
+    const selected = extractSelected(files.frank);
+    if (!selected) {
+        fail("frank.md does not contain <!-- SELECTED: <approach> --> marker");
+    }
+    console.log(`  frank: SELECTED: ${selected} ✓`);
+
+    // Assertion 3: the selected approach is one of the three we expect.
+    if (!Object.values(expectedApproaches).includes(selected)) {
+        fail(`frank selected unknown approach "${selected}" (expected one of: ${Object.values(expectedApproaches).join(", ")})`);
+    }
+
+    // Find which coder produced the selected approach.
+    const winner = Object.entries(expectedApproaches).find(([, a]) => a === selected);
+    if (!winner) {
+        fail(`no coder matched the selected approach "${selected}"`);
+    }
+    const [winnerCoder] = winner;
+    console.log(`  winner: ${winnerCoder} (${selected})`);
+
+    // Assertion 4: the winning fibonacci function is loadable and correct.
+    const winnerCode = coderToCode[winnerCoder];
+    if (!/\bfibonacci\b/.test(winnerCode)) {
+        fail(`${winnerCoder}'s code block does not contain fibonacci function`);
+    }
+
+    let fib: (n: number) => number;
+    try {
+        fib = loadFibonacci(winnerCode);
+    } catch (err) {
+        fail(`failed to load fibonacci: ${(err as Error).message}`);
+    }
+
+    const testCases: [number, number][] = [
+        [0, 0],
+        [1, 1],
+        [10, 55],
+        [20, 6765],
+    ];
+
+    for (const [n, expected] of testCases) {
+        const actual = fib(n);
+        if (actual !== expected) {
+            fail(`fib(${n}) = ${actual}, expected ${expected}`);
+        }
+        console.log(`  fib(${n}) = ${actual} ✓`);
+    }
+
+    // Assertion 5: dave emitted a PASS verdict.
+    const daveVerdicts = parseVerdicts(files.dave);
+    if (daveVerdicts.length === 0) {
+        fail("dave.md has no verdict");
+    }
+    const finalV = daveVerdicts[daveVerdicts.length - 1];
+    if (finalV.result !== "PASS") {
+        fail(`dave final verdict is ${finalV.result}, expected PASS (rationale: ${finalV.rationale.substring(0, 120)})`);
+    }
+    console.log(`  dave: final verdict = PASS (rationale: ${finalV.rationale.substring(0, 80)}) ✓`);
+
+    console.log(`PASS: ${winnerCoder}'s ${selected} fibonacci passes all test cases; dave's gate verdict is PASS.`);
+}
+
+main();
