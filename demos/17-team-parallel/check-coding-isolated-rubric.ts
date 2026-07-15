@@ -23,6 +23,7 @@ interface BunGlobal {
 const Bun = (globalThis as unknown as { Bun: BunGlobal }).Bun;
 
 const CODE_BLOCK_RE = /```typescript\s*\n([\s\S]*?)(?=```)/g;
+const IMPL_RE = /<!--\s*IMPL:\s*binarySearch\s*-->/;
 
 interface TestCase {
     arr: number[];
@@ -103,6 +104,9 @@ async function main(): Promise<void> {
     let onePassed = false;
 
     for (const [member, content] of mdFiles) {
+        if (!IMPL_RE.test(content)) {
+            fail(`member "${member}" did not emit <!-- IMPL: binarySearch --> marker`);
+        }
         const code = extractLastCodeBlock(content);
         if (!code) {
             console.log(`  ${member}: no typescript code block found`);

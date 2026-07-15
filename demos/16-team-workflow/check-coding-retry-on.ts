@@ -18,6 +18,7 @@ import { join } from "node:path";
 
 const CODE_BLOCK_RE = /```typescript\s*\n([\s\S]*?)```/g;
 const VERDICT_RE = /<verdict>\s*(\{[\s\S]*?\})\s*<\/verdict>/g;
+const IMPL_RE = /<!--\s*IMPL:\s*factorial\s*-->/;
 
 interface BunTranspiler {
     transformSync(code: string): string;
@@ -111,6 +112,11 @@ async function main(): Promise<void> {
         fail("alice output missing IMPL_DONE marker (retry_on may have exhausted)");
     }
     console.log("  alice: IMPL_DONE marker present");
+
+    if (!IMPL_RE.test(aliceRaw)) {
+        fail("alice output missing <!-- IMPL: factorial --> marker");
+    }
+    console.log("  alice: <!-- IMPL: factorial --> marker present");
 
     // Assertion 2: Extract and load factorial function
     const code = extractLastCodeBlock(aliceRaw);

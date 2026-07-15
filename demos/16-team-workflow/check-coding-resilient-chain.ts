@@ -18,6 +18,8 @@ import { join } from "node:path";
 
 const CODE_BLOCK_RE = /```typescript\s*\n([\s\S]*?)```/g;
 const VERDICT_RE = /<verdict>\s*(\{[\s\S]*?\})\s*<\/verdict>/g;
+const IMPL_RE = /<!--\s*IMPL:\s*deduplicate\s*-->/;
+const DOCS_OK_RE = /<!--\s*DOCS_OK:\s*true\s*-->/;
 
 interface BunTranspiler {
     transformSync(code: string): string;
@@ -114,10 +116,10 @@ async function main(): Promise<void> {
     if (!implResult) fail("neither alice.md nor bob.md found with content");
     console.log(`  implementer: ${implResult.member}.md`);
 
-    if (!implResult.content.includes("deduplicate")) {
-        fail(`${implResult.member}.md does not contain deduplicate reference`);
+    if (!IMPL_RE.test(implResult.content)) {
+        fail(`${implResult.member}.md missing <!-- IMPL: deduplicate --> marker`);
     }
-    console.log(`  ${implResult.member}: deduplicate reference found`);
+    console.log(`  ${implResult.member}: <!-- IMPL: deduplicate --> marker present`);
 
     // Assertion 1: Extract and load deduplicate function
     const code = extractLastCodeBlock(implResult.content);
@@ -158,10 +160,10 @@ async function main(): Promise<void> {
         process.exit(2);
     }
 
-    if (!carolRaw.includes("DOCS_OK")) {
-        fail("carol.md does not contain DOCS_OK marker");
+    if (!DOCS_OK_RE.test(carolRaw)) {
+        fail("carol.md missing <!-- DOCS_OK: true --> marker");
     }
-    console.log("  carol: DOCS_OK marker present");
+    console.log("  carol: <!-- DOCS_OK: true --> marker present");
 
     console.log("PASS: deduplicate correct; verifier PASS; documentation complete.");
 }

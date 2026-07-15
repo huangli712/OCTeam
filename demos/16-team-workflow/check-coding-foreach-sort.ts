@@ -16,6 +16,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const CODE_BLOCK_RE = /```typescript\s*\n([\s\S]*?)```/g;
+const IMPL_RE = /<!--\s*IMPL:\s*bubbleSort\s*-->/;
 
 interface BunTranspiler {
     transformSync(code: string): string;
@@ -71,10 +72,10 @@ async function main(): Promise<void> {
     }
 
     // Assertion 1: alice output contains bubbleSort implementation marker
-    if (!aliceRaw.includes("bubbleSort")) {
-        fail("alice output does not contain bubbleSort reference");
+    if (!IMPL_RE.test(aliceRaw)) {
+        fail("alice output missing <!-- IMPL: bubbleSort --> marker");
     }
-    console.log("  alice: bubbleSort reference found");
+    console.log("  alice: <!-- IMPL: bubbleSort --> marker present");
 
     // Assertion 2: Extract and load bubbleSort function
     const code = extractLastCodeBlock(aliceRaw);
