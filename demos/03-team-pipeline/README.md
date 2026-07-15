@@ -48,12 +48,12 @@
     {
       "name": "bob",
       "role": "mathematician",
-      "prompt": "You are stage 2 (numerical) of a 3-stage pipeline evaluating the Gaussian integral I = integral_0^1 e^(-x^2) dx. The previous stage established I = (sqrt(pi)/2)*erf(1).\n\nYour job: approximate I numerically using Gauss-Legendre quadrature with EXACTLY n=8 nodes on the interval [0,1] (use the standard nodes/weights on [-1,1] then affine-map to [0,1]). Embed the code in a fenced block. Report the estimate to 10 significant digits. Your output MUST end with a line exactly formatted: <!-- VALUE: <your_10_digit_numeric_value> -->"
+      "prompt": "You are stage 2 (numerical) of a 3-stage pipeline evaluating the Gaussian integral I = integral_0^1 e^(-x^2) dx. The previous stage established I = (sqrt(pi)/2)*erf(1).\n\nYour job: approximate I numerically using Gauss-Legendre quadrature with EXACTLY n=8 nodes on the interval [0,1] (use the standard nodes/weights on [-1,1] then affine-map to [0,1]).\n\nEmbed the code in a fenced block. Report the estimate to 10 significant digits.\n\nYour output MUST end with a line exactly formatted: <!-- VALUE: <your_10_digit_numeric_value> -->"
     },
     {
       "name": "carol",
       "role": "mathematician",
-      "prompt": "You are stage 3 (error-bound) of a 3-stage pipeline evaluating the Gaussian integral I = integral_0^1 e^(-x^2) dx. Previous stages gave the closed form I = (sqrt(pi)/2)*erf(1) and a Gauss-Legendre (n=8) numerical estimate. Your job: take the numerical estimate from stage 2 and compare it to the closed-form reference value 0.7468241328 (approx (sqrt(pi)/2)*erf(1)); report the absolute error |estimate - reference|. Your output MUST end with a line exactly formatted: <!-- ERROR: <absolute_error> -->"
+      "prompt": "You are stage 3 (error-bound) of a 3-stage pipeline evaluating the Gaussian integral I = integral_0^1 e^(-x^2) dx. Previous stages gave the closed form I = (sqrt(pi)/2)*erf(1) and a Gauss-Legendre (n=8) numerical estimate.\n\nYour job: take the numerical estimate from stage 2 and compare it to the closed-form reference value 0.7468241328 (approx (sqrt(pi)/2)*erf(1)); report the absolute error |estimate - reference|.\n\nYour output MUST end with a line exactly formatted: <!-- ERROR: <absolute_error> -->"
     }
   ]
 }
@@ -147,7 +147,7 @@ T+12m   run: bun check-math-gaussian-integral.ts <run_dir>
     {
       "name": "alice",
       "role": "simulator",
-      "prompt": "You are stage 1 (model) of a 3-stage pipeline simulating a small-angle pendulum. Setup: rigid pendulum length L=1.0 m, gravity g=9.81 m/s^2, small-angle ODE theta'' = -(g/L)*theta. Initial conditions theta(0)=theta0=0.1 rad, theta'(0)=0. Tasks: (1) Derive the analytic solution theta(t) = theta0*cos(sqrt(g/L)*t). (2) Compute the period T = 2*pi*sqrt(L/g). (3) State theta(T) = theta0 (returns to start after one period). Pass the model and all parameters forward. Your output MUST end with a line exactly formatted: <!-- PERIOD: <T_numeric_value> -->"
+      "prompt": "You are stage 1 (model) of a 3-stage pipeline simulating a small-angle pendulum. Setup: rigid pendulum length L=1.0 m, gravity g=9.81 m/s^2, small-angle ODE theta'' = -(g/L)*theta. Initial conditions theta(0)=theta0=0.1 rad, theta'(0)=0.\n\nTasks: (1) Derive the analytic solution theta(t) = theta0*cos(sqrt(g/L)*t). (2) Compute the period T = 2*pi*sqrt(L/g). (3) State theta(T) = theta0 (returns to start after one period). Pass the model and all parameters forward. Your output MUST end with a line exactly formatted: <!-- PERIOD: <T_numeric_value> -->"
     },
     {
       "name": "bob",
