@@ -28,9 +28,9 @@ describe("bug① loop summary includes responses (work product)", () => {
         expect(summary).toContain("round 1: continue")
         expect(summary).toContain("final: done")
         // AND the actual work product (was missing before the fix)
-        expect(summary).toContain("### coder")
+        expect(summary).toContain("by coder:")
         expect(summary).toContain("function add(a,b)")
-        expect(summary).toContain("### reviewer")
+        expect(summary).toContain("by reviewer:")
     })
 
     test("loop summary with no responses falls back to decisions only", async () => {
