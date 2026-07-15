@@ -664,14 +664,14 @@ T+28m    workflow_complete, summary delivered to master
 ### Scenario 1: Auto-Retry on Incomplete Output — Factorial with retry_on (Programming)
 
 ```text
-Run the complete closed loop for demos/16-team-workflow-engine/README.md "Scenario 1" and auto-evaluate.
+Run the complete closed loop for demos/16-team-workflow/README.md "Scenario 1" and auto-evaluate.
 Steps:
 1. Read README "1.2 Team Configuration", create team per team_create JSON (2 members: alice=coder, bob=tester)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration per team_workflow JSON (2-step: task(factorial, retry_on: output_not_contains IMPL_DONE, max_task_retries:2) → gate(verify factorial))
 4. Poll team_results until master receives summary (engine auto-retries alice if IMPL_DONE missing)
 5. Locate <run_dir> (contains alice and bob's .md)
-6. Run: bun demos/16-team-workflow-engine/check-coding-retry-on.ts <run_dir>
+6. Run: bun demos/16-team-workflow/check-coding-retry-on.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 Success criteria: factorial(0)=1, factorial(5)=120, factorial(10)=3628800, factorial(-1) throws; bob's verdict is PASS.
 ```
@@ -679,14 +679,14 @@ Success criteria: factorial(0)=1, factorial(5)=120, factorial(10)=3628800, facto
 ### Scenario 2: Foreach Fanout — Sort Test Against Parameterized Inputs (Programming)
 
 ```text
-Run the complete closed loop for demos/16-team-workflow-engine/README.md "Scenario 2" and auto-evaluate.
+Run the complete closed loop for demos/16-team-workflow/README.md "Scenario 2" and auto-evaluate.
 Steps:
 1. Read README "2.2 Team Configuration", create team per team_create JSON (2 members: alice=coder, bob=tester)
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration per team_workflow JSON (3 steps: task(implement bubbleSort) → fanout(foreach [sorted,random,reverse], join_policy:all) → join)
 4. Poll team_results until master receives summary (engine auto-generates 3 branches, bob tests in parallel)
 5. Locate <run_dir> (contains alice.md)
-6. Run: bun demos/16-team-workflow-engine/check-coding-foreach-sort.ts <run_dir>
+6. Run: bun demos/16-team-workflow/check-coding-foreach-sort.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 Success criteria: bubbleSort correctly sorts ascending; handles empty and single-element arrays.
 ```
@@ -694,14 +694,14 @@ Success criteria: bubbleSort correctly sorts ascending; handles empty and single
 ### Scenario 3: Conditional Branch by Quality Score — isPalindrome with on_pass_goto + where (Programming)
 
 ```text
-Run the complete closed loop for demos/16-team-workflow-engine/README.md "Scenario 3" and auto-evaluate.
+Run the complete closed loop for demos/16-team-workflow/README.md "Scenario 3" and auto-evaluate.
 Steps:
 1. Read README "3.2 Team Configuration", create team per team_create JSON (3 members: alice=coder, bob=reviewer, carol=coder)
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration per team_workflow JSON (4 steps: task(implement isPalindrome) → gate(on_pass_goto:deploy, where:score_gte 0.8) → task(refine) → task(deploy))
 4. Poll team_results until master receives summary (engine conditionally jumps to deploy or falls through to refine)
 5. Locate <run_dir> (contains alice.md)
-6. Run: bun demos/16-team-workflow-engine/check-coding-conditional-branch.ts <run_dir>
+6. Run: bun demos/16-team-workflow/check-coding-conditional-branch.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 Success criteria: isPalindrome correctly handles all cases (palindrome, non-palindrome, spaces, case, empty).
 ```
@@ -709,14 +709,14 @@ Success criteria: isPalindrome correctly handles all cases (palindrome, non-pali
 ### Scenario 4: Resilient Chain — deduplicate with Timeout Retry, Fallback, and Malformed Handling (Challenge-Level · Programming)
 
 ```text
-Run the complete closed loop for demos/16-team-workflow-engine/README.md "Scenario 4" and auto-evaluate (challenge-level: 6 members, 4 steps with timeout retry, fallback members, and malformed verdict handling).
+Run the complete closed loop for demos/16-team-workflow/README.md "Scenario 4" and auto-evaluate (challenge-level: 6 members, 4 steps with timeout retry, fallback members, and malformed verdict handling).
 Steps:
 1. Read README "4.2 Team Configuration", create team per team_create JSON (6 members: alice/bob=coder, carol=coder, dave/erin=tester, frank=reviewer)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration per team_workflow JSON (4 steps: task(deduplicate, timeout retry + fallback) → gate(verify, malformed retry + fallback) → task(document) → gate(final review))
 4. Poll team_results until master receives summary (engine handles timeout retries, fallback switches, and malformed verdicts automatically)
 5. Locate <run_dir> (contains alice/bob, dave/erin, carol .md)
-6. Run: bun demos/16-team-workflow-engine/check-coding-resilient-chain.ts <run_dir>
+6. Run: bun demos/16-team-workflow/check-coding-resilient-chain.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 Success criteria: deduplicate correctly removes duplicates preserving order; verifier PASS; carol has DOCS_OK marker.
 ```
