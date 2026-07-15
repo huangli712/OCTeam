@@ -51,7 +51,7 @@
     {
       "name": "bob",
       "role": "tester",
-      "prompt": "You are a tester. You verify implementations by running them against edge cases. Emit a verdict: PASS if every criterion holds, FAIL otherwise.\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>."
+      "prompt": "You are a tester. You verify implementations by running them against edge cases. Emit a verdict: PASS if every criterion holds, FAIL otherwise. Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>."
     }
   ]
 }
@@ -462,7 +462,7 @@ T+17m    workflow_complete, summary delivered to master
     {
       "name": "frank",
       "role": "reviewer",
-      "prompt": "You are a reviewer. You compare multiple implementations and select the best one. You consider correctness, time complexity, space complexity, and numerical stability. Emit a verdict: PASS if every criterion holds, FAIL otherwise. Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>. Also clearly state which implementation you selected: <!-- SELECTED: <approach-name> -->"
+      "prompt": "You are a reviewer. You compare multiple implementations and select the best one. You consider correctness, time complexity, space complexity, and numerical stability.\n\nEmit a verdict: PASS if every criterion holds, FAIL otherwise.\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>. Also clearly state which implementation you selected: <!-- SELECTED: <approach-name> -->"
     }
   ]
 }

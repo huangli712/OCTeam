@@ -46,7 +46,7 @@
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST contain the literal text IMPL_DONE and end with <!-- IMPL: factorial -->"
+      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST contain the literal text IMPL_DONE and end with <!-- IMPL: factorial -->"
     },
     {
       "name": "bob",
@@ -178,7 +178,7 @@ T+16m    workflow_complete, summary delivered to master
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- IMPL: bubbleSort -->"
+      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: bubbleSort -->"
     },
     {
       "name": "bob",
@@ -316,17 +316,17 @@ T+11m    workflow_complete, summary delivered to master
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- IMPL: isPalindrome --> for implementation tasks, or <!-- DEPLOYED: true --> for deployment tasks."
+      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: isPalindrome --> for implementation tasks, or <!-- DEPLOYED: true --> for deployment tasks."
     },
     {
       "name": "bob",
       "role": "reviewer",
-      "prompt": "You are a reviewer. You verify code correctness and assign a quality score. Emit a verdict: PASS if every criterion holds, FAIL otherwise. Include a score field (number between 0 and 1). Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"score\": <number>, \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>."
+      "prompt": "You are a reviewer. You verify code correctness and assign a quality score. Emit a verdict: PASS if every criterion holds, FAIL otherwise. Include a score field (number between 0 and 1).\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"score\": <number>, \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>."
     },
     {
       "name": "carol",
       "role": "coder",
-      "prompt": "You are a coder. You refine existing implementations for clarity and edge-case handling. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- IMPL_REFINED: isPalindrome -->"
+      "prompt": "You are a coder. You refine existing implementations for clarity and edge-case handling. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL_REFINED: isPalindrome -->"
     }
   ]
 }
@@ -474,12 +474,12 @@ T+14m    workflow_complete, summary delivered to master
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- IMPL: deduplicate -->"
+      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: deduplicate -->"
     },
     {
       "name": "bob",
       "role": "coder",
-      "prompt": "You are a coder (fallback). You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- IMPL: deduplicate -->"
+      "prompt": "You are a coder (fallback). You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: deduplicate -->"
     },
     {
       "name": "carol",

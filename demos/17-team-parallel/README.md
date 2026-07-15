@@ -47,17 +47,17 @@ The `01-team-parallel/` demos all use `mode: "cooperative"`, where each member r
         {
             "name": "alice",
             "role": "mathematician",
-            "prompt": "Compute the definite integral of f(x) = x^2 * e^(-x) on [0, 2] using numerical integration (trapezoidal or Simpson's rule, at least 1000 subintervals). Report the result to 6 significant digits. Embed your code in a ```typescript fenced block. Your output MUST end with: <!-- INTEGRAL: <numeric_value> -->"
+            "prompt": "Compute the definite integral of f(x) = x^2 * e^(-x) on [0, 2] using numerical integration (trapezoidal or Simpson's rule, at least 1000 subintervals). Report the result to 6 significant digits.\n\nEmbed your code in a ```typescript fenced block.\n\nYour output MUST end with: <!-- INTEGRAL: <numeric_value> -->"
         },
         {
             "name": "bob",
             "role": "mathematician",
-            "prompt": "Compute the definite integral of f(x) = x^2 * e^(-x) on [0, 2] using numerical integration (trapezoidal or Simpson's rule, at least 1000 subintervals). Report the result to 6 significant digits. Embed your code in a ```typescript fenced block. Your output MUST end with: <!-- INTEGRAL: <numeric_value> -->"
+            "prompt": "Compute the definite integral of f(x) = x^2 * e^(-x) on [0, 2] using numerical integration (trapezoidal or Simpson's rule, at least 1000 subintervals). Report the result to 6 significant digits.\n\nEmbed your code in a ```typescript fenced block.\n\nYour output MUST end with: <!-- INTEGRAL: <numeric_value> -->"
         },
         {
             "name": "carol",
             "role": "mathematician",
-            "prompt": "Compute the definite integral of f(x) = x^2 * e^(-x) on [0, 2] using numerical integration (trapezoidal or Simpson's rule, at least 1000 subintervals). Report the result to 6 significant digits. Embed your code in a ```typescript fenced block. Your output MUST end with: <!-- INTEGRAL: <numeric_value> -->"
+            "prompt": "Compute the definite integral of f(x) = x^2 * e^(-x) on [0, 2] using numerical integration (trapezoidal or Simpson's rule, at least 1000 subintervals). Report the result to 6 significant digits.\n\nEmbed your code in a ```typescript fenced block.\n\nYour output MUST end with: <!-- INTEGRAL: <numeric_value> -->"
         }
     ]
 }
@@ -218,17 +218,17 @@ T+6m    run: bun check-coding-isolated-rubric.ts <run_dir>
         {
             "name": "alice",
             "role": "coder",
-            "prompt": "Implement `function hashString(s: string): number` — sum of (charCode * (index+1)) for each char. E.g. hashString('ab') = 97*1 + 98*2 = 293. Embed in ```typescript block. End with <!-- IMPL: hashString -->. After verifying, call team_done to signal completion."
+            "prompt": "Implement `function hashString(s: string): number` — sum of (charCode * (index+1)) for each char. E.g. hashString('ab') = 97*1 + 98*2 = 293. Embed in ```typescript block.\n\nEnd with <!-- IMPL: hashString -->.\n\nAfter verifying, call team_done to signal completion."
         },
         {
             "name": "bob",
             "role": "coder",
-            "prompt": "Implement `function hashString(s: string): number` — sum of (charCode * (index+1)) for each char. E.g. hashString('ab') = 97*1 + 98*2 = 293. Embed in ```typescript block. End with <!-- IMPL: hashString -->. After verifying, call team_done to signal completion."
+            "prompt": "Implement `function hashString(s: string): number` — sum of (charCode * (index+1)) for each char. E.g. hashString('ab') = 97*1 + 98*2 = 293. Embed in ```typescript block.\n\nEnd with <!-- IMPL: hashString -->.\n\nAfter verifying, call team_done to signal completion."
         },
         {
             "name": "carol",
             "role": "coder",
-            "prompt": "Implement `function hashString(s: string): number` — sum of (charCode * (index+1)) for each char. E.g. hashString('ab') = 97*1 + 98*2 = 293. Embed in ```typescript block. End with <!-- IMPL: hashString -->. After verifying, call team_done to signal completion."
+            "prompt": "Implement `function hashString(s: string): number` — sum of (charCode * (index+1)) for each char. E.g. hashString('ab') = 97*1 + 98*2 = 293. Embed in ```typescript block.\n\nEnd with <!-- IMPL: hashString -->.\n\nAfter verifying, call team_done to signal completion."
         }
     ]
 }
