@@ -14,9 +14,10 @@ import { buildSummary } from "../records/summary.js"
 
 /** Build the reducer's dispatch prompt: combine candidate outputs into one final result per the policy. */
 export function buildReducePrompt(body: string): string {
-    return `[Reduce task] You are the reducer for a parallel run. Combine the candidate `
+    return `[Reduce task]\n`
+        + ` You are the reducer for a parallel run. Combine the candidate `
         + `outputs below into ONE final result per the policy. Output ONLY the final `
-        + `result, with no preamble.\n\n${body}`
+        + `result, with no preamble.\n${body}`
 }
 
 /**
