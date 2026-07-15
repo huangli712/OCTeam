@@ -39,12 +39,12 @@
     {
       "name": "alice",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You implement numerical algorithms in TypeScript with rigor, using minimal code. When asked to produce an implementation, embed the full TypeScript in a single ```typescript fenced block and declare it with an IMPL marker. Your output MUST end with a line exactly formatted: <!-- IMPL: modPow -->"
+      "prompt": "You are a mathematician. You implement numerical algorithms in TypeScript with rigor, using minimal code. When asked to produce an implementation, embed the full TypeScript in a single ```typescript fenced block and declare it with an IMPL marker.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: modPow -->"
     },
     {
       "name": "bob",
       "role": "reviewer",
-      "prompt": "You are a reviewer. You verify mathematical implementations by running them against the gate's criteria. Emit a verdict: PASS if every criterion holds, FAIL otherwise (naming the failing case). Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case or measured value if FAIL, else empty>\"}</verdict>."
+      "prompt": "You are a reviewer. You verify mathematical implementations by running them against the gate's criteria. Emit a verdict: PASS if every criterion holds, FAIL otherwise (naming the failing case).\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case or measured value if FAIL, else empty>\"}</verdict>."
     }
   ]
 }
@@ -131,12 +131,12 @@ T+8m    Run: bun check-math-fast-pow.ts <run_dir>
     {
       "name": "alice",
       "role": "simulator",
-      "prompt": "You are a simulator. You implement numerical integrators in TypeScript and run them to report measured quantities. Embed runnable code in a ```typescript fenced block and always end with the requested numeric marker. Your output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
+      "prompt": "You are a simulator. You implement numerical integrators in TypeScript and run them to report measured quantities. Embed runnable code in a ```typescript fenced block and always end with the requested numeric marker.\n\nYour output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
     },
     {
       "name": "bob",
       "role": "physicist",
-      "prompt": "You are a physicist. You verify numerical results against physical conservation laws and known tolerances. Emit a verdict: PASS if the criterion holds, FAIL otherwise (with the measured value). Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case or measured value if FAIL, else empty>\"}</verdict>."
+      "prompt": "You are a physicist. You verify numerical results against physical conservation laws and known tolerances. Emit a verdict: PASS if the criterion holds, FAIL otherwise (with the measured value).\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case or measured value if FAIL, else empty>\"}</verdict>."
     }
   ]
 }
@@ -219,12 +219,12 @@ T+8m    Run: bun check-physics-verlet.ts <run_dir>
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "You are a coder. You implement functions in clean TypeScript with minimal code. Embed the full TypeScript in a single ```typescript fenced block and declare it with an IMPL marker. Your output MUST end with a line exactly formatted: <!-- IMPL: reverseStr -->"
+      "prompt": "You are a coder. You implement functions in clean TypeScript with minimal code. Embed the full TypeScript in a single ```typescript fenced block and declare it with an IMPL marker.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: reverseStr -->"
     },
     {
       "name": "bob",
       "role": "tester",
-      "prompt": "You are a tester. You verify implementations by running them against the gate's test cases, including edge cases. Emit a verdict: PASS if every case holds, FAIL otherwise (naming the failing case). Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case or measured value if FAIL, else empty>\"}</verdict>."
+      "prompt": "You are a tester. You verify implementations by running them against the gate's test cases, including edge cases. Emit a verdict: PASS if every case holds, FAIL otherwise (naming the failing case).\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case or measured value if FAIL, else empty>\"}</verdict>."
     }
   ]
 }
@@ -313,32 +313,32 @@ T+7m    Run: bun check-coding-reverse-str.ts <run_dir>
     {
       "name": "alice",
       "role": "simulator",
-      "prompt": "You are a simulator. You implement numerical PDE solvers in TypeScript and run them to report measured quantities. Embed runnable code in a ```typescript fenced block when asked. Your output MUST end with a line exactly formatted: <!-- GATE1_RESULT: <numeric_max_error> -->"
+      "prompt": "You are a simulator. You implement numerical PDE solvers in TypeScript and run them to report measured quantities. Embed runnable code in a ```typescript fenced block when asked.\n\nYour output MUST end with a line exactly formatted: <!-- GATE1_RESULT: <numeric_max_error> -->"
     },
     {
       "name": "bob",
       "role": "reviewer",
-      "prompt": "You are a reviewer. You verify numerical correctness against a manufactured (analytic) solution by comparing the producer's reported max-error to the tolerance. Emit a verdict: PASS if the criterion holds, FAIL otherwise. Your output MUST end with exactly one line formatted: <verdict>{"result": "PASS" (or "FAIL"), "rationale": "<one-sentence why>", "diff": "<measured value if FAIL, else empty>"}</verdict>."
+      "prompt": "You are a reviewer. You verify numerical correctness against a manufactured (analytic) solution by comparing the producer's reported max-error to the tolerance. Emit a verdict: PASS if the criterion holds, FAIL otherwise.\n\nYour output MUST end with exactly one line formatted: <verdict>{"result": "PASS" (or "FAIL"), "rationale": "<one-sentence why>", "diff": "<measured value if FAIL, else empty>"}</verdict>."
     },
     {
       "name": "carol",
       "role": "simulator",
-      "prompt": "You are a simulator. You run grid-convergence studies (multiple mesh sizes) and estimate convergence order via Richardson or log-log regression. Your output MUST end with a line exactly formatted: <!-- GATE2_RESULT: <numeric_order> -->"
+      "prompt": "You are a simulator. You run grid-convergence studies (multiple mesh sizes) and estimate convergence order via Richardson or log-log regression.\n\nYour output MUST end with a line exactly formatted: <!-- GATE2_RESULT: <numeric_order> -->"
     },
     {
       "name": "dave",
       "role": "physicist",
-      "prompt": "You are a physicist. You verify that a measured convergence order matches the theoretical expectation for the discretization (>= 2 for centered-space). Emit a verdict: PASS if the criterion holds, FAIL otherwise. Your output MUST end with exactly one line formatted: <verdict>{"result": "PASS" (or "FAIL"), "rationale": "<one-sentence why>", "diff": "<measured order if FAIL, else empty>"}</verdict>."
+      "prompt": "You are a physicist. You verify that a measured convergence order matches the theoretical expectation for the discretization (>= 2 for centered-space). Emit a verdict: PASS if the criterion holds, FAIL otherwise.\n\nYour output MUST end with exactly one line formatted: <verdict>{"result": "PASS" (or "FAIL"), "rationale": "<one-sentence why>", "diff": "<measured order if FAIL, else empty>"}</verdict>."
     },
     {
       "name": "erin",
       "role": "simulator",
-      "prompt": "You are a simulator. You run long-time conservation checks (total heat under Neumann BCs) and report relative drift over many steps. Your output MUST end with a line exactly formatted: <!-- GATE3_RESULT: <numeric_relative_drift> -->"
+      "prompt": "You are a simulator. You run long-time conservation checks (total heat under Neumann BCs) and report relative drift over many steps.\n\nYour output MUST end with a line exactly formatted: <!-- GATE3_RESULT: <numeric_relative_drift> -->"
     },
     {
       "name": "frank",
       "role": "physicist",
-      "prompt": "You are a physicist. You verify heat conservation: under zero-flux boundaries total heat is invariant up to round-off. Emit a verdict: PASS if the drift criterion holds, FAIL otherwise. Your output MUST end with exactly one line formatted: <verdict>{"result": "PASS" (or "FAIL"), "rationale": "<one-sentence why>", "diff": "<measured drift if FAIL, else empty>"}</verdict>."
+      "prompt": "You are a physicist. You verify heat conservation: under zero-flux boundaries total heat is invariant up to round-off. Emit a verdict: PASS if the drift criterion holds, FAIL otherwise.\n\nYour output MUST end with exactly one line formatted: <verdict>{"result": "PASS" (or "FAIL"), "rationale": "<one-sentence why>", "diff": "<measured drift if FAIL, else empty>"}</verdict>."
     }
   ]
 }

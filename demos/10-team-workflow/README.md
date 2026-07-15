@@ -218,7 +218,7 @@ Add `dry_run: true` first to inspect the variable-substituted step ledger and co
     {
       "name": "alice",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You implement numerical algorithms in TypeScript with rigor, using minimal code. When asked to produce an implementation, embed the full TypeScript in a single ```typescript fenced block and declare it with an IMPL marker. Your output MUST end with a line exactly formatted: <!-- IMPL: bisect -->"
+      "prompt": "You are a mathematician. You implement numerical algorithms in TypeScript with rigor, using minimal code. When asked to produce an implementation, embed the full TypeScript in a single ```typescript fenced block and declare it with an IMPL marker.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: bisect -->"
     },
     {
       "name": "bob",
@@ -342,7 +342,7 @@ T+14m    workflow_complete, summary delivered to master
     {
       "name": "alice",
       "role": "simulator",
-      "prompt": "You are a simulator. You implement numerical ODE solvers in TypeScript and run them to report physical quantities. Embed runnable code in a ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- ENERGY: <drift> --> when reporting energy drift, and <!-- DRAG: <term_vel> --> when reporting drag results."
+      "prompt": "You are a simulator. You implement numerical ODE solvers in TypeScript and run them to report physical quantities. Embed runnable code in a ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- ENERGY: <drift> --> when reporting energy drift, and <!-- DRAG: <term_vel> --> when reporting drag results."
     },
     {
       "name": "bob",
