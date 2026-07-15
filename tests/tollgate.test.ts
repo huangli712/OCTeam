@@ -812,7 +812,7 @@ describe("buildSummary: tollgate case", () => {
         expect(summary).toContain("[FAIL] dave -> verified by eve")
         expect(summary).toContain("(2 retries)")
         // Completed gate's output is included.
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("flux output here")
     })
 })

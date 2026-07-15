@@ -794,9 +794,9 @@ describe("buildSummary: arbitrate case", () => {
         expect(summary).toContain("Ruling: delay to Monday")
         expect(summary).toContain("Rationale: regression risk")
         // Each debater's final position is shown.
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("Ship on Friday")
-        expect(summary).toContain("### bob")
+        expect(summary).toContain("by bob:")
         expect(summary).toContain("Wait until Monday")
         // The arbiter's raw <ruling> decision JSON is excluded as noise.
         expect(summary).not.toContain("<ruling>")
@@ -821,7 +821,7 @@ describe("buildSummary: arbitrate case", () => {
         expect(summary).toContain("Ruling: (none)")
         expect(summary).not.toContain("Rationale:")
         // Debater positions are still included.
-        expect(summary).toContain("### alice")
-        expect(summary).toContain("### bob")
+        expect(summary).toContain("by alice:")
+        expect(summary).toContain("by bob:")
     })
 })

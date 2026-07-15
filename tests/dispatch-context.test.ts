@@ -167,7 +167,7 @@ describe("dispatchToMember unit", () => {
         await dispatchToMember(ctx, member, "[Your task]\nRun it again.", "/app")
         expect(captured).toHaveLength(2)
         expect(captured[1]).not.toContain("<task-instruction>")
-        expect(captured[1]).toBe("[Your task]\nRun it again.")
+        expect(captured[1]).toContain("[Your task]\nRun it again.")
     })
 
     test("does not prepend when member has no prompt (legacy / pre-fix team graceful degradation)", async () => {
@@ -186,7 +186,7 @@ describe("dispatchToMember unit", () => {
             // no prompt field — a team created before the fix, reused after rebuild
         }
         await dispatchToMember(ctx, member, "do work", "/app")
-        expect(captured[0]).toBe("do work")
+        expect(captured[0]).toContain("do work")
         expect(captured[0]).not.toContain("<task-instruction>")
     })
 })

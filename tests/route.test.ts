@@ -720,9 +720,9 @@ describe("buildSummary: route case", () => {
         // Head reflects mode + reason.
         expect(summary).toContain("mode=route reason=route_complete")
         // Only the resolved targets' outputs are shown.
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("Sales answer")
-        expect(summary).toContain("### bob")
+        expect(summary).toContain("by bob:")
         expect(summary).toContain("Support answer")
         // Router rationale is appended.
         expect(summary).toContain("Router rationale: cross-team request")

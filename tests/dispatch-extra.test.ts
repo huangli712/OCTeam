@@ -437,7 +437,7 @@ describe("ensureMembersReady", () => {
         expect(createReq.body.parentID).toBe(sid)
         expect(createReq.query.directory).toBe("/app")
         const promptReq = (promptAsync.mock.calls[0] as unknown as Array<{ body: { parts: Array<{ synthetic: boolean }> } }>)[0]
-        expect(promptReq.body.parts[0].synthetic).toBe(true)
+        expect(promptReq.body.parts[0].synthetic).toBe(false)
     })
 
     test("member without a matching spec entry still spawns with the fallback role prompt", async () => {

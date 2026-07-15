@@ -131,9 +131,9 @@ describe("summarizePipeline", () => {
     test("concatenates stage outputs in order", () => {
         const task = baseTask({ type: "pipeline", responses: { alice: "stage1 out", bob: "stage2 out" } })
         const summary = summarizePipeline(task, HEAD)
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("stage1 out")
-        expect(summary).toContain("### bob")
+        expect(summary).toContain("by bob:")
         expect(summary).toContain("stage2 out")
     })
 })
@@ -180,9 +180,9 @@ describe("summarizeRoute", () => {
         }) as Extract<ActiveTask, { type: "route" }>
         const summary = summarizeRoute(task, HEAD)
         expect(summary).toContain("Router rationale: input is a coding task")
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("code A")
-        expect(summary).toContain("### bob")
+        expect(summary).toContain("by bob:")
     })
 
     test("no rationale omits rationale line", () => {
@@ -193,7 +193,7 @@ describe("summarizeRoute", () => {
         }) as Extract<ActiveTask, { type: "route" }>
         const summary = summarizeRoute(task, HEAD)
         expect(summary).not.toContain("Router rationale")
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
     })
 })
 
@@ -211,8 +211,8 @@ describe("summarizeArbitrate", () => {
         const summary = summarizeArbitrate(task, HEAD)
         expect(summary).toContain("Ruling: use approach A")
         expect(summary).toContain("Rationale: simpler and faster")
-        expect(summary).toContain("### alice")
-        expect(summary).toContain("### bob")
+        expect(summary).toContain("by alice:")
+        expect(summary).toContain("by bob:")
     })
 
     test("no ruling shows (none)", () => {
@@ -242,10 +242,10 @@ describe("summarizeTollgate", () => {
         expect(summary).toContain("0. [PASS] alice -> verified by bob")
         expect(summary).toContain("1. [pending] carol -> verified by bob")
         expect(summary).toContain("1 retries")
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("impl output")
         // carol is not completed, so no output section
-        expect(summary).not.toContain("### carol")
+        expect(summary).not.toContain("by carol:")
     })
 
     test("no completed gates omits output section", () => {

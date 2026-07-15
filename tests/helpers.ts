@@ -253,7 +253,10 @@ export function makeCtx(opts: MakeCtxOptions = {}): PluginContext {
         } else if (opts.calls !== undefined) {
             const calls = opts.calls
             session.promptAsync = async (args: any) => {
-                calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
+                // Strip the OMO_INTERNAL_INITIATOR marker appended by dispatchToMember;
+                // it is a dispatch-layer detail, not semantic task content.
+                const raw = (args.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "")
+                calls.push({ sessionId: args.path.id, text: raw })
                 return { data: {} }
             }
         }

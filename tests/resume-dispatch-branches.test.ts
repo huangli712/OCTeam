@@ -113,7 +113,7 @@ describe("resumeDispatch: consensus re-dispatch loop", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -189,7 +189,7 @@ describe("resumeDispatch: pipeline/loop all-complete crash edge", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -229,7 +229,7 @@ describe("resumeDispatch: route Phase A with NO captured router output", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -273,7 +273,7 @@ describe("resumeDispatch: route Phase B target re-dispatch", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -450,7 +450,7 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -533,7 +533,7 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -627,7 +627,7 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -734,7 +734,7 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -842,7 +842,7 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -962,7 +962,7 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -1105,7 +1105,7 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         // When: resume re-drives the captured branch gate verdict.
@@ -1167,7 +1167,7 @@ describe("resumeDispatch: workflow mid-task-step crash", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -1209,7 +1209,7 @@ describe("resumeDispatch: workflow mid-task-step crash", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -1332,7 +1332,7 @@ describe("resumeDispatch: workflow mid-gate-step crash with captured verdict", (
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -1414,7 +1414,7 @@ describe("resumeDispatch: workflow goto-after-restart", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -1477,7 +1477,7 @@ describe("resumeDispatch: workflow goto-after-restart", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -1656,7 +1656,7 @@ describe("resumeDispatch: workflow retry/jump counter recovery", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {
@@ -1766,7 +1766,7 @@ describe("resumeDispatch: workflow retry/jump counter recovery", () => {
 
         const dispatched: { id: string; text: string }[] = [];
         const ctx = makeCtx({ storageRoot: root, promptAsync: async (req) => {
-            dispatched.push({ id: req.path.id, text: req.body.parts[0].text });
+            dispatched.push({ id: req.path.id, text: (req.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "") });
         } });
 
         await team.mutex.runExclusive(async () => {

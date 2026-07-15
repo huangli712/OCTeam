@@ -492,7 +492,8 @@ function makeArenaCtx(root: string, calls: DispatchCall[]): PluginContext {
         client: {
             session: {
                 promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
+                    const raw = (args.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "")
+                    calls.push({ sessionId: args.path.id, text: raw })
                     return { data: {} }
                 },
             },
