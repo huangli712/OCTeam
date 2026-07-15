@@ -201,8 +201,8 @@ export function formatWorkflowOutputSections(steps: readonly WorkflowStep[]): st
                         const status = workflowBranchStatus(steps, step, branchId, branchIndex)
                         sections.push(
                             `<Fanout Step = ${index + 1} Branch = ${branchId}> [${status}]\n`
-                            + `${outputs.join("\n\n")}`
-                            + `\n</Fanout>`
+                            + `${outputs.join("\n\n")}\n`
+                            + `</Fanout>`
                         )
                     }
                 }
@@ -210,7 +210,11 @@ export function formatWorkflowOutputSections(steps: readonly WorkflowStep[]): st
             }
             case "join": {
                 const joinedOutput = step.join?.joinedOutput
-                if (joinedOutput !== undefined) sections.push(`### Join Step ${index + 1}\n${truncateOutput(joinedOutput)}`)
+                if (joinedOutput !== undefined) sections.push(
+                    `<Join Step = ${index + 1}>\n`
+                    + `${truncateOutput(joinedOutput)}\n`
+                    + `</Join>`
+                )
                 break
             }
             case "gate":
