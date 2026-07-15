@@ -51,7 +51,8 @@ export function buildApprovalPrompt(teamName: string, request: ApprovalRequest):
         request.round !== undefined ? `round ${request.round}` : "",
     ].filter(Boolean).join(", ")
     const location = where ? ` (${where})` : ""
-    return `[Human approval required] Team "${teamName}" is paused at ${request.kind}${location}.\n`
+    return `[Human approval required]\n` 
+        + `Team "${teamName}" is paused at ${request.kind}${location}.\n`
         + `Approval id: ${request.id}\n\n`
         + `${request.summary}\n\n`
         + `Call team_approve(team_id="${teamName}", approval_id="${request.id}") to continue, `
