@@ -185,7 +185,7 @@ export function SessionNavigatorSidebar(props: {
                     {loading() ? (
                         <text fg={textMuted()}>{"Loading\u2026"}</text>
                     ) : sessions().length === 0 ? (
-                        <text fg={textMuted()}>{"No subagents"}</text>
+                        <text fg={textMuted()}>{"No tasks"}</text>
                     ) : (
                         <For each={sessions()}>
                             {(session) => (
