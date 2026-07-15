@@ -77,6 +77,11 @@ export function isLinearToolStep(step: WorkflowToolStep): step is WorkflowLinear
 }
 // --- ref resolution (lowered) ---
 
+/** Whether a lowered step kind is a valid gate target (task or join). */
+function isGateTargetKind(step: LoweredWorkflowStep | undefined): boolean {
+    return step?.kind === "task" || step?.kind === "join"
+}
+
 /** Resolve a gate's target_step or targets entry to a lowered step index. */
 export function resolveGateTargetRef(
     steps: readonly LoweredWorkflowStep[],
@@ -85,20 +90,19 @@ export function resolveGateTargetRef(
 ): number {
     if (typeof target === "number") {
         const idx = target - 1
-        return idx >= 0 && idx < gateIndex && steps[idx]?.kind === "task" ? idx : -1
+        return idx >= 0 && idx < gateIndex && isGateTargetKind(steps[idx]) ? idx : -1
     }
-    const idx = steps.findIndex((s, i) => i < gateIndex && s.kind === "task" && s.id === target)
+    const idx = steps.findIndex((s, i) => i < gateIndex && isGateTargetKind(s) && s.id === target)
     return idx
 }
 
-/** Resolve a gate's implicit or explicit single target to a lowered step index. */
 export function resolveGateTargetIndex(steps: readonly LoweredWorkflowStep[], gateIndex: number): number {
     const gate = steps[gateIndex]
     if (gate?.kind !== "gate") return -1
     const target = gate.target_step
     if (target === undefined) {
         for (let i = gateIndex - 1; i >= 0; i--) {
-            if (steps[i]?.kind === "task") return i
+            if (isGateTargetKind(steps[i])) return i
         }
         return -1
     }
@@ -183,7 +187,9 @@ export function resolveGotoIndex(
     return idx
 }
 
-/** Check whether a gate's target ref points to a fanout or join marker. */
+/** Check whether a gate's target ref points to a fanout marker step.
+ * join is a valid gate target (it carries joinedOutput), only fanout is a
+ * pure structural marker that cannot be verified. */
 export function resolvesToMarkerStep(
     steps: readonly LoweredWorkflowStep[],
     gateIndex: number,
@@ -197,8 +203,8 @@ export function resolvesToMarkerStep(
     if (target === undefined) return false
     switch (target.kind) {
         case "fanout":
-        case "join":
             return true
+        case "join":
         case "task":
         case "gate":
             return false

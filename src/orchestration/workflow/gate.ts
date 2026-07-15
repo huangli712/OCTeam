@@ -169,7 +169,7 @@ export function gateTargetIndices(steps: WorkflowStep[], gateIndex: number): num
     return nearest < 0 ? [] : [nearest];
 }
 
-/** Check whether a gate can reference a given task step (same-branch check). */
+/** Check whether a gate can reference a given task or join step (same-branch check). */
 function canGateReferenceTask(
     steps: WorkflowStep[],
     gateIndex: number,
@@ -177,7 +177,10 @@ function canGateReferenceTask(
 ): boolean {
     const gate = steps[gateIndex];
     const target = steps[targetIndex];
-    if (gate?.kind !== "gate" || target?.kind !== "task") return false;
+    if (gate?.kind !== "gate") return false;
+    // join is always top-level (no branch) and carries joinedOutput; allow it.
+    if (target?.kind === "join") return true;
+    if (target?.kind !== "task") return false;
 
     const gateBranch = gate.branch;
     if (gateBranch === undefined) return target.branch === undefined;
@@ -208,11 +211,21 @@ export function buildGateProducerOutput(
     const blocks: string[] = [];
     for (const targetIndex of targetIndices) {
         const producerStep = steps[targetIndex];
-        if (!producerStep || producerStep.kind !== "task") continue;
-        blocks.push(
-            `[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n` +
-                `${truncateOutput(producerStep.output ?? "")}`,
-        );
+        if (!producerStep) continue;
+        if (producerStep.kind === "task") {
+            blocks.push(
+                `[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n` +
+                    `${truncateOutput(producerStep.output ?? "")}`,
+            );
+        } else if (producerStep.kind === "join") {
+            const joined = producerStep.join?.joinedOutput ?? "";
+            if (joined) {
+                blocks.push(
+                    `[Joined output from workflow step ${targetIndex + 1}]\n` +
+                        `${truncateOutput(joined)}`,
+                );
+            }
+        }
     }
     return blocks.join("\n\n");
 }

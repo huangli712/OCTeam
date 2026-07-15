@@ -121,6 +121,43 @@ describe("workflow join policy runtime semantics", () => {
         expect(calls.some(c => c.sessionId === "ses_carol")).toBe(true)
     })
 
+    test("join_policy='all' followed by top-level gate verifies join joinedOutput", async () => {
+        // Regression: a top-level gate after a join(all) must dispatch the
+        // verifier and feed it the join's joinedOutput. Previously the gate's
+        // implicit target resolved to a branch task, canGateReferenceTask
+        // rejected it (cross-branch), gateTargetIndices returned [], and the
+        // run failed with a misleading workflow_failed:no_session:<verifier>.
+        const calls: DispatchCall[] = []
+        const task = makeWorkflowTask(
+            [
+                { kind: "fanout", completed: true, fanout: { branchIds: ["bubble", "merge"], branchRanges: [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }], joinIndex: 3, maxErrored: 0, joinPolicy: "all" } },
+                { kind: "task", member: "alice", task: "test bubble", completed: false, branch: { fanoutIndex: 0, branchId: "bubble", branchIndex: 0, joinIndex: 3 } },
+                { kind: "task", member: "bob", task: "test merge", completed: false, branch: { fanoutIndex: 0, branchId: "merge", branchIndex: 1, joinIndex: 3 } },
+                { kind: "join", completed: false, join: { fanoutIndex: 0, branchTailIndices: [1, 2], maxErrored: 0, joinPolicy: "all" } },
+                { kind: "gate", verifier: "carol", criteria: "both passed", completed: false },
+            ],
+            [1, 2],
+        )
+        const team = makeTeam({ activeTask: task, members: [
+            { name: "alice", sessionId: "ses_alice" },
+            { name: "bob", sessionId: "ses_bob" },
+            { name: "carol", sessionId: "ses_carol" },
+        ]})
+        const ctx = makeCtx({ outputs: { ses_alice: "<!-- SORT_OK: true -->", ses_bob: "<!-- SORT_OK: true -->" }, calls })
+
+        // When: both branch tasks idle (join fires, gate dispatches).
+        await processIdle(ctx, team, member(team, "alice"), "ses_alice")
+        await processIdle(ctx, team, member(team, "bob"), "ses_bob")
+
+        // Then: join completed, gate dispatched carol, carol received the
+        // join's joinedOutput in her prompt (not an empty target).
+        expect(task.steps?.[3]?.completed).toBe(true)
+        expect(task.steps?.[3]?.join?.joinedOutput).toContain("SORT_OK")
+        expect(calls.some(c => c.sessionId === "ses_carol")).toBe(true)
+        const carolCall = calls.find(c => c.sessionId === "ses_carol")
+        expect(carolCall?.text).toContain("SORT_OK")
+    })
+
     test("join_policy='quorum' joins once the quorum threshold of branches survives", async () => {
         // Given: 3 branches, quorum 0.5 => need 2 survivors.
         const calls: DispatchCall[] = []
