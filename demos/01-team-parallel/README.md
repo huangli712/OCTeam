@@ -463,7 +463,7 @@ Steps:
 1. Read README "1.2 Team Config", create the team using the team_create JSON
 2. team_activate (team_id = the team name created in the previous step)
 3. Read README "1.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
-4. team_results poll, wait for orchestration to complete and master to receive summary
+4. team_results poll, wait for orchestration to complete and master to receive summary (poll every 30s)
 5. Locate the output directory <run_dir> for this run (contains alice.md / bob.md / carol.md)
 6. Run evaluation:
    bun demos/01-team-parallel/check-math-montecarlo-pi.ts <run_dir>
@@ -481,7 +481,7 @@ Steps:
 1. Read README "2.2 Team Config", create the team using the team_create JSON
 2. team_activate
 3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s) (poll every 30s)
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
 6. Run: bun demos/01-team-parallel/check-physics-harmonic-integrator.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -515,7 +515,7 @@ Steps:
 1. Read README "4.2 Team Config", create the team using the team_create JSON (8 coder members, alice..henry)
 2. team_activate (team_id = sort-bench)
 3. Read README "4.3 Master Launch Invocation", start the orchestration using the team_parallel JSON (timeout_ms=3600000, allowing 60 min)
-4. team_results poll, wait for orchestration to complete and master to receive merge summary (includes 8×3 comparison table)
+4. team_results poll, wait for orchestration to complete and master to receive merge summary (includes 8×3 comparison table) (poll every 30s)
 5. Locate the output directory <run_dir> for this run (contains alice.md ... henry.md, 8 files total)
 6. Run evaluation:
    bun demos/01-team-parallel/check-coding-sort-benchmark.ts <run_dir>
