@@ -21,7 +21,8 @@ export function prependStandingInstruction(
     text: string,
 ): string {
     if (member.promptDelivered || !member.prompt) return text
-    return `<task-instruction>\n${member.prompt}\n</task-instruction>\n\n${text}`
+    return `<member-instruction>\n${member.prompt}\n</member-instruction>\n\n`
+        +`${text}`
 }
 
 /**

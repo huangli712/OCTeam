@@ -150,7 +150,7 @@ export function buildRolePrompt(
     // instruction. Every role resolves to an instruction (reviewer fallback).
     lines.push("", "<role-instruction>", rolePreset(spec.role), "</role-instruction>")
     // NOTE: spec.prompt (the member's standing task) is intentionally NOT embedded
-    // here. It is delivered as <task-instruction> on the member's FIRST real
+    // here. It is delivered as <member-instruction> on the member's FIRST real
     // task dispatch (see prependStandingInstruction in dispatch.ts). Embedding it
     // in role-setup caused members to execute the full task during the role-setup
     // barrier window, blowing the 120s timeout for any task heavier than ~2 min
