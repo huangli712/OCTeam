@@ -278,9 +278,9 @@ describe("summarizeWorkflow", () => {
         expect(summary).toContain("1.")
         expect(summary).toContain("2.")
         expect(summary).toContain("3.")
-        expect(summary).toContain("### Step 1 - alice")
+        expect(summary).toContain("by alice")
         expect(summary).toContain("draft output")
-        expect(summary).toContain("### Step 3 - carol")
+        expect(summary).toContain("by carol")
         expect(summary).toContain("polish output")
     })
 

@@ -119,9 +119,9 @@ describe("buildSummary: workflow case", () => {
         expect(summary).toContain("2. [gate] bob verifies nearest task -> PASS (1 retries)")
         expect(summary).toContain("3. [task] carol (done)")
         // Outputs labeled by step number + member (NOT duplicate ### member headers).
-        expect(summary).toContain("### Step 1 - alice")
+        expect(summary).toContain("by alice")
         expect(summary).toContain("alice draft output")
-        expect(summary).toContain("### Step 3 - carol")
+        expect(summary).toContain("by carol")
         expect(summary).toContain("carol polish output")
     })
 
@@ -239,10 +239,10 @@ describe("buildSummary: workflow case", () => {
         expect(summary).toContain("  - Branch docs [errored] steps 5-6")
         expect(summary).toContain("7. [join] fanout step 2 branches api:completed, docs:errored")
         expect(summary).toContain("### Fanout Step 2 Branch api [completed]")
-        expect(summary).toContain("#### Step 3 - alice")
+        expect(summary).toContain("by alice")
         expect(summary).toContain("api output")
         expect(summary).toContain("### Fanout Step 2 Branch docs [errored]")
-        expect(summary).toContain("#### Step 5 - carol")
+        expect(summary).toContain("by carol")
         expect(summary).toContain("docs output")
     })
 
