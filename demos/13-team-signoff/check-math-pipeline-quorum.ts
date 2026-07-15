@@ -78,24 +78,27 @@ async function main(): Promise<void> {
         process.exit(2);
     }
 
-    // Read the last pipeline stage (carol.md) for pipeline markers
+    // Read each pipeline stage for its own markers
+    let aliceOutput: string;
+    let bobOutput: string;
     let carolOutput: string;
     try {
-        carolOutput = await readMember(runDir, PIPELINE_LAST_STAGE);
+        aliceOutput = await readMember(runDir, "alice.md");
+        bobOutput = await readMember(runDir, "bob.md");
+        carolOutput = await readMember(runDir, "carol.md");
     } catch {
-        // readMember already exits on error, but catch for type safety
         process.exit(2);
     }
 
     // Assertion 1: formula marker in pipeline output
-    if (!FORMULA_RE.test(carolOutput)) {
-        fail("<!-- FORMULA: n(n+1)(2n+1)/6 --> marker not found in carol.md");
+    if (!FORMULA_RE.test(aliceOutput)) {
+        fail("<!-- FORMULA: n(n+1)(2n+1)/6 --> marker not found in alice.md");
     }
     console.log("  pipeline marker: FORMULA present");
 
     // Assertion 2: verify marker in pipeline output
-    if (!VERIFY_RE.test(carolOutput)) {
-        fail("<!-- VERIFY: true --> marker not found in carol.md");
+    if (!VERIFY_RE.test(bobOutput)) {
+        fail("<!-- VERIFY: true --> marker not found in bob.md");
     }
     console.log("  pipeline marker: VERIFY=true present");
 
