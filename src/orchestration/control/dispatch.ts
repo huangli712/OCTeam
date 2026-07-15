@@ -22,7 +22,7 @@ export function prependStandingInstruction(
 ): string {
     if (member.promptDelivered || !member.prompt) return text
     return `<member-instruction>\n${member.prompt}\n</member-instruction>\n\n`
-        +`${text}`
+        +`<task-instruction>\n${text}\n</task-instruction>`
 }
 
 /**
