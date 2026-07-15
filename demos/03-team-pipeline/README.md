@@ -152,12 +152,12 @@ T+12m   run: bun check-math-gaussian-integral.ts <run_dir>
     {
       "name": "bob",
       "role": "simulator",
-      "prompt": "You are stage 2 (integrate) of a 3-stage pendulum pipeline. The previous stage derived the ODE theta'' = -(g/L)*theta with g=9.81, L=1.0, analytic theta(t) = 0.1*cos(sqrt(9.81)*t), period T = 2*pi*sqrt(1/9.81).\n\nYour job: integrate the first-order system [theta, omega] with theta'=omega, omega'=-(g/L)*theta using CLASSICAL RK4 from t=0 to t=T with step h=0.001. Initial theta=0.1, omega=0.\n\nEmbed the code in a fenced block. Report theta(T) (should be approx 0.1).\n\nYour output MUST end with a line exactly formatted: <!-- THETA_END: <theta_at_T> -->"
+      "prompt": "You are stage 2 (integrate) of a 3-stage pendulum pipeline. Read the previous stage's output (alice.md) to extract the ODE, analytic solution, and period T.\n\nYour job: integrate the first-order system [theta, omega] with theta'=omega, omega'=-(g/L)*theta using CLASSICAL RK4 from t=0 to t=T with step h=0.001. Initial theta=0.1, omega=0.\n\nEmbed the code in a fenced block. Report theta(T) (should be approx 0.1).\n\nYour output MUST end with a line exactly formatted: <!-- THETA_END: <theta_at_T> -->"
     },
     {
       "name": "carol",
       "role": "simulator",
-      "prompt": "You are stage 3 (phase-portrait) of a 3-stage pendulum pipeline. Previous stages derived the ODE (theta'' = -(g/L)*theta, g=9.81, L=1.0), analytic solution theta(t)=0.1*cos(sqrt(9.81)*t), period T=2*pi*sqrt(1/9.81), and RK4-integrated theta(T).\n\nYour job: over [0, T], sample 100 equally spaced points; at each point compare the RK4 numerical theta to the analytic theta(t)=0.1*cos(sqrt(9.81)*t); report the MAX absolute deviation across the 100 samples.\n\nEmbed the code in a fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- MAX_ERR: <max_deviation> -->"
+      "prompt": "You are stage 3 (phase-portrait) of a 3-stage pendulum pipeline. Read the previous stages' outputs: alice.md for the ODE, analytic solution, and period T; bob.md for the RK4-integrated theta(T).\n\nYour job: over [0, T], sample 100 equally spaced points; at each point compare the RK4 numerical theta to the analytic theta(t)=0.1*cos(sqrt(9.81)*t); report the MAX absolute deviation across the 100 samples.\n\nEmbed the code in a fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- MAX_ERR: <max_deviation> -->"
     }
   ]
 }
@@ -369,12 +369,12 @@ T+10m   run: bun check-coding-fib-tdd.ts <run_dir>
     {
       "name": "bob",
       "role": "simulator",
-      "prompt": "You are stage 2 (init) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. The previous stage fixed LJ params (epsilon=0.998 kJ/mol, sigma=3.40 Angstrom, r_cut=2.5*sigma) and reduced units.\n\nYour job: build the cubic simulation box with periodic boundary conditions from rho = 1.38 g/cm^3 and N = 100 (compute box length L), place atoms on an FCC lattice (explain how you handle N=100 not being a perfect FCC filling), and initialize velocities from a Maxwell-Boltzmann distribution at T0 = 120 K, removing the center-of-mass velocity.\n\nEmbed the code in a fenced block.\n\nHand the initial configuration (positions, velocities, L) forward.\n\nYour output MUST end with a line exactly formatted: <!-- INIT: N_100_rho_1.38_T0_120K -->"
+      "prompt": "You are stage 2 (init) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. Read the previous stage's output (alice.md) to extract the LJ parameters and reduced units.\n\nYour job: build the cubic simulation box with periodic boundary conditions from rho = 1.38 g/cm^3 and N = 100 (compute box length L), place atoms on an FCC lattice (explain how you handle N=100 not being a perfect FCC filling), and initialize velocities from a Maxwell-Boltzmann distribution at T0 = 120 K, removing the center-of-mass velocity.\n\nEmbed the code in a fenced block.\n\nHand the initial configuration (positions, velocities, L) forward.\n\nYour output MUST end with a line exactly formatted: <!-- INIT: N_100_rho_1.38_T0_120K -->"
     },
     {
       "name": "carol",
       "role": "simulator",
-      "prompt": "You are stage 3 (minimize) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. Previous stages fixed the LJ force-field (epsilon=0.998 kJ/mol, sigma=3.40 Angstrom, r_cut=2.5*sigma) and built the initial FCC lattice in a periodic box.\n\nYour job: run STEEPEST DESCENT energy minimization on the initial positions (with PBC minimum-image convention) until the maximum per-atom force magnitude drops below 1e-4 (state the unit system used).\n\nEmbed the code in a fenced block.\n\nHand the minimized positions forward.\n\nYour output MUST end with a line exactly formatted: <!-- MINIMIZE: Fmax_below_1e-4 -->"
+      "prompt": "You are stage 3 (minimize) of an 8-stage Lennard-Jones MD pipeline for 100 argon atoms. Read the previous stages' outputs: alice.md for the LJ force-field parameters; bob.md for the initial FCC lattice and periodic box.\n\nYour job: run STEEPEST DESCENT energy minimization on the initial positions (with PBC minimum-image convention) until the maximum per-atom force magnitude drops below 1e-4 (state the unit system used).\n\nEmbed the code in a fenced block.\n\nHand the minimized positions forward.\n\nYour output MUST end with a line exactly formatted: <!-- MINIMIZE: Fmax_below_1e-4 -->"
     },
     {
       "name": "dave",

@@ -50,7 +50,7 @@
     {
       "name": "carol",
       "role": "reviewer",
-      "prompt": "You are the ARBITER. Two mathematicians debated whether to invert a dense, well-conditioned 4x4 matrix (condition number ~10) via DIRECT Gaussian elimination or an ITERATIVE method (e.g. Jacobi). Weigh both sides objectively, then deliver a single BINDING ruling. Recall the standard numerical-linear-algebra result: for small, dense, well-conditioned systems direct elimination is exact, assumption-free, and asymptotically cheaper in the constant-factor regime, while iterative methods are designed for large sparse systems.\n\nYour output MUST end with exactly one line formatted: <ruling>{\"decision\": \"<direct or iterative>\", \"rationale\": \"<one-sentence rationale referencing why, for this specific matrix class, the winner dominates>\"}</ruling>."
+      "prompt": "You are the ARBITER. Two mathematicians debated whether to invert a dense, well-conditioned 4x4 matrix (condition number ~10) via DIRECT Gaussian elimination or an ITERATIVE method (e.g. Jacobi). Weigh both sides objectively, then deliver a single BINDING ruling.\n\nYour output MUST end with exactly one line formatted: <ruling>{\"decision\": \"<direct or iterative>\", \"rationale\": \"<one-sentence rationale referencing why, for this specific matrix class, the winner dominates>\"}</ruling>."
     }
   ]
 }

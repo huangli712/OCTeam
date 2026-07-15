@@ -199,7 +199,11 @@ export function formatWorkflowOutputSections(steps: readonly WorkflowStep[]): st
                     }
                     if (outputs.length > 0) {
                         const status = workflowBranchStatus(steps, step, branchId, branchIndex)
-                        sections.push(`### Fanout Step ${index + 1} Branch ${branchId} [${status}]\n${outputs.join("\n\n")}`)
+                        sections.push(
+                            `<Fanout Step = ${index + 1} Branch = ${branchId}> [${status}]\n`
+                            + `${outputs.join("\n\n")}`
+                            + `\n</Fanout>`
+                        )
                     }
                 }
                 break

@@ -65,7 +65,7 @@ function bisect(f: (x: number) => number, a: number, b: number, tol: number, max
     {
       "name": "carol",
       "role": "reviewer",
-      "prompt": "You are the loop DECIDER. Read coder.md (the fix + FIXES count) and tester.md (the FAILING count + per-case reasons). Decide whether the bisection routine is correct: 'done' only when tester reports 0 failing cases AND coder's fix is minimal/non-degenerate; otherwise 'continue' with concrete nextActions for the coder.\n\nIn EVERY <decision> block you emit, include the standard fields (decision, rationale, nextActions) PLUS the additional boolean field \"testsPass\": true|false reflecting whether the tester reported 0 failing cases. The literal English tags <decision> and </decision> are required."
+      "prompt": "You are the loop DECIDER. Read coder.md (the fix + FIXES count) and tester.md (the FAILING count + per-case reasons). Decide whether the bisection routine is correct: 'done' only when tester reports 0 failing cases AND coder's fix is minimal/non-degenerate; otherwise 'continue' with concrete nextActions for the coder.\n\nIn EVERY <decision> block you emit, emit exactly: <decision>{\"decision\": \"done\"|\"continue\", \"rationale\": \"<one-sentence>\", \"nextActions\": [\"<concrete fix instruction>\"], \"testsPass\": true|false}</decision>. The literal English tags <decision> and </decision> are required."
     }
   ]
 }
@@ -173,7 +173,7 @@ function simulate(h: number, steps: number): { x: number; v: number } {
     {
       "name": "carol",
       "role": "reviewer",
-      "prompt": "You are the loop DECIDER. Read simulator.md (integrator name) and analyst.md (DRIFT_BEFORE and DRIFT_AFTER). Decide whether the energy drift is acceptable: 'done' only when the simulator used Velocity Verlet AND DRIFT_AFTER < 1e-3; otherwise 'continue' with concrete nextActions.\n\nIn EVERY <decision> block you emit, include the standard fields (decision, rationale, nextActions) PLUS the additional boolean field \"driftAcceptable\": true|false reflecting whether DRIFT_AFTER < 1e-3. The literal English tags <decision> and </decision> are required."
+      "prompt": "You are the loop DECIDER. Read simulator.md (integrator name) and analyst.md (DRIFT_BEFORE and DRIFT_AFTER). Decide whether the energy drift is acceptable: 'done' only when the simulator used Velocity Verlet AND DRIFT_AFTER < 1e-3; otherwise 'continue' with concrete nextActions.\n\nIn EVERY <decision> block you emit, emit exactly: <decision>{\"decision\": \"done\"|\"continue\", \"rationale\": \"<one-sentence>\", \"nextActions\": [\"<concrete fix instruction>\"], \"driftAcceptable\": true|false}</decision>. The literal English tags <decision> and </decision> are required."
     }
   ]
 }
@@ -285,7 +285,7 @@ function mergeIntervals(intervals: number[][]): number[][] {
     {
       "name": "carol",
       "role": "reviewer",
-      "prompt": "You are the loop DECIDER. Read coder.md (the BUGFIX description) and tester.md (the PASS_COUNT and per-case results). Decide whether the fix is correct: 'done' only when tester reports 5/5 pass AND the fix is the minimal <= change (not a refactor); otherwise 'continue' with concrete nextActions.\n\nIn EVERY <decision> block you emit, include the standard fields (decision, rationale, nextActions) PLUS the additional boolean field \"allPass\": true|false reflecting whether the tester reported 5/5. The literal English tags <decision> and </decision> are required."
+      "prompt": "You are the loop DECIDER. Read coder.md (the BUGFIX description) and tester.md (the PASS_COUNT and per-case results). Decide whether the fix is correct: 'done' only when tester reports 5/5 pass AND the fix is the minimal <= change (not a refactor); otherwise 'continue' with concrete nextActions.\n\nIn EVERY <decision> block you emit, emit exactly: <decision>{\"decision\": \"done\"|\"continue\", \"rationale\": \"<one-sentence>\", \"nextActions\": [\"<instruction>\"], \"allPass\": true|false}</decision>. The literal English tags <decision> and </decision> are required. reflecting whether the tester reported 5/5. The literal English tags <decision> and </decision> are required."
     }
   ]
 }
@@ -475,7 +475,7 @@ export class MPSCQueue<T> {
     {
       "name": "grace",
       "role": "reviewer",
-      "prompt": "You are the loop DECIDER for the lock-free MPSC queue fix. Read alice.md (FIX_APPLIED: ABA-HEAD), bob.md (ACQUIRE-TAIL-NEXT), carol.md (YIELD-SPIN), dave.md (NULL-SENTINEL) — confirm each coder applied exactly ONE distinct fix and the four are disjoint; read erin.md (PROP_TEST: pass|fail) and frank.md (STRESS_OPS + STRESS_RESULT). Decide 'done' ONLY when: (1) all four fix markers are present and distinct, (2) erin's PROP_TEST=pass, AND (3) frank's STRESS_RESULT=pass with STRESS_OPS=10000000; otherwise 'continue' with concrete nextActions naming which coder must redo their fix.\n\nIn EVERY <decision> block you emit, include the standard fields (decision, rationale, nextActions) PLUS two additional boolean fields: \"allFixed\": true|false (all four distinct fixes applied) and \"stressPass\": true|false (frank's 10^7 stress passed). The literal English tags <decision> and </decision> are required."
+      "prompt": "You are the loop DECIDER for the lock-free MPSC queue fix. Read alice.md (FIX_APPLIED: ABA-HEAD), bob.md (ACQUIRE-TAIL-NEXT), carol.md (YIELD-SPIN), dave.md (NULL-SENTINEL) — confirm each coder applied exactly ONE distinct fix and the four are disjoint; read erin.md (PROP_TEST: pass|fail) and frank.md (STRESS_OPS + STRESS_RESULT). Decide 'done' ONLY when: (1) all four fix markers are present and distinct, (2) erin's PROP_TEST=pass, AND (3) frank's STRESS_RESULT=pass with STRESS_OPS=10000000; otherwise 'continue' with concrete nextActions naming which coder must redo their fix.\n\nIn EVERY <decision> block you emit, emit exactly: <decision>{\"decision\": \"done\"|\"continue\", \"rationale\": \"<one-sentence>\", \"nextActions\": [\"<instruction>\"], \"allFixed\": true|false, \"stressPass\": true|false}</decision>. The literal English tags <decision> and </decision> are required."
     }
   ]
 }
