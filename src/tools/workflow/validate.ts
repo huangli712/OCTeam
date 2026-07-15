@@ -595,6 +595,9 @@ function validateLoweredGateStep(
     if ("error" in targetIndices) return targetIndices.error
     for (const targetIndex of targetIndices.indices) {
         const target = steps[targetIndex]
+        // join steps carry joinedOutput (no member/actor); skip member and
+        // self-verification checks — they only apply to task steps.
+        if (target?.kind === "join") continue
         if (target?.kind !== "task" || !target.member) {
             return `Error: step ${targetIndex + 1} (task) requires \`member\``
         }
@@ -617,9 +620,9 @@ function validateLoweredGateStep(
     }
     if (targetIndices.indices.length === 0) {
         if (gate.targets === undefined) {
-            return `Error: ${location} has no preceding task step to verify`
+            return `Error: ${location} has no preceding task or join step to verify`
         }
-        return `Error: ${location} targets must reference at least one previous task step`
+        return `Error: ${location} targets must reference at least one previous task or join step`
     }
     if (gate.verifier !== undefined && !isTeamMember(team, gate.verifier)) {
         return `Error: unknown member "${gate.verifier}" in ${location} verifier`
