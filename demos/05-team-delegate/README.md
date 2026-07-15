@@ -37,17 +37,17 @@
     {
       "name": "alice",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks, claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies, then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks, claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies, then report your result to master via team_send_message and release the task.\n\nEach task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
       "name": "bob",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks, claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies, then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks, claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies, then report your result to master via team_send_message and release the task.\n\nEach task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
       "name": "carol",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks, claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies, then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks, claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies, then report your result to master via team_send_message and release the task.\n\nEach task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     }
   ]
 }
@@ -149,17 +149,17 @@ T+6m    run: bun check-math-number-theory.ts <run_dir>
     {
       "name": "alice",
       "role": "simulator",
-      "prompt": "You are a numerical simulator specializing in ODE integration. You work in delegate mode: use team_task_list to find available simulation tasks, claim one with team_task_update (status 'claimed'), simulate exactly as the task description specifies (use classical RK4 with the given step size), then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+      "prompt": "You are a numerical simulator specializing in ODE integration. You work in delegate mode: use team_task_list to find available simulation tasks, claim one with team_task_update (status 'claimed'), simulate exactly as the task description specifies (use classical RK4 with the given step size), then report your result to master via team_send_message and release the task.\n\nEach task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
       "name": "bob",
       "role": "simulator",
-      "prompt": "You are a numerical simulator specializing in ODE integration. You work in delegate mode: use team_task_list to find available simulation tasks, claim one with team_task_update (status 'claimed'), simulate exactly as the task description specifies (use classical RK4 with the given step size), then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+      "prompt": "You are a numerical simulator specializing in ODE integration. You work in delegate mode: use team_task_list to find available simulation tasks, claim one with team_task_update (status 'claimed'), simulate exactly as the task description specifies (use classical RK4 with the given step size), then report your result to master via team_send_message and release the task.\n\nEach task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
       "name": "carol",
       "role": "simulator",
-      "prompt": "You are a numerical simulator specializing in ODE integration. You work in delegate mode: use team_task_list to find available simulation tasks, claim one with team_task_update (status 'claimed'), simulate exactly as the task description specifies (use classical RK4 with the given step size), then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+      "prompt": "You are a numerical simulator specializing in ODE integration. You work in delegate mode: use team_task_list to find available simulation tasks, claim one with team_task_update (status 'claimed'), simulate exactly as the task description specifies (use classical RK4 with the given step size), then report your result to master via team_send_message and release the task.\n\nEach task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     }
   ]
 }
@@ -263,17 +263,17 @@ T+6m    run: bun check-physics-ode-suite.ts <run_dir>
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task. Tasks with unmet blocked_by dependencies are not claimable — wait for them to clear. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+      "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task.\n\nTasks with unmet blocked_by dependencies are not claimable — wait for them to clear. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
       "name": "bob",
       "role": "coder",
-      "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task. Tasks with unmet blocked_by dependencies are not claimable — wait for them to clear. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+      "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task.\n\nTasks with unmet blocked_by dependencies are not claimable — wait for them to clear. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     },
     {
       "name": "carol",
       "role": "coder",
-      "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task. Tasks with unmet blocked_by dependencies are not claimable — wait for them to clear. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+      "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task.\n\nTasks with unmet blocked_by dependencies are not claimable — wait for them to clear. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
     }
   ]
 }
@@ -387,42 +387,42 @@ T+7m    run: bun check-coding-cli-calc.ts <run_dir>
     {
       "name": "alice",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task.\n\nEach task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
     },
     {
       "name": "bob",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task.\n\nEach task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
     },
     {
       "name": "carol",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task.\n\nEach task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
     },
     {
       "name": "dave",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task.\n\nEach task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
     },
     {
       "name": "erin",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task.\n\nEach task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
     },
     {
       "name": "frank",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task.\n\nEach task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
     },
     {
       "name": "grace",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task.\n\nEach task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
     },
     {
       "name": "henry",
       "role": "mathematician",
-      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task. Each task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
+      "prompt": "You are a mathematician. You work in delegate mode: use team_task_list to find available number-theory tasks (refs p1..p100), claim one with team_task_update (status 'claimed'), solve it exactly as the task description specifies — write and run code (Sieve of Eratosthenes for prime-count, trial division for divisor sum, BigInt modPow for modular exponent, totient sieve for Euler phi — whatever the problem family requires), then report your result to master via team_send_message and release the task.\n\nEach task description names its problem index n and requires your report to end with a line exactly formatted: <!-- ANSWER_<n>: <integer_value> -->. Repeat until no tasks remain."
     }
   ]
 }
