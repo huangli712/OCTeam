@@ -56,9 +56,9 @@ describe("summarizeParallel", () => {
         const task = baseTask({ responses: { alice: "result A", bob: "result B" } })
         const summary = summarizeParallel(task, HEAD)
         expect(summary).toContain(HEAD)
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("result A")
-        expect(summary).toContain("### bob")
+        expect(summary).toContain("by bob:")
         expect(summary).toContain("result B")
     })
 

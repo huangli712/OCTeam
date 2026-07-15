@@ -39,9 +39,9 @@ describe("buildSummary reduce_policy (parallel)", () => {
             responses: { alice: "answer A", bob: "answer B" },
         })
         const summary = await buildSummary(mockTeam, task, "test")
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("answer A")
-        expect(summary).toContain("### bob")
+        expect(summary).toContain("by bob:")
         expect(summary).toContain("answer B")
         expect(summary).not.toContain("[Reduce policy:")
     })
@@ -52,7 +52,7 @@ describe("buildSummary reduce_policy (parallel)", () => {
             reducePolicy: "summarize",
         })
         const summary = await buildSummary(mockTeam, task, "test")
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).not.toContain("[Reduce policy:")
     })
 

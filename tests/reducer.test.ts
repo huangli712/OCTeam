@@ -53,7 +53,7 @@ describe("buildSummary: reducedResult verbatim", () => {
         })
         const summary = await buildSummary(mockTeam, task, "test")
         expect(summary).toContain("[Reduce policy: SELECT]")
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).not.toContain("THE CHOSEN ANSWER")
     })
 
