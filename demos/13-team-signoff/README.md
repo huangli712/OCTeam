@@ -54,12 +54,12 @@ If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</si
         {
             "name": "alice",
             "role": "coder",
-            "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+            "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then write the full implementation code AND the output marker directly in your response text (not just via team_send_message). After writing your response, also report to master via team_send_message and release the task. Each task description specifies the exact output marker — include that marker line verbatim in your response. Repeat until no tasks remain."
         },
         {
             "name": "bob",
             "role": "coder",
-            "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then report your result to master via team_send_message and release the task. Each task description specifies the exact output marker your report must contain — include that marker line verbatim. Repeat until no tasks remain."
+            "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then write the full implementation code AND the output marker directly in your response text (not just via team_send_message). After writing your response, also report to master via team_send_message and release the task. Each task description specifies the exact output marker — include that marker line verbatim in your response. Repeat until no tasks remain."
         },
         {
             "name": "carol",

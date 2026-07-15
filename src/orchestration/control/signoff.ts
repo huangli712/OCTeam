@@ -18,7 +18,8 @@ import { dispatchToMember } from "./dispatch.js"
 
 /** Build the structured verdict contract shared by live and resumed reviews. */
 export function buildSignoffReviewPrompt(summary: string): string {
-    return `[Signoff review] Review the following workflow output. `
+    return `[Signoff review]\n` 
+        + `Review the following workflow output. `
         + `If it meets quality standards, emit <signoff>{"approved": true, "rationale": "..."}</signoff>. `
         + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
 }
