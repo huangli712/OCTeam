@@ -34,7 +34,7 @@ const TEST_CASES: TestCase[] = [
     { input: "ab", expected: 293 },        // 97*1 + 98*2
     { input: "", expected: 0 },
     { input: "a", expected: 97 },          // 97*1
-    { input: "abc", expected: 592 },       // 97*1 + 98*2 + 99*3 = 97 + 196 + 299
+    { input: "abc", expected: 590 },       // 97*1 + 98*2 + 99*3 = 97 + 196 + 297
 ];
 
 function fail(msg: string): never {
