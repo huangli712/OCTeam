@@ -426,21 +426,10 @@ T+57m    Run: bun check-physics-heat-vv.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] All 4 check scripts pass `tsc -p demos/tsconfig.json` (no type errors)
-- [ ] Every team configuration uses valid roles (`mathematician` / `reviewer` / `simulator` / `physicist` / `coder` / `tester` are all presets)
-- [ ] Every stage has `verifier != member` (`bob` ≠ `alice`, satisfying tollgate's hard constraint)
-- [ ] Every master launch call conforms to the `team_tollgate` schema (`stages[].{member,task,verifier,criteria}`)
-- [ ] Scenarios 1-3 total duration ≤ 8 min (well under the 30 min ceiling); scenario 4 is challenge-level at ~60 min (6 members, 3 serial gates)
-- [ ] Member prompts align with check script markers: scenarios 1-3 producers emit `IMPL`/`DRIFT`, verifiers emit `<verdict>` tagged JSON blocks; scenario 4 producers emit `GATE<n>_RESULT`, verifiers emit `<verdict>` tagged JSON blocks
-
-
----
 
 ## Quick-Start Prompt (Copy and Use)
 
-> Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In tollgate mode, evaluation reads the **producer + verifier** members' .md files: the producer's implementation/numerical results + the verifier's VERDICT.
+Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In tollgate mode, evaluation reads the **producer + verifier** members' .md files: the producer's implementation/numerical results + the verifier's VERDICT.
 
 ### Scenario 1: Implement Fast Power + Verify (Math)
 
@@ -451,7 +440,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create the team with team_create JSON (producer + verifier, 2 members)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration with the team_tollgate JSON (1 gate: implement → verify)
-4. team_results poll until master receives summary (verifier PASS before delivery; FAIL sends producer back to redo, constrained by max_gate_retries)
+4. team_results poll until master receives summary (verifier PASS before delivery; FAIL sends producer back to redo, constrained by max_gate_retries) (poll every 30s)
 5. Locate <run_dir> (containing producer and verifier .md files)
 6. Run: bun demos/09-team-tollgate/check-math-fast-pow.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -468,7 +457,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create the team with team_create JSON
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration with the team_tollgate JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/09-team-tollgate/check-physics-verlet.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -485,7 +474,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create the team with team_create JSON
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration with the team_tollgate JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/09-team-tollgate/check-coding-reverse-str.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -502,7 +491,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create the team with team_create JSON (6 members: alice/bob/carol/dave/erin/frank)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration with the team_tollgate JSON (3 serial gates: correctness -> convergence -> conservation)
-4. team_results poll until master receives summary (each gate verifier must PASS before the next gate proceeds; FAIL sends producer back to redo, constrained by max_gate_retries=1)
+4. team_results poll until master receives summary (each gate verifier must PASS before the next gate proceeds; FAIL sends producer back to redo, constrained by max_gate_retries=1) (poll every 30s)
 5. Locate <run_dir> (containing 6 member .md files: alice/bob/carol/dave/erin/frank)
 6. Run: bun demos/09-team-tollgate/check-physics-heat-vv.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

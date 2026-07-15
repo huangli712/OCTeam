@@ -589,21 +589,10 @@ T+28m    workflow_complete, summary delivered to master
 
 ---
 
-## Acceptance Checklist
-
-- [ ] Every gate's `verifier` ≠ the `member` of the task it verifies
-- [ ] Scenario 1 `on_fail_goto` targets a `task` step, not a `gate` step
-- [ ] Scenario 1 `loop.max_iterations` is a positive integer, `on_exhaust` is `"fail"` or `"continue"`
-- [ ] Scenario 2 `verifiers` array has ≥2 entries and `ensemble_policy` is `"majority"`, `"quorum"`, or `"unanimous"`
-- [ ] Scenario 3 `fanout.join_policy` is `"all"` with ≥2 branches and distinct branch members
-- [ ] Scenario 4 `fanout.join_policy` is `"select"` with a valid `reducer_member`
-- [ ] All check script markers (`IMPL`, `PROOF_OK`, `SORT_OK`, `APPROACH`, `SELECTED`, `verdict`) align with task prompts
-
----
 
 ## Quick-Start Prompts (Copy and Use)
 
-> Paste any of the following prompts into the master session and the AI will automatically complete the full loop of "create team → activate → launch orchestration → wait for summary → run check script".
+Paste any of the following prompts into the master session and the AI will automatically complete the full loop of "create team → activate → launch orchestration → wait for summary → run check script".
 
 ### Scenario 1: Fix-Verify Loop — parseList with Auto-Retry (Programming)
 
@@ -613,7 +602,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create team per team_create JSON (2 members: alice=coder, bob=tester)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration per team_workflow JSON (2-step loop: task(implement parseList) → gate(on_fail_goto back to implement, max 3 iterations))
-4. Poll team_results until master receives summary (engine drives loop: alice implements → bob verifies → on FAIL jumps back to alice)
+4. Poll team_results until master receives summary (engine drives loop: alice implements → bob verifies → on FAIL jumps back to alice) (poll every 30s)
 5. Locate <run_dir> (contains alice and bob's .md)
 6. Run: bun demos/15-team-workflow/check-coding-fix-loop.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -628,7 +617,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create team per team_create JSON (4 members: alice=mathematician, bob/carol/dave=reviewer)
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration per team_workflow JSON (2-step: task(prove induction) → gate(ensemble verifiers [bob,carol,dave], majority rule))
-4. Poll team_results until master receives summary
+4. Poll team_results until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice, bob, carol, dave .md)
 6. Run: bun demos/15-team-workflow/check-math-proof-ensemble.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -643,7 +632,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create team per team_create JSON (4 members: alice/bob/carol=coder, frank=tester)
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration per team_workflow JSON (4 steps: task(implement sorts) → fanout(2 branches parallel test) → join(all) → gate(verify))
-4. Poll team_results until master receives summary
+4. Poll team_results until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice, bob, carol, frank .md)
 6. Run: bun demos/15-team-workflow/check-coding-matrix-scan.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -658,7 +647,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create team per team_create JSON (5 members: alice/bob/carol=coder, dave/frank=reviewer)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration per team_workflow JSON (3 steps: fanout(3 competing implementations) → join(select, frank is reducer) → gate(dave verifies winner))
-4. Poll team_results until master receives summary
+4. Poll team_results until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice, bob, carol, frank, dave .md)
 6. Run: bun demos/15-team-workflow/check-coding-select-optimal.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

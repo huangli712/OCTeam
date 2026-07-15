@@ -476,19 +476,10 @@ T+60m    run: bun check-physics-md-pipeline.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] 4 check scripts pass `tsc --noEmit` (no type errors)
-- [ ] Each team config role is valid (`mathematician` / `simulator` / `coder` are all presets)
-- [ ] Each master call parameters conform to `team_pipeline` schema (`stages[].member` unique)
-- [ ] Scenarios 1-3 total duration ≤ 15 min (well under 30 min ceiling; subtask per member ≤ 8 min); Scenario 4 is challenge-level (8 stages, ~60 min, timeout 90 min), separately noted
-- [ ] Member prompts explicitly specify output format conventions (marker); check scripts read **final-stage member** output and align with it
-
----
 
 ## Quick-Start Prompt (Copy and Use)
 
-> Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. Pipeline evaluation reads only the **final-stage member's** output (prior stage outputs are automatically prepended to the final-stage task).
+Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. Pipeline evaluation reads only the **final-stage member's** output (prior stage outputs are automatically prepended to the final-stage task).
 
 ### Scenario 1: Gaussian Integral Full Pipeline (Math)
 
@@ -499,7 +490,7 @@ Steps:
 1. Read README "1.2 Team Config", create the team using the team_create JSON
 2. team_activate
 3. Read README "1.3 Master Launch Invocation", start the orchestration using the team_pipeline JSON (3 stages sequential)
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (final-stage member's .md is the final output)
 6. Run: bun demos/03-team-pipeline/check-math-gaussian-integral.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -516,7 +507,7 @@ Steps:
 1. Read README "2.2 Team Config", create the team using the team_create JSON
 2. team_activate
 3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_pipeline JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/03-team-pipeline/check-physics-pendulum.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -533,7 +524,7 @@ Steps:
 1. Read README "3.2 Team Config", create the team using the team_create JSON
 2. team_activate
 3. Read README "3.3 Master Launch Invocation", start the orchestration using the team_pipeline JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (final-stage member carol's .md)
 6. Run: bun demos/03-team-pipeline/check-coding-fib-tdd.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -550,7 +541,7 @@ Steps:
 1. Read README "4.2 Team Config", create the team using the team_create JSON (8 simulator members alice..henry)
 2. team_activate
 3. Read README "4.3 Master Launch Invocation", start the orchestration using the team_pipeline JSON (8 stages sequential, timeout_ms=5400000)
-4. team_results poll until master receives summary (note long duration; can lengthen poll interval)
+4. team_results poll until master receives summary (note long duration; can lengthen poll interval) (poll every 30s)
 5. Locate <run_dir> (final-stage member henry.md is the final output; previous 7 stage outputs are auto-prepended to henry's task)
 6. Run: bun demos/03-team-pipeline/check-physics-md-pipeline.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

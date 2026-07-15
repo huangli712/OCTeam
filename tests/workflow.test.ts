@@ -1668,7 +1668,28 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(task.currentStageIndex).toBe(1);
 
         // Second FAIL: attempts 1 -> 2 > maxRetries 1 -> fail the run.
-        ctx = makeCtx({ outputs: { ses_bob: FAIL_VERDICT }, calls: calls });
+        // Bob's second verification idle arrives AFTER the gate retried alice
+        // (a real dispatchToMember appends a new user+assistant turn to bob's
+        // session history). Mirror that growth so captureMemberOutput's
+        // lastCapturedMsgCount guard recognises a fresh turn (length 2 -> 4)
+        // and captures the FAIL verdict. A fixed-length outputs mock would be
+        // skipped as a no-new-turn stale idle, leaving responses.bob unset.
+        ctx = makeCtx({
+            calls: calls,
+            messages: async ({ path }: { path: { id: string } }) => {
+                const text = path.id === "ses_bob" ? FAIL_VERDICT : ""
+                return {
+                    data: [
+                        // Turn 1 (preserved from the first verification).
+                        { info: { role: "user" }, parts: [{ type: "text", text: "go" }] },
+                        { info: { role: "assistant" }, parts: [{ type: "text", text: FAIL_VERDICT }] },
+                        // Turn 2 (appended by the retry dispatch).
+                        { info: { role: "user" }, parts: [{ type: "text", text: "retry" }] },
+                        ...(text ? [{ info: { role: "assistant" }, parts: [{ type: "text", text }] }] : []),
+                    ],
+                }
+            },
+        });
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         expect(team.status).toBe("failed");

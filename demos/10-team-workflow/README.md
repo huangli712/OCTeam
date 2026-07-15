@@ -629,19 +629,10 @@ T+35m    workflow_complete, summary delivered to master (with all 8-step ledger 
 **Known limitations** (consistent with all orchestration modes): checkpoint granularity is a full task; recovery restarts from the **current step**, not from intra-step sub-progress. For recovery coverage of branches (captured task replay / no captured response re-dispatch / all-complete direct delivery / captured gate verdict replay), see `tests/resume-dispatch-branches.test.ts`.
 
 
-## Acceptance Checklist
-
-- [ ] Every gate's `verifier` ≠ the `member` of the task it verifies (satisfies the "no self-verification" hard constraint)
-- [ ] Every master launch call conforms to the `team_workflow` schema (first step is a `task`, gate verifies preceding task, `on_fail` paired with `max_retries`, etc.)
-- [ ] Every task prompt aligns with check script markers (scenario 1: handler code block; scenario 2: `<!-- IMPL: bisect -->`; scenario 3: `<!-- ENERGY:` / `<!-- DRAG:`; scenario 4: `<!-- MODULE:`)
-- [ ] Scenarios 1-3 total duration ≤ 20 min (well under 30 min ceiling); scenario 4 is challenge-level at ~50 min (6 members, 8-step fanout)
-- [ ] Scenario 4 fanout branch members are all distinct (carol/dave/erin each implement one module)
-
----
 
 ## Quick-Start Prompt (Copy and Use)
 
-> Paste any of the following prompts into the master session and the AI will automatically complete the full loop of "create team → activate → launch orchestration → wait for summary → run check script". Scenarios 1-3 all provide bun-runnable check scripts.
+Paste any of the following prompts into the master session and the AI will automatically complete the full loop of "create team → activate → launch orchestration → wait for summary → run check script". Scenarios 1-3 all provide bun-runnable check scripts.
 
 ### Scenario 1: REST API Handler Implementation + Verification + Refactor (Programming)
 
@@ -651,7 +642,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create team per team_create JSON (2 members: alice=coder, bob=tester)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration per team_workflow JSON (4-step chain: task(implement) → gate(verify) → task(refactor) → gate(re-verify))
-4. Poll team_results until master receives summary (engine drives each step's advancement)
+4. Poll team_results until master receives summary (engine drives each step's advancement) (poll every 30s)
 5. Locate <run_dir> (contains alice and bob's .md)
 6. Run: bun demos/10-team-workflow/check-coding-handler.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -666,7 +657,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create team per team_create JSON (2 members: alice=mathematician, bob=reviewer)
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration per team_workflow JSON (4-step chain: task(implement bisect) → gate(verify sqrt2+sign check) → task(optimize) → gate(re-verify 3 functions))
-4. Poll team_results until master receives summary
+4. Poll team_results until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice and bob's .md)
 6. Run: bun demos/10-team-workflow/check-math-bisect.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -681,7 +672,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create team per team_create JSON (2 members: alice=simulator, bob=physicist)
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration per team_workflow JSON (4-step chain: task(RK4 projectile) → gate(verify energy) → task(add drag) → gate(verify terminal velocity))
-4. Poll team_results until master receives summary
+4. Poll team_results until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice and bob's .md)
 6. Run: bun demos/10-team-workflow/check-physics-projectile.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -696,7 +687,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create team per team_create JSON (6 members: alice=coder, bob=reviewer, carol/dave/erin=coder, frank=tester)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration per team_workflow JSON (8 steps: task(types) → gate(verify types) → fanout(3 parallel modules) → join(reduce) → gate(integration test))
-4. Poll team_results until master receives summary (engine advances: alice defines types → bob gate verifies → carol/dave/erin implement three modules in parallel → frank join reduce aggregates → frank gate integration test)
+4. Poll team_results until master receives summary (engine advances: alice defines types → bob gate verifies → carol/dave/erin implement three modules in parallel → frank join reduce aggregates → frank gate integration test) (poll every 30s)
 5. Locate <run_dir> (contains 6 members' .md: alice/bob/carol/dave/erin/frank)
 6. Run: bun demos/10-team-workflow/check-coding-modular-cms.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

@@ -640,26 +640,10 @@ T+28m    workflow_complete, summary delivered to master
 
 ---
 
-## Acceptance Checklist
-
-- [ ] Scenario 1 `retry_on` condition is a valid JSON object with exactly one key (empty / output_contains / output_not_contains / regex)
-- [ ] Scenario 1 `max_task_retries` is a non-negative integer and `retry_on` is present
-- [ ] Scenario 2 `foreach` is an array of strings and `as` is a valid identifier
-- [ ] Scenario 2 `foreach` is used without `branches` or `matrix` (mutually exclusive)
-- [ ] Scenario 3 `on_pass_goto` references a valid step id that is a `task` step (not a `gate`)
-- [ ] Scenario 3 `where` has exactly one condition key (score_gte / score_lt / confidence_gte / has_issue_severity)
-- [ ] Scenario 4 `on_timeout` has a matching `max_timeout_retries` when set to "retry"
-- [ ] Scenario 4 `fallback_member` is a valid member name different from the primary `member`
-- [ ] Scenario 4 `fallback_verifier` is a valid member name different from the primary `verifier`
-- [ ] Scenario 4 `on_malformed` has a matching `max_malformed_retries` when set to "retry_verifier"
-- [ ] All check scripts use 4-space indentation, `node:fs/promises`+`node:path` imports, `Bun.Transpiler` for code loading
-- [ ] Every gate's `verifier` ≠ the `member` of the preceding task step
-
----
 
 ## Quick-Start Prompts (Copy and Use)
 
-> Paste any of the following prompts into the master session and the AI will automatically complete the full loop of "create team → activate → launch orchestration → wait for summary → run check script".
+Paste any of the following prompts into the master session and the AI will automatically complete the full loop of "create team → activate → launch orchestration → wait for summary → run check script".
 
 ### Scenario 1: Auto-Retry on Incomplete Output — Factorial with retry_on (Programming)
 
@@ -669,7 +653,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create team per team_create JSON (2 members: alice=coder, bob=tester)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration per team_workflow JSON (2-step: task(factorial, retry_on: output_not_contains IMPL_DONE, max_task_retries:2) → gate(verify factorial))
-4. Poll team_results until master receives summary (engine auto-retries alice if IMPL_DONE missing)
+4. Poll team_results until master receives summary (engine auto-retries alice if IMPL_DONE missing) (poll every 30s)
 5. Locate <run_dir> (contains alice and bob's .md)
 6. Run: bun demos/16-team-workflow/check-coding-retry-on.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -684,7 +668,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create team per team_create JSON (2 members: alice=coder, bob=tester)
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration per team_workflow JSON (3 steps: task(implement bubbleSort) → fanout(foreach [sorted,random,reverse], join_policy:all) → join)
-4. Poll team_results until master receives summary (engine auto-generates 3 branches, bob tests in parallel)
+4. Poll team_results until master receives summary (engine auto-generates 3 branches, bob tests in parallel) (poll every 30s)
 5. Locate <run_dir> (contains alice.md)
 6. Run: bun demos/16-team-workflow/check-coding-foreach-sort.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -699,7 +683,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create team per team_create JSON (3 members: alice=coder, bob=reviewer, carol=coder)
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration per team_workflow JSON (4 steps: task(implement isPalindrome) → gate(on_pass_goto:deploy, where:score_gte 0.8) → task(refine) → task(deploy))
-4. Poll team_results until master receives summary (engine conditionally jumps to deploy or falls through to refine)
+4. Poll team_results until master receives summary (engine conditionally jumps to deploy or falls through to refine) (poll every 30s)
 5. Locate <run_dir> (contains alice.md)
 6. Run: bun demos/16-team-workflow/check-coding-conditional-branch.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -714,7 +698,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create team per team_create JSON (6 members: alice/bob=coder, carol=coder, dave/erin=tester, frank=reviewer)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration per team_workflow JSON (4 steps: task(deduplicate, timeout retry + fallback) → gate(verify, malformed retry + fallback) → task(document) → gate(final review))
-4. Poll team_results until master receives summary (engine handles timeout retries, fallback switches, and malformed verdicts automatically)
+4. Poll team_results until master receives summary (engine handles timeout retries, fallback switches, and malformed verdicts automatically) (poll every 30s)
 5. Locate <run_dir> (contains alice/bob, dave/erin, carol .md)
 6. Run: bun demos/16-team-workflow/check-coding-resilient-chain.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

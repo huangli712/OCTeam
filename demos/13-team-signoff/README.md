@@ -481,22 +481,10 @@ T+32m    Run: bun check-coding-pipeline-decider.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] 4 check scripts pass `bunx tsc -p demos/tsconfig.json` (no type errors, strict mode)
-- [ ] Each team config role is valid (`coder` / `reviewer` / `mathematician` / `tester` are all presets)
-- [ ] Each master call includes correct `signoff_policy` (decider or peer-quorum) with supporting parameters
-- [ ] Signoff decider is never the master session and never a member that generates task output (for decider mode)
-- [ ] Peer-quorum quorum thresholds are correctly calculated (0.67 × 3 = 2 required; default 0.5 × 3 = 2 required)
-- [ ] Check scripts verify both task output markers AND signoff verdict tags
-- [ ] Scenarios 1-3 baseline ≤ 15 min; Scenario 4 challenge-level ≤ 45 min
-- [ ] Member prompts explicitly state output format conventions; check script markers aligned
-
----
 
 ## Quick-Start Prompts (Copy and Use)
 
-> Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Signoff evaluation reads the signoff verdict tags (`<signoff>{"approved": true/false, "rationale": "..."}</signoff>`) from member .md outputs.
+Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Signoff evaluation reads the signoff verdict tags (`<signoff>{"approved": true/false, "rationale": "..."}</signoff>`) from member .md outputs.
 
 ### Scenario 1: Utility Function Delegate with Decider Signoff
 
@@ -507,7 +495,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create the team with team_create JSON (2 coders + 1 reviewer)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration with the team_delegate JSON (signoff_policy: decider, signoff_decider: carol)
-4. team_results poll until master receives summary (carol's signoff review completes after tasks)
+4. team_results poll until master receives summary (carol's signoff review completes after tasks) (poll every 30s)
 5. Locate <run_dir> (containing member .md outputs with signoff tags)
 6. Run: bun demos/13-team-signoff/check-coding-delegate-decider.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -524,7 +512,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create the team with team_create JSON (3 coders)
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration with the team_parallel JSON (mode: cooperative, signoff_policy: peer-quorum, quorum: 0.67)
-4. team_results poll until master receives summary (signoff quorum check completes)
+4. team_results poll until master receives summary (signoff quorum check completes) (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/13-team-signoff/check-coding-parallel-quorum.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -541,7 +529,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create the team with team_create JSON (3 mathematicians)
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration with the team_pipeline JSON (3 stages, signoff_policy: peer-quorum)
-4. team_results poll until master receives summary (signoff quorum check completes)
+4. team_results poll until master receives summary (signoff quorum check completes) (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/13-team-signoff/check-math-pipeline-quorum.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -558,7 +546,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create the team with team_create JSON (5 implementers + 1 reviewer, 6 total)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration with the team_pipeline JSON (5 stages, signoff_policy: decider, signoff_decider: frank)
-4. team_results poll until master receives summary (frank's signoff review completes after pipeline)
+4. team_results poll until master receives summary (frank's signoff review completes after pipeline) (poll every 30s)
 5. Locate <run_dir> (containing erin.md with full pipeline output + frank.md with signoff verdict)
 6. Run: bun demos/13-team-signoff/check-coding-pipeline-decider.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

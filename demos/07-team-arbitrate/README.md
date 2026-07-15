@@ -414,20 +414,10 @@ T+24m    Run: bun check-physics-pde-arbitrate.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] 3 check scripts pass `tsc -p demos/tsconfig.json` (no type errors)
-- [ ] Each team config uses valid roles (`mathematician` / `simulator` / `coder` / `reviewer` / `physicist` are all presets)
-- [ ] Each master call parameters conform to `team_arbitrate` schema (`arbiter` not master, not a debater; `debaters` ≥2 and unique)
-- [ ] Per-scenario total time ≤ 18 min (well under the 30 min cap)
-- [ ] Member prompts explicitly state output format conventions (debater `<!-- ARG -->`; arbiter `<ruling>{json}</ruling>` tag block), check scripts aligned with them
-
-
----
 
 ## Quick-start Prompts (copy and use)
 
-> Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Arbitrate mode evaluation reads the arbiter member's final ruling (containing the `<ruling>{"decision":"...","rationale":"..."}</ruling>` tag JSON block).
+Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Arbitrate mode evaluation reads the arbiter member's final ruling (containing the `<ruling>{"decision":"...","rationale":"..."}</ruling>` tag JSON block).
 
 ### Scenario 1: 4×4 Matrix Inversion Debate (math)
 
@@ -438,7 +428,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create the team with team_create JSON (2 debaters + 1 arbiter)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration with the team_arbitrate JSON
-4. team_results poll until master receives summary (arbiter issues ruling after debaters debate)
+4. team_results poll until master receives summary (arbiter issues ruling after debaters debate) (poll every 30s)
 5. Locate <run_dir> (containing carol member .md)
 6. Run: bun demos/07-team-arbitrate/check-math-matrix-inverse.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -455,7 +445,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create the team with team_create JSON
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration with the team_arbitrate JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/07-team-arbitrate/check-physics-stiff-ode.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -472,7 +462,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create the team with team_create JSON
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration with the team_arbitrate JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/07-team-arbitrate/check-coding-cache-eviction.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -489,7 +479,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create the team with team_create JSON (5 debaters + 1 arbiter, challenge-level)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration with the team_arbitrate JSON (max_rounds=3)
-4. team_results poll until master receives summary (arbiter issues ruling after five-way three-round debate)
+4. team_results poll until master receives summary (arbiter issues ruling after five-way three-round debate) (poll every 30s)
 5. Locate <run_dir> (containing frank member .md)
 6. Run: bun demos/07-team-arbitrate/check-physics-pde-arbitrate.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

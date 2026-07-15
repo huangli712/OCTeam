@@ -457,20 +457,10 @@ T+~20m    Run: bun check-coding-multi-ticket-router.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] 4 check scripts pass `bunx tsc -p demos/tsconfig.json` (no type errors)
-- [ ] Each team config uses valid roles (`mathematician` / `physicist` / `simulator` / `analyst` / `coder` are all presets)
-- [ ] Each master call parameters conform to `team_route` schema: `router` not master, not a branch target; route `name`/`member` are unique; `input` ≤ 32768 characters
-- [ ] Route mode actual dispatched members = router + N matched branches: Scenarios 1-3 single-select (≤ 2 active, ≤ 10 min); Scenario 4 multi-select parallel (≤ 9 active, ≤ 30 min cap)
-- [ ] Router member prompt ends with `<route>` format directive; branch member prompts end with `DOMAIN_MATCH`/`ANSWER`/`METHOD`/`FIX_STRATEGY`/`ACTION` marker directives; check script regexes are strictly aligned with them
-
-
----
 
 ## Quick-start Prompts (copy and use)
 
-> Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Route mode evaluation reads the **router** member's `<route>` decision + selected branch members' outputs.
+Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Route mode evaluation reads the **router** member's `<route>` decision + selected branch members' outputs.
 
 ### Scenario 1: Math problem classification routing (math)
 
@@ -481,7 +471,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create the team using the team_create JSON (1 router + 4 branch members)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start the orchestration using the team_route JSON (input is a concrete math problem)
-4. team_results poll until master receives summary (router decides first, then matched branch executes)
+4. team_results poll until master receives summary (router decides first, then matched branch executes) (poll every 30s)
 5. Locate <run_dir> (contains router and each branch member .md)
 6. Run: bun demos/06-team-route/check-math-problem-router.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -498,7 +488,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create the team using the team_create JSON
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start the orchestration using the team_route JSON (input is a concrete PDE)
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/06-team-route/check-physics-pde-router.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -515,7 +505,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create the team using the team_create JSON
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start the orchestration using the team_route JSON (input is an issue body)
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/06-team-route/check-coding-issue-router.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -532,7 +522,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create the team using the team_create JSON (1 router + 8 branch members)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start the orchestration using the team_route JSON (input is a ~200-word multi-faceted ticket)
-4. team_results poll until master receives summary (router first multi-selects categories, matched branches execute in parallel)
+4. team_results poll until master receives summary (router first multi-selects categories, matched branches execute in parallel) (poll every 30s)
 5. Locate <run_dir> (contains router and each matched branch member .md)
 6. Run: bun demos/06-team-route/check-coding-multi-ticket-router.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

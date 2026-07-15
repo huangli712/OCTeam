@@ -332,20 +332,10 @@ T+25m    run: bun check-coding-comprehensive-join.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] 4 check scripts pass `tsc --noEmit` (no type errors, strict mode, ES2022, NodeNext modules)
-- [ ] Each scenario's team_planner propose call includes valid `goal` and `constraints` parameters
-- [ ] Each scenario's write → create → activate → workflow closed loop is documented
-- [ ] The README clearly states that team_planner generates workflow JSON via AI and the final structure may vary
-- [ ] Check scripts verify only final function correctness, not workflow structure
-- [ ] All content is in English
-
----
 
 ## Quick-Start Prompts (Copy and Use)
 
-> Paste any of the following prompts into the master session and the AI will automatically complete the full closed loop of "team_planner propose → write → team_create → team_activate → team_workflow → run check script", reporting PASS / FAIL by exit code.
+Paste any of the following prompts into the master session and the AI will automatically complete the full closed loop of "team_planner propose → write → team_create → team_activate → team_workflow → run check script", reporting PASS / FAIL by exit code.
 
 ### Scenario 1: isEven via Quorum Join (Fault-Tolerant Redundancy)
 
@@ -357,7 +347,7 @@ Steps:
 2. Call team_planner op="write" with team_id="planner-quorum" and the generated team + workflow JSON (section 1.3)
 3. team_create from the generated team JSON, then team_activate(team_id="planner-quorum")
 4. team_workflow(team_id="planner-quorum", workflow_file="workflow.planner-quorum.json")
-5. Poll team_results until master receives summary
+5. Poll team_results until master receives summary (poll every 30s)
 6. Locate <run_dir> (contains per-member .md files)
 7. Run: bun demos/18-team-planner/check-coding-quorum-join.ts <run_dir>
 8. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -375,7 +365,7 @@ Steps:
 2. Call team_planner op="write" with team_id="planner-any-success" and the generated team + workflow JSON (section 2.3)
 3. team_create from the generated team JSON, then team_activate(team_id="planner-any-success")
 4. team_workflow(team_id="planner-any-success", workflow_file="workflow.planner-any-success.json")
-5. Poll team_results until master receives summary
+5. Poll team_results until master receives summary (poll every 30s)
 6. Locate <run_dir>
 7. Run: bun demos/18-team-planner/check-coding-any-success-join.ts <run_dir>
 8. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -393,7 +383,7 @@ Steps:
 2. Call team_planner op="write" with team_id="planner-required" and the generated team + workflow JSON (section 3.3)
 3. team_create from the generated team JSON, then team_activate(team_id="planner-required")
 4. team_workflow(team_id="planner-required", workflow_file="workflow.planner-required.json")
-5. Poll team_results until master receives summary
+5. Poll team_results until master receives summary (poll every 30s)
 6. Locate <run_dir>
 7. Run: bun demos/18-team-planner/check-coding-required-branches-join.ts <run_dir>
 8. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -411,7 +401,7 @@ Steps:
 2. Call team_planner op="write" with team_id="planner-comprehensive" and the generated team + workflow JSON (section 4.3)
 3. team_create from the generated team JSON, then team_activate(team_id="planner-comprehensive")
 4. team_workflow(team_id="planner-comprehensive", workflow_file="workflow.planner-comprehensive.json", timeout_ms=1800000)
-5. Poll team_results until master receives summary
+5. Poll team_results until master receives summary (poll every 30s)
 6. Locate <run_dir>
 7. Run: bun demos/18-team-planner/check-coding-comprehensive-join.ts <run_dir>
 8. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

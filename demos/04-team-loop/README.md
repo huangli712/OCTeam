@@ -548,19 +548,10 @@ T+60m     run: bun check-coding-lockfree-queue.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] 4 check scripts pass `bunx tsc -p demos/tsconfig.json` (no type errors)
-- [ ] Each team config role is valid (`coder` / `tester` / `simulator` / `analyst` / `reviewer` are all presets)
-- [ ] Each master call parameters conform to `team_loop` schema (`stages` member names unique, `decider` not master and not in stages, `max_rounds` / `initial_task` present)
-- [ ] Scenarios 1-3 total duration ≤ 15 min (well under 30 min ceiling; `max_rounds=3` safety); Scenario 4 (challenge-level) ≈ 60 min, 7 members, `max_rounds=5`, deliberately exceeds standard timing ceiling as a harder sample
-- [ ] Member prompts explicitly specify output format conventions (marker), decider prompt explicitly specifies mode-specific boolean fields, check scripts aligned with them
-
----
 
 ## Quick-Start Prompt (Copy and Use)
 
-> Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. The loop mode's evaluation reads the **decider** member's final-round output (containing the `<decision>` block).
+Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. The loop mode's evaluation reads the **decider** member's final-round output (containing the `<decision>` block).
 
 ### Scenario 1: Fix Bisection Root-Finding Boundary Bugs (Math)
 
@@ -571,7 +562,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create the team using the team_create JSON
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start the orchestration using the team_loop JSON (note: initial_task is the buggy code to fix)
-4. team_results poll until master receives summary (max max_rounds rounds, stops when decider says done)
+4. team_results poll until master receives summary (max max_rounds rounds, stops when decider says done) (poll every 30s)
 5. Locate <run_dir> (contains decider member's .md)
 6. Run: bun demos/04-team-loop/check-math-bisection-fix.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -588,7 +579,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create the team using the team_create JSON
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start the orchestration using the team_loop JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains decider and analyst member .md)
 6. Run: bun demos/04-team-loop/check-physics-spring-energy.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -605,7 +596,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create the team using the team_create JSON
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start the orchestration using the team_loop JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/04-team-loop/check-coding-interval-merge.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -622,7 +613,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create the team using the team_create JSON (7 members: alice/bob/carol/dave as coder, erin/frank as tester, grace as reviewer)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start the orchestration using the team_loop JSON (note: initial_task is the MPSCQueue with four bug classes; stages total 6, decider=grace auto-appended by OCTeam)
-4. team_results poll until master receives summary (max max_rounds=5 rounds, stops when decider says done)
+4. team_results poll until master receives summary (max max_rounds=5 rounds, stops when decider says done) (poll every 30s)
 5. Locate <run_dir> (contains grace/frank etc. 7 member .md files)
 6. Run: bun demos/04-team-loop/check-coding-lockfree-queue.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

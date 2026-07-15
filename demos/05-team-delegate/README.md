@@ -516,20 +516,10 @@ T+90m    run: bun demos/05-team-delegate/check-math-100-problems.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] 4 check scripts pass `bunx tsc -p demos/tsconfig.json` (no type errors)
-- [ ] Each team config role is valid (`mathematician` / `simulator` / `coder` are all presets)
-- [ ] Each master call parameters conform to `team_delegate` schema (`tasks[]` includes `ref`/`subject`/`description`/`blocked_by`)
-- [ ] `blocked_by` referenced `ref` values are all declared within the same `tasks` array, no cycles
-- [ ] Scenarios 1-3 total duration ≤ 15 min (well under 30 min ceiling); **Scenario 4 challenge-level ~90 min, 8 members, deliberately stress-testing scale (the sole exception to baseline constraints)**
-- [ ] Member prompts explicitly specify self-claiming workflow + output format conventions; check script markers aligned with task descriptions
-
----
 
 ## Quick-Start Prompt (Copy and Use)
 
-> Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. In delegate mode, members **self-claim** tasks (do not directly receive task text); each member reports results via `team_send_message` back to master; the run_dir contains each member's .md with their claimed task reports.
+Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. In delegate mode, members **self-claim** tasks (do not directly receive task text); each member reports results via `team_send_message` back to master; the run_dir contains each member's .md with their claimed task reports.
 
 ### Scenario 1: 5 Number-Theory Problems (Math)
 
@@ -540,7 +530,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create the team using the team_create JSON
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start the orchestration using the team_delegate JSON (5 independent tasks published to tasklist)
-4. team_results poll until master receives summary (members self-claim, stop when no tasks remain)
+4. team_results poll until master receives summary (members self-claim, stop when no tasks remain) (poll every 30s)
 5. Locate <run_dir> (contains each member .md, ANSWER markers distributed within)
 6. Run: bun demos/05-team-delegate/check-math-number-theory.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -557,7 +547,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create the team using the team_create JSON
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start the orchestration using the team_delegate JSON (3 independent ODE tasks)
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/05-team-delegate/check-physics-ode-suite.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -574,7 +564,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create the team using the team_create JSON
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start the orchestration using the team_delegate JSON (4 tasks with blockedBy dependencies: api -> core/output -> tests)
-4. team_results poll until master receives summary (downstream tasks claimable only after dependencies unlock)
+4. team_results poll until master receives summary (downstream tasks claimable only after dependencies unlock) (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/05-team-delegate/check-coding-cli-calc.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -591,7 +581,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create the team using the team_create JSON (8 mathematician members alice..henry, including erin)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call" + Ref scheme table, start the orchestration using the team_delegate JSON: tasks[] must be expanded to 100 entries (p1..p100), generated from 4 family templates (π(10·k) / σ(101..125) / 2^k mod 1e9+7 / φ(201..225)), all with no blocked_by
-4. team_results poll until master receives summary (members self-claim, stop when no tasks remain; 100 problems / 8 members ≈ 13 rounds)
+4. team_results poll until master receives summary (members self-claim, stop when no tasks remain; 100 problems / 8 members ≈ 13 rounds) (poll every 30s)
 5. Locate <run_dir> (contains 8 member .md files, ANSWER_n markers distributed within)
 6. Run: bun demos/05-team-delegate/check-math-100-problems.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

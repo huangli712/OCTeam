@@ -371,20 +371,10 @@ T+11m    run: bun check-coding-isolated-tolerant.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] 4 check scripts pass `tsc --noEmit` (no type errors)
-- [ ] Each team config has valid roles (`mathematician` / `coder` are all presets)
-- [ ] Each master invocation uses `mode: "isolated"` and `task` (not `tasks` map)
-- [ ] Scenario 3 uses `require_done_ack: true` with team_done instructions in member prompts
-- [ ] Scenario 4 uses `max_errored_members: 1` with 4 members
-- [ ] All check scripts follow the same pattern as `01-team-parallel/` scripts
-
----
 
 ## Quick-Start Prompts (Copy and Use)
 
-> Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for aggregation → run check script", reporting PASS / FAIL by exit code. All specific configs (team_create, team_parallel parameters) directly reference the corresponding sections of this README.
+Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for aggregation → run check script", reporting PASS / FAIL by exit code. All specific configs (team_create, team_parallel parameters) directly reference the corresponding sections of this README.
 
 ### Scenario 1: Same Integral, Three Independent Solutions
 
@@ -395,7 +385,7 @@ Steps:
 1. Read README "1.2 Team Config", create the team using the team_create JSON
 2. team_activate (team_id = isolated-integral)
 3. Read README "1.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
-4. team_results poll, wait for orchestration to complete and master to receive summary
+4. team_results poll, wait for orchestration to complete and master to receive summary (poll every 30s)
 5. Locate the output directory <run_dir> for this run (contains alice.md / bob.md / carol.md)
 6. Run evaluation:
    bun demos/17-team-parallel/check-math-isolated-integral.ts <run_dir>
@@ -413,7 +403,7 @@ Steps:
 1. Read README "2.2 Team Config", create the team using the team_create JSON
 2. team_activate (team_id = isolated-rubric)
 3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
 6. Run: bun demos/17-team-parallel/check-coding-isolated-rubric.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -430,7 +420,7 @@ Steps:
 1. Read README "3.2 Team Config", create the team using the team_create JSON
 2. team_activate (team_id = done-ack-parallel)
 3. Read README "3.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
 6. Run: bun demos/17-team-parallel/check-coding-done-ack.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -447,7 +437,7 @@ Steps:
 1. Read README "4.2 Team Config", create the team using the team_create JSON (4 coder members)
 2. team_activate (team_id = tolerant-isolated)
 3. Read README "4.3 Master Launch Invocation", start the orchestration using the team_parallel JSON (max_errored_members=1)
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md / dave.md)
 6. Run: bun demos/17-team-parallel/check-coding-isolated-tolerant.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

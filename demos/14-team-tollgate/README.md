@@ -455,24 +455,10 @@ T+22m     Run: bun check-coding-multi-invalid.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] All 4 check scripts pass `tsc -p demos/tsconfig.json` (no type errors)
-- [ ] Every team configuration uses valid roles (`mathematician`, `reviewer`, `simulator`, `physicist`, `coder`, `tester` are all presets)
-- [ ] Every stage has `verifier != member` (bob != alice, bob != alice, dave != carol), satisfying tollgate's hard constraint
-- [ ] Every master launch call conforms to the `team_tollgate` schema and includes the advanced parameter being demonstrated
-- [ ] Scenarios 1-3 total duration <= 12 min; scenario 4 is challenge-level at 40 min (6 members, 2 serial gates)
-- [ ] Scenario 1 demonstrates the `reference` field with a golden pi value appended to the verifier prompt
-- [ ] Scenario 2 demonstrates `max_gate_retries: 2` with FAIL->retry loop for edge-case fix
-- [ ] Scenario 3 demonstrates `escalate_to` and `max_invalid_cycles: 2` with INVALID->escalate->re-verify
-- [ ] Scenario 4 demonstrates `escalate_to` (shared handler) and `max_invalid_cycles: 3` across two serial gates
-- [ ] Member prompts align with check script markers (producers emit typed marker comments, verifiers emit `<verdict>` tagged JSON blocks, escalation handlers emit final verdicts)
-
----
 
 ## Quick-Start Prompt (Copy and Use)
 
-> Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In tollgate mode, evaluation reads the producer + verifier + escalation handler members' .md files: the producer's implementation/numerical results + the verifier's (or escalation handler's) FINAL verdict.
+Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In tollgate mode, evaluation reads the producer + verifier + escalation handler members' .md files: the producer's implementation/numerical results + the verifier's (or escalation handler's) FINAL verdict.
 
 ### Scenario 1: Leibniz Pi Estimation (Reference Comparison)
 
@@ -483,7 +469,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create the team with team_create JSON (producer + verifier, 2 members)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration with the team_tollgate JSON (1 gate, reference field: golden pi)
-4. team_results poll until master receives summary (verifier PASS against golden reference before delivery)
+4. team_results poll until master receives summary (verifier PASS against golden reference before delivery) (poll every 30s)
 5. Locate <run_dir> (containing alice.md and bob.md)
 6. Run: bun demos/14-team-tollgate/check-math-pi-reference.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -500,7 +486,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create the team with team_create JSON
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration with the team_tollgate JSON (max_gate_retries: 2)
-4. team_results poll until master receives summary (FAIL sends producer back to redo; max 2 retries)
+4. team_results poll until master receives summary (FAIL sends producer back to redo; max 2 retries) (poll every 30s)
 5. Locate <run_dir> (containing alice.md and bob.md)
 6. Run: bun demos/14-team-tollgate/check-coding-coverage-retry.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -517,7 +503,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create the team with team_create JSON (3 members: alice/bob/carol)
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration with the team_tollgate JSON (escalate_to: carol, max_invalid_cycles: 2)
-4. team_results poll until master receives summary (INVALID escalates to carol; she fixes and re-verifies)
+4. team_results poll until master receives summary (INVALID escalates to carol; she fixes and re-verifies) (poll every 30s)
 5. Locate <run_dir> (containing alice.md, bob.md, and optionally carol.md)
 6. Run: bun demos/14-team-tollgate/check-physics-energy-escalate.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -534,7 +520,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create the team with team_create JSON (6 members: alice/bob/carol/dave/erin/frank)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration with the team_tollgate JSON (2 serial gates: clamp -> lerp; escalate_to: frank; max_invalid_cycles: 3)
-4. team_results poll until master receives summary (each gate verifier must PASS before the next gate proceeds; INVALID escalates to frank for both gates)
+4. team_results poll until master receives summary (each gate verifier must PASS before the next gate proceeds; INVALID escalates to frank for both gates) (poll every 30s)
 5. Locate <run_dir> (containing 6 member .md files: alice/bob/carol/dave/erin/frank)
 6. Run: bun demos/14-team-tollgate/check-coding-multi-invalid.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

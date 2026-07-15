@@ -473,21 +473,10 @@ The engine selects `erin` (9 iterations) as the winner using `score_direction: "
 
 ---
 
-## Acceptance Checklist
-
-- [ ] Every team configuration has `worktree: true` set for all candidates (arena hard requirement)
-- [ ] `evaluator` is not in the `candidates` list (satisfies the "evaluator ≠ candidate" constraint)
-- [ ] Every master launch call conforms to the `team_arena` schema (`team_id`, `task`, `evaluator`, `candidates`, `eval_command` or `eval_criteria`, `winner_metric`, `score_direction`, etc.)
-- [ ] At least one evaluation benchmark (`eval_command` or `eval_criteria`) is provided
-- [ ] `score_direction` matches the scenario's goal (scenario 1: `"max"` throughput; scenario 2: `"min"` drift; scenario 3: `"min"` error; scenario 4: `"min"` iterations)
-- [ ] Candidate prompts align with the evaluator's scoreboard field markers (scenario 1: `IMPL` marker; scenario 2: `DRIFT` marker; scenario 3: `QUAD` marker; scenario 4: `CONV` marker; evaluator uniformly emits `<scoreboard>` JSON)
-- [ ] Scenarios 1-3 total duration ≤ 15 min (well under 30 min ceiling); scenario 4 is challenge-level at ~40 min (5 candidates, N=100 large sparse system)
-
----
 
 ## Quick-Start Prompt (Copy and Use)
 
-> Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In arena mode, evaluation reads the **evaluator** member's .md file for the `<scoreboard>` JSON + the engine's built-in `selectArenaWinner` logic.
+Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In arena mode, evaluation reads the **evaluator** member's .md file for the `<scoreboard>` JSON + the engine's built-in `selectArenaWinner` logic.
 
 ### Scenario 1: Three Sorting Implementations Benchmark for Fastest (Programming)
 
@@ -497,7 +486,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create team per team_create JSON (3 candidate coders + 1 evaluator reviewer, each candidate worktree: true, evaluator also set worktree: true)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_command runs benchmark script)
-4. Poll team_results until master receives summary (after all candidates idle, evaluator runs benchmark, produces scoreboard; engine auto-selects winner)
+4. Poll team_results until master receives summary (after all candidates idle, evaluator runs benchmark, produces scoreboard; engine auto-selects winner) (poll every 30s)
 5. Locate <run_dir> (contains evaluator dave.md)
 6. Read dave.md, extract <scoreboard> JSON, view winner and each candidate's score
 Success criteria: evaluator produces valid <scoreboard> JSON; engine selects highest throughput by throughput_ops_per_sec max. At least 2 candidates passed=true.
@@ -511,7 +500,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create team per team_create JSON (3 candidate simulators + 1 evaluator physicist, each candidate worktree: true, evaluator also set worktree: true)
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_criteria energy conservation judgment)
-4. Poll team_results until master receives summary (after all candidates idle, evaluator reviews DRIFT, produces scoreboard; engine auto-selects winner)
+4. Poll team_results until master receives summary (after all candidates idle, evaluator reviews DRIFT, produces scoreboard; engine auto-selects winner) (poll every 30s)
 5. Locate <run_dir> (contains evaluator dave.md)
 6. Read dave.md, extract <scoreboard> JSON, view winner and each candidate's drift value
 Success criteria: evaluator produces valid <scoreboard> JSON; engine selects symplectic integrator with smallest drift by score min. Velocity Verlet candidate passed=true and score < 1e-3.
@@ -525,7 +514,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create team per team_create JSON (3 candidate coders + 1 evaluator mathematician, each candidate worktree: true, evaluator also set worktree: true)
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_criteria accuracy judgment)
-4. Poll team_results until master receives summary (after all candidates idle, evaluator reviews QUAD, produces scoreboard; engine auto-selects winner)
+4. Poll team_results until master receives summary (after all candidates idle, evaluator reviews QUAD, produces scoreboard; engine auto-selects winner) (poll every 30s)
 5. Locate <run_dir> (contains evaluator dave.md)
 6. Read dave.md, extract <scoreboard> JSON, view winner and each candidate's error
 Success criteria: evaluator produces valid <scoreboard> JSON; engine selects quadrature method with smallest error by score min. Gaussian-Legendre candidate passed=true and score < 1e-10 (Gaussian quadrature should reach machine precision on smooth integrand).
@@ -539,7 +528,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create team per team_create JSON (5 candidate simulators + 1 evaluator physicist, each candidate worktree: true, evaluator also set worktree: true)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", launch arena per team_arena JSON (implement → evaluate, eval_command + eval_criteria dual benchmark)
-4. Poll team_results until master receives summary (after all candidates idle, evaluator runs convergence benchmark, produces scoreboard; engine auto-selects winner)
+4. Poll team_results until master receives summary (after all candidates idle, evaluator runs convergence benchmark, produces scoreboard; engine auto-selects winner) (poll every 30s)
 5. Locate <run_dir> (contains evaluator frank.md)
 6. Read frank.md, extract <scoreboard> JSON, view winner and each candidate's iteration count
 Success criteria: evaluator produces valid <scoreboard> JSON; engine selects fastest-converging solver by iterations min. Multigrid V-cycle candidate should have ≤20 iterations, Jacobi should have ≥5000 iterations (verifying order-of-magnitude discrimination of convergence speed). At least 3 candidates passed=true.

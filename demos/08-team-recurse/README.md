@@ -398,21 +398,10 @@ T+50m    Run: bun check-math-vandermonde.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] 3 check scripts pass `tsc -p demos/tsconfig.json` (no type errors)
-- [ ] Each team config uses valid roles (`mathematician` / `simulator` / `coder` are all presets)
-- [ ] Each master call parameters conform to `team_recurse` schema (`decomposer` is a member name, not `master`; `max_depth=2`, `max_subtasks=3`)
-- [ ] Per-scenario total time ≤ 15 min (well under the 30 min cap)
-- [ ] Member prompts explicitly state output format conventions (markers), check scripts aligned with them
-- [ ] Decomposer prompt uses `<decompose>` tag block (not manual team_task_create); aggregation markers (D4_FINAL / MODEL_VALID / CONVERTS / VANDERMONDE_PROVEN) and at least one leaf-node marker come from different members
-
-
----
 
 ## Quick-start Prompts (copy and use)
 
-> Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Recurse mode evaluation scans **all members'** .md files: finds the decomposer's aggregation marker + at least 1 leaf's sub-result marker.
+Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Recurse mode evaluation scans **all members'** .md files: finds the decomposer's aggregation marker + at least 1 leaf's sub-result marker.
 
 ### Scenario 1: Derangement D_n Derivation (math)
 
@@ -423,7 +412,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create the team with team_create JSON (3 mathematicians, decomposer specified by team config)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration with the team_recurse JSON (root task = derive D_n)
-4. team_results poll until master receives summary (decomposer splits into subtasks → members self-claim → bottom-up aggregation to root)
+4. team_results poll until master receives summary (decomposer splits into subtasks → members self-claim → bottom-up aggregation to root) (poll every 30s)
 5. Locate <run_dir> (containing all member .md files)
 6. Run: bun demos/08-team-recurse/check-math-derangement.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -440,7 +429,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create the team with team_create JSON
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration with the team_recurse JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/08-team-recurse/check-physics-damped-pendulum.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -457,7 +446,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create the team with team_create JSON
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration with the team_recurse JSON (root = build converter)
-4. team_results poll until master receives summary (subtasks: alice / bob / carol)
+4. team_results poll until master receives summary (subtasks: alice / bob / carol) (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/08-team-recurse/check-coding-md-converter.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -474,7 +463,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create the team with team_create JSON (6 mathematicians, decomposer is alice)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration with the team_recurse JSON (root = prove Vandermonde identity; max_depth=4, max_subtasks=4)
-4. team_results poll until master receives summary (alice splits into 3 paths → each path splits into sub-lemmas → members claim leaf lemmas → bottom-up layered aggregation back to root)
+4. team_results poll until master receives summary (alice splits into 3 paths → each path splits into sub-lemmas → members claim leaf lemmas → bottom-up layered aggregation back to root) (poll every 30s)
 5. Locate <run_dir> (containing all 6 member .md files)
 6. Run: bun demos/08-team-recurse/check-math-vandermonde.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

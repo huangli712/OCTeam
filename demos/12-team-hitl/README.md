@@ -490,19 +490,10 @@ T+?     Run: bun demos/12-team-hitl/check-coding-release-workflow.ts <run_dir>
 
 ---
 
-## Acceptance Checklist
-
-- [ ] 4 check scripts pass `tsc -p demos/tsconfig.json` (no type errors)
-- [ ] Each team config uses valid roles (`coder` / `simulator` / `physicist` / `mathematician` / `reviewer` are all presets)
-- [ ] Each master call includes `human_approval: true` and a reasonable `timeout_ms`
-- [ ] Member prompts explicitly state output format conventions (markers, verdict tags, ruling tags)
-- [ ] Per-scenario total time ≤ 25 min (well under the 30 min cap for baseline); Scenario 4 is challenge-level, ~25 min
-
----
 
 ## Quick-Start Prompts (Copy and Use)
 
-> Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. **Critical**: when the orchestration pauses for human approval (you will receive an `[Human approval required]` notification with an `approval_id`), you MUST first read the completed stage output from `<run_dir>/<member>.md`, present a concise summary to the user, and WAIT for the user to explicitly say "approve" or "reject" (with feedback). Only then call `team_approve` or `team_reject`. Do NOT auto-approve. The whole point of HITL is human judgment — the user needs time to review the output before deciding.
+Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. **Critical**: when the orchestration pauses for human approval (you will receive an `[Human approval required]` notification with an `approval_id`), you MUST first read the completed stage output from `<run_dir>/<member>.md`, present a concise summary to the user, and WAIT for the user to explicitly say "approve" or "reject" (with feedback). Only then call `team_approve` or `team_reject`. Do NOT auto-approve. The whole point of HITL is human judgment — the user needs time to review the output before deciding.
 
 ### Scenario 1: Config Parser Pipeline (Programming, baseline)
 
@@ -514,7 +505,7 @@ Steps:
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration with the team_pipeline JSON (human_approval=true)
 4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), do NOT auto-approve. Instead: (a) use team_run_dir to find the run_dir, (b) read the completed stage member's .md file, (c) present a concise summary of the output to the user, (d) WAIT for the user to explicitly say "approve" or "reject". Only then call team_approve(team_id="config-hitl", approval_id=...) or team_reject(team_id="config-hitl", approval_id=..., feedback="..."). There will be 2 pause points: after stage 0 (alice spec) and after stage 1 (bob implementation).
-5. team_results poll until master receives summary
+5. team_results poll until master receives summary (poll every 30s)
 6. Locate <run_dir> (containing carol member .md)
 7. Run: bun demos/12-team-hitl/check-coding-config-pipeline.ts <run_dir>
 8. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -532,7 +523,7 @@ Steps:
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration with the team_tollgate JSON (human_approval=true)
 4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), do NOT auto-approve. Instead: (a) use team_run_dir to find the run_dir, (b) read the completed stage member's .md file, (c) present a concise summary of the output to the user, (d) WAIT for the user to explicitly say "approve" or "reject". Only then call team_approve(team_id="spring-hitl", approval_id=...) or team_reject(team_id="spring-hitl", approval_id=..., feedback="..."). There will be 1 pause point: at the verification gate after alice's producer output.
-5. team_results poll until master receives summary
+5. team_results poll until master receives summary (poll every 30s)
 6. Locate <run_dir> (containing alice member .md)
 7. Run: bun demos/12-team-hitl/check-physics-spring-tollgate.ts <run_dir>
 8. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -550,7 +541,7 @@ Steps:
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration with the team_arbitrate JSON (human_approval=true, max_rounds=2)
 4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), do NOT auto-approve. Instead: (a) use team_run_dir to find the run_dir, (b) read the completed stage member's .md file(s), (c) present a concise summary of the debate to the user, (d) WAIT for the user to explicitly say "approve" or "reject". Only then call team_approve(team_id="integral-hitl", approval_id=...) or team_reject(team_id="integral-hitl", approval_id=..., feedback="..."). There will be 1 pause point: before the arbitration phase (after both debate rounds complete).
-5. team_results poll until master receives summary
+5. team_results poll until master receives summary (poll every 30s)
 6. Locate <run_dir> (containing carol member .md)
 7. Run: bun demos/12-team-hitl/check-math-integration-arbitrate.ts <run_dir>
 8. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -568,7 +559,7 @@ Steps:
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration with the team_workflow JSON (approval_after on steps 3, 4, 6)
 4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), do NOT auto-approve. Instead: (a) use team_run_dir to find the run_dir, (b) read the completed step member's .md file, (c) present a concise summary of the output to the user, (d) WAIT for the user to explicitly say "approve" or "reject". Only then call team_approve(team_id="release-hitl", approval_id=...) or team_reject(team_id="release-hitl", approval_id=..., feedback="..."). This will happen three times: after step 3 (bob implement), step 4 (carol test), and step 6 (erin review).
-5. team_results poll until master receives summary
+5. team_results poll until master receives summary (poll every 30s)
 6. Locate <run_dir> (containing erin member .md)
 7. Run: bun demos/12-team-hitl/check-coding-release-workflow.ts <run_dir>
 8. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
