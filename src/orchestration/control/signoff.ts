@@ -22,7 +22,7 @@ export function buildSignoffReviewPrompt(summary: string): string {
         + `Review the following workflow output. \n`
         + `Write the <signoff> tag directly in your response text. Do NOT send it via team_send_message.\n`
         + `If it meets quality standards, emit <signoff>{"approved": true, "rationale": "..."}</signoff>. \n`
-        + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n\n${summary}`
+        + `If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</signoff>.\n${summary}`
 }
 
 /**

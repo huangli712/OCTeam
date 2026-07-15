@@ -157,7 +157,7 @@ export function summarizeParallel(task: ActiveTask, head: string): string {
     }
     const outputs = Object.entries(task.responses)
     const candidates = outputs
-        .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+        .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
         .join("\n\n")
 
     // parallel: switch on reducePolicy

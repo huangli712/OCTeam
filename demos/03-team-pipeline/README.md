@@ -288,7 +288,7 @@ T+14m   run: bun check-physics-pendulum.ts <run_dir>
         "task": "Run stage 3 now: refactor stage-2's fib for clarity, re-verify the 4 cases, and produce your PASSES marker."
       }
     ],
-    "timeout_ms": 600000
+    "timeout_ms": 900000
   }
 }
 ```
