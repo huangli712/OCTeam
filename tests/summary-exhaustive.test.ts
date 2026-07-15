@@ -58,9 +58,9 @@ describe("buildSummary: consensus explicit case (P2-1)", () => {
         expect(summary).toContain("mode=consensus")
         expect(summary).toContain("reason=consensus_reached")
         // Both member outputs are present.
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("agree")
-        expect(summary).toContain("### bob")
+        expect(summary).toContain("by bob:")
         // No reduce-policy header leaks in (consensus has no reducePolicy).
         expect(summary).not.toContain("[Reduce policy:")
     })

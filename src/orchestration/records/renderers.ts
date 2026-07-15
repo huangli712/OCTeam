@@ -43,7 +43,7 @@ export function summarizeLoop(task: ActiveTask, head: string): string {
     // Include the actual member outputs (the work product), not just the
     // decision log — otherwise a finished loop delivers nothing usable.
     const outputs = Object.entries(task.responses)
-        .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+        .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
         .join("\n\n")
     return outputs ? `${decisions}\n\n${outputs}` : decisions
 }

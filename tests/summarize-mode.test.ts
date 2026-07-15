@@ -119,9 +119,9 @@ describe("summarizeConsensus", () => {
     test("concatenates member outputs", () => {
         const task = baseTask({ type: "consensus", responses: { alice: "agree", bob: "agree" } })
         const summary = summarizeConsensus(task, HEAD)
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("agree")
-        expect(summary).toContain("### bob")
+        expect(summary).toContain("by bob:")
     })
 })
 
@@ -156,7 +156,7 @@ describe("summarizeLoop", () => {
         expect(summary).toContain("final: done")
         expect(summary).toContain("round 1: continue")
         expect(summary).toContain("round 2: done")
-        expect(summary).toContain("### alice")
+        expect(summary).toContain("by alice:")
         expect(summary).toContain("code output")
     })
 
