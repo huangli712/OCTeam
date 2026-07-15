@@ -13,7 +13,7 @@ import type { Team } from "../../state/store.js"
 import { isEnoent } from "../../core/utils.js"
 import { extractOutputFromParts, truncateOutput } from "../protocol/output.js"
 import { atomicWrite } from "../../state/locks.js"
-import { runMemberOutputPath, runReduceOutputPath } from "../../state/paths.js"
+import { runMemberOutputPath, runReduceOutputPath, runSignoffOutputPath } from "../../state/paths.js"
 import { recordEvent } from "./events.js"
 import type { MemberState, SdkMessage } from "../../core/types.js"
 
@@ -74,8 +74,23 @@ export async function captureMemberOutput(
     // reducer's <member>.md (which holds that member's primary task output).
     const isReduceTurn =
         task.type === "parallel" && !!task.reduceStage && member.name === task.reducerMember
+    // Signoff-stage reviewer output is a run-level artifact too: route it to
+    // runs/<runId>/signoff.md so a reviewer's verdict never overwrites (nor
+    // mixes into) the reviewer's own <member>.md primary deliverable. Mirrors
+    // the reduce-stage routing above.
+    //   - decider policy: only the configured decider's verdict turn is routed;
+    //     a non-decoder idling during signoffStage still writes <member>.md.
+    //   - peer-quorum policy: every non-master member is dispatched as a
+    //     reviewer, so any non-master idle during signoffStage is a verdict turn.
+    const isSignoffTurn =
+        !!task.signoffStage
+        && !member.isMaster
+        && (task.signoffPolicy === "peer-quorum"
+            || member.name === task.signoffDecider)
     const outPath = isReduceTurn
         ? runReduceOutputPath(team.directory, runId)
+        : isSignoffTurn
+        ? runSignoffOutputPath(team.directory, runId)
         : runMemberOutputPath(team.directory, runId, member.name)
 
     // Accumulate: read whatever was previously captured for this target, append

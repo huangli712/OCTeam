@@ -208,6 +208,17 @@ export function runReduceOutputPath(teamDirectory: string, runId: string): strin
     return path.join(runDir(teamDirectory, runId), "reduce.md")
 }
 
+/**
+ * runs/{runId}/signoff.md — the run-level signoff verdict(s) produced by
+ * reviewer member(s) during the signoff stage. Kept separate from each
+ * reviewer's own {member}.md (which holds that member's primary deliverable)
+ * so neither overwrites the other. Picked up automatically by persistRun's
+ * .md readdir scan, mirroring runReduceOutputPath.
+ */
+export function runSignoffOutputPath(teamDirectory: string, runId: string): string {
+    return path.join(runDir(teamDirectory, runId), "signoff.md")
+}
+
 /** runs/{runId}/events.jsonl — append-only run timeline (one RunEvent per line) */
 export function runEventsPath(teamDirectory: string, runId: string): string {
     return path.join(runDir(teamDirectory, runId), "events.jsonl")

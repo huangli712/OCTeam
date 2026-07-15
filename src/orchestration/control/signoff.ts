@@ -95,6 +95,15 @@ export async function handleSignoffIdle(
     const task = team.activeTask
     if (!task?.signoffStage) return
 
+    // Decider policy: only the configured decider may advance the signoff
+    // verdict. A non-decoder member idling during signoffStage (e.g. a
+    // late-finishing coder in delegate mode) must NOT be treated as the
+    // signoff decision — doing so terminates the run prematurely with a
+    // spurious signoff_rejected before the decider has even idled.
+    if (task.signoffPolicy === "decider" && member.name !== task.signoffDecider) {
+        return
+    }
+
     const memberOutput = task.responses[member.name] ?? ""
     const signoff = parseSignoff(memberOutput)
     if (!signoff) {

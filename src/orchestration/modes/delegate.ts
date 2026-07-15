@@ -41,20 +41,25 @@ export async function runDelegateStyleTail(
     const incomplete = tasks.filter(t => t.status !== "completed" && t.status !== "deleted")
 
     if (incomplete.length === 0) {
-        if (await maybeTriggerSignoff(ctx, team)) {
-            return  // signoff in progress
-        }
-        // Before clearing the active task, capture any member whose turn output
-        // hasn't been persisted yet. Delegate/recurse members run concurrently;
-        // when the completing member idles and triggers this branch, others may
-        // still be running or have idled without their captureMemberOutput
-        // firing (their subsequent idle would hit a cleared activeTask and skip).
+        // Before clearing the active task (or entering signoff), capture any
+        // member whose turn output hasn't been persisted yet. Delegate/recurse
+        // members run concurrently; when the completing member idles and
+        // triggers this branch, others may still be running or have idled
+        // without their captureMemberOutput firing (their subsequent idle
+        // would hit a cleared activeTask and skip). MUST run before
+        // maybeTriggerSignoff: a reviewer's primary task output (e.g. a coder
+        // who is also the configured decider) would otherwise never be
+        // captured, and once signoff dispatches the reviewer their prior turn's
+        // task output is superseded in task.responses (overwrite, not append).
         // Idempotent: already-captured members yield empty outputs and return early.
         for (const m of team.members) {
             if (m.isMaster || !m.sessionId) continue
             const res = await ctx.client.session.messages({ path: { id: m.sessionId } })
             const msgs = (res.data ?? []) as SdkMessage[]
             await captureMemberOutput(team, m, msgs)
+        }
+        if (await maybeTriggerSignoff(ctx, team)) {
+            return  // signoff in progress
         }
         await finishRun(ctx, team, `${label}_complete`, "idle")
         return

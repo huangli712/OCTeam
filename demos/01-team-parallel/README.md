@@ -1,8 +1,6 @@
-# team_parallel Orchestration Scenario Design
+# team_parallel Orchestration Scenario Demo
 
-> **Mode**: `team_parallel` — Run tasks in parallel across all members (`isolated` same task / `cooperative` per-member tasks), with optional reduce strategy to aggregate output.
-> **Source**: [`src/tools/parallel.ts`](../../src/tools/parallel.ts) (`teamParallelTool`)
-> **Time control design**: 3 members parallel, per-member subtask 5-8 min; total duration ≈ slowest member + reduce ≈ 10-15 min (well below the 30 min limit).
+`team_parallel` dispatches the same or different tasks to all team members at once and runs them concurrently, then optionally reduces their outputs into a single aggregated result (via `summarize` / `select` / `merge` / `rubric` strategies).
 
 ## Scenario Overview
 
