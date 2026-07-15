@@ -42,17 +42,17 @@
     {
       "name": "alice",
       "role": "mathematician",
-      "prompt": "Estimate pi via naive Monte Carlo: sample (x,y) uniformly in [0,1]^2, count fraction inside the unit circle (x^2+y^2<=1), pi ~ 4*count/N.\n\nUse EXACTLY 1,000,000 samples with fixed seed 42.\n\nRun the code, report the estimate, and give a one-line variance analysis.\n\nYour output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
+      "prompt": "Estimate pi via naive Monte Carlo: sample (x,y) uniformly in [0,1]^2, count fraction inside the unit circle (x^2+y^2<=1), pi ~ 4*count/N.\nUse EXACTLY 1,000,000 samples with fixed seed 42.\nRun the code, report the estimate, and give a one-line variance analysis.\nYour output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
     },
     {
       "name": "bob",
       "role": "mathematician",
-      "prompt": "Estimate pi via stratified sampling: divide [0,1]^2 into a 100x100 grid (10,000 strata), sample 100 points per stratum (total 1,000,000). For each stratum compute the in-circle fraction then average.\n\nFixed seed 42.\n\nReport the estimate and explain in one line why stratification reduces variance.\n\nYour output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
+      "prompt": "Estimate pi via stratified sampling: divide [0,1]^2 into a 100x100 grid (10,000 strata), sample 100 points per stratum (total 1,000,000).\nFor each stratum compute the in-circle fraction then average. Fixed seed 42.\nReport the estimate and explain in one line why stratification reduces variance.\nYour output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
     },
     {
       "name": "carol",
       "role": "mathematician",
-      "prompt": "Estimate pi via Buffon's needle: needle length L equals line spacing d; the crossing probability is 2/pi, so pi ~ 2*N_total/N_cross.\n\nDrop 1,000,000 needles with fixed seed 42.\n\nReport the estimate.\n\nYour output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
+      "prompt": "Estimate pi via Buffon's needle: needle length L equals line spacing d; the crossing probability is 2/pi, so pi ~ 2*N_total/N_cross.\nDrop 1,000,000 needles with fixed seed 42. Report the estimate.\nYour output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
     }
   ]
 }
