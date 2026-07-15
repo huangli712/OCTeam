@@ -51,7 +51,7 @@ export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promi
         recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
         const summary = buildRoundSummary(task.responses)
         const roundText =
-            `[Consensus Round ${task.currentRound}] Others said:\n${summary}\n\n`
+            `[Consensus Round ${task.currentRound}]\n${summary}\n\n`
             + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`
         for (const m of team.members.filter(x => !x.isMaster)) {
             await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory, team)
