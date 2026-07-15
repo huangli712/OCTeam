@@ -147,7 +147,7 @@ T+12m   run: bun check-math-gaussian-integral.ts <run_dir>
     {
       "name": "alice",
       "role": "simulator",
-      "prompt": "You are stage 1 (model) of a 3-stage pipeline simulating a small-angle pendulum. Setup: rigid pendulum length L=1.0 m, gravity g=9.81 m/s^2, small-angle ODE theta'' = -(g/L)*theta. Initial conditions theta(0)=theta0=0.1 rad, theta'(0)=0.\n\nTasks: (1) Derive the analytic solution theta(t) = theta0*cos(sqrt(g/L)*t). (2) Compute the period T = 2*pi*sqrt(L/g). (3) State theta(T) = theta0 (returns to start after one period). Pass the model and all parameters forward. Your output MUST end with a line exactly formatted: <!-- PERIOD: <T_numeric_value> -->"
+      "prompt": "You are stage 1 (model) of a 3-stage pipeline simulating a small-angle pendulum. Setup: rigid pendulum length L=1.0 m, gravity g=9.81 m/s^2, small-angle ODE theta'' = -(g/L)*theta. Initial conditions theta(0)=theta0=0.1 rad, theta'(0)=0.\n\nTasks: (1) Derive the analytic solution theta(t) = theta0*cos(sqrt(g/L)*t). (2) Compute the period T = 2*pi*sqrt(L/g). (3) State theta(T) = theta0 (returns to start after one period).\n\nPass the model and all parameters forward.\n\nYour output MUST end with a line exactly formatted: <!-- PERIOD: <T_numeric_value> -->"
     },
     {
       "name": "bob",
