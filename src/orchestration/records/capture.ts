@@ -54,6 +54,13 @@ export async function captureMemberOutput(
 ): Promise<boolean> {
     const task = team.activeTask
     if (!task) return false
+    // Idempotency: a member whose message history hasn't grown since its last
+    // successful capture has no new turn to persist. This guards the delegate
+    // completion sweep (which re-captures every member, including ones already
+    // captured via their own idle path) and stale pre-signoff idle events.
+    if (member.lastCapturedMsgCount !== undefined && messages.length === member.lastCapturedMsgCount) {
+        return false
+    }
     // Find the start of the current turn (last user message).
     let turnStart = 0
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -111,6 +118,9 @@ export async function captureMemberOutput(
     const accumulated = appendTurnBlock(prev, full, new Date().toISOString())
 
     await atomicWrite(outPath, accumulated)
+    // Record the message-history watermark so a re-entry whose history hasn't
+    // grown is skipped (idempotency guard at the top).
+    member.lastCapturedMsgCount = messages.length
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "captured",

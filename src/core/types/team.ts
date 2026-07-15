@@ -125,4 +125,9 @@ export type MemberState = {
                                        // spawn). Delivered as <task-instruction> on the member's FIRST
                                        // real task dispatch (NOT during role-setup, which is identity-only).
     promptDelivered?: boolean          // true after prompt has been prepended to a dispatch once
+    lastCapturedMsgCount?: number      // capture dedup: messages.length at the last successful
+                                       // captureMemberOutput for this member. A re-entry whose message
+                                       // history hasn't grown (stale idle, delegate completion sweep)
+                                       // yields no new turn and is skipped, making capture effectively
+                                       // idempotent across calls with unchanged history.
 }

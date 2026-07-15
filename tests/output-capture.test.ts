@@ -251,6 +251,22 @@ function oneTurn(assistantText: string): SdkMessage[] {
     ]
 }
 
+/**
+ * A two-turn message history modeling real session growth: turn 1 (the prior
+ * turn, preserved in history) followed by turn 2 (the new prompt + reply).
+ * captureMemberOutput reads only the messages after the LAST user message
+ * (turn 2's assistant reply), but the history length grows 2→4 so the
+ * lastCapturedMsgCount idempotency guard recognises this as a fresh turn.
+ */
+function twoTurns(firstAssistant: string, secondAssistant: string): SdkMessage[] {
+    return [
+        { info: { role: "user", id: "u1", sessionID: "s1", time: { created: 0 }, agent: "a", model: { providerID: "p", modelID: "m" } }, parts: [{ type: "text", text: "prompt" }] },
+        { info: { role: "assistant", id: "a1", sessionID: "s1", time: { created: 0 }, parentID: "u1", modelID: "m", providerID: "p", mode: "x", path: { cwd: "/", root: "/" }, cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } }, parts: [{ type: "text", text: firstAssistant }] },
+        { info: { role: "user", id: "u2", sessionID: "s1", time: { created: 0 }, agent: "a", model: { providerID: "p", modelID: "m" } }, parts: [{ type: "text", text: "prompt 2" }] },
+        { info: { role: "assistant", id: "a2", sessionID: "s1", time: { created: 0 }, parentID: "u2", modelID: "m", providerID: "p", mode: "x", path: { cwd: "/", root: "/" }, cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } }, parts: [{ type: "text", text: secondAssistant }] },
+    ]
+}
+
 describe("appendTurnBlock (pure accumulation helper)", () => {
     test("first turn (prev='') is prefixed with a separator carrying iso + byte count", () => {
         expect(appendTurnBlock("", "hello", "2026-07-01T00:00:00Z")).toBe("--- captured 2026-07-01T00:00:00Z (5 bytes) ---\n\nhello")
@@ -290,7 +306,9 @@ describe("captureMemberOutput: turn accumulation (last-turn-overwrite regression
         await team.mutex.runExclusive(async () => {
             team.activeTask = parallelCaptureTask({ runId: "run-acc" })
             await captureMemberOutput(team, alice, oneTurn("TURN_ONE_DELIVERABLE"))
-            await captureMemberOutput(team, alice, oneTurn("TURN_TWO_ACK"))
+            // Second idle carries the grown history (turn 1 preserved + turn 2);
+            // oneTurn alone would keep length=2 and trip the idempotency guard.
+            await captureMemberOutput(team, alice, twoTurns("TURN_ONE_DELIVERABLE", "TURN_TWO_ACK"))
         })
 
         const md = await readFile(runMemberOutputPath(dir, "run-acc", "alice"), "utf8")
@@ -351,8 +369,10 @@ describe("captureMemberOutput: reduce-stage routing (reducer.md overwrite regres
             team.activeTask = parallelCaptureTask({ runId: "run-both", reducerMember: "bob" })
             await captureMemberOutput(team, bob, oneTurn("BOB_OWN_DELIVERABLE"))
             // Turn 2: bob becomes the reducer (reduceStage = true, same reducer).
+            // Second idle carries the grown history; oneTurn alone would keep
+            // length=2 and trip the idempotency guard, skipping the reduce capture.
             team.activeTask.reduceStage = true
-            await captureMemberOutput(team, bob, oneTurn("REDUCED_SYNTHESIS"))
+            await captureMemberOutput(team, bob, twoTurns("BOB_OWN_DELIVERABLE", "REDUCED_SYNTHESIS"))
         })
 
         const bobMd = await readFile(runMemberOutputPath(dir, "run-both", "bob"), "utf8")
