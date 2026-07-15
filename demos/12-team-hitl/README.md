@@ -110,15 +110,17 @@ The leader then calls `team_approve` to resume the run, or `team_reject` to appl
 ```
 T+0m    master calls team_pipeline (human_approval=true)
 T+0m    dispatches stage-1 (alice)
-T+0~3m  alice writes spec → SPEC_OK marker → idle
-T+3m    [HITL PAUSE] pipeline_stage (stage 1 → 2). Leader receives notification.
-T+3m    Leader calls team_approve → stage-2 dispatched
-T+3~7m  bob implements parseConfig → IMPL marker → idle
-T+7m    [HITL PAUSE] pipeline_stage (stage 2 → 3). Leader receives notification.
-T+7m    Leader calls team_approve → stage-3 dispatched
-T+7~12m carol runs 3 test cases → PASS_COUNT marker → idle
-T+12m   final-stage output summarized, delivered to master
-T+12m   Run: bun demos/12-team-hitl/check-coding-config-pipeline.ts <run_dir>
+T+0~3m  alice writes spec -> SPEC_OK marker -> idle
+T+3m    [HITL PAUSE] pipeline_stage (stage 0 -> 1). Leader receives notification.
+T+3m    Leader reads alice.md, presents summary to user, WAITS for user decision
+T+?     User says "approve" -> Leader calls team_approve -> stage-1 dispatched
+T+?~?   bob implements parseConfig -> IMPL marker -> idle
+T+?     [HITL PAUSE] pipeline_stage (stage 1 -> 2). Leader receives notification.
+T+?     Leader reads bob.md, presents summary to user, WAITS for user decision
+T+?     User says "approve" -> Leader calls team_approve -> stage-2 dispatched
+T+?~?   carol runs 3 test cases -> PASS_COUNT marker -> idle
+T+?     final-stage output summarized, delivered to master
+T+?     Run: bun demos/12-team-hitl/check-coding-config-pipeline.ts <run_dir>
 ```
 
 ### 1.5 Check Script
@@ -206,12 +208,13 @@ T+12m   Run: bun demos/12-team-hitl/check-coding-config-pipeline.ts <run_dir>
 ```
 T+0m    master calls team_tollgate (human_approval=true)
 T+0m    dispatches producer (alice)
-T+0~5m  alice implements Velocity Verlet → runs 1000 steps → DRIFT marker → idle
+T+0~5m  alice implements Velocity Verlet -> runs 1000 steps -> DRIFT marker -> idle
 T+5m    [HITL PAUSE] tollgate_gate. Leader receives notification.
-T+5m    Leader calls team_approve → gate verifier dispatched
-T+5~10m bob runs verification → outputs verdict
-T+10m   PASS → result delivered to master
-T+10m   Run: bun demos/12-team-hitl/check-physics-spring-tollgate.ts <run_dir>
+T+5m    Leader reads alice.md, presents summary to user, WAITS for user decision
+T+?     User says "approve" -> Leader calls team_approve -> gate verifier dispatched
+T+?~?   bob runs verification -> outputs verdict
+T+?     PASS -> result delivered to master
+T+?     Run: bun demos/12-team-hitl/check-physics-spring-tollgate.ts <run_dir>
 ```
 
 ### 2.5 Check Script
@@ -303,10 +306,11 @@ T+0~5m  each debater writes arguments + ARG marker
 T+5m    Round 2: parallel dispatch 2 debaters rebutting
 T+5~10m each debater rebuts, refreshes ARG marker
 T+10m   [HITL PAUSE] arbitrate_arbitration. Leader receives notification.
-T+10m   Leader calls team_approve → arbiter dispatched
-T+10~15m arbiter reviews rounds 1-2, issues binding ruling
-T+15m   ruling delivered to master
-T+15m   Run: bun demos/12-team-hitl/check-math-integration-arbitrate.ts <run_dir>
+T+10m   Leader reads alice.md + bob.md, presents debate summary to user, WAITS for user decision
+T+?     User says "approve" -> Leader calls team_approve -> arbiter dispatched
+T+?~?   arbiter reviews rounds 1-2, issues binding ruling
+T+?     ruling delivered to master
+T+?     Run: bun demos/12-team-hitl/check-math-integration-arbitrate.ts <run_dir>
 ```
 
 ### 3.5 Check Script
@@ -450,19 +454,22 @@ T+15m   Run: bun demos/12-team-hitl/check-math-integration-arbitrate.ts <run_dir
 
 ```
 T+0m    master calls team_workflow (6 steps, approval_after on steps 3/4/6)
-T+0m    Step 1 (alice): define spec → SPEC_OK → idle
-T+0m    Step 2 (frank): gate-verify spec → PASS → advance
-T+0m    Step 3 (bob): implement bumpVersion → IMPL marker → idle
+T+0m    Step 1 (alice): define spec -> SPEC_OK -> idle
+T+0m    Step 2 (frank): gate-verify spec -> PASS -> advance
+T+0m    Step 3 (bob): implement bumpVersion -> IMPL marker -> idle
 T+0m    [HITL PAUSE] approval_after step "implement-bump". Leader receives notification.
-T+0m    Leader calls team_approve → advance
-T+0m    Step 4 (carol): run 2 test cases → PASS_COUNT marker → idle
-T+0m    [HITL PAUSE] approval_after step "run-tests". Leader receives notification.
-T+0m    Leader calls team_approve → advance
-T+0m    Step 5 (dave): release notes → NOTES_OK → idle
-T+0m    Step 6 (erin): final review → REVIEW_OK → idle
-T+0m    [HITL PAUSE] approval_after step "final-review". Leader receives notification.
-T+0m    Leader calls team_approve → workflow complete
-T+25m   Run: bun demos/12-team-hitl/check-coding-release-workflow.ts <run_dir>
+T+?     Leader reads bob.md, presents summary to user, WAITS for user decision
+T+?     User says "approve" -> Leader calls team_approve -> advance
+T+?     Step 4 (carol): run 2 test cases -> PASS_COUNT marker -> idle
+T+?     [HITL PAUSE] approval_after step "run-tests". Leader receives notification.
+T+?     Leader reads carol.md, presents summary to user, WAITS for user decision
+T+?     User says "approve" -> Leader calls team_approve -> advance
+T+?     Step 5 (dave): release notes -> NOTES_OK -> idle
+T+?     Step 6 (erin): final review -> REVIEW_OK -> idle
+T+?     [HITL PAUSE] approval_after step "final-review". Leader receives notification.
+T+?     Leader reads erin.md, presents summary to user, WAITS for user decision
+T+?     User says "approve" -> Leader calls team_approve -> workflow complete
+T+?     Run: bun demos/12-team-hitl/check-coding-release-workflow.ts <run_dir>
 ```
 
 ### 4.5 Check Script
@@ -495,7 +502,7 @@ T+25m   Run: bun demos/12-team-hitl/check-coding-release-workflow.ts <run_dir>
 
 ## Quick-Start Prompts (Copy and Use)
 
-> Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. **Critical**: when the orchestration pauses for human approval (you will receive an `[Human approval required]` notification with an `approval_id`), call `team_approve(team_id="...", approval_id="...")` to continue. Do NOT call `team_reject` unless you want to abort that step.
+> Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. **Critical**: when the orchestration pauses for human approval (you will receive an `[Human approval required]` notification with an `approval_id`), you MUST first read the completed stage output from `<run_dir>/<member>.md`, present a concise summary to the user, and WAIT for the user to explicitly say "approve" or "reject" (with feedback). Only then call `team_approve` or `team_reject`. Do NOT auto-approve. The whole point of HITL is human judgment — the user needs time to review the output before deciding.
 
 ### Scenario 1: Config Parser Pipeline (Programming, baseline)
 
@@ -506,7 +513,7 @@ Steps:
 1. Read README "1.2 Team Configuration", create the team with team_create JSON (3 coder members)
 2. team_activate to activate
 3. Read README "1.3 Master Launch Call", start orchestration with the team_pipeline JSON (human_approval=true)
-4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), call team_approve(team_id="config-hitl", approval_id=...) to continue.
+4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), do NOT auto-approve. Instead: (a) use team_run_dir to find the run_dir, (b) read the completed stage member's .md file, (c) present a concise summary of the output to the user, (d) WAIT for the user to explicitly say "approve" or "reject". Only then call team_approve(team_id="config-hitl", approval_id=...) or team_reject(team_id="config-hitl", approval_id=..., feedback="..."). There will be 2 pause points: after stage 0 (alice spec) and after stage 1 (bob implementation).
 5. team_results poll until master receives summary
 6. Locate <run_dir> (containing carol member .md)
 7. Run: bun demos/12-team-hitl/check-coding-config-pipeline.ts <run_dir>
@@ -524,7 +531,7 @@ Steps:
 1. Read README "2.2 Team Configuration", create the team with team_create JSON (2 members: simulator + physicist)
 2. team_activate to activate
 3. Read README "2.3 Master Launch Call", start orchestration with the team_tollgate JSON (human_approval=true)
-4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), call team_approve(team_id="spring-hitl", approval_id=...) to continue.
+4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), do NOT auto-approve. Instead: (a) use team_run_dir to find the run_dir, (b) read the completed stage member's .md file, (c) present a concise summary of the output to the user, (d) WAIT for the user to explicitly say "approve" or "reject". Only then call team_approve(team_id="spring-hitl", approval_id=...) or team_reject(team_id="spring-hitl", approval_id=..., feedback="..."). There will be 1 pause point: at the verification gate after alice's producer output.
 5. team_results poll until master receives summary
 6. Locate <run_dir> (containing alice member .md)
 7. Run: bun demos/12-team-hitl/check-physics-spring-tollgate.ts <run_dir>
@@ -542,7 +549,7 @@ Steps:
 1. Read README "3.2 Team Configuration", create the team with team_create JSON (2 debaters + 1 arbiter)
 2. team_activate to activate
 3. Read README "3.3 Master Launch Call", start orchestration with the team_arbitrate JSON (human_approval=true, max_rounds=2)
-4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), call team_approve(team_id="integral-hitl", approval_id=...) to continue.
+4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), do NOT auto-approve. Instead: (a) use team_run_dir to find the run_dir, (b) read the completed stage member's .md file(s), (c) present a concise summary of the debate to the user, (d) WAIT for the user to explicitly say "approve" or "reject". Only then call team_approve(team_id="integral-hitl", approval_id=...) or team_reject(team_id="integral-hitl", approval_id=..., feedback="..."). There will be 1 pause point: before the arbitration phase (after both debate rounds complete).
 5. team_results poll until master receives summary
 6. Locate <run_dir> (containing carol member .md)
 7. Run: bun demos/12-team-hitl/check-math-integration-arbitrate.ts <run_dir>
@@ -560,7 +567,7 @@ Steps:
 1. Read README "4.2 Team Configuration", create the team with team_create JSON (5 coder + 1 reviewer)
 2. team_activate to activate
 3. Read README "4.3 Master Launch Call", start orchestration with the team_workflow JSON (approval_after on steps 3, 4, 6)
-4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), call team_approve(team_id="release-hitl", approval_id=...) to continue. This will happen three times: after step 3 (implement), step 4 (test), and step 6 (review).
+4. When the orchestration pauses for human approval (you will receive an [Human approval required] notification with an approval_id), do NOT auto-approve. Instead: (a) use team_run_dir to find the run_dir, (b) read the completed step member's .md file, (c) present a concise summary of the output to the user, (d) WAIT for the user to explicitly say "approve" or "reject". Only then call team_approve(team_id="release-hitl", approval_id=...) or team_reject(team_id="release-hitl", approval_id=..., feedback="..."). This will happen three times: after step 3 (bob implement), step 4 (carol test), and step 6 (erin review).
 5. team_results poll until master receives summary
 6. Locate <run_dir> (containing erin member .md)
 7. Run: bun demos/12-team-hitl/check-coding-release-workflow.ts <run_dir>
