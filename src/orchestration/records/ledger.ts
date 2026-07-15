@@ -160,7 +160,7 @@ export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): strin
 function formatWorkflowTaskOutput(step: WorkflowStep, index: number): string | null {
     if (step.kind !== "task" || !step.completed) return null
     return `<Step index = ${index + 1}> by ${step.member ?? "?"}\n`
-        + `${truncateOutput(step.output ?? "")}`
+        + `${truncateOutput(step.output ?? "")}\n`
         + `</Step>`
 }
 
