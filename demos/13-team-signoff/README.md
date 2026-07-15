@@ -1,8 +1,8 @@
-# Post-Completion Signoff Scenarios
+# Post-Completion Signoff Scenario Demo
 
-> **Mode**: signoff — Demonstrates the `signoff_policy` parameter (decider / peer-quorum) across multiple orchestration modes: delegate, parallel, and pipeline. Signoff is a **post-completion review gate** that dispatches member reviewers AFTER the main orchestration task finishes but BEFORE results are delivered to the leader. Unlike `human_approval`, signoff is fully automatic — no leader intervention needed.
-> **Source**: Feature is built into each orchestration tool (`team_delegate`, `team_parallel`, `team_pipeline`, etc.) via shared signoff hooks.
-> **Time-control design**: Baseline scenarios 1-3 use 3 members each, ≤ 15 min total. Scenario 4 (challenge-level) uses 6 members, ~45 min.
+Signoff demonstrates the `signoff_policy` parameter (decider / peer-quorum) across multiple orchestration modes: delegate, parallel, and pipeline. Signoff is a post-completion review gate that dispatches member reviewers AFTER the main orchestration task finishes but BEFORE results are delivered to the leader. Unlike `human_approval`, signoff is fully automatic — no leader intervention needed.
+
+---
 
 ## Signoff Mechanism
 

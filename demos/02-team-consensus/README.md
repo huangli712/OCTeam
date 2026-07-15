@@ -1,8 +1,8 @@
-# team_consensus Orchestration Scenario Design
+# team_consensus Orchestration Scenario Demo
 
-> **Mode**: `team_consensus` — Multi-round structured debate, all members state positions on a `topic` and converge toward consensus round by round; each member emits `<consensus>{"agreed": true|false}</consensus>` each round; when all `agreed=true`, consensus is reached. No signoff gate (the all-agree mechanism itself is the gate).
-> **Source**: [`src/tools/consensus.ts`](../../src/tools/consensus.ts)
-> **Time control design**: 3 members × `max_rounds=6`; each round per member 2-3 min; total duration ≈ 6 rounds × 3 min + dispatch ≈ 18-24 min (below the 30 min limit).
+`team_consensus` runs a multi-round structured debate where all members state positions on a `topic` and converge toward consensus round by round; each member emits `<consensus>{"agreed": true|false}</consensus>` each round; when all `agreed=true`, consensus is reached.
+
+---
 
 ## Scenario Overview
 

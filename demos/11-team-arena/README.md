@@ -1,8 +1,8 @@
-# team_arena Orchestration Scenario Design
+# team_arena Orchestration Scenario Demo
 
-> **Mode**: `team_arena` — competitive arena. N candidate members implement competing solutions for the same task in their own isolated git worktrees (implement phase); then a single independent evaluator runs the same objective evaluation against every candidate's output and produces a structured `<scoreboard>` rating; the engine selects a deterministic winner by `winner_metric` and `score_direction` and delivers directly (v1 has no signoff gate).
-> **Source**: [`src/tools/arena.ts`](../../src/tools/arena.ts)
-> **Time budget**: Each baseline scenario has 3 candidates + 1 evaluator, with candidates implementing for 5-8 min and the evaluator assessing for 3-5 min, parallel implement + serial evaluate ≈ 10-13 min (well under the 30 min ceiling). **Scenario 4 is challenge-level**: 5 candidates + 1 evaluator, scaled up to 5 solvers × 1000×1000 sparse system comprehensive arena, ~40 min, demonstrating arena's scalability under many candidates and high compute density.
+`team_arena` runs a competitive arena. N candidate members implement competing solutions for the same task in their own isolated git worktrees (implement phase); then a single independent evaluator runs the same objective evaluation against every candidate's output and produces a structured `<scoreboard>` rating; the engine selects a deterministic winner by `winner_metric` and `score_direction` and delivers directly.
+
+---
 
 ## Scenario Overview
 

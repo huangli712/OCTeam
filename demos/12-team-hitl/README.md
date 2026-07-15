@@ -1,8 +1,8 @@
-# Human-in-the-Loop Approval Scenarios
+# Human-in-the-Loop Approval Scenario Demo
 
-> **Mode**: HITL — Demonstrates the `human_approval` parameter across multiple orchestration modes. When enabled, the orchestration pauses at supported mid-run boundaries (between pipeline stages, at tollgate verification gates, between arbitrate debate rounds, at workflow `approval_before`/`approval_after` steps) and the leader session receives an `[Human approval required]` notification. The leader must call `team_approve` to resume or `team_reject` to reject with feedback.
-> **Source**: HITL logic lives in `src/orchestration/hitl.ts`; supported across `team_pipeline`, `team_tollgate`, `team_arbitrate`, and `team_workflow`.
-> **Time-control design**: Each baseline scenario has 2-3 members and 1-2 pause points, est. 10-20 min. Scenario 4 (challenge) has 6 members and 3 approval points, est. ~25 min.
+HITL demonstrates the `human_approval` parameter across multiple orchestration modes. When enabled, the orchestration pauses at supported mid-run boundaries (between pipeline stages, at tollgate verification gates, between arbitrate debate rounds, at workflow `approval_before`/`approval_after` steps) and the leader session receives an `[Human approval required]` notification. The leader must call `team_approve` to resume or `team_reject` to reject with feedback.
+
+---
 
 ## HITL Mechanism
 

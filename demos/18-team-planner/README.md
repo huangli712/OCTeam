@@ -1,13 +1,8 @@
-# team_planner Auto-Planning Scenarios
+# team_planner Auto-Planning Scenario Demo
 
-This demo demonstrates the `team_planner` tool's propose, write, activate, and workflow closed loop, where AI automatically generates team definitions and workflow definitions from natural-language goals. Each scenario also covers a previously-undemonstrated `join_policy` variant: `quorum`, `any_success`, `required_branches`, and a comprehensive multi-join combination.
+`team_planner` auto-plans from natural-language goals to executable workflows. It uses an oct-metis child session to generate team JSON and workflow JSON from a `goal` and optional `constraints`. The three-operation flow is: **propose** (AI generates team + workflow preview, writes nothing to disk), **revise** (AI regenerates with feedback), and **write** (deterministic validation + persist `team.<id>.json` and `workflow.<id>.json`). After write, the leader uses `team_create` with the team JSON, `team_activate`, then `team_workflow` with `workflow_file: "workflow.<id>.json"` to execute the generated workflow.
 
-> **Mode**: `team_planner` -- Auto-planning from natural-language goals to executable workflows. The `team_planner` tool uses an oct-metis child session to generate team JSON and workflow JSON from a `goal` and optional `constraints`. The three-operation flow is: **propose** (AI generates team + workflow preview, writes nothing to disk), **revise** (AI regenerates with feedback), and **write** (deterministic validation + persist `team.<id>.json` and `workflow.<id>.json`). After write, the leader uses `team_create` with the team JSON, `team_activate`, then `team_workflow` with `workflow_file: "workflow.<id>.json"` to execute the generated workflow.
-
-> **Note**: The goal and constraints parameters GUIDE the AI planner toward using the specified join_policy. The final workflow structure is AI-generated and may vary. The check scripts verify only the final function correctness, not the workflow structure.
-
-> **Source**: [`src/tools/planner.ts`](../../src/tools/planner.ts)
-> **Time budget**: Scenarios 1-3 are baseline (3 members, ~12-15 min each). Scenario 4 is challenge-level (5 members, ~30 min).
+---
 
 ## Scenario Overview
 

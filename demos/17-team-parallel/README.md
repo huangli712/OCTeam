@@ -1,8 +1,8 @@
-# team_parallel Isolated Mode and Done-Ack Features
+# team_parallel Isolated Mode and Done-Ack Features Demo
 
-> **Mode**: `team_parallel` (isolated + done-ack) — Demonstrates same-task broadcast (`mode: "isolated"`), explicit done-ack barrier (`require_done_ack: true`), and fault-tolerant redundancy (`max_errored_members`), three features not covered by the existing `01-team-parallel/` demos which all use `cooperative` mode.
-> **Source**: [`src/tools/parallel.ts`](../../src/tools/parallel.ts) (`teamParallelTool`)
-> **Time control design**: 3-4 members parallel, per-member subtask 5-10 min; total duration ≈ slowest member + reduce ≈ 10-15 min (well below the 30 min limit, except Scenario 4 with 15 min timeout).
+`team_parallel` (isolated + done-ack) demonstrates same-task broadcast (`mode: "isolated"`), explicit done-ack barrier (`require_done_ack: true`), and fault-tolerant redundancy (`max_errored_members`), three features not covered by the existing `01-team-parallel/` demos which all use `cooperative` mode.
+
+---
 
 ## What This Demo Covers (and Why)
 

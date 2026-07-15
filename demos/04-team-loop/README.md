@@ -1,8 +1,8 @@
-# team_loop Orchestration Scenario Design
+# team_loop Orchestration Scenario Demo
 
-> **Pattern**: `team_loop` — Runs a corrective loop `code → review → decide → repeat`. Each round the stage members produce output in sequence, the `decider` (a member, not master) emits `<decision>{"decision":"done"|"continue",...}</decision>`; stops when the `decider` says `done`, reaches `max_rounds`, times out, or has 3 consecutive parse failures.
-> **Source**: [`src/tools/loop.ts`](../../src/tools/loop.ts) (`teamLoopTool`)
-> **Timing Design**: 3 members (2 stage + 1 decider), `max_rounds=3`; typically converges in 1-2 rounds, each stage per round ≤ 5 min, total duration ≈ 10-15 min (well under 30 min ceiling).
+`team_loop` runs a corrective loop of `code → review → decide → repeat`. Each round the stage members produce output in sequence, the `decider` (a member, not master) emits `<decision>{"decision":"done"|"continue",...}</decision>`; stops when the `decider` says `done`, reaches `max_rounds`, times out, or has 3 consecutive parse failures.
+
+---
 
 ## Scenario Overview
 

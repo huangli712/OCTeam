@@ -1,8 +1,8 @@
-# team_tollgate Orchestration Scenario Design
+# team_tollgate Orchestration Scenario Demo
 
-> **Mode**: `team_tollgate` — verdict-gated pipeline. After each stage produces output it must pass through an independent verifier who issues a three-valued verdict (PASS / FAIL / INVALID). PASS releases the downstream; FAIL returns the output with the diff back to the producer (up to `max_gate_retries` times); INVALID isolates the issue and escalates to the verifier side without penalizing the producer.
-> **Source**: [`src/tools/tollgate.ts`](../../src/tools/tollgate.ts)
-> **Time budget**: Each scenario has 1 gate, 2 members (producer + verifier), with the producer at 3-5 min and the verifier at 2-3 min, serial total ≈ 6-8 min (well under the 30 min ceiling). **Scenario 4 is challenge-level**: 6 members, 3 serial V&V gates, ~60 min, demonstrating tollgate's multi-gate cascade capability.
+`team_tollgate` runs a verdict-gated pipeline. After each stage produces output it must pass through an independent verifier who issues a three-valued verdict (PASS / FAIL / INVALID). PASS releases the downstream; FAIL returns the output with the diff back to the producer (up to `max_gate_retries` times); INVALID isolates the issue and escalates to the verifier side without penalizing the producer.
+
+---
 
 ## Scenario Overview
 

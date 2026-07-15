@@ -1,8 +1,8 @@
-# team_delegate Orchestration Scenario Design
+# team_delegate Orchestration Scenario Demo
 
-> **Pattern**: `team_delegate` — Publish tasks to a shared list; idle members self-claim, execute, and report back to master; supports `blocked_by` dependencies forming a DAG.
-> **Source**: [`src/tools/delegate.ts`](../../src/tools/delegate.ts)
-> **Timing Design**: Scenarios 1-3 baseline: 3 members self-claiming, subtask per member ≤ 6 min; dependency-free scenario total ≈ ceil(tasks/members) rounds × 3 min; DAG scenario total ≈ critical path × 3 min (scenarios 1-3 all ≤ 15 min, well under 30 min ceiling). **Scenario 4 is challenge-level**: deliberately breaks baseline constraints (8 members / 100 tasks / ~90 min), stress-testing delegate mode stability and task distribution fairness under high-concurrency self-claiming.
+`team_delegate` publishes tasks to a shared list; idle members self-claim, execute, and report back to master; supports `blocked_by` dependencies forming a DAG.
+
+---
 
 ## Scenario Overview
 

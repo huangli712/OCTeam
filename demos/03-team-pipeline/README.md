@@ -1,8 +1,8 @@
-# team_pipeline Orchestration Scenario Design
+# team_pipeline Orchestration Scenario Demo
 
-> **Pattern**: `team_pipeline` — Linear pipeline: stage N's output is prefixed and appended to stage N+1's task, serial progression stage by stage; the final stage's output is summarized and delivered to the leader.
-> **Source**: [`src/tools/pipeline.ts`](../../src/tools/pipeline.ts)
-> **Timing Design**: 3 stages execute serially, each stage subtask 3-5 min; total duration ≈ Σ(stage) + summarize ≈ 12-15 min (well under the 30 min ceiling, subtask per member ≤ 8 min).
+`team_pipeline` runs a linear pipeline where stage N's output is prefixed and appended to stage N+1's task, progressing serially stage by stage; the final stage's output is summarized and delivered to the leader.
+
+---
 
 ## Scenario Overview
 

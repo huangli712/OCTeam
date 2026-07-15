@@ -1,8 +1,8 @@
-# team_workflow Advanced Engine Features
+# team_workflow Advanced Engine Features Demo
 
-> **Mode**: `team_workflow` (advanced) — Demonstrates the declarative engine's loop, ensemble verifier, multi-branch fanout, and select-join capabilities, complementing the basic task→gate chains and reduce-aggregation fanout covered in [`10-team-workflow/`](../10-team-workflow/README.md). These four advanced features enable autonomous fix-verify loops, voting-based verification, parallel multi-branch execution with different join policies, and competitive "try multiple implementations, pick the best" patterns.
-> **Source**: [`src/tools/workflow.ts`](../../src/tools/workflow.ts) / [`src/orchestration/workflow/workflow.ts`](../../src/orchestration/workflow/workflow.ts)
-> **Time budget**: Scenarios 1-3 are baseline (2-4 members, ~18-22 min each). Scenario 4 is challenge-level (5 members, ~35 min).
+`team_workflow` (advanced) demonstrates the declarative engine's loop, ensemble verifier, multi-branch fanout, and select-join capabilities. These four advanced features enable autonomous fix-verify loops, voting-based verification, parallel multi-branch execution with different join policies, and competitive "try multiple implementations, pick the best" patterns.
+
+---
 
 ## Scenario Overview
 

@@ -1,8 +1,8 @@
-# team_arbitrate Orchestration Scenario Design
+# team_arbitrate Orchestration Scenario Demo
 
-> **Mode**: `team_arbitrate` — Two debaters argue over a dispute for up to `max_rounds` rounds, then an arbiter (not a debater, not master) weighs both sides and issues a **binding ruling**.
-> **Source**: [`src/tools/arbitrate.ts`](../../src/tools/arbitrate.ts)
-> **Time-control design**: Each scenario has 3 members (2 debaters + 1 arbiter), `max_rounds=2`; per-member subtask ≤ 8 min, total time ≈ 2 debate rounds + final ruling ≈ 12-18 min (well under the 30 min cap).
+`team_arbitrate` has two debaters argue over a dispute for up to `max_rounds` rounds, then an arbiter (not a debater, not master) weighs both sides and issues a binding ruling.
+
+---
 
 ## Scenario Overview
 

@@ -1,8 +1,8 @@
-# team_recurse Orchestration Scenario Design
+# team_recurse Orchestration Scenario Demo
 
-> **Mode**: `team_recurse` — Hierarchical recursive decomposition: a root task is broken down into subtasks (which may be further decomposed up to `max_depth`), subtask results are aggregated bottom-up, ultimately solving the root task. Uses a shared task list + blockedBy DAG for layered aggregation.
-> **Source**: [`src/tools/recurse.ts`](../../src/tools/recurse.ts)
-> **Time-control design**: `max_depth=2`, `max_subtasks=3`, root → 3 leaf nodes (members claim in parallel), each leaf ≤ 8 min; decomposer summary ≈ slowest leaf + aggregation ≈ 10-12 min (well under the 30 min cap).
+`team_recurse` performs hierarchical recursive decomposition: a root task is broken down into subtasks (which may be further decomposed up to `max_depth`), subtask results are aggregated bottom-up, ultimately solving the root task. Uses a shared task list + blockedBy DAG for layered aggregation.
+
+---
 
 ## Scenario Overview
 

@@ -1,8 +1,8 @@
-# team_route Orchestration Scenario Design
+# team_route Orchestration Scenario Demo
 
-> **Mode**: `team_route` — Content-based routing: the router member analyzes the input, selects matching branch member(s) to process it; selected branches execute in parallel, then results are summarized. No default route — unmatched input causes the entire run to fail.
-> **Source**: [`src/tools/router.ts`](../../src/tools/router.ts)
-> **Time-control design**: The routing mode is naturally energy-efficient — each run only dispatches **router + 1 matched branch** for execution (remaining branches exist only as classification candidates and are never dispatched). Therefore even with a team of 4-5 members, active members ≤ 2, total time ≈ router classification (~1 min) + matched branch solving (~5-8 min) ≈ 10 min (well under the 30 min cap).
+`team_route` performs content-based routing: the router member analyzes the input, selects matching branch member(s) to process it; selected branches execute in parallel, then results are summarized. No default route — unmatched input causes the entire run to fail.
+
+---
 
 ## Scenario Overview
 

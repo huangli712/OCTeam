@@ -1,8 +1,8 @@
-# team_workflow Orchestration Scenario Design
+# team_workflow Orchestration Scenario Demo
 
-> **Mode**: `team_workflow` — declarative, deterministic step engine. Each step can be a `task` (one member produces output), a `gate` (a verifier issues a three-valued PASS / FAIL / INVALID verdict on a specified preceding task), a `fanout`, or a `join`. The engine — not the master LLM — drives advancement, retries, branch merging, reduce aggregation, and recovery; intermediate results enter only the downstream member context by default, not the master context.
-> **Source**: [`src/tools/workflow.ts`](../../src/tools/workflow.ts) / [`src/orchestration/workflow/workflow.ts`](../../src/orchestration/workflow/workflow.ts)
-> **Time budget**: Each baseline scenario has 2 members, a 4-step chain (task → gate → task → gate), each step 3-5 min, serial ≈ 14-18 min (well under the 30 min ceiling). **Scenario 4 is challenge-level**: 6 members, 8-step fanout→join workflow, ~50 min, demonstrating workflow's parallel branch integration capability.
+`team_workflow` is a declarative, deterministic step engine. Each step can be a `task` (one member produces output), a `gate` (a verifier issues a three-valued PASS / FAIL / INVALID verdict on a specified preceding task), a `fanout`, or a `join`. The engine — not the master LLM — drives advancement, retries, branch merging, reduce aggregation, and recovery; intermediate results enter only the downstream member context by default, not the master context.
+
+---
 
 ## Scenario Overview
 

@@ -1,9 +1,8 @@
-# team_tollgate Advanced Gate Features
+# team_tollgate Advanced Gate Features Demo
 
-> **Mode**: `team_tollgate` (advanced) — demonstrates the three-valued verdict gate's advanced parameters: `reference` for Compare-style numerical verdicts against a golden reference, `max_gate_retries` for FAIL→retry producer correction loops, `escalate_to` for INVALID→escalate to a third-party fixer, and `max_invalid_cycles` to cap INVALID ping-pong across multi-gate V&V chains.
-> **Complements**: [`09-team-tollgate/`](../09-team-tollgate/README.md) — which covers the basic PASS/FAIL mechanism with `max_gate_retries: 1` on single-gate scenarios. This demo drills into the parameters that make the gate robust in adversarial and edge-case scenarios.
-> **Source**: [`src/tools/tollgate.ts`](../../src/tools/tollgate.ts)
-> **Time budget**: Scenarios 1-3 use 2-3 members, 1 gate each, est. 8-12 min per scenario (serial verifier dispatch). **Scenario 4 is challenge-level**: 6 members, 2 serial V&V gates, ~80 min, demonstrating multi-gate INVALID tolerance under `escalate_to` with `max_invalid_cycles: 3`.
+`team_tollgate` (advanced) demonstrates the three-valued verdict gate's advanced parameters: `reference` for Compare-style numerical verdicts against a golden reference, `max_gate_retries` for FAIL→retry producer correction loops, `escalate_to` for INVALID→escalate to a third-party fixer, and `max_invalid_cycles` to cap INVALID ping-pong across multi-gate V&V chains.
+
+---
 
 ## Scenario Overview
 

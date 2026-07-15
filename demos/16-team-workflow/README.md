@@ -1,8 +1,8 @@
-# team_workflow Engine Automation Features
+# team_workflow Engine Automation Features Demo
 
-> **Mode**: `team_workflow` (engine automation) — Demonstrates the declarative engine's automation features that reduce manual intervention: `retry_on` auto-retry for incomplete output, `foreach` parameterized fanout with value substitution, `on_pass_goto` + `where` conditional branching by quality score, and resilience features (`on_timeout` / `fallback_member` + `fallback_verifier` / `on_malformed`). Complements the basic task/gate chains and fanout in [`10-team-workflow/`](../10-team-workflow/README.md) and the loop/ensemble/select features in [`15-team-workflow/`](../15-team-workflow/README.md).
-> **Source**: [`src/tools/workflow.ts`](../../src/tools/workflow.ts) / [`src/orchestration/workflow/workflow.ts`](../../src/orchestration/workflow/workflow.ts)
-> **Time budget**: Scenarios 1-3 are baseline (2-3 members, ~14-18 min each). Scenario 4 is challenge-level (6 members, ~30 min).
+`team_workflow` (engine automation) demonstrates the declarative engine's automation features that reduce manual intervention: `retry_on` auto-retry for incomplete output, `foreach` parameterized fanout with value substitution, `on_pass_goto` + `where` conditional branching by quality score, and resilience features (`on_timeout` / `fallback_member` + `fallback_verifier` / `on_malformed`).
+
+---
 
 ## Scenario Overview
 
