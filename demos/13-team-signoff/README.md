@@ -54,12 +54,12 @@ If not, emit <signoff>{"approved": false, "rationale": "specific issues..."}</si
         {
             "name": "alice",
             "role": "coder",
-            "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then write the full implementation code AND the output marker directly in your response text (not just via team_send_message). After writing your response, also report to master via team_send_message and release the task. Each task description specifies the exact output marker — include that marker line verbatim in your response. Repeat until no tasks remain."
+            "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then write the full implementation code AND the output marker directly in your response text (not just via team_send_message). After writing your response, also report to master via team_send_message and release the task. Each task description specifies the exact output marker — include that marker line verbatim in your response.\n\nRepeat until no tasks remain."
         },
         {
             "name": "bob",
             "role": "coder",
-            "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then write the full implementation code AND the output marker directly in your response text (not just via team_send_message). After writing your response, also report to master via team_send_message and release the task. Each task description specifies the exact output marker — include that marker line verbatim in your response. Repeat until no tasks remain."
+            "prompt": "You are a coder. You work in delegate mode: use team_task_list to find available tasks, claim one with team_task_update (status 'claimed'), implement exactly as the task description specifies, then write the full implementation code AND the output marker directly in your response text (not just via team_send_message). After writing your response, also report to master via team_send_message and release the task. Each task description specifies the exact output marker — include that marker line verbatim in your response.\n\nRepeat until no tasks remain."
         },
         {
             "name": "carol",
@@ -260,17 +260,17 @@ T+8m     Run: bun check-coding-parallel-quorum.ts <run_dir>
         {
             "name": "alice",
             "role": "mathematician",
-            "prompt": "You are a mathematician. You are the first stage in a pipeline. Derive the closed-form formula for the sum of squares: Σ(k², k=1..n) = n(n+1)(2n+1)/6. Show the derivation concisely using telescoping or polynomial fitting. End your output with a line exactly formatted: <!-- FORMULA: n(n+1)(2n+1)/6 -->. After the pipeline completes, you will be dispatched a signoff review prompt to vote on the complete derivation chain."
+            "prompt": "You are a mathematician. You are the first stage in a pipeline. Derive the closed-form formula for the sum of squares: Σ(k², k=1..n) = n(n+1)(2n+1)/6. Show the derivation concisely using telescoping or polynomial fitting. End your output with a line exactly formatted: <!-- FORMULA: n(n+1)(2n+1)/6 -->.\n\nAfter the pipeline completes, you will be dispatched a signoff review prompt to vote on the complete derivation chain."
         },
         {
             "name": "bob",
             "role": "mathematician",
-            "prompt": "You are a mathematician. You are the second stage. You will receive alice's derivation as context. Verify the formula numerically: compute Σ(k², k=1..100) by direct summation and compare to 100*101*201/6 = 338350. Report the match. End your output with a line exactly formatted: <!-- VERIFY: <boolean> -->. After the pipeline completes, you will vote in the signoff."
+            "prompt": "You are a mathematician. You are the second stage. You will receive alice's derivation as context. Verify the formula numerically: compute Σ(k², k=1..100) by direct summation and compare to 100*101*201/6 = 338350. Report the match. End your output with a line exactly formatted: <!-- VERIFY: <boolean> -->.\n\nAfter the pipeline completes, you will vote in the signoff."
         },
         {
             "name": "carol",
             "role": "mathematician",
-            "prompt": "You are a mathematician. You are the third stage. You will receive bob's output as context (which includes alice's work). Prove the formula by mathematical induction. Base case n=1: LHS=1, RHS=1(2)(3)/6=1. Inductive step: assume Σ(k²,k=1..n)=n(n+1)(2n+1)/6, show it holds for n+1. End with <!-- PROOF_OK: true -->. After the pipeline completes, you will vote in the signoff."
+            "prompt": "You are a mathematician. You are the third stage. You will receive bob's output as context (which includes alice's work). Prove the formula by mathematical induction. Base case n=1: LHS=1, RHS=1(2)(3)/6=1. Inductive step: assume Σ(k²,k=1..n)=n(n+1)(2n+1)/6, show it holds for n+1. End with <!-- PROOF_OK: true -->.\n\nAfter the pipeline completes, you will vote in the signoff."
         }
     ]
 }

@@ -55,25 +55,25 @@
       "name": "alice",
       "role": "coder",
       "worktree": true,
-      "prompt": "You are a coder implementing a sorting algorithm. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with an IMPL marker. Your output MUST end with a line exactly formatted: <!-- IMPL: sort -->"
+      "prompt": "You are a coder implementing a sorting algorithm. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with an IMPL marker.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: sort -->"
     },
     {
       "name": "bob",
       "role": "coder",
       "worktree": true,
-      "prompt": "You are a coder implementing a sorting algorithm. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with an IMPL marker. Your output MUST end with a line exactly formatted: <!-- IMPL: sort -->"
+      "prompt": "You are a coder implementing a sorting algorithm. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with an IMPL marker.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: sort -->"
     },
     {
       "name": "carol",
       "role": "coder",
       "worktree": true,
-      "prompt": "You are a coder implementing a sorting algorithm. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with an IMPL marker. Your output MUST end with a line exactly formatted: <!-- IMPL: sort -->"
+      "prompt": "You are a coder implementing a sorting algorithm. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with an IMPL marker.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: sort -->"
     },
     {
       "name": "dave",
       "role": "reviewer",
       "worktree": true,
-      "prompt": "You are an evaluator. You run the same objective benchmark command against each candidate's worktree and emit a scoreboard. Run the eval command for EVERY candidate at the absolute worktree path shown. Write the benchmark wrapper script yourself based on the eval command, run it per candidate, and produce the score. Emit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{...},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+      "prompt": "You are an evaluator. You run the same objective benchmark command against each candidate's worktree and emit a scoreboard. Run the eval command for EVERY candidate at the absolute worktree path shown. Write the benchmark wrapper script yourself based on the eval command, run it per candidate, and produce the score.\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{...},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
   ]
 }
@@ -164,25 +164,25 @@ The engine parses this JSON and selects `alice` as the winner by `winner_metric:
       "name": "alice",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing a numerical integrator for the harmonic oscillator (omega=1, x0=1, v0=0). Run 1000 steps h=0.01, report the relative energy drift |E_end - E0|/E0. Embed runnable code in a ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
+      "prompt": "You are a simulator implementing a numerical integrator for the harmonic oscillator (omega=1, x0=1, v0=0). Run 1000 steps h=0.01, report the relative energy drift |E_end - E0|/E0. Embed runnable code in a ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
     },
     {
       "name": "bob",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing a numerical integrator for the harmonic oscillator (omega=1, x0=1, v0=0). Run 1000 steps h=0.01, report the relative energy drift |E_end - E0|/E0. Embed runnable code in a ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
+      "prompt": "You are a simulator implementing a numerical integrator for the harmonic oscillator (omega=1, x0=1, v0=0). Run 1000 steps h=0.01, report the relative energy drift |E_end - E0|/E0. Embed runnable code in a ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
     },
     {
       "name": "carol",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing a numerical integrator for the harmonic oscillator (omega=1, x0=1, v0=0). Run 1000 steps h=0.01, report the relative energy drift |E_end - E0|/E0. Embed runnable code in a ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
+      "prompt": "You are a simulator implementing a numerical integrator for the harmonic oscillator (omega=1, x0=1, v0=0). Run 1000 steps h=0.01, report the relative energy drift |E_end - E0|/E0. Embed runnable code in a ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
     },
     {
       "name": "dave",
       "role": "physicist",
       "worktree": true,
-      "prompt": "You are a physicist. You evaluate each candidate's integrator by reading their output (the DRIFT marker), re-running their code if possible, and scoring by energy conservation quality. A lower drift is better (min direction). A drift < 1e-3 demonstrates symplectic or near-symplectic behavior (pass). Emit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"drift\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+      "prompt": "You are a physicist. You evaluate each candidate's integrator by reading their output (the DRIFT marker), re-running their code if possible, and scoring by energy conservation quality. A lower drift is better (min direction). A drift < 1e-3 demonstrates symplectic or near-symplectic behavior (pass).\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"drift\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
   ]
 }
@@ -269,25 +269,25 @@ The engine selects `carol` (drift 0.00041) as the winner using `score_direction:
       "name": "alice",
       "role": "coder",
       "worktree": true,
-      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4. Your output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
+      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4.\n\nYour output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
     },
     {
       "name": "bob",
       "role": "coder",
       "worktree": true,
-      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4. Your output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
+      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4.\n\nYour output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
     },
     {
       "name": "carol",
       "role": "coder",
       "worktree": true,
-      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4. Your output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
+      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4.\n\nYour output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
     },
     {
       "name": "dave",
       "role": "mathematician",
       "worktree": true,
-      "prompt": "You are a mathematician. You evaluate each candidate's quadrature implementation by reading their absolute error (QUAD marker), optionally recomputing the integral, and scoring by accuracy. A lower error is better (min direction). An error < 1e-5 demonstrates a well-implemented method (pass). Emit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"error\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+      "prompt": "You are a mathematician. You evaluate each candidate's quadrature implementation by reading their absolute error (QUAD marker), optionally recomputing the integral, and scoring by accuracy. A lower error is better (min direction). An error < 1e-5 demonstrates a well-implemented method (pass).\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"error\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
   ]
 }
@@ -376,37 +376,37 @@ The engine selects `carol` (error 1.1e-16) as the winner using `score_direction:
       "name": "alice",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil. Your output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil.\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "bob",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil. Your output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil.\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "carol",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil. Your output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil.\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "dave",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil. Your output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil.\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "erin",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil. Your output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil.\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "frank",
       "role": "physicist",
       "worktree": true,
-      "prompt": "You are a physicist. You evaluate each candidate's iterative Poisson solver by running the same convergence benchmark script (bun run convergence.ts) in each candidate's worktree, measuring the number of iterations to reach ||r||₂/||b||₂ < 1e-6 on the N=100 Poisson problem. A lower iteration count is better (min direction). A count > 100,000 is considered non-convergent (pass=false). Emit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"iterations\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+      "prompt": "You are a physicist. You evaluate each candidate's iterative Poisson solver by running the same convergence benchmark script (bun run convergence.ts) in each candidate's worktree, measuring the number of iterations to reach ||r||₂/||b||₂ < 1e-6 on the N=100 Poisson problem. A lower iteration count is better (min direction). A count > 100,000 is considered non-convergent (pass=false).\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"iterations\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
   ]
 }

@@ -56,7 +56,7 @@ The `reference` field appends a golden reference (a file path, known value, or e
         {
             "name": "alice",
             "role": "mathematician",
-            "prompt": "You are a mathematician. You implement numerical algorithms in TypeScript with rigor, using minimal code. When asked to produce an implementation, embed the full TypeScript in a single ```typescript fenced block and always end with the requested numeric marker. Your output MUST end with a line exactly formatted: <!-- PI_EST: <numeric_value> -->"
+            "prompt": "You are a mathematician. You implement numerical algorithms in TypeScript with rigor, using minimal code. When asked to produce an implementation, embed the full TypeScript in a single ```typescript fenced block and always end with the requested numeric marker.\n\nYour output MUST end with a line exactly formatted: <!-- PI_EST: <numeric_value> -->"
         },
         {
             "name": "bob",
@@ -147,7 +147,7 @@ T+8m    Run: bun check-math-pi-reference.ts <run_dir>
         {
             "name": "alice",
             "role": "coder",
-            "prompt": "You are a coder. You implement functions in clean TypeScript with minimal code. Embed the full TypeScript in a single ```typescript fenced block and declare it with an IMPL marker. Your output MUST end with a line exactly formatted: <!-- IMPL: isPrime -->"
+            "prompt": "You are a coder. You implement functions in clean TypeScript with minimal code. Embed the full TypeScript in a single ```typescript fenced block and declare it with an IMPL marker.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: isPrime -->"
         },
         {
             "name": "bob",
@@ -243,17 +243,17 @@ T+9m     Run: bun check-coding-coverage-retry.ts <run_dir>
         {
             "name": "alice",
             "role": "simulator",
-            "prompt": "You are a simulator. You implement numerical integrators in TypeScript and run them to report measured quantities. Embed runnable code in a ```typescript fenced block and always end with the requested numeric marker. Your output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
+            "prompt": "You are a simulator. You implement numerical integrators in TypeScript and run them to report measured quantities. Embed runnable code in a ```typescript fenced block and always end with the requested numeric marker.\n\nYour output MUST end with a line exactly formatted: <!-- DRIFT: <numeric_relative_drift> -->"
         },
         {
             "name": "bob",
             "role": "physicist",
-            "prompt": "You are a physicist. You verify numerical results against physical conservation laws and known tolerances. If you can compute and verify the energy drift, emit PASS or FAIL. If you CANNOT evaluate (e.g. the drift marker is unparseable, the code will not load, or the reference is unclear), emit INVALID with a rationale explaining what went wrong. Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\" or \"INVALID\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<details>\"}</verdict>."
+            "prompt": "You are a physicist. You verify numerical results against physical conservation laws and known tolerances. If you can compute and verify the energy drift, emit PASS or FAIL. If you CANNOT evaluate (e.g. the drift marker is unparseable, the code will not load, or the reference is unclear), emit INVALID with a rationale explaining what went wrong.\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\" or \"INVALID\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<details>\"}</verdict>."
         },
         {
             "name": "carol",
             "role": "reviewer",
-            "prompt": "You are a reviewer and escalation handler. When a verifier emits INVALID (cannot evaluate), you are dispatched to fix the verifier-side issue: clarify the reference, repair the verification criteria, or diagnose the evaluation failure. After fixing, you re-run the verification against the producer's output and emit a final PASS or FAIL verdict. Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<details>\"}</verdict>."
+            "prompt": "You are a reviewer and escalation handler. When a verifier emits INVALID (cannot evaluate), you are dispatched to fix the verifier-side issue: clarify the reference, repair the verification criteria, or diagnose the evaluation failure. After fixing, you re-run the verification against the producer's output and emit a final PASS or FAIL verdict.\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<details>\"}</verdict>."
         }
     ]
 }
@@ -373,7 +373,7 @@ T+10m    Run: bun check-physics-energy-escalate.ts <run_dir>
         {
             "name": "frank",
             "role": "reviewer",
-            "prompt": "You are a reviewer and shared escalation handler. When a verifier emits INVALID (cannot evaluate), you are dispatched to fix the verifier-side issue for any gate: clarify the criteria, repair the code-loading logic, or re-express the reference. After fixing, you re-run the verification and emit a final PASS or FAIL verdict. Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<details>\"}</verdict>."
+            "prompt": "You are a reviewer and shared escalation handler. When a verifier emits INVALID (cannot evaluate), you are dispatched to fix the verifier-side issue for any gate: clarify the criteria, repair the code-loading logic, or re-express the reference. After fixing, you re-run the verification and emit a final PASS or FAIL verdict.\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<details>\"}</verdict>."
         }
     ]
 }

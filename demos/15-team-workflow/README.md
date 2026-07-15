@@ -46,12 +46,12 @@
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- IMPL: parseList -->"
+      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: parseList -->"
     },
     {
       "name": "bob",
       "role": "tester",
-      "prompt": "You are a tester. You verify implementations by running them against edge cases. Emit a verdict: PASS if every criterion holds, FAIL otherwise. Your output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>."
+      "prompt": "You are a tester. You verify implementations by running them against edge cases. Emit a verdict: PASS if every criterion holds, FAIL otherwise.\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>."
     }
   ]
 }
@@ -287,7 +287,7 @@ T+11m    workflow_complete (or workflow_failed), summary delivered to master
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- IMPL: sorts -->"
+      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- IMPL: sorts -->"
     },
     {
       "name": "bob",
@@ -442,17 +442,17 @@ T+17m    workflow_complete, summary delivered to master
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- APPROACH: <name> -->"
+      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- APPROACH: <name> -->"
     },
     {
       "name": "bob",
       "role": "coder",
-      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- APPROACH: <name> -->"
+      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- APPROACH: <name> -->"
     },
     {
       "name": "carol",
       "role": "coder",
-      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block. Your output MUST end with a line exactly formatted: <!-- APPROACH: <name> -->"
+      "prompt": "You are a coder. You implement TypeScript functions with minimal, correct code. When asked to produce code, embed the full TypeScript in a single ```typescript fenced block.\n\nYour output MUST end with a line exactly formatted: <!-- APPROACH: <name> -->"
     },
     {
       "name": "dave",

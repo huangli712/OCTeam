@@ -55,17 +55,17 @@ The leader then calls `team_approve` to resume the run, or `team_reject` to appl
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "You are stage 1 (spec) of a 3-stage pipeline building a config parser. Define a spec for `parseConfig(input: string): Map<string, string>`: input is `key=value` lines (one per line), output is a `Map<string, string>`. Lines starting with `#` are comments and skipped. Empty lines are skipped. Malformed lines (no `=`) throw an Error. Document the spec concisely. Your output MUST end with: <!-- SPEC_OK: true -->"
+      "prompt": "You are stage 1 (spec) of a 3-stage pipeline building a config parser. Define a spec for `parseConfig(input: string): Map<string, string>`: input is `key=value` lines (one per line), output is a `Map<string, string>`. Lines starting with `#` are comments and skipped. Empty lines are skipped. Malformed lines (no `=`) throw an Error. Document the spec concisely.\n\nYour output MUST end with: <!-- SPEC_OK: true -->"
     },
     {
       "name": "bob",
       "role": "coder",
-      "prompt": "You are stage 2 (implement) of a 3-stage pipeline building a config parser. Implement `function parseConfig(input: string): Map<string, string>` following the spec from the previous stage. Skip `#` comments and empty lines. Throw Error on malformed lines (no `=`). Embed the full TypeScript code in a single ```typescript fenced block. Your output MUST end with: <!-- IMPL: parseConfig -->"
+      "prompt": "You are stage 2 (implement) of a 3-stage pipeline building a config parser. Implement `function parseConfig(input: string): Map<string, string>` following the spec from the previous stage. Skip `#` comments and empty lines. Throw Error on malformed lines (no `=`). Embed the full TypeScript code in a single ```typescript fenced block.\n\nYour output MUST end with: <!-- IMPL: parseConfig -->"
     },
     {
       "name": "carol",
       "role": "coder",
-      "prompt": "You are stage 3 (test) of a 3-stage pipeline building a config parser. Write and run 3 test cases against bob's parseConfig implementation: (1) normal input 'a=1\\nb=2' -> Map with 2 entries; (2) empty input '' -> empty Map; (3) malformed input 'no_equals' -> throws Error. Extract the code from bob's ```typescript block. Report how many pass. Your output MUST end with: <!-- PASS_COUNT: <n>/3 -->"
+      "prompt": "You are stage 3 (test) of a 3-stage pipeline building a config parser. Write and run 3 test cases against bob's parseConfig implementation: (1) normal input 'a=1\\nb=2' -> Map with 2 entries; (2) empty input '' -> empty Map; (3) malformed input 'no_equals' -> throws Error. Extract the code from bob's ```typescript block. Report how many pass.\n\nYour output MUST end with: <!-- PASS_COUNT: <n>/3 -->"
     }
   ]
 }
@@ -163,7 +163,7 @@ T+?     Run: bun demos/12-team-hitl/check-coding-config-pipeline.ts <run_dir>
     {
       "name": "alice",
       "role": "simulator",
-      "prompt": "You are a simulator implementing numerical integration. Implement Velocity Verlet for the spring-mass system (k=1, m=1, x0=1, v0=0) and run exactly 1000 steps with h=0.05. Compute E = 0.5*(x^2 + v^2) and E0 = 0.5. Report the relative drift |E_end - E0|/E0. Embed the code in a ```typescript fenced block. Your output MUST end with: <!-- DRIFT: <numeric_drift> -->"
+      "prompt": "You are a simulator implementing numerical integration. Implement Velocity Verlet for the spring-mass system (k=1, m=1, x0=1, v0=0) and run exactly 1000 steps with h=0.05. Compute E = 0.5*(x^2 + v^2) and E0 = 0.5. Report the relative drift |E_end - E0|/E0. Embed the code in a ```typescript fenced block.\n\nYour output MUST end with: <!-- DRIFT: <numeric_drift> -->"
     },
     {
       "name": "bob",
@@ -255,17 +255,17 @@ T+?     Run: bun demos/12-team-hitl/check-physics-spring-tollgate.ts <run_dir>
     {
       "name": "alice",
       "role": "mathematician",
-      "prompt": "You are the proponent of GAUSS-LEGENDRE quadrature for computing the definite integral of e^(-x^2) on [0,1]. Argue: Gauss-Legendre nodes are optimally placed (roots of Legendre polynomials), achieving exact integration for polynomials up to degree 2n-1 with just n nodes. For a smooth function like e^(-x^2), the error decays exponentially with n. Rebut Simpson's rule: it uses fixed equally spaced points and has slower (polynomial) convergence for smooth integrands. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
+      "prompt": "You are the proponent of GAUSS-LEGENDRE quadrature for computing the definite integral of e^(-x^2) on [0,1]. Argue: Gauss-Legendre nodes are optimally placed (roots of Legendre polynomials), achieving exact integration for polynomials up to degree 2n-1 with just n nodes. For a smooth function like e^(-x^2), the error decays exponentially with n. Rebut Simpson's rule: it uses fixed equally spaced points and has slower (polynomial) convergence for smooth integrands.\n\nYour output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
     },
     {
       "name": "bob",
       "role": "mathematician",
-      "prompt": "You are the proponent of SIMPSON'S RULE for computing the definite integral of e^(-x^2) on [0,1]. Argue the Simpson case as strongly as you can: Simpson's rule is simple to implement, requires only 3 equally spaced points per subinterval, generalizes to composite rules for arbitrary precision, and is well understood by engineers. For e^(-x^2) on [0,1] the function is smooth enough that composite Simpson converges reasonably fast. Rebut the Gauss-Legendre side. Your output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
+      "prompt": "You are the proponent of SIMPSON'S RULE for computing the definite integral of e^(-x^2) on [0,1]. Argue the Simpson case as strongly as you can: Simpson's rule is simple to implement, requires only 3 equally spaced points per subinterval, generalizes to composite rules for arbitrary precision, and is well understood by engineers. For e^(-x^2) on [0,1] the function is smooth enough that composite Simpson converges reasonably fast. Rebut the Gauss-Legendre side.\n\nYour output MUST end with a line exactly formatted: <!-- ARG: <one-line summary of your position> -->"
     },
     {
       "name": "carol",
       "role": "reviewer",
-      "prompt": "You are the ARBITER. Two mathematicians debated whether to integrate e^(-x^2) on [0,1] with Gauss-Legendre quadrature or Simpson's rule. Weigh both sides objectively, then deliver a single BINDING ruling. Recall the numerical integration principle: for smooth analytic integrands, Gaussian quadrature achieves exponential (spectral) convergence with optimally-placed nodes, far outperforming fixed-interval Newton-Cotes rules like Simpson's. The reference value is (sqrt(pi)/2)*erf(1) ≈ 0.7468241328. Your output MUST end with exactly one line formatted: <ruling>{\"decision\": \"<gauss-legendre or simpson>\", \"rationale\": \"<one-sentence rationale referencing accuracy / convergence / nodes>\"}</ruling>."
+      "prompt": "You are the ARBITER. Two mathematicians debated whether to integrate e^(-x^2) on [0,1] with Gauss-Legendre quadrature or Simpson's rule. Weigh both sides objectively, then deliver a single BINDING ruling. Recall the numerical integration principle: for smooth analytic integrands, Gaussian quadrature achieves exponential (spectral) convergence with optimally-placed nodes, far outperforming fixed-interval Newton-Cotes rules like Simpson's. The reference value is (sqrt(pi)/2)*erf(1) ≈ 0.7468241328.\n\nYour output MUST end with exactly one line formatted: <ruling>{\"decision\": \"<gauss-legendre or simpson>\", \"rationale\": \"<one-sentence rationale referencing accuracy / convergence / nodes>\"}</ruling>."
     }
   ]
 }
