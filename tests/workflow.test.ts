@@ -1676,7 +1676,8 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         // skipped as a no-new-turn stale idle, leaving responses.bob unset.
         ctx = makeCtx({
             calls: calls,
-            messages: async ({ path }: { path: { id: string } }) => {
+            messages: async (req: unknown) => {
+                const path = (req as { path: { id: string } }).path
                 const text = path.id === "ses_bob" ? FAIL_VERDICT : ""
                 return {
                     data: [

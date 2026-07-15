@@ -43,12 +43,12 @@
     {
       "name": "alice",
       "role": "mathematician",
-      "prompt": "You are stage 1 (simplify) of a 3-stage pipeline evaluating the Gaussian integral I = integral_0^1 e^(-x^2) dx. Tasks: (1) Explain why this integral has no elementary closed-form antiderivative. (2) Identify the exact value in terms of the error function: I = (sqrt(pi)/2)*erf(1). (3) Give a tight numerical bound on I (e.g. via Taylor series or sandwich bounds) so the next stage has a sanity check. Hand the symbolic reduction forward. Your output MUST end with a line exactly formatted: <!-- CLOSED_FORM: (sqrt(pi)/2)*erf(1) -->"
+      "prompt": "You are stage 1 (simplify) of a 3-stage pipeline evaluating the Gaussian integral I = integral_0^1 e^(-x^2) dx. Tasks: (1) Explain why this integral has no elementary closed-form antiderivative. (2) Identify the exact value in terms of the error function: I = (sqrt(pi)/2)*erf(1). (3) Give a tight numerical bound on I (e.g. via Taylor series or sandwich bounds) so the next stage has a sanity check.\n\nHand the symbolic reduction forward.\n\nYour output MUST end with a line exactly formatted: <!-- CLOSED_FORM: (sqrt(pi)/2)*erf(1) -->"
     },
     {
       "name": "bob",
       "role": "mathematician",
-      "prompt": "You are stage 2 (numerical) of a 3-stage pipeline evaluating the Gaussian integral I = integral_0^1 e^(-x^2) dx. The previous stage established I = (sqrt(pi)/2)*erf(1). Your job: approximate I numerically using Gauss-Legendre quadrature with EXACTLY n=8 nodes on the interval [0,1] (use the standard nodes/weights on [-1,1] then affine-map to [0,1]). Embed the code in a fenced block. Report the estimate to 10 significant digits. Your output MUST end with a line exactly formatted: <!-- VALUE: <your_10_digit_numeric_value> -->"
+      "prompt": "You are stage 2 (numerical) of a 3-stage pipeline evaluating the Gaussian integral I = integral_0^1 e^(-x^2) dx. The previous stage established I = (sqrt(pi)/2)*erf(1).\n\nYour job: approximate I numerically using Gauss-Legendre quadrature with EXACTLY n=8 nodes on the interval [0,1] (use the standard nodes/weights on [-1,1] then affine-map to [0,1]). Embed the code in a fenced block. Report the estimate to 10 significant digits. Your output MUST end with a line exactly formatted: <!-- VALUE: <your_10_digit_numeric_value> -->"
     },
     {
       "name": "carol",
