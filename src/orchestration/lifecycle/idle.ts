@@ -256,13 +256,19 @@ export async function processIdle(
     if (messages === null) return // stray idle
 
     // Step 6: Capture output (mode-aware; delegate skips, signoff always captures).
+    // capturedNew signals whether this turn produced fresh assistant output.
+    // A decider/reviewer idling during signoffStage with NO new output is a
+    // stale pre-signoff idle (its dispatch landed but the signoff turn hasn't
+    // replied) — advancing the signoff policy on it would read the stale
+    // pre-signoff response and falsely reject. Step 8 gates on this signal.
     const task = team.activeTask
+    let capturedNew = false
     if (
         task?.type !== "workflow"
         || task.signoffStage === true
         || findActiveWorkflowStepIndexForMember(task, member.name) !== null
     ) {
-        await captureMemberOutput(team, member, messages)
+        capturedNew = await captureMemberOutput(team, member, messages)
     }
 
     await saveTeamState(team)
@@ -290,6 +296,12 @@ export async function processIdle(
     }
     // signoff stage takes priority over normal mode dispatch.
     if (team.activeTask.signoffStage) {
+        // Stale-idle guard: a reviewer dispatched for signoff re-fires a
+        // redundant idle before its signoff turn produces output. Without
+        // new output this idle holds no fresh verdict — advancing would read
+        // the stale pre-signoff response (e.g. a coder task ack) and falsely
+        // reject. Skip; the real signoff turn's idle will carry the verdict.
+        if (!capturedNew) return
         await handleSignoffIdle(ctx, team, member)
         await checkTermination(ctx, team)
         return

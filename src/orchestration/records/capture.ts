@@ -39,14 +39,21 @@ export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: s
  *
  * Reduce-stage routing: when the parallel task is in its reduce stage and this
  * member is the reducer, the output is routed to runs/<runId>/reduce.md.
+ *
+ * Returns true when new assistant output was captured this turn, false when no
+ * task is active or the current turn produced no extractable assistant content
+ * (a stale/redundant idle whose dispatch landed but whose turn hasn't replied).
+ * The freshness signal gates signoff-stage advancement: a decider's stale
+ * pre-signoff idle (re-firing after the signoff dispatch) must not read the
+ * stale pre-signoff response and falsely reject the run.
  */
 export async function captureMemberOutput(
     team: Team,
     member: MemberState,
     messages: SdkMessage[],
-): Promise<void> {
+): Promise<boolean> {
     const task = team.activeTask
-    if (!task) return
+    if (!task) return false
     // Find the start of the current turn (last user message).
     let turnStart = 0
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -63,7 +70,7 @@ export async function captureMemberOutput(
             if (text) outputs.push(text)
         }
     }
-    if (outputs.length === 0) return
+    if (outputs.length === 0) return false
     const full = outputs.join("\n\n")
     const captured = truncateOutput(full)
     task.responses[member.name] = captured
@@ -110,4 +117,5 @@ export async function captureMemberOutput(
         member: member.name,
         bytes: full.length,
     })
+    return true
 }

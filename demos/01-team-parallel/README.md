@@ -40,7 +40,7 @@
     {
       "name": "alice",
       "role": "mathematician",
-      "prompt": "Estimate pi via naive Monte Carlo: sample (x,y) uniformly in [0,1]^2, count fraction inside the unit circle (x^2+y^2<=1), pi ~ 4*count/N. Use EXACTLY 1,000,000 samples with fixed seed 42. Run the code, report the estimate, and give a one-line variance analysis. Your output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
+      "prompt": "Estimate pi via naive Monte Carlo: sample (x,y) uniformly in [0,1]^2, count fraction inside the unit circle (x^2+y^2<=1), pi ~ 4*count/N.\n\nUse EXACTLY 1,000,000 samples with fixed seed 42.\n\nRun the code, report the estimate, and give a one-line variance analysis.\n\nYour output MUST end with a line exactly formatted: <!-- PI_EST: <your_numeric_estimate> -->"
     },
     {
       "name": "bob",
