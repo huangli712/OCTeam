@@ -389,7 +389,7 @@ T+11m    run: bun check-coding-isolated-tolerant.ts <run_dir>
 ### Scenario 1: Same Integral, Three Independent Solutions
 
 ```text
-Run the full closed loop of demos/17-team-parallel-isolated/README.md "Scenario 1: Same Integral, Three Independent Solutions" and auto-evaluate.
+Run the full closed loop of demos/17-team-parallel/README.md "Scenario 1: Same Integral, Three Independent Solutions" and auto-evaluate.
 
 Steps:
 1. Read README "1.2 Team Config", create the team using the team_create JSON
@@ -398,7 +398,7 @@ Steps:
 4. team_results poll, wait for orchestration to complete and master to receive summary
 5. Locate the output directory <run_dir> for this run (contains alice.md / bob.md / carol.md)
 6. Run evaluation:
-   bun demos/17-team-parallel-isolated/check-math-isolated-integral.ts <run_dir>
+   bun demos/17-team-parallel/check-math-isolated-integral.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
 Success criteria: at least 2 of 3 independent solutions agree within 0.01; median within 0.05 of 0.6466.
@@ -407,7 +407,7 @@ Success criteria: at least 2 of 3 independent solutions agree within 0.01; media
 ### Scenario 2: Binary Search Rubric Comparison
 
 ```text
-Run the full closed loop of demos/17-team-parallel-isolated/README.md "Scenario 2: Same Algorithm Problem, Rubric Comparison" and auto-evaluate.
+Run the full closed loop of demos/17-team-parallel/README.md "Scenario 2: Same Algorithm Problem, Rubric Comparison" and auto-evaluate.
 
 Steps:
 1. Read README "2.2 Team Config", create the team using the team_create JSON
@@ -415,7 +415,7 @@ Steps:
 3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
 4. team_results poll until master receives summary
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
-6. Run: bun demos/17-team-parallel-isolated/check-coding-isolated-rubric.ts <run_dir>
+6. Run: bun demos/17-team-parallel/check-coding-isolated-rubric.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
 Success criteria: at least one binarySearch implementation passes all 5 test cases.
@@ -424,7 +424,7 @@ Success criteria: at least one binarySearch implementation passes all 5 test cas
 ### Scenario 3: Done-Ack Barrier
 
 ```text
-Run the full closed loop of demos/17-team-parallel-isolated/README.md "Scenario 3: Done-Ack Barrier for Coordinated Completion" and auto-evaluate.
+Run the full closed loop of demos/17-team-parallel/README.md "Scenario 3: Done-Ack Barrier for Coordinated Completion" and auto-evaluate.
 
 Steps:
 1. Read README "3.2 Team Config", create the team using the team_create JSON
@@ -432,7 +432,7 @@ Steps:
 3. Read README "3.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
 4. team_results poll until master receives summary
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
-6. Run: bun demos/17-team-parallel-isolated/check-coding-done-ack.ts <run_dir>
+6. Run: bun demos/17-team-parallel/check-coding-done-ack.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
 Success criteria: at least one hashString implementation passes all 4 test cases.
@@ -441,7 +441,7 @@ Success criteria: at least one hashString implementation passes all 4 test cases
 ### Scenario 4: Fault-Tolerant Spiral Order (Challenge)
 
 ```text
-Run the full closed loop of demos/17-team-parallel-isolated/README.md "Scenario 4: Fault-Tolerant Isolated Computation (Challenge)" and auto-evaluate.
+Run the full closed loop of demos/17-team-parallel/README.md "Scenario 4: Fault-Tolerant Isolated Computation (Challenge)" and auto-evaluate.
 
 Steps:
 1. Read README "4.2 Team Config", create the team using the team_create JSON (4 coder members)
@@ -449,7 +449,7 @@ Steps:
 3. Read README "4.3 Master Launch Invocation", start the orchestration using the team_parallel JSON (max_errored_members=1)
 4. team_results poll until master receives summary
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md / dave.md)
-6. Run: bun demos/17-team-parallel-isolated/check-coding-isolated-tolerant.ts <run_dir>
+6. Run: bun demos/17-team-parallel/check-coding-isolated-tolerant.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
 Success criteria: at least one spiralOrder implementation passes all 4 test cases; tolerant of up to 1 member failure.
