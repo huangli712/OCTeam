@@ -152,12 +152,12 @@ T+12m   run: bun check-math-gaussian-integral.ts <run_dir>
     {
       "name": "bob",
       "role": "simulator",
-      "prompt": "You are stage 2 (integrate) of a 3-stage pendulum pipeline. The previous stage derived the ODE theta'' = -(g/L)*theta with g=9.81, L=1.0, analytic theta(t) = 0.1*cos(sqrt(9.81)*t), period T = 2*pi*sqrt(1/9.81).\n\nYour job: integrate the first-order system [theta, omega] with theta'=omega, omega'=-(g/L)*theta using CLASSICAL RK4 from t=0 to t=T with step h=0.001. Initial theta=0.1, omega=0.\n\nEmbed the code in a fenced block. Report theta(T) (should be approx 0.1). Your output MUST end with a line exactly formatted: <!-- THETA_END: <theta_at_T> -->"
+      "prompt": "You are stage 2 (integrate) of a 3-stage pendulum pipeline. The previous stage derived the ODE theta'' = -(g/L)*theta with g=9.81, L=1.0, analytic theta(t) = 0.1*cos(sqrt(9.81)*t), period T = 2*pi*sqrt(1/9.81).\n\nYour job: integrate the first-order system [theta, omega] with theta'=omega, omega'=-(g/L)*theta using CLASSICAL RK4 from t=0 to t=T with step h=0.001. Initial theta=0.1, omega=0.\n\nEmbed the code in a fenced block. Report theta(T) (should be approx 0.1).\n\nYour output MUST end with a line exactly formatted: <!-- THETA_END: <theta_at_T> -->"
     },
     {
       "name": "carol",
       "role": "simulator",
-      "prompt": "You are stage 3 (phase-portrait) of a 3-stage pendulum pipeline. Previous stages derived the ODE (theta'' = -(g/L)*theta, g=9.81, L=1.0), analytic solution theta(t)=0.1*cos(sqrt(9.81)*t), period T=2*pi*sqrt(1/9.81), and RK4-integrated theta(T). Your job: over [0, T], sample 100 equally spaced points; at each point compare the RK4 numerical theta to the analytic theta(t)=0.1*cos(sqrt(9.81)*t); report the MAX absolute deviation across the 100 samples. Embed the code in a fenced block. Your output MUST end with a line exactly formatted: <!-- MAX_ERR: <max_deviation> -->"
+      "prompt": "You are stage 3 (phase-portrait) of a 3-stage pendulum pipeline. Previous stages derived the ODE (theta'' = -(g/L)*theta, g=9.81, L=1.0), analytic solution theta(t)=0.1*cos(sqrt(9.81)*t), period T=2*pi*sqrt(1/9.81), and RK4-integrated theta(T).\n\nYour job: over [0, T], sample 100 equally spaced points; at each point compare the RK4 numerical theta to the analytic theta(t)=0.1*cos(sqrt(9.81)*t); report the MAX absolute deviation across the 100 samples. Embed the code in a fenced block. Your output MUST end with a line exactly formatted: <!-- MAX_ERR: <max_deviation> -->"
     }
   ]
 }
