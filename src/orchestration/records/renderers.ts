@@ -137,7 +137,7 @@ export function summarizeConsensus(task: ActiveTask, head: string): string {
     // Consensus has no reducePolicy; concatenate member outputs
     // (the same summarize behavior the old default branch produced).
     const candidates = Object.entries(task.responses)
-        .map(([name, out]) => `### ${name}\n${truncateOutput(out)}`)
+        .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
         .join("\n\n")
     return `${head}\n${candidates}`
 }
