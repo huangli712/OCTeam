@@ -157,16 +157,18 @@ export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): strin
 }
 
 /** Format a completed task step's output as a markdown section, or null if not applicable. */
-function formatWorkflowTaskOutput(step: WorkflowStep, index: number, headingLevel: "###" | "####"): string | null {
+function formatWorkflowTaskOutput(step: WorkflowStep, index: number): string | null {
     if (step.kind !== "task" || !step.completed) return null
-    return `${headingLevel} Step ${index + 1} - ${step.member ?? "?"}\n${truncateOutput(step.output ?? "")}`
+    return `<Step index = ${index + 1}> by ${step.member ?? "?"}\n`
+        + `${truncateOutput(step.output ?? "")}`
+        + `</Step>`
 }
 
 /** Render completed task-step outputs as a list of sections, with fanout branches grouped under headers. */
 export function formatWorkflowOutputSections(steps: readonly WorkflowStep[]): string[] {
     if (!hasWorkflowBranchTree(steps)) {
         return steps
-            .map((step, index) => formatWorkflowTaskOutput(step, index, "###"))
+            .map((step, index) => formatWorkflowTaskOutput(step, index))
             .filter((x): x is string => x !== null)
     }
 
@@ -177,7 +179,7 @@ export function formatWorkflowOutputSections(steps: readonly WorkflowStep[]): st
         switch (step.kind) {
             case "task": {
                 if (step.branch !== undefined) break
-                const output = formatWorkflowTaskOutput(step, index, "###")
+                const output = formatWorkflowTaskOutput(step, index)
                 if (output !== null) sections.push(output)
                 break
             }
@@ -192,7 +194,7 @@ export function formatWorkflowOutputSections(steps: readonly WorkflowStep[]): st
                     for (let branchStepIndex = range.startIndex; branchStepIndex <= range.endIndex; branchStepIndex += 1) {
                         const branchStep = steps[branchStepIndex]
                         if (branchStep === undefined) continue
-                        const output = formatWorkflowTaskOutput(branchStep, branchStepIndex, "####")
+                        const output = formatWorkflowTaskOutput(branchStep, branchStepIndex)
                         if (output !== null) outputs.push(output)
                     }
                     if (outputs.length > 0) {
