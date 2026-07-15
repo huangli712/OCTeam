@@ -481,7 +481,7 @@ Steps:
 1. Read README "2.2 Team Config", create the team using the team_create JSON
 2. team_activate
 3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
-4. team_results poll until master receives summary (poll every 30s) (poll every 30s)
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
 6. Run: bun demos/01-team-parallel/check-physics-harmonic-integrator.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
@@ -498,7 +498,7 @@ Steps:
 1. Read README "3.2 Team Config", create the team using the team_create JSON
 2. team_activate
 3. Read README "3.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
-4. team_results poll until master receives summary
+4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
 6. Run: bun demos/01-team-parallel/check-coding-twosum.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
