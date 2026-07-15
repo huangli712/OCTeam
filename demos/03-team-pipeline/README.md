@@ -330,7 +330,7 @@ T+10m   run: bun check-coding-fib-tdd.ts <run_dir>
 
 ## Scenario 4: Lennard-Jones Molecular Dynamics Full Simulation Chain (Challenge-Level)
 
-> **Challenge-level note**: This scenario breaks the conventional 30 min / ≤4 member ceiling, using an **8-stage serial pipeline** to complete a full Lennard-Jones molecular dynamics simulation (force field → initialization → energy minimization → NVT equilibration → NVT sampling → RDF analysis → summary report). Each stage subtask approximately 5-8 min, total duration ~60 min, timeout set to 90 min with margin. For capability demonstration only, not a regular benchmark.
+**Challenge-level note**: This scenario breaks the conventional 30 min / ≤4 member ceiling, using an **8-stage serial pipeline** to complete a full Lennard-Jones molecular dynamics simulation (force field → initialization → energy minimization → NVT equilibration → NVT sampling → RDF analysis → summary report). Each stage subtask approximately 5-8 min, total duration ~60 min, timeout set to 90 min with margin. For capability demonstration only, not a regular benchmark.
 
 ### 4.1 Scenario Description
 

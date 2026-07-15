@@ -414,7 +414,7 @@ T+17m    workflow_complete, summary delivered to master
 
 ## Scenario 4: Select Best Implementation — Competitive Fibonacci (Challenge-Level)
 
-> **Challenge-level notes**: This scenario uses **5 members and 3 competitive branches with select-join**, demonstrating `team_workflow`'s "try multiple approaches, reducer picks the best" pattern. ~35 min.
+**Challenge-level notes**: This scenario uses **5 members and 3 competitive branches with select-join**, demonstrating `team_workflow`'s "try multiple approaches, reducer picks the best" pattern. ~35 min.
 
 ### 4.1 Scenario Description
 

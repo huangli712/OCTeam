@@ -287,7 +287,7 @@ T+9m    Run: bun check-coding-md-converter.ts <run_dir>
 
 ## Scenario 4: Vandermonde Identity Multi-Layer Proof (challenge-level)
 
-> **Challenge-level**: This scenario deliberately exceeds the standard budget (30 min total / ≤4 members / `max_depth=2`) to stress-test `team_recurse` under deeper (`max_depth=4`), wider (`max_subtasks=4`), and more members (6 people) for multi-layer recursive decomposition and bottom-up aggregation.
+**Challenge-level**: This scenario deliberately exceeds the standard budget (30 min total / ≤4 members / `max_depth=2`) to stress-test `team_recurse` under deeper (`max_depth=4`), wider (`max_subtasks=4`), and more members (6 people) for multi-layer recursive decomposition and bottom-up aggregation.
 
 ### 4.1 Scenario description
 

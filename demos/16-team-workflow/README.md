@@ -444,7 +444,7 @@ T+14m    workflow_complete, summary delivered to master
 
 ## Scenario 4: Resilient Chain — deduplicate with Timeout Retry, Fallback, and Malformed Handling (Challenge-Level)
 
-> **Challenge-level notes**: This scenario uses **6 members and 4 steps**, demonstrating three resilience features bundled in a single workflow: `on_timeout` + `max_timeout_retries` (retry on timeout), `fallback_member` / `fallback_verifier` (automatic actor substitution), and `on_malformed` + `max_malformed_retries` (handle unparseable verdicts). ~30 min.
+**Challenge-level notes**: This scenario uses **6 members and 4 steps**, demonstrating three resilience features bundled in a single workflow: `on_timeout` + `max_timeout_retries` (retry on timeout), `fallback_member` / `fallback_verifier` (automatic actor substitution), and `on_malformed` + `max_malformed_retries` (handle unparseable verdicts). ~30 min.
 
 ### 4.1 Scenario Description
 

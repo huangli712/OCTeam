@@ -248,7 +248,7 @@ T+10m   run: bun check-coding-required-branches-join.ts <run_dir>
 
 ## Scenario 4: gcd + lcm -- Comprehensive Multi-Branch with Gate Verification (Challenge)
 
-> **Challenge-level notes**: This scenario uses **5 members and a multi-step workflow with fanout, gate, and review**, demonstrating team_planner's ability to generate complex workflows that combine multiple join semantics and post-join verification. ~30 min.
+**Challenge-level notes**: This scenario uses **5 members and a multi-step workflow with fanout, gate, and review**, demonstrating team_planner's ability to generate complex workflows that combine multiple join semantics and post-join verification. ~30 min.
 
 ### 4.1 Scenario Description
 

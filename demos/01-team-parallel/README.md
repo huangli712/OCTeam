@@ -301,7 +301,7 @@ T+6m    run: bun check-coding-twosum.ts <run_dir>
 
 ## Scenario 4: 8 Sorting Algorithms Large-Data Benchmark (Challenge-Level)
 
-> **Challenge-level note**: This scenario's scale (8 members × 10⁶ × 3 datasets) deliberately exceeds the normal limits of Scenarios 1-3 (≤ 4 members / ≤ 30 min), used to stress-test end-to-end orchestration capability with an 8-member full team and 60-min-class timeout.
+**Challenge-level note**: This scenario's scale (8 members × 10⁶ × 3 datasets) deliberately exceeds the normal limits of Scenarios 1-3 (≤ 4 members / ≤ 30 min), used to stress-test end-to-end orchestration capability with an 8-member full team and 60-min-class timeout.
 
 ### 4.1 Scenario Description
 

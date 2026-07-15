@@ -300,7 +300,7 @@ T+8m    Run: bun check-coding-cache-eviction.ts <run_dir>
 
 ## Scenario 4: Complex-Boundary PDE Five-Method Debate (challenge-level)
 
-> **Challenge-level**: 6 members (5 debaters + 1 arbiter), `max_rounds=3`, est. ~40 min, deliberately exceeds the standard template (≤4 members / ≤30 min) to stress-test `team_arbitrate` scalability under a five-way debate.
+**Challenge-level**: 6 members (5 debaters + 1 arbiter), `max_rounds=3`, est. ~40 min, deliberately exceeds the standard template (≤4 members / ≤30 min) to stress-test `team_arbitrate` scalability under a five-way debate.
 
 ### 4.1 Scenario description
 

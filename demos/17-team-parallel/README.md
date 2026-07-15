@@ -280,7 +280,7 @@ T+6m    run: bun check-coding-done-ack.ts <run_dir>
 
 ## Scenario 4: Fault-Tolerant Isolated Computation (Challenge)
 
-> **Challenge-level note**: This scenario demonstrates `max_errored_members: 1` with 4 members solving the same problem, tolerating up to 1 failure while still delivering the survivors' results. This is a key feature for fault-tolerant redundancy in isolated mode.
+**Challenge-level note**: This scenario demonstrates `max_errored_members: 1` with 4 members solving the same problem, tolerating up to 1 failure while still delivering the survivors' results. This is a key feature for fault-tolerant redundancy in isolated mode.
 
 ### 4.1 Scenario Description
 

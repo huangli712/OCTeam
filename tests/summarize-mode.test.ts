@@ -362,7 +362,7 @@ describe("summarizeArena", () => {
 // --- summarizeDelegate ------------------------------------------------------
 
 describe("summarizeDelegate", () => {
-    test("renders task list from disk", async () => {
+    test("renders task list and member outputs", async () => {
         const root = tmpRoot("sum-del")
         const team = makeTeam({ directory: root, teamName: "alpha" })
         // Write a minimal task file directly
@@ -381,11 +381,17 @@ describe("summarizeDelegate", () => {
             createdAt: 0,
             updatedAt: 0,
         }))
-        const summary = await summarizeDelegate(team, HEAD)
+        const task = baseTask({
+            type: "delegate",
+            responses: { alice: "function doWork() { return 42 }" },
+        })
+        const summary = await summarizeDelegate(team, task, HEAD)
         expect(summary).toContain(HEAD)
         expect(summary).toContain("[completed]")
         expect(summary).toContain("do work")
         expect(summary).toContain("@alice")
+        // Member outputs must be included so signoff reviewers have code to evaluate
+        expect(summary).toContain("function doWork() { return 42 }")
     })
 })
 

@@ -332,7 +332,7 @@ T+?     Run: bun demos/12-team-hitl/check-math-integration-arbitrate.ts <run_dir
 
 ### 4.1 Scenario Description
 
-> **Challenge-level**: 6 members, 6 workflow steps (3 with `approval_after`), est. ~25 min. Demonstrates HITL integrated into a declarative `team_workflow` with explicit gate steps and per-step approval controls.
+**Challenge-level**: 6 members, 6 workflow steps (3 with `approval_after`), est. ~25 min. Demonstrates HITL integrated into a declarative `team_workflow` with explicit gate steps and per-step approval controls.
 
 **Background**: A release pipeline involves sequential dependent steps: spec definition → spec verification → version bump implementation → testing → release notes → final review. Human approval at key steps (after implementation, testing, and final review) lets the release manager inspect the work products before proceeding. The declarative `team_workflow` engine orchestrates this with native gate-verdict semantics and per-step `approval_before`/`approval_after` hooks.
 

@@ -286,7 +286,7 @@ T+7m    Run: bun check-coding-reverse-str.ts <run_dir>
 
 ## Scenario 4: 2D Heat Equation Solver V&V Certification (Challenge-Level)
 
-> **Challenge-level notes**: This scenario breaks the baseline constraints of scenarios 1-3 (2 members / 1 gate / ≤8 min), using **6 members and 3 serial gates** to fully demonstrate a pre-release V&V (Verification & Validation) certification workflow. The three gates independently verify three distinct properties of the solver: **correctness → convergence order → conservation**. If any gate fails, release is denied.
+**Challenge-level notes**: This scenario breaks the baseline constraints of scenarios 1-3 (2 members / 1 gate / ≤8 min), using **6 members and 3 serial gates** to fully demonstrate a pre-release V&V (Verification & Validation) certification workflow. The three gates independently verify three distinct properties of the solver: **correctness → convergence order → conservation**. If any gate fails, release is denied.
 
 ### 4.1 Scenario Description
 

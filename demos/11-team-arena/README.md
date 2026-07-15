@@ -351,7 +351,7 @@ The engine selects `carol` (error 1.1e-16) as the winner using `score_direction:
 
 ## Scenario 4: Five Poisson Equation Solvers Comprehensive Arena (Challenge-Level)
 
-> **Challenge-level notes**: This scenario breaks baseline constraints (3 candidates / ≤4 members / ≤30 min), using **5 candidates + 1 evaluator**, with each candidate implementing a different linear system solver in an independent worktree, and the evaluator running a unified convergence benchmark script, scoring by convergence iteration count. ~40 min, demonstrating arena's scalability under many candidates and high compute density.
+**Challenge-level notes**: This scenario breaks baseline constraints (3 candidates / ≤4 members / ≤30 min), using **5 candidates + 1 evaluator**, with each candidate implementing a different linear system solver in an independent worktree, and the evaluator running a unified convergence benchmark script, scoring by convergence iteration count. ~40 min, demonstrating arena's scalability under many candidates and high compute density.
 
 ### 4.1 Scenario Description
 

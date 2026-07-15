@@ -283,7 +283,7 @@ T+8m    run: bun check-coding-string-match.ts <run_dir>
 
 ## Scenario 4: 60-Digit RSA Modulus Factoring Algorithm Selection (Challenge-Level)
 
-> **Challenge-level note**: This scenario deliberately breaks the easy-level constraint of "≤4 members, ≤30 min", using **6 members × `max_rounds=5`** to simulate a realistic cryptographic algorithm selection debate — more candidates, deeper complexity hierarchy, slower convergence. Estimated total duration ≈ 35 min.
+**Challenge-level note**: This scenario deliberately breaks the easy-level constraint of "≤4 members, ≤30 min", using **6 members × `max_rounds=5`** to simulate a realistic cryptographic algorithm selection debate — more candidates, deeper complexity hierarchy, slower convergence. Estimated total duration ≈ 35 min.
 
 ### 4.1 Scenario Description
 

@@ -324,7 +324,7 @@ T+10m    Run: bun check-physics-energy-escalate.ts <run_dir>
 
 ## Scenario 4: Multi-Gate clamp + lerp V&V Chain with INVALID Tolerance (Challenge-Level)
 
-> **Challenge-level notes**: This scenario uses **6 members and 2 serial gates** to demonstrate INVALID tolerance across a multi-gate V&V chain. Both gates share a single escalation handler (`escalate_to: "frank"`) with `max_invalid_cycles: 3`, showing that the INVALID ping-pong cap is per-gate and can survive repeated verifier-side failures without aborting the entire pipeline.
+**Challenge-level notes**: This scenario uses **6 members and 2 serial gates** to demonstrate INVALID tolerance across a multi-gate V&V chain. Both gates share a single escalation handler (`escalate_to: "frank"`) with `max_invalid_cycles: 3`, showing that the INVALID ping-pong cap is per-gate and can survive repeated verifier-side failures without aborting the entire pipeline.
 
 ### 4.1 Scenario Description
 

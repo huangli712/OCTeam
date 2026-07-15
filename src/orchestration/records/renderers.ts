@@ -12,13 +12,24 @@ import { truncateOutput } from "../protocol/output.js"
 import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./ledger.js"
 import type { ActiveTask, ArenaCandidateScore } from "../../core/types.js"
 
-/** Render a delegate run: one line per task (status + owner). */
-export async function summarizeDelegate(team: Team, head: string): Promise<string> {
+/**
+ * Render a delegate run: task status lines plus each member's captured output.
+ * Member outputs are essential for signoff reviewers — without them the summary
+ * is only "- [completed] Task (@owner)" lines, giving the reviewer no code to
+ * evaluate. Mirrors the responses-inclusion pattern used by summarizePipeline.
+ */
+export async function summarizeDelegate(team: Team, task: ActiveTask, head: string): Promise<string> {
     const tasks = await listAllTasks(team.directory)
     const lines = tasks.map(
         t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
     )
-    return `${head}\n${lines.join("\n")}`
+    const outputs = Object.entries(task.responses)
+        .filter(([, out]) => out.trim().length > 0)
+        .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
+        .join("\n\n")
+    return outputs
+        ? `${head}\n${lines.join("\n")}\n\n${outputs}`
+        : `${head}\n${lines.join("\n")}`
 }
 
 /** Render a loop run: decision history + per-member work outputs. */

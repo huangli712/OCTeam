@@ -344,7 +344,7 @@ T+8m     Run: bun check-math-pipeline-quorum.ts <run_dir>
 
 ## Scenario 4: Multi-Stage Build Pipeline with Decider Signoff (Challenge)
 
-> **Challenge-level**: 6 members, 5 pipeline stages, `signoff_policy: "decider"`, est. ~45 min, deliberately exceeds the baseline template (≤ 4 members / ≤ 30 min) to stress-test signoff under larger teams and longer pipelines.
+**Challenge-level**: 6 members, 5 pipeline stages, `signoff_policy: "decider"`, est. ~45 min, deliberately exceeds the baseline template (≤ 4 members / ≤ 30 min) to stress-test signoff under larger teams and longer pipelines.
 
 ### 4.1 Scenario Description
 

@@ -435,7 +435,7 @@ T+16m    workflow_complete, summary delivered to master
 
 ## Scenario 4: Multi-Module Fanout Parallel Implementation + Join Reduce Integration Verification (Challenge-Level)
 
-> **Challenge-level notes**: This scenario breaks baseline constraints (2 members / linear chain / ≤30 min), using **6 members and 8 steps (with fanout three-way parallel + join reduce aggregation)**, demonstrating `team_workflow`'s declarative parallel branching and reduce aggregation capability. ~50 min.
+**Challenge-level notes**: This scenario breaks baseline constraints (2 members / linear chain / ≤30 min), using **6 members and 8 steps (with fanout three-way parallel + join reduce aggregation)**, demonstrating `team_workflow`'s declarative parallel branching and reduce aggregation capability. ~50 min.
 
 ### 4.1 Scenario Description
 

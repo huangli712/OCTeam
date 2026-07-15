@@ -35,7 +35,7 @@ export async function buildSummary(
 ): Promise<string> {
     const head = `mode=${task.type} reason=${reason} tokens=${task.tokensUsed}`
     switch (task.type) {
-        case "delegate": return await summarizeDelegate(team, head)
+        case "delegate": return await summarizeDelegate(team, task, head)
         case "loop": return summarizeLoop(task, head)
         case "route": return summarizeRoute(task, head)
         case "arbitrate": return summarizeArbitrate(task, head)
