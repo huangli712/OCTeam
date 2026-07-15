@@ -11,7 +11,7 @@
 | 1 | Math | Monte Carlo pi: 3-method comparison | 3 | `mathematician` | `merge` | ~12 min |
 | 2 | Computational Physics | Harmonic oscillator: 3 integrators energy drift | 3 | `simulator` | `select` | ~12 min |
 | 3 | Programming | Two-sum: multi-solution complexity comparison | 3 | `coder` | `rubric` | ~10 min |
-| 4 | Programming (challenge-level) | 8 sorting algorithms 10⁶ three-dataset benchmark | 8 | `coder` | `merge` | ~40 min |
+| 4 | Programming (challenge-level) | 8 sorting algorithms 10⁵ three-dataset benchmark | 8 | `coder` | `merge` | ~20 min |
 
 ---
 
@@ -301,13 +301,13 @@ T+6m    run: bun check-coding-twosum.ts <run_dir>
 
 ## Scenario 4: 8 Sorting Algorithms Large-Data Benchmark (Challenge-Level)
 
-**Challenge-level note**: This scenario's scale (8 members × 10⁶ × 3 datasets) deliberately exceeds the normal limits of Scenarios 1-3 (≤ 4 members / ≤ 30 min), used to stress-test end-to-end orchestration capability with an 8-member full team and 60-min-class timeout.
+**Challenge-level note**: This scenario's scale (8 members × 10⁵ × 3 datasets) deliberately exceeds the normal limits of Scenarios 1-3 (≤ 4 members / ≤ 30 min), used to stress-test end-to-end orchestration capability with an 8-member full team and 60-min-class timeout.
 
 ### 4.1 Scenario Description
 
-**Background**: Sorting algorithms are the "benchmark mother problem" of algorithm engineering. Cross-comparing 8 mainstream sorting algorithms at 10⁶ scale × three typical distributions (uniform random / nearly sorted / reversed) simultaneously tests implementation correctness and each algorithm's sensitivity to input distribution.
+**Background**: Sorting algorithms are the "benchmark mother problem" of algorithm engineering. Cross-comparing 8 mainstream sorting algorithms at 10⁵ scale × three typical distributions (uniform random / nearly sorted / reversed) simultaneously tests implementation correctness and each algorithm's sensitivity to input distribution.
 
-**Goal**: 8 coder members each implement **one** sorting algorithm, run it on 3 datasets of 10⁶ integers each, time it, verify element-by-element correctness against the platform's native sort, and finally aggregate into an 8×3 benchmark comparison table.
+**Goal**: 8 coder members each implement **one** sorting algorithm, run it on 3 datasets of 10⁵ integers each, time it, verify element-by-element correctness against the platform's native sort, and finally aggregate into an 8×3 benchmark comparison table.
 
 **Member ↔ Algorithm mapping** (in `MEMBER_NAME_POOL` order)
 
@@ -324,8 +324,8 @@ T+6m    run: bun check-coding-twosum.ts <run_dir>
 
 **Datasets** (every member runs all, deterministic seed=42)
 
-- **(a) RANDOM**: 10⁶ uniform random integers in `[0, 10⁹)` (deterministic PRNG with seed=42, e.g. mulberry32 / LCG).
-- **(b) NEARLY**: Take RANDOM sorted ascending, then perform exactly 10,000 random swaps (1% of 10⁶), PRNG reset to seed=42.
+- **(a) RANDOM**: 10⁵ uniform random integers in `[0, 10⁹)` (deterministic PRNG with seed=42, e.g. mulberry32 / LCG).
+- **(b) NEARLY**: Take RANDOM sorted ascending, then perform exactly 1,000 random swaps (1% of 10⁵), PRNG reset to seed=42.
 - **(c) REVERSE**: RANDOM sorted descending.
 
 **Success criteria (machine-verifiable)**
@@ -334,7 +334,7 @@ T+6m    run: bun check-coding-twosum.ts <run_dir>
 - All 8 members each output `<!-- TIME_RANDOM: <ms> -->` / `<!-- TIME_NEARLY: <ms> -->` / `<!-- TIME_REVERSE: <ms> -->` — totaling 8×3 = 24 TIME markers
 - The reduce (`merge` strategy) aggregate output contains an 8-algorithm × 3-dataset comparison table (human visual check, not machine assertion)
 
-**Estimated duration: ~40 min** (members implement in parallel + generate 3×10⁶ datasets + sort + verify + time; slowest member ~35 min, plus reduce and check ≈ 40 min).
+**Estimated duration: ~20 min** (members implement in parallel + generate 3×10⁵ datasets + sort + verify + time; slowest member ~15 min, plus reduce and check ≈ 20 min).
 
 ### 4.2 Team Config
 
@@ -346,42 +346,42 @@ T+6m    run: bun check-coding-twosum.ts <run_dir>
     {
       "name": "alice",
       "role": "coder",
-      "prompt": "Implement QUICKSORT (in-place, median-of-three pivot, switch to insertion sort for partitions smaller than 16).\n\nDatasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR quicksort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+      "prompt": "Implement QUICKSORT (in-place, median-of-three pivot, switch to insertion sort for partitions smaller than 16).\n\nDatasets (each EXACTLY 100,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR quicksort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
     },
     {
       "name": "bob",
       "role": "coder",
-      "prompt": "Implement MERGESORT (top-down, divide-and-conquer, stable, O(n) auxiliary buffer).\n\nDatasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR mergesort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+      "prompt": "Implement MERGESORT (top-down, divide-and-conquer, stable, O(n) auxiliary buffer).\n\nDatasets (each EXACTLY 100,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR mergesort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
     },
     {
       "name": "carol",
       "role": "coder",
-      "prompt": "Implement HEAPSORT (in-place binary heap: build-max-heap then repeatedly extract-max to the end).\n\nDatasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR heapsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+      "prompt": "Implement HEAPSORT (in-place binary heap: build-max-heap then repeatedly extract-max to the end).\n\nDatasets (each EXACTLY 100,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR heapsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
     },
     {
       "name": "dave",
       "role": "coder",
-      "prompt": "Implement LSD RADIX SORT (base 256, 4 passes over the bytes of 32-bit non-negative integers, stable counting-sort per byte).\n\nDatasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR radix sort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+      "prompt": "Implement LSD RADIX SORT (base 256, 4 passes over the bytes of 32-bit non-negative integers, stable counting-sort per byte).\n\nDatasets (each EXACTLY 100,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR radix sort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
     },
     {
       "name": "erin",
       "role": "coder",
-      "prompt": "Implement TIMSORT (compute minrun, identify natural runs, binary-insertion-sort runs shorter than minrun, merge runs with galloping).\n\nDatasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR timsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+      "prompt": "Implement TIMSORT (compute minrun, identify natural runs, binary-insertion-sort runs shorter than minrun, merge runs with galloping).\n\nDatasets (each EXACTLY 100,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR timsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
     },
     {
       "name": "frank",
       "role": "coder",
-      "prompt": "Implement SHELLSORT with the Marcin Ciura gap sequence [701, 301, 132, 57, 23, 10, 4, 1] (gapped insertion sort per gap).\n\nDatasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR shellsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+      "prompt": "Implement SHELLSORT with the Marcin Ciura gap sequence [701, 301, 132, 57, 23, 10, 4, 1] (gapped insertion sort per gap).\n\nDatasets (each EXACTLY 100,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR shellsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
     },
     {
       "name": "grace",
       "role": "coder",
-      "prompt": "Implement INTROSORT (quicksort with median-of-three, recursion-depth limit 2*floor(log2(n)) that switches to heapsort, and insertion sort for partitions smaller than 16).\n\nDatasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR introsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
+      "prompt": "Implement INTROSORT (quicksort with median-of-three, recursion-depth limit 2*floor(log2(n)) that switches to heapsort, and insertion sort for partitions smaller than 16).\n\nDatasets (each EXACTLY 100,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset: copy it, sort the copy with YOUR introsort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets match the reference sort."
     },
     {
       "name": "henry",
       "role": "coder",
-      "prompt": "Implement COUNTING SORT over the [min, max] value range of each dataset using an offset typed-array of size (max-min+1). NOTE: the RANDOM dataset spans roughly [0, 1e9), so a full counting array may need ~4 GB and could be memory-infeasible; if a dataset is infeasible, still report it honestly (SORT_OK=false with a one-line note) rather than crashing.\n\nDatasets (each EXACTLY 1,000,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset that is feasible: copy it, sort the copy with YOUR counting sort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets are feasible and match the reference sort."
+      "prompt": "Implement COUNTING SORT over the [min, max] value range of each dataset using an offset typed-array of size (max-min+1). NOTE: the RANDOM dataset spans roughly [0, 1e9), so a full counting array may need ~4 GB and could be memory-infeasible; if a dataset is infeasible, still report it honestly (SORT_OK=false with a one-line note) rather than crashing.\n\nDatasets (each EXACTLY 100,000 integers, deterministic seed 42): (a) RANDOM = uniform integers in [0, 1e9) from a seeded PRNG (mulberry32 or LCG with seed 42); (b) NEARLY = RANDOM sorted ascending then exactly 10,000 random swaps (1% of 10^6), PRNG reset to seed 42; (c) REVERSE = RANDOM sorted descending.\n\nFor EACH dataset that is feasible: copy it, sort the copy with YOUR counting sort, verify element-by-element equality against Array.prototype.sort with comparator (a,b)=>a-b (the reference), and measure wall-clock milliseconds around YOUR sort only (not dataset generation), taking the median of a few warmup passes.\n\nYour output MUST end with these four lines, each exactly formatted:\n<!-- SORT_OK: <true|false> -->\n<!-- TIME_RANDOM: <ms> -->\n<!-- TIME_NEARLY: <ms> -->\n<!-- TIME_REVERSE: <ms> -->\nSet SORT_OK to true only if all three datasets are feasible and match the reference sort."
     }
   ]
 }
@@ -398,14 +398,14 @@ T+6m    run: bun check-coding-twosum.ts <run_dir>
     "team_id": "sort-bench",
     "mode": "cooperative",
     "tasks": {
-      "alice": "Implement quicksort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
-      "bob": "Implement mergesort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
-      "carol": "Implement heapsort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
-      "dave": "Implement LSD radix sort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
-      "erin": "Implement timsort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
-      "frank": "Implement shellsort (Ciura gaps) and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
-      "grace": "Implement introsort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers.",
-      "henry": "Implement counting sort and run it on the 3 datasets (random/nearly/reverse, each 10^6, seed 42). Verify against native sort and emit the 4 markers."
+      "alice": "Implement quicksort and run it on the 3 datasets (random/nearly/reverse, each 10^5, seed 42). Verify against native sort and emit the 4 markers.",
+      "bob": "Implement mergesort and run it on the 3 datasets (random/nearly/reverse, each 10^5, seed 42). Verify against native sort and emit the 4 markers.",
+      "carol": "Implement heapsort and run it on the 3 datasets (random/nearly/reverse, each 10^5, seed 42). Verify against native sort and emit the 4 markers.",
+      "dave": "Implement LSD radix sort and run it on the 3 datasets (random/nearly/reverse, each 10^5, seed 42). Verify against native sort and emit the 4 markers.",
+      "erin": "Implement timsort and run it on the 3 datasets (random/nearly/reverse, each 10^5, seed 42). Verify against native sort and emit the 4 markers.",
+      "frank": "Implement shellsort (Ciura gaps) and run it on the 3 datasets (random/nearly/reverse, each 10^5, seed 42). Verify against native sort and emit the 4 markers.",
+      "grace": "Implement introsort and run it on the 3 datasets (random/nearly/reverse, each 10^5, seed 42). Verify against native sort and emit the 4 markers.",
+      "henry": "Implement counting sort and run it on the 3 datasets (random/nearly/reverse, each 10^5, seed 42). Verify against native sort and emit the 4 markers."
     },
     "reduce_policy": "merge",
     "reducer_member": "alice",
@@ -420,7 +420,7 @@ T+6m    run: bun check-coding-twosum.ts <run_dir>
 - `mode: cooperative` — 8 algorithms are all different, each needs its own independent task
 - `reduce_policy: merge` — keep 8 independent results to assemble a comparison table (not select single-winner / rubric scoring)
 - `reducer_member: alice` — non-summarize strategies must specify reducer_member (otherwise the tool rejects execution); assign alice to merge and aggregate
-- `timeout_ms: 3600000` (60 min) — ample headroom for challenge-level; normally ~35 min to complete, including heavier implementations like timsort / counting-sort
+- `timeout_ms: 3600000` (60 min) — ample headroom for challenge-level; normally ~15 min to complete, including heavier implementations like timsort / counting-sort
 - `max_errored_members: 0` — missing any of the 8 algorithms makes the comparison table incomplete; any member failure means total failure
 
 ### 4.4 Execution Flow (Timeline)
@@ -428,10 +428,10 @@ T+6m    run: bun check-coding-twosum.ts <run_dir>
 ```
 T+0m     master calls team_parallel (cooperative, 8 members)
 T+0m     OCTeam dispatches 8 coder members in parallel (full team)
-T+0~35m  each member independently: implement algorithm → generate 3×10^6 datasets (seed=42) → sort + time → element-by-element verification against native sort → write markdown report + 4 markers
-T+35m    slowest member idle → trigger reduce (merge policy, reducer=alice)
-T+38m    merged 8×3 comparison table delivered to master
-T+38m    run: bun check-coding-sort-benchmark.ts <run_dir>
+T+0~15m  each member independently: implement algorithm → generate 3×10^5 datasets (seed=42) → sort + time → element-by-element verification against native sort → write markdown report + 4 markers
+T+15m    slowest member idle → trigger reduce (merge policy, reducer=alice)
+T+18m    merged 8×3 comparison table delivered to master
+T+18m    run: bun check-coding-sort-benchmark.ts <run_dir>
 ```
 
 ### 4.5 Check Script
@@ -521,5 +521,5 @@ Steps:
    bun demos/01-team-parallel/check-coding-sort-benchmark.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
 
-Success criteria: all 8 members SORT_OK=true (all 3 datasets of 10^6 match native sort); and all 24 TIME markers (8 members × 3 datasets) are present.
+Success criteria: all 8 members SORT_OK=true (all 3 datasets of 10^5 match native sort); and all 24 TIME markers (8 members × 3 datasets) are present.
 ```

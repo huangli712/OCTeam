@@ -2,7 +2,7 @@
  * Check script: 8 sorting algorithms benchmark (challenge scenario).
  *
  * Each coder member implemented ONE sorting algorithm and ran it on 3 datasets
- * of size 10^6: (a) uniform-random, (b) nearly-sorted, (c) reverse-sorted.
+ * of size 10^5: (a) uniform-random, (b) nearly-sorted, (c) reverse-sorted.
  * The member self-reports correctness (all 3 outputs match the native sort)
  * via SORT_OK and the wall-clock ms of each run via the three TIME markers.
  *
@@ -136,7 +136,7 @@ async function main(): Promise<void> {
     // Comparison table for human inspection.
     console.log("All 8 algorithms sorted all 3 datasets correctly (SORT_OK=true).");
     console.log("");
-    console.log("Benchmark (ms) — 3 datasets x 10^6 integers:");
+    console.log("Benchmark (ms) — 3 datasets x 10^5 integers:");
     console.log("  member | algorithm      | random | nearly | reverse");
     console.log("  -------|----------------|--------|--------|--------");
     for (const r of results) {
