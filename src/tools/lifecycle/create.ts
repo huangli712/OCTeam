@@ -107,7 +107,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                     }),
                 )
                 .min(1)
-                .max(8),
+                .max(12),
             bounds: tool.schema
                 .object({
                     maxMembers: tool.schema.number().min(1).optional(),
@@ -197,7 +197,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             const now = Date.now()
             const bounds = defaultBounds(args.bounds)
             // Cross-validate: the configured member cap must fit the initial
-            // members. The schema validates members.length (1-8) and
+            // members. The schema validates members.length (1-12) and
             // bounds.maxMembers (>=1) independently; without this check a team
             // can be persisted already over its cap, breaking every downstream
             // invariant (add_member's >= check, spawn loops, quota reporting).

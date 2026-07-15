@@ -313,7 +313,7 @@ function plannerContract(teamId: string): string {
         `<team_planner>{"team":{...},"workflow":{...}}</team_planner>`,
         "",
         `- team.name MUST equal "${teamId}".`,
-        "- team.members: 1-8 members, each with a preset pool name, a role, and a prompt.",
+        "- team.members: 1-12 members, each with a preset pool name, a role, and a prompt.",
         "- workflow.steps: task/gate steps. Every member/verifier must be a declared team member,"
             + " and a gate verifier must differ from the task member it verifies.",
         "- Emit raw JSON inside the tag. Do not use markdown fences or add prose.",

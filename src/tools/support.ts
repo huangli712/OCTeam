@@ -16,7 +16,7 @@ import type { Bounds, SignoffPolicy } from "../core/types.js"
 /** Resource bounds with design defaults, overridden by user input. */
 export function defaultBounds(override?: Partial<Bounds>): Bounds {
     return {
-        maxMembers: 8,
+        maxMembers: 12,
         maxParallelMembers: 4,
         maxMessagesPerRun: 100,
         maxWallClockMinutes: 30,

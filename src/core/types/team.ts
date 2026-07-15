@@ -13,7 +13,7 @@ import type { ActiveTask, OrchestrationType, ParallelMode } from "./orchestratio
 
 /** Resource limits enforced across an orchestration run. */
 export type Bounds = {
-    maxMembers: number                 // default 8; effective per-team member cap (enforced in add_member)
+    maxMembers: number                 // default 12; effective per-team member cap (enforced in add_member)
     maxParallelMembers: number         // default 4, concurrent spawn limit
     maxMessagesPerRun: number          // default 100, total messages per orchestration
     maxWallClockMinutes: number        // default 30, hard wall-clock limit
@@ -40,7 +40,7 @@ export type TeamSpec = {
     readonly name: string              // /^[a-z0-9-]+$/, unique within scope
     readonly description?: string
     readonly createdAt: number         // epoch ms
-    readonly members: MemberSpec[]     // 1-8 members (maxMembers default)
+    readonly members: MemberSpec[]     // 1-12 members (maxMembers default)
 }
 
 /** Team lifecycle status: config-only, actively running, idle, or failed. */
