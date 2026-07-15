@@ -61,6 +61,6 @@ export async function buildSummary(
 /** One-line-per-member digest of the current round's outputs (consensus). */
 export function buildRoundSummary(responses: Record<string, string>): string {
     return Object.entries(responses)
-        .map(([name, out]) => `by ${name}: ${truncateOutput(out, 500)}`)
+        .map(([name, out]) => `by ${name}:\n ${truncateOutput(out, 500)}`)
         .join("\n\n")
 }
