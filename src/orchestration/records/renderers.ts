@@ -164,7 +164,7 @@ export function summarizeParallel(task: ActiveTask, head: string): string {
     const policy = task.reducePolicy ?? "summarize"
     switch (policy) {
         case "summarize":
-            return `${head}\n${candidates}`
+            return `${head}\n\n${candidates}`
         case "select": {
             // reduceSelect (method-neutral) makes "best" explicit so the
             // reducer does not default to its own prior task assignment as
@@ -172,7 +172,7 @@ export function summarizeParallel(task: ActiveTask, head: string): string {
             // because the reducer is often also a contestant.
             const criteria = task.reduceSelect ?? "the best overall answer"
             return (
-                `${head}\n`
+                `${head}\n\n`
                 + `[Reduce policy: SELECT]\n`
                 + `Selection criteria: ${criteria}\n`
                 + `The following ${outputs.length} candidates were produced. `
@@ -185,7 +185,7 @@ export function summarizeParallel(task: ActiveTask, head: string): string {
         }
         case "merge":
             return (
-                `${head}\n`
+                `${head}\n\n`
                 + `[Reduce policy: MERGE]\n`
                 + `The following ${outputs.length} solutions were produced. `
                 + `Merge them into a single best solution, resolving conflicts. `
@@ -195,7 +195,7 @@ export function summarizeParallel(task: ActiveTask, head: string): string {
         case "rubric": {
             const rubric = task.reduceRubric ?? "correctness (40%), clarity (30%), completeness (30%)"
             return (
-                `${head}\n`
+                `${head}\n\n`
                 + `[Reduce policy: RUBRIC]\n`
                 + `Rubric: ${rubric}\n`
                 + `Score each candidate on the rubric, then select the top-scoring one.\n\n`
