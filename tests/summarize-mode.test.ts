@@ -179,7 +179,7 @@ describe("summarizeRoute", () => {
             responses: { alice: "code A", bob: "code B" },
         }) as Extract<ActiveTask, { type: "route" }>
         const summary = summarizeRoute(task, HEAD)
-        expect(summary).toContain("Router rationale: input is a coding task")
+        expect(summary).toContain("[Router rationale]")
         expect(summary).toContain("by alice:")
         expect(summary).toContain("code A")
         expect(summary).toContain("by bob:")

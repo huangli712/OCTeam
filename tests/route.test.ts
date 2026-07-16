@@ -726,7 +726,7 @@ describe("buildSummary: route case", () => {
         expect(summary).toContain("by bob:")
         expect(summary).toContain("Support answer")
         // Router rationale is appended.
-        expect(summary).toContain("Router rationale: cross-team request")
+        expect(summary).toContain("[Router rationale]")
         // The router's raw <route> decision JSON is excluded as noise.
         expect(summary).not.toContain("<route>")
     })
