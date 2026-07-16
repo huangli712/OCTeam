@@ -28,6 +28,12 @@ export type LastModeRecord = {
     type: OrchestrationType
     mode?: ParallelMode                // parallel only
     finishedAt: number                 // epoch ms when activeTask was cleared
+    // Token snapshot of the completed run. Populated by clearActiveTask so that
+    // sidebar/progress can still display per-member tokens after activeTask is
+    // cleared (otherwise the data only lives in runs/<id>/record.json).
+    tokensUsed?: number                       // total tokens across the completed run
+    tokensByMember?: Record<string, number>   // memberName -> sum(input+output+reasoning)
+    runId?: string                            // points to runs/<id>/record.json for drill-down
 }
 
 // ---------------------------------------------------------------------------

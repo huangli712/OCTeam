@@ -54,6 +54,11 @@ const teamRegistry = new Map<string, Team>()
 /**
  * Clear the active task while preserving its mode in `lastMode` for sidebar
  * display. Called at every orchestration completion/termination site.
+ *
+ * Token snapshot: tokensByMember is otherwise only reachable via
+ * runs/<runId>/record.json (the activeTask itself is discarded here). Copy the
+ * final tally into lastMode so sidebar/progress can keep displaying per-member
+ * tokens after completion without an extra file read per refresh.
  */
 export function clearActiveTask(team: Team): void {
     if (team.activeTask) {
@@ -61,6 +66,9 @@ export function clearActiveTask(team: Team): void {
             type: team.activeTask.type,
             mode: team.activeTask.mode,
             finishedAt: Date.now(),
+            tokensUsed: team.activeTask.tokensUsed,
+            tokensByMember: { ...team.activeTask.tokensByMember },
+            runId: team.activeTask.runId,
         }
     }
     team.activeTask = undefined

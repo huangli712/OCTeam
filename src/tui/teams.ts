@@ -108,7 +108,7 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                         unread: mailbox.unread,
                         totalMessages: mailbox.total,
                         turnCount: m.turnCount,
-                        tokens: state.activeTask?.tokensByMember?.[m.name],
+                        tokens: state.activeTask?.tokensByMember?.[m.name] ?? state.lastMode?.tokensByMember?.[m.name],
                     }
                 })),
                 active: state.activeTask
@@ -124,7 +124,7 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                             mode: state.lastMode.mode,
                         }
                       : undefined,
-                tokensUsed: state.activeTask?.tokensUsed,
+                tokensUsed: state.activeTask?.tokensUsed ?? state.lastMode?.tokensUsed,
             })
         } catch {
             // unreadable state.json — skip

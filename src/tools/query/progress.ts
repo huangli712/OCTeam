@@ -147,12 +147,16 @@ function formatSnapshot(team: Team): string[] {
             )
         }
     } else {
-        lines.push("Active: none")
+        const lm = team.lastMode
+        const lastTokens = lm?.tokensUsed !== undefined ? `  last tokens ${lm.tokensUsed}` : ""
+        lines.push(`Active: none${lastTokens}`)
     }
     lines.push("Members:")
     for (const m of team.members) {
         if (m.isMaster) continue
-        const tok = team.activeTask?.tokensByMember?.[m.name]
+        const tok =
+            team.activeTask?.tokensByMember?.[m.name] ??
+            team.lastMode?.tokensByMember?.[m.name]
         const err = m.error ? `  "${m.error}"` : ""
         lines.push(
             `  - ${m.name}: ${m.status}` +
