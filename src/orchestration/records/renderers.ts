@@ -106,8 +106,8 @@ export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }
         .map(s => `by ${s.member}:\n${truncateOutput(task.responses[s.member] ?? "")}`)
         .join("\n\n")
     return outputs
-        ? `${head}\nGates:\n${rows.join("\n")}\n\n${outputs}`
-        : `${head}\nGates:\n${rows.join("\n")}`
+        ? `${head}\n[Gates]\n${rows.join("\n")}\n\n${outputs}`
+        : `${head}\n[Gates]\n${rows.join("\n")}`
 }
 
 /** Render a pipeline run: concatenated stage outputs in order. */
