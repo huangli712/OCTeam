@@ -33,7 +33,7 @@ export async function buildSummary(
     task: ActiveTask,
     reason: string,
 ): Promise<string> {
-    const head = `<mode>${task.type}</model>\n` 
+    const head = `<mode>${task.type}</mode>\n` 
         + `<reason>${reason}</reason>\n`
         + `<tokens>${task.tokensUsed}</tokens>\n`
     switch (task.type) {
