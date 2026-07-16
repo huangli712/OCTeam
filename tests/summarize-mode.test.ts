@@ -209,8 +209,10 @@ describe("summarizeArbitrate", () => {
             responses: { alice: "approach A", bob: "approach B" },
         }) as Extract<ActiveTask, { type: "arbitrate" }>
         const summary = summarizeArbitrate(task, HEAD)
-        expect(summary).toContain("Ruling: use approach A")
-        expect(summary).toContain("Rationale: simpler and faster")
+        expect(summary).toContain("[Ruling]")
+        expect(summary).toContain("use approach A")
+        expect(summary).toContain("[Rationale]")
+        expect(summary).toContain("simpler and faster")
         expect(summary).toContain("by alice:")
         expect(summary).toContain("by bob:")
     })
@@ -222,7 +224,8 @@ describe("summarizeArbitrate", () => {
             responses: { alice: "position" },
         }) as Extract<ActiveTask, { type: "arbitrate" }>
         const summary = summarizeArbitrate(task, HEAD)
-        expect(summary).toContain("Ruling: (none)")
+        expect(summary).toContain("[Ruling]")
+        expect(summary).toContain("(none)")
     })
 })
 

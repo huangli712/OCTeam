@@ -792,8 +792,10 @@ describe("buildSummary: arbitrate case", () => {
         expect(summary).toContain("<mode>arbitrate</mode>")
         expect(summary).toContain("<reason>arbitrate_complete:ruled</reason>")
         // The binding ruling and its rationale lead the summary.
-        expect(summary).toContain("Ruling: delay to Monday")
-        expect(summary).toContain("Rationale: regression risk")
+        expect(summary).toContain("[Ruling]")
+        expect(summary).toContain("delay to Monday")
+        expect(summary).toContain("[Rationale]")
+        expect(summary).toContain("regression risk")
         // Each debater's final position is shown.
         expect(summary).toContain("by alice:")
         expect(summary).toContain("Ship on Friday")
@@ -819,8 +821,9 @@ describe("buildSummary: arbitrate case", () => {
         const summary = await buildSummary(team, task, "arbitrate_complete:arbiter_unavailable")
 
         // No ruling -> placeholder, and the Rationale line is omitted entirely.
-        expect(summary).toContain("Ruling: (none)")
-        expect(summary).not.toContain("Rationale:")
+        expect(summary).toContain("[Ruling]")
+        expect(summary).toContain("(none)")
+        expect(summary).not.toContain("[Rationale]")
         // Debater positions are still included.
         expect(summary).toContain("by alice:")
         expect(summary).toContain("by bob:")
