@@ -360,6 +360,7 @@ T+10m   run: bun check-coding-fib-tdd.ts <run_dir>
 {
   "name": "lj-pipeline",
   "description": "Lennard-Jones MD pipeline (8 stages): force-field -> init -> minimize -> equilibrate -> produce -> sample -> rdf -> report",
+  "bounds": { "maxWallClockMinutes": 90 },
   "members": [
     {
       "name": "alice",
@@ -433,6 +434,7 @@ T+10m   run: bun check-coding-fib-tdd.ts <run_dir>
 - `stages` eight members **unique** (pipeline strict requirement: `alice` / `bob` / `carol` / `dave` / `erin` / `frank` / `grace` / `henry` must not repeat)
 - `signoff_policy` default `none` — the long pipeline relies on final-stage summary product; no review gate added to avoid further lengthening
 - `timeout_ms: 5400000` (90 min) — 8 stages serial, estimated ~60 min (each stage 5-8 min including dispatch + run), 50% margin
+- `bounds.maxWallClockMinutes: 90` — overrides the team default of 30 min; without this `timeout_ms` is clamped to the team's hard cap, causing premature timeout
 - Each stage's `task` only writes current stage instructions; prior stage markdown output is auto-prefixed by the framework, no manual concatenation needed
 
 ### 4.4 Execution Flow (Timeline)
