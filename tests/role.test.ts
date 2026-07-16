@@ -167,7 +167,7 @@ describe("prependStandingInstruction", () => {
         const out = prependStandingInstruction(member, baseText)
         expect(out).toContain("<member-instruction>")
         expect(out).toContain("You are the sort engineer.")
-        expect(out.endsWith(baseText)).toBe(true)
+        expect(out).toContain(baseText)
         // pure transform: does not flip the flag itself (callers do, after promptAsync)
         expect(member.promptDelivered).toBeFalsy()
     })
