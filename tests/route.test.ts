@@ -718,7 +718,8 @@ describe("buildSummary: route case", () => {
         const summary = await buildSummary(team, task, "route_complete")
 
         // Head reflects mode + reason.
-        expect(summary).toContain("mode=route reason=route_complete")
+        expect(summary).toContain("<mode>route</mode>")
+        expect(summary).toContain("<reason>route_complete</reason>")
         // Only the resolved targets' outputs are shown.
         expect(summary).toContain("by alice:")
         expect(summary).toContain("Sales answer")

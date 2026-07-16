@@ -43,7 +43,7 @@ describe("buildSummary: reducedResult verbatim", () => {
         expect(summary).toContain("THE CHOSEN ANSWER")
         expect(summary).not.toContain("[Reduce policy:")
         expect(summary).not.toContain("### alice")
-        expect(summary).toContain("mode=parallel") // head still present
+        expect(summary).toContain("<mode>parallel</mode>") // head still present
     })
 
     test("without reducedResult, the select header path is unchanged (legacy fallback)", async () => {

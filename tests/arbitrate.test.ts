@@ -789,7 +789,8 @@ describe("buildSummary: arbitrate case", () => {
         const summary = await buildSummary(team, task, "arbitrate_complete:ruled")
 
         // Head reflects mode + reason.
-        expect(summary).toContain("mode=arbitrate reason=arbitrate_complete:ruled")
+        expect(summary).toContain("<mode>arbitrate</mode>")
+        expect(summary).toContain("<reason>arbitrate_complete:ruled</reason>")
         // The binding ruling and its rationale lead the summary.
         expect(summary).toContain("Ruling: delay to Monday")
         expect(summary).toContain("Rationale: regression risk")

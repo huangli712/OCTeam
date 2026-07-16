@@ -804,7 +804,8 @@ describe("buildSummary: tollgate case", () => {
 
         const summary = await buildSummary(team, task, "tollgate_failed:dave")
 
-        expect(summary).toContain("mode=tollgate reason=tollgate_failed:dave")
+        expect(summary).toContain("<mode>tollgate</mode>")
+        expect(summary).toContain("<reason>tollgate_failed:dave</reason>")
         expect(summary).toContain("Gates:")
         // Gate 0: PASS, producer->verifier.
         expect(summary).toContain("[PASS] alice -> verified by bob")

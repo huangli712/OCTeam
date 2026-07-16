@@ -668,7 +668,8 @@ describe("buildSummary: recurse case", () => {
         const summary = await buildSummary(team, task, "recurse_complete")
 
         // Head reflects mode + reason.
-        expect(summary).toContain("mode=recurse reason=recurse_complete")
+        expect(summary).toContain("<mode>recurse</mode>")
+        expect(summary).toContain("<reason>recurse_complete</reason>")
         // Root result leads the summary.
         expect(summary).toContain("Root result:")
         expect(summary).toContain("the final deliverable")

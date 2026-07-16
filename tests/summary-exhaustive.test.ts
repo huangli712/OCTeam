@@ -55,8 +55,8 @@ describe("buildSummary: consensus explicit case (P2-1)", () => {
         const summary = await buildSummary(mockTeam, task, "consensus_reached")
 
         // Head line reflects the consensus type, not parallel.
-        expect(summary).toContain("mode=consensus")
-        expect(summary).toContain("reason=consensus_reached")
+        expect(summary).toContain("<mode>consensus</mode>")
+        expect(summary).toContain("<reason>consensus_reached</reason>")
         // Both member outputs are present.
         expect(summary).toContain("by alice:")
         expect(summary).toContain("agree")
@@ -68,8 +68,8 @@ describe("buildSummary: consensus explicit case (P2-1)", () => {
     test("consensus with empty responses produces head + no candidate block", async () => {
         const task = makeConsensusTask({ responses: {} })
         const summary = await buildSummary(mockTeam, task, "consensus_max_rounds")
-        expect(summary).toContain("mode=consensus")
-        expect(summary).toContain("reason=consensus_max_rounds")
+        expect(summary).toContain("<mode>consensus</mode>")
+        expect(summary).toContain("<reason>consensus_max_rounds</reason>")
     })
 })
 
@@ -112,8 +112,8 @@ describe("buildSummary: workflow case", () => {
         })
         const summary = await buildSummary(mockTeam, task, "workflow_complete")
 
-        expect(summary).toContain("mode=workflow")
-        expect(summary).toContain("reason=workflow_complete")
+        expect(summary).toContain("<mode>workflow</mode>")
+        expect(summary).toContain("<reason>workflow_complete</reason>")
         // Step ledger: 1-based numbering, one line per step.
         expect(summary).toContain("1. [task] alice (done)")
         expect(summary).toContain("2. [gate] bob verifies nearest task -> PASS (1 retries)")
@@ -164,7 +164,7 @@ describe("buildSummary: workflow case", () => {
             responses: {},
         })
         const summary = await buildSummary(mockTeam, task, "workflow_failed:bob")
-        expect(summary).toContain("mode=workflow")
+        expect(summary).toContain("<mode>workflow</mode>")
         expect(summary).toContain("1. [task] alice")
         expect(summary).not.toContain("### Step")
     })
