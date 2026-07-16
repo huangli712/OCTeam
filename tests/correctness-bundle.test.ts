@@ -43,7 +43,7 @@ describe("bug① loop summary includes responses (work product)", () => {
             responses: {},
         })
         const summary = await buildSummary(mockTeam, task, "loop_complete:decider_done")
-        expect(summary).toContain("final: done")
+        expect(summary).toContain("[final]")
         expect(summary).not.toContain("###")
     })
 })

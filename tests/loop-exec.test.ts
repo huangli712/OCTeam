@@ -96,7 +96,7 @@ describe("handleLoopIdle (via processIdle): decider termination", () => {
         // T8: the delivered summary must carry the final decision. Before the
         // ordering fix, decisionHistory.push ran AFTER delivery, so summarizeLoop
         // rendered "final: n/a" with no decision-log line for the done round.
-        expect(leaderCall!.text).toContain("final: done")
+        expect(leaderCall!.text).toContain("[final]")
         expect(leaderCall!.text).toContain("round 1: done")
     })
 

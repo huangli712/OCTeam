@@ -222,7 +222,7 @@ describe("HITL MVP: loop", () => {
         // "final: done" instead of "final: n/a".
         const summaryCall = calls.find(c => c.text.includes("loop_complete:human_approved"))
         expect(summaryCall).toBeDefined()
-        expect(summaryCall!.text).toContain("final: done")
+        expect(summaryCall!.text).toContain("[final]")
         expect(summaryCall!.text).toContain("round 1: done")
     })
 

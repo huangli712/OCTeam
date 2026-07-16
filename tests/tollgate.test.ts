@@ -806,7 +806,7 @@ describe("buildSummary: tollgate case", () => {
 
         expect(summary).toContain("<mode>tollgate</mode>")
         expect(summary).toContain("<reason>tollgate_failed:dave</reason>")
-        expect(summary).toContain("Gates:")
+        expect(summary).toContain("[Gates]")
         // Gate 0: PASS, producer->verifier.
         expect(summary).toContain("[PASS] alice -> verified by bob")
         // Gate 1: FAIL with retry count.

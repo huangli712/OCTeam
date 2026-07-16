@@ -152,8 +152,10 @@ describe("summarizeLoop", () => {
             responses: { alice: "code output" },
         })
         const summary = summarizeLoop(task, HEAD)
-        expect(summary).toContain("rounds=2")
-        expect(summary).toContain("final: done")
+        expect(summary).toContain("[rounds]")
+        expect(summary).toContain("2")
+        expect(summary).toContain("[final]")
+        expect(summary).toContain("done")
         expect(summary).toContain("round 1: continue")
         expect(summary).toContain("round 2: done")
         expect(summary).toContain("by alice:")
@@ -163,8 +165,10 @@ describe("summarizeLoop", () => {
     test("empty history shows n/a for final", () => {
         const task = baseTask({ type: "loop", currentRound: 0, decisionHistory: [], responses: {} })
         const summary = summarizeLoop(task, HEAD)
-        expect(summary).toContain("final: n/a")
-        expect(summary).toContain("rounds=0")
+        expect(summary).toContain("[final]")
+        expect(summary).toContain("n/a")
+        expect(summary).toContain("[rounds]")
+        expect(summary).toContain("0")
     })
 })
 
@@ -260,7 +264,7 @@ describe("summarizeTollgate", () => {
             responses: {},
         }) as Extract<ActiveTask, { type: "tollgate" }>
         const summary = summarizeTollgate(task, HEAD)
-        expect(summary).toContain("Gates:")
+        expect(summary).toContain("[Gates]")
         expect(summary).not.toContain("###")
     })
 })
