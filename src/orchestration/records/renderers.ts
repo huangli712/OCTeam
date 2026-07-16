@@ -57,7 +57,7 @@ export function summarizeRoute(task: Extract<ActiveTask, { type: "route" }>, hea
         .map(name => `\nby ${name}:\n\n${truncateOutput(task.responses[name] ?? "")}`)
         .join("\n\n")
     const rationale = task.routeDecisionRationale
-        ? `\nRouter rationale: ${task.routeDecisionRationale}`
+        ? `\n[Router rationale]: \n${task.routeDecisionRationale}`
         : ""
     return `${head}${rationale}\n${outputs}`
 }
