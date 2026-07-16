@@ -70,10 +70,10 @@ export function summarizeArbitrate(task: Extract<ActiveTask, { type: "arbitrate"
         .map(name => `by ${name}:\n${truncateOutput(task.responses[name] ?? "")}`)
         .join("\n\n")
     const ruling = task.arbitrationRuling
-        ? `Ruling: ${task.arbitrationRuling}`
-        : "Ruling: (none)"
+        ? `[Ruling]\n${task.arbitrationRuling}\n`
+        : "[Ruling]\n(none)\n"
     const rationale = task.arbitrationRationale
-        ? `\nRationale: ${task.arbitrationRationale}`
+        ? `[Rationale]\n${task.arbitrationRationale}`
         : ""
     return `${head}\n${ruling}${rationale}\n\n${positions}`
 }
