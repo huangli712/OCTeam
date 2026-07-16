@@ -37,7 +37,7 @@ export function summarizeLoop(task: ActiveTask, head: string): string {
     const history = task.decisionHistory ?? []
     const last = history.at(-1)
     const rounds = history.map(
-        d => `  round ${d.round}: ${d.decision} — ${d.rationale}`,
+        d => `round ${d.round}: ${d.decision} — ${d.rationale}`,
     )
     const decisions = `${head}\n`
         + `[rounds]\n${task.currentRound ?? 0}\n\n`
