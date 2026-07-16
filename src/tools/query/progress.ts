@@ -156,7 +156,7 @@ function formatSnapshot(team: Team): string[] {
         const err = m.error ? `  "${m.error}"` : ""
         lines.push(
             `  - ${m.name}: ${m.status}` +
-                `${m.turnCount ? `  ${m.turnCount} turns` : ""}${tok ? `  tok ${tok}` : ""}${err}`,
+                `${m.turnCount ? `  ${m.turnCount} turns` : ""}${tok ? `  tokens ${tok}` : ""}${err}`,
         )
     }
     return lines
