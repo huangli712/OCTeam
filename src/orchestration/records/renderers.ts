@@ -39,7 +39,10 @@ export function summarizeLoop(task: ActiveTask, head: string): string {
     const rounds = history.map(
         d => `  round ${d.round}: ${d.decision} — ${d.rationale}`,
     )
-    const decisions = `${head} rounds=${task.currentRound ?? 0}\nfinal: ${last?.decision ?? "n/a"}\n${rounds.join("\n")}`
+    const decisions = `${head}\n`
+        + `[rounds]\n${task.currentRound ?? 0}\n\n`
+        + `[final]\n${last?.decision ?? "n/a"}\n\n`
+        + `${rounds.join("\n")}`
     // Include the actual member outputs (the work product), not just the
     // decision log — otherwise a finished loop delivers nothing usable.
     const outputs = Object.entries(task.responses)
