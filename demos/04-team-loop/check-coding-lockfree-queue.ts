@@ -18,10 +18,10 @@ import { join } from "node:path";
 const DECIDER = "grace";
 const EXPECTED_STRESS_OPS = 10_000_000; // 10^7
 const DECISION_RE = /<decision>([\s\S]*?)<\/decision>/g;
-const STRESS_RESULT_RE = /<!--\s*STRESS_RESULT:\s*(pass|fail)\s*-->/;
-const STRESS_OPS_RE = /<!--\s*STRESS_OPS:\s*(\d+)\s*-->/;
+const STRESS_RESULT_RE = /<!--\s*STRESS_RESULT:\s*(pass|fail)\s*-->/g;
+const STRESS_OPS_RE = /<!--\s*STRESS_OPS:\s*(\d+)\s*-->/g;
 const FIX_APPLIED_RE = /<!--\s*FIX_APPLIED:\s*(.+?)\s*-->/g;
-const PROP_TEST_RE = /<!--\s*PROP_TEST:\s*(pass|fail)\s*-->/;
+const PROP_TEST_RE = /<!--\s*PROP_TEST:\s*(pass|fail)\s*-->/g;
 
 interface Decision {
     decision: string;
@@ -35,6 +35,12 @@ interface Decision {
 function fail(msg: string): never {
     console.error(`FAIL: ${msg}`);
     process.exit(1);
+}
+
+/** Extract the LAST regex match (mirrors extractFinalDecision's last-occurrence semantics). */
+function lastMatch(raw: string, re: RegExp): RegExpExecArray | null {
+    const matches = [...raw.matchAll(re)];
+    return matches.length ? matches[matches.length - 1] : null;
 }
 
 async function loadRaw(runDir: string, member: string): Promise<string> {
@@ -82,13 +88,13 @@ async function main(): Promise<void> {
         }
     }
     const erinRaw = await loadRaw(runDir, "erin");
-    const propMatch = erinRaw.match(PROP_TEST_RE);
+    const propMatch = lastMatch(erinRaw, PROP_TEST_RE);
     if (propMatch) {
         console.log(`  erin:   PROP_TEST = ${propMatch[1]}`);
     }
 
     // --- Cross-check frank's stress markers -----------------------------------
-    const opsMatch = frankRaw.match(STRESS_OPS_RE);
+    const opsMatch = lastMatch(frankRaw, STRESS_OPS_RE);
     if (!opsMatch) {
         fail(`member "frank" did not emit a <!-- STRESS_OPS: <n> --> marker`);
     }
@@ -101,7 +107,7 @@ async function main(): Promise<void> {
         fail(`frank STRESS_OPS = ${ops} < expected ${EXPECTED_STRESS_OPS} (10^7)`);
     }
 
-    const resultMatch = frankRaw.match(STRESS_RESULT_RE);
+    const resultMatch = lastMatch(frankRaw, STRESS_RESULT_RE);
     if (!resultMatch) {
         fail(`member "frank" did not emit a <!-- STRESS_RESULT: pass|fail --> marker`);
     }
