@@ -177,7 +177,8 @@ function buildWorkflowReducePrompt(
     steps: WorkflowStep[],
     joinIndex: number,
 ): string {
-    return `[Workflow reduce task] You are the reducer for workflow join step ${joinIndex + 1}.`
+    return `[Workflow reduce task]\n` 
+        + `You are the reducer for workflow join step ${joinIndex + 1}.`
         + ` Combine the branch outputs below into ONE joined result.`
         + ` Output ONLY the final result, with no preamble.\n\n`
         + buildJoinedWorkflowOutput(steps, joinIndex);
