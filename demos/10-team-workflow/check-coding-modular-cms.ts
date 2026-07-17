@@ -17,7 +17,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const INTERFACE_RE = /\binterface\s+(\w+)/g;
-const MODULE_RE = /<!--\s*MODULE:\s*(\w+)\s*-->/;
+const MODULE_RE = /<!--\s*MODULE:\s*(\w+)/;
 const VERDICT_RE = /<verdict>\s*(\{[\s\S]*?\})\s*<\/verdict>/g;
 
 function fail(msg: string): never {
