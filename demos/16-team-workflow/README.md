@@ -9,7 +9,7 @@
 | # | Domain | Scenario | Members | Engine Feature | Est. Duration |
 |---|--------|----------|---------|----------------|---------------|
 | 1 | Programming | Auto-retry: implement factorial, retry until IMPL_DONE marker appears | 2 | `retry_on` + `max_task_retries` | ~16 min |
-| 2 | Programming | Foreach fanout: implement bubbleSort, test against 3 auto-generated input types | 2 | `foreach` fanout + `${as}` substitution | ~14 min |
+| 2 | Programming | Foreach fanout: implement bubbleSort, test against 3 auto-generated input types | 4 | `foreach` fanout + `${as}` substitution in `member` and `task` | ~14 min |
 | 3 | Programming | Conditional branch: implement isPalindrome, gate score >= 0.8 jumps to deploy, else refines | 3 | `on_pass_goto` + `where` | ~18 min |
 | 4 | Programming (challenge) | Resilient chain: implement deduplicate with timeout retry, fallback members, and malformed verdict handling | 6 | `on_timeout` + `fallback_member` + `on_malformed` | ~30 min |
 
@@ -150,11 +150,11 @@ T+16m    workflow_complete, summary delivered to master
 
 **Background**: The `foreach` field on a `fanout` step auto-generates branches from a list of values. Each value substitutes into the branch step text via `${value}` (or a custom `as` name). This avoids manually writing near-identical branches, making it ideal for parameterized testing where the same logic runs against multiple data configurations.
 
-**Goal**: Use `team_workflow` with `foreach: ["sorted", "random", "reverse"]` and `as: "input"` on a fanout step to auto-generate 3 test branches. Alice implements `bubbleSort`, then bob tests it against 3 auto-generated input arrays (sorted, random with seed 42, reverse). Each branch reports success independently.
+**Goal**: Use `team_workflow` with `foreach: ["bob", "carol", "dave"]` and `as: "tester"` on a fanout step to auto-generate 3 test branches. Alice implements `bubbleSort`, then three testers (bob, carol, dave) test it in parallel against three input arrays (sorted, random with seed 42, reverse). Each branch substitutes `${tester}` in both the `member` field (so each tester owns one branch, satisfying the engine's no-cross-branch-actor rule) and the `task` text (so the tester knows which input pattern to generate). Each branch reports success independently.
 
 **Success criteria (machine-evaluable)**:
 - step 1 (task: alice): produces a `bubbleSort` TypeScript function
-- step 2 (fanout, foreach): auto-generates 3 branches, each substituting `${input}` with "sorted", "random", or "reverse"
+- step 2 (fanout, foreach): auto-generates 3 branches, each substituting `${tester}` with "bob", "carol", or "dave" in BOTH the `member` field (each tester owns exactly one branch, satisfying the engine's no-cross-branch-actor rule) and the `task` text (each tester reads its assigned input pattern)
 - step 3 (join, join_policy: "all"): all 3 branches must pass
 - Check script verifies bubbleSort correctness directly (does not depend on branch structure)
 
@@ -163,7 +163,7 @@ T+16m    workflow_complete, summary delivered to master
 ```json
 {
   "name": "foreach-wf",
-  "description": "Workflow with foreach fanout: implement bubbleSort, auto-generate 3 test branches for different input patterns",
+  "description": "Workflow with foreach fanout: implement bubbleSort, auto-generate 3 test branches with one tester per branch (member field uses ${tester} interpolation)",
   "members": [
     {
       "name": "alice",
@@ -174,12 +174,22 @@ T+16m    workflow_complete, summary delivered to master
       "name": "bob",
       "role": "tester",
       "prompt": "You are a tester. You test sort implementations against generated input arrays and verify correctness. Your output MUST end with exactly: <!-- SORT_OK: true --> for a passing test, or <!-- SORT_OK: false --> for a failing test."
+    },
+    {
+      "name": "carol",
+      "role": "tester",
+      "prompt": "You are a tester. You test sort implementations against generated input arrays and verify correctness. Your output MUST end with exactly: <!-- SORT_OK: true --> for a passing test, or <!-- SORT_OK: false --> for a failing test."
+    },
+    {
+      "name": "dave",
+      "role": "tester",
+      "prompt": "You are a tester. You test sort implementations against generated input arrays and verify correctness. Your output MUST end with exactly: <!-- SORT_OK: true --> for a passing test, or <!-- SORT_OK: false --> for a failing test."
     }
   ]
 }
 ```
 
-**Role selection rationale**: Alice (coder) implements `bubbleSort` once. Bob (tester) is used in all 3 foreach branches because each branch is independent and bob tests against a different input pattern.
+**Role selection rationale**: Alice (coder) implements `bubbleSort` once. Three testers (bob, carol, dave) are used one-per-branch because the engine requires each concurrent branch to have a distinct actor (no cross-branch actors). The `foreach` value list `["bob", "carol", "dave"]` doubles as both the branch id AND the member name, so the `${tester}` placeholder in the template's `member` field expands to each tester's own name — this is what lets foreach drive branch dispatch without violating the cross-branch-actor rule.
 
 ### 2.3 Master Launch Call
 
@@ -198,19 +208,14 @@ T+16m    workflow_complete, summary delivered to master
       {
         "kind": "fanout",
         "id": "test_inputs",
-        "foreach": ["sorted", "random", "reverse"],
-        "as": "input",
+        "foreach": ["bob", "carol", "dave"],
+        "as": "tester",
         "join_policy": "all",
-        "branches": [
+        "steps": [
           {
-            "id": "${input}",
-            "steps": [
-              {
-                "kind": "task",
-                "member": "bob",
-                "task": "Read alice's bubbleSort from the upstream step. Generate a ${input} array of 500 integers: 'sorted' = [1,2,...,500], 'random' = shuffled with seed 42, 'reverse' = [500,499,...,1]. Sort with bubbleSort. Verify element-by-element against Array.prototype.sort. Report <!-- SORT_OK: true --> if correct, <!-- SORT_OK: false --> otherwise."
-              }
-            ]
+            "kind": "task",
+            "member": "${tester}",
+            "task": "Read alice's bubbleSort from the upstream step. You are tester ${tester}. Generate one input array of 500 integers according to your name: bob generates 'sorted' = [1,2,...,500]; carol generates 'random' = shuffle [1..500] with seed 42 (Fisher-Yates with seed 42); dave generates 'reverse' = [500,499,...,1]. Sort your array with bubbleSort. Verify element-by-element against Array.prototype.sort((a,b)=>a-b). Report <!-- SORT_OK: true --> if the sorted output matches exactly, else <!-- SORT_OK: false -->."
           }
         ]
       },
@@ -225,8 +230,8 @@ T+16m    workflow_complete, summary delivered to master
 ```
 
 **Parameter selection**:
-- step 2 `foreach: ["sorted", "random", "reverse"]` — the engine auto-generates 3 branches, one per value
-- step 2 `as: "input"` — each branch substitutes `${input}` with its current value in all text fields
+- step 2 `foreach: ["bob", "carol", "dave"]` — the engine auto-generates 3 branches, one per tester name; the value simultaneously serves as (a) the branch id, (b) the `member` field via `${tester}` interpolation, and (c) the dispatch target
+- step 2 `as: "tester"` — the loop variable is named `tester`; `${tester}` is substituted into BOTH the `member` field (so each tester owns one branch) AND the `task` text (so the tester reads its name to decide which input pattern to generate)
 - step 2 `join_policy: "all"` — every branch must succeed for the workflow to advance; if any test fails, the workflow fails
 - step 3 `join` collects all branch outputs after the barrier
 - `timeout_ms: 900000` (15 min) — implement (~5 min) + 3 parallel test branches (~6 min each in parallel) + join (~2 min), normal completion in ~14 min
@@ -249,12 +254,12 @@ T+0m     master calls team_workflow
 T+0m     engine dispatch step 1 (alice, task): implement bubbleSort
 T+0~5m   alice produces bubbleSort code + IMPL marker → idle
 T+5m     engine expands step 2 (fanout, foreach): auto-generate 3 branches
-         branch 1 (id="sorted"): bob, input=sorted  ┐
-         branch 2 (id="random"): bob, input=random  ├─ parallel
-         branch 3 (id="reverse"): bob, input=reverse ┘
-T+5~11m  bob tests bubbleSort on [1..500] ┐
-         bob tests bubbleSort on shuffled(seed=42) ├─ parallel
-         bob tests bubbleSort on [500..1]          ┘
+         branch 1 (id="bob"):   member=bob   (via ${tester} in template)   tests sorted  ┐
+         branch 2 (id="carol"): member=carol (via ${tester} in template)   tests random ├─ parallel
+         branch 3 (id="dave"):  member=dave  (via ${tester} in template)   tests reverse┘
+T+5~11m  bob   tests bubbleSort on [1..500]            ┐
+         carol tests bubbleSort on shuffled(seed=42)   ├─ parallel
+         dave  tests bubbleSort on [500..1]            ┘
 T+11m    barrier: all 3 branches complete → engine advances to step 3 (join)
 T+11m    join collects branch outputs → workflow advances
 T+11m    workflow_complete, summary delivered to master
@@ -644,10 +649,10 @@ Success criteria: factorial(0)=1, factorial(5)=120, factorial(10)=3628800, facto
 ```text
 Run the complete closed loop for demos/16-team-workflow/README.md "Scenario 2" and auto-evaluate.
 Steps:
-1. Read README "2.2 Team Configuration", create team per team_create JSON (2 members: alice=coder, bob=tester)
+1. Read README "2.2 Team Configuration", create team per team_create JSON (4 members: alice=coder, bob/carol/dave=tester)
 2. team_activate to activate
-3. Read README "2.3 Master Launch Call", start orchestration per team_workflow JSON (3 steps: task(implement bubbleSort) → fanout(foreach [sorted,random,reverse], join_policy:all) → join)
-4. Poll team_results until master receives summary (engine auto-generates 3 branches, bob tests in parallel) (poll every 30s)
+3. Read README "2.3 Master Launch Call", start orchestration per team_workflow JSON (3 steps: task(implement bubbleSort) → fanout(foreach [bob,carol,dave], as:tester, member:${tester}, join_policy:all) → join)
+4. Poll team_results until master receives summary (engine auto-generates 3 branches, one tester per branch, run in parallel) (poll every 30s)
 5. Locate <run_dir> (contains alice.md)
 6. Run: bun demos/16-team-workflow/check-coding-foreach-sort.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error
