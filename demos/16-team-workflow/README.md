@@ -311,7 +311,7 @@ T+11m    workflow_complete, summary delivered to master
     {
       "name": "bob",
       "role": "reviewer",
-      "prompt": "You are a reviewer. You verify code correctness and assign a quality score. Emit a verdict: PASS if every criterion holds, FAIL otherwise. Include a score field (number between 0 and 1).\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"score\": <number>, \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>."
+      "prompt": "You are a reviewer. You verify code correctness and assign a quality score. Emit a verdict: PASS if every criterion holds, FAIL otherwise. Include a score field: a number in the closed interval [0.0, 1.0].\n\nCRITICAL CONSTRAINT: score MUST be >= 0.0 and <= 1.0. Values outside [0.0, 1.0] are malformed and invalidate the verdict. Use exactly 1.0 for fully correct + clean code, exactly 0.5 for correct but messy code, exactly 0.0 for any failing case.\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"score\": <number>, \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>."
     },
     {
       "name": "carol",
@@ -345,7 +345,7 @@ T+11m    workflow_complete, summary delivered to master
         "kind": "gate",
         "id": "review",
         "verifier": "bob",
-        "criteria": "Verify isPalindrome('racecar')=true, isPalindrome('hello')=false, isPalindrome('A man a plan a canal Panama')=true (ignore spaces, case-insensitive), isPalindrome('')=true. Score 1.0 if all pass with clean code, 0.5 if all pass but code is messy.",
+        "criteria": "Verify isPalindrome('racecar')=true, isPalindrome('hello')=false, isPalindrome('A man a plan a canal Panama')=true (ignore spaces, case-insensitive), isPalindrome('')=true. Score MUST be a number in the closed interval [0.0, 1.0]: exactly 1.0 if all pass with clean code, exactly 0.5 if all pass but code is messy. Any score outside [0.0, 1.0] is malformed.",
         "target_step": "implement",
         "on_pass_goto": "deploy",
         "where": { "score_gte": 0.8 }
@@ -379,6 +379,8 @@ T+11m    workflow_complete, summary delivered to master
 ### 3.4 Parameter Selection
 
 `where` supports four condition types on the gate verifier's verdict object:
+
+> **Score range assumption**: score-based conditions (`score_gte`, `score_lt`) assume the verifier's `verdict.score` is a number in the closed interval [0.0, 1.0]. Workflow authors MUST instruct the verifier in the prompt and gate `criteria` to emit scores in this range (see step 2 above). The engine does NOT validate the score range — an out-of-range score will still be compared against the threshold via simple numeric comparison, which may produce unexpected jump behavior. The strengthened prompt + criteria wording above is the contract that enforces [0.0, 1.0]; if a verifier violates it, the run's `team_result` summary surfaces the actual emitted `score=` value for diagnosis.
 
 | Condition | Meaning | Example |
 |-----------|---------|---------|
