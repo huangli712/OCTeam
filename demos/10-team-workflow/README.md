@@ -435,20 +435,22 @@ T+16m    workflow_complete, summary delivered to master
 
 ## Scenario 4: Multi-Module Fanout Parallel Implementation + Join Reduce Integration Verification (Challenge-Level)
 
-**Challenge-level notes**: This scenario breaks baseline constraints (2 members / linear chain / ≤30 min), using **6 members and 8 steps (with fanout three-way parallel + join reduce aggregation)**, demonstrating `team_workflow`'s declarative parallel branching and reduce aggregation capability. ~50 min.
+**Challenge-level notes**: This scenario breaks baseline constraints (2 members / linear chain / ≤30 min), using **6 members and 10 steps (with fanout three-way parallel + join reduce aggregation + pre-fanout contract definition + post-join integration fix)**, demonstrating `team_workflow`'s declarative parallel branching and reduce aggregation capability. ~50 min.
 
 ### 4.1 Scenario Description
 
 **Background**: Build three core modules of a micro user management system — authentication (auth), user CRUD (users), and audit logging (audit). The modules share type dependencies (`User`, `AuthToken`, `AuditEntry`), so interfaces must be defined uniformly first before implementing separately, and finally integration-verified for the three to work together. Workflow's `fanout` allows parallel implementation of the three modules, `join(reduce)` aggregates all branch outputs into one consolidated report, and finally a `gate` performs integration testing.
 
-**Goal**: Use a single `team_workflow` to chain eight steps — `coder` define shared types (task) → `reviewer` confirm type completeness (gate) → three-way `fanout` parallel module implementation (auth / users / audit) → `join(reduce)` aggregation → `tester` integration verification (gate) — driven deterministically by the engine.
+**Goal**: Use a single `team_workflow` to chain ten steps — `coder` define shared types (task) → `reviewer` confirm type completeness (gate) → `coder` define cross-module integration contract (task) → three-way `fanout` parallel module implementation (auth / users / audit) → `join(reduce)` aggregation → `coder` integration fix (task) → `tester` integration verification (gate) — driven deterministically by the engine.
 
 **Success criteria (machine-evaluable)**:
 - step 1 (task: alice): produces type definitions containing three TypeScript interfaces: `User`, `AuthToken`, `AuditEntry`
 - step 2 (gate: bob): verifies all three interface fields are complete and non-conflicting
-- steps 3-5 (fanout three-way parallel task: carol/dave/erin): implement auth (login/logout/validate), users (create/find/delete), and audit (log/query) respectively
-- step 6 (join reduce: frank): aggregates the three modules' interface lists and dependency graph
-- step 7 (gate: bob): integration test — auth issues token → users creates user with token auth → audit records the action → verify the full chain
+- step 3 (task: alice): produces a cross-module integration contract defining a shared `tokenRegistry` singleton and behavioral rules (auth writes/validates, users checks before mutations)
+- steps 5-7 (fanout three-way parallel task: carol/dave/erin): implement auth (login/logout/validate), users (create/find/delete), and audit (log/query) respectively, following the contract from step 3
+- step 8 (join reduce: frank): aggregates the three modules' interface lists and dependency graph
+- step 9 (task: alice): fixes any cross-module integration defects found in the join reduce report, wiring modules into a cohesive system
+- step 10 (gate: frank): integration test — auth issues token → users creates user with token auth → audit records the action → verify the full chain
 - Final `workflow_complete`, all gates PASS
 
 ### 4.2 Team Configuration
@@ -498,10 +500,10 @@ T+16m    workflow_complete, summary delivered to master
 ```
 
 **Role selection rationale**:
-- `alice` (coder): defines shared types, single source of truth
-- `bob` (reviewer): gate verifies type completeness and performs integration testing
-- `carol/dave/erin` (coder ×3): fanout three-way parallel implementation of each module
-- `frank` (tester): join reduce aggregation + final gate integration verification
+- `alice` (coder): defines shared types (step 1), cross-module integration contract (step 3), and performs integration fix (step 9) — single source of truth across all definition/wiring stages
+- `bob` (reviewer): gate verifies type completeness (step 2)
+- `carol/dave/erin` (coder ×3): fanout three-way parallel implementation of each module (steps 5-7)
+- `frank` (tester): join reduce aggregation (step 8) + final gate integration verification (step 10)
 
 ### 4.3 Master Launch Call
 
@@ -523,6 +525,12 @@ T+16m    workflow_complete, summary delivered to master
         "criteria": "Verify all three interfaces are defined with the required fields. Check for field completeness (all required fields present) and type consistency. Emit PASS only if all three interfaces are valid; FAIL naming the missing/broken interface.",
         "on_fail": "retry",
         "max_retries": 1
+      },
+      {
+        "kind": "task",
+        "id": "define-contract",
+        "member": "alice",
+        "task": "Based on the upstream type definitions, define a cross-module integration contract as a single TypeScript file. Include: (1) a shared token registry singleton `export const tokenRegistry = new Map<string, AuthToken>()` that bridges runtime state across independently implemented modules; (2) contract rules as comments: auth.login() MUST write token to tokenRegistry, auth.logout() MUST remove it, auth.validateToken() MUST check tokenRegistry.has(token); users.createUser() and deleteUser() MUST check tokenRegistry.has(authToken.token) before proceeding; audit.logAction() userId expects users.User.id. Embed in a ```typescript fenced block."
       },
       {
         "kind": "fanout",
@@ -565,6 +573,12 @@ T+16m    workflow_complete, summary delivered to master
         "kind": "join"
       },
       {
+        "kind": "task",
+        "id": "integration-fix",
+        "member": "alice",
+        "task": "Based on the join reduce report from upstream, fix any cross-module integration defects found in the three modules. Wire the modules into a cohesive system: ensure the users module imports and checks the shared tokenRegistry before createUser/deleteUser mutations (rejecting tokens revoked via auth.logout), and ensure audit.logAction() is called after successful user creation. Embed the fixed integrated code in a ```typescript fenced block."
+      },
+      {
         "kind": "gate",
         "verifier": "frank",
         "criteria": "Integration test the COMPLETE system: (1) auth.login() returns a valid AuthToken; (2) users.createUser() with valid token creates user; (3) users.createUser() with INVALID token throws/rejects; (4) audit.logAction() records the create-user action; (5) audit.queryLogs() finds the recorded entry. Emit PASS only if ALL 5 cases pass; FAIL naming the failing case.",
@@ -578,11 +592,13 @@ T+16m    workflow_complete, summary delivered to master
 ```
 
 **Parameter selection**:
-- step 3 is a `fanout`, `join_policy: "reduce"` + `reducer_member: "frank"` — after the three parallel tasks complete, frank aggregates all branch outputs
-- step 4 `join(reduce)` is the fanout's endpoint — after frank produces the aggregated report, the workflow advances to the integration gate
-- step 5 gate's `verifier: "frank"` shares the name with the join reducer but this does not conflict — after the join produces the aggregated report, frank acts as the gate verifier for integration testing
+- step 4 is a `fanout`, `join_policy: "reduce"` + `reducer_member: "frank"` — after the three parallel tasks complete, frank aggregates all branch outputs
+- step 8 `join(reduce)` is the fanout's endpoint — after frank produces the aggregated report, the workflow advances to the integration fix task
+- step 9 (task) gives alice a chance to wire cross-module dependencies before the final gate, addressing integration defects surfaced by the join reduce report
+- step 10 gate's `verifier: "frank"` shares the name with the join reducer but this does not conflict — after the integration fix, frank acts as the gate verifier for integration testing
+- step 2 `verifier: "bob"` ≠ `member: "alice"` — satisfies "no self-verification"; step 10 `verifier: "frank"` ≠ step 9 `member: "alice"` — also satisfies
 - Each gate has `on_fail: "retry"` + `max_retries: 1` — type definitions or integration may be incomplete on first pass, so give one correction chance
-- `timeout_ms: 3000000` (50 min) — 6 members + 8 steps, fanout three-way parallel implementation (~12 min) + join reduce (~8 min) + integration gate (~8 min), serial cumulative ~50 min
+- `timeout_ms: 3000000` (50 min) — 6 members + 10 steps, contract definition (~3 min) + fanout three-way parallel implementation (~12 min) + join reduce (~8 min) + integration fix (~5 min) + integration gate (~8 min), serial cumulative ~50 min
 
 ### 4.4 Execution Flow (Timeline)
 
@@ -592,18 +608,24 @@ T+0m     engine dispatch step 1 (alice, task): define shared types
 T+0~4m   alice produces User / AuthToken / AuditEntry interfaces → idle
 T+4m     engine advances to step 2 (gate): dispatch bob verifies type completeness
 T+4~7m   bob checks three interface field completeness → <verdict>
-         PASS  -> engine advances to step 3 (fanout)
+         PASS  -> engine advances to step 3
          FAIL  -> re-dispatches alice, runs gate again; second FAIL -> workflow_failed
-T+7m     engine expands fanout: parallel dispatch carol(auth), dave(users), erin(audit)
-T+7~19m  three implement respective modules (parallel, 12 min cap) → idle
-T+19m    barrier: all branches complete → engine advances to step 4 (join reduce)
-T+19m    dispatch frank (reducer), feeds three branch outputs
-T+19~27m frank aggregates three modules, produces interface list + dependency graph → idle
-T+27m    engine advances to step 5 (gate): dispatch frank (verifier), feeds integration context
-T+27~35m frank runs 5 integration test cases (token auth → create user → audit record) → <verdict>
+T+7m     engine dispatch step 3 (alice, task): define cross-module integration contract
+T+7~10m  alice produces tokenRegistry singleton + contract rules → idle
+T+10m    engine advances to step 4 (fanout): parallel dispatch carol(auth), dave(users), erin(audit)
+         Each branch receives step 3's contract as upstream context
+T+10~22m three implement respective modules following the contract (parallel, 12 min cap) → idle
+T+22m    barrier: all branches complete → engine advances to step 8 (join reduce)
+T+22m    dispatch frank (reducer), feeds three branch outputs
+T+22~30m frank aggregates three modules, produces interface list + dependency graph + defect report → idle
+T+30m    engine advances to step 9 (task): dispatch alice (integration fix)
+         Feeds join reduce report as upstream; alice wires cross-module dependencies
+T+30~35m alice produces fixed integrated code → idle
+T+35m    engine advances to step 10 (gate): dispatch frank (verifier), feeds integration context
+T+35~43m frank runs 5 integration test cases (token auth → create user → audit record) → <verdict>
          PASS  -> workflow_complete
          FAIL  -> loop correction (re-dispatch corresponding producer), runs gate again
-T+35m    workflow_complete, summary delivered to master (with all 8-step ledger + task outputs)
+T+43m    workflow_complete, summary delivered to master (with all 10-step ledger + task outputs)
 ```
 
 ### 4.5 Check Script
@@ -614,13 +636,13 @@ T+35m    workflow_complete, summary delivered to master (with all 8-step ledger 
 - **Extract**:
   - step 1: alice.md contains three interface type definitions (regex: `interface User` + `interface AuthToken` + `interface AuditEntry`)
   - step 2: bob.md `<verdict>{...}</verdict>` gate verdict
-  - steps 3-5: carol/dave/erin.md each contain `<!-- MODULE: {auth|users|audit} -->` markers
-  - step 5 gate: frank.md `<verdict>{...}</verdict>` gate verdict
+  - steps 5-7: carol/dave/erin.md each contain `<!-- MODULE: {auth|users|audit} -->` markers
+  - step 10 gate: frank.md `<verdict>{...}</verdict>` gate verdict (last verdict)
 - **Assertions**:
   1. alice.md contains all three `interface` definitions
   2. carol/dave/erin.md each contain the corresponding `<!-- MODULE -->` marker and list ≥2 exported functions
   3. frank.md contains aggregated references for at least 3 modules (join reduce output)
-  4. Both gate verifier `result` values are `PASS` (step 2 type verification + step 5 integration verification)
+  4. Both gate verifier `result` values are `PASS` (step 2 type verification + step 10 integration verification)
 
 ## Recovery and Checkpoint Granularity
 
@@ -682,12 +704,12 @@ Success criteria: energy drift < 1e-3 without drag; terminal velocity with drag 
 ### Scenario 4: Multi-Module Fanout Parallel Implementation + Join Reduce Integration Verification (Challenge-Level · Programming)
 
 ```text
-Run the complete closed loop for demos/10-team-workflow/README.md "Scenario 4" and auto-evaluate (challenge-level: 6 members, 8-step fanout workflow).
+Run the complete closed loop for demos/10-team-workflow/README.md "Scenario 4" and auto-evaluate (challenge-level: 6 members, 10-step fanout workflow).
 Steps:
 1. Read README "4.2 Team Configuration", create team per team_create JSON (6 members: alice=coder, bob=reviewer, carol/dave/erin=coder, frank=tester)
 2. team_activate to activate
-3. Read README "4.3 Master Launch Call", start orchestration per team_workflow JSON (8 steps: task(types) → gate(verify types) → fanout(3 parallel modules) → join(reduce) → gate(integration test))
-4. Poll team_results until master receives summary (engine advances: alice defines types → bob gate verifies → carol/dave/erin implement three modules in parallel → frank join reduce aggregates → frank gate integration test) (poll every 30s)
+3. Read README "4.3 Master Launch Call", start orchestration per team_workflow JSON (10 steps: task(types) → gate(verify types) → task(contract) → fanout(3 parallel modules) → join(reduce) → task(integration fix) → gate(integration test))
+4. Poll team_results until master receives summary (engine advances: alice defines types → bob gate verifies → alice defines contract → carol/dave/erin implement three modules in parallel → frank join reduce aggregates → alice integration fix → frank gate integration test) (poll every 30s)
 5. Locate <run_dir> (contains 6 members' .md: alice/bob/carol/dave/erin/frank)
 6. Run: bun demos/10-team-workflow/check-coding-modular-cms.ts <run_dir>
 7. Report by exit code: 0 = PASS, 1 = FAIL, 2 = usage/IO error

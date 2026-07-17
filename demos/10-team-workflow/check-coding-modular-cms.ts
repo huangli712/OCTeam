@@ -5,7 +5,7 @@
  *   - alice.md: must contain User, AuthToken, AuditEntry interface definitions
  *   - bob.md: must contain 1 PASS verdict (step 2 type verification gate)
  *   - carol.md, dave.md, erin.md: must each contain <!-- MODULE: {auth|users|audit} --> marker
- *   - frank.md: must contain 1 PASS verdict (step 5 integration gate) + aggregation evidence
+ *   - frank.md: must contain 1 PASS verdict (step 10 integration gate) + aggregation evidence
  *
  * Usage:  bun check-coding-modular-cms.ts <run_dir>
  *   <run_dir>  directory containing alice/bob/carol/dave/erin/frank.md
