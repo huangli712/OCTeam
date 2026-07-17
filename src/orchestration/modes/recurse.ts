@@ -59,7 +59,7 @@ export function buildRecursePrompt(): string {
  */
 function buildAggregationPrompt(rootSubject: string, childCount: number): string {
     return (
-        `[AGGREGATION PHASE]\n` 
+        `[Aggregation Phase]\n` 
         + `All ${childCount} sub-tasks of the root task "${rootSubject}" are now COMPLETED.\n`
         + `Your next action (no alternatives):\n`
         + `  1. team_task_update(status="claimed") on the ROOT task to acquire it.\n`
