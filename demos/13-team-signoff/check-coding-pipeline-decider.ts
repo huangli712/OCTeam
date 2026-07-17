@@ -17,7 +17,7 @@ import { join } from "node:path";
 const SPEC_OK_RE = /<!--\s*SPEC_OK:\s*true\s*-->/;
 const IMPL_STACK_RE = /<!--\s*IMPL:\s*Stack\s*-->/;
 const IMPL_QUEUE_RE = /<!--\s*IMPL:\s*Queue\s*-->/;
-const PASS_COUNT_RE = /<!--\s*PASS_COUNT:\s*4\s*\/\s*4\s*-->/;
+const PASS_COUNT_RE = /<!--\s*PASS_COUNT:\s*8\s*\/\s*8\s*-->/;
 const DOCS_OK_RE = /<!--\s*DOCS_OK:\s*true\s*-->/;
 const SIGNOFF_RE = /<signoff>\s*(\{[\s\S]*?\})\s*<\/signoff>/g;
 
@@ -112,11 +112,11 @@ async function main(): Promise<void> {
     }
     console.log("  pipeline marker: IMPL: Queue present");
 
-    // Assertion 4: PASS_COUNT: 4/4 (dave, Stage 4)
+    // Assertion 4: PASS_COUNT: 8/8 (dave, Stage 4)
     if (!PASS_COUNT_RE.test(daveOutput)) {
-        fail("<!-- PASS_COUNT: 4/4 --> marker not found in dave.md");
+        fail("<!-- PASS_COUNT: 8/8 --> marker not found in dave.md");
     }
-    console.log("  pipeline marker: PASS_COUNT=4/4 present");
+    console.log("  pipeline marker: PASS_COUNT=8/8 present");
 
     // Assertion 5: DOCS_OK: true (erin, Stage 5)
     if (!DOCS_OK_RE.test(erinOutput)) {

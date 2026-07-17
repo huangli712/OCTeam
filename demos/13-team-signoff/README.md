@@ -357,7 +357,7 @@ T+8m     Run: bun check-math-pipeline-quorum.ts <run_dir>
   - `<!-- SPEC_OK: true -->`
   - `<!-- IMPL: Stack -->`
   - `<!-- IMPL: Queue -->`
-  - `<!-- PASS_COUNT: 4/4 -->`
+  - `<!-- PASS_COUNT: 8/8 -->`
   - `<!-- DOCS_OK: true -->`
 - At least one `<signoff>` tag with `"approved": true` found in frank's output
 
@@ -371,7 +371,7 @@ T+8m     Run: bun check-math-pipeline-quorum.ts <run_dir>
         {
             "name": "alice",
             "role": "coder",
-            "prompt": "You are a coder. You are Stage 1: define the API specification for a Stack data structure. List the methods: push, pop, peek, isEmpty, size. Describe each method's signature and behavior. End your output with a line exactly formatted: <!-- SPEC_OK: true -->"
+            "prompt": "You are a coder. You are Stage 1: define the API specifications for BOTH a Stack and a Queue data structure. For Stack, list the methods: push, pop, peek, isEmpty, size. For Queue, list the methods: enqueue, dequeue, front, isEmpty, size. Describe each method's signature and behavior. End your output with a line exactly formatted: <!-- SPEC_OK: true -->"
         },
         {
             "name": "bob",
@@ -386,7 +386,7 @@ T+8m     Run: bun check-math-pipeline-quorum.ts <run_dir>
         {
             "name": "dave",
             "role": "tester",
-            "prompt": "You are a tester. You are Stage 4: you will receive carol's output (which includes both Stack and Queue implementations) as context. Write 4 test cases: Stack push/pop, Stack isEmpty, Queue enqueue/dequeue, Queue front. Run them against the implementations. End your output with a line exactly formatted: <!-- PASS_COUNT: <n>/4 -->"
+            "prompt": "You are a tester. You are Stage 4: you will receive carol's output (which includes both Stack and Queue implementations) as context. Write 8 test cases covering ALL methods of both data structures: Stack push/pop, Stack peek, Stack isEmpty, Stack size, Queue enqueue/dequeue, Queue front, Queue isEmpty, Queue size. Run them against the implementations. End your output with a line exactly formatted: <!-- PASS_COUNT: <n>/8 -->"
         },
         {
             "name": "erin",
@@ -414,7 +414,7 @@ T+8m     Run: bun check-math-pipeline-quorum.ts <run_dir>
         "stages": [
             {
                 "member": "alice",
-                "task": "Define Stack API spec (push/pop/peek/isEmpty/size). End with <!-- SPEC_OK: true -->"
+                "task": "Define API spec for BOTH Stack (push/pop/peek/isEmpty/size) and Queue (enqueue/dequeue/front/isEmpty/size). End with <!-- SPEC_OK: true -->"
             },
             {
                 "member": "bob",
@@ -426,7 +426,7 @@ T+8m     Run: bun check-math-pipeline-quorum.ts <run_dir>
             },
             {
                 "member": "dave",
-                "task": "Write and run 4 test cases for Stack and Queue. End with <!-- PASS_COUNT: <n>/4 -->"
+                "task": "Write and run 8 test cases covering all methods of Stack and Queue: Stack push/pop, peek, isEmpty, size; Queue enqueue/dequeue, front, isEmpty, size. End with <!-- PASS_COUNT: <n>/8 -->"
             },
             {
                 "member": "erin",
@@ -450,10 +450,10 @@ T+8m     Run: bun check-math-pipeline-quorum.ts <run_dir>
 
 ```
 T+0m     master calls team_pipeline (5 stages, decider signoff, frank=decider)
-T+0m     Stage 1: alice defines Stack spec → <!-- SPEC_OK: true -->
+T+0m     Stage 1: alice defines Stack+Queue spec → <!-- SPEC_OK: true -->
 T+5m     Stage 2: bob receives spec, implements Stack<T> → <!-- IMPL: Stack -->
 T+10m    Stage 3: carol receives Stack+spec, implements Queue<T> → <!-- IMPL: Queue -->
-T+15m    Stage 4: dave receives both implementations, writes+run 4 tests → <!-- PASS_COUNT: 4/4 -->
+T+15m    Stage 4: dave receives both implementations, writes+run 8 tests → <!-- PASS_COUNT: 8/8 -->
 T+22m    Stage 5: erin receives all prior outputs, writes docs → <!-- DOCS_OK: true -->
 T+28m    pipeline complete
 T+28m    [SIGNOFF PHASE] frank automatically dispatched with review prompt of all 5 stages
