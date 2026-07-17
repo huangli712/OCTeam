@@ -466,16 +466,16 @@ T+32m    Run: bun check-coding-pipeline-decider.ts <run_dir>
 
 [`check-coding-pipeline-decider.ts`](./check-coding-pipeline-decider.ts)
 
-- **Load**: Read `erin.md` (last pipeline stage, contains all prior stage outputs prefixed); also `readdir` all `*.md` for signoff scanning
+- **Load**: Read each pipeline stage's `<member>.md` for its own marker (`alice.md`, `bob.md`, `carol.md`, `dave.md`, `erin.md`); also `readdir` all `*.md` for signoff scanning
 - **Extract**:
-  - Spec: `<!-- SPEC_OK: true -->`
-  - Stack impl: `<!-- IMPL: Stack -->`
-  - Queue impl: `<!-- IMPL: Queue -->`
-  - Tests: `<!-- PASS_COUNT: 4/4 -->`
-  - Docs: `<!-- DOCS_OK: true -->`
+  - Spec: `<!-- SPEC_OK: true -->` (in alice.md)
+  - Stack impl: `<!-- IMPL: Stack -->` (in bob.md)
+  - Queue impl: `<!-- IMPL: Queue -->` (in carol.md)
+  - Tests: `<!-- PASS_COUNT: 4/4 -->` (in dave.md)
+  - Docs: `<!-- DOCS_OK: true -->` (in erin.md)
   - Signoff: `<signoff>{"approved": true, "rationale": "..."}</signoff>`
 - **Assertions**:
-  1. All 5 pipeline markers present in erin's output
+  1. All 5 pipeline markers present, each in its producing stage's `.md` file
   2. At least one signoff tag with `"approved": true` found (frank's verdict)
   3. Signoff rationale is non-empty
 
