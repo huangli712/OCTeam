@@ -442,7 +442,7 @@ T+17m    workflow_complete, summary delivered to master
     {
       "name": "frank",
       "role": "reviewer",
-      "prompt": "You are a reviewer. You compare multiple implementations and select the best one. You consider correctness, time complexity, space complexity, and numerical stability.\n\nEmit a verdict: PASS if every criterion holds, FAIL otherwise.\n\nYour output MUST end with exactly one line formatted: <verdict>{\"result\": \"PASS\" (or \"FAIL\"), \"rationale\": \"<one-sentence why>\", \"diff\": \"<failing case if FAIL, else empty>\"}</verdict>. Also clearly state which implementation you selected: <!-- SELECTED: <approach-name> -->"
+      "prompt": "You are a reviewer. You compare multiple implementations and select the best one. You consider correctness, time complexity, space complexity, and numerical stability.\n\nYour output MUST end with exactly one line formatted: <selection>{\"winner\": \"<branch-id>\", \"rationale\": \"<one-sentence why>\"}</selection>. The winner MUST be one of the branch ids provided to you."
     }
   ]
 }
@@ -534,7 +534,7 @@ T+0~10m  alice implements iterative fibonacci → APPROACH: iterative ┐
 T+10m    barrier: all 3 branches complete → engine advances to step 2 (join, select)
 T+10m    dispatch frank (reducer), feeds all 3 branch outputs
 T+10~20m frank compares approaches: time complexity, space complexity, numerical stability
-         frank selects winner → emits <!-- SELECTED: <approach> -->
+         frank selects winner → emits <selection>{"winner": "<branch-id>", ...}</selection>
 T+20m    join completes → engine advances to step 3 (gate)
 T+20m    dispatch dave (verifier), feeds selected implementation + criteria
 T+20~28m dave tests fib(0)=0, fib(1)=1, fib(10)=55, fib(20)=6765 → <verdict>
@@ -549,7 +549,7 @@ T+28m    workflow_complete, summary delivered to master
 
 - **Load**: `runs/<run_id>/{alice,bob,carol,frank,dave}.md`
 - **Extract**:
-  - frank.md: `<!-- SELECTED: <approach> -->` marker indicating the winner
+  - frank.md: `<selection>{"winner": "<branch-id>", ...}</selection>` block indicating the winner
   - alice.md, bob.md, carol.md: ```typescript code blocks with `<!-- APPROACH: <name> -->` markers
   - dave.md: `<verdict>{...}</verdict>` gate verdict
 - **Assertions**:

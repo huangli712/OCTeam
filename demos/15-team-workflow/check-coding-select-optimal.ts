@@ -3,7 +3,7 @@
  *
  * Validates the select-join workflow in a team_workflow run with 5 members:
  *   - alice.md, bob.md, carol.md: each contain <!-- APPROACH: <name> --> markers
- *   - frank.md (reducer): selects a winner with <!-- SELECTED: <name> --> marker
+ *   - frank.md (reducer): selects a winner with <selection>{"winner":"<branch-id>"}</selection> block
  *   - dave.md: contains a PASS <verdict> gate decision
  *   - The selected approach's fibonacci function computes correct values
  *
@@ -19,7 +19,7 @@ import { join } from "node:path";
 const CODE_RE = /```typescript\s*\n([\s\S]*?)```/g;
 const VERDICT_RE = /<verdict>\s*(\{[\s\S]*?\})\s*<\/verdict>/g;
 const APPROACH_RE = /<!--\s*APPROACH:\s*(\S+)\s*-->/;
-const SELECTED_RE = /<!--\s*SELECTED:\s*(\S+)\s*-->/;
+const SELECTION_RE = /<selection>\s*(\{[\s\S]*?\})\s*<\/selection>/;
 
 function fail(msg: string): never {
     console.error(`FAIL: ${msg}`);
@@ -30,6 +30,11 @@ interface Verdict {
     result: string;
     rationale: string;
     diff: string;
+}
+
+interface Selection {
+    winner: string;
+    rationale: string;
 }
 
 function parseVerdicts(raw: string): Verdict[] {
@@ -76,9 +81,20 @@ function extractApproach(raw: string): string | null {
     return m ? m[1] : null;
 }
 
-function extractSelected(raw: string): string | null {
-    const m = raw.match(SELECTED_RE);
-    return m ? m[1] : null;
+function extractSelection(raw: string): Selection | null {
+    const m = raw.match(SELECTION_RE);
+    if (!m) return null;
+    try {
+        const obj = JSON.parse(m[1]) as Record<string, string>;
+        const winner = (obj.winner ?? "").trim();
+        if (!winner) return null;
+        return {
+            winner,
+            rationale: (obj.rationale ?? "").trim(),
+        };
+    } catch {
+        return null;
+    }
 }
 
 async function main(): Promise<void> {
@@ -108,6 +124,13 @@ async function main(): Promise<void> {
         carol: "binet",
     };
 
+    // Map branch id (frank's winner value) to the coder who implemented that branch.
+    const branchIdToCoder: Record<string, string> = {
+        iterative: "alice",
+        recursive: "bob",
+        binet: "carol",
+    };
+
     const coderToCode: Record<string, string> = {};
 
     for (const [coder, expected] of Object.entries(expectedApproaches)) {
@@ -128,25 +151,19 @@ async function main(): Promise<void> {
         coderToCode[coder] = blocks[blocks.length - 1];
     }
 
-    // Assertion 2: frank (reducer) selected a winner.
-    const selected = extractSelected(files.frank);
-    if (!selected) {
-        fail("frank.md does not contain <!-- SELECTED: <approach> --> marker");
+    // Assertion 2: frank (reducer) selected a winner via <selection>{"winner":...}</selection>.
+    const selection = extractSelection(files.frank);
+    if (!selection) {
+        fail("frank.md does not contain <selection>{\"winner\": \"<branch-id>\", ...}</selection> block");
     }
-    console.log(`  frank: SELECTED: ${selected} ✓`);
+    console.log(`  frank: SELECTED: ${selection.winner} ✓`);
 
-    // Assertion 3: the selected approach is one of the three we expect.
-    if (!Object.values(expectedApproaches).includes(selected)) {
-        fail(`frank selected unknown approach "${selected}" (expected one of: ${Object.values(expectedApproaches).join(", ")})`);
+    // Assertion 3: the selected winner is one of the three branch ids we expect.
+    const winnerCoder = branchIdToCoder[selection.winner];
+    if (!winnerCoder) {
+        fail(`frank selected unknown branch id "${selection.winner}" (expected one of: ${Object.keys(branchIdToCoder).join(", ")})`);
     }
-
-    // Find which coder produced the selected approach.
-    const winner = Object.entries(expectedApproaches).find(([, a]) => a === selected);
-    if (!winner) {
-        fail(`no coder matched the selected approach "${selected}"`);
-    }
-    const [winnerCoder] = winner;
-    console.log(`  winner: ${winnerCoder} (${selected})`);
+    console.log(`  winner: ${winnerCoder} (branch ${selection.winner})`);
 
     // Assertion 4: the winning fibonacci function is loadable and correct.
     const winnerCode = coderToCode[winnerCoder];
@@ -187,7 +204,7 @@ async function main(): Promise<void> {
     }
     console.log(`  dave: final verdict = PASS (rationale: ${finalV.rationale.substring(0, 80)}) ✓`);
 
-    console.log(`PASS: ${winnerCoder}'s ${selected} fibonacci passes all test cases; dave's gate verdict is PASS.`);
+    console.log(`PASS: ${winnerCoder}'s ${selection.winner} fibonacci passes all test cases; dave's gate verdict is PASS.`);
 }
 
 main();

@@ -286,6 +286,12 @@ function joinWithBranchStatus(
 
 // --- join advance ---
 
+/** Outcome of attempting to advance a join step. Returned by completeWorkflowJoinStep:
+ *  - completed: join is satisfied and marked done; ready for downstream consumers.
+ *  - dispatched: reducer/selector member just got dispatched; awaiting response.
+ *  - waiting: reducer/selector already in flight (dispatchedAt set); still awaiting response.
+ *  - failed: reducer could not be dispatched (no live session) -> run terminated.
+ *  - noop: not a join step, or already completed -> nothing to do. */
 type WorkflowJoinAdvanceResult =
     | "completed"
     | "dispatched"
