@@ -281,7 +281,7 @@ describe("summarizeWorkflow", () => {
             ],
         }) as Extract<ActiveTask, { type: "workflow" }>
         const summary = summarizeWorkflow(task, HEAD)
-        expect(summary).toContain("Steps:")
+        expect(summary).toContain("[Steps]")
         expect(summary).toContain("1.")
         expect(summary).toContain("2.")
         expect(summary).toContain("3.")
