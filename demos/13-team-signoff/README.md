@@ -471,7 +471,7 @@ T+32m    Run: bun check-coding-pipeline-decider.ts <run_dir>
   - Spec: `<!-- SPEC_OK: true -->` (in alice.md)
   - Stack impl: `<!-- IMPL: Stack -->` (in bob.md)
   - Queue impl: `<!-- IMPL: Queue -->` (in carol.md)
-  - Tests: `<!-- PASS_COUNT: 4/4 -->` (in dave.md)
+  - Tests: `<!-- PASS_COUNT: 8/8 -->` (in dave.md)
   - Docs: `<!-- DOCS_OK: true -->` (in erin.md)
   - Signoff: `<signoff>{"approved": true, "rationale": "..."}</signoff>`
 - **Assertions**:
