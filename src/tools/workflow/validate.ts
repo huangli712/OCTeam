@@ -681,9 +681,6 @@ export function validateWorkflowGraph(args: ResolvedWorkflowToolArgs, team: Team
     if (args.steps.length === 0) {
         return "Error: steps must contain at least one step"
     }
-    if (args.steps[0]?.kind !== "task") {
-        return "Error: step 1 must be a task; a gate has no preceding task step to verify"
-    }
     const publicShapeError = validatePublicWorkflowShape(args.steps)
     if (publicShapeError !== null) return publicShapeError
     const loweredSteps = lowerWorkflowSteps(args.steps)

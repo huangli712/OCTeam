@@ -406,6 +406,150 @@ describe("team_workflow type-specific validation", () => {
         expect(result).toContain("no preceding task")
     })
 
+    test("fanout-first starts workflow and dispatches branch heads", async () => {
+        const root = tmpRoot("wf-fanoutfirst")
+        const sid = "ses_wf_ff"
+        const aliceSid = "ses_wf_ff_alice"
+        const bobSid = "ses_wf_ff_bob"
+        const erinSid = "ses_wf_ff_erin"
+        tracked.push(sid, aliceSid, bobSid, erinSid)
+        await setupTeam(
+            root,
+            sid,
+            [
+                makeMember("alice", aliceSid),
+                makeMember("bob", bobSid),
+                makeMember("erin", erinSid),
+            ],
+            Date.now(),
+        )
+        const calls: DispatchCall[] = []
+
+        const result = await teamWorkflowTool(
+            makeCtx({ storageRoot: root, directory: root, calls }),
+        ).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    {
+                        kind: "fanout",
+                        join_policy: "all",
+                        branches: [
+                            {
+                                id: "a",
+                                steps: [{ kind: "task", member: "alice", task: "do a" }],
+                            },
+                            {
+                                id: "b",
+                                steps: [{ kind: "task", member: "bob", task: "do b" }],
+                            },
+                        ],
+                    },
+                    { kind: "join" },
+                    {
+                        kind: "gate",
+                        verifier: "erin",
+                        criteria: "both branches passed",
+                        target_step: 2,
+                    },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        // Workflow started successfully (fanout as step 1 no longer rejected).
+        expect(result).toContain("team_workflow started")
+        // Both branch heads were dispatched in parallel.
+        expect(calls).toContainEqual({ sessionId: aliceSid, text: "do a" })
+        expect(calls).toContainEqual({ sessionId: bobSid, text: "do b" })
+    })
+
+    test("gate-first still rejected at gate validation (post step[0] removal)", async () => {
+        const root = tmpRoot("wf-gatefirst2")
+        const sid = "ses_wf_gf2"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
+            { team_id: "alpha", steps: [{ kind: "gate", verifier: "bob", criteria: "ok" }] },
+            makeToolContext(sid),
+        )
+        // Gate-first is now caught by resolveAndValidateGateTargets (line 622)
+        // rather than the removed step[0] check, but the error substring is preserved.
+        expect(result).toContain("no preceding task")
+    })
+
+    test("join-first rejected (no matching fanout)", async () => {
+        const root = tmpRoot("wf-joinfirst")
+        const sid = "ses_wf_jf"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
+            { team_id: "alpha", steps: [{ kind: "join" }, { kind: "task", member: "alice", task: "do x" }] },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("no matching fanout")
+    })
+
+    test("fanout-first without following join rejected", async () => {
+        const root = tmpRoot("wf-fanoutnojoin")
+        const sid = "ses_wf_fnj"
+        tracked.push(sid)
+        await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    {
+                        kind: "fanout",
+                        join_policy: "all",
+                        branches: [
+                            { id: "a", steps: [{ kind: "task", member: "alice", task: "do a" }] },
+                        ],
+                    },
+                    // Missing: { kind: "join" }
+                    { kind: "task", member: "bob", task: "after" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("must be followed by a join step")
+    })
+
+    test("fanout-first with no live branch member session fails the run", async () => {
+        const root = tmpRoot("wf-fanoutrollback")
+        const sid = "ses_wf_fr"
+        const aliceSid = "ses_wf_fr_alice"
+        tracked.push(sid, aliceSid)
+        // alice has no live session (status: errored).
+        await setupTeam(
+            root,
+            sid,
+            [{ ...makeMember("alice", aliceSid), status: "errored" }],
+            Date.now(),
+        )
+
+        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
+            {
+                team_id: "alpha",
+                steps: [
+                    {
+                        kind: "fanout",
+                        join_policy: "all",
+                        branches: [
+                            { id: "a", steps: [{ kind: "task", member: "alice", task: "do a" }] },
+                        ],
+                    },
+                    { kind: "join" },
+                ],
+            },
+            makeToolContext(sid),
+        )
+        // Branch head dispatch fails -> handleWorkflowDispatchUnavailable -> finishRun("failed").
+        // The run is recorded as failed.
+        const team = await loadTeamState(root, "alpha", sid)
+        expect(team.status).toBe("failed")
+    })
+
     test("task step with gate-only fields -> rejected", async () => {
         const root = tmpRoot("wf-task-gate-field")
         const sid = "ses_wf_tgf"

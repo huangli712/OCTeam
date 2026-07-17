@@ -17,6 +17,7 @@ import type {
     WorkflowTask,
 } from "../../core/types.js"
 import {
+    advanceWorkflowStep,
     dispatchTaskStep,
     maybePauseBeforeWorkflowStep
 } from "../../orchestration/workflow/engine.js"
@@ -364,12 +365,23 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                 async (team, task) => {
                     if (task.type !== "workflow") return
                     const step = task.steps?.[0]
-                    if (!step || step.kind !== "task" || !step.member || !step.task) {
-                        throw new Error("workflow initial step is invalid")
+                    if (!step) {
+                        throw new Error("workflow has no steps")
                     }
                     if (await maybePauseBeforeWorkflowStep(ctx, team, 0)) return
-                    if (!(await dispatchTaskStep(ctx, team, task, 0))) {
-                        throw new Error(`workflow initial member "${step.member}" has no live session`)
+                    if (step.kind === "task") {
+                        if (!step.member || !step.task) {
+                            throw new Error("workflow initial task step is invalid")
+                        }
+                        if (!(await dispatchTaskStep(ctx, team, task, 0))) {
+                            throw new Error(`workflow initial member "${step.member}" has no live session`)
+                        }
+                    } else if (step.kind === "fanout") {
+                        // fanout is a container, not directly dispatched; let the main
+                        // advance loop expand its branch heads via activeStepIndices.
+                        await advanceWorkflowStep(ctx, team)
+                    } else {
+                        throw new Error(`workflow initial step kind "${step.kind}" is not supported`)
                     }
                 },
                 () => `team_workflow started on "${args.team_id}" with ${
