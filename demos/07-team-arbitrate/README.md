@@ -17,7 +17,7 @@
 
 ## Scenario 1: 4×4 Matrix Inversion Debate
 
-### 1.1 Scenario description
+### 1.1 Scenario Description
 
 **Background**: For inverting a dense, well-conditioned (condition number ~10) small 4×4 matrix, the classic divide is "direct method (Gaussian elimination / Gauss-Jordan)" vs "iterative method (e.g. Jacobi)". The two approaches differ sharply in accuracy, cost, and convergence, making this a standard debate in numerical linear algebra.
 
@@ -30,7 +30,7 @@
 - Arbiter output contains `<ruling>{"decision":"<choice>","rationale":"<text>"}</ruling>` tag JSON block (expected `decision` = `direct`)
 - `rationale` is non-empty and mentions the key term (`condition` or `dense`)
 
-### 1.2 Team configuration
+### 1.2 Team Configuration
 
 ```json
 {
@@ -58,7 +58,7 @@
 
 **Role selection rationale**: Debaters use `mathematician` (`oct-junior` agent, can compute flop counts / spectral radius to support arguments); arbiter uses `reviewer` (read-only role, specialized in weighing evidence and issuing rulings without favoring either side).
 
-### 1.3 Master launch call
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -81,7 +81,7 @@
 - `timeout_ms: 1200000` (20 min) — Hard cap for 2 debate rounds + ruling; normally completes in ~15 min
 - No `signoff_*` — The arbiter's ruling itself is the endpoint (equivalent to `none` gate)
 
-### 1.4 Execution flow (timeline)
+### 1.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_arbitrate (max_rounds=2)
@@ -95,7 +95,7 @@ T+9m    ruling delivered to master
 T+9m    Run: bun check-math-matrix-inverse.ts <run_dir>
 ```
 
-### 1.5 Check script
+### 1.5 Check Script
 
 [`check-math-matrix-inverse.ts`](./check-math-matrix-inverse.ts)
 
@@ -112,7 +112,7 @@ T+9m    Run: bun check-math-matrix-inverse.ts <run_dir>
 
 ## Scenario 2: Stiff ODE Method Debate
 
-### 2.1 Scenario description
+### 2.1 Scenario Description
 
 **Background**: The stiff equation `dy/dt = -1000·y`, `y(0)=1`, integrated to `t=1`, is the textbook example of stability dominating accuracy. Explicit RK4, though high-order, is subject to a CFL-like stiffness constraint (`dt < 2/1000 = 0.002`) to remain stable; implicit backward Euler is unconditionally stable, only first-order but can advance with large step sizes.
 
@@ -125,7 +125,7 @@ T+9m    Run: bun check-math-matrix-inverse.ts <run_dir>
 - Arbiter output contains `<ruling>{"decision":"implicit","rationale":"<text>"}</ruling>` tag JSON block
 - `rationale` is non-empty and mentions the key term (`stiff` or `stability`)
 
-### 2.2 Team configuration
+### 2.2 Team Configuration
 
 ```json
 {
@@ -153,7 +153,7 @@ T+9m    Run: bun check-math-matrix-inverse.ts <run_dir>
 
 **Role selection rationale**: Debaters use `simulator` (PDE/ODE numerical simulation experts, can derive stability regions and amplification factors); arbiter uses `physicist` (physical intuition to judge that stability outweighs accuracy under stiffness).
 
-### 2.3 Master launch call
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -175,7 +175,7 @@ T+9m    Run: bun check-math-matrix-inverse.ts <run_dir>
 - `max_rounds: 2` — Opening (stability region derivation) + rebuttal (step-count comparison), two rounds
 - `timeout_ms: 1200000` (20 min) — Hard cap
 
-### 2.4 Execution flow (timeline)
+### 2.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_arbitrate (max_rounds=2)
@@ -189,7 +189,7 @@ T+9m    ruling delivered to master
 T+9m    Run: bun check-physics-stiff-ode.ts <run_dir>
 ```
 
-### 2.5 Check script
+### 2.5 Check Script
 
 [`check-physics-stiff-ode.ts`](./check-physics-stiff-ode.ts)
 
@@ -206,7 +206,7 @@ T+9m    Run: bun check-physics-stiff-ode.ts <run_dir>
 
 ## Scenario 3: Cache Eviction Policy Debate
 
-### 3.1 Scenario description
+### 3.1 Scenario Description
 
 **Background**: A single-process cache of capacity 8 serving a workload with strong **temporal locality** (recently-accessed keys are likely re-accessed soon) and uniform frequencies. LRU (Least Recently Used) and LFU (Least Frequently Used) show significantly different hit rates for this workload — a classic debate in cache design.
 
@@ -219,7 +219,7 @@ T+9m    Run: bun check-physics-stiff-ode.ts <run_dir>
 - Arbiter output contains `<ruling>{"decision":"lru","rationale":"<text>"}</ruling>` tag JSON block
 - `rationale` is non-empty and mentions the key term (`temporal` or `recency`)
 
-### 3.2 Team configuration
+### 3.2 Team Configuration
 
 ```json
 {
@@ -247,7 +247,7 @@ T+9m    Run: bun check-physics-stiff-ode.ts <run_dir>
 
 **Role selection rationale**: Debaters use `coder` (can articulate O(1) implementation, linked list + hashmap, scan resistance, and other engineering details); arbiter uses `reviewer` (weighs engineering arguments from both camps and issues a ruling).
 
-### 3.3 Master launch call
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -269,7 +269,7 @@ T+9m    Run: bun check-physics-stiff-ode.ts <run_dir>
 - `max_rounds: 2` — Opening (implementation + complexity) + rebuttal (scan resistance / uniform frequencies), two rounds
 - `timeout_ms: 1080000` (18 min) — Pure text debate, slightly shorter than numerical scenarios
 
-### 3.4 Execution flow (timeline)
+### 3.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_arbitrate (max_rounds=2)
@@ -283,7 +283,7 @@ T+8m    ruling delivered to master
 T+8m    Run: bun check-coding-cache-eviction.ts <run_dir>
 ```
 
-### 3.5 Check script
+### 3.5 Check Script
 
 [`check-coding-cache-eviction.ts`](./check-coding-cache-eviction.ts)
 
@@ -302,7 +302,7 @@ T+8m    Run: bun check-coding-cache-eviction.ts <run_dir>
 
 **Challenge-level**: 6 members (5 debaters + 1 arbiter), `max_rounds=3`, est. ~40 min, deliberately exceeds the standard template (≤4 members / ≤30 min) to stress-test `team_arbitrate` scalability under a five-way debate.
 
-### 4.1 Scenario description
+### 4.1 Scenario Description
 
 **Background**: A class of PDEs simultaneously possessing three difficulties — **complex curved boundary** (requires unstructured mesh conformity), **advection-dominated transport** (prone to numerical oscillation, needs stabilization), **nonlinear source term** (rules out methods that only work for linear problems). Five mainstream discretization approaches (FEM, FDM, FVM, Spectral, BEM) each involve trade-offs in geometric adaptability, advection stabilization, and nonlinear handling, making this one of the most open-ended numerical method selection debates in computational physics.
 
@@ -316,7 +316,7 @@ T+8m    Run: bun check-coding-cache-eviction.ts <run_dir>
 - `rationale` non-empty and mentions at least two of `{curved, boundary, advection, nonlinear, flux, mesh}` (case-insensitive)
 - **Physical expectation**: FEM or FVM should win — both can conform to curved boundaries via unstructured meshes, handle advection dominance via stabilization / flux limiting, and naturally incorporate the nonlinear source term; Spectral struggles with complex geometry, FDM is strained on curved boundaries, BEM is only applicable to linear problems (nonlinear source term directly disqualifies BEM).
 
-### 4.2 Team configuration
+### 4.2 Team Configuration
 
 ```json
 {
@@ -359,7 +359,7 @@ T+8m    Run: bun check-coding-cache-eviction.ts <run_dir>
 
 **Role selection rationale**: All 5 debaters use `physicist` (computational physics numerical method experts, can articulate arguments about weak form / flux conservation / stability regions / spectral convergence / Green's functions); arbiter uses `reviewer` (read-only role, objectively weighs across five camps without favoring any method).
 
-### 4.3 Master launch call
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -382,7 +382,7 @@ T+8m    Run: bun check-coding-cache-eviction.ts <run_dir>
 - `timeout_ms: 2400000` (40 min) — Hard cap for 5 debaters × 3 rounds + ruling; challenge-level scenario deliberately relaxed
 - No `signoff_*` — The arbiter's ruling itself is the endpoint (equivalent to `none` gate)
 
-### 4.4 Execution flow (timeline)
+### 4.4 Execution Flow (Timeline)
 
 ```
 T+0m     master calls team_arbitrate (max_rounds=3)
@@ -399,7 +399,7 @@ T+24m    ruling delivered to master
 T+24m    Run: bun check-physics-pde-arbitrate.ts <run_dir>
 ```
 
-### 4.5 Check script
+### 4.5 Check Script
 
 [`check-physics-pde-arbitrate.ts`](./check-physics-pde-arbitrate.ts)
 

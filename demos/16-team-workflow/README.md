@@ -36,12 +36,7 @@
 ```json
 {
   "name": "retry-on-wf",
-  "description": "Workflow with retry_on: auto-retry coder up to 2 extra times if output lacks IMPL_DONE marker, then gate-verify"
-}
-```
-
-```json
-{
+  "description": "Workflow with retry_on: auto-retry coder up to 2 extra times if output lacks IMPL_DONE marker, then gate-verify",
   "members": [
     {
       "name": "alice",
@@ -168,12 +163,7 @@ T+16m    workflow_complete, summary delivered to master
 ```json
 {
   "name": "foreach-wf",
-  "description": "Workflow with foreach fanout: implement bubbleSort, auto-generate 3 test branches for different input patterns"
-}
-```
-
-```json
-{
+  "description": "Workflow with foreach fanout: implement bubbleSort, auto-generate 3 test branches for different input patterns",
   "members": [
     {
       "name": "alice",
@@ -306,12 +296,7 @@ T+11m    workflow_complete, summary delivered to master
 ```json
 {
   "name": "conditional-wf",
-  "description": "Workflow with on_pass_goto + where: gate score >= 0.8 jumps to deploy, else falls through to refine"
-}
-```
-
-```json
-{
+  "description": "Workflow with on_pass_goto + where: gate score >= 0.8 jumps to deploy, else falls through to refine",
   "members": [
     {
       "name": "alice",
@@ -464,12 +449,7 @@ T+14m    workflow_complete, summary delivered to master
 ```json
 {
   "name": "resilient-wf",
-  "description": "Resilient workflow: timeout retry + fallback members + malformed verdict handling in a 4-step deduplicate pipeline"
-}
-```
-
-```json
-{
+  "description": "Resilient workflow: timeout retry + fallback members + malformed verdict handling in a 4-step deduplicate pipeline",
   "members": [
     {
       "name": "alice",

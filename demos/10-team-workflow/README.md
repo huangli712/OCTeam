@@ -37,12 +37,7 @@
 ```json
 {
   "name": "register-handler-flow",
-  "description": "Linear workflow: implement register handler, gate-verify, then refactor — engine-driven, no master context bloat"
-}
-```
-
-```json
-{
+  "description": "Linear workflow: implement register handler, gate-verify, then refactor — engine-driven, no master context bloat",
   "members": [
     {
       "name": "alice",
@@ -208,12 +203,7 @@ Add `dry_run: true` first to inspect the variable-substituted step ledger and co
 ```json
 {
   "name": "bisect-flow",
-  "description": "Linear workflow: implement bisection root-finding, gate-verify, then optimize — engine-driven"
-}
-```
-
-```json
-{
+  "description": "Linear workflow: implement bisection root-finding, gate-verify, then optimize — engine-driven",
   "members": [
     {
       "name": "alice",
@@ -332,12 +322,7 @@ T+14m    workflow_complete, summary delivered to master
 ```json
 {
   "name": "projectile-flow",
-  "description": "Linear workflow: implement RK4 projectile, gate-verify energy conservation, then add drag — engine-driven"
-}
-```
-
-```json
-{
+  "description": "Linear workflow: implement RK4 projectile, gate-verify energy conservation, then add drag — engine-driven",
   "members": [
     {
       "name": "alice",
@@ -458,12 +443,7 @@ T+16m    workflow_complete, summary delivered to master
 ```json
 {
   "name": "modular-cms-flow",
-  "description": "Fanout workflow: shared types -> parallel module impl -> join reduce -> integration gate"
-}
-```
-
-```json
-{
+  "description": "Fanout workflow: shared types -> parallel module impl -> join reduce -> integration gate",
   "members": [
     {
       "name": "alice",

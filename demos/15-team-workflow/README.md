@@ -36,12 +36,7 @@
 ```json
 {
   "name": "fix-loop-wf",
-  "description": "Workflow with on_fail_goto loop: coder iterates on parseList until the gate passes, up to 3 attempts"
-}
-```
-
-```json
-{
+  "description": "Workflow with on_fail_goto loop: coder iterates on parseList until the gate passes, up to 3 attempts",
   "members": [
     {
       "name": "alice",
@@ -158,12 +153,7 @@ T+17m    workflow_complete (or workflow_failed), summary delivered to master
 ```json
 {
   "name": "proof-ensemble-wf",
-  "description": "Ensemble gate: 3 reviewers independently verify an induction proof, majority-rule PASS/FAIL"
-}
-```
-
-```json
-{
+  "description": "Ensemble gate: 3 reviewers independently verify an induction proof, majority-rule PASS/FAIL",
   "members": [
     {
       "name": "alice",
@@ -277,12 +267,7 @@ T+11m    workflow_complete (or workflow_failed), summary delivered to master
 ```json
 {
   "name": "fanout-all-wf",
-  "description": "Fanout workflow: implement two sort algorithms, test in parallel branches, all must pass"
-}
-```
-
-```json
-{
+  "description": "Fanout workflow: implement two sort algorithms, test in parallel branches, all must pass",
   "members": [
     {
       "name": "alice",
@@ -432,12 +417,7 @@ T+17m    workflow_complete, summary delivered to master
 ```json
 {
   "name": "select-best-wf",
-  "description": "Competitive selection workflow: 3 fibonacci implementations, reducer picks the best approach"
-}
-```
-
-```json
-{
+  "description": "Competitive selection workflow: 3 fibonacci implementations, reducer picks the best approach",
   "members": [
     {
       "name": "alice",

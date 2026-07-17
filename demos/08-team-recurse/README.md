@@ -17,7 +17,7 @@
 
 ## Scenario 1: Derangement D_n Three-Method Derivation Aggregation
 
-### 1.1 Scenario description
+### 1.1 Scenario Description
 
 **Background**: The derangement number D_n (the count of permutations of n elements with no fixed points) has three classic independent derivation paths, and all conclusions must converge to the same closed form. Recursive decomposition fits naturally: break "derive D_n" into 3 independent proof subtasks, then have the decomposer aggregate them bottom-up.
 
@@ -27,7 +27,7 @@
 - Decomposer (`alice`) output contains `<!-- D4_FINAL: 9 -->` (the numeric closed-form value after three-method aggregation)
 - At least 1 of the other members outputs `<!-- D4_VALUE: 9 -->` (D_4 computed via their respective method)
 
-### 1.2 Team configuration
+### 1.2 Team Configuration
 
 ```json
 {
@@ -55,7 +55,7 @@
 
 **Role selection rationale**: `mathematician` uses the `oct-junior` agent, capable of deriving, computing numeric values, and writing proofs — a perfect fit for this scenario. `alice` also serves as the decomposer (both a valid member and the aggregator).
 
-### 1.3 Master launch call
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -79,7 +79,7 @@
 - `timeout_ms: 900000` (15 min) — Generous margin; normal completion ~8 min
 - `max_retries: 0` — Derivation tasks are high-certainty; failure means overall failure
 
-### 1.4 Execution flow (timeline)
+### 1.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_recurse; root task enters shared task list (depth=0)
@@ -92,7 +92,7 @@ T+8m    alice aggregates three methods → closed form D_n and D_4=9, writes D4_
 T+9m    Run: bun check-math-derangement.ts <run_dir>
 ```
 
-### 1.5 Check script
+### 1.5 Check Script
 
 [`check-math-derangement.ts`](./check-math-derangement.ts)
 
@@ -106,7 +106,7 @@ T+9m    Run: bun check-math-derangement.ts <run_dir>
 
 ## Scenario 2: Damped Pendulum Piecewise Small-Angle Model Aggregation
 
-### 2.1 Scenario description
+### 2.1 Scenario Description
 
 **Background**: The damped pendulum equation θ̈ + γθ̇ + (g/L)sin(θ) can be approximated in layers at small angles: undamped simple harmonic solution → linear damping envelope → nonlinear sin correction. The three parts can be solved independently, then aggregated by the decomposer into a piecewise valid model.
 
@@ -116,7 +116,7 @@ T+9m    Run: bun check-math-derangement.ts <run_dir>
 - Decomposer (`alice`) output contains `<!-- MODEL_VALID: true -->` (aggregated model is self-consistent within its valid domain)
 - At least 1 other member outputs `<!-- ENVELOPE_DECAY: <value> -->`, value = γ/2 = 0.1 (the decay constant of the damping envelope e^{-(γ/2)t} at γ=0.2)
 
-### 2.2 Team configuration
+### 2.2 Team Configuration
 
 ```json
 {
@@ -144,7 +144,7 @@ T+9m    Run: bun check-math-derangement.ts <run_dir>
 
 **Role selection rationale**: `simulator` is designed for numerical/analytical simulation, fitting the physics modeling scenario. `alice` also serves as the decomposer.
 
-### 2.3 Master launch call
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -167,7 +167,7 @@ T+9m    Run: bun check-math-derangement.ts <run_dir>
 - `max_subtasks: 3` — Corresponding to undamped / linear damping / nonlinear correction three segments
 - `timeout_ms: 900000` (15 min) — Generous cap for analytical derivation + aggregation
 
-### 2.4 Execution flow (timeline)
+### 2.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_recurse; root task enters shared task list (depth=0)
@@ -180,7 +180,7 @@ T+8m    alice aggregates piecewise model, validates domain, writes MODEL_VALID
 T+9m    Run: bun check-physics-damped-pendulum.ts <run_dir>
 ```
 
-### 2.5 Check script
+### 2.5 Check Script
 
 [`check-physics-damped-pendulum.ts`](./check-physics-damped-pendulum.ts)
 
@@ -194,7 +194,7 @@ T+9m    Run: bun check-physics-damped-pendulum.ts <run_dir>
 
 ## Scenario 3: Single-File Markdown→HTML Modular Build
 
-### 3.1 Scenario description
+### 3.1 Scenario Description
 
 **Background**: A single-file Markdown→HTML converter can be modularized by parse level: block-level parsing (headings + lists), inline parsing (bold + inline code), test cases. The three modules naturally have dependencies (tests depend on the first two); recursive decomposition with blockedBy DAG correctly orders them.
 
@@ -205,7 +205,7 @@ T+9m    Run: bun check-physics-damped-pendulum.ts <run_dir>
 - Test member (`carol`) output contains `<!-- PASS_COUNT: <n> -->`, n ≥ 5 (covers 5 features with all passing)
 - Independently extract the `convert` function from any member's report and execute: `convert("# Hi")` contains `<h1`; `convert("**bold**")` contains `<strong>` or `<b>`
 
-### 3.2 Team configuration
+### 3.2 Team Configuration
 
 ```json
 {
@@ -233,7 +233,7 @@ T+9m    Run: bun check-physics-damped-pendulum.ts <run_dir>
 
 **Role selection rationale**: `coder` uses the `oct-junior` agent, focused on implementation with minimal changes — fitting the modular build scenario. `alice` also serves as the decomposer (it holds the top-level `convert` assembly responsibility).
 
-### 3.3 Master launch call
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -256,7 +256,7 @@ T+9m    Run: bun check-physics-damped-pendulum.ts <run_dir>
 - `max_subtasks: 3` — Block / inline / test three modules
 - `timeout_ms: 900000` (15 min) — Includes blockedBy serial wait (tests after parsers), still well under cap
 
-### 3.4 Execution flow (timeline)
+### 3.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_recurse; root task enters shared task list (depth=0)
@@ -270,7 +270,7 @@ T+8m    alice aggregates final convert, writes CONVERTS
 T+9m    Run: bun check-coding-md-converter.ts <run_dir>
 ```
 
-### 3.5 Check script
+### 3.5 Check Script
 
 [`check-coding-md-converter.ts`](./check-coding-md-converter.ts)
 
@@ -289,7 +289,7 @@ T+9m    Run: bun check-coding-md-converter.ts <run_dir>
 
 **Challenge-level**: This scenario deliberately exceeds the standard budget (30 min total / ≤4 members / `max_depth=2`) to stress-test `team_recurse` under deeper (`max_depth=4`), wider (`max_subtasks=4`), and more members (6 people) for multi-layer recursive decomposition and bottom-up aggregation.
 
-### 4.1 Scenario description
+### 4.1 Scenario Description
 
 **Background**: The Vandermonde identity C(m+n, k) = Σ_{i=0}^{k} C(m,i)·C(n, k-i) is one of the core identities in combinatorics, with three mutually independent standard proof paths — algebraic (binomial expansion), combinatorial (bijective counting), generating-function (coefficient extraction from (1+x)^{m+n}). Each path can be further broken into 2-3 sub-lemmas (e.g., algebraic path: first prove (1+x)^{m+n}=(1+x)^m·(1+x)^n, then equate x^k coefficients). This "root → multiple paths → sub-lemmas → base identities" multi-layer structure is a natural fit for `team_recurse`'s deep recursive decomposition.
 
@@ -300,7 +300,7 @@ T+9m    Run: bun check-coding-md-converter.ts <run_dir>
 - `<!-- APPROACH: <name> -->` markers collected from all members' leaf nodes show ≥2 distinct path names (must include at least `algebraic` and `combinatorial`)
 - All `<!-- LEMMA_HOLDS: ... -->` markers found are `true` (no leaf lemma falsified)
 
-### 4.2 Team configuration
+### 4.2 Team Configuration
 
 ```json
 {
@@ -343,7 +343,7 @@ T+9m    Run: bun check-coding-md-converter.ts <run_dir>
 
 **Role selection rationale**: `mathematician` uses the `oct-junior` agent, capable of independent derivation, lemma proofs, and multi-layer proofs — a perfect fit for this scenario. All 6 are `mathematician`; `alice` also serves as the decomposer (both a valid member and the root aggregator). Member assignments are distributed along three paths: algebraic (alice + bob), combinatorial (carol + dave), generating-function (erin + frank), with 2 leaf lemmas per path.
 
-### 4.3 Master launch call
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -367,7 +367,7 @@ T+9m    Run: bun check-coding-md-converter.ts <run_dir>
 - `timeout_ms: 3000000` (50 min) — Generous cap for 6 members parallel + multi-layer stepwise aggregation (challenge-level, exceeding the standard 30 min budget)
 - `max_retries: 0` — Mathematical proofs are high-certainty; failure means overall failure
 
-### 4.4 Execution flow (timeline)
+### 4.4 Execution Flow (Timeline)
 
 ```
 T+0m     master calls team_recurse; root task enters shared task list (depth=0)
@@ -382,7 +382,7 @@ T+46m    alice aggregates three paths all roads leading to Rome, writes VANDERMO
 T+50m    Run: bun check-math-vandermonde.ts <run_dir>
 ```
 
-### 4.5 Check script
+### 4.5 Check Script
 
 [`check-math-vandermonde.ts`](./check-math-vandermonde.ts)
 

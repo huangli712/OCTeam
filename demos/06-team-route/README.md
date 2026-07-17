@@ -17,7 +17,7 @@
 
 ## Scenario 1: Single-problem classifier (math calculus routing)
 
-### 1.1 Scenario description
+### 1.1 Scenario Description
 
 **Background**: Given a concrete math problem, the correct discipline classification determines which expert it should be sent to. Here we use a derivative problem requiring the product rule to verify that the router can precisely select `calculus` from four closely related math sub-domains and trigger the corresponding calculus expert to produce the correct answer.
 
@@ -28,7 +28,7 @@
 - Only `bob.md` contains the `<!-- ANSWER: ... -->` marker (remaining branches were never dispatched, no output files)
 - `ANSWER` after normalization contains both terms `3x^2*sin(x)` and `x^3*cos(x)` (order-independent, tolerates `*`/`**`/whitespace differences)
 
-### 1.2 Team configuration
+### 1.2 Team Configuration
 
 ```json
 {
@@ -66,7 +66,7 @@
 
 **Role selection rationale**: `mathematician` uses the `oct-junior` agent, which can read problems, derive, and write symbolic computation code for verification when needed — the router and all four branches use it, ensuring consistent classification and solution quality.
 
-### 1.3 Master launch call
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -92,7 +92,7 @@
 - No `signoff_policy` set — defaults to `none`, branches deliver results upon completion without extra review gates.
 - `timeout_ms: 600000` (10 min) — router classification ~1 min + bob differentiation ~3 min, ample margin.
 
-### 1.4 Execution flow (timeline)
+### 1.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_route (input = differentiation problem)
@@ -104,7 +104,7 @@ T+6m    target barrier converges → summary delivered to master
 T+6m    Run: bun check-math-problem-router.ts <run_dir>
 ```
 
-### 1.5 Check script
+### 1.5 Check Script
 
 [`check-math-problem-router.ts`](./check-math-problem-router.ts)
 
@@ -122,7 +122,7 @@ T+6m    Run: bun check-math-problem-router.ts <run_dir>
 
 ## Scenario 2: PDE type routing (computational physics)
 
-### 2.1 Scenario description
+### 2.1 Scenario Description
 
 **Background**: Partial differential equations are classified by the eigenvalue signs of the principal-part coefficient matrix into parabolic (heat/diffusion, first-order in time, second-order in space), elliptic (steady-state, Laplace/Poisson), and hyperbolic (wave, second-order in time). The equation type determines the numerical method choice — parabolic requires implicit schemes like Crank-Nicolson for stability, elliptic uses multigrid/Gauss-Seidel, hyperbolic uses explicit upwind. Correct classification is the first step in numerical solution.
 
@@ -133,7 +133,7 @@ T+6m    Run: bun check-math-problem-router.ts <run_dir>
 - `bob.md` contains `<!-- METHOD: <name> -->`, and `<name>` ∈ {`crank-nicolson`, `implicit`, `ftcs`} (case-insensitive)
 - `bob` did not output `DOMAIN_MATCH: false`
 
-### 2.2 Team configuration
+### 2.2 Team Configuration
 
 ```json
 {
@@ -166,7 +166,7 @@ T+6m    Run: bun check-math-problem-router.ts <run_dir>
 
 **Role selection rationale**: Router uses `physicist` (focus on physical equation interpretation), branches use `simulator` (designed for PDE/MC/HPC numerical simulation, can produce method names and stability constraints).
 
-### 2.3 Master launch call
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -190,7 +190,7 @@ T+6m    Run: bun check-math-problem-router.ts <run_dir>
 - `input` directly embeds the complete PDE initial-boundary-value problem — all three routes omit `task`, so the matched branch (`bob`) directly receives this input; branch member system prompts already encode domain judgment and `METHOD` marker conventions.
 - Route `description` values provide classification hints for the router (optional, schema-encouraged).
 
-### 2.4 Execution flow (timeline)
+### 2.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_route (input = heat equation IBVP)
@@ -202,7 +202,7 @@ T+7m    target barrier converges → summary delivered to master
 T+7m    Run: bun check-physics-pde-router.ts <run_dir>
 ```
 
-### 2.5 Check script
+### 2.5 Check Script
 
 [`check-physics-pde-router.ts`](./check-physics-pde-router.ts)
 
@@ -219,7 +219,7 @@ T+7m    Run: bun check-physics-pde-router.ts <run_dir>
 
 ## Scenario 3: GitHub issue triage (programming)
 
-### 3.1 Scenario description
+### 3.1 Scenario Description
 
 **Background**: Open-source project issue queues receive a flood of reports daily; manual triage is expensive. A router that can read issue bodies and auto-classify them (bug / feature / docs / refactor) is the core of automated triage. This scenario uses a real bug report (negative id lacking parameter validation) to verify that the router can select `bug` from four categories and trigger a fix strategy generation.
 
@@ -230,7 +230,7 @@ T+7m    Run: bun check-physics-pde-router.ts <run_dir>
 - `bob.md` contains `<!-- FIX_STRATEGY: <text> -->`, and `<text>` (lowercased) mentions at least one of `guard` / `throw` / `rangeerror`
 - `bob` did not output `DOMAIN_MATCH: false`
 
-### 3.2 Team configuration
+### 3.2 Team Configuration
 
 ```json
 {
@@ -268,7 +268,7 @@ T+7m    Run: bun check-physics-pde-router.ts <run_dir>
 
 **Role selection rationale**: Router uses `analyst` (focus on reading issues and classification judgment), four branches use `coder` (focus on locating files/functions and providing fix strategies).
 
-### 3.3 Master launch call
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -293,7 +293,7 @@ T+7m    Run: bun check-physics-pde-router.ts <run_dir>
 - `input` is a real issue body — all four routes omit `task`, matched branch (`bob`) directly receives the body; classification hints are in route `description` values.
 - `description` clearly distinguishes the four categories (especially the "missing exception" hint helping the router classify "should throw but doesn't" as a bug rather than a feature).
 
-### 3.4 Execution flow (timeline)
+### 3.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_route (input = bug report body)
@@ -305,7 +305,7 @@ T+6m    target barrier converges → summary delivered to master
 T+6m    Run: bun check-coding-issue-router.ts <run_dir>
 ```
 
-### 3.5 Check script
+### 3.5 Check Script
 
 [`check-coding-issue-router.ts`](./check-coding-issue-router.ts)
 
@@ -322,7 +322,7 @@ T+6m    Run: bun check-coding-issue-router.ts <run_dir>
 
 ## Scenario 4: Multi-faceted ticket nine-way routing (challenge-level)
 
-### 4.1 Scenario description
+### 4.1 Scenario Description
 
 **Background**: Real-world engineering tickets are rarely single-category. A 200-word ticket often simultaneously reports a crash (bug), requests splitting a long function (refactor), exposes test blind spots (test), flags outdated docs (docs), and comes with a performance regression (perf) — and may even surface input trust (security), dependency upgrade (dependency), spec ambiguity (question), and other extended concerns. A simple "pick one route" router would stuff such a ticket into a single bucket and discard the remaining dimensions. This scenario deliberately constructs a ticket touching 5+ concern areas to stress-test whether the router can recognize "multi-facetedness" and use the framework's native `{"branches":[...]}` multi-select form (`router.ts:222`) to trigger multiple branches in parallel; each matched branch independently produces a one-line action plan for that dimension.
 
@@ -336,7 +336,7 @@ T+6m    Run: bun check-coding-issue-router.ts <run_dir>
 - Each selected branch member's `.md` contains `<!-- ACTION: ... -->` and does not contain `<!-- DOMAIN_MATCH: false -->`
 - `bug` must be in the selected branches, and `bob`'s (bug branch) ACTION text (lowercased) contains one of `guard|throw|empty|null|undefined|check` (a fix for an empty-input crash must name some kind of guard)
 
-### 4.2 Team configuration
+### 4.2 Team Configuration
 
 9 members: 1 `analyst` router (alice) + 8 `coder` branches (bob..iris). The router does not serve as any branch target (schema hard constraint, see `router.ts:273`).
 
@@ -396,7 +396,7 @@ T+6m    Run: bun check-coding-issue-router.ts <run_dir>
 
 **Role selection rationale**: Router uses `analyst` (reads tickets, classification judgment); 8 branches uniformly use `coder` (locate files/functions, produce action plans). The 8 branch prompts are structurally isomorphic — first judge domain fit, then produce `ACTION` / `DOMAIN_MATCH` — ensuring consistent markers across parallel branches for uniform extraction by the check script. The router's `<route>` exact format is injected at dispatch time by the framework's `buildRouterPrompt` (`router.ts:210-226`), so alice's member prompt only needs to emphasize "select ALL that apply" without repeating the JSON template.
 
-### 4.3 Master launch call
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -427,7 +427,7 @@ T+6m    Run: bun check-coding-issue-router.ts <run_dir>
 - No `signoff_policy` set — defaults to `none`, each branch delivers upon completion without extra review gates (avoiding timeout for a 9-person challenge-level run).
 - `timeout_ms: 2700000` (45 min) — Challenge-level budget: router classification ~2 min + matched branch parallel solving (wall clock = slowest branch) + dispatch/summary margin; still under the team_route framework hard cap.
 
-### 4.4 Execution flow (timeline)
+### 4.4 Execution Flow (Timeline)
 
 ```
 T+0m      master calls team_route (input = 200-word multi-faceted ticket)
@@ -440,7 +440,7 @@ T+~20m    target barrier converges → summary delivered to master
 T+~20m    Run: bun check-coding-multi-ticket-router.ts <run_dir>
 ```
 
-### 4.5 Check script
+### 4.5 Check Script
 
 [`check-coding-multi-ticket-router.ts`](./check-coding-multi-ticket-router.ts)
 
