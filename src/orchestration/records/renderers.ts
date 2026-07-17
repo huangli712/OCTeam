@@ -131,7 +131,7 @@ export function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }
     const steps = task.steps ?? []
     const rows = formatWorkflowLedgerLines(steps)
     const outputs = formatWorkflowOutputSections(steps).join("\n\n")
-    const ledger = rows.length > 0 ? `\nSteps:\n${rows.join("\n")}` : ""
+    const ledger = rows.length > 0 ? `\n[Steps]\n${rows.join("\n")}` : ""
     return outputs ? `${head}${ledger}\n\n${outputs}` : `${head}${ledger}`
 }
 
