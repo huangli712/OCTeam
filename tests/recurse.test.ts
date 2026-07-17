@@ -728,7 +728,7 @@ describe("handleRecurseIdle aggregation dispatch (no fake completion)", () => {
         )
 
         // Aggregation prompt dispatched (not the generic recurse prompt).
-        expect(calls.some(c => c.text.includes("[AGGREGATION PHASE]"))).toBe(true)
+        expect(calls.some(c => c.text.includes("[Aggregation Phase]"))).toBe(true)
         // Root NOT fake-completed -- remains pending for the decomposer to claim.
         const r = await getTask(team.directory, root.id)
         expect(r!.status).toBe("pending")
