@@ -190,7 +190,8 @@ function buildWorkflowSelectPrompt(
 ): string {
     const step = steps[joinIndex];
     const branchIds = step?.join === undefined ? [] : branchIdsForJoin(steps, step.join);
-    return `[Workflow select task] You are the selector for workflow join step ${joinIndex + 1}.`
+    return `[Workflow select task]\n` 
+        + `You are the selector for workflow join step ${joinIndex + 1}.`
         + ` Choose exactly one winning branch id from: ${branchIds.join(", ")}.`
         + ` Emit ONLY <selection>{"winner":"branch_id","rationale":"..."}</selection>.\n\n`
         + buildJoinedWorkflowOutput(steps, joinIndex);
