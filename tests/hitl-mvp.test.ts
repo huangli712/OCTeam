@@ -216,7 +216,7 @@ describe("HITL MVP: tollgate", () => {
         expect(result).toContain("Approved")
         const after = await loadTeamState(root, "alpha", sid)
         expect(after.activeTask?.approvalStage).toBeUndefined()
-        expect(after.activeTask?.tollgatePhase).toBe("verify")
+        expect(after.activeTask?.type === "tollgate" ? after.activeTask.tollgatePhase : undefined).toBe("verify")
         expect(calls.some(call => call.sessionId === "ses_bob")).toBe(true)
     })
 })
