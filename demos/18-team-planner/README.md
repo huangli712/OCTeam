@@ -40,7 +40,7 @@
         "op": "propose",
         "team_id": "planner-quorum",
         "goal": "Create a team and workflow that implements and verifies `function isEven(n: number): boolean` (true for even, false for odd). Use a fanout with 3 parallel branches, each independently implementing and testing isEven. Use join_policy 'quorum' with quorum 0.67 so that 2 of 3 branches passing is sufficient.",
-        "constraints": "3 coder members (alice, bob, carol). Fanout with 3 branches. join_policy: quorum, quorum: 0.67. Each branch tests isEven(2)=true, isEven(3)=false, isEven(0)=true, isEven(-1)=false."
+        "constraints": "3 coder members (alice, bob, carol). Fanout with 3 branches. join_policy: quorum, quorum: 0.67. Each branch tests isEven(2)=true, isEven(3)=false, isEven(0)=true, isEven(-1)=false. Member prompts and each branch task MUST instruct: when producing code, embed the full TypeScript implementation in a single ```typescript fenced block in the output (the check script extracts code only from this block, not from file edits)."
     }
 }
 ```
@@ -116,7 +116,7 @@ T+10m   run: bun check-coding-quorum-join.ts <run_dir>
         "op": "propose",
         "team_id": "planner-any-success",
         "goal": "Create a team and workflow that implements `function reverseString(s: string): string` (returns the reversed string). Use a fanout with 3 branches implementing different approaches (iterative, recursion, built-in). Use join_policy 'any_success' so the first correct implementation delivered wins.",
-        "constraints": "3 coder members (alice, bob, carol). Fanout with 3 branches. join_policy: any_success. Each branch tests reverseString('hello')='olleh', reverseString('')='', reverseString('a')='a'."
+        "constraints": "3 coder members (alice, bob, carol). Fanout with 3 branches. join_policy: any_success. Each branch tests reverseString('hello')='olleh', reverseString('')='', reverseString('a')='a'. Member prompts and each branch task MUST instruct: when producing code, embed the full TypeScript implementation in a single ```typescript fenced block in the output (the check script extracts code only from this block, not from file edits)."
     }
 }
 ```
@@ -192,7 +192,7 @@ T+10m   run: bun check-coding-any-success-join.ts <run_dir>
         "op": "propose",
         "team_id": "planner-required",
         "goal": "Create a team and workflow that implements `function clamp(n: number, lo: number, hi: number): number` (clamps n to [lo, hi]). Use a fanout with 3 branches. Designate one branch as 'critical-impl' (required_branches) that MUST succeed. The other two branches are optional. Use use_survivors: true.",
-        "constraints": "3 coder members (alice, bob, carol). Fanout with 3 branches. join_policy: required_branches, required_branches: ['critical-impl']. use_survivors: true. Each branch tests clamp(5,0,10)=5, clamp(-1,0,10)=0, clamp(15,0,10)=10, clamp(3,0,10)=3."
+        "constraints": "3 coder members (alice, bob, carol). Fanout with 3 branches. join_policy: required_branches, required_branches: ['critical-impl']. use_survivors: true. Each branch tests clamp(5,0,10)=5, clamp(-1,0,10)=0, clamp(15,0,10)=10, clamp(3,0,10)=3. Member prompts and each branch task MUST instruct: when producing code, embed the full TypeScript implementation in a single ```typescript fenced block in the output (the check script extracts code only from this block, not from file edits)."
     }
 }
 ```
@@ -273,7 +273,7 @@ T+10m   run: bun check-coding-required-branches-join.ts <run_dir>
         "op": "propose",
         "team_id": "planner-comprehensive",
         "goal": "Create a team and workflow that implements BOTH `function gcd(a: number, b: number): number` and `function lcm(a: number, b: number): number` (= a*b/gcd(a,b)). Use a fanout with 2 required branches. Use join_policy: 'required_branches' with both branch ids required. Then a final gate verifies both functions work together.",
-        "constraints": "5 members: alice (coder), bob (coder), carol (coder), dave (tester), erin (reviewer). Fanout with 2 branches: 'gcd-branch' (alice) and 'lcm-branch' (bob). join_policy: required_branches. Gate (dave) verifies: gcd(12,8)=4, gcd(7,13)=1, lcm(12,8)=24, lcm(7,13)=91. Final review (erin)."
+        "constraints": "5 members: alice (coder), bob (coder), carol (coder), dave (tester), erin (reviewer). Fanout with 2 branches: 'gcd-branch' (alice) and 'lcm-branch' (bob). join_policy: required_branches. Gate (dave) verifies: gcd(12,8)=4, gcd(7,13)=1, lcm(12,8)=24, lcm(7,13)=91. Final review (erin). Member prompts and each branch task MUST instruct: when producing code, embed the full TypeScript implementation in a single ```typescript fenced block in the output (the check script extracts code only from this block, not from file edits)."
     }
 }
 ```
