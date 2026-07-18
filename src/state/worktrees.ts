@@ -15,6 +15,23 @@ import { worktreePath } from "./paths.js";
 const execFileP = promisify(execFile)
 
 /**
+ * Best-effort check: does the worktree at `worktreePath` have uncommitted
+ * changes (staged, unstaged, or untracked)? Returns false if the path is
+ * missing, not a git repo, or git itself fails — never blocks deletion on a
+ * git error.
+ */
+export async function hasUncommittedChanges(worktreePath: string): Promise<boolean> {
+    try {
+        const { stdout } = await execFileP("git", ["status", "--porcelain"], {
+            cwd: worktreePath,
+        })
+        return stdout.trim().length > 0
+    } catch {
+        return false
+    }
+}
+
+/**
  * Best-effort git worktree teardown. Removes the worktree registration + files
  * for a member that was created with worktree: true. Must run BEFORE the team
  * directory is deleted, while the worktree files still exist on disk.
@@ -45,23 +62,6 @@ export async function cleanWorktree(
 }
 
 /**
- * Best-effort check: does the worktree at `worktreePath` have uncommitted
- * changes (staged, unstaged, or untracked)? Returns false if the path is
- * missing, not a git repo, or git itself fails — never blocks deletion on a
- * git error.
- */
-export async function hasUncommittedChanges(worktreePath: string): Promise<boolean> {
-    try {
-        const { stdout } = await execFileP("git", ["status", "--porcelain"], {
-            cwd: worktreePath,
-        })
-        return stdout.trim().length > 0
-    } catch {
-        return false
-    }
-}
-
-/**
  * Create an isolated git worktree for a member: `git worktree add <path> -b team/<team>/<member>`.
  * Only called when the member spec has worktree: true. Runs git in the project
  * directory; the worktree path lives under the team's worktrees/ dir.
@@ -84,4 +84,30 @@ export async function createWorktree(
         );
     });
     return dest;
+}
+
+/**
+ * Tear down a member's worktree AND its companion branch in one call.
+ * Symmetric to {@link createWorktree}: removes the worktree registration +
+ * files via {@link cleanWorktree}, then deletes the `team/<team>/<member>`
+ * branch. The branch deletion is best-effort (matching spawn rollback's
+ * original behavior): a git failure is swallowed so it never blocks team
+ * teardown. Order matters — the worktree must be removed before its branch
+ * can be deleted (a checked-out branch is locked while the worktree exists).
+ */
+export async function destroyWorktree(
+    projectDir: string,
+    worktreePath: string | undefined,
+    worktreesRoot: string,
+    teamName: string,
+    memberName: string,
+): Promise<void> {
+    await cleanWorktree(projectDir, worktreePath, worktreesRoot);
+    const branch = `team/${teamName}/${memberName}`;
+    await execFileP("git", ["branch", "-D", branch], {
+        cwd: projectDir,
+    }).catch(() => {
+        // Best effort — matches the historical spawn-rollback behavior.
+        // A missing or already-removed branch is not a teardown blocker.
+    });
 }

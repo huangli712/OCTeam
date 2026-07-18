@@ -5,9 +5,6 @@
  * Must run outside team.mutex because idle initialization acquires that mutex.
  */
 
-import { execFile } from "node:child_process"
-import { promisify } from "node:util"
-
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import { safeMemberAgent } from "../../core/role.js"
@@ -16,11 +13,8 @@ import { chunk, waitUntil } from "../../core/utils.js"
 import { worktreesDir } from "../../state/paths.js"
 import { indexMember, unindexSession } from "../../state/resolve.js"
 import { type Team, readTeamSpec, saveTeamState } from "../../state/store.js"
-import { cleanWorktree, createWorktree } from "../../state/worktrees.js"
+import { createWorktree, destroyWorktree } from "../../state/worktrees.js"
 import { buildRolePrompt } from "../protocol/output.js"
-
-// Promisified execFile for git branch deletion during worktree cleanup.
-const execFileP = promisify(execFile)
 
 // Max milliseconds to wait for all non-master members to reach initialized state.
 const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000
@@ -136,18 +130,14 @@ async function spawnMemberSafely(
         member.promptDelivered = false
         member.turnCount = 0
         if (worktreeCreated) {
-            const branch = `team/${team.teamName}/${member.name}`
-            await cleanWorktree(
+            await destroyWorktree(
                 ctx.directory,
                 member.worktreePath,
                 worktreesDir(team.directory),
+                team.teamName,
+                member.name,
             )
             member.worktreePath = undefined
-            await execFileP("git", ["branch", "-D", branch], {
-                cwd: ctx.directory,
-            }).catch(() => {
-                // Best effort.
-            })
         }
         throw err
     }

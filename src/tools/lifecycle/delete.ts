@@ -11,7 +11,7 @@ import { clearActiveTask, deleteTeamStorage, invalidateTeam, loadTeamState, type
 import { unindexMasterTeam, unindexSession } from "../../state/resolve.js"
 import { clearWakeHint } from "../../messaging/wake-hint.js"
 import { abortAndResetMembers } from "../support.js"
-import { cleanWorktree, hasUncommittedChanges } from "../../state/worktrees.js"
+import { hasUncommittedChanges, destroyWorktree } from "../../state/worktrees.js"
 import { worktreesDir } from "../../state/paths.js"
 
 /** Delete a team, with optional force mode to skip safety checks. */
@@ -86,7 +86,13 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 // master's map (unindexSession on the leader would wipe the session's
                 // OTHER teams).
                 for (const m of team.members) {
-                    await cleanWorktree(ctx.directory, m.worktreePath, worktreesDir(team.directory))
+                    await destroyWorktree(
+                        ctx.directory,
+                        m.worktreePath,
+                        worktreesDir(team.directory),
+                        team.teamName,
+                        m.name,
+                    )
                     if (m.sessionId) {
                         unindexSession(m.sessionId)
                         clearWakeHint(m.sessionId)

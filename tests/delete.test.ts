@@ -23,11 +23,17 @@ async function gitInit(dir: string): Promise<void> {
     await execFileP("git", ["commit", "-q", "-m", "init"], { cwd: dir })
 }
 
-/** Set up a repo + a team whose member "alice" has a real git worktree. */
+/** Set up a repo + a team whose member "alice" has a real git worktree.
+ *
+ * `label` only names the tmp directories (so parallel test runs don't collide);
+ * the team's `teamName` is always "alpha" (matching the existing tests) and
+ * the branch is `team/alpha/alice` — mirroring production createWorktree,
+ * which derives the branch from team.teamName, NOT from any external label.
+ */
 async function setupTeamWithWorktree(
     label: string,
     dirty: boolean,
-): Promise<{ tool: ReturnType<typeof teamDeleteTool>; sid: string }> {
+): Promise<{ tool: ReturnType<typeof teamDeleteTool>; sid: string; repoDir: string }> {
     const repoDir = tmpRoot(`${label}-repo`)
     const storageRoot = tmpRoot(`${label}-store`)
     const sid = `ses_${label}`
@@ -41,7 +47,8 @@ async function setupTeamWithWorktree(
     await initTeamState(storageRoot, makeState("alpha", sid, [alice]), sid)
 
     // Create a worktree for member "alice" under the team worktrees dir.
-    await execFileP("git", ["worktree", "add", "-q", wtPath, "-b", `team/${label}/alice`], {
+    // Branch name follows the production convention team/<teamName>/<member>.
+    await execFileP("git", ["worktree", "add", "-q", wtPath, "-b", `team/alpha/alice`], {
         cwd: repoDir,
     })
 
@@ -50,7 +57,7 @@ async function setupTeamWithWorktree(
     }
 
     const ctx = { storageRoot, directory: repoDir, scope: "project" } as unknown as PluginContext
-    return { tool: teamDeleteTool(ctx), sid }
+    return { tool: teamDeleteTool(ctx), sid, repoDir }
 }
 
 const tracked: string[] = []
@@ -95,5 +102,37 @@ describe("team_delete uncommitted-changes guard", () => {
         const result = await teamDeleteTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(result).toContain("deleted")
         expect(result).not.toContain("uncommitted")
+    })
+})
+
+describe("team_delete git branch cleanup", () => {
+    test("team_delete also removes the member's companion git branch (team/<team>/<member>)", async () => {
+        // Regression: previously team_delete called only cleanWorktree (which
+        // runs `git worktree remove --force` but does NOT delete the branch).
+        // The spawn-rollback path correctly deleted the branch, but team_delete
+        // did not, leaving orphan `team/<team>/<member>` branches behind.
+        // After the fix (destroyWorktree helper), team_delete must also drop
+        // the branch.
+        const { tool, sid, repoDir } = await setupTeamWithWorktree("branch-cleanup", false)
+        tracked.push(sid)
+
+        // Sanity: the branch exists before delete (setupTeamWithWorktree created it).
+        const before = await execFileP(
+            "git",
+            ["branch", "--list", "team/alpha/alice"],
+            { cwd: repoDir },
+        )
+        expect(before.stdout.trim()).not.toBe("")
+
+        const result = await tool.execute({ team_id: "alpha" }, makeToolContext(sid))
+        expect(result).toContain("deleted")
+
+        // Assert: branch must be gone after delete.
+        const after = await execFileP(
+            "git",
+            ["branch", "--list", "team/alpha/alice"],
+            { cwd: repoDir },
+        )
+        expect(after.stdout.trim()).toBe("")
     })
 })
