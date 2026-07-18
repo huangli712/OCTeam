@@ -759,3 +759,143 @@ describe("teamPlannerTool: master-only", () => {
         expect(existsSync(workflowFilePath(dir))).toBe(false)
     })
 })
+
+// =========================================================================
+// op=write / op=revise: string-arg coercion contract.
+//
+// Under the unknown() schema, an LLM tool-call naturally delivers team/workflow
+// (or previous_team/previous_workflow) as JSON STRINGS rather than objects.
+// The tool must coerce strings → objects at the boundary so it works either
+// way, with a clear error for malformed input. These tests lock that behavior;
+// they are the regression suite for the "team must be an object" failure mode.
+// =========================================================================
+
+describe("teamPlannerTool: op=write accepts JSON strings", () => {
+    test("writes both files when team/workflow are passed as JSON strings", async () => {
+        const dir = tmpRoot("planner-write-strings")
+        const { ctx } = makeCtx({ directory: dir, messageScript: [[]] })
+        const tool = teamPlannerTool(ctx)
+        await tool.execute(
+            {
+                op: "write",
+                team_id: PLAN_TEAM_ID,
+                team: JSON.stringify(PLAN_TEAM),
+                workflow: JSON.stringify(PLAN_WORKFLOW),
+            },
+            makeToolContext("ses_master_strs", { directory: dir }),
+        )
+
+        expect(existsSync(teamFilePath(dir))).toBe(true)
+        expect(existsSync(workflowFilePath(dir))).toBe(true)
+        // File content matches the canonical form (parsed back to deep equality).
+        expect(JSON.parse(readFileSync(teamFilePath(dir), "utf8"))).toEqual(PLAN_TEAM)
+        expect(JSON.parse(readFileSync(workflowFilePath(dir), "utf8"))).toEqual(PLAN_WORKFLOW)
+    })
+
+    test("dry_run accepts JSON strings, validates, and writes nothing", async () => {
+        const dir = tmpRoot("planner-write-strings-dry")
+        const { ctx, rec } = makeCtx({ directory: dir, messageScript: [[]] })
+        const tool = teamPlannerTool(ctx)
+        const result = await tool.execute(
+            {
+                op: "write",
+                team_id: PLAN_TEAM_ID,
+                team: JSON.stringify(PLAN_TEAM),
+                workflow: JSON.stringify(PLAN_WORKFLOW),
+                dry_run: true,
+            },
+            makeToolContext("ses_master_strs_dry", { directory: dir }),
+        )
+
+        expect(result).toContain("Validation OK")
+        expect(result).toContain(`team.${PLAN_TEAM_ID}.json`)
+        expect(existsSync(teamFilePath(dir))).toBe(false)
+        expect(existsSync(workflowFilePath(dir))).toBe(false)
+        expect(rec.creates).toHaveLength(0)
+    })
+
+    test("rejects a non-JSON string with a clear, parse-error-specific message", async () => {
+        const dir = tmpRoot("planner-write-bad-json")
+        const { ctx } = makeCtx({ directory: dir, messageScript: [[]] })
+        const tool = teamPlannerTool(ctx)
+        const result = await tool.execute(
+            {
+                op: "write",
+                team_id: PLAN_TEAM_ID,
+                team: "not-json{",
+                workflow: JSON.stringify(PLAN_WORKFLOW),
+            },
+            makeToolContext("ses_master_badjson", { directory: dir }),
+        )
+
+        expect(result).toMatch(/error/i)
+        // Diagnostic: tells the user it was a string and that parsing failed.
+        expect(result).toMatch(/team.*not valid JSON/i)
+        // Nothing written when validation rejects.
+        expect(existsSync(teamFilePath(dir))).toBe(false)
+    })
+
+    test("rejects a JSON string that parses to a non-object (array)", async () => {
+        const dir = tmpRoot("planner-write-array")
+        const { ctx } = makeCtx({ directory: dir, messageScript: [[]] })
+        const tool = teamPlannerTool(ctx)
+        const result = await tool.execute(
+            {
+                op: "write",
+                team_id: PLAN_TEAM_ID,
+                team: "[1, 2, 3]",
+                workflow: JSON.stringify(PLAN_WORKFLOW),
+            },
+            makeToolContext("ses_master_array", { directory: dir }),
+        )
+
+        expect(result).toMatch(/error/i)
+        // coerceJsonArg parses the array; validatePlannerTeam then rejects it
+        // via the existing isRecord check — surfacing the original message.
+        expect(result).toMatch(/team must be an object/i)
+        expect(existsSync(teamFilePath(dir))).toBe(false)
+    })
+})
+
+describe("teamPlannerTool: op=revise accepts JSON strings", () => {
+    test("parses previous_team/previous_workflow strings so the prompt shows real JSON, not escaped", async () => {
+        const dir = tmpRoot("planner-revise-strings")
+        const prevTeam = {
+            name: "demo",
+            members: [{ name: "carol", role: "coder", prompt: "old prompt" }],
+        }
+        const prevWorkflow = {
+            version: 1,
+            steps: [{ kind: "task", member: "carol", task: "OLD_TASK_MARKER" }],
+        }
+        const feedback = "Add a reviewer named bob and split the work."
+
+        const { ctx, rec } = makeCtx({
+            childSessionId: "ses_revise_str_child",
+            directory: dir,
+            messageScript: [[assistantWith(taggedBlock(PLAN_PAYLOAD))]],
+        })
+        const tool = teamPlannerTool(ctx)
+        const result = await tool.execute(
+            {
+                op: "revise",
+                team_id: PLAN_TEAM_ID,
+                goal: "Build X",
+                previous_team: JSON.stringify(prevTeam),
+                previous_workflow: JSON.stringify(prevWorkflow),
+                feedback,
+            },
+            makeToolContext("ses_master_revise_strs", { directory: dir }),
+        )
+
+        // Revise completed and returned a preview.
+        expect(result).toContain(`team.${PLAN_TEAM_ID}.json`)
+        const promptText = rec.prompts[0]!.body.parts[0]!.text
+        // The correction context reaches the planner as REAL JSON, not as a
+        // doubly-escaped string. "name": "carol" must appear verbatim.
+        expect(promptText).toContain(`"name": "carol"`)
+        expect(promptText).toContain("OLD_TASK_MARKER")
+        // Negative assertion: never let the regression slip back in.
+        expect(promptText).not.toContain('\\"name\\"')
+    })
+})

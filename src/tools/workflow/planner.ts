@@ -234,6 +234,24 @@ function validatePlannerBounds(bounds: unknown, memberCount: number): string | n
     return null
 }
 
+/**
+ * Coerce a write/revise argument to a parsed value. Accepts a JS object
+ * (programmatic callers, tests) or a JSON string (natural from LLM tool-call
+ * under the unknown() schema). Returns a clear error for malformed input so
+ * the caller can surface it as a tool result.
+ */
+function coerceJsonArg(value: unknown, name: string): { value: unknown } | { error: string } {
+    if (value === undefined) return { error: `Error: ${name} is required` }
+    if (typeof value === "string") {
+        try {
+            return { value: JSON.parse(value) }
+        } catch (err) {
+            return { error: `Error: ${name} is a string but not valid JSON: ${(err as Error).message}` }
+        }
+    }
+    return { value }
+}
+
 /** Validate team_create-args-like shape; returns member names or an error. */
 function validatePlannerTeam(teamId: string, team: unknown): { memberNames: string[] } | { error: string } {
     if (!isRecord(team)) return { error: "Error: team must be an object" }
@@ -443,14 +461,21 @@ async function runReviseOp(ctx: PluginContext, sessionID: string, args: TeamPlan
     if (typeof feedback !== "string" || feedback.length === 0) return "Error: op=revise requires `feedback`"
     if (args.previous_team === undefined) return "Error: op=revise requires `previous_team`"
     if (args.previous_workflow === undefined) return "Error: op=revise requires `previous_workflow`"
+    // Coerce at the boundary: previous_team/workflow may arrive as JSON strings
+    // (LLM tool-call) or objects (programmatic callers); strings must be parsed
+    // before buildRevisePrompt stringifies them, or the prompt shows escaped JSON.
+    const prevTeamCoerced = coerceJsonArg(args.previous_team, "previous_team")
+    if ("error" in prevTeamCoerced) return prevTeamCoerced.error
+    const prevWorkflowCoerced = coerceJsonArg(args.previous_workflow, "previous_workflow")
+    if ("error" in prevWorkflowCoerced) return prevWorkflowCoerced.error
     const result = await runPlannerSession(ctx, {
         teamId: args.team_id,
         parentSessionId: sessionID,
         prompt: buildRevisePrompt({
             teamId: args.team_id,
             goal,
-            previousTeam: args.previous_team,
-            previousWorkflow: args.previous_workflow,
+            previousTeam: prevTeamCoerced.value,
+            previousWorkflow: prevWorkflowCoerced.value,
             feedback,
         }),
         validate: makePlannerValidate(args.team_id),
@@ -468,13 +493,22 @@ async function runReviseOp(ctx: PluginContext, sessionID: string, args: TeamPlan
 
 /** Handle op="write": validate payload deterministically, write loaders to disk. */
 async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<string> {
-    const validationError = validatePlannerPayload(args.team_id, args.team, args.workflow)
+    // Coerce at the boundary: LLM tool-call naturally delivers these as JSON
+    // strings under the unknown() schema; programmatic callers deliver objects.
+    const teamCoerced = coerceJsonArg(args.team, "team")
+    if ("error" in teamCoerced) return teamCoerced.error
+    const workflowCoerced = coerceJsonArg(args.workflow, "workflow")
+    if ("error" in workflowCoerced) return workflowCoerced.error
+    const team = teamCoerced.value
+    const workflow = workflowCoerced.value
+
+    const validationError = validatePlannerPayload(args.team_id, team, workflow)
     if (validationError) return validationError
     const teamPath = path.join(ctx.directory, teamFileName(args.team_id))
     const workflowPath = path.join(ctx.directory, workflowFileName(args.team_id))
     const artifact = formatArtifact({
         directory: ctx.directory, teamId: args.team_id,
-        team: args.team, workflow: args.workflow,
+        team, workflow,
     })
     if (args.dry_run === true) {
         return `Validation OK for "${args.team_id}". Dry run — nothing written.\n\n${artifact}`
@@ -485,8 +519,8 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
             + ` or ${workflowFileName(args.team_id)} already exists; pass overwrite: true to replace both.`
         )
     }
-    await writeFile(teamPath, `${JSON.stringify(args.team, null, 4)}\n`)
-    await writeFile(workflowPath, `${JSON.stringify(args.workflow, null, 4)}\n`)
+    await writeFile(teamPath, `${JSON.stringify(team, null, 4)}\n`)
+    await writeFile(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`)
     return (
         `Wrote ${teamFileName(args.team_id)} and ${workflowFileName(args.team_id)}`
         + ` under ${ctx.directory}.\n\n${artifact}`
