@@ -10,7 +10,7 @@
 |---|--------|----------|-------------------|-------------|---------|---------------|
 | 1 | Programming | isEven: fault-tolerant redundancy via quorum join | propose → write → create → activate → workflow → check | `quorum` (0.67) | 3 | ~12 min |
 | 2 | Programming | reverseString: fastest correct wins via any-success join | propose → write → create → activate → workflow → check | `any_success` | 3 | ~12 min |
-| 3 | Programming | clamp: critical branch required with survivors | propose → write → create → activate → workflow → check | `required_branches` + `use_survivors` | 3 | ~12 min |
+| 3 | Programming | clamp: use_survivors overrides required_branches (any ≥1 success) | propose → write → create → activate → workflow → check | `required_branches` (overridden by `use_survivors`) | 3 | ~12 min |
 | 4 | Programming (Challenge) | gcd + lcm: comprehensive multi-branch with gate verification | propose → write → create → activate → workflow → check | `required_branches` + gate | 5 | ~30 min |
 
 > Scenarios 1-3 are baseline types (3 members, fanout with different join policy) with check scripts provided; scenario 4 is challenge-level (5 members, fanout + gate + review), demonstrating team_planner's ability to generate more complex multi-step workflows.
@@ -173,9 +173,9 @@ T+10m   run: bun check-coding-any-success-join.ts <run_dir>
 
 ### 3.1 Scenario Description
 
-**Background**: Required-branches join means specific named branches MUST succeed. Other branches may fail without failing the entire run. Combined with `use_survivors: true`, the surviving branch outputs are used even if non-required branches error. This is useful when some branches are mission-critical and others are best-effort.
+**Background**: `use_survivors: true` short-circuits the join policy evaluation — when set, the fanout passes as long as **at least one** branch succeeds (`survivors >= 1`), regardless of the value of `join_policy`. This is the loosest possible join semantics: it is useful for "best-effort" fanouts where any single correct result is enough to advance, and the engine should not fail the run even if most branches error. In this scenario `join_policy: "required_branches"` is declared for labeling / documentation purposes (and would take effect if `use_survivors` were removed), but the **effective** join policy under `use_survivors: true` is equivalent to `any_success`.
 
-**Goal**: Use `team_planner` to generate a team and workflow that implements `clamp(n: number, lo: number, hi: number): number` using a 3-branch fanout with `join_policy: "required_branches"`, `required_branches: ["critical-impl"]`, and `use_survivors: true`. The 'critical-impl' branch must succeed; the other two are optional.
+**Goal**: Use `team_planner` to generate a team and workflow that implements `clamp(n: number, lo: number, hi: number): number` using a 3-branch fanout with `join_policy: "required_branches"`, `required_branches: ["critical-impl"]`, and `use_survivors: true`. Because `use_survivors: true` overrides the declared join policy, the workflow passes as long as any one branch (critical-impl OR optional) succeeds — this is the behavior exercised and verified by the check script.
 
 **Success criteria (machine-evaluable)**:
 - team_planner propose generates team + workflow JSON
@@ -191,7 +191,7 @@ T+10m   run: bun check-coding-any-success-join.ts <run_dir>
     "args": {
         "op": "propose",
         "team_id": "planner-required",
-        "goal": "Create a team and workflow that implements `function clamp(n: number, lo: number, hi: number): number` (clamps n to [lo, hi]). Use a fanout with 3 branches. Designate one branch as 'critical-impl' (required_branches) that MUST succeed. The other two branches are optional. Use use_survivors: true.",
+        "goal": "Create a team and workflow that implements `function clamp(n: number, lo: number, hi: number): number` (clamps n to [lo, hi]). Use a fanout with 3 branches. Declare join_policy 'required_branches' with one branch id 'critical-impl' listed, AND set use_survivors: true. Note: use_survivors: true overrides the declared join_policy, so the effective semantics is any_success (any ≥1 branch success passes). The 'critical-impl' branch id is declared for labeling only.",
         "constraints": "3 coder members (alice, bob, carol). Fanout with 3 branches. join_policy: required_branches, required_branches: ['critical-impl']. use_survivors: true. Each branch tests clamp(5,0,10)=5, clamp(-1,0,10)=0, clamp(15,0,10)=10, clamp(3,0,10)=3. Member prompts and each branch task MUST instruct: when producing code, embed the full TypeScript implementation in a single ```typescript fenced block in the output (the check script extracts code only from this block, not from file edits)."
     }
 }
@@ -230,8 +230,8 @@ T+1m    team_create — create team from generated JSON
 T+1m    team_activate — activate the team
 T+2m    team_workflow workflow_file — engine executes generated workflow
 T+2~10m members execute fanout branches: alice, bob, carol each implement clamp
-        critical-impl branch MUST succeed; optional branches may fail
-        use_survivors: true ensures surviving branch outputs are used
+        use_survivors: true short-circuits join policy: ANY ≥1 branch success → PASS
+        (declared join_policy=required_branches is overridden by use_survivors)
 T+10m   workflow_complete, summary delivered to master
 T+10m   run: bun check-coding-required-branches-join.ts <run_dir>
 ```
