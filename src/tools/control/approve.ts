@@ -10,7 +10,7 @@ import type { ApprovalDecisionRecord, ApprovalRequest } from "../../core/types.j
 import { finishRun } from "../../orchestration/control/completion.js"
 import { recordEvent } from "../../orchestration/records/events.js"
 import { advancePipelineAfterStage } from "../../orchestration/modes/pipeline.js"
-import { advanceTollgateAfterPass } from "../../orchestration/modes/tollgate.js"
+import { advanceTollgateAfterPass, startVerification } from "../../orchestration/modes/tollgate.js"
 import { approveLoopDone, rejectLoopDone } from "../../orchestration/modes/loop.js"
 import { advanceRouteAfterDecision } from "../../orchestration/modes/route.js"
 import { approveRecurseDecompose, rejectRecurseDecompose } from "../../orchestration/modes/recurse.js"
@@ -108,7 +108,18 @@ export async function applyApprovalDecision(
             await advancePipelineAfterStage(ctx, team)
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         case "tollgate_gate":
-            await advanceTollgateAfterPass(ctx, team)
+            if (task.type === "tollgate" && task.tollgatePhase === "produce") {
+                // Pre-verify pause: dispatch the verifier for the current gate.
+                const stage = task.gatedStages?.[task.currentStageIndex]
+                if (stage) {
+                    await startVerification(ctx, team, stage)
+                } else {
+                    await advanceTollgateAfterPass(ctx, team)
+                }
+            } else {
+                // Post-PASS between-gates pause: advance to the next gate.
+                await advanceTollgateAfterPass(ctx, team)
+            }
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         case "loop_done":
             await approveLoopDone(ctx, team)

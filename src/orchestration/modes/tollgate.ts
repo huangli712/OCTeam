@@ -196,9 +196,16 @@ export async function handleTollgateIdle(
     if (!stage) return
     const phase = task.tollgatePhase ?? "produce"
 
-    // produce phase: producer done -> start verification.
+    // produce phase: producer done -> HITL pause before verifier dispatch.
     if (phase === "produce") {
         if (member.name !== stage.member) return            // stray idle
+        if (await maybeRequestApproval(ctx, team, {
+            kind: "tollgate_gate",
+            stage: task.currentStageIndex,
+            summary: `Tollgate stage ${task.currentStageIndex} producer output ready. Review before verification dispatch.`,
+        })) {
+            return
+        }
         await startVerification(ctx, team, stage)
         return
     }

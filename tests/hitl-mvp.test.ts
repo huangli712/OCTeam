@@ -188,6 +188,37 @@ describe("HITL MVP: tollgate", () => {
         expect(after.activeTask?.currentStageIndex).toBe(1)
         expect(calls.some(call => call.sessionId === "ses_dave" && call.text.includes("integrate"))).toBe(true)
     })
+
+    test("pauses in produce phase before verifier dispatch (single-gate)", async () => {
+        const root = tmpRoot("hitl-tollgate-produce-pause")
+        const sid = "ses_hitl_toll_produce_master"
+        const calls: DispatchCall[] = []
+        const team = await setupTeam(root, sid, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        const task = tollgateTask([gate({ member: "alice", verifier: "bob" })])
+        task.tollgatePhase = "produce"
+        task.responses = { alice: "<!-- DRIFT: 4.1391e-5 -->" }
+        await setActiveTask(team, task)
+        const ctx = makeCtx({ storageRoot: root, outputs: {}, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
+
+        await handleTollgateIdle(ctx, team, team.members[0])
+
+        expect(task.approvalStage).toBe(true)
+        expect(task.approvalRequest?.kind).toBe("tollgate_gate")
+        expect(calls.some(call => call.sessionId === "ses_bob")).toBe(false)
+
+        const approvalId = task.approvalRequest?.id
+        expect(approvalId).toBeDefined()
+        const result = await teamApproveTool(ctx).execute({ team_id: "alpha", approval_id: approvalId }, makeToolContext(sid))
+
+        expect(result).toContain("Approved")
+        const after = await loadTeamState(root, "alpha", sid)
+        expect(after.activeTask?.approvalStage).toBeUndefined()
+        expect(after.activeTask?.tollgatePhase).toBe("verify")
+        expect(calls.some(call => call.sessionId === "ses_bob")).toBe(true)
+    })
 })
 
 describe("HITL MVP: loop", () => {
