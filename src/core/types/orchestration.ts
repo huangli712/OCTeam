@@ -321,6 +321,7 @@ export interface ArbitrateTask extends ActiveTaskBase {
     arbitrationStage?: boolean               // false/undefined = debate phase; true = ruling phase
     arbitrationRuling?: string               // arbiter's binding ruling (set at ruling)
     arbitrationRationale?: string            // arbiter's stated rationale for the ruling
+    hitlPhase?: "pre" | "post" | "both"      // HITL pause point(s); default "pre" when humanApproval is true
 }
 
 // recurse: hierarchical recursive decomposition.

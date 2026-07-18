@@ -79,6 +79,16 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
             if ((task.currentRound ?? 1) >= (task.maxRounds ?? DEFAULT_ARBITRATE_ROUNDS)) {
                 // Debate exhausted -> transition to the ruling phase.
                 task.arbitrationStage = true
+                // Pre-ruling HITL: leader reviews the debate before the arbiter
+                // is dispatched to issue the binding ruling. Mirrors tollgate
+                // pre-verify. Triggered when hitlPhase is "pre" (default) or "both".
+                const hitlPhase = task.hitlPhase ?? "pre"
+                if ((hitlPhase === "pre" || hitlPhase === "both") && await maybeRequestApproval(ctx, team, {
+                    kind: "arbitrate_ruling",
+                    summary: `Arbitration debate complete after ${task.currentRound} round(s) on "${task.task ?? ""}". Review the debate before the arbiter issues a binding ruling.`,
+                })) {
+                    return
+                }
                 const arbiter = team.members.find(
                     m => m.name === task.arbiterMember && !m.isMaster,
                 )
@@ -126,7 +136,10 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
     if (await maybeTriggerSignoff(ctx, team)) {
         return // signoff in progress
     }
-    if (await maybeRequestApproval(ctx, team, {
+    // Post-ruling HITL: leader reviews the arbiter's binding ruling before
+    // delivery. Triggered when hitlPhase is "post" or "both" (NOT default "pre").
+    const hitlPhase = task.hitlPhase ?? "pre"
+    if ((hitlPhase === "post" || hitlPhase === "both") && await maybeRequestApproval(ctx, team, {
         kind: "arbitrate_ruling",
         summary: `Arbiter ${task.arbiterMember ?? "unknown"} ruled: "${r.ruling}".\n\nRationale: ${r.rationale}`,
     })) {

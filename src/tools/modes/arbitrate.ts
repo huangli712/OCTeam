@@ -40,6 +40,15 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                 .max(20)
                 .optional()
                 .describe("debate round limit before the ruling (default 1)"),
+            hitl_phase: tool.schema
+                .enum(["pre", "post", "both"])
+                .optional()
+                .describe(
+                    "HITL pause point(s) when human_approval is true. "
+                    + "'pre' (default): pause once after debate, before arbiter dispatch. "
+                    + "'post': pause once after arbiter ruling, before delivery. "
+                    + "'both': pause at both points.",
+                ),
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             ...commonOrchestrationFields,
@@ -77,6 +86,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                     arbiterMember: args.arbiter,
                     disputants: args.debaters,
                     arbitrationStage: false,
+                    hitlPhase: args.hitl_phase ?? "pre",
                     maxRounds: args.max_rounds ?? DEFAULT_ARBITRATE_ROUNDS,
                     currentRound: 1,
                     ...humanApprovalTaskFields(args),

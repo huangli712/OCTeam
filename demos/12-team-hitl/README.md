@@ -285,13 +285,15 @@ T+?     Run: bun demos/12-team-hitl/check-physics-spring-tollgate.ts <run_dir>
     "debaters": ["alice", "bob"],
     "max_rounds": 2,
     "human_approval": true,
+    "hitl_phase": "pre",
     "timeout_ms": 1200000
   }
 }
 ```
 
 **Parameter selection**:
-- `human_approval: true` — Pauses before the arbitration phase (after both debate rounds complete but before the arbiter's ruling is issued); leader can inspect the debate quality before the binding ruling
+- `human_approval: true` — Enables HITL pauses in arbitrate mode
+- `hitl_phase: "pre"` — (default) Pauses once after debate, before arbiter dispatch; leader inspects the debate quality before the binding ruling is issued. Values: `"pre"` (default) | `"post"` (pause after ruling, before delivery) | `"both"` (pause at both points).
 - `arbiter: "carol"` — Points to the `reviewer` member; arbiter must not be a debater or master
 - `debaters: ["alice", "bob"]` — Exactly 2 unique debaters
 - `max_rounds: 2` — Opening statements + rebuttal

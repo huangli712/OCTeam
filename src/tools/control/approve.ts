@@ -11,12 +11,14 @@ import { finishRun } from "../../orchestration/control/completion.js"
 import { recordEvent } from "../../orchestration/records/events.js"
 import { advancePipelineAfterStage } from "../../orchestration/modes/pipeline.js"
 import { advanceTollgateAfterPass, startVerification } from "../../orchestration/modes/tollgate.js"
+import { buildArbiterPrompt } from "../../orchestration/modes/arbitrate.js"
 import { approveLoopDone, rejectLoopDone } from "../../orchestration/modes/loop.js"
 import { advanceRouteAfterDecision } from "../../orchestration/modes/route.js"
 import { approveRecurseDecompose, rejectRecurseDecompose } from "../../orchestration/modes/recurse.js"
 import { advanceWorkflowStep } from "../../orchestration/workflow/engine.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
+import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 
 /** Result of a human approval decision: approved boolean with optional feedback. */
 type ApprovalDecision = {
@@ -128,7 +130,21 @@ export async function applyApprovalDecision(
             await advanceRouteAfterDecision(ctx, team)
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         case "arbitrate_ruling":
-            await finishRun(ctx, team, "arbitrate_complete:ruled", "idle")
+            if (task.type === "arbitrate" && task.arbitrationStage && !task.responses[task.arbiterMember ?? ""]) {
+                // Pre-ruling pause approved: dispatch the arbiter to issue the ruling.
+                const arbiter = team.members.find(m => m.name === task.arbiterMember && !m.isMaster)
+                if (arbiter?.sessionId) {
+                    await dispatchToMember(
+                        ctx, arbiter, buildArbiterPrompt(task),
+                        arbiter.worktreePath ?? ctx.directory, team,
+                    )
+                } else {
+                    await finishRun(ctx, team, "arbitrate_complete:arbiter_unavailable", "failed")
+                }
+            } else {
+                // Post-ruling pause approved: deliver the ruling.
+                await finishRun(ctx, team, "arbitrate_complete:ruled", "idle")
+            }
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`
         case "consensus_deadlock":
             await finishRun(ctx, team, "consensus_max_rounds_accepted", "idle")
