@@ -30,6 +30,7 @@ import { teamQueryTool } from "./query/inspect.js"
 import { teamMetricsTool } from "./query/metrics.js"
 import { teamResultsTool, teamResultGetTool } from "./query/results.js"
 import { teamRunDirTool } from "./query/rundir.js"
+import { teamRootDirTool } from "./query/rootdir.js"
 import { teamProgressTool } from "./query/progress.js"
 //
 import { teamSendMessageTool } from "./exchange/messaging.js"
@@ -91,6 +92,7 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_results: teamResultsTool(ctx),
         team_result_get: teamResultGetTool(ctx),
         team_run_dir: teamRunDirTool(ctx),
+        team_root_dir: teamRootDirTool(ctx),
         team_progress: teamProgressTool(ctx),
         team_intervene: teamInterveneTool(ctx),
         team_approve: teamApproveTool(ctx),

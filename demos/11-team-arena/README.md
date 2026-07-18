@@ -302,7 +302,7 @@ The engine selects `carol` (drift 0.00041) as the winner using `score_direction:
   "tool": "team_arena",
   "args": {
     "team_id": "quad-arena",
-    "task": "Implement a numerical quadrature method to approximate ∫₀¹ 1/(1+x²) dx in TypeScript. Choose ONE method: composite trapezoidal rule (n=100 subintervals), composite Simpson's rule (n=100 subintervals), or 5-point Gaussian-Legendre quadrature on [-1,1] mapped to [0,1]. The exact value is π/4 ≈ 0.7853981633974483. Report the absolute error |I_num - π/4|. Embed code in a ```typescript fenced block and end with <!-- QUAD: <absolute_error> -->.",
+    "task": "Implement a numerical quadrature method to approximate ∫₀¹ 1/(1+x²) dx in TypeScript. Choose ONE method: composite trapezoidal rule (n=100 subintervals), composite Simpson's rule (n=100 subintervals), or 20-point Gaussian-Legendre quadrature on [-1,1] mapped to [0,1]. The exact value is π/4 ≈ 0.7853981633974483. Report the absolute error |I_num - π/4|. Embed code in a ```typescript fenced block and end with <!-- QUAD: <absolute_error> -->.",
     "evaluator": "dave",
     "candidates": ["alice", "bob", "carol"],
     "eval_criteria": "Score based on absolute error |I_num - π/4|. Lower error is better. Error < 1e-5 demonstrates a well-implemented quadrature method (pass=true). Error >= 1e-5 or NaN => pass=false. Report the error as the 'score' field for each candidate.",
@@ -342,10 +342,10 @@ T+12m    engine parses scoreboard → selectArenaWinner → selects smallest err
 The evaluator (dave), after reviewing the three implementations, should produce a scoreboard in the following format:
 
 ```
-<scoreboard>{"scores":[{"member":"alice","score":0.000785,"metrics":{"error":0.000785,"method":"composite trapezoidal (n=100)","exact":0.785398},"passed":false,"rationale":"Trapezoidal rule: O(h²) convergence, 100 subintervals gives error ~7.85e-4 >> 1e-5. Fails accuracy threshold."},{"member":"bob","score":6.5e-8,"metrics":{"error":6.5e-8,"method":"composite Simpson's (n=100)","exact":0.785398},"passed":true,"rationale":"Simpson's rule: O(h⁴) convergence on this smooth integrand, 100 subintervals yields error ~6.5e-8 < 1e-5. Pass."},{"member":"carol","score":1.1e-16,"metrics":{"error":1.1e-16,"method":"5-point Gaussian-Legendre","exact":0.785398},"passed":true,"rationale":"Gaussian-Legendre (n=5): exact for polynomials up to degree 9, so this smooth integrand is integrated near machine precision. Error ~1.1e-16 < 1e-5. Pass."}],"rationale":"Evaluated absolute error from <!-- QUAD --> markers. Carol's Gaussian-Legendre achieves machine-precision accuracy (1.1e-16); Bob's Simpson's is 8 orders of magnitude worse but still below 1e-5; Alice's trapezoidal is 4 orders above threshold. Winner metric: min error."}</scoreboard>
+<scoreboard>{"scores":[{"member":"alice","score":0.000785,"metrics":{"error":0.000785,"method":"composite trapezoidal (n=100)","exact":0.785398},"passed":false,"rationale":"Trapezoidal rule: O(h²) convergence, 100 subintervals gives error ~7.85e-4 >> 1e-5. Fails accuracy threshold."},{"member":"bob","score":6.5e-8,"metrics":{"error":6.5e-8,"method":"composite Simpson's (n=100)","exact":0.785398},"passed":true,"rationale":"Simpson's rule: O(h⁴) convergence on this smooth integrand, 100 subintervals yields error ~6.5e-8 < 1e-5. Pass."},{"member":"carol","score":4.4e-16,"metrics":{"error":4.4e-16,"method":"20-point Gaussian-Legendre","exact":0.785398},"passed":true,"rationale":"Gaussian-Legendre (n=20): exact for polynomials up to degree 39; 1/(1+x^2) has Bernstein-ellipse radius ρ=1+√2≈2.414, so theoretical error ~ρ^(-2n)≈5e-16 — at IEEE-754 round-off floor. Pass."}],"rationale":"Evaluated absolute error from <!-- QUAD --> markers. Carol's 20-point Gaussian-Legendre achieves machine-precision accuracy (~5e-16); Bob's Simpson's is 8 orders of magnitude worse but still below 1e-5; Alice's trapezoidal is 4 orders above threshold. Winner metric: min error."}</scoreboard>
 ```
 
-The engine selects `carol` (error 1.1e-16) as the winner using `score_direction: "min"`.
+The engine selects `carol` (error ~4.4e-16) as the winner using `score_direction: "min"`.
 
 ---
 
