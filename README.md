@@ -2,7 +2,7 @@
 
 Persistent multi-agent teams for OpenCode. OCTeam is an OpenCode plugin that
 lets you create long-lived teams of up to 8 OpenCode sessions and orchestrate
-them with ten workflow primitives.
+them with eleven workflow primitives.
 
 **Version:** 0.12.20
 **License:** MIT  
@@ -20,7 +20,7 @@ Peer dependencies (`@opencode-ai/plugin` >=1.4.7, `@opencode-ai/sdk` >=1.4.7,
 `@opentui/solid` >=0.1.99, `solid-js` >=1.9.0) are resolved by OpenCode's
 plugin host.
 
-## Tool surface (36 tools)
+## Tool surface (41 tools)
 
 ### Lifecycle
 
@@ -55,7 +55,7 @@ plugin host.
 | `team_task_update` | Update a task's status (claim, progress, complete, delete) |
 | `team_task_get` | Get full details of a single task |
 
-### Orchestration (10 primitives)
+### Orchestration (11 primitives)
 
 | Tool | Description |
 |------|-------------|
@@ -68,10 +68,17 @@ plugin host.
 | `team_arbitrate` | Debaters argue, an arbiter issues a binding ruling |
 | `team_recurse` | Hierarchical recursive decomposition with blockedBy DAG |
 | `team_tollgate` | Verdict-gated pipeline (PASS/FAIL/INVALID gates between stages) |
+| `team_arena` | Competitive arena: N candidates implement in isolated worktrees, an evaluator scores them, deterministic winner is delivered |
 | `team_workflow` | Deterministic declarative workflow: task/gate/fanout/join steps with engine-driven retry, recovery, and join policies |
 
-All ten are master-only: only the team's leader session may start an
+All eleven are master-only: only the team's leader session may start an
 orchestration. Only one orchestration can be active per team at a time.
+
+### Workflow authoring
+
+| Tool | Purpose |
+|------|---------|
+| `team_planner` | Master-only planner: propose/revise/write team + workflow JSON from a natural-language goal (HITL authoring, no model call on write) |
 
 ### Observability and recovery
 
@@ -80,6 +87,8 @@ orchestration. Only one orchestration can be active per team at a time.
 | `team_done` | Member-side done acknowledgement (require_done_ack barrier) |
 | `team_results` | List recent orchestration run records |
 | `team_result_get` | Fetch a specific run's full record and member outputs |
+| `team_run_dir` | Return the absolute path to a run's output directory |
+| `team_root_dir` | Return the absolute path to a team's root directory |
 | `team_progress` | Show live progress and event timeline; `format="mermaid"` renders a live team_workflow graph |
 | `team_intervene` | Inject a directive into a member's mailbox mid-run |
 | `team_approve` | Approve a pending human-in-the-loop pause and resume the run |
@@ -115,8 +124,8 @@ and optional `worktrees/` directories.
 Run history persists across plugin restarts.
 
 **Human-in-the-loop approvals.** `team_pipeline`, `team_tollgate`, `team_loop`,
-`team_route`, and `team_recurse` can pause at supported mid-run boundaries when
-`team_route`, `team_recurse`, `team_arbitrate`, and `team_consensus` can pause at supported mid-run boundaries when
+`team_route`, `team_recurse`, `team_arbitrate`, `team_consensus`, and
+`team_workflow` can pause at supported mid-run boundaries when
 `human_approval` is enabled. The leader resumes with `team_approve` or rejects
 with `team_reject`. This is distinct from `signoff`: HITL is a mid-run human
 approval gate, while signoff is a post-completion member-agent review.

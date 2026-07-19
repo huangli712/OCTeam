@@ -68,7 +68,7 @@ Each team directory contains:
 
 A team has one leader ("master") session and up to eight member sessions. Only
 the master may start an orchestration, and only one orchestration can be active
-per team at a time. The ten workflow primitives are:
+per team at a time. The eleven workflow primitives are:
 
 | Primitive | Shape |
 |-----------|-------|
@@ -81,7 +81,8 @@ per team at a time. The ten workflow primitives are:
 | `team_arbitrate` | Debaters argue, an arbiter issues a binding ruling |
 | `team_recurse` | Hierarchical recursive decomposition with a blockedBy DAG |
 | `team_tollgate` | Verdict-gated pipeline (PASS/FAIL/INVALID gates between stages) |
-| `team_workflow` | Deterministic, declaratively-composed linear step engine — `task` and `gate` steps driven by the engine, not the master LLM (GAP-2) |
+| `team_arena` | Competitive arena: N candidates implement in isolated worktrees |
+| `team_workflow` | Deterministic, declaratively-composed linear step engine |
 
 ## Runtime and recovery
 
@@ -102,7 +103,7 @@ the [README Security section](../README.md#security).
 - **Master vs member.** Authorization is enforced at a single chokepoint
   (`resolveCallerInTeam` in `state/resolve.ts`): member sessions can only reach
   the team they are indexed under (a member of team A passing `team_id="B"` is
-  rejected), and the 10 orchestration tools plus `team_intervene` are master-only.
+  rejected), and the 11 orchestration tools plus `team_intervene` are master-only.
   Unknown role names fall back to `reviewer` (read-only), never `almighty`.
 
 - **Path safety.** Every caller-supplied path segment (team/member/task/run ids)
