@@ -355,7 +355,7 @@ The engine selects `carol` (error ~4.4e-16) as the winner using `score_direction
 
 ### 4.1 Scenario Description
 
-**Background**: The 2D Poisson equation `∇²u = -2π²sin(πx)sin(πy)` (exact solution `u = sin(πx)sin(πy)`) discretized with the standard five-point stencil on an `(N+1)×(N+1)` grid yields an `N² × N²` sparse linear system `Au = f`. Solving such large-scale sparse systems is at the heart of scientific computing: different iterative methods differ enormously in convergence speed, per-step cost, and implementation complexity. Jacobi iteration converges extremely slowly, conjugate gradient provides significant acceleration, and multigrid is near-optimal.
+**Background**: The 2D Poisson equation `∇²u = -2π²sin(πx)sin(πy)` (exact solution `u = sin(πx)sin(πy)`) discretized with the standard five-point stencil on an `(N+1)×(N+1)` grid yields an `N² × N²` sparse linear system `Au = f`. Solving such large-scale sparse systems is at the heart of scientific computing: different iterative methods differ enormously in convergence speed, per-step cost, and implementation complexity. Richardson iteration converges extremely slowly, Jacobi is somewhat faster, SOR with optimal ω provides significant acceleration, and multigrid is near-optimal.
 
 **Goal**: Five candidates (`simulator` role) each implement one iterative solver, running on a unified N=100 problem (10000×10000 sparse matrix) to a residual of `||r||₂/||b||₂ < 1e-6`; the evaluator runs the convergence benchmark script `bun run convergence.ts`, measuring the iteration count for each candidate's solver, scoring by iteration count, and the engine selects the candidate with the fewest iterations as the winner.
 
@@ -370,7 +370,7 @@ The engine selects `carol` (error ~4.4e-16) as the winner using `score_direction
 ```json
 {
   "name": "poisson-arena",
-  "description": "Five iterative solvers for the 2D Poisson equation (N=100 grid): Jacobi vs Gauss-Seidel vs SOR vs Conjugate Gradient vs Multigrid V-cycle — winner by min iterations to convergence",
+  "description": "Five iterative solvers for the 2D Poisson equation (N=100 grid): Jacobi vs Gauss-Seidel vs SOR vs Richardson vs Multigrid V-cycle — winner by min iterations to convergence",
   "members": [
     {
       "name": "alice",
@@ -394,7 +394,7 @@ The engine selects `carol` (error ~4.4e-16) as the winner using `score_direction
       "name": "dave",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator. You MUST implement the CONJUGATE GRADIENT (CG) iterative solver for the 2D Poisson equation (no other method). Use N=100 grid (interior points), 5-point Laplacian stencil, zero Dirichlet BC. Do NOT exploit eigenmode structure or use closed-form shortcuts — implement standard CG with matrix-vector products against the 5-point Laplacian, iterating from u_0=0. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6).\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator. You MUST implement the RICHARDSON iterative solver (u_{k+1} = u_k + ω * r_k, where r_k = f - A*u_k) for the 2D Poisson equation (no other method). Use N=100 grid (interior points), 5-point Laplacian stencil (A = (1/h²)*[-1  ...  -1  4  -1  ...  -1]), zero Dirichlet BC. Use optimal relaxation parameter ω = 2/(λ_min + λ_max) where λ_min ≈ 2π² and λ_max ≈ 8/h² for the 5-point Laplacian on this grid (so ω ≈ h²/8). Iterate from u_0=0. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6).\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "erin",
@@ -421,7 +421,7 @@ The engine selects `carol` (error ~4.4e-16) as the winner using `score_direction
   "tool": "team_arena",
   "args": {
     "team_id": "poisson-arena",
-    "task": "Implement an iterative linear solver for the 2D Poisson equation -∇²u = f on the unit square (Dirichlet BC u=0 on boundary) using 5-point finite-difference stencil on an N=100 grid (interior grid N²=10000 unknowns). Exact solution: u = sin(πx)sin(πy), so f = 2π²sin(πx)sin(πy). Implement YOUR ASSIGNED method as specified in your role prompt (Jacobi / Gauss-Seidel / SOR / Conjugate Gradient / Multigrid V-cycle) — do NOT substitute a different method and do NOT exploit eigenmode structure or closed-form shortcuts. Run to convergence: ||r||₂/||b||₂ < 1e-6. Report the number of iterations to convergence. Embed code in a ```typescript fenced block and end with <!-- CONV: <iteration_count> -->.",
+    "task": "Implement an iterative linear solver for the 2D Poisson equation -∇²u = f on the unit square (Dirichlet BC u=0 on boundary) using 5-point finite-difference stencil on an N=100 grid (interior grid N²=10000 unknowns). Exact solution: u = sin(πx)sin(πy), so f = 2π²sin(πx)sin(πy). Implement YOUR ASSIGNED method as specified in your role prompt (Jacobi / Gauss-Seidel / SOR / Richardson / Multigrid V-cycle) — do NOT substitute a different method and do NOT exploit eigenmode structure or closed-form shortcuts. Run to convergence: ||r||₂/||b||₂ < 1e-6. Report the number of iterations to convergence. Embed code in a ```typescript fenced block and end with <!-- CONV: <iteration_count> -->.",
     "evaluator": "frank",
     "candidates": ["alice", "bob", "carol", "dave", "erin"],
     "eval_command": "bun run convergence.ts",
@@ -455,18 +455,18 @@ T+10~30m frank runs `bun run convergence.ts` per candidate → collects each sol
 T+30m    engine parses scoreboard → selectArenaWinner → selects fewest iterations by score_direction: "min" → result delivered to master
 ```
 
-(5 candidates implement in parallel, a single evaluator serially evaluates each candidate's worktree; on the N=100 Poisson problem, Jacobi ≈ 6000 iterations, Gauss-Seidel ≈ 3000 iterations, SOR(ω=1.9) ≈ 300 iterations, CG ≈ 300 iterations, Multigrid V(2,2) ≈ 10 iterations — convergence speed gaps are enormous, giving the arena scoreboard extremely high discrimination.)
+(5 candidates implement in parallel, a single evaluator serially evaluates each candidate's worktree; on the N=100 Poisson problem, Richardson ≈ 28000 iterations, Jacobi ≈ 6000 iterations, Gauss-Seidel ≈ 3000 iterations, SOR(ω=1.9) ≈ 300 iterations, Multigrid V(2,2) ≈ 10 iterations — convergence speed gaps are enormous, giving the arena scoreboard extremely high discrimination.)
 
 ### 4.5 Check Script
 
-> This scenario relies on the evaluator's `<scoreboard>` JSON output and the engine's built-in winner selection logic. External verification: read `runs/<run_id>/frank.md`, extract the scoreboard JSON, cross-check that each candidate's iteration count matches their CONV marker, and the physics expectation is that Multigrid wins (≤20 iterations) and Jacobi comes last (≥5000 iterations).
+> This scenario relies on the evaluator's `<scoreboard>` JSON output and the engine's built-in winner selection logic. External verification: read `runs/<run_id>/frank.md`, extract the scoreboard JSON, cross-check that each candidate's iteration count matches their CONV marker, and the physics expectation is that Multigrid wins (≤20 iterations) and Richardson comes last (≥20000 iterations).
 
 ### 4.6 Evaluator Scoreboard Example
 
 The evaluator (frank), after running the five benchmarks, should produce a scoreboard in the following format:
 
 ```
-<scoreboard>{"scores":[{"member":"alice","score":6120,"metrics":{"iterations":6120,"method":"Jacobi","residual":9.87e-7},"passed":true,"rationale":"Jacobi: slow convergence (~6k iterations), typical for simple relaxation on 100x100 grid. < 100k => pass."},{"member":"bob","score":2980,"metrics":{"iterations":2980,"method":"Gauss-Seidel","residual":9.92e-7},"passed":true,"rationale":"Gauss-Seidel: ~2x faster than Jacobi due to immediate use of updated values, ~3k iterations on 100x100. Pass."},{"member":"carol","score":312,"metrics":{"iterations":312,"method":"SOR (ω=1.9)","residual":9.65e-7},"passed":true,"rationale":"SOR with near-optimal ω≈1.9: convergence accelerated ~10x vs GS, ~300 iterations. Excellent for this problem class. Pass."},{"member":"dave","score":295,"metrics":{"iterations":295,"method":"Conjugate Gradient","residual":9.88e-7},"passed":true,"rationale":"CG: Krylov-subspace optimal, ~300 iterations on 100x100 SPD system. Comparable to optimal SOR. Pass."},{"member":"erin","score":9,"metrics":{"iterations":9,"method":"Multigrid V(2,2)","residual":8.73e-7},"passed":true,"rationale":"Multigrid V-cycle (2 pre/2 post smoothing, full-weighting restriction, bilinear prolongation): mesh-independent convergence! Only 9 iterations to reach sub-1e-6 residual. Near-optimal O(N) solver. Pass."}],"rationale":"Convergence benchmark via bun run convergence.ts on N=100 Poisson problem (10000 unknowns). Erin's Multigrid dominates at 9 iterations (O(N) optimal); SOR/CG compete at ~300; Gauss-Seidel trails at ~3k; Jacobi bottom at ~6k. Winner metric: min iterations."}</scoreboard>
+<scoreboard>{"scores":[{"member":"alice","score":6120,"metrics":{"iterations":6120,"method":"Jacobi","residual":9.87e-7},"passed":true,"rationale":"Jacobi: slow convergence (~6k iterations), typical for simple relaxation on 100x100 grid. < 100k => pass."},{"member":"bob","score":2980,"metrics":{"iterations":2980,"method":"Gauss-Seidel","residual":9.92e-7},"passed":true,"rationale":"Gauss-Seidel: ~2x faster than Jacobi due to immediate use of updated values, ~3k iterations on 100x100. Pass."},{"member":"carol","score":312,"metrics":{"iterations":312,"method":"SOR (ω=1.9)","residual":9.65e-7},"passed":true,"rationale":"SOR with near-optimal ω≈1.9: convergence accelerated ~10x vs GS, ~300 iterations. Excellent for this problem class. Pass."},{"member":"dave","score":28150,"metrics":{"iterations":28150,"method":"Richardson (ω≈h²/8)","residual":9.91e-7},"passed":true,"rationale":"Richardson with optimal ω=2/(λ_min+λ_max): convergence factor ~1-2λ_min/λ_max≈0.9995, needs ~28000 iterations to reach 1e-6. Slowest of the five but still < 100k threshold. Pass."},{"member":"erin","score":9,"metrics":{"iterations":9,"method":"Multigrid V(2,2)","residual":8.73e-7},"passed":true,"rationale":"Multigrid V-cycle (2 pre/2 post smoothing, full-weighting restriction, bilinear prolongation): mesh-independent convergence! Only 9 iterations to reach sub-1e-6 residual. Near-optimal O(N) solver. Pass."}],"rationale":"Convergence benchmark via bun run convergence.ts on N=100 Poisson problem (10000 unknowns). Erin's Multigrid dominates at 9 iterations (O(N) optimal); SOR is two orders of magnitude slower at ~300; Gauss-Seidel ~3k; Jacobi ~6k; Richardson trails at ~28k. Winner metric: min iterations."}</scoreboard>
 ```
 
 The engine selects `erin` (9 iterations) as the winner using `score_direction: "min"` — multigrid's near-optimal convergence demonstrates an order-of-magnitude advantage on a 10000-unknown system.
@@ -531,5 +531,5 @@ Steps:
 4. Poll team_results until master receives summary (after all candidates idle, evaluator runs convergence benchmark, produces scoreboard; engine auto-selects winner) (poll every 30s)
 5. Locate <run_dir> (contains evaluator frank.md)
 6. Read frank.md, extract <scoreboard> JSON, view winner and each candidate's iteration count
-Success criteria: evaluator produces valid <scoreboard> JSON; engine selects fastest-converging solver by iterations min. Multigrid V-cycle candidate should have ≤20 iterations, Jacobi should have ≥5000 iterations (verifying order-of-magnitude discrimination of convergence speed). At least 3 candidates passed=true.
+Success criteria: evaluator produces valid <scoreboard> JSON; engine selects fastest-converging solver by iterations min. Multigrid V-cycle candidate should have ≤20 iterations, Richardson should have ≥20000 iterations (verifying order-of-magnitude discrimination of convergence speed). At least 3 candidates passed=true.
 ```
