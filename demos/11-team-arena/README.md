@@ -376,37 +376,37 @@ The engine selects `carol` (error ~4.4e-16) as the winner using `score_direction
       "name": "alice",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil.\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator. You MUST implement the JACOBI iterative solver for the 2D Poisson equation (no other method). Use N=100 grid (interior points), 5-point Laplacian stencil, zero Dirichlet BC. Update rule: x_new[i,j] = 0.25*(x[i-1,j]+x[i+1,j]+x[i,j-1]+x[i,j+1]+h^2*f[i,j]). This is the SIMPLEST method — implement it directly, do not over-engineer. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6).\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "bob",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil.\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator. You MUST implement the GAUSS-SEIDEL iterative solver (lexicographic order, in-place updates using already-updated values) for the 2D Poisson equation (no other method). Use N=100 grid (interior points), 5-point Laplacian stencil, zero Dirichlet BC. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6).\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "carol",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil.\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator. You MUST implement the SOR (Successive Over-Relaxation) iterative solver with omega=1.9 (lexicographic order) for the 2D Poisson equation (no other method). Use N=100 grid (interior points), 5-point Laplacian stencil, zero Dirichlet BC. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6).\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "dave",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil.\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator. You MUST implement the CONJUGATE GRADIENT (CG) iterative solver for the 2D Poisson equation (no other method). Use N=100 grid (interior points), 5-point Laplacian stencil, zero Dirichlet BC. Do NOT exploit eigenmode structure or use closed-form shortcuts — implement standard CG with matrix-vector products against the 5-point Laplacian, iterating from u_0=0. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6).\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "erin",
       "role": "simulator",
       "worktree": true,
-      "prompt": "You are a simulator implementing an iterative linear solver for the 2D Poisson equation. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6). Use N=100 grid (interior points), 5-point Laplacian stencil.\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
+      "prompt": "You are a simulator. You MUST implement the MULTIGRID V-cycle solver for the 2D Poisson equation (no other method). Use N=100 grid (interior points), 5-point Laplacian stencil, zero Dirichlet BC. Use Jacobi smoother (2 pre-smoothing + 2 post-smoothing per level), full-weighting restriction, bilinear prolongation, coarsest grid 3x3. Count 1 V-cycle = 1 iteration. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a CONV marker showing the number of iterations to convergence (residual norm relative < 1e-6).\n\nYour output MUST end with a line exactly formatted: <!-- CONV: <iteration_count> -->"
     },
     {
       "name": "frank",
       "role": "physicist",
       "worktree": true,
-      "prompt": "You are a physicist. You evaluate each candidate's iterative Poisson solver. Write a unified convergence.ts benchmark script in YOUR OWN worktree that:\n  1. Reads each candidate's TypeScript solver from their captured output at runs/<run_id>/<name>.md (extract the ```typescript fenced block)\n  2. Imports each solver into a common N=100 Poisson harness with Dirichlet BC u=0 on the unit square, f = 2π²sin(πx)sin(πy), exact solution u = sin(πx)sin(πy)\n  3. Runs each to ||r||₂/||b||₂ < 1e-6 using a UNIFIED iteration-count convention (1 iteration = 1 solver step; for Multigrid V-cycle, 1 iteration = 1 V-cycle)\n  4. Records each candidate's iteration count as the 'score' field\nA lower iteration count is better (min direction). A count > 100,000 is considered non-convergent (pass=false). After writing convergence.ts, run `bun run convergence.ts` in your worktree to verify before emitting the scoreboard.\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"iterations\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
+      "prompt": "You are a physicist. You evaluate each candidate's iterative Poisson solver. Write a unified convergence.ts benchmark script in YOUR OWN worktree that:\n  1. Reads each candidate's TypeScript solver from their captured output at runs/<run_id>/<name>.md (extract the ```typescript fenced block)\n  2. Runs EACH candidate's OWN solver UNCHANGED against a common N=100 Poisson problem setup (Dirichlet BC u=0 on the unit square, f = 2π²sin(πx)sin(πy), exact solution u = sin(πx)sin(πy)). The common harness provides only grid/BC/RHS/residual-norm; each candidate's solver runs with its OWN iteration logic — do NOT substitute a unified solver or override methods.\n  3. Runs each to ||r||₂/||b||₂ < 1e-6 using a UNIFIED iteration-count convention (1 iteration = 1 solver step; for Multigrid V-cycle, 1 iteration = 1 V-cycle)\n  4. Records each candidate's iteration count as the 'score' field\nA lower iteration count is better (min direction). A count > 100,000 is considered non-convergent (pass=false). After writing convergence.ts, run `bun run convergence.ts` in your worktree to verify before emitting the scoreboard.\n\nEmit EXACTLY one scoreboard block and nothing after it: <scoreboard>{\"scores\":[{\"member\":\"...\",\"score\":<n>,\"metrics\":{\"iterations\":<n>},\"passed\":true|false,\"rationale\":\"...\"}],\"rationale\":\"...\"}</scoreboard>"
     }
   ]
 }
@@ -421,11 +421,11 @@ The engine selects `carol` (error ~4.4e-16) as the winner using `score_direction
   "tool": "team_arena",
   "args": {
     "team_id": "poisson-arena",
-    "task": "Implement an iterative linear solver for the 2D Poisson equation -∇²u = f on the unit square (Dirichlet BC u=0 on boundary) using 5-point finite-difference stencil on an N=100 grid (interior grid N²=10000 unknowns). Exact solution: u = sin(πx)sin(πy), so f = 2π²sin(πx)sin(πy). Choose ONE method: Jacobi iteration, Gauss-Seidel (lexicographic), SOR (optimal ω≈1.9), Conjugate Gradient, or Multigrid V-cycle (Jacobi smoother + full-weighting restriction + bilinear prolongation, 2 pre/2 post smoothing). Run to convergence: ||r||₂/||b||₂ < 1e-6. Report the number of iterations to convergence. Embed code in a ```typescript fenced block and end with <!-- CONV: <iteration_count> -->.",
+    "task": "Implement an iterative linear solver for the 2D Poisson equation -∇²u = f on the unit square (Dirichlet BC u=0 on boundary) using 5-point finite-difference stencil on an N=100 grid (interior grid N²=10000 unknowns). Exact solution: u = sin(πx)sin(πy), so f = 2π²sin(πx)sin(πy). Implement YOUR ASSIGNED method as specified in your role prompt (Jacobi / Gauss-Seidel / SOR / Conjugate Gradient / Multigrid V-cycle) — do NOT substitute a different method and do NOT exploit eigenmode structure or closed-form shortcuts. Run to convergence: ||r||₂/||b||₂ < 1e-6. Report the number of iterations to convergence. Embed code in a ```typescript fenced block and end with <!-- CONV: <iteration_count> -->.",
     "evaluator": "frank",
     "candidates": ["alice", "bob", "carol", "dave", "erin"],
     "eval_command": "bun run convergence.ts",
-    "eval_criteria": "Score based on number of iterations to reach ||r||₂/||b||₂ < 1e-6 on the N=100 Poisson problem. Fewer iterations is better (min direction). Iterations > 100,000 => non-convergent (pass=false). Report the iteration count as the 'score' field for each candidate.",
+    "eval_criteria": "Score based on number of iterations to reach ||r||₂/||b||₂ < 1e-6 on the N=100 Poisson problem. Fewer iterations is better (min direction). Iterations > 100,000 => non-convergent (pass=false). IMPORTANT: Run EACH candidate's OWN solver with their OWN method — do NOT unify methods or substitute a common solver. Report the iteration count as the 'score' field for each candidate.",
     "winner_metric": "iterations",
     "score_direction": "min",
     "max_eval_retries": 1,
