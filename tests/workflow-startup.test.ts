@@ -528,7 +528,7 @@ describe("team_workflow type-specific validation", () => {
             Date.now(),
         )
 
-        const result = await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
+        await teamWorkflowTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
             {
                 team_id: "alpha",
                 steps: [
