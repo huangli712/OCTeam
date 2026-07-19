@@ -206,6 +206,7 @@ team_deactivate(es-research)
 **Parameter selection**:
 - `topic` = candidate list (master pastes it in by hand).
 - `max_rounds: 5` — gives sufficient debate space to converge to exactly 3.
+- ⚠️ `topic` has a 4096-character schema cap. Summarize each method's per-dimension analysis (id + name + one-line takeaway) rather than pasting full text. If the list overflows, ship the condensed list in `topic` and route the full per-method analysis via team messages after `team_activate`.
 
 ### 2.4 Lifecycle Steps (master)
 
@@ -247,7 +248,7 @@ If any reviewer FAILs the plan, it rolls back to the writing phase for revision;
   "members": [
     {
       "name": "kate",
-      "role": "coder",
+      "role": "planner",
       "prompt": "You are the PLAN WRITER. Write a detailed implementation plan for each of the selected 3 eigen-solver approaches. Each plan must cover: algorithm pseudocode, data structures (matrix representation, workspace), module breakdown (under src/), function signatures, error handling strategy, convergence criteria, test strategy (unit tests for individual routines, integration tests for full solver), numerical accuracy baseline, and risks/mitigations. When a verifier returns FAIL with specific gaps, address those gaps in your revision and explain what changed."
     },
     {
@@ -269,7 +270,7 @@ If any reviewer FAILs the plan, it rolls back to the writing phase for revision;
 }
 ```
 
-**Role selection**: kate `coder` (write plan, modify), leo/mona/nina `reviewer` (read-only gated review).
+**Role selection**: kate `planner` (write plan, modify — `planner` is the planning-specialist role backed by the oct-metis agent), leo/mona/nina `reviewer` (read-only gated review).
 
 ### 3.3 Master Launch Call
 
@@ -293,7 +294,7 @@ If any reviewer FAILs the plan, it rolls back to the writing phase for revision;
       },
       {
         "member": "kate",
-        "task": "Revise the implementation plan based on previous verifiers' FAIL feedback if any. If all previous verifiers passed, confirm the plan stands unchanged. Address every gap named.",
+        "task": "Revise the implementation plan based on previous verifiers' FAIL feedback if any. If all previous verifiers passed, confirm the plan stands unchanged. Address every gap named. When all gates have PASSED, append the literal marker <!-- PLAN-APPROVED --> on its own line at the end of your output.",
         "verifier": "nina",
         "criteria": "Check the plan for TESTABILITY & RISK: are unit/integration/regression tests specified? edge cases covered? risks (non-convergence, memory, numerical) identified and mitigated? Emit PASS if adequate, FAIL naming gaps."
       }
@@ -409,7 +410,7 @@ team_deactivate(es-implement)
 
 Optimize the code while **preserving the baseline** (all existing tests must pass). Each round runs **Optimize (optimizer, modify code) → Verify (tester, run tests+check baseline)** serially; the decider rules "baseline passes & performance improved → done / needs more work". At most 4 rounds.
 
-> ⚠️ **decider cannot double as a stage member** (team_loop rule: decider is auto-appended read-only, cannot appear in stages). tom is reserved as decider, not in stages.
+> ⚠️ **team_loop rule**: stage members must have unique names. When the decider is NOT already in `stages`, it is auto-appended as a final read-only stage; when the decider IS already in `stages`, no auto-append happens (the decider then doubles as a stage member). In this scenario tom is reserved as decider and kept out of `stages`.
 
 ### 5.2 Team Configuration
 
@@ -421,7 +422,7 @@ Optimize the code while **preserving the baseline** (all existing tests must pas
     {
       "name": "ruby",
       "role": "coder",
-      "prompt": "You are the OPTIMIZER (stage 1) in the optimization loop. Each round, refactor and optimize the eigen-solver Rust code to improve performance WITHOUT breaking existing tests. Optimization focus areas: loop ordering for cache efficiency, reducing unnecessary allocations, inlining hot paths, using unsafe Rust for unchecked indexing where safe, pre-allocating workspaces, compiler hints (#[inline]). Run 'cargo build' after changes. Preserve correctness — for each change you make, explain why it does not change the numerical result."
+      "prompt": "You are the OPTIMIZER (stage 1) in the optimization loop. Each round, refactor and optimize the eigen-solver Rust code to improve performance WITHOUT breaking existing tests. Optimization focus areas: loop ordering for cache efficiency, reducing unnecessary allocations, inlining hot paths, using unsafe Rust for unchecked indexing where safe, pre-allocating workspaces, compiler hints (#[inline]). Run 'cargo build' after changes. Preserve correctness — for each change you make, explain why it does not change the numerical result. When the decider's decision is 'done', append the literal marker <!-- OPTIMIZED --> on its own line at the end of your final output."
     },
     {
       "name": "sam",
@@ -431,7 +432,7 @@ Optimize the code while **preserving the baseline** (all existing tests must pas
     {
       "name": "tom",
       "role": "reviewer",
-      "prompt": "You are the DECIDER in the optimization loop. After each round (Ruby optimizes -> Sam verifies), decide whether the optimization is COMPLETE. Check: Sam's TESTS report shows all tests pass and build succeeds. Consider whether meaningful optimizations have been applied (at minimum: cache-friendly loop ordering, reduced allocations, workspace reuse). Emit <decision>{\"done\": true}</decision> when baseline holds and optimizations are adequate, or <decision>{\"done\": false, \"reason\": \"...\"}</decision> naming what Ruby should optimize further. The final done state should have the team emit <!-- OPTIMIZED -->."
+      "prompt": "You are the DECIDER in the optimization loop. After each round (Ruby optimizes -> Sam verifies), decide whether the optimization is COMPLETE. Check: Sam's TESTS report shows all tests pass and build succeeds. Consider whether meaningful optimizations have been applied (at minimum: cache-friendly loop ordering, reduced allocations, workspace reuse). In EVERY <decision> block you emit, use exactly: <decision>{\"decision\": \"done\"|\"continue\", \"rationale\": \"<one-sentence>\", \"nextActions\": [\"<concrete fix instruction>\"]}</decision>. The literal English tags <decision> and </decision> are required. Emit decision=\"done\" when baseline holds and optimizations are adequate; emit decision=\"continue\" with concrete nextActions naming what Ruby should optimize further."
     }
   ]
 }
@@ -635,5 +636,5 @@ Note:
 - [`demos/01-team-parallel/README.md`](../01-team-parallel/README.md) — parallel primitive reference
 - [`demos/04-team-loop/README.md`](../04-team-loop/README.md) — loop primitive reference
 - [`demos/09-team-tollgate/README.md`](../09-team-tollgate/README.md) — tollgate primitive reference (verification gate pipeline)
-- parallel / consensus / pipeline / loop source: [`src/tools/parallel.ts`](../../src/tools/parallel.ts) / [`consensus.ts`](../../src/tools/consensus.ts) / [`pipeline.ts`](../../src/tools/pipeline.ts) / [`loop.ts`](../../src/tools/loop.ts)
-- delegate / route / arbitrate / tollgate / recurse source: [`src/tools/delegate.ts`](../../src/tools/delegate.ts) / [`router.ts`](../../src/tools/router.ts) / [`arbitrate.ts`](../../src/tools/arbitrate.ts) / [`tollgate.ts`](../../src/tools/tollgate.ts) / [`recurse.ts`](../../src/tools/recurse.ts)
+- parallel / consensus / pipeline / loop source: [`src/tools/modes/parallel.ts`](../../src/tools/modes/parallel.ts) / [`consensus.ts`](../../src/tools/modes/consensus.ts) / [`pipeline.ts`](../../src/tools/modes/pipeline.ts) / [`loop.ts`](../../src/tools/modes/loop.ts)
+- delegate / route / arbitrate / tollgate / recurse source: [`src/tools/modes/delegate.ts`](../../src/tools/modes/delegate.ts) / [`router.ts`](../../src/tools/modes/router.ts) / [`arbitrate.ts`](../../src/tools/modes/arbitrate.ts) / [`tollgate.ts`](../../src/tools/modes/tollgate.ts) / [`recurse.ts`](../../src/tools/modes/recurse.ts)
