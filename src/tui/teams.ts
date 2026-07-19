@@ -23,6 +23,7 @@ export type TeamMemberRow = {
     agent?: string
     model?: string
     sessionId?: string
+    worktreePath?: string
     unread?: number
     totalMessages?: number
     turnCount?: number
@@ -105,6 +106,7 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                         agent: m.agent,
                         model: m.model,
                         sessionId: m.sessionId,
+                        worktreePath: m.worktreePath,
                         unread: mailbox.unread,
                         totalMessages: mailbox.total,
                         turnCount: m.turnCount,

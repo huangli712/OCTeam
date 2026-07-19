@@ -6,6 +6,7 @@
  */
 
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
+import { loadTeams } from "./teams.js"
 
 /** Display status derived from OpenCode SessionStatus. */
 export type DisplayStatus = "running" | "idle" | "errored"
@@ -110,13 +111,48 @@ export function computeDuration(messages: MessageRow[]): string {
  * Load all direct child sessions of the given session.
  * Uses HTTP API for messages (api.client) — TUI state (api.state) only
  * has message data for sessions that have been viewed.
+ *
+ * opencode's `session.list()` scopes by directory: a call without
+ * `query.directory` only returns sessions whose stored directory equals
+ * the caller's CWD. Team members spawned with `worktree: true` have their
+ * session.directory set to their worktree path (different from the lead's
+ * CWD), so they are filtered out of the default listing. To make worktree
+ * members visible in the Tasks panel, we additionally query each distinct
+ * worktree directory that the current lead owns (read from team state.json)
+ * and merge the results before applying the parentID filter.
  */
 export async function loadChildren(
     api: Pick<TuiPluginApi, "client" | "state">,
     currentSessionId: string,
 ): Promise<SessionTreeNode[]> {
-    const result = await api.client.session.list()
-    const allSessions = result?.data ?? []
+    const mainResult = await api.client.session.list()
+    const allSessions = mainResult?.data ?? []
+
+    // Merge in sessions from each worktree directory owned by a team whose
+    // lead is the current session. Errors here are best-effort: a failed
+    // directory lookup must not break the default listing.
+    try {
+        const teams = await loadTeams(currentSessionId)
+        const worktreeDirs = new Set<string>()
+        for (const t of teams) {
+            for (const m of t.members) {
+                if (m.worktreePath) worktreeDirs.add(m.worktreePath)
+            }
+        }
+        if (worktreeDirs.size > 0) {
+            const extras = await Promise.all(
+                [...worktreeDirs].map(p =>
+                    api.client.session.list({ directory: p })
+                        .then(r => r?.data ?? [])
+                        .catch(() => [] as typeof allSessions),
+                ),
+            )
+            for (const list of extras) allSessions.push(...list)
+        }
+    } catch {
+        // best effort — fall through with the default listing
+    }
+
     const children = allSessions.filter(s => s.parentID === currentSessionId)
 
     const childCountByParent = new Map<string, number>()
