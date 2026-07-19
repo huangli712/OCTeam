@@ -269,19 +269,19 @@ The engine selects `carol` (drift 0.00041) as the winner using `score_direction:
       "name": "alice",
       "role": "coder",
       "worktree": true,
-      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4.\n\nYour output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
+      "prompt": "You are a coder implementing numerical quadrature. You MUST implement the composite trapezoidal rule with n=100 subintervals (no other method). Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4.\n\nYour output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
     },
     {
       "name": "bob",
       "role": "coder",
       "worktree": true,
-      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4.\n\nYour output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
+      "prompt": "You are a coder implementing numerical quadrature. You MUST implement the composite Simpson's rule with n=100 subintervals (no other method). Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4.\n\nYour output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
     },
     {
       "name": "carol",
       "role": "coder",
       "worktree": true,
-      "prompt": "You are a coder implementing numerical quadrature. Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4.\n\nYour output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
+      "prompt": "You are a coder implementing numerical quadrature. You MUST implement 20-point Gaussian-Legendre quadrature on [-1,1] mapped to [0,1] (no other method). Embed the full TypeScript implementation in a single ```typescript fenced block and declare it with a QUAD marker showing absolute error vs π/4.\n\nYour output MUST end with a line exactly formatted: <!-- QUAD: <absolute_error> -->"
     },
     {
       "name": "dave",
@@ -302,7 +302,7 @@ The engine selects `carol` (drift 0.00041) as the winner using `score_direction:
   "tool": "team_arena",
   "args": {
     "team_id": "quad-arena",
-    "task": "Implement a numerical quadrature method to approximate ∫₀¹ 1/(1+x²) dx in TypeScript. Choose ONE method: composite trapezoidal rule (n=100 subintervals), composite Simpson's rule (n=100 subintervals), or 20-point Gaussian-Legendre quadrature on [-1,1] mapped to [0,1]. The exact value is π/4 ≈ 0.7853981633974483. Report the absolute error |I_num - π/4|. Embed code in a ```typescript fenced block and end with <!-- QUAD: <absolute_error> -->.",
+    "task": "Implement the numerical quadrature method assigned in your role prompt to approximate ∫₀¹ 1/(1+x²) dx in TypeScript (do NOT substitute a different method). Compute I_num on [0,1]; the exact value is π/4 ≈ 0.7853981633974483. Report the absolute error |I_num - π/4|. Embed code in a ```typescript fenced block and end with <!-- QUAD: <absolute_error> -->.",
     "evaluator": "dave",
     "candidates": ["alice", "bob", "carol"],
     "eval_criteria": "Score based on absolute error |I_num - π/4|. Lower error is better. Error < 1e-5 demonstrates a well-implemented quadrature method (pass=true). Error >= 1e-5 or NaN => pass=false. Report the error as the 'score' field for each candidate.",
