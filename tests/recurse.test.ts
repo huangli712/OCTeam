@@ -3,9 +3,10 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { getExpectedMember, processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { parseDecompose } from "../src/orchestration/protocol/decisions.js"
 import { readRunEvents } from "../src/orchestration/records/runs.js"
+import { writeMailboxMessage } from "../src/messaging/mailbox.js"
 
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
-import type { ActiveTask, MemberState, RecurseTask, Task } from "../src/core/types.js"
+import type { ActiveTask, MemberState, Message, RecurseTask, Task } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import type { PluginContext } from "../src/core/context.js"
 import type { ToolContext } from "@opencode-ai/plugin"
@@ -803,5 +804,85 @@ describe("handleRecurseIdle aggregation dispatch (no fake completion)", () => {
         expect(task.aggregationDispatchCount).toBe(0)
         // No aggregation dispatch needed -- decomposer already claimed root.
         expect(calls.some(c => c.text.includes("[AGGREGATION PHASE]"))).toBe(false)
+    })
+})
+
+// Regression: decompose block + unread inbox in the same turn.
+//
+// Before the fix, the decomposer's prompt instructs her to broadcast
+// coordination messages to teammates in the SAME turn as her <decompose>
+// block. Teammates reply before her idle event fires, so step 7's
+// unread-inbox wake-hint short-circuit returns early and skips
+// handleRecurseIdle entirely. The <decompose> block is silently dropped;
+// the wake-hint-triggered next turn captures non-decompose output,
+// overwrites task.responses[decomposer], and the leaf branch then
+// finalizes the ROOT as completed without ever creating subtasks.
+//
+// Fix: processIdle step 6.5 hands the decomposer's turn to
+// handleRecurseIdle BEFORE the wake-hint short-circuit when the captured
+// output contains a <decompose> tag.
+describe("processIdle step 6.5: decompose block survives unread inbox", () => {
+    test("decompose + unread teammate reply in same turn: subtasks still created", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeRecurseTask({ maxDepth: 3, maxSubtasks: 5 })
+        const runId = task.runId!
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "alice", sessionId: "ses_alice" }],
+        })
+        const root = await seedTask(team, {
+            subject: "build app",
+            description: "the whole thing",
+            owner: "alice",
+            status: "claimed",
+        })
+        task.rootTaskId = root.id
+
+        // Seed the race: a teammate replies to alice's broadcast BEFORE her
+        // idle event fires. The reply lands in alice's inbox, so step 7's
+        // countUnreadMessages would return > 0 and short-circuit.
+        const teammateReply: Message = {
+            version: 1,
+            id: crypto.randomUUID(),
+            from: "bob",
+            to: "alice",
+            kind: "message",
+            body: "Got it -- I'll watch for Path B.",
+            timestamp: Date.now(),
+            deliveryStatus: "pending",
+        }
+        await writeMailboxMessage(team.directory, "alice", teammateReply)
+
+        // Alice's turn contains both the decompose block AND her broadcast
+        // preamble (simulating her turn-1 message-sending pattern).
+        const turnOutput = `Coordinating with teammates.\n${DECOMPOSE_2}\nNotified bob and carol.`
+
+        await processIdle(
+            makeCtx({
+                outputs: { ses_alice: turnOutput },
+                calls,
+                status: statusIdleFrom({ ses_alice: turnOutput }),
+            }),
+            team,
+            team.members[0],
+            "ses_alice",
+        )
+
+        // Subtasks MUST be created despite the unread inbox.
+        const all = await listAllTasks(team.directory)
+        const children = all.filter(t => t.depth === 1)
+        expect(children).toHaveLength(2)
+        expect(children.every(c => c.status === "pending")).toBe(true)
+
+        // Root MUST be re-queued as the aggregator (NOT finalized as a leaf).
+        const updated = await getTask(team.directory, root.id)
+        expect(updated!.status).toBe("pending")
+        expect(updated!.owner).toBeUndefined()
+        expect(updated!.blockedBy).toHaveLength(2)
+
+        // decomposed event MUST be recorded.
+        await waitForEvent(team.directory, runId, "decomposed")
+        const events = await readRunEvents(team.directory, runId)
+        expect(events.some(e => e.kind === "decomposed" && e.member === "alice")).toBe(true)
     })
 })

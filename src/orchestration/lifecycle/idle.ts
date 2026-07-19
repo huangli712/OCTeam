@@ -11,6 +11,7 @@
  *   4. Token accounting (recompute, never +=)
  *   5. Identity validation (stray idle does not advance pipeline/loop)
  *   6. Capture output (delegated to records/capture.ts)
+ *   6.5. Recurse decompose short-circuit (process <decompose> before wake-hint)
  *   7. Unread-message wake hint (returns; Transform hook injects content next turn)
  *   8. Dispatch by active-task type
  *   9. Termination checks
@@ -272,6 +273,27 @@ export async function processIdle(
     }
 
     await saveTeamState(team)
+
+    // Step 6.5: recurse mode — the decomposer may broadcast coordination
+    // messages via team_send_message in the SAME turn as her <decompose> block
+    // (the prompt explicitly instructs her to). Those messages land in her
+    // teammates' inboxes, who reply BEFORE the decomposer's idle event fires,
+    // so the replies are already in the decomposer's own inbox at step 7.
+    // Without this guard, step 7's wake-hint early-returns and SKIPS
+    // handleRecurseIdle, silently dropping the <decompose> block; the next
+    // (wake-hint-triggered) turn captures non-decompose output and overwrites
+    // task.responses[decomposer], permanently losing the decomposition intent.
+    // If the captured turn contains a decompose tag, hand it to the recurse
+    // handler BEFORE the wake-hint short-circuit.
+    if (
+        task?.type === "recurse"
+        && capturedNew
+        && /<(?:decompose|分解)>/.test(task.responses[member.name] ?? "")
+    ) {
+        await idleDispatch[task.type](ctx, team, member)
+        await checkTermination(ctx, team)
+        return
+    }
 
     // Step 7: Unread messages — wake hint only (Transform hook injects content).
     const unread = await countUnreadMessages(team.directory, member.name)
