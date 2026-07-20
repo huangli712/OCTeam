@@ -17,6 +17,7 @@ import {
     summarizeConsensus,
     summarizeParallel,
     summarizeArena,
+    summarizeQuorum,
 } from "./renderers.js"
 
 /**
@@ -48,6 +49,7 @@ export async function buildSummary(
         case "parallel": return summarizeParallel(task, head)
         case "workflow": return summarizeWorkflow(task, head)
         case "arena": return summarizeArena(task, head)
+        case "quorum": return summarizeQuorum(task, head)
         default: {
             // Exhaustiveness guard for OrchestrationType. Every variant has an
             // explicit case above, so task narrows to `never` here. Adding a new

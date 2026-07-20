@@ -20,7 +20,7 @@ Peer dependencies (`@opencode-ai/plugin` >=1.4.7, `@opencode-ai/sdk` >=1.4.7,
 `@opentui/solid` >=0.1.99, `solid-js` >=1.9.0) are resolved by OpenCode's
 plugin host.
 
-## Tool surface (41 tools)
+## Tool surface (42 tools)
 
 ### Lifecycle
 
@@ -55,7 +55,7 @@ plugin host.
 | `team_task_update` | Update a task's status (claim, progress, complete, delete) |
 | `team_task_get` | Get full details of a single task |
 
-### Orchestration (11 primitives)
+### Orchestration (12 primitives)
 
 | Tool | Description |
 |------|-------------|
@@ -70,8 +70,9 @@ plugin host.
 | `team_tollgate` | Verdict-gated pipeline (PASS/FAIL/INVALID gates between stages) |
 | `team_arena` | Competitive arena: N candidates implement in isolated worktrees, an evaluator scores them, deterministic winner is delivered |
 | `team_workflow` | Deterministic declarative workflow: task/gate/fanout/join steps with engine-driven retry, recovery, and join policies |
+| `team_quorum` | Replicated k-of-n voting: N members independently answer the same fixed-schema question; strict majority (k > valid_ballots/2) wins |
 
-All eleven are master-only: only the team's leader session may start an
+All twelve are master-only: only the team's leader session may start an
 orchestration. Only one orchestration can be active per team at a time.
 
 ### Workflow authoring

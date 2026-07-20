@@ -13,6 +13,7 @@ import type {
     DecisionRecord,
     OrchestrationType,
     ParallelMode,
+    QuorumBallot,
     SignoffPolicy,
 } from "./orchestration.js"
 
@@ -126,6 +127,20 @@ export type RunRecord = {
         scoreDirection: "max" | "min"
         winnerMetric: string
         scoreboard?: ArenaScoreboard
+    }
+    // quorum snapshot: parsed ballots + tally audit trail. All tally-derived
+    // fields are optional because persistRun may run on a pre-tally failure path
+    // (e.g. member_error when survivors==0) where the tally never executed.
+    quorum?: {
+        task: string
+        voteKey: string
+        voteOptions?: string[]
+        participants: string[]
+        ballots?: Record<string, QuorumBallot>
+        erroredCount?: number
+        nEff?: number
+        threshold?: number
+        winningOption?: string
     }
 }
 

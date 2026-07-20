@@ -44,6 +44,7 @@ import { handleRouteIdle } from "../modes/route.js"
 import { handleArbitrateIdle } from "../modes/arbitrate.js"
 import { handleArenaIdle } from "../modes/arena.js"
 import { handleWorkflowIdle } from "../workflow/handler.js"
+import { handleQuorumIdle } from "../modes/quorum.js"
 import { captureMemberOutput } from "../records/capture.js"
 
 /**
@@ -64,6 +65,7 @@ const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, m
     tollgate: async (ctx, team, member) => handleTollgateIdle(ctx, team, member),
     workflow: async (ctx, team, member) => handleWorkflowIdle(ctx, team, member),
     arena: async (ctx, team, member) => handleArenaIdle(ctx, team, member),
+    quorum: async (ctx, team) => handleQuorumIdle(ctx, team),
 }
 
 // --- helpers ---
@@ -80,6 +82,7 @@ export function getExpectedMember(task: ActiveTask): string | null {
     if (task.type === "parallel") return null
     if (task.type === "consensus") return null
     if (task.type === "delegate") return null
+    if (task.type === "quorum") return null
     if (task.type === "route") {
         // router phase: only the router advances; target phase: any target (like parallel)
         return task.routeStage ? null : (task.routerMember ?? null)

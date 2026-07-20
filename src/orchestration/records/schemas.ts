@@ -18,6 +18,7 @@ import { z } from "zod"
 const OrchestrationTypeSchema = z.enum([
     "parallel", "pipeline", "loop", "delegate", "consensus",
     "route", "arbitrate", "recurse", "tollgate", "workflow", "arena",
+    "quorum",
 ])
 
 const ParallelModeSchema = z.enum(["isolated", "cooperative"])
@@ -408,6 +409,21 @@ export const RunRecordSchema = z.object({
         scoreDirection: z.enum(["max", "min"]),
         winnerMetric: z.string(),
         scoreboard: ArenaScoreboardSchema.optional(),
+    }).optional(),
+    quorum: z.object({
+        task: z.string(),
+        voteKey: z.string(),
+        voteOptions: z.array(z.string()).optional(),
+        participants: z.array(z.string()),
+        ballots: z.record(z.string(), z.object({
+            vote: z.string(),
+            rationale: z.string().optional(),
+            status: z.enum(["valid", "invalid", "errored"]),
+        })).optional(),
+        erroredCount: z.number().optional(),
+        nEff: z.number().optional(),
+        threshold: z.number().optional(),
+        winningOption: z.string().optional(),
     }).optional(),
 })
 

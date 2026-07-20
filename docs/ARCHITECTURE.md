@@ -83,6 +83,7 @@ per team at a time. The eleven workflow primitives are:
 | `team_tollgate` | Verdict-gated pipeline (PASS/FAIL/INVALID gates between stages) |
 | `team_arena` | Competitive arena: N candidates implement in isolated worktrees |
 | `team_workflow` | Deterministic, declaratively-composed linear step engine |
+| `team_quorum` | Replicated k-of-n voting; strict majority (k > valid_ballots/2) wins |
 
 ## Runtime and recovery
 

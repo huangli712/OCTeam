@@ -112,7 +112,7 @@ export async function checkTermination(
             // within tolerance with survivors → NO-OP; the barrier delivers survivors.
             return
         }
-        const concurrent = task.type === "parallel" || task.type === "delegate" || task.type === "recurse"
+        const concurrent = task.type === "parallel" || task.type === "delegate" || task.type === "recurse" || task.type === "quorum"
         const tolerance = concurrent ? (task.maxErroredMembers ?? 0) : 0
         const survivors = team.members.filter(m => !m.isMaster).length - erroredMembers.length
         if (erroredMembers.length > tolerance || survivors === 0) {

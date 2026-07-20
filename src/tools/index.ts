@@ -49,6 +49,7 @@ import { teamPipelineTool } from "./modes/pipeline.js"
 import { teamRouteTool } from "./modes/router.js"
 import { teamArbitrateTool } from "./modes/arbitrate.js"
 import { teamArenaTool } from "./modes/arena.js"
+import { teamQuorumTool } from "./modes/quorum.js"
 import { teamRecurseTool } from "./modes/recurse.js"
 import { teamTollgateTool } from "./modes/tollgate.js"
 //
@@ -85,6 +86,7 @@ export function createTools(ctx: PluginContext): Record<string, ToolDefinition> 
         team_recurse: teamRecurseTool(ctx),
         team_tollgate: teamTollgateTool(ctx),
         team_arena: teamArenaTool(ctx),
+        team_quorum: teamQuorumTool(ctx),
         team_workflow: teamWorkflowTool(ctx),
         team_fix_workflow: teamFixWorkflowTool(ctx),
         team_planner: teamPlannerTool(ctx),

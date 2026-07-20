@@ -19,6 +19,7 @@ import { handleDelegateIdle } from "../modes/delegate.js"
 import { handleRecurseIdle } from "../modes/recurse.js"
 import { advanceWorkflowStep } from "../workflow/engine.js"
 import { handleArenaIdle } from "../modes/arena.js"
+import { handleQuorumIdle } from "../modes/quorum.js"
 
 /** Sustained-retry grace window before a member is escalated to "errored". */
 const RETRY_ESCALATION_MS = 60_000
@@ -73,6 +74,12 @@ async function escalateMemberToErrored(
                     break
                 case "arena":
                     await handleArenaIdle(ctx, team, live)
+                    break
+                case "quorum":
+                    // Re-drive the barrier so it can re-check readiness and fire
+                    // tally if this errored member was the last-awaited participant.
+                    // checkTermination already ran above; do NOT call it again here.
+                    await handleQuorumIdle(ctx, team)
                     break
                 default:
                     break

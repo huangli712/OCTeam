@@ -248,3 +248,28 @@ export function summarizeArena(task: Extract<ActiveTask, { type: "arena" }>, hea
     const note = `\nCandidates: ${task.candidates.join(", ")} | evaluator: ${task.evaluatorMember}`
     return `${head}\n${winnerLine}${table}${note}`
 }
+
+/** Render a quorum run: verdict line + threshold summary + per-member ballot breakdown. */
+export function summarizeQuorum(
+    task: Extract<ActiveTask, { type: "quorum" }>,
+    head: string,
+): string {
+    // Lead with the winning option (or no-majority failure), then the
+    // threshold/nEff summary, then per-member ballots. Invalid and errored
+    // ballots render as abstain tags so the leader can see who did not
+    // contribute a valid vote.
+    const verdictLine = task.winningOption
+        ? `Quorum SUCCEEDED — winning option: ${task.winningOption}`
+        : "Quorum FAILED — no option reached strict majority"
+    const thresholdLine = `Threshold: ${task.threshold ?? "?"} of ${task.nEff ?? "?"} valid ballots`
+    const ballots = Object.entries(task.ballots ?? {}).map(([name, ballot]) => {
+        const tag = ballot.status === "valid"
+            ? `vote=${ballot.vote}`
+            : ballot.status === "invalid" ? "INVALID (abstain)" : "ERRORED (abstain)"
+        const rationale = ballot.rationale ? ` — ${ballot.rationale}` : ""
+        return `- ${name}: ${tag}${rationale}`
+    })
+    const ballotBlock = ballots.length > 0 ? `\nBallots:\n${ballots.join("\n")}` : ""
+    const note = `\nParticipants: ${task.participants.join(", ")} | vote_key: ${task.voteKey}`
+    return `${head}\n${verdictLine}\n${thresholdLine}${ballotBlock}${note}`
+}

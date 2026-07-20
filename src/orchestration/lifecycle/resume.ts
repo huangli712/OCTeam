@@ -41,6 +41,7 @@ import { buildSummary } from "../records/summary.js";
 import { finishRun } from "../control/completion.js";
 import { buildArenaEvaluatorPrompt, handleArenaIdle } from "../modes/arena.js";
 import { buildReducePrompt, handleReduceIdle } from "../modes/reduce.js";
+import { handleQuorumIdle } from "../modes/quorum.js";
 import { buildSignoffReviewPrompt } from "../control/signoff.js";
 import { resumeApprovalStage } from "../control/approval.js";
 import { listAllTasks, reapStaleClaims, updateTask } from "../../state/tasks.js";
@@ -572,6 +573,40 @@ async function resumeArenaMode(
     );
 }
 
+/**
+ * Quorum resume: re-dispatch participants without a captured response; a
+ * zero-dispatch re-drive settles the barrier (e.g. all participants already
+ * idled but the process crashed before the tally ran).
+ *
+ * Errored/no-session participants are filtered out of the dispatch predicate
+ * (mirrors resumeArenaMode, NOT resumeParallelMode): without this guard, a
+ * counted no-op to an errored participant would suppress the zero-dispatch
+ * barrier re-drive and hang the run. Quorum is more exposed to this than
+ * parallel because errored participants are a designed-for condition
+ * (default maxErroredMembers = N-1).
+ */
+async function resumeQuorumMode(
+    ctx: PluginContext,
+    team: Team,
+    task: Extract<ActiveTask, { type: "quorum" }>,
+): Promise<void> {
+    const participantSet = new Set(task.participants);
+    await resumeConcurrentDispatch(
+        ctx, team, team.members,
+        (m) => participantSet.has(m.name)
+            && m.status !== "errored"
+            && !!m.sessionId
+            && !task.responses[m.name],
+        () => `[Quorum vote — resumed] ${task.task}`,
+        async () => {
+            // Zero real dispatch -> re-drive the barrier with the FIRST
+            // participant regardless of status (errored counts as terminal-ready).
+            const first = team.members.find((m) => task.participants.includes(m.name));
+            if (first) await handleQuorumIdle(ctx, team);
+        },
+    );
+}
+
 /** Per-mode re-dispatch entry for team_resume Phase 3: delegates to each mode's resume handler. */
 export async function resumeDispatch(
     ctx: PluginContext,
@@ -604,6 +639,8 @@ export async function resumeDispatch(
             return await resumeWorkflowMode(ctx, team, task);
         case "arena":
             return await resumeArenaMode(ctx, team, task);
+        case "quorum":
+            return await resumeQuorumMode(ctx, team, task);
         default: {
             // Exhaustiveness guard: every OrchestrationType is handled above, so
             // task.type narrows to `never` here. A new type added without a

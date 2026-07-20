@@ -53,6 +53,8 @@ const FAILED_REASON_MARKERS = [
     "signoff_quorum_not_reached", // signoff: peer-quorum did not get enough approvals
     "human_rejected",             // HITL: leader rejected a mid-run approval request
     "arena_failed",               // arena: every arena_failed:* reason (no_survivors, member_error, evaluator_*, eval_invalid); arena_complete matches no marker and stays completed
+    "quorum_no_majority",         // quorum: tally complete but no option reached strict majority
+    "quorum_all_errored",         // quorum: all participants abstained (unreachable via runtime errors alone; only via all-invalid-ballot path)
 ] as const
 
 /**
@@ -229,6 +231,20 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
             scoreDirection: task.scoreDirection,
             winnerMetric: task.winnerMetric,
             scoreboard: task.scoreboard,
+        }
+    }
+
+    if (task.type === "quorum") {
+        record.quorum = {
+            task: task.task,
+            voteKey: task.voteKey,
+            voteOptions: task.voteOptions,
+            participants: task.participants,
+            ballots: task.ballots,
+            erroredCount: task.erroredCount,
+            nEff: task.nEff,
+            threshold: task.threshold,
+            winningOption: task.winningOption,
         }
     }
 

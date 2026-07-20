@@ -23,7 +23,7 @@ import type {
 
 // --- Orchestration mode enums ---
 
-/** Discriminated orchestration mode — one of eleven workflow primitives. */
+/** Discriminated orchestration mode — one of twelve workflow primitives. */
 export type OrchestrationType =
     | "parallel"
     | "pipeline"
@@ -36,6 +36,7 @@ export type OrchestrationType =
     | "tollgate"
     | "workflow"
     | "arena"
+    | "quorum"
 
 /** Parallel execution mode: isolated (same task) or cooperative (per-member). */
 export type ParallelMode = "isolated" | "cooperative"
@@ -171,6 +172,7 @@ export type ActiveTask =
     | TollgateTask
     | WorkflowTask
     | ArenaTask
+    | QuorumTask
 
 // ============================================================================
 // Interfaces
@@ -378,4 +380,30 @@ export interface ArenaTask extends ActiveTaskBase {
     evalAttempts?: number                    // evaluator attempts consumed so far
     scoreboard?: ArenaScoreboard             // evaluator-attested per-candidate scores
     winner?: string                          // deterministically selected winner name
+}
+
+// quorum: N members independently vote on a fixed-schema question; the option
+// with strict majority (k > valid_ballots/2) wins. Invalid ballots AND runtime
+// errors both abstain (excluded from the denominator, not counted as no-votes).
+/** Replicated voting — k-of-n majority ballot on a fixed-schema question. */
+export interface QuorumTask extends ActiveTaskBase {
+    type: "quorum"
+    task: string                             // required: the voting question (narrows the optional Base field)
+    voteKey: string                          // the ballot field name members must emit (e.g. "decision")
+    voteOptions?: string[]                   // optional whitelist; null/undefined = any non-empty string
+    participants: string[]                   // resolved member names who ballot (threaded from `members` arg)
+    ballots?: Record<string, QuorumBallot>   // memberName -> parsed ballot; populated at TALLY
+    erroredCount?: number                    // invalid-ballot + runtime-error count (for k recalculation)
+    nEff?: number                            // effective valid-ballot count (participants - errored); persisted
+    threshold?: number                       // k = floor(nEff/2)+1; persisted
+    winningOption?: string                   // set at TALLY when an option reaches k
+    // NOTE: maxErroredMembers comes from ActiveTaskBase — used by checkTermination
+    //       to decide fail-fast vs tolerate-and-let-barrier-handle.
+}
+
+/** A single member's parsed ballot in a quorum vote. */
+export interface QuorumBallot {
+    vote: string                             // the chosen option value (validated against voteOptions if provided)
+    rationale?: string                       // optional member rationale
+    status: "valid" | "invalid" | "errored"  // invalid = malformed/missing/non-whitelist; errored = runtime error
 }
