@@ -12,10 +12,9 @@
 import { describe, expect, test } from "bun:test"
 
 import { handleQuorumIdle } from "../src/orchestration/modes/quorum.js"
-import { persistRun } from "../src/orchestration/records/runs.js"
 import { RunRecordSchema } from "../src/orchestration/records/schemas.js"
 import { runRecordPath } from "../src/state/paths.js"
-import type { ActiveTask, QuorumTask } from "../src/core/types.js"
+import type { QuorumTask } from "../src/core/types.js"
 import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 import { readFile } from "node:fs/promises"
 
