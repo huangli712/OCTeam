@@ -1,6 +1,6 @@
 # OCTeam Orchestration Scenario Catalog
 
-A set of 11 orchestration primitive scenarios plus 7 feature-specific scenario sets, designed for real applications. Each primitive includes 4 sub-scenarios (math / computational physics / programming × 3 baseline + 1 challenge-level), complete with team configs, master invocations, execution timeline sequences, and runnable TypeScript check scripts. The feature-specific sets cross-cut multiple modes to demonstrate `human_approval` (HITL), `signoff_policy` (post-completion review), advanced tollgate gate parameters (INVALID escalation, reference comparison, retry), advanced workflow engine features (loops, ensemble verifiers, join_policy variants), workflow engine automation (retry_on, foreach, conditional jumps, resilience), parallel isolated mode (same-task broadcast, done-ack barrier, fault tolerance), and auto-planning via `team_planner` (propose→write→execute closed loop with join_policy coverage).
+A set of 12 orchestration primitive scenarios plus 7 feature-specific scenario sets, designed for real applications. Each primitive includes 4 sub-scenarios (math / computational physics / programming × 3 baseline + 1 challenge-level), complete with team configs, master invocations, execution timeline sequences, and runnable TypeScript check scripts. The feature-specific sets cross-cut multiple modes to demonstrate `human_approval` (HITL), `signoff_policy` (post-completion review), advanced tollgate gate parameters (INVALID escalation, reference comparison, retry), advanced workflow engine features (loops, ensemble verifiers, join_policy variants), workflow engine automation (retry_on, foreach, conditional jumps, resilience), parallel isolated mode (same-task broadcast, done-ack barrier, fault tolerance), and auto-planning via `team_planner` (propose→write→execute closed loop with join_policy coverage).
 >
 > Scenario domains covered: **math / computational physics / programming**.
 
@@ -26,6 +26,7 @@ A set of 11 orchestration primitive scenarios plus 7 feature-specific scenario s
 | 16 | `team_workflow` (engine automation) | Engine auto-retry / foreach / conditional jumps / resilience | retry_on, foreach, on_pass_goto+where, on_timeout+fallback | [`16-team-workflow/`](./16-team-workflow/) |
 | 17 | `team_parallel` (isolated) | Same-task broadcast / done-ack barrier / fault tolerance | isolated mode, require_done_ack, max_errored_members | [`17-team-parallel/`](./17-team-parallel/) |
 | 18 | `team_planner` | Auto-planning: propose→write→execute from natural-language goals | AI-generated team + workflow with join_policy variants | [`18-team-planner/`](./18-team-planner/) |
+| 19 | `team_quorum` | Replicated k-of-n majority voting on fixed-schema questions | Merge gates, compliance verdicts, risk assessment, fact-checking | [`19-team-quorum/`](./19-team-quorum/) |
 
 ## Scenario Matrix
 
@@ -42,6 +43,7 @@ A set of 11 orchestration primitive scenarios plus 7 feature-specific scenario s
 | tollgate | Fast exponentiation impl + verification | Verlet solver + verification | String reverse + verification | 2D heat conduction solver V&V certification (6 people, ~60min)|
 | workflow | Bisection root-finding impl + verification | Projectile motion RK4 solver + energy verification | REST API handler impl + verification + refactor | Multi-module fanout parallel impl + join reduce integration verification (6 people, ~50min)|
 | arena | Definite integral 3 quadrature methods accuracy face-off | 3 integrators energy drift pick the most stable | 3 sorting benchmarks pick the fastest | Poisson equation 5-solver comprehensive arena (5 candidates + 1 evaluator, ~40min)|
+| quorum | Square-sum formula verification (5-way) | Iterative simulation convergence verdict (5-way) | PR merge approval (3-way: ship/hold/block) | 7-member GDPR compliance committee + fault tolerance (7 people, ~15min)|
 
 ## Composite Scenarios (Multi-Team Multi-Orchestration)
 
