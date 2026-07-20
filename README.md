@@ -2,9 +2,9 @@
 
 Persistent multi-agent teams for OpenCode. OCTeam is an OpenCode plugin that
 lets you create long-lived teams of up to 8 OpenCode sessions and orchestrate
-them with eleven workflow primitives.
+them with twelve workflow primitives.
 
-**Version:** 0.12.20
+**Version:** 0.12.21
 **License:** MIT  
 **Runtime:** Bun (TypeScript)
 
