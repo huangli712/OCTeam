@@ -20,6 +20,46 @@ import { buildRolePrompt } from "../protocol/output.js"
 const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000
 
 /**
+ * Wait outside the mutex for role-setup idle acknowledgements.
+ *
+ * On timeout, the errored state is persisted under the mutex before aborting
+ * startup so a follow-up reconcile observes the terminal member status.
+ */
+async function waitForRoleSetupBarrier(
+    ctx: PluginContext,
+    team: Team,
+    waitNames: Set<string>,
+): Promise<void> {
+    await waitUntil(
+        () =>
+            [...waitNames].every(
+                (name) => team.members.find((member) => member.name === name)?.initialized,
+            ),
+        { timeoutMs: ROLE_SETUP_BARRIER_TIMEOUT_MS },
+    ).catch(async () => {
+        // Timeout state is persisted under the mutex before aborting startup.
+        await team.mutex.runExclusive(async () => {
+            for (const name of waitNames) {
+                const current = team.members.find((member) => member.name === name)
+                if (current && !current.initialized) {
+                    current.status = "errored"
+                    current.error = "role-setup barrier timed out"
+                }
+            }
+            await saveTeamState(team).catch((err) =>
+                logSwallowed(
+                    ctx,
+                    "persist failed before barrier-timeout abort",
+                    err,
+                    { team: team.teamName },
+                ),
+            )
+        })
+        throw new Error("ensureMembersReady: role-setup barrier timed out")
+    })
+}
+
+/**
  * Snapshot the spawn work and readiness-barrier set for a team.
  *
  * `toSpawn` captures members without a session id; `waitNames` is the broader
@@ -141,46 +181,6 @@ async function spawnMemberSafely(
         }
         throw err
     }
-}
-
-/**
- * Wait outside the mutex for role-setup idle acknowledgements.
- *
- * On timeout, the errored state is persisted under the mutex before aborting
- * startup so a follow-up reconcile observes the terminal member status.
- */
-async function waitForRoleSetupBarrier(
-    ctx: PluginContext,
-    team: Team,
-    waitNames: Set<string>,
-): Promise<void> {
-    await waitUntil(
-        () =>
-            [...waitNames].every(
-                (name) => team.members.find((member) => member.name === name)?.initialized,
-            ),
-        { timeoutMs: ROLE_SETUP_BARRIER_TIMEOUT_MS },
-    ).catch(async () => {
-        // Timeout state is persisted under the mutex before aborting startup.
-        await team.mutex.runExclusive(async () => {
-            for (const name of waitNames) {
-                const current = team.members.find((member) => member.name === name)
-                if (current && !current.initialized) {
-                    current.status = "errored"
-                    current.error = "role-setup barrier timed out"
-                }
-            }
-            await saveTeamState(team).catch((err) =>
-                logSwallowed(
-                    ctx,
-                    "persist failed before barrier-timeout abort",
-                    err,
-                    { team: team.teamName },
-                ),
-            )
-        })
-        throw new Error("ensureMembersReady: role-setup barrier timed out")
-    })
 }
 
 /**
