@@ -102,7 +102,7 @@ Each mode directory contains 4 files:
 
 ## Scenario Quick-Start Prompts
 
-Each scenario README ends with a "**Quick-Start Prompt (Copy and Use)**" section, providing one-click closed-loop prompts for all 3 baseline + 1 challenge-level sub-scenarios. Paste the corresponding prompt to the master session, and the AI will automatically complete "create team → activate → launch orchestration → wait for aggregation → run check script", reporting PASS / FAIL by exit code — **no manual JSON assembly needed**. The check scripts and quick-start prompts for challenge-level scenarios are consistent with the baseline scenarios.
+Each scenario README ends with a "**Quick-Start Prompt**" section, providing one-click closed-loop prompts for all 3 baseline + 1 challenge-level sub-scenarios. Paste the corresponding prompt to the master session, and the AI will automatically complete "create team → activate → launch orchestration → wait for aggregation → run check script", reporting PASS / FAIL by exit code — **no manual JSON assembly needed**. The check scripts and quick-start prompts for challenge-level scenarios are consistent with the baseline scenarios.
 
 For example, to launch the `01-team-parallel` Monte Carlo pi scenario: open [`01-team-parallel/README.md`](./01-team-parallel/README.md), go to "Quick-Start Prompt → Scenario 1", copy the `text` code block and paste it to the AI.
 

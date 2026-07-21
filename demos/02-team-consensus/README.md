@@ -57,7 +57,7 @@
 
 **Role selection rationale**: `mathematician` uses the `oct-junior` agent, capable of complexity analysis, counterexample construction, and numerical verification — perfectly matching the algorithm selection debate needs.
 
-### 1.3 Master Launch Invocation
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -146,7 +146,7 @@ T+9m    run: bun check-math-sort-stability.ts <run_dir>
 
 **Role selection rationale**: `simulator` is purpose-built for numerical simulation (PDE/finite difference/stability analysis), fitting the heat diffusion scheme selection scenario.
 
-### 2.3 Master Launch Invocation
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -235,7 +235,7 @@ T+9m    run: bun check-physics-heat-diffusion.ts <run_dir>
 
 **Role selection rationale**: `coder` uses the `oct-junior` agent, capable of writing benchmark code and measuring short-text matching wall-clock times to support arguments — fitting the algorithm implementation debate.
 
-### 3.3 Master Launch Invocation
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -353,7 +353,7 @@ Key criterion: For a **balanced** 60-digit RSA semiprime, trial division / Polla
 
 **Role selection rationale**: All 6 members use `mathematician` (`oct-junior` agent), capable of complexity hierarchy analysis (`O` / sub-exponential `L[]`), logarithmic calculation, and counterexample construction — perfectly matching the deep debate needs of cryptographic algorithm selection.
 
-### 4.3 Master Launch Invocation
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -402,8 +402,7 @@ T+35m   run: bun check-math-factoring-consensus.ts <run_dir>
 
 ---
 
-
-## Quick-Start Prompt (Copy and Use)
+## Quick-Start Prompt
 
 Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for aggregation → run check script". All specific configs directly reference the corresponding sections of this README.
 
@@ -415,7 +414,7 @@ Run the full closed loop of demos/02-team-consensus/README.md "Scenario 1" and a
 Steps:
 1. Read README "1.2 Team Config", create the team using the team_create JSON
 2. team_activate
-3. Read README "1.3 Master Launch Invocation", start the orchestration using the team_consensus JSON
+3. Read README "1.3 Master Launch Call", start the orchestration using the team_consensus JSON
 4. team_results poll until master receives summary (consensus at most max_rounds rounds) (poll every 30s)
 5. Locate <run_dir> (contains each member <member>.md)
 6. Run: bun demos/02-team-consensus/check-math-sort-stability.ts <run_dir>
@@ -432,7 +431,7 @@ Run the full closed loop of demos/02-team-consensus/README.md "Scenario 2" and a
 Steps:
 1. Read README "2.2 Team Config", create the team using the team_create JSON
 2. team_activate
-3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_consensus JSON
+3. Read README "2.3 Master Launch Call", start the orchestration using the team_consensus JSON
 4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/02-team-consensus/check-physics-heat-diffusion.ts <run_dir>
@@ -449,7 +448,7 @@ Run the full closed loop of demos/02-team-consensus/README.md "Scenario 3" and a
 Steps:
 1. Read README "3.2 Team Config", create the team using the team_create JSON
 2. team_activate
-3. Read README "3.3 Master Launch Invocation", start the orchestration using the team_consensus JSON
+3. Read README "3.3 Master Launch Call", start the orchestration using the team_consensus JSON
 4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/02-team-consensus/check-coding-string-match.ts <run_dir>
@@ -466,7 +465,7 @@ Run the full closed loop of demos/02-team-consensus/README.md "Scenario 4" and a
 Steps:
 1. Read README "4.2 Team Config", create the team using the team_create JSON (6 mathematicians)
 2. team_activate
-3. Read README "4.3 Master Launch Invocation", start the orchestration using the team_consensus JSON (max_rounds=5)
+3. Read README "4.3 Master Launch Call", start the orchestration using the team_consensus JSON (max_rounds=5)
 4. team_results poll until master receives summary (consensus at most 5 rounds, longer wait expected) (poll every 30s)
 5. Locate <run_dir> (contains 6 member <member>.md files)
 6. Run: bun demos/02-team-consensus/check-math-factoring-consensus.ts <run_dir>

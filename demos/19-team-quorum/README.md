@@ -2,7 +2,7 @@
 
 `team_quorum` runs a replicated k-of-n ballot: N members **independently** answer the same fixed-schema question (no debate, no interaction); the option with strict majority (k > valid_ballots/2) wins. Both malformed ballots and runtime errors **abstain** — they are excluded from the denominator, not counted as no-votes. All members run to completion (no early-exit).
 
-> **Key difference from `team_consensus`**: consensus requires **unanimous agreement** through multi-round **debate**; quorum requires only a **strict majority** through single-round **independent voting**. Use consensus when members should persuade each other; use quorum when members should independently judge a fixed-set verdict.
+**Key difference from `team_consensus`**: consensus requires **unanimous agreement** through multi-round **debate**; quorum requires only a **strict majority** through single-round **independent voting**. Use consensus when members should persuade each other; use quorum when members should independently judge a fixed-set verdict.
 
 ---
 
@@ -61,7 +61,7 @@
 
 **Role selection rationale**: `coder` uses the `oct-junior` agent, capable of reading diffs, assessing correctness, and judging merge risk — perfectly matching code review needs.
 
-### 1.3 Master Launch Invocation
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -166,7 +166,7 @@ T+6m    run: bun check-coding-pr-review.ts <run_dir>
 
 **Role selection rationale**: `mathematician` uses the `oct-junior` agent, capable of closed-form computation and formula verification — matching the independent computation needs.
 
-### 2.3 Master Launch Invocation
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -276,7 +276,7 @@ The residual decreases monotonically by ~2 orders of magnitude every 3 iteration
 
 **Role selection rationale**: `simulator` is purpose-built for numerical simulation analysis (residual convergence, stability assessment), fitting the convergence verdict scenario.
 
-### 3.3 Master Launch Invocation
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -392,7 +392,7 @@ Seven compliance reviewers independently assess the case and vote: `approve`, `d
 
 **Role selection rationale**: `reviewer` is the read-only analytical role, perfectly matching compliance review (read case materials → assess → vote, no code changes needed). All 7 members use the same role — this is NOT a debate where members advocate different positions.
 
-### 4.3 Master Launch Invocation
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -449,7 +449,7 @@ Unlike baseline scenarios (which assert a specific winning option), this challen
 
 ---
 
-## Quick-Start Prompt (Copy and Use)
+## Quick-Start Prompt
 
 Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for tally → run check script".
 
@@ -461,7 +461,7 @@ Run the full closed loop of demos/19-team-quorum/README.md "Scenario 1" and auto
 Steps:
 1. Read README "1.2 Team Config", create the team using the team_create JSON
 2. team_activate
-3. Read README "1.3 Master Launch Invocation", start the orchestration using the team_quorum JSON
+3. Read README "1.3 Master Launch Call", start the orchestration using the team_quorum JSON
 4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains record.json + each member <member>.md)
 6. Run: bun demos/19-team-quorum/check-coding-pr-review.ts <run_dir>
@@ -478,7 +478,7 @@ Run the full closed loop of demos/19-team-quorum/README.md "Scenario 2" and auto
 Steps:
 1. Read README "2.2 Team Config", create the team using the team_create JSON
 2. team_activate
-3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_quorum JSON
+3. Read README "2.3 Master Launch Call", start the orchestration using the team_quorum JSON
 4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/19-team-quorum/check-math-square-sum.ts <run_dir>
@@ -495,7 +495,7 @@ Run the full closed loop of demos/19-team-quorum/README.md "Scenario 3" and auto
 Steps:
 1. Read README "3.2 Team Config", create the team using the team_create JSON
 2. team_activate
-3. Read README "3.3 Master Launch Invocation", start the orchestration using the team_quorum JSON
+3. Read README "3.3 Master Launch Call", start the orchestration using the team_quorum JSON
 4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir>
 6. Run: bun demos/19-team-quorum/check-physics-convergence.ts <run_dir>
@@ -512,7 +512,7 @@ Run the full closed loop of demos/19-team-quorum/README.md "Scenario 4" and auto
 Steps:
 1. Read README "4.2 Team Config", create the team using the team_create JSON (7 reviewers)
 2. team_activate
-3. Read README "4.3 Master Launch Invocation", start the orchestration using the team_quorum JSON (max_errored_members=2)
+3. Read README "4.3 Master Launch Call", start the orchestration using the team_quorum JSON (max_errored_members=2)
 4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains record.json + 7 member .md files)
 6. Run: bun demos/19-team-quorum/check-governance-compliance.ts <run_dir>

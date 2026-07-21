@@ -60,7 +60,7 @@
 
 **Role selection rationale**: `mathematician` uses the `oct-junior` agent, capable of writing code, running it, and doing numerical verification — exactly matches this scenario's needs.
 
-### 1.3 Master Launch Invocation
+### 1.3 Master Launch Call
 
 ```json
 {
@@ -155,7 +155,7 @@ T+9m    run: bun check-math-montecarlo-pi.ts <run_dir>
 
 **Role selection rationale**: `simulator` is purpose-built for numerical simulation (PDE/MC/MD/HPC), fitting the physics simulation scenario.
 
-### 2.3 Master Launch Invocation
+### 2.3 Master Launch Call
 
 ```json
 {
@@ -247,7 +247,7 @@ T+7m    run: bun check-physics-harmonic-integrator.ts <run_dir>
 
 **Role selection rationale**: `coder` uses the `oct-junior` agent, focusing on implementation with minimal changes — fitting the algorithm-task implementation needs.
 
-### 3.3 Master Launch Invocation
+### 3.3 Master Launch Call
 
 ```json
 {
@@ -389,7 +389,7 @@ T+6m    run: bun check-coding-twosum.ts <run_dir>
 
 **Role selection rationale**: All 8 members use `coder` (`oct-junior` agent, capable of writing code, running it, and doing correctness verification), perfectly matching the "implement + run benchmarks + self-check" challenge needs. Member names use the first 8 entries from `MEMBER_NAME_POOL` (alice..henry), the team is at full capacity (limit 8).
 
-### 4.3 Master Launch Invocation
+### 4.3 Master Launch Call
 
 ```json
 {
@@ -450,7 +450,7 @@ T+18m    run: bun check-coding-sort-benchmark.ts <run_dir>
 
 ---
 
-## Quick-Start Prompt (Copy and Use)
+## Quick-Start Prompt
 
 Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for aggregation → run check script", reporting PASS / FAIL by exit code. All specific configs (team_create, team_parallel parameters) directly reference the corresponding sections of this README — no manual JSON copying needed.
 
@@ -462,7 +462,7 @@ Run the full closed loop of demos/01-team-parallel/README.md "Scenario 1: Monte 
 Steps:
 1. Read README "1.2 Team Config", create the team using the team_create JSON
 2. team_activate (team_id = the team name created in the previous step)
-3. Read README "1.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
+3. Read README "1.3 Master Launch Call", start the orchestration using the team_parallel JSON
 4. team_results poll, wait for orchestration to complete and master to receive summary (poll every 30s)
 5. Locate the output directory <run_dir> for this run (contains alice.md / bob.md / carol.md)
 6. Run evaluation:
@@ -480,7 +480,7 @@ Run the full closed loop of demos/01-team-parallel/README.md "Scenario 2: Harmon
 Steps:
 1. Read README "2.2 Team Config", create the team using the team_create JSON
 2. team_activate
-3. Read README "2.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
+3. Read README "2.3 Master Launch Call", start the orchestration using the team_parallel JSON
 4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
 6. Run: bun demos/01-team-parallel/check-physics-harmonic-integrator.ts <run_dir>
@@ -497,7 +497,7 @@ Run the full closed loop of demos/01-team-parallel/README.md "Scenario 3: Two-Su
 Steps:
 1. Read README "3.2 Team Config", create the team using the team_create JSON
 2. team_activate
-3. Read README "3.3 Master Launch Invocation", start the orchestration using the team_parallel JSON
+3. Read README "3.3 Master Launch Call", start the orchestration using the team_parallel JSON
 4. team_results poll until master receives summary (poll every 30s)
 5. Locate <run_dir> (contains alice.md / bob.md / carol.md)
 6. Run: bun demos/01-team-parallel/check-coding-twosum.ts <run_dir>
@@ -514,7 +514,7 @@ Run the full closed loop of demos/01-team-parallel/README.md "Scenario 4: 8 Sort
 Steps:
 1. Read README "4.2 Team Config", create the team using the team_create JSON (8 coder members, alice..henry)
 2. team_activate (team_id = sort-bench)
-3. Read README "4.3 Master Launch Invocation", start the orchestration using the team_parallel JSON (timeout_ms=3600000, allowing 60 min)
+3. Read README "4.3 Master Launch Call", start the orchestration using the team_parallel JSON (timeout_ms=3600000, allowing 60 min)
 4. team_results poll, wait for orchestration to complete and master to receive merge summary (includes 8×3 comparison table) (poll every 30s)
 5. Locate the output directory <run_dir> for this run (contains alice.md ... henry.md, 8 files total)
 6. Run evaluation:

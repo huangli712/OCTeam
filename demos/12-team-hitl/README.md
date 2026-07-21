@@ -105,7 +105,7 @@ The leader then calls `team_approve` to resume the run, or `team_reject` to appl
 - `timeout_ms: 900000` (15 min) — 3 stages serial with 2 approval pauses, normally completes in ~12 min
 - No `signoff_*` — The check script verifies correctness directly
 
-### 1.4 Execution Timeline
+### 1.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_pipeline (human_approval=true)
@@ -203,7 +203,7 @@ T+?     Run: bun demos/12-team-hitl/check-coding-config-pipeline.ts <run_dir>
 - `timeout_ms: 600000` (10 min) — Single gate, serial two-hop, normally completes in ~8 min
 - No `max_gate_retries` — Single attempt; the gate either passes or fails
 
-### 2.4 Execution Timeline
+### 2.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_tollgate (human_approval=true)
@@ -299,7 +299,7 @@ T+?     Run: bun demos/12-team-hitl/check-physics-spring-tollgate.ts <run_dir>
 - `max_rounds: 2` — Opening statements + rebuttal
 - `timeout_ms: 1200000` (20 min) — 2 debate rounds + ruling; normally completes in ~15 min
 
-### 3.4 Execution Timeline
+### 3.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_arbitrate (max_rounds=2, human_approval=true)
@@ -452,7 +452,7 @@ T+?     Run: bun demos/12-team-hitl/check-math-integration-arbitrate.ts <run_dir
 - Step 2 is a `gate` step (frank verifies alice's spec) — Demonstrates gate-verdict integration within a workflow that also uses HITL
 - `timeout_ms: 2400000` (40 min) — 6 steps with 3 approval pauses; normally completes in ~25 min
 
-### 4.4 Execution Timeline
+### 4.4 Execution Flow (Timeline)
 
 ```
 T+0m    master calls team_workflow (6 steps, approval_after on steps 3/4/6)

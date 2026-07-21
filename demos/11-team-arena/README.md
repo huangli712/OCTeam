@@ -474,7 +474,7 @@ The engine selects `erin` (9 iterations) as the winner using `score_direction: "
 ---
 
 
-## Quick-Start Prompt (Copy and Use)
+## Quick-Start Prompt
 
 Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In arena mode, evaluation reads the **evaluator** member's .md file for the `<scoreboard>` JSON + the engine's built-in `selectArenaWinner` logic.
 

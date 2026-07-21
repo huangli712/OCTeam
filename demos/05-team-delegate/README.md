@@ -517,7 +517,7 @@ T+90m    run: bun demos/05-team-delegate/check-math-100-problems.ts <run_dir>
 ---
 
 
-## Quick-Start Prompt (Copy and Use)
+## Quick-Start Prompt
 
 Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. In delegate mode, members **self-claim** tasks (do not directly receive task text); each member reports results via `team_send_message` back to master; the run_dir contains each member's .md with their claimed task reports.
 

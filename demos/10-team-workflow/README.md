@@ -632,7 +632,7 @@ T+43m    workflow_complete, summary delivered to master (with all 10-step ledger
 
 
 
-## Quick-Start Prompt (Copy and Use)
+## Quick-Start Prompt
 
 Paste any of the following prompts into the master session and the AI will automatically complete the full loop of "create team → activate → launch orchestration → wait for summary → run check script". Scenarios 1-3 all provide bun-runnable check scripts.
 

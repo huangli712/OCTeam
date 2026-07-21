@@ -427,7 +427,7 @@ T+57m    Run: bun check-physics-heat-vv.ts <run_dir>
 ---
 
 
-## Quick-Start Prompt (Copy and Use)
+## Quick-Start Prompt
 
 Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In tollgate mode, evaluation reads the **producer + verifier** members' .md files: the producer's implementation/numerical results + the verifier's VERDICT.
 
