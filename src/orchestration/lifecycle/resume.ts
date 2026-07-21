@@ -597,7 +597,7 @@ async function resumeQuorumMode(
             && m.status !== "errored"
             && !!m.sessionId
             && !task.responses[m.name],
-        () => `[Quorum vote — resumed] ${task.task}`,
+        () => `[Quorum vote — resumed]\n${task.task}`,
         async () => {
             // Zero real dispatch -> re-drive the barrier with the FIRST
             // participant regardless of status (errored counts as terminal-ready).
