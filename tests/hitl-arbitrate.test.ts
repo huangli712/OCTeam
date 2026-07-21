@@ -86,7 +86,7 @@ describe("HITL arbitrate ruling approval", () => {
         const after = await loadTeamState(root, "alpha", sid)
         expect(after.status).toBe("idle")
         expect(after.activeTask).toBeUndefined()
-        expect(calls.some(call => call.text.includes("arbitrate_complete")))
+        expect(calls.some(call => call.text.includes("arbitrate_complete"))).toBe(true)
     })
 
     test("team_reject fails the ruled arbitrate", async () => {

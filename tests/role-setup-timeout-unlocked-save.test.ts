@@ -140,7 +140,7 @@ describe("role-setup timeout unlocked save (finding: role-setup-timeout-unlocked
         //     is blocked on the mutex → disk is untouched → PASS. ---
         const diskState = await readDiskState(team.directory)
         const diskAlice = diskState.members.find((m: { status: string; initialized: boolean }) =>
-            (m as { name?: string }).name === "alice" || true,
+            (m as { name?: string }).name === "alice",
         )!
         // Check the FIRST member (alice is the only non-master member).
         // On UNFIXED code: the timeout handler persisted status="errored".

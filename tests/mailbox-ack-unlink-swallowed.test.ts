@@ -133,7 +133,7 @@ describe("ackMessages unlink swallowed (finding: mailbox-ack-unlink-swallowed)",
         //     ackMessages resolves with void → rejects assertion FAILS.
         // --- FIXED: non-ENOENT error propagates from the unlink →
         //     ackMessages rejects → rejects assertion PASSES. ---
-        expect(
+        await expect(
             ackMessages(teamDir, recipient, polled),
         ).rejects.toThrow(/EPERM/)
 

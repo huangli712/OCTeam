@@ -385,17 +385,11 @@ describe("team_rename", () => {
             { name: "alice", role: "coder", prompt: "code" },
         ])
 
-        const tool = teamRenameTool(makeCtx({ storageRoot: root }))
-        // new_name regex: /^[a-z0-9-]+$/ — uppercase rejected by schema validation.
-        try {
-            await tool.execute(
-                { team_id: "eta", new_name: "INVALID" },
-                makeToolContext(sid),
-            )
-            expect.unreachable("should have thrown")
-        } catch {
-            // Schema-level rejection is correct.
-        }
+        const toolDef = teamRenameTool(makeCtx({ storageRoot: root }))
+        // new_name regex: /^[a-z0-9-]+$/ — enforced at the MCP layer via Zod,
+        // not inside execute(). Verify the schema directly.
+        expect(toolDef.args.new_name.safeParse("INVALID").success).toBe(false)
+        expect(toolDef.args.new_name.safeParse("valid-name").success).toBe(true)
 
         invalidateTeam(team.directory)
         unindexSession(sid)

@@ -175,7 +175,7 @@ describe("processIdle: premature-idle re-prompt (require_done_ack recovery)", ()
         // Re-prompt fires exactly once; member flipped back to running.
         expect(promptAsync).toHaveBeenCalledTimes(1)
         expect(captured[0]).toContain("team_done")
-        expect(captured[0]).toContain(sid === "ses_pid_premature" ? "alpha" : "alpha")
+        expect(captured[0]).toContain("alpha")
         expect(captured[0]).toContain("require_done_ack")
         expect(alice.status).toBe("running")
         expect(alice.turnCount).toBe(1)

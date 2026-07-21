@@ -57,7 +57,7 @@ describe("pollMailbox — truncate failure rolls back reserved copies", () => {
         await chmod(inbox, 0o444)
 
         // pollMailbox should reject (the EACCES propagates out of withLock).
-        expect(pollMailbox(dir, recipient)).rejects.toThrow()
+        await expect(pollMailbox(dir, recipient)).rejects.toThrow()
 
         // Rollback assertion 1: no reserved files left (they were unlinked on
         // the failure path). Without the rollback, m1 and m2 would persist

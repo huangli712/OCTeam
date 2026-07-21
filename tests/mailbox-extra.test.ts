@@ -187,7 +187,7 @@ describe("releaseStaleReservations: edge cases", () => {
         const teamDir = tmpRoot("rsr-noent")
         const recipient = "alice"
         // Deliberately do NOT create the reserved dir.
-        expect(releaseStaleReservations(teamDir, recipient)).resolves.toBeUndefined()
+        await expect(releaseStaleReservations(teamDir, recipient)).resolves.toBeUndefined()
         expect(await countUnreadMessages(teamDir, recipient)).toBe(0)
     })
 
@@ -197,7 +197,7 @@ describe("releaseStaleReservations: edge cases", () => {
         // Create the dir but leave it empty.
         await fs.mkdir(reservedDir(teamDir, recipient), { recursive: true })
 
-        expect(releaseStaleReservations(teamDir, recipient)).resolves.toBeUndefined()
+        await expect(releaseStaleReservations(teamDir, recipient)).resolves.toBeUndefined()
         expect(await countUnreadMessages(teamDir, recipient)).toBe(0)
     })
 })
