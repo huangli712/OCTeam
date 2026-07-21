@@ -128,7 +128,8 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
                         const optionsHint = task.voteOptions
                             ? ` (must be one of: ${task.voteOptions.join(", ")})`
                             : ""
-                        const text = `[Quorum vote] ${task.task}\n\n`
+                        const text = `[Quorum vote]\n` 
+                            + `${task.task}\n\n`
                             + `Emit your ballot as: `
                             + `<vote>{"${task.voteKey}": "<value>"}</vote>\n`
                             + `The vote value${optionsHint} must be a single string.\n`
