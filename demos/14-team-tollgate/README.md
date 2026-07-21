@@ -455,8 +455,7 @@ T+22m     Run: bun check-coding-multi-invalid.ts <run_dir>
 
 ---
 
-
-## Quick-Start Prompt
+## Quick-Start Prompts
 
 Paste any of the following prompts into the master session and the AI will automatically complete the full loop. In tollgate mode, evaluation reads the producer + verifier + escalation handler members' .md files: the producer's implementation/numerical results + the verifier's (or escalation handler's) FINAL verdict.
 

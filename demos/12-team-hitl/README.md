@@ -492,8 +492,7 @@ T+?     Run: bun demos/12-team-hitl/check-coding-release-workflow.ts <run_dir>
 
 ---
 
-
-## Quick-Start Prompts (Copy and Use)
+## Quick-Start Prompts
 
 Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. **Critical**: when the orchestration pauses for human approval (you will receive an `[Human approval required]` notification with an `approval_id`), you MUST first read the completed stage output from `<run_dir>/<member>.md`, present a concise summary to the user, and WAIT for the user to explicitly say "approve" or "reject" (with feedback). Only then call `team_approve` or `team_reject`. Do NOT auto-approve. The whole point of HITL is human judgment — the user needs time to review the output before deciding.
 

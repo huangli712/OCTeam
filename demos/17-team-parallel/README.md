@@ -371,8 +371,7 @@ T+11m    run: bun check-coding-isolated-tolerant.ts <run_dir>
 
 ---
 
-
-## Quick-Start Prompts (Copy and Use)
+## Quick-Start Prompts
 
 Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for aggregation → run check script", reporting PASS / FAIL by exit code. All specific configs (team_create, team_parallel parameters) directly reference the corresponding sections of this README.
 

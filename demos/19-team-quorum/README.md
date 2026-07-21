@@ -449,7 +449,7 @@ Unlike baseline scenarios (which assert a specific winning option), this challen
 
 ---
 
-## Quick-Start Prompt
+## Quick-Start Prompts
 
 Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for tally → run check script".
 

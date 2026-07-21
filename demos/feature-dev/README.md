@@ -494,7 +494,7 @@ T+~85  You read all output, decide the outcome
 
 ---
 
-## Quick-Start Prompt
+## Quick-Start Prompts
 
 > Paste the entire block to the master session. Master will run 5 teams in sequence, executing each step per the README's JSON configuration, with data hand-carried between teams by master.
 

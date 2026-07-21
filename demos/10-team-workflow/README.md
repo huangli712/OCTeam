@@ -630,9 +630,7 @@ T+43m    workflow_complete, summary delivered to master (with all 10-step ledger
 
 **Known limitations** (consistent with all orchestration modes): checkpoint granularity is a full task; recovery restarts from the **current step**, not from intra-step sub-progress. For recovery coverage of branches (captured task replay / no captured response re-dispatch / all-complete direct delivery / captured gate verdict replay), see `tests/resume-dispatch-branches.test.ts`.
 
-
-
-## Quick-Start Prompt
+## Quick-Start Prompts
 
 Paste any of the following prompts into the master session and the AI will automatically complete the full loop of "create team → activate → launch orchestration → wait for summary → run check script". Scenarios 1-3 all provide bun-runnable check scripts.
 

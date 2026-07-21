@@ -402,7 +402,7 @@ T+35m   run: bun check-math-factoring-consensus.ts <run_dir>
 
 ---
 
-## Quick-Start Prompt
+## Quick-Start Prompts
 
 Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for aggregation → run check script". All specific configs directly reference the corresponding sections of this README.
 

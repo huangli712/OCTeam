@@ -332,8 +332,7 @@ T+25m    run: bun check-coding-comprehensive-join.ts <run_dir>
 
 ---
 
-
-## Quick-Start Prompts (Copy and Use)
+## Quick-Start Prompts
 
 Paste any of the following prompts into the master session and the AI will automatically complete the full closed loop of "team_planner propose → write → team_create → team_activate → team_workflow → run check script", reporting PASS / FAIL by exit code.
 

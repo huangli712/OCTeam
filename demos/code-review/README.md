@@ -416,7 +416,7 @@ Collect all fixed+patches → you read all output, decide the outcome
 
 ---
 
-## Quick-Start Prompt
+## Quick-Start Prompts
 
 > Replace `<TARGET>` with the code path you want to review, paste the entire block to the master session. Master will run 3 teams in sequence, executing each step per the README's JSON configuration, with data hand-carried between teams by master.
 

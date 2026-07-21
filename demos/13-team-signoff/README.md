@@ -481,8 +481,7 @@ T+32m    Run: bun check-coding-pipeline-decider.ts <run_dir>
 
 ---
 
-
-## Quick-Start Prompts (Copy and Use)
+## Quick-Start Prompts
 
 Paste any of the following prompts to the master session; the AI will automatically complete the full closed loop. Signoff evaluation reads the signoff verdict tags (`<signoff>{"approved": true/false, "rationale": "..."}</signoff>`) from member .md outputs.
 

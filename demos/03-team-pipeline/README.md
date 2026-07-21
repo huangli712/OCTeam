@@ -479,7 +479,7 @@ T+60m    run: bun check-physics-md-pipeline.ts <run_dir>
 ---
 
 
-## Quick-Start Prompt
+## Quick-Start Prompts
 
 Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. Pipeline evaluation reads only the **final-stage member's** output (prior stage outputs are automatically prepended to the final-stage task).
 

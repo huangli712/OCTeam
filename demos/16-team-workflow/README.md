@@ -627,7 +627,7 @@ T+28m    workflow_complete, summary delivered to master
 
 ---
 
-## Quick-Start Prompts (Copy and Use)
+## Quick-Start Prompts
 
 Paste any of the following prompts into the master session and the AI will automatically complete the full loop of "create team → activate → launch orchestration → wait for summary → run check script".
 

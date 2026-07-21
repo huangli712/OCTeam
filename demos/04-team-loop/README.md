@@ -549,7 +549,7 @@ T+60m     run: bun check-coding-lockfree-queue.ts <run_dir>
 ---
 
 
-## Quick-Start Prompt
+## Quick-Start Prompts
 
 Paste any of the following prompts to a master session, and the AI will automatically complete the full closed loop. The loop mode's evaluation reads the **decider** member's final-round output (containing the `<decision>` block).
 

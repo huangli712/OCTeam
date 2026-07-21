@@ -450,7 +450,7 @@ T+18m    run: bun check-coding-sort-benchmark.ts <run_dir>
 
 ---
 
-## Quick-Start Prompt
+## Quick-Start Prompts
 
 Paste any of the following prompts to the master session, and the AI will automatically complete the full closed loop of "create team → activate → launch orchestration → wait for aggregation → run check script", reporting PASS / FAIL by exit code. All specific configs (team_create, team_parallel parameters) directly reference the corresponding sections of this README — no manual JSON copying needed.
 
