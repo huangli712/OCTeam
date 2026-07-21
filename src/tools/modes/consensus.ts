@@ -67,7 +67,8 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                 async (team, task) => {
                     const participants = team.members.filter(m => !m.isMaster)
                     for (const m of participants) {
-                        const text = `[Consensus topic] ${args.topic}\n\n`
+                        const text = `[Consensus topic]\n` 
+                            + `${args.topic}\n\n`
                             + `Round ${task.currentRound}. State your position. End with `
                             + `<consensus>{"agreed": true|false}</consensus> `
                             + `(or the Chinese <共识>{"agreed": ...}</共识>).`
