@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import fs from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -19,12 +19,15 @@ import {
     runMemberOutputPath,
 } from "../src/state/paths.js"
 import { createTask } from "../src/state/tasks.js"
+import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
+
+afterAll(cleanupTmpRoots)
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 
 function tmpTeamDir(): string {
-    return mkdtempSync(join(tmpdir(), "octeam-runs-"))
+    return tmpRoot("runs")
 }
 
 function makeTeam(opts: {

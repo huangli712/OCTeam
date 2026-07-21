@@ -6,7 +6,7 @@
  * the state. Drives the handler via processIdle (the real idle entry point) so
  * identity validation (getExpectedMember), output capture, and dispatch all run.
  */
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,13 +30,14 @@ import {
     type WorkflowToolStep,
 } from "../src/tools/workflow/engine.js";
 import type { PluginContext } from "../src/core/context.js";
-import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, makeWorkflowTask, type DispatchCall, waitForEvent } from "./helpers.js";
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, makeWorkflowTask, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js";
 
 
 const trackedSessions: string[] = [];
 afterEach(() => {
     for (const sid of trackedSessions.splice(0)) unindexSession(sid);
 });
+afterAll(cleanupTmpRoots);
 
 function findTeamMember(team: Team, name: string): MemberState {
     const member = team.members.find((candidate) => candidate.name === name);
@@ -126,7 +127,7 @@ async function startToolLoweredFanoutWorkflow(
     maxErrored = 0,
 ): Promise<ToolLoweredFanoutFixture> {
     const id = crypto.randomUUID();
-    const root = mkdtempSync(join(tmpdir(), "octeam-wf-tool-fanout-"));
+    const root = tmpRoot("wf-tool-fanout");
     const sessions = {
         master: `ses_wf_master_${id}`,
         alice: `ses_wf_alice_${id}`,
@@ -779,9 +780,7 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
     test("tool-lowered reduce fanout dispatches reducer before downstream and uses reducer output", async () => {
         // Given: a workflow fanout using join_policy=reduce with a reducer member.
         const id = crypto.randomUUID();
-        const root = mkdtempSync(
-            join(tmpdir(), "octeam-wf-tool-reduce-fanout-"),
-        );
+        const root = tmpRoot("wf-tool-reduce-fanout");
         const sessions = {
             master: `ses_wf_master_${id}`,
             alice: `ses_wf_alice_${id}`,

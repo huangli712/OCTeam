@@ -35,8 +35,8 @@ export function cleanupTmpRoots(): void {
     for (const root of createdTmpRoots.splice(0)) {
         try {
             rmSync(root, { recursive: true, force: true })
-        } catch {
-            // best-effort cleanup
+        } catch (e) {
+            console.warn(`[cleanupTmpRoots] failed to remove ${root}:`, e)
         }
     }
 }

@@ -26,7 +26,7 @@
  * "aggregation_stalled") both events are returned -> PASS.
  */
 
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 import { existsSync, readFileSync } from "node:fs"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -38,13 +38,16 @@ import { runEventsPath } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import type { Team } from "../src/state/store.js"
+import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
+
+afterAll(cleanupTmpRoots)
 
 describe("readRunEvents must not drop aggregation_stalled (finding: aggregation-stalled-event-dropped)", () => {
     test("an aggregation_stalled event written by recordEvent is returned by readRunEvents", async () => {
         const runId = crypto.randomUUID()
         const team = {
             deleted: false,
-            directory: mkdtempSync(join(tmpdir(), "octeam-evt-stalled-")),
+            directory: tmpRoot("evt-stalled"),
             activeTask: { runId },
             mutex: new AsyncMutex(),
         } as unknown as Team

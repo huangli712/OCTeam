@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -12,7 +12,9 @@ import { runEventsPath } from "../src/state/paths.js"
 import { existsSync, readFileSync } from "node:fs"
 import { rebuildSessionIndex } from "../src/state/resolve.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
-import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, makeWorkflowTask as sharedMakeWorkflowTask, type DispatchCall } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, makeWorkflowTask as sharedMakeWorkflowTask, tmpRoot, type DispatchCall } from "./helpers.js"
+
+afterAll(cleanupTmpRoots)
 import { teamFixWorkflowTool } from "../src/tools/control/fixflow.js"
 
 const PASS_VERDICT = '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
@@ -38,7 +40,7 @@ async function waitForEventKind(directory: string, runId: string, kind: string):
 describe("workflow run event schema + correlation id", () => {
     test("a task step dispatch and capture share a correlationId and carry stepIndex", async () => {
         // Given
-        const root = mkdtempSync(join(tmpdir(), "octeam-wf-evroot-"))
+        const root = tmpRoot("wf-evroot")
         const task = makeWorkflowTask([{ kind: "task", member: "alice", task: "do work", completed: false }])
         const team = makeTeam({ directory: root, activeTask: task, members: [{ name: "alice", sessionId: "ses_alice", initialized: true, turnCount: 0, status: "idle" }] })
         const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: "alice output" }, calls: [] })
@@ -59,7 +61,7 @@ describe("workflow run event schema + correlation id", () => {
 
     test("a gate verdict event carries stepIndex and the dispatch correlationId", async () => {
         // Given
-        const root = mkdtempSync(join(tmpdir(), "octeam-wf-evroot2-"))
+        const root = tmpRoot("wf-evroot2")
         const task = makeWorkflowTask([
             { kind: "task", member: "alice", task: "produce", completed: false },
             { kind: "gate", verifier: "bob", criteria: "ok", attempts: 0, completed: false },
@@ -88,7 +90,7 @@ describe("workflow run event schema + correlation id", () => {
 
     test("team_fix_workflow records a repaired event on a successful op", async () => {
         // Given
-        const root = mkdtempSync(join(tmpdir(), "octeam-wf-repaired-"))
+        const root = tmpRoot("wf-repaired")
         const masterSid = "ses_wf_repaired_master"
         const task = makeWorkflowTask([
             { kind: "task", member: "alice", task: "optional", completed: false },
