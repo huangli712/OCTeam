@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 import { safeParse } from "zod"
 
 import type { PluginContext } from "../src/core/context.js"
@@ -9,7 +9,9 @@ import { teamRemoveMemberTool } from "../src/tools/lifecycle/remove.js"
 import { teamRenameTool } from "../src/tools/lifecycle/rename.js"
 import { initTeamState, invalidateTeam, loadTeamState, readTeamSpec, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+
+afterAll(cleanupTmpRoots)
 
 /** Create a live team with both state.json and config.json for testing member add/remove. */
 async function setupLiveTeam(

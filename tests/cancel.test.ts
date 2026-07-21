@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, describe, expect, mock, test } from "bun:test"
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamCancelTool } from "../src/tools/control/cancel.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+
+afterAll(cleanupTmpRoots)
 
 
 /** Build a Team wrapper via real disk state, then set busy + activeTask + running members. */
@@ -49,11 +51,6 @@ async function makeBusyTeam(
 
 describe("teamCancelTool", () => {
     let root: string
-
-    afterEach(() => {
-        // tmpRoot dirs are cleaned up automatically by the OS,
-        // but we null-ref the variable to avoid accidental reuse
-    })
 
     test("happy path: busy team with 2 running members — abort called, team returns to idle", async () => {
         root = tmpRoot("cancel-happy")

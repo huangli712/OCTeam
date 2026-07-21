@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test"
 
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import { dispatchToMember } from "../src/orchestration/control/dispatch.js"
@@ -6,7 +6,9 @@ import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { createTask } from "../src/state/tasks.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+
+afterAll(cleanupTmpRoots)
 
 
 /** Construct a full Team wrapper (TeamState + mutex + directory). */
@@ -196,12 +198,14 @@ describe("dispatchToMember unit", () => {
 // ============================================================
 
 describe("processIdle consensus round 2 broadcast", () => {
+    const tracked: string[] = []
+    afterEach(() => { for (const sid of tracked.splice(0)) unindexSession(sid) })
+
     test("broadcast uses dispatchToMember with agent and directory", async () => {
         const root = tmpRoot("con-r2")
         const leadSid = "ses_con_m"
         const memberSid = "ses_con_a"
-        // Track session indexes for cleanup
-        const tracked = [leadSid, memberSid]
+        tracked.push(leadSid, memberSid)
 
         const alice = makeMember("alice", memberSid)
         alice.agent = "oct-oracle"
@@ -248,21 +252,19 @@ describe("processIdle consensus round 2 broadcast", () => {
         expect(consensusDispatch).toBeDefined()
         expect(consensusDispatch!.agent).toBe("oct-oracle")
         expect(consensusDispatch!.directory).toBe("/app")
-
-        // Cleanup
-        for (const sid of tracked) {
-            unindexSession(sid)
-        }
     })
 })
 
 describe("processIdle signoff dispatch", () => {
+    const tracked: string[] = []
+    afterEach(() => { for (const sid of tracked.splice(0)) unindexSession(sid) })
+
     test("decider signoff uses dispatchToMember with agent and directory", async () => {
         const root = tmpRoot("sig-dec")
         const leadSid = "ses_sig_m"
         const aliceSid = "ses_sig_alice"
         const bobSid = "ses_sig_bob"
-        const tracked = [leadSid, aliceSid, bobSid]
+        tracked.push(leadSid, aliceSid, bobSid)
 
         const alice = makeMember("alice", aliceSid)
         alice.agent = "oct-oracle"
@@ -307,10 +309,6 @@ describe("processIdle signoff dispatch", () => {
         expect(deciderDispatch).toBeDefined()
         expect(deciderDispatch!.agent).toBe("oct-oracle")
         expect(deciderDispatch!.directory).toBe("/app")
-
-        for (const sid of tracked) {
-            unindexSession(sid)
-        }
     })
 
     test("peer-quorum signoff uses dispatchToMember with agent and directory for all reviewers", async () => {
@@ -318,7 +316,7 @@ describe("processIdle signoff dispatch", () => {
         const leadSid = "ses_sigpq_m"
         const aliceSid = "ses_sigpq_a"
         const bobSid = "ses_sigpq_b"
-        const tracked = [leadSid, aliceSid, bobSid]
+        tracked.push(leadSid, aliceSid, bobSid)
 
         const alice = makeMember("alice", aliceSid)
         alice.agent = "oct-oracle"
@@ -365,19 +363,18 @@ describe("processIdle signoff dispatch", () => {
         expect(bobDispatch).toBeDefined()
         expect(bobDispatch!.agent).toBe("oct-explore")
         expect(bobDispatch!.directory).toBe("/app")
-
-        for (const sid of tracked) {
-            unindexSession(sid)
-        }
     })
 })
 
 describe("processIdle delegate re-prompt", () => {
+    const tracked: string[] = []
+    afterEach(() => { for (const sid of tracked.splice(0)) unindexSession(sid) })
+
     test("re-prompt uses dispatchToMember with agent and directory", async () => {
         const root = tmpRoot("del-re")
         const leadSid = "ses_del_m"
         const aliceSid = "ses_del_a"
-        const tracked = [leadSid, aliceSid]
+        tracked.push(leadSid, aliceSid)
 
         const alice = makeMember("alice", aliceSid)
         alice.agent = "oct-explore"
@@ -429,9 +426,5 @@ describe("processIdle delegate re-prompt", () => {
         expect(dispatch).toBeDefined()
         expect(dispatch!.agent).toBe("oct-explore")
         expect(dispatch!.directory).toBe("/app")
-
-        for (const sid of tracked) {
-            unindexSession(sid)
-        }
     })
 })

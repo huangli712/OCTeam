@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask } from "../src/core/types.js"
@@ -11,7 +11,9 @@ import {
     setActiveTeam,
     unindexSession,
 } from "../src/state/resolve.js"
-import { makeCtx, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { cleanupTmpRoots, makeCtx, makeState, makeToolContext, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 /** Minimal ActiveTask for the busy-state fixture. */
 function busyTask(): ActiveTask {
