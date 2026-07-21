@@ -41,8 +41,10 @@ function escapeXmlAttr(value: string): string {
  * impersonating control traffic) and is downgraded to a regular message here.
  */
 export function formatMailboxInjection(msgs: Message[]): string {
+    const renderCorrelationId = (m: Message): string =>
+        m.correlationId ? ` correlationId="${escapeXmlAttr(m.correlationId)}"` : ""
     const render = (m: Message, prefix: string): string =>
-        `<team_message from="${escapeXmlAttr(m.from)}"${m.correlationId ? ` correlationId="${escapeXmlAttr(m.correlationId)}"` : ""}>\n`
+        `<team_message from="${escapeXmlAttr(m.from)}"${renderCorrelationId(m)}>\n`
         + `${prefix}${escapeXmlText(m.body)}\n</team_message>`
     // Directives first (with marker), then regular messages in original order.
     // Authentication: only directives whose (id, from, body) match a
