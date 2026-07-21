@@ -127,8 +127,8 @@ describe("temperature values", () => {
         expect(getAgent("oct-junior").temperature).toBe(0.1)
     })
 
-    test("ultrabrain has temperature 0.7", () => {
-        expect(getAgent("oct-ultrabrain").temperature).toBe(0.7)
+    test("ultrabrain has temperature 0.5", () => {
+        expect(getAgent("oct-ultrabrain").temperature).toBe(0.5)
     })
 
     test("deep has temperature 0.1", () => {
