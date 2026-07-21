@@ -27,6 +27,11 @@ export type LogLevel = "debug" | "info" | "warn" | "error"
 
 const LEVEL_ORDER: Record<LogLevel, number> = { debug: 0, info: 1, warn: 2, error: 3 }
 
+/**
+ * Read the initial minimum log level from the OCTEAM_LOG_LEVEL environment
+ * variable. Returns "info" when unset or invalid so production defaults to
+ * a sane verbosity without requiring explicit configuration.
+ */
 function levelFromEnv(): LogLevel {
     const v = process.env.OCTEAM_LOG_LEVEL?.toLowerCase()
     if (v === "debug" || v === "info" || v === "warn" || v === "error") return v
@@ -46,10 +51,19 @@ let sink: PluginContext["client"]["app"]["log"] | null = null
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Level filter gate shared by both the ctx-based and global logger paths.
+ * Returns true when the given level meets the module-level minimum.
+ */
 function shouldLog(level: LogLevel): boolean {
     return LEVEL_ORDER[level] >= LEVEL_ORDER[minLevel]
 }
 
+/**
+ * Fire-and-forget dispatch to the host's app.log sink. Never awaits and
+ * swallows all errors so logging never adds latency, backpressure, or
+ * thrown exceptions to the calling handler.
+ */
 function sendToSink(
     sinkFn: PluginContext["client"]["app"]["log"],
     level: LogLevel,

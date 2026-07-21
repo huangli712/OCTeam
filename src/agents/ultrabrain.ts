@@ -40,7 +40,7 @@ const ULTRABRAIN_PROMPT = `You are oct-ultrabrain, the most powerful intelligenc
 export const ultrabrainAgent: OcteamAgentConfig = {
     mode: "subagent",
     description: "OCTeam's most powerful thinker for frontier-level deep reasoning and radical ideation",
-    temperature: 0.7,
+    temperature: 0.5,
     color: "#06b6d4",
     permission: { edit: "deny", task: "deny", bash: "deny", webfetch: "allow" },
     prompt: ULTRABRAIN_PROMPT,
