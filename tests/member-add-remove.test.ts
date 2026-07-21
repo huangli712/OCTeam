@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { safeParse } from "zod"
 
 import type { PluginContext } from "../src/core/context.js"
 import type { TeamSpec } from "../src/core/types.js"
@@ -387,9 +388,11 @@ describe("team_rename", () => {
 
         const toolDef = teamRenameTool(makeCtx({ storageRoot: root }))
         // new_name regex: /^[a-z0-9-]+$/ — enforced at the MCP layer via Zod,
-        // not inside execute(). Verify the schema directly.
-        expect(toolDef.args.new_name.safeParse("INVALID").success).toBe(false)
-        expect(toolDef.args.new_name.safeParse("valid-name").success).toBe(true)
+        // not inside execute(). Verify the schema directly. Use zod's
+        // function-form safeParse (accepts any $ZodType, which is what
+        // ToolDefinition.args[K] is typed as).
+        expect(safeParse(toolDef.args.new_name, "INVALID").success).toBe(false)
+        expect(safeParse(toolDef.args.new_name, "valid-name").success).toBe(true)
 
         invalidateTeam(team.directory)
         unindexSession(sid)
