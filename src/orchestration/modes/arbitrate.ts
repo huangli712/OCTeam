@@ -122,7 +122,27 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
     // Phase B: ruling (only the arbiter's idle reaches here).
     const r = parseArbitrationDecision(task.responses[task.arbiterMember ?? ""] ?? "")
     if (r.parseFailed) {
-        await finishRun(ctx, team, "arbitrate_complete:decision_parse_failure", "failed")
+        // Bounded retry: one re-dispatch before failing the run. LLM format
+        // drift is a common operational failure, not an edge case — and here
+        // it would discard all prior debate-round tokens. Uses the shared
+        // decisionParseFailures counter (ActiveTask base field).
+        task.decisionParseFailures++
+        if (task.decisionParseFailures >= 2) {
+            await finishRun(ctx, team, "arbitrate_complete:decision_parse_failure", "failed")
+            return
+        }
+        // Clear the malformed response so the next parse is not poisoned,
+        // then re-dispatch the arbiter.
+        delete task.responses[task.arbiterMember ?? ""]
+        const arbiter = team.members.find(m => m.name === task.arbiterMember && !m.isMaster)
+        if (!arbiter?.sessionId) {
+            await finishRun(ctx, team, "arbitrate_complete:arbiter_unavailable", "failed")
+            return
+        }
+        await dispatchToMember(ctx, arbiter,
+            buildArbiterPrompt(task),
+            arbiter.worktreePath ?? ctx.directory, team)
+        await saveTeamState(team)
         return
     }
     task.arbitrationRuling = r.ruling

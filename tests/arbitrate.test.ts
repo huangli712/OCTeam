@@ -309,7 +309,7 @@ describe("handleArbitrateIdle Phase B: ruling termination", () => {
         expect(calls.some(c => c.sessionId === "ses_lead")).toBe(true)
     })
 
-    test("unparseable ruling: fails the run with decision_parse_failure", async () => {
+    test("parse failure: first attempt re-dispatches arbiter (bounded retry)", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
         const task = makeArbitrateTask({
@@ -317,6 +317,37 @@ describe("handleArbitrateIdle Phase B: ruling termination", () => {
             arbitrationStage: true,
             // Arbiter emitted no <ruling> tag.
             responses: { arbiter: "I cannot decide." },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "arbiter", sessionId: "ses_arbiter" }],
+        })
+
+        await handleArbitrateIdle(ctx, team)
+
+        // First parse failure → bounded retry, NOT immediate failure.
+        expect(team.status).toBe("busy")
+        expect(team.activeTask).toBeDefined()
+        expect(task.decisionParseFailures).toBe(1)
+
+        // Arbiter re-dispatched with the ruling prompt.
+        const arbiterCall = calls.find(c => c.sessionId === "ses_arbiter")
+        expect(arbiterCall).toBeDefined()
+        expect(arbiterCall!.text).toContain("[Arbitration ruling]")
+
+        // Stale malformed response cleared.
+        expect(task.responses["arbiter"]).toBeUndefined()
+    })
+
+    test("parse failure: second consecutive failure terminates the run", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({ calls })
+        const task = makeArbitrateTask({
+            arbiterMember: "arbiter",
+            arbitrationStage: true,
+            // Arbiter emitted no <ruling> tag again.
+            responses: { arbiter: "Still cannot decide." },
+            decisionParseFailures: 1,   // already failed once → this is the second
         })
         const runId = task.runId!
         const team = makeTeam({
@@ -326,6 +357,7 @@ describe("handleArbitrateIdle Phase B: ruling termination", () => {
 
         await handleArbitrateIdle(ctx, team)
 
+        // Second parse failure → run terminated.
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
 

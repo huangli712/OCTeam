@@ -239,6 +239,7 @@ export async function startOrchestration(
             for (const m of team.members) {
                 m.declaredDone = false
                 m.retryCount = 0
+                m.turnCount = 0
             }
             try {
                 await dispatch(team, built)

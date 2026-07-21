@@ -289,7 +289,7 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
         expect(bobCall.text).toBe("the-routing-input")
     })
 
-    test("no-match: parse failure fails the run with decision_parse_failure", async () => {
+    test("parse failure: first attempt re-dispatches router (bounded retry)", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
         const task = makeRouteTask({
@@ -297,6 +297,44 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
             routeBranches: [{ name: "sales", member: "alice" }],
             // Router emitted no <route> tag.
             responses: { router: "I am not sure where this goes." },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "router", sessionId: "ses_router" },
+                { name: "alice", sessionId: "ses_alice" },
+            ],
+        })
+
+        await handleRouteIdle(ctx, team)
+
+        // First parse failure → bounded retry, NOT immediate failure.
+        expect(team.status).toBe("busy")
+        expect(team.activeTask).toBeDefined()
+        expect(task.decisionParseFailures).toBe(1)
+
+        // Router re-dispatched with the route prompt.
+        const routerCall = calls.find(c => c.sessionId === "ses_router")
+        expect(routerCall).toBeDefined()
+        expect(routerCall!.text).toContain("[Route task]")
+
+        // No target dispatched yet.
+        const targetDispatched = calls.some(c => c.sessionId === "ses_alice")
+        expect(targetDispatched).toBe(false)
+
+        // Stale malformed response cleared.
+        expect(task.responses["router"]).toBeUndefined()
+    })
+
+    test("parse failure: second consecutive failure terminates the run", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({ calls })
+        const task = makeRouteTask({
+            routerMember: "router",
+            routeBranches: [{ name: "sales", member: "alice" }],
+            // Router emitted no <route> tag again.
+            responses: { router: "Still cannot decide." },
+            decisionParseFailures: 1,   // already failed once → this is the second
         })
         const runId = task.runId!
         const team = makeTeam({
@@ -309,13 +347,9 @@ describe("handleRouteIdle Phase A: router decision resolution", () => {
 
         await handleRouteIdle(ctx, team)
 
-        // Run failed and task cleared.
+        // Second parse failure → run terminated.
         expect(team.status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
-
-        // No target dispatched; only the leader delivery happened.
-        const targetDispatched = calls.some(c => c.sessionId === "ses_alice")
-        expect(targetDispatched).toBe(false)
 
         // The terminated event carries the failure marker.
         await waitForEvent(team.directory, runId, "terminated")

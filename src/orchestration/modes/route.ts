@@ -82,9 +82,33 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
         const branches = task.routeBranches ?? []
         const selected = branches.filter(b => decision.targets.includes(b.name))
 
-        if (decision.parseFailed || selected.length === 0) {
-            // No default route: unmatched input fails the run.
-            await finishRun(ctx, team, "route_complete:decision_parse_failure", "failed")
+        if (decision.parseFailed) {
+            // Bounded retry: one re-dispatch before failing the run. LLM
+            // format drift is a common operational failure, not an edge case.
+            // Uses the shared decisionParseFailures counter (ActiveTask base
+            // field, same as loop's parse-failure handling).
+            task.decisionParseFailures++
+            if (task.decisionParseFailures >= 2) {
+                await finishRun(ctx, team, "route_complete:decision_parse_failure", "failed")
+                return
+            }
+            // Clear the malformed response so the next parse is not poisoned
+            // by stale output, then re-dispatch the router.
+            delete task.responses[task.routerMember ?? ""]
+            const router = team.members.find(m => m.name === task.routerMember && !m.isMaster)
+            if (!router?.sessionId) {
+                await finishRun(ctx, team, "route_complete:router_unavailable", "failed")
+                return
+            }
+            await dispatchToMember(ctx, router,
+                buildRouterPrompt(team.teamName, task.task ?? "", task.routeBranches ?? []),
+                router.worktreePath ?? ctx.directory, team)
+            await saveTeamState(team)
+            return
+        }
+        if (selected.length === 0) {
+            // No default route: valid decision but unmatched input fails the run.
+            await finishRun(ctx, team, "route_complete:no_matching_branch", "failed")
             return
         }
 

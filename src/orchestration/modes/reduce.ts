@@ -37,6 +37,11 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
 
     task.reduceStage = true
     const body = await buildSummary(team, task, "pending_reduce")
+    // Clear the reducer's stale mapper-stage response so a crash between this
+    // dispatch and the reducer's capture cannot promote it as reducedResult
+    // on resume (resume.ts sees responses[reducer] truthy → handleReduceIdle
+    // → task.reducedResult = stale mapper output). Mirrors fanout.ts:218-220.
+    delete task.responses[reducer.name]
     const prompt = buildReducePrompt(body)
     await dispatchToMember(ctx, reducer, prompt, reducer.worktreePath ?? ctx.directory, team)
     await saveTeamState(team)
