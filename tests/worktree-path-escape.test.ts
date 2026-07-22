@@ -29,13 +29,9 @@ import { readFile, writeFile } from "node:fs/promises"
 
 import { statePath, teamDir, worktreesDir } from "../src/state/paths.js"
 import { initTeamState, invalidateTeam, loadTeamState } from "../src/state/store.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
 
-afterAll(() => {
-    // helpers.cleanupTmpRoots is process-global; import it directly to avoid
-    // coupling this suite to a shared afterEach in another file.
-    // (Each tmpRoot below is tracked by helpers' internal list.)
-})
+afterAll(cleanupTmpRoots)
 
 describe("persisted worktreePath session-escape (finding: persisted-worktreepath-session-escape)", () => {
     test("state.json with an absolute worktreePath OUTSIDE the team dir is rejected on reload", async () => {

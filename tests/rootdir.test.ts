@@ -15,9 +15,9 @@ import { teamRunDirTool } from "../src/tools/query/rundir.js"
 import { initTeamState, writeTeamSpec } from "../src/state/store.js"
 import { teamDir } from "../src/state/paths.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeTask, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTask, makeToolContext, tmpRoot } from "./helpers.js"
 
-afterAll(() => {})
+afterAll(cleanupTmpRoots)
 const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
