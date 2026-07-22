@@ -211,13 +211,19 @@ export function makeWorkflowTask(opts: Partial<WorkflowTask> = {}): WorkflowTask
  *     overrides take precedence over the calls/outputs-derived defaults.
  *   - `overrides` is merged last for any field not modeled above.
  */
+/** Shape of a promptAsync request as issued by dispatchToMember. */
+type PromptAsyncRequest = {
+    path: { id: string }
+    body: { parts: Array<{ type: string; text: string }> }
+}
+
 export interface MakeCtxOptions {
     storageRoot?: string
     directory?: string
     scope?: "project" | "user"
     calls?: DispatchCall[]
     outputs?: Record<string, string>
-    promptAsync?: (req: { path: { id: string }; body: { parts: Array<{ type: string; text: string }> } }) => Promise<unknown>
+    promptAsync?: (req: PromptAsyncRequest) => Promise<unknown>
     messages?: (req: unknown) => Promise<{ data: unknown[] }>
     status?: (req: unknown) => Promise<{ data: unknown }>
     abort?: (req: unknown) => Promise<unknown>
@@ -252,10 +258,10 @@ export function makeCtx(opts: MakeCtxOptions = {}): PluginContext {
             session.promptAsync = opts.promptAsync
         } else if (opts.calls !== undefined) {
             const calls = opts.calls
-            session.promptAsync = async (args: any) => {
+            session.promptAsync = async (args: PromptAsyncRequest) => {
                 // Strip the OMO_INTERNAL_INITIATOR marker appended by dispatchToMember;
                 // it is a dispatch-layer detail, not semantic task content.
-                const raw = (args.body.parts[0].text as string).replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "")
+                const raw = args.body.parts[0].text.replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "")
                 calls.push({ sessionId: args.path.id, text: raw })
                 return { data: {} }
             }
