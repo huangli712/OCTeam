@@ -28,8 +28,7 @@
  * deny edit/task/bash/webfetch (fully read-only), oct-librarian/oct-ultrabrain
  * deny edit/task/bash but allow webfetch (reference lookup is their job),
  * oct-metis/oct-momus deny edit/bash/webfetch but allow task (planning/review
- * agents need subagent delegation). Subagent-mode
- * Subagent-mode
+ * agents need subagent delegation).
  * sessions have been verified to support the persistent, multi-dispatch member
  * lifecycle (OCTeam dispatches via session.create + promptAsync, which does
  * not consult agent mode -- see dispatch.ts). Permissions are therefore fixed

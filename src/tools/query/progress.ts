@@ -262,7 +262,8 @@ export function teamProgressTool(ctx: PluginContext): ToolDefinition {
             let events = await readRunEvents(team.directory, runId)
             const totalBefore = events.length
             if (args.since !== undefined) {
-                events = events.filter(e => e.timestamp > args.since!)
+                const since = args.since
+                events = events.filter(e => e.timestamp > since)
             }
             const limit = args.limit ?? 40
             if (events.length > limit) {

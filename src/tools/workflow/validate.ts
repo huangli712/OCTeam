@@ -399,7 +399,7 @@ export function resolveAndValidateGateTargets(
             }
             if (resolvesToMarkerStep(steps, gateIndex, targetRef)) {
                 return ({ error: `Error: ${location} targets[${index}] "${String(targetRef)}"`
-                    + ` must not reference a fanout/join marker step` })
+                    + ` must not reference a fanout marker step` })
             }
             const targetIndex = resolveGateTargetRef(steps, gateIndex, targetRef)
             if (targetIndex < 0) {
