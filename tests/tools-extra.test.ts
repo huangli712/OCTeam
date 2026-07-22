@@ -52,6 +52,28 @@ async function writeSpecForMembers(
     )
 }
 
+function makeFullCtx(root: string, extra?: { agents?: unknown; promptAsync?: unknown }) {
+    return makeCtx({
+        storageRoot: root,
+        overrides: {
+            client: {
+                app: {
+                    log: async () => ({}),
+                    agents: extra?.agents ?? (async () => ({ data: [] })),
+                },
+                session: {
+                    promptAsync: extra?.promptAsync ?? (async () => ({})),
+                    messages: async () => ({ data: [] }),
+                    create: async () => ({ data: { id: "ses_unused" } }),
+                    abort: async () => ({}),
+                    status: async () => ({ data: {} }),
+                },
+            },
+        },
+    })
+}
+
+
 // ============================================================
 // team_fix_member: comprehensive coverage of error paths + the
 // rename / role / agent happy paths.
@@ -62,7 +84,7 @@ describe("team_fix_member: input validation", () => {
         const root = tmpRoot("fix-noargs")
         const sid = "ses_fix_noargs"
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamFixMemberTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamFixMemberTool(makeFullCtx(root)).execute(
             { team_id: "alpha", member_name: "alice" },
             makeToolContext(sid),
         )
@@ -79,7 +101,7 @@ describe("team_fix_member: input validation", () => {
             await (await import("../src/state/store.js")).saveTeamState(team)
         })
 
-        const result = await teamFixMemberTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamFixMemberTool(makeFullCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_prompt: "x" },
             makeToolContext(sid),
         )
@@ -90,7 +112,7 @@ describe("team_fix_member: input validation", () => {
         const root = tmpRoot("fix-unknown")
         const sid = "ses_fix_unk"
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamFixMemberTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamFixMemberTool(makeFullCtx(root)).execute(
             { team_id: "alpha", member_name: "ghost", new_prompt: "x" },
             makeToolContext(sid),
         )
@@ -101,7 +123,7 @@ describe("team_fix_member: input validation", () => {
         const root = tmpRoot("fix-badagent")
         const sid = "ses_fix_ba"
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamFixMemberTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamFixMemberTool(makeFullCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_agent: "build" },
             makeToolContext(sid),
         )
@@ -112,7 +134,7 @@ describe("team_fix_member: input validation", () => {
         const root = tmpRoot("fix-badname")
         const sid = "ses_fix_bn"
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamFixMemberTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamFixMemberTool(makeFullCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_name: "notapoolname" },
             makeToolContext(sid),
         )
@@ -123,7 +145,7 @@ describe("team_fix_member: input validation", () => {
         const root = tmpRoot("fix-dupname")
         const sid = "ses_fix_dn"
         await setupTeam(root, sid, [makeMember("alice"), makeMember("bob")], Date.now())
-        const result = await teamFixMemberTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamFixMemberTool(makeFullCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_name: "bob" },
             makeToolContext(sid),
         )
@@ -139,7 +161,7 @@ describe("team_fix_member: happy paths", () => {
         await setupTeam(root, sid, [makeMember("alice", memberSid)], Date.now())
         await writeSpecForMembers(root, sid, [{ name: "alice" }])
 
-        const result = await teamFixMemberTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamFixMemberTool(makeFullCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_name: "bob" },
             makeToolContext(sid),
         )
@@ -157,7 +179,7 @@ describe("team_fix_member: happy paths", () => {
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
         await writeSpecForMembers(root, sid, [{ name: "alice", role: "coder" }])
 
-        const result = await teamFixMemberTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamFixMemberTool(makeFullCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_role: "reviewer" },
             makeToolContext(sid),
         )
@@ -181,7 +203,7 @@ describe("team_fix_member: happy paths", () => {
                 },
             ],
         }))
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { agents })
 
         const result = await teamFixMemberTool(ctx).execute(
             { team_id: "alpha", member_name: "alice", new_agent: "oct-oracle" },
@@ -202,7 +224,7 @@ describe("team_fix_member: happy paths", () => {
         await writeSpecForMembers(root, sid, [{ name: "alice" }])
 
         const agents = mock(async () => ({ data: [{ name: "oct-explore" }] })) // no model
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { agents })
 
         const result = await teamFixMemberTool(ctx).execute(
             { team_id: "alpha", member_name: "alice", new_agent: "oct-explore" },
@@ -221,7 +243,7 @@ describe("team_fix_member: happy paths", () => {
         const agents = mock(async () => {
             throw new Error("registry offline")
         })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { agents })
 
         const result = await teamFixMemberTool(ctx).execute(
             { team_id: "alpha", member_name: "alice", new_agent: "oct-explore" },
@@ -238,7 +260,7 @@ describe("team_fix_member: happy paths", () => {
         // `if (args.new_prompt && specMember)` branch (fix.ts:116-118) fires.
         await writeSpecForMembers(root, sid, [{ name: "alice", prompt: "old prompt" }])
 
-        const result = await teamFixMemberTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamFixMemberTool(makeFullCtx(root)).execute(
             { team_id: "alpha", member_name: "alice", new_prompt: "updated standing instructions" },
             makeToolContext(sid),
         )
@@ -259,7 +281,7 @@ describe("team_consensus: validation + happy path", () => {
         const root = tmpRoot("con-few")
         const sid = "ses_con_few"
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamConsensusTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamConsensusTool(makeFullCtx(root)).execute(
             { team_id: "alpha", topic: "is water wet?" },
             makeToolContext(sid),
         )
@@ -279,7 +301,7 @@ describe("team_consensus: validation + happy path", () => {
         )
         const dispatched: string[] = []
         const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { promptAsync })
 
         const result = await teamConsensusTool(ctx).execute(
             { team_id: "alpha", topic: "pineapple on pizza?" },
@@ -314,7 +336,7 @@ describe("team_pipeline: happy-path startup", () => {
         await setupTeam(root, sid, [makeMember("alice", aliceSid)], Date.now())
         const dispatched: string[] = []
         const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { promptAsync })
 
         const result = await teamPipelineTool(ctx).execute(
             { team_id: "alpha", stages: [{ member: "alice", task: "do A" }] },
@@ -337,7 +359,7 @@ describe("team_loop: happy-path startup", () => {
         await setupTeam(root, sid, [makeMember("alice", aliceSid)], Date.now())
         const dispatched: string[] = []
         const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { promptAsync })
 
         const result = await teamLoopTool(ctx).execute(
             {
@@ -361,7 +383,7 @@ describe("team_loop: happy-path startup", () => {
         const sid = "ses_loop_dup"
         await setupTeam(root, sid, [makeMember("alice")], Date.now())
 
-        const result = await teamLoopTool(makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })).execute(
+        const result = await teamLoopTool(makeFullCtx(root)).execute(
             {
                 team_id: "alpha",
                 stages: [
@@ -389,7 +411,7 @@ describe("team_loop: happy-path startup", () => {
             Date.now(),
         )
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { promptAsync })
 
         // alice is the only stage member; bob is the decider but NOT listed
         // in stages — buildTask must append bob as a read-only decider stage.
@@ -427,7 +449,7 @@ describe("team_delegate: happy-path startup", () => {
         await setupTeam(root, sid, [makeMember("alice", aliceSid)], Date.now())
         const dispatched: string[] = []
         const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { promptAsync })
 
         const result = await teamDelegateTool(ctx).execute(
             { team_id: "alpha", tasks: [{ subject: "do thing", description: "details" }] },
@@ -456,7 +478,7 @@ describe("team_parallel: cooperative happy-path startup", () => {
         )
         const dispatched: string[] = []
         const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { promptAsync })
 
         const result = await teamParallelTool(ctx).execute(
             {
@@ -490,7 +512,7 @@ describe("team_router: happy-path startup", () => {
         )
         const dispatched: string[] = []
         const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { promptAsync })
 
         const result = await teamRouteTool(ctx).execute(
             {
@@ -528,7 +550,7 @@ describe("team_arbitrate: happy-path startup", () => {
         )
         const dispatched: string[] = []
         const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { promptAsync })
 
         const result = await teamArbitrateTool(ctx).execute(
             {
@@ -557,7 +579,7 @@ describe("team_recurse: happy-path startup", () => {
         await setupTeam(root, sid, [makeMember("alice", aliceSid)], Date.now())
         const dispatched: string[] = []
         const promptAsync = mock(async (req: { path: { id: string } }) => { dispatched.push(req.path.id) })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}), agents: async () => ({ data: [] }) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_unused" } }), abort: async () => ({}), status: async () => ({ data: {} }) } } } })
+        const ctx = makeFullCtx(root, { promptAsync })
 
         const result = await teamRecurseTool(ctx).execute(
             {

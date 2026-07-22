@@ -9,8 +9,7 @@ import {
 import { createTask, getTask, updateTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
-import type { RecurseTask } from "../src/core/types.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTask, makeToolContext, tmpRoot } from './helpers.js';
 
 
 const tracked: string[] = []
@@ -203,19 +202,7 @@ describe("team_task_create (recurse-mode guard)", () => {
         await setupTeam(root, sid)
         // Set an active recurse task so the guard fires.
         const team = await loadTeamState(root, "alpha", sid)
-        team.activeTask = {
-            type: "recurse",
-            startedAt: 0,
-            wallClockTimeoutMs: 300000,
-            tokensUsed: 0,
-            tokensByMember: {},
-            messagesSent: 0,
-            responses: {},
-            stages: [],
-            currentStageIndex: 0,
-            decisionHistory: [],
-            decisionParseFailures: 0,
-        } as RecurseTask
+        team.activeTask = makeTask({ type: "recurse", startedAt: 0 })
         await saveTeamState(team)
 
         const result = await teamTaskCreateTool(makeCtx({ storageRoot: root })).execute(
@@ -259,19 +246,7 @@ describe("team_task_update (recurse-mode completed guard)", () => {
         tracked.push(sid)
         await setupTeam(root, sid)
         const team = await loadTeamState(root, "alpha", sid)
-        team.activeTask = {
-            type: "recurse",
-            startedAt: 0,
-            wallClockTimeoutMs: 300000,
-            tokensUsed: 0,
-            tokensByMember: {},
-            messagesSent: 0,
-            responses: {},
-            stages: [],
-            currentStageIndex: 0,
-            decisionHistory: [],
-            decisionParseFailures: 0,
-        } as RecurseTask
+        team.activeTask = makeTask({ type: "recurse", startedAt: 0 })
         await saveTeamState(team)
         // Seed a claimed task owned by alice.
         const dir = team.directory
@@ -311,19 +286,7 @@ describe("team_task_update (recurse-mode completed guard)", () => {
         tracked.push(sid)
         await setupTeam(root, sid)
         const team = await loadTeamState(root, "alpha", sid)
-        team.activeTask = {
-            type: "recurse",
-            startedAt: 0,
-            wallClockTimeoutMs: 300000,
-            tokensUsed: 0,
-            tokensByMember: {},
-            messagesSent: 0,
-            responses: {},
-            stages: [],
-            currentStageIndex: 0,
-            decisionHistory: [],
-            decisionParseFailures: 0,
-        } as RecurseTask
+        team.activeTask = makeTask({ type: "recurse", startedAt: 0 })
         await saveTeamState(team)
         const dir = team.directory
         const t = await createTask(dir, { subject: "cancel", description: "x" })

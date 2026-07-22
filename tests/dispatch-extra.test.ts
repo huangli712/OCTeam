@@ -15,6 +15,33 @@ afterAll(cleanupTmpRoots)
 type PromptReq = { path: { id: string }; body: { parts: Array<{ text: string; synthetic?: boolean }>; title?: string } }
 type DeleteReq = { path: { id: string }; query: { directory: string } }
 
+/** Shared ctx builder that fills in boilerplate defaults. */
+function makeCtxFor(
+    root: string,
+    opts?: {
+        directory?: string;
+        promptAsync?: (req: any) => any;
+        create?: (req: any) => any;
+        delete?: (req: any) => any;
+    },
+) {
+    return makeCtx({
+        storageRoot: root,
+        ...(opts?.directory ? { directory: opts.directory } : {}),
+        overrides: {
+            client: {
+                app: { log: async () => ({}) },
+                session: {
+                    promptAsync: opts?.promptAsync ?? (async () => ({})),
+                    messages: async () => ({ data: [] }),
+                    create: opts?.create ?? (async () => ({ data: { id: "ses_default" } })),
+                    ...(opts?.delete ? { delete: opts.delete } : {}),
+                },
+            },
+        },
+    })
+}
+
 
 async function makeTeam(
     root: string,
@@ -77,7 +104,7 @@ describe("advanceToStage", () => {
         const sid = "ses_ats_noactive"
         tracked.push(sid)
         const promptAsync = mock(async () => ({}))
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_default" } }) } } } })
+        const ctx = makeCtxFor(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice")])
 
         const stage: Stage = { member: "alice", task: "do thing", completed: false }
@@ -90,7 +117,7 @@ describe("advanceToStage", () => {
         const root = tmpRoot("ats-nosess")
         const sid = "ses_ats_nosess"
         tracked.push(sid)
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_default" } }) } } } })
+        const ctx = makeCtxFor(root)
         const team = await makeTeam(root, sid, tracked, [makeMember("alice")]) // no sessionId
         await setActiveTask(root, sid, {
             type: "pipeline",
@@ -105,7 +132,7 @@ describe("advanceToStage", () => {
         const root = tmpRoot("ats-unknown")
         const sid = "ses_ats_unknown"
         tracked.push(sid)
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_default" } }) } } } })
+        const ctx = makeCtxFor(root)
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice")])
         await setActiveTask(root, sid, {
             type: "pipeline",
@@ -124,7 +151,7 @@ describe("advanceToStage", () => {
         const promptAsync = mock(async (req: PromptReq) => {
             captured = req.body.parts[0].text
         })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_default" } }) } } } })
+        const ctx = makeCtxFor(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
@@ -161,7 +188,7 @@ describe("advanceToStage", () => {
         const promptAsync = mock(async (req: PromptReq) => {
             captured = req.body.parts[0].text
         })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_default" } }) } } } })
+        const ctx = makeCtxFor(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice")])
         await setActiveTask(root, sid, { type: "loop", stages: [] })
 
@@ -185,7 +212,7 @@ describe("advanceToStage", () => {
         const promptAsync = mock(async (req: PromptReq) => {
             captured = req.body.parts[0].text
         })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_default" } }) } } } })
+        const ctx = makeCtxFor(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice")])
         await setActiveTask(root, sid, { type: "pipeline", stages: [] })
 
@@ -204,7 +231,7 @@ describe("advanceToStage", () => {
         const promptAsync = mock(async (req: PromptReq) => {
             captured = req.body.parts[0].text
         })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_default" } }) } } } })
+        const ctx = makeCtxFor(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
@@ -238,7 +265,7 @@ describe("advanceToStage", () => {
         const promptAsync = mock(async (req: PromptReq) => {
             captured.push(req.body.parts[0].text)
         })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_default" } }) } } } })
+        const ctx = makeCtxFor(root, { promptAsync })
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice")])
         const alice = team.members.find(m => m.name === "alice")!
         alice.prompt = "You are the verifier."
@@ -296,7 +323,7 @@ describe("ensureMembersReady", () => {
         const create = mock(async () => {
             throw new Error("session.create must NOT be called when all members are spawned")
         })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create } } } })
+        const ctx = makeCtxFor(root, { create })
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_a")])
 
         await ensureMembersReady(ctx, team)
@@ -311,7 +338,7 @@ describe("ensureMembersReady", () => {
         const create = mock(async () => {
             throw new Error("session.create must NOT be called for an existing session")
         })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create } } } })
+        const ctx = makeCtxFor(root, { create })
         await writeSpec(root, "alpha", sid, [{ name: "alice" }])
         const team = await makeTeam(root, sid, tracked, [makeMember("alice", "ses_alice_existing")])
         const alice = team.members.find(m => m.name === "alice")!
@@ -334,7 +361,7 @@ describe("ensureMembersReady", () => {
         const root = tmpRoot("emr-nospec")
         const sid = "ses_emr_nospec"
         tracked.push(sid)
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_default" } }) } } } })
+        const ctx = makeCtxFor(root)
         // Deliberately do NOT call writeTeamSpec.
         const team = await makeTeam(root, sid, tracked, [makeMember("alice")])
 
@@ -346,7 +373,7 @@ describe("ensureMembersReady", () => {
         const sid = "ses_emr_noid"
         tracked.push(sid)
         const create = mock(async () => ({ data: {} })) // missing id
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create } } } })
+        const ctx = makeCtxFor(root, { create })
         await writeSpec(root, "alpha", sid, [{ name: "alice" }])
         const team = await makeTeam(root, sid, tracked, [makeMember("alice")])
 
@@ -366,7 +393,7 @@ describe("ensureMembersReady", () => {
         const deleteSession = mock(async (_req: DeleteReq) => {
             throw new Error("session.delete boom")
         })
-        const ctx = makeCtx({ storageRoot: root, directory: "/project", overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create, delete: deleteSession } } } })
+        const ctx = makeCtxFor(root, { promptAsync, create, delete: deleteSession, directory: "/project" })
         await writeSpec(root, "alpha", sid, [{ name: "alice" }])
         const team = await makeTeam(root, sid, tracked, [makeMember("alice")])
 
@@ -401,7 +428,7 @@ describe("ensureMembersReady", () => {
             alice.initialized = true
         })
         const create = mock(async () => ({ data: { id: newMemberSid } }))
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create } } } })
+        const ctx = makeCtxFor(root, { promptAsync, create })
 
         await writeSpec(root, "alpha", sid, [
             { name: "alice", prompt: "You are the coder.", role: "coder" },
@@ -457,7 +484,7 @@ describe("ensureMembersReady", () => {
             bob.initialized = true
         })
         const create = mock(async () => ({ data: { id: newMemberSid } }))
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create } } } })
+        const ctx = makeCtxFor(root, { promptAsync, create })
 
         // Spec lists a DIFFERENT member; bob is in state but not in spec.
         await writeSpec(root, "alpha", sid, [{ name: "alice" }])
@@ -501,7 +528,7 @@ describe("ensureMembersReady", () => {
             const m = team.members.find(x => `ses_${x.name}_spawned` === req.path.id)
             if (m) m.initialized = true
         })
-        const ctx = makeCtx({ storageRoot: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync, messages: async () => ({ data: [] }), create } } } })
+        const ctx = makeCtxFor(root, { promptAsync, create })
 
         await ensureMembersReady(ctx, team)
 
@@ -521,7 +548,7 @@ describe("ensureMembersReady", () => {
         const sid = "ses_emr_wt_fail"
         tracked.push(sid)
         // ctx.directory is the tmp root, which is NOT a git repo — git worktree add fails.
-        const ctx = makeCtx({ storageRoot: root, directory: root, overrides: { client: { app: { log: async () => ({}) }, session: { promptAsync: async () => ({}), messages: async () => ({ data: [] }), create: async () => ({ data: { id: "ses_default" } }) } } } })
+        const ctx = makeCtxFor(root, { directory: root })
         await writeSpec(root, "alpha", sid, [{ name: "alice", worktree: true }])
         const team = await makeTeam(root, sid, tracked, [makeMember("alice")])
 

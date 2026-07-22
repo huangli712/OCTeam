@@ -5,7 +5,7 @@
  */
 import fs from "node:fs/promises"
 
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
 import type { RunRecord } from "../src/core/types.js"
 import { teamResultGetTool } from "../src/tools/query/results.js"
@@ -15,6 +15,13 @@ import { runDir, runRecordPath, teamDir } from "../src/state/paths.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
+const trackedSessions: string[] = []
+const trackedDirs: string[] = []
+
+afterEach(() => {
+    for (const sid of trackedSessions.splice(0)) unindexSession(sid)
+    for (const dir of trackedDirs.splice(0)) invalidateTeam(dir)
+})
 
 /** Write a RunRecord to disk so results tools can read it. */
 async function writeRunRecord(
@@ -39,6 +46,7 @@ describe("team_result_get: member output paths", () => {
         const sid = "ses_res_ghost"
         const memberSid = "ses_res_ghost_alice"
         const team = await setupTeam(root, sid, memberSid)
+        trackedDirs.push(team.directory); trackedSessions.push(sid, memberSid)
         const tdir = teamDir(root, "alpha", sid)
         await writeRunRecord(tdir, {
             version: 1,
@@ -62,9 +70,6 @@ describe("team_result_get: member output paths", () => {
             makeToolContext(memberSid),
         )
         expect(result).toContain("no output")
-        invalidateTeam(team.directory)
-        unindexSession(sid)
-        unindexSession(memberSid)
     })
 
     test("member= output file missing on disk → error", async () => {
@@ -72,6 +77,7 @@ describe("team_result_get: member output paths", () => {
         const sid = "ses_res_missing"
         const memberSid = "ses_res_missing_alice"
         const team = await setupTeam(root, sid, memberSid)
+        trackedDirs.push(team.directory); trackedSessions.push(sid, memberSid)
         const tdir = teamDir(root, "alpha", sid)
         await writeRunRecord(tdir, {
             version: 1,
@@ -96,9 +102,6 @@ describe("team_result_get: member output paths", () => {
             makeToolContext(memberSid),
         )
         expect(result).toContain("missing")
-        invalidateTeam(team.directory)
-        unindexSession(sid)
-        unindexSession(memberSid)
     })
 })
 
@@ -108,6 +111,7 @@ describe("team_result_get: tasks rendering", () => {
         const sid = "ses_res_task_owner"
         const memberSid = "ses_res_task_owner_alice"
         const team = await setupTeam(root, sid, memberSid)
+        trackedDirs.push(team.directory); trackedSessions.push(sid, memberSid)
         const tdir = teamDir(root, "alpha", sid)
         await writeRunRecord(tdir, {
             version: 1,
@@ -131,9 +135,6 @@ describe("team_result_get: tasks rendering", () => {
             makeToolContext(memberSid),
         )
         expect(result).toContain("@alice")
-        invalidateTeam(team.directory)
-        unindexSession(sid)
-        unindexSession(memberSid)
     })
 
     test("tasks without owner → no @ in task line", async () => {
@@ -141,6 +142,7 @@ describe("team_result_get: tasks rendering", () => {
         const sid = "ses_res_task_noowner"
         const memberSid = "ses_res_task_noowner_alice"
         const team = await setupTeam(root, sid, memberSid)
+        trackedDirs.push(team.directory); trackedSessions.push(sid, memberSid)
         const tdir = teamDir(root, "alpha", sid)
         await writeRunRecord(tdir, {
             version: 1,
@@ -168,9 +170,6 @@ describe("team_result_get: tasks rendering", () => {
         const taskLine = result.split("\n").find(l => l.includes("unclaimed work"))
         expect(taskLine).toBeDefined()
         expect(taskLine!).not.toContain("@")
-        invalidateTeam(team.directory)
-        unindexSession(sid)
-        unindexSession(memberSid)
     })
 })
 
@@ -180,6 +179,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
         const sid = "ses_res_workflow_branch_tree"
         const memberSid = "ses_res_workflow_branch_tree_alice"
         const team = await setupTeam(root, sid, memberSid)
+        trackedDirs.push(team.directory); trackedSessions.push(sid, memberSid)
         const tdir = teamDir(root, "alpha", sid)
         await writeRunRecord(tdir, {
             version: 1,
@@ -281,9 +281,6 @@ describe("team_result_get: workflow branch tree rendering", () => {
         expect(result).toContain("  - Branch docs [errored] steps 5-6")
         expect(result).toContain("    - Step 6: [gate] dave verifies step 5 -> FAIL")
         expect(result).toContain("- Step 7: [join] fanout step 2 branches api:completed, docs:errored (joined 21 bytes)")
-        invalidateTeam(team.directory)
-        unindexSession(sid)
-        unindexSession(memberSid)
     })
 
     test("renders fanout join policy metadata when persisted", async () => {
@@ -291,6 +288,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
         const sid = "ses_res_workflow_policy"
         const memberSid = "ses_res_workflow_policy_alice"
         const team = await setupTeam(root, sid, memberSid)
+        trackedDirs.push(team.directory); trackedSessions.push(sid, memberSid)
         const tdir = teamDir(root, "alpha", sid)
         await writeRunRecord(tdir, {
             version: 1,
@@ -355,9 +353,6 @@ describe("team_result_get: workflow branch tree rendering", () => {
         expect(result).toContain("reducer_member=dave")
         expect(result).toContain("join_policy=quorum")
         expect(result).toContain("quorum=0.5")
-        invalidateTeam(team.directory)
-        unindexSession(sid)
-        unindexSession(memberSid)
     })
 
     test("renders workflow step duration when persisted", async () => {
@@ -365,6 +360,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
         const sid = "ses_res_workflow_duration"
         const memberSid = "ses_res_workflow_duration_alice"
         const team = await setupTeam(root, sid, memberSid)
+        trackedDirs.push(team.directory); trackedSessions.push(sid, memberSid)
         const tdir = teamDir(root, "alpha", sid)
         await writeRunRecord(tdir, {
             version: 1,
@@ -393,9 +389,6 @@ describe("team_result_get: workflow branch tree rendering", () => {
         )
 
         expect(result).toContain("duration=25ms")
-        invalidateTeam(team.directory)
-        unindexSession(sid)
-        unindexSession(memberSid)
     })
 
     test("format=mermaid renders persisted workflow structure", async () => {
@@ -403,6 +396,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
         const sid = "ses_res_workflow_mermaid"
         const memberSid = "ses_res_workflow_mermaid_alice"
         const team = await setupTeam(root, sid, memberSid)
+        trackedDirs.push(team.directory); trackedSessions.push(sid, memberSid)
         const tdir = teamDir(root, "alpha", sid)
         await writeRunRecord(tdir, {
             version: 1,
@@ -455,9 +449,6 @@ describe("team_result_get: workflow branch tree rendering", () => {
         expect(result).toContain("s3 --> s4")
         expect(result).toContain("s4 --> s6")
         expect(result).toContain("selected api")
-        invalidateTeam(team.directory)
-        unindexSession(sid)
-        unindexSession(memberSid)
     })
 
     test("dispatchedActor overrides declared member/verifier in both text and mermaid output", async () => {
@@ -465,6 +456,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
         const sid = "ses_res_workflow_dispatched_actor"
         const memberSid = "ses_res_workflow_dispatched_actor_lead"
         const team = await setupTeam(root, sid, memberSid)
+        trackedDirs.push(team.directory); trackedSessions.push(sid, memberSid)
         const tdir = teamDir(root, "alpha", sid)
         await writeRunRecord(tdir, {
             version: 1,
@@ -507,8 +499,5 @@ describe("team_result_get: workflow branch tree rendering", () => {
         expect(mermaidResult).toContain("gate: dave")
         expect(mermaidResult).not.toContain("gate: carol")
 
-        invalidateTeam(team.directory)
-        unindexSession(sid)
-        unindexSession(memberSid)
     })
 })
