@@ -101,14 +101,13 @@ describe("teamCancelTool", () => {
         const promptAsync = mock(async (_req: unknown) => {})
         const ctx = makeCtx({ storageRoot: root, abort, promptAsync })
 
-        // Build a team that is "busy" but has NO activeTask (simulating
-        // a team that was re-loaded or a state edge case where status
-        // and activeTask are out of sync — we use "live" here to bypass
-        // the status check and instead rely on activeTask === undefined).
+        // Build a team with NO activeTask. team_cancel's precondition checks
+        // activeTask === undefined (not status === "busy"), so an idle team
+        // correctly hits the "no active orchestration" path.
         const state = makeState("alpha", "ses_master", [
             makeMember("alice", "ses_alice"),
         ])
-        state.status = "idle" // not busy → precondition rejects
+        state.status = "idle" // idle → no active orchestration
         await initTeamState(root, state, "ses_master")
 
         const tool = teamCancelTool(ctx)

@@ -45,14 +45,14 @@ describe("team_rename: error paths", () => {
         expect(result).toContain("not found")
     })
 
-    test("status flips to busy inside mutex → staleState error", async () => {
+    test("status already busy → outer status check returns 'not live' error", async () => {
         const root = tmpRoot("rn-stale")
         const sid = "ses_rn_stale"
         const team = await setupLiveTeam(root, sid, "alpha")
         // Flip status to busy BEFORE calling rename — the outer check (line 42)
-        // catches it and returns the "not live" error. This covers the same
-        // error message path; the inner mutex revalidation (lines 71-72) is
-        // a race-only branch that requires deterministic mutex occupation.
+        // catches it and returns the "not live" error. The inner mutex
+        // revalidation (lines 71-72) is a race-only branch that requires
+        // deterministic mutex occupation and is NOT covered here.
         team.status = "busy"
 
         const result = await teamRenameTool(makeCtx({ storageRoot: root })).execute(
