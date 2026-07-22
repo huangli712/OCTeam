@@ -286,4 +286,35 @@ describe("workflow ensemble gate", () => {
         expect(task.steps![1].verdict).toBe("INVALID");
         expect(team.status).toBe("failed");
     });
+
+    test("quorum: 1/3 PASS with quorum=0.6 -> aggregated FAIL", async () => {
+        const calls: DispatchCall[] = [];
+        const task = makeWorkflowTask({
+            steps: makeEnsembleSteps("quorum", 0.6),
+            currentStageIndex: 1,
+            responses: { alice: "alice output" },
+        });
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice" },
+                { name: "bob", sessionId: "ses_bob" },
+                { name: "carol", sessionId: "ses_carol" },
+                { name: "dave", sessionId: "ses_dave" },
+                { name: "erin", sessionId: "ses_erin" },
+            ],
+        });
+        const ctx = makeCtx({ outputs: {
+            ses_bob: PASS_V,
+            ses_carol: FAIL_V,
+            ses_dave: FAIL_V,
+        }, calls: calls });
+
+        await processIdle(ctx, team, memberByName(team, "bob"), "ses_bob");
+        await processIdle(ctx, team, memberByName(team, "carol"), "ses_carol");
+        await processIdle(ctx, team, memberByName(team, "dave"), "ses_dave");
+
+        // 1/3 = 0.333 < 0.6 -> FAIL
+        expect(task.steps![1].verdict).toBe("FAIL");
+    });
 });

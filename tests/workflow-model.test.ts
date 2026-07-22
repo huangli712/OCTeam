@@ -136,9 +136,9 @@ async function driveWorkflowModel(seed: number): Promise<void> {
 }
 
 describe("workflow seeded model transitions", () => {
-    test("generated workflows preserve invariants until completion", async () => {
-        for (let seed = 1; seed <= 12; seed += 1) {
+    for (let seed = 1; seed <= 12; seed += 1) {
+        test(`seed ${seed} preserves invariants until completion`, async () => {
             await driveWorkflowModel(seed)
-        }
-    })
+        })
+    }
 })
