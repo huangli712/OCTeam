@@ -318,7 +318,21 @@ export async function completeWorkflowJoinStep(
         baseJoin.joinedOutput === undefined
     ) {
         step.join = baseJoin;
-        if (step.dispatchedAt !== undefined) return "waiting";
+        if (step.dispatchedAt !== undefined) {
+            // If the reducer member is no longer live (crashed, errored,
+            // session deleted), clear the stale dispatchedAt to allow
+            // re-dispatch. Without this, a crashed reducer permanently
+            // deadlocks the join.
+            const liveReducer = liveWorkflowActor(team, baseJoin.reducerMember, undefined)
+            if (liveReducer === undefined) {
+                step.dispatchedAt = undefined
+                step.dispatchedActor = undefined
+                step.correlationId = undefined
+                // Fall through to re-dispatch below.
+            } else {
+                return "waiting"
+            }
+        }
         if (!(await dispatchWorkflowJoinReducer(ctx, team, task, joinIndex))) {
             await finishRun(
                 ctx,

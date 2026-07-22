@@ -452,6 +452,8 @@ export async function gotoWorkflowStep(
                 if (i !== gateIndex) {
                     s.attempts = 0;
                     s.invalidAttempts = 0;
+                    s.malformedAttempts = 0;
+                    s.timeoutAttempts = 0;
                 }
             }
         }
