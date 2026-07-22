@@ -11,6 +11,8 @@ import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTask, makeToolContext, tmpRoot } from './helpers.js';
 
+afterAll(cleanupTmpRoots)
+
 
 const tracked: string[] = []
 afterEach(() => {

@@ -28,12 +28,16 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
+import { afterAll, describe, expect, test } from "bun:test"
+
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamTaskCreateTool } from "../src/tools/exchange/task.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 
 const tracked: string[] = []

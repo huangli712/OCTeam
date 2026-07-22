@@ -98,6 +98,6 @@ describe("add-member cap race (finding: add-member-cap-race)", () => {
         // On UNFIXED code: both added → 4 members → FAIL.
         // On FIXED code: one rejected (cap reached inside mutex) → 3 → PASS.
         const finalTeam = await loadTeamState(root, "alpha", leadSid)
-        expect(finalTeam.members.length).toBeLessThanOrEqual(3)
+        expect(finalTeam.members.length).toBe(3)
     })
 })

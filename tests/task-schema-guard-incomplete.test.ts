@@ -40,9 +40,7 @@ async function writeTaskFile(teamDir: string, taskId: string, obj: unknown): Pro
     await writeFile(p, JSON.stringify(obj, null, 2), "utf8")
 }
 
-afterAll(() => {
-    // tmpRoot cleanup is process-global; nothing extra here.
-})
+afterAll(cleanupTmpRoots)
 
 describe("task schema guard incomplete (finding: task-schema-guard-incomplete)", () => {
     test("a corrupt task with non-array blockedBy must be rejected by isValidTask, not crash callers", async () => {

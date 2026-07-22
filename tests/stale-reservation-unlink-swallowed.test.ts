@@ -170,6 +170,6 @@ describe("releaseStaleReservations unlink swallowed (finding: stale-reservation-
             msgId,
             inboxPath(teamDir, recipient),
         )
-        expect(occurrences).toBeLessThanOrEqual(1)
+        expect(occurrences).toBe(0)
     })
 })

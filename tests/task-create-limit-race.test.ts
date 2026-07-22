@@ -81,6 +81,6 @@ describe("task-create limit race (finding: task-create-limit-race)", () => {
         // On UNFIXED code: both created → 3 live tasks → FAIL.
         // On FIXED code: one rejected → 2 live tasks → PASS.
         const liveTasks = (await listAllTasks(teamDir)).filter(t => t.status !== "deleted")
-        expect(liveTasks.length).toBeLessThanOrEqual(2)
+        expect(liveTasks.length).toBe(2)
     })
 })

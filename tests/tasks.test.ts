@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from "bun:test"
 import path from "node:path"
 
 import {
@@ -10,6 +10,8 @@ import {
 } from "../src/state/tasks.js"
 import { claimMutexPath } from "../src/state/paths.js"
 import { cleanupTmpRoots, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 async function setupTeamDir(label: string): Promise<string> {
     const root = tmpRoot(label)
