@@ -61,7 +61,7 @@ describe("recurse root task cap bypass (finding: recurse-root-task-cap-bypass)",
         // --- Start recurse. buildTask (recurse.ts:60) calls createTask for the
         //     root task WITHOUT checking maxTasks. ---
         const tool = teamRecurseTool(makeCtx({ storageRoot: root, promptAsync: async () => {} }))
-        await tool.execute(
+        const result = await tool.execute(
             {
                 team_id: "alpha",
                 task: "decompose and solve X",
@@ -70,9 +70,11 @@ describe("recurse root task cap bypass (finding: recurse-root-task-cap-bypass)",
             { sessionID: leadSid } as unknown as ToolContext,
         )
 
-        // --- ASSERT: total live tasks must NOT exceed maxTasks (2) ---
-        // On UNFIXED code: recurse.ts:60 creates the root task → 3 live → FAIL.
-        // On FIXED code: rejected before createTask → 2 live → PASS.
+        // --- ASSERT: the tool must report rejection AND total live tasks must
+        //     NOT exceed maxTasks (2) ---
+        // On UNFIXED code: recurse.ts:60 creates the root task → 3 live, returns success → FAIL.
+        // On FIXED code: rejected before createTask → 2 live, returns error → PASS.
+        expect(result).toContain("Error")
         const liveAfter = (await listAllTasks(team.directory)).filter(t => t.status !== "deleted").length
         expect(liveAfter).toBeLessThanOrEqual(state.bounds.maxTasks)
     })

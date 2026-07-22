@@ -1,7 +1,6 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import fs from "node:fs/promises"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { recordEvent } from "../src/orchestration/records/events.js"
@@ -11,9 +10,11 @@ import { waitUntil } from "../src/core/utils.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { __test__ as logTest, initLogger } from "../src/core/log.js"
 
-import { makeCtx, makeTeam } from "./helpers.js"
+import { makeCtx, makeTeam, cleanupTmpRoots, tmpRoot } from "./helpers.js"
+
+afterAll(cleanupTmpRoots)
 function tmpTeamDir(): string {
-    return mkdtempSync(join(tmpdir(), "octeam-events-"))
+    return tmpRoot("events")
 }
 
 
@@ -82,7 +83,7 @@ describe("recordEvent + readRunEvents", () => {
         // yield once to let pending tasks flush, then the runs directory must
         // not have been created.
         await new Promise(r => setImmediate(r))
-        expect(fs.readdir(join(dir, "runs"))).rejects.toThrow()
+        await expect(fs.readdir(join(dir, "runs"))).rejects.toThrow()
     })
 })
 

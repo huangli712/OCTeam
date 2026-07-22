@@ -1,13 +1,12 @@
-import { describe, expect, test } from "bun:test"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { afterAll, describe, expect, test } from "bun:test"
 
 import { checkTermination } from "../src/orchestration/lifecycle/termination.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
-import { makeCtx } from "./helpers.js"
+import { makeCtx, cleanupTmpRoots, tmpRoot } from "./helpers.js"
+
+afterAll(cleanupTmpRoots)
 
 /** Minimal busy parallel Team with the given members + tolerance. */
 function makeTeam(opts: {
@@ -57,7 +56,7 @@ function makeTeam(opts: {
         createdAt: 0,
         activeTask: task,
         mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-term-")),
+        directory: tmpRoot("term"),
     } as unknown as Team
 }
 

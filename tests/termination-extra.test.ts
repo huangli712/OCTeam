@@ -1,15 +1,13 @@
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-
-import { describe, expect, mock, test } from "bun:test"
+import { afterAll, describe, expect, mock, test } from "bun:test"
 
 import { checkTermination } from "../src/orchestration/lifecycle/termination.js"
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
-import { makeCtx } from "./helpers.js"
+import { makeCtx, cleanupTmpRoots, tmpRoot } from "./helpers.js"
 import type { PluginContext } from "../src/core/context.js"
+
+afterAll(cleanupTmpRoots)
 
 function makeTeam(opts: {
     startedAt?: number
@@ -63,7 +61,7 @@ function makeTeam(opts: {
         createdAt: 0,
         activeTask: task,
         mutex: new AsyncMutex(),
-        directory: mkdtempSync(join(tmpdir(), "octeam-term-extra-")),
+        directory: tmpRoot("term-extra"),
     } as unknown as Team
 }
 

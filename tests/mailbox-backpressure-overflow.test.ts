@@ -105,16 +105,18 @@ describe("mailbox backpressure overflow (finding: mailbox-backpressure-allows-ov
         //     (preSize is ~900; even a modest body + JSON overhead exceeds 100.) ---
         const tool = teamSendMessageTool(makeCtx({ storageRoot: root }))
         const newBody = "y".repeat(200) // 200 bytes body → ~330-byte line
-        await tool.execute(
+        const result = await tool.execute(
             { team_id: "alpha", to: "bob", body: newBody },
             { sessionID: aliceSid } as unknown as ToolContext,
         )
 
-        // --- ASSERT: the total inbox size must NOT exceed messageUnreadMaxBytes ---
+        // --- ASSERT: the tool must report rejection AND the total inbox size
+        //     must NOT exceed messageUnreadMaxBytes ---
         // On UNFIXED code: the check `bytes > limit` uses the PRE-write size
-        // (900 < 1000 → pass), then appends → inbox is now ~1230 → FAIL.
+        // (900 < 1000 → pass), then appends → inbox is now ~1230, returns success → FAIL.
         // On FIXED code: the projected total (900 + 330 = 1230 > 1000) →
-        // rejected → inbox stays at ~900 → PASS.
+        // rejected → inbox stays at ~900, returns error → PASS.
+        expect(result).toContain("Error")
         const postSize = (await stat(inboxPath(team.directory, "bob"))).size
         expect(postSize).toBeLessThanOrEqual(state.bounds.messageUnreadMaxBytes)
     })
