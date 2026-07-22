@@ -107,4 +107,58 @@ describe("HITL: team_workflow", () => {
         expect(after.activeTask).toBeUndefined()
         expect(calls.some(c => c.sessionId === "ses_bob")).toBe(false)
     })
+
+    test("invalid approval_id is rejected", async () => {
+        const root = tmpRoot("hitl-wf-bad-id")
+        const sid = "ses_hitl_wf_bad_id"
+        const calls: DispatchCall[] = []
+        const team = await setupTeam(root, sid, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        const task = workflowTask([
+            { kind: "task", member: "alice", task: "draft", completed: false },
+            { kind: "task", member: "bob", task: "polish", completed: false },
+        ])
+        await setActiveTask(team, task)
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: "draft output" }, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
+
+        await processIdle(ctx, team, team.members[0], "ses_alice")
+        expect(task.approvalStage).toBe(true)
+
+        // Approve with a WRONG approval_id → must be rejected
+        const result = await teamApproveTool(ctx).execute({ team_id: "alpha", approval_id: "bogus-id-that-does-not-match" }, makeToolContext(sid))
+        expect(result).toContain("does not match")
+
+        // Task is still paused — bob was NOT dispatched
+        expect(calls.some(c => c.sessionId === "ses_bob")).toBe(false)
+    })
+
+    test("duplicate approval (second approve after first succeeds) is rejected", async () => {
+        const root = tmpRoot("hitl-wf-dup")
+        const sid = "ses_hitl_wf_dup"
+        const calls: DispatchCall[] = []
+        const team = await setupTeam(root, sid, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+        const task = workflowTask([
+            { kind: "task", member: "alice", task: "draft", completed: false },
+            { kind: "task", member: "bob", task: "polish", completed: false },
+        ])
+        await setActiveTask(team, task)
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: "draft output" }, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
+
+        await processIdle(ctx, team, team.members[0], "ses_alice")
+        const approvalId = task.approvalRequest?.id
+        expect(approvalId).toBeDefined()
+
+        // First approve succeeds
+        const result1 = await teamApproveTool(ctx).execute({ team_id: "alpha", approval_id: approvalId }, makeToolContext(sid))
+        expect(result1).toContain("Approved")
+
+        // Second approve — no pending approval left
+        const result2 = await teamApproveTool(ctx).execute({ team_id: "alpha", approval_id: approvalId }, makeToolContext(sid))
+        expect(result2).toContain("no pending")
+    })
 })

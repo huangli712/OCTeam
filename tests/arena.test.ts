@@ -875,6 +875,32 @@ describe("arena implement phase", () => {
         expect(calls.some(c => c.sessionId === "ses_bob")).toBe(false)
     })
 
+    test("evalCommand-only (no evalCriteria) reaches the evaluator prompt", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeArenaCtx("/app", calls)
+        const task = makeArenaTask({
+            candidates: ["alice", "bob"],
+            evaluatorMember: "carol",
+            evalCommand: "bun test",
+            // evalCriteria intentionally omitted
+        })
+        const team = makeArenaHandlerTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", worktreePath: "/app/wt/alice" },
+                { name: "bob", sessionId: "ses_bob", worktreePath: "/app/wt/bob" },
+                { name: "carol", sessionId: "ses_carol", worktreePath: "/app/wt/carol" },
+            ],
+        })
+
+        await handleArenaIdle(ctx, team, memberByName(team, "alice"))
+
+        expect(task.arenaPhase).toBe("evaluate")
+        const evalCalls = calls.filter(c => c.sessionId === "ses_carol")
+        expect(evalCalls).toHaveLength(1)
+        expect(evalCalls[0].text).toContain("bun test")
+    })
+
     test("evaluator without a sessionId -> arena_failed:evaluator_unavailable, phase stays implement", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeArenaCtx("/app", calls)

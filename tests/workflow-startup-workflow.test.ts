@@ -1,13 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 import type { ActiveTask } from "../src/core/types.js"
-import { teamConsensusTool } from "../src/tools/modes/consensus.js"
-import { teamDelegateTool } from "../src/tools/modes/delegate.js"
-import { teamLoopTool } from "../src/tools/modes/loop.js"
-import { teamParallelTool } from "../src/tools/modes/parallel.js"
-import { teamPipelineTool } from "../src/tools/modes/pipeline.js"
 import { teamWorkflowTool } from "../src/tools/workflow/engine.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
@@ -18,6 +13,7 @@ const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
+afterAll(cleanupTmpRoots)
 
 async function setupTeam(
     root: string, sid: string,
@@ -54,7 +50,7 @@ async function setBusy(root: string, sid: string, type: string): Promise<void> {
 // Shared startup validation: non-master / inactive / busy / signoff_decider
 // -----------------------------------------------------------------------
 
-type TeamToolFn = typeof teamParallelTool
+type TeamToolFn = typeof teamWorkflowTool
 
 interface StartupFixture {
     name: string
@@ -67,49 +63,11 @@ interface StartupFixture {
 
 const startupFixtures: StartupFixture[] = [
     {
-        name: "team_parallel",
-        tool: teamParallelTool,
-        prefix: "par",
-        busyType: "parallel",
-        validArgs: { team_id: "alpha", mode: "isolated", task: "do x" },
-        signoff: true,
-    },
-    {
-        name: "team_consensus",
-        tool: teamConsensusTool,
-        prefix: "con",
-        busyType: "consensus",
-        validArgs: { team_id: "alpha", topic: "use sqlite?" },
-    },
-    {
-        name: "team_pipeline",
-        tool: teamPipelineTool,
-        prefix: "pip",
-        busyType: "pipeline",
-        validArgs: { team_id: "alpha", stages: [{ member: "alice", task: "do x" }] },
-        signoff: true,
-    },
-    {
         name: "team_workflow",
         tool: teamWorkflowTool,
         prefix: "wf",
         busyType: "workflow",
         validArgs: { team_id: "alpha", steps: [{ kind: "task", member: "alice", task: "do x" }] },
-        signoff: true,
-    },
-    {
-        name: "team_loop",
-        tool: teamLoopTool,
-        prefix: "loop",
-        busyType: "loop",
-        validArgs: { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
-    },
-    {
-        name: "team_delegate",
-        tool: teamDelegateTool,
-        prefix: "del",
-        busyType: "delegate",
-        validArgs: { team_id: "alpha", tasks: [{ subject: "t1", description: "d" }] },
         signoff: true,
     },
 ]
@@ -169,100 +127,6 @@ for (const fx of startupFixtures) {
         }
     })
 }
-
-// -----------------------------------------------------------------------
-// team_parallel — type-specific validations
-// -----------------------------------------------------------------------
-describe("team_parallel type-specific validation", () => {
-    test("isolated without task → rejected", async () => {
-        const root = tmpRoot("par-notask")
-        const sid = "ses_par_notask"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, Date.now())
-        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", mode: "isolated" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("requires `task`")
-    })
-
-    test("cooperative without tasks → rejected", async () => {
-        const root = tmpRoot("par-notasks")
-        const sid = "ses_par_notasks"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, Date.now())
-        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", mode: "cooperative" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("requires `tasks`")
-    })
-
-    test("reduce_policy 'select' without reducer_member → rejected", async () => {
-        const root = tmpRoot("par-sel-nored")
-        const sid = "ses_par_sel_nr"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "select" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("requires reducer_member")
-    })
-
-    test("reduce_policy 'merge' without reducer_member → rejected", async () => {
-        const root = tmpRoot("par-merge-nored")
-        const sid = "ses_par_merge_nr"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "merge" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("requires reducer_member")
-    })
-
-    test("reduce_policy 'rubric' with reduce_rubric but no reducer_member → rejected", async () => {
-        const root = tmpRoot("par-rub-nored")
-        const sid = "ses_par_rub_nr"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamParallelTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", mode: "isolated", task: "do x", reduce_policy: "rubric", reduce_rubric: "correctness" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("requires reducer_member")
-    })
-})
-
-// -----------------------------------------------------------------------
-// team_pipeline — type-specific validations
-// -----------------------------------------------------------------------
-describe("team_pipeline type-specific validation", () => {
-    test("unknown stage member → rejected", async () => {
-        const root = tmpRoot("pip-unknown")
-        const sid = "ses_pip_unk"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "bob", task: "do x" }] },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("unknown member")
-    })
-
-    test("duplicate stage member → rejected", async () => {
-        const root = tmpRoot("pip-dup")
-        const sid = "ses_pip_dup"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamPipelineTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "alice", task: "a" }, { member: "alice", task: "b" }] },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("unique")
-    })
-})
 
 // -----------------------------------------------------------------------
 // team_workflow — type-specific validations
@@ -2032,69 +1896,5 @@ describe("team_workflow type-specific validation", () => {
             makeToolContext(sid),
         )
         expect(result).toContain("unknown member")
-    })
-})
-
-// -----------------------------------------------------------------------
-// team_loop — type-specific validations
-// -----------------------------------------------------------------------
-describe("team_loop type-specific validation", () => {
-    test("decider = 'master' → rejected", async () => {
-        const root = tmpRoot("loop-dmaster")
-        const sid = "ses_loop_dm"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, Date.now())
-        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "master", max_rounds: 3, initial_task: "start" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("must be a member")
-    })
-
-    test("decider not a member → rejected", async () => {
-        const root = tmpRoot("loop-d404")
-        const sid = "ses_loop_d404"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "alice", task: "code" }], decider: "bob", max_rounds: 3, initial_task: "start" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("not a member")
-    })
-
-    test("unknown stage member → rejected", async () => {
-        const root = tmpRoot("loop-unknown")
-        const sid = "ses_loop_unk"
-        tracked.push(sid)
-        await setupTeam(root, sid, [makeMember("alice")], Date.now())
-        const result = await teamLoopTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            { team_id: "alpha", stages: [{ member: "bob", task: "code" }], decider: "alice", max_rounds: 3, initial_task: "start" },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("unknown member")
-    })
-})
-
-// -----------------------------------------------------------------------
-// team_delegate — type-specific validations
-// -----------------------------------------------------------------------
-describe("team_delegate type-specific validation", () => {
-    test("unknown blockedBy ref → rejected", async () => {
-        const root = tmpRoot("del-ref")
-        const sid = "ses_del_ref"
-        tracked.push(sid)
-        await setupTeam(root, sid, undefined, Date.now())
-        const result = await teamDelegateTool(makeCtx({ storageRoot: root, directory: root, calls: [] })).execute(
-            {
-                team_id: "alpha",
-                tasks: [
-                    { ref: "t1", subject: "s1", description: "d1", blocked_by: ["t2"] },
-                ],
-            },
-            makeToolContext(sid),
-        )
-        expect(result).toContain("unknown blockedBy")
-        expect(result).toContain("t2")
     })
 })
