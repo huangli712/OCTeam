@@ -14,7 +14,7 @@ import { buildSummary } from "../src/orchestration/records/summary.js"
 import { teamRecurseTool } from "../src/tools/modes/recurse.js"
 import { teamResumeTool } from "../src/tools/control/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeTeam, makeMember, makeState, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js"
+import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot, waitForEvent } from './helpers.js';
 
 
 // --- fixtures ---
@@ -535,7 +535,7 @@ describe("teamRecurseTool: input validation", () => {
                 task: "build the whole app",
                 decomposer: "master",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: decomposer must be a member name, not "master"')
     })
@@ -551,7 +551,7 @@ describe("teamRecurseTool: input validation", () => {
                 task: "build the whole app",
                 decomposer: "ghost",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: decomposer "ghost" is not a member of team "alpha"')
     })
@@ -568,7 +568,7 @@ describe("teamRecurseTool: input validation", () => {
                 decomposer: "alice",
                 signoff_policy: "decider",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe(
             "Error: signoff_policy 'decider' requires signoff_decider (a member name)",
@@ -588,7 +588,7 @@ describe("teamRecurseTool: input validation", () => {
                 signoff_policy: "decider",
                 signoff_decider: "ghost",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: signoff_decider "ghost" is not a member of team "alpha"')
     })
@@ -615,7 +615,7 @@ describe("team_resume: recurse case", () => {
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(res).toContain("Resumed recurse")
@@ -643,7 +643,7 @@ describe("team_resume: recurse case", () => {
 
         await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         // Only the idle member (alice) is re-dispatched; bob is still running.

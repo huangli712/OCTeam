@@ -8,7 +8,7 @@ import { parseScoreboard } from "../src/orchestration/protocol/decisions.js"
 import { persistRun, readRunRecord, runStatusFromReason } from "../src/orchestration/records/runs.js"
 import { buildSummary } from "../src/orchestration/records/summary.js"
 import type { ActiveTask, ArenaTask, MemberState, RunRecord } from "../src/core/types.js"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot, type DispatchCall } from "./helpers.js"
+import { type DispatchCall, cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { PluginContext } from "../src/core/context.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
@@ -538,7 +538,7 @@ describe("team_arena tool", () => {
                 candidates: ["alice", "bob"],
                 eval_criteria: "fastest wall-clock time",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(result).toBe('team_arena started on "alpha" (evaluator: carol, 2 candidate(s)).')
@@ -576,7 +576,7 @@ describe("team_arena tool", () => {
                 candidates: ["alice", "bob"],
                 eval_criteria: "x",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: unknown evaluator "ghost"')
     })
@@ -598,7 +598,7 @@ describe("team_arena tool", () => {
                 candidates: ["bob", "carol"],
                 eval_criteria: "x",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         // alice exists but is the master → must NOT say "unknown evaluator"
         expect(result).not.toContain("unknown evaluator")
@@ -621,7 +621,7 @@ describe("team_arena tool", () => {
                 candidates: ["alice", "bob"],
                 eval_criteria: "x",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: evaluator "alice" must not also be a candidate')
     })
@@ -642,7 +642,7 @@ describe("team_arena tool", () => {
                 candidates: ["alice"],
                 eval_criteria: "x",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe("Error: team_arena requires at least 2 candidates")
     })
@@ -664,7 +664,7 @@ describe("team_arena tool", () => {
                 candidates: ["a", "a"],
                 eval_criteria: "x",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe("Error: candidates must have unique names")
     })
@@ -685,7 +685,7 @@ describe("team_arena tool", () => {
                 evaluator: "carol",
                 candidates: ["alice", "bob"],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe("Error: team_arena requires at least one of eval_command or eval_criteria")
     })
@@ -706,7 +706,7 @@ describe("team_arena tool", () => {
                 candidates: ["alice", "ghost"],
                 eval_criteria: "x",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: unknown member "ghost" in candidates')
     })
@@ -728,7 +728,7 @@ describe("team_arena tool", () => {
                 candidates: ["alice", "bob"],
                 eval_criteria: "x",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe(
             "team_arena requires every candidate to have an isolated worktree (create with worktree:true): bob",
@@ -753,7 +753,7 @@ describe("team_arena tool", () => {
                 candidates: ["alice", "bob"],
                 eval_criteria: "x",
             },
-            { sessionID: memberSid } as unknown as ToolContext,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("master-only")
     })
@@ -1836,7 +1836,7 @@ describe("arena team_resume", () => {
         const calls: DispatchCall[] = []
         const res = await teamResumeTool(makeArenaCtx(root, calls)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(res).toContain("Resumed arena")
 
@@ -1885,7 +1885,7 @@ describe("arena team_resume", () => {
         const calls: DispatchCall[] = []
         await teamResumeTool(makeArenaCtx(root, calls)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         const after = await loadTeamState(root, "alpha", sid)
@@ -1926,7 +1926,7 @@ describe("arena team_resume", () => {
         const calls: DispatchCall[] = []
         await teamResumeTool(makeArenaCtx(root, calls)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         const after = await loadTeamState(root, "alpha", sid)
@@ -1975,7 +1975,7 @@ describe("arena team_resume", () => {
         const calls: DispatchCall[] = []
         await teamResumeTool(makeArenaCtx(root, calls)).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         const after = await loadTeamState(root, "alpha", sid)
@@ -2015,7 +2015,7 @@ describe("arena team_result_get", () => {
 
         const text = await teamResultGetTool(makeArenaCtx(root, [])).execute(
             { team_id: "alpha", run_id: record.runId },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         // Winner is taken verbatim from record.arena.winner.
@@ -2032,7 +2032,7 @@ describe("arena team_result_get", () => {
         // Run-line (team_results list) shows winner=<name>.
         const listText = await teamResultsTool(makeArenaCtx(root, [])).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(listText).toContain("winner=bob")
     })
@@ -2085,7 +2085,7 @@ describe("arena team_result_get", () => {
 
         const text = await teamResultGetTool(makeArenaCtx(root, [])).execute(
             { team_id: "alpha", run_id: record.runId },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         // Rendered winner is the persisted bob, NOT the higher-scoring carol.
@@ -2137,7 +2137,7 @@ describe("arena team_result_get", () => {
 
         const text = await teamResultGetTool(makeArenaCtx(root, [])).execute(
             { team_id: "alpha", run_id: record.runId },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         // No winner: renders (none) + the failure reason, without throwing.

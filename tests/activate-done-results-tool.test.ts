@@ -21,7 +21,7 @@ import { setActiveTeam } from "../src/state/resolve.js"
 import { atomicWrite } from "../src/state/locks.js"
 import { runDir, runRecordPath } from "../src/state/paths.js"
 import path from "node:path"
-import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const TEAM = "audit-cov-team"
 const tracked: string[] = []
@@ -83,7 +83,7 @@ describe("teamActivateTool.execute", () => {
 
         const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: "no-such-team" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("not found")
     })
@@ -101,7 +101,7 @@ describe("teamActivateTool.execute", () => {
 
         const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("activated")
 
@@ -123,7 +123,7 @@ describe("teamActivateTool.execute", () => {
 
         const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("already the active team")
     })
@@ -147,7 +147,7 @@ describe("teamActivateTool.execute", () => {
 
         const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: "other-team" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("currently active") // refuse message mentions existing active team
     })
@@ -174,7 +174,7 @@ describe("teamActivateTool.execute", () => {
 
         const result = await teamActivateTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         // Must be noop ("already the active team"), NOT an error about stale sibling
         expect(result).toContain("already the active team")
@@ -199,7 +199,7 @@ describe("teamDoneTool.execute", () => {
 
         const result = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: "ses_stranger_done_1" } as never,
+            makeToolContext("ses_stranger_done_1"),
         )
         expect(result).toContain("not a member of this team")
     })
@@ -219,7 +219,7 @@ describe("teamDoneTool.execute", () => {
 
         const result = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("member-only")
     })
@@ -237,7 +237,7 @@ describe("teamDoneTool.execute", () => {
 
         const result = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain("nothing to acknowledge")
     })
@@ -258,7 +258,7 @@ describe("teamDoneTool.execute", () => {
 
         const result = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain("does not apply to pipeline")
     })
@@ -277,7 +277,7 @@ describe("teamDoneTool.execute", () => {
 
         const result = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain("did not enable require_done_ack")
     })
@@ -296,7 +296,7 @@ describe("teamDoneTool.execute", () => {
 
         const result1 = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result1).toContain("Acknowledged")
 
@@ -307,7 +307,7 @@ describe("teamDoneTool.execute", () => {
         // Idempotent: second call returns "already acknowledged" wording.
         const result2 = await teamDoneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result2).toContain("Already acknowledged")
 
@@ -359,7 +359,7 @@ describe("teamResultsTool.execute", () => {
 
         const result = await teamResultsTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: "ses_stranger_res" } as never,
+            makeToolContext("ses_stranger_res"),
         )
         expect(result).toContain("not a member")
     })
@@ -372,7 +372,7 @@ describe("teamResultsTool.execute", () => {
 
         const result = await teamResultsTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("No run records")
     })
@@ -386,7 +386,7 @@ describe("teamResultsTool.execute", () => {
 
         const result = await teamResultsTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("run-sample-1")
         expect(result).toContain("parallel/isolated")
@@ -403,7 +403,7 @@ describe("teamResultGetTool.execute", () => {
 
         const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "../escape" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("invalid run_id")
     })
@@ -416,7 +416,7 @@ describe("teamResultGetTool.execute", () => {
 
         const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "no-such-run" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("not found")
     })
@@ -430,7 +430,7 @@ describe("teamResultGetTool.execute", () => {
 
         const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "run-sample-1" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("Run run-sample-1")
         expect(result).toContain("parallel/isolated")
@@ -459,7 +459,7 @@ describe("teamResultGetTool.execute", () => {
 
         const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "run-workflow-1" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
 
         expect(result).toContain("### workflow steps")
@@ -506,7 +506,7 @@ describe("teamResultGetTool.execute", () => {
 
         const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "run-workflow-issues" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
 
         // Compact inline metrics preserved.
@@ -562,7 +562,7 @@ describe("teamResultGetTool.execute", () => {
 
         const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "run-workflow-controls" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
 
         // Static control config surfaces in the ledger for post-run audit.
@@ -583,7 +583,7 @@ describe("teamResultGetTool.execute", () => {
 
         const result = await teamResultGetTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         // Newest first → run-newer should be returned.
         expect(result).toContain("Run run-newer")

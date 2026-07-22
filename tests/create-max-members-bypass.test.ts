@@ -34,7 +34,7 @@ import type { ToolContext } from "@opencode-ai/plugin"
 import { teamCreateTool } from "../src/tools/lifecycle/create.js"
 import { loadTeamState } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeCtx, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeToolContext, tmpRoot } from './helpers.js';
 
 
 const tracked: string[] = []
@@ -59,7 +59,7 @@ describe("create maxMembers bypass (finding: create-max-members-bypass)", () => 
                 ],
                 bounds: { maxMembers: 1 },
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         // --- ASSERT: creation must be REJECTED ---
@@ -92,7 +92,7 @@ describe("create maxMembers bypass (finding: create-max-members-bypass)", () => 
                 ],
                 bounds: { maxMembers: 2 },
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(result).toContain("created")

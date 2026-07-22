@@ -11,7 +11,7 @@ import { isSafePathSegment, teamDir, runEventsPath, runRecordPath } from "../src
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeTask, makeTeam, makeToolContext, tmpRoot } from "./helpers.js"
 
 // ============================================================================
 // Fix1 — path-traversal rejection (BLOCKING-1, security)
@@ -94,13 +94,11 @@ describe("Fix2: maybeTriggerReduce skips errored reducer", () => {
                 { name: "alice", sessionId: "s", status: "errored" },
                 { name: "bob", sessionId: "s2", status: "idle" },
             ],
-            activeTask: {
-                type: "parallel", mode: "isolated", startedAt: 0,
+            activeTask: makeTask({
+                startedAt: 0,
                 responses: { alice: "1", bob: "2" },
-                stages: [], currentStageIndex: 0,
-                decisionHistory: [], decisionParseFailures: 0,
                 reducePolicy: "select", reducerMember: "alice",
-            } as any,
+            }),
         })
         expect(await maybeTriggerReduce(mockCtx, team)).toBe(false)
         // reducer stays errored — NOT flipped back to running

@@ -34,7 +34,7 @@ import fs from "node:fs/promises"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamDir } from "../src/state/paths.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeCtx, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeToolContext, tmpRoot } from './helpers.js';
 
 // --- Load the REAL store.js BEFORE mock.module registers so every export
 //     except writeTeamSpec keeps its real implementation. mock.module replaces
@@ -97,7 +97,7 @@ describe("team_create directory rollback (finding: create-team-dir-not-rolled-ba
         // is that the directory created at create.ts:167 is cleaned up.
         await teamCreateTool(ctx).execute(
             { name: teamName, members: [{ role: "coder", prompt: "code" }] },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         ).catch(() => {
             // expected failure — swallowed so we can inspect the on-disk state
         })
@@ -118,7 +118,7 @@ describe("team_create directory rollback (finding: create-team-dir-not-rolled-ba
         writeTeamSpecShouldFail = true
         await teamCreateTool(ctx).execute(
             { name: teamName, members: [{ role: "coder", prompt: "code" }] },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         ).catch(() => {
             // expected failure — swallowed so the retry can proceed
         })
@@ -127,7 +127,7 @@ describe("team_create directory rollback (finding: create-team-dir-not-rolled-ba
         writeTeamSpecShouldFail = false
         const result = await teamCreateTool(ctx).execute(
             { name: teamName, members: [{ role: "coder", prompt: "code" }] },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         // The directory was rolled back on the first failure, so the retry succeeds.

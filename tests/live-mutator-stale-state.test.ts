@@ -31,7 +31,7 @@ import type { ParallelTask } from "../src/core/types.js"
 import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 import type { TeamSpec } from "../src/core/types.js"
 
 
@@ -90,7 +90,7 @@ describe("live-mutator stale-state check (finding: live-mutators-stale-state-che
         const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const addPromise = tool.execute(
             { team_id: "alpha", role: "coder", prompt: "p", agent: "oct-junior" },
-            { sessionID: leadSid } as unknown as ToolContext,
+            makeToolContext(leadSid),
         )
 
         // Drain microtasks so add progresses through loadTeamState, the

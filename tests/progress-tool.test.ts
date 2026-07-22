@@ -13,7 +13,7 @@ import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { appendJsonl } from "../src/state/locks.js"
 import { runEventsPath } from "../src/state/paths.js"
-import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const TEAM = "progress-team"
 
@@ -74,7 +74,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: "ses_stranger_prog" } as never,
+            makeToolContext("ses_stranger_prog"),
         )
         expect(result).toContain("not a member")
     })
@@ -87,7 +87,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, run_id: "../escape" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("invalid run_id")
     })
@@ -100,7 +100,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("Team: progress-team")
         expect(result).toContain("Active: none")
@@ -124,7 +124,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("Active: parallel/isolated")
         expect(result).toContain("Members:")
@@ -159,7 +159,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
 
         expect(result).toContain("Active: workflow  step 2/2")
@@ -191,7 +191,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, format: "mermaid" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
 
         expect(result).toContain("flowchart TD")
@@ -273,7 +273,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
 
         expect(result).toContain("Active: workflow  frontier api: step 3/7, docs: step 5/7")
@@ -319,7 +319,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, format: "mermaid" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
 
         expect(result).toContain("subgraph branch_1_0_api")
@@ -373,7 +373,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
 
         expect(result).toContain("Active: workflow  frontier api: step 3/7, docs: step 5/7 join_policy=quorum")
@@ -387,7 +387,7 @@ describe("teamProgressTool.execute", () => {
 
         const idleResult = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, format: "mermaid" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(idleResult).toContain("requires an in-progress team_workflow")
 
@@ -403,7 +403,7 @@ describe("teamProgressTool.execute", () => {
 
         const parallelResult = await teamProgressTool(makeCtx({ storageRoot: activeRoot, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, format: "mermaid" },
-            { sessionID: activeMasterSid } as never,
+            makeToolContext(activeMasterSid),
         )
         expect(parallelResult).toContain("requires an in-progress team_workflow")
     })
@@ -427,7 +427,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, since: t0 + 500 },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         // Only the errored event is strictly after t0+500.
         expect(result).toContain("errored")
@@ -453,7 +453,7 @@ describe("teamProgressTool.execute", () => {
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, limit: 3 },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         // The header should mention "last 3 of 10".
         expect(result).toContain("last 3 of 10")

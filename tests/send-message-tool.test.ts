@@ -16,7 +16,7 @@ import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { Message } from "../src/core/types.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const TEAM = "alpha"
 
@@ -71,7 +71,7 @@ describe("teamSendMessageTool.execute: authorization", () => {
 
         const result = await teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "alice", body: "hi" },
-            { sessionID: "ses_stranger" } as never,
+            makeToolContext("ses_stranger"),
         )
         expect(result).toContain("not a member of this team")
     })
@@ -91,7 +91,7 @@ describe("teamSendMessageTool.execute: delivery + recipient validation", () => {
 
         const result = await teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "master", body: "report: done" },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain("Message delivered to master")
         expect(await countUnreadMessages(dir, "master")).toBe(1)
@@ -106,7 +106,7 @@ describe("teamSendMessageTool.execute: delivery + recipient validation", () => {
 
         const result = await teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "ghost", body: "hi" },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain('unknown recipient "ghost"')
     })
@@ -126,7 +126,7 @@ describe("teamSendMessageTool.execute: broadcast is master-only", () => {
 
         const result = await teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "*", body: "everyone listen" },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain("broadcast (to: \"*\") is master-only")
     })
@@ -146,7 +146,7 @@ describe("teamSendMessageTool.execute: broadcast is master-only", () => {
 
         const result = await teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "*", body: "team-wide notice" },
-            { sessionID: masterSid } as never,
+            makeToolContext(masterSid),
         )
         expect(result).toContain("2 members")
         expect(await countUnreadMessages(dir, "alice")).toBe(1)
@@ -169,7 +169,7 @@ describe("teamSendMessageTool.execute: isolated-mode lateral gate", () => {
 
         const result = await teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "bob", body: "lateral chatter" },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain("isolated mode forbids member-to-member messaging")
     })
@@ -188,7 +188,7 @@ describe("teamSendMessageTool.execute: isolated-mode lateral gate", () => {
 
         const result = await teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "bob", body: "collaborate" },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain("Message delivered to bob")
         expect(await countUnreadMessages(dir, "bob")).toBe(1)
@@ -210,7 +210,7 @@ describe("teamSendMessageTool.execute: payload cap + per-run cap", () => {
 
         const result = await teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "master", body: "this body is definitely longer than ten bytes" },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain("exceeds payload limit")
     })
@@ -231,7 +231,7 @@ describe("teamSendMessageTool.execute: payload cap + per-run cap", () => {
 
         const result = await teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "master", body: "one too many" },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain("per-run message limit reached")
     })
@@ -262,7 +262,7 @@ describe("teamSendMessageTool.execute: payload cap + per-run cap", () => {
 
         const result = await teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "master", body: "blocked by backpressure" },
-            { sessionID: aliceSid } as never,
+            makeToolContext(aliceSid),
         )
         expect(result).toContain("mailbox is full")
     })

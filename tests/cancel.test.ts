@@ -4,7 +4,7 @@ import type { ToolContext } from "@opencode-ai/plugin"
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamCancelTool } from "../src/tools/control/cancel.js"
-import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
 
@@ -66,7 +66,7 @@ describe("teamCancelTool", () => {
         const tool = teamCancelTool(ctx)
         const result = await tool.execute(
             { team_id: "alpha" },
-            { sessionID: "ses_master" } as unknown as ToolContext,
+            makeToolContext("ses_master"),
         )
 
         // abort called once per running member with correct shape
@@ -113,7 +113,7 @@ describe("teamCancelTool", () => {
         const tool = teamCancelTool(ctx)
         const result = await tool.execute(
             { team_id: "alpha" },
-            { sessionID: "ses_master" } as unknown as ToolContext,
+            makeToolContext("ses_master"),
         )
 
         expect(result).toContain("no active orchestration")
@@ -162,7 +162,7 @@ describe("teamCancelTool", () => {
         const tool = teamCancelTool(ctx)
         const result = await tool.execute(
             { team_id: "alpha" },
-            { sessionID: "ses_intruder" } as unknown as ToolContext,
+            makeToolContext("ses_intruder"),
         )
 
         expect(result).toContain("master-only")
@@ -189,7 +189,7 @@ describe("teamCancelTool", () => {
         const tool = teamCancelTool(ctx)
         const result = await tool.execute(
             { team_id: "alpha" },
-            { sessionID: "ses_master" } as unknown as ToolContext,
+            makeToolContext("ses_master"),
         )
 
         // Both aborts were attempted (first succeeds, second throws caught)
@@ -214,7 +214,7 @@ describe("teamCancelTool", () => {
         const tool = teamCancelTool(ctx)
         await tool.execute(
             { team_id: "alpha" },
-            { sessionID: "ses_master" } as unknown as ToolContext,
+            makeToolContext("ses_master"),
         )
 
         // After cancel, activeTask is undefined — an idle member event

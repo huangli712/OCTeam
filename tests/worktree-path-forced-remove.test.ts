@@ -39,7 +39,7 @@ import { promisify } from "node:util"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamDeleteTool } from "../src/tools/lifecycle/delete.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const execFileP = promisify(execFile)
 
@@ -94,7 +94,7 @@ describe("persisted worktreePath forced-remove (finding: persisted-worktreepath-
         const tool = teamDeleteTool(makeCtx({ storageRoot, directory: projectDir }))
         const result = await tool.execute(
             { team_id: "alpha", force: true },
-            { sessionID: leadSid } as unknown as ToolContext,
+            makeToolContext(leadSid),
         )
         expect(result).toContain("deleted")
 

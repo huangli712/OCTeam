@@ -115,7 +115,7 @@ describe("processIdle: unread-message wake hint (Step 5)", () => {
         const promptAsync = mock(async (req: { body: { parts: Array<{ text: string }> } }) => {
             captured.push(req.body.parts[0].text)
         })
-        const ctx = makeCtx({ storageRoot: root, promptAsync } as any)
+        const ctx = makeCtx({ storageRoot: root, promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),
@@ -153,7 +153,7 @@ describe("processIdle: premature-idle re-prompt (require_done_ack recovery)", ()
         const promptAsync = mock(async (req: { body: { parts: Array<{ text: string }> } }) => {
             captured.push(req.body.parts[0].text)
         })
-        const ctx = makeCtx({ storageRoot: root, promptAsync } as any)
+        const ctx = makeCtx({ storageRoot: root, promptAsync })
 
         const team = await makeTeam(root, sid, tracked, [
             makeMember("alice", memberSid),

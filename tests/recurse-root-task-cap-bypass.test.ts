@@ -28,7 +28,7 @@ import { teamRecurseTool } from "../src/tools/modes/recurse.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMasterTeam, indexMember, setActiveTeam, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const tracked: string[] = []
 afterEach(() => {
@@ -67,7 +67,7 @@ describe("recurse root task cap bypass (finding: recurse-root-task-cap-bypass)",
                 task: "decompose and solve X",
                 decomposer: "alice",
             },
-            { sessionID: leadSid } as unknown as ToolContext,
+            makeToolContext(leadSid),
         )
 
         // --- ASSERT: the tool must report rejection AND total live tasks must

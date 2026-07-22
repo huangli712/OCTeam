@@ -78,7 +78,7 @@ const { initTeamState } = await import("../src/state/store.js")
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamDir } from "../src/state/paths.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 
 async function pathExists(p: string): Promise<boolean> {
@@ -124,7 +124,7 @@ describe("delete storage failure reports success (finding: delete-storage-failur
         //          or throws. Normalize both via .catch.
         const result = await teamDeleteTool(makeCtx({ storageRoot: root })).execute(
             { team_id: teamName, force: true },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         ).catch((err: unknown) => `THREW: ${(err as Error).message}`)
 
         // --- The delete must NOT report success when storage deletion failed.

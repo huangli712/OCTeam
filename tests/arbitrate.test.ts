@@ -13,15 +13,7 @@ import type { ActiveTask, ArbitrateTask, MemberState } from "../src/core/types.j
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import {
-    makeCtx,
-    makeMember,
-    makeState,
-    makeTeam,
-    tmpRoot,
-    waitForEvent,
-    type DispatchCall,
-} from "./helpers.js"
+import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot, waitForEvent } from './helpers.js';
 
 // --- fixtures ---
 
@@ -519,7 +511,7 @@ describe("teamArbitrateTool: input validation", () => {
                 arbiter: "master",
                 debaters: ["alice", "bob"],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: arbiter must be a member name, not "master"')
     })
@@ -536,7 +528,7 @@ describe("teamArbitrateTool: input validation", () => {
                 arbiter: "arbiter",
                 debaters: ["alice", "alice"],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe("Error: debaters must have unique names")
     })
@@ -553,7 +545,7 @@ describe("teamArbitrateTool: input validation", () => {
                 arbiter: "arbiter",
                 debaters: ["arbiter", "bob"],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe("Error: arbiter must not also be a debater")
     })
@@ -570,7 +562,7 @@ describe("teamArbitrateTool: input validation", () => {
                 arbiter: "arbiter",
                 debaters: ["alice", "ghost"],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: unknown member "ghost" in arbiter/debaters')
     })
@@ -588,7 +580,7 @@ describe("teamArbitrateTool: input validation", () => {
                 debaters: ["alice", "bob"],
                 signoff_policy: "decider",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe(
             "Error: signoff_policy 'decider' requires signoff_decider (a member name)",
@@ -609,7 +601,7 @@ describe("teamArbitrateTool: input validation", () => {
                 signoff_policy: "decider",
                 signoff_decider: "ghost",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: signoff_decider "ghost" is not a member of team "alpha"')
     })
@@ -680,7 +672,7 @@ describe("team_resume: arbitrate case", () => {
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(res).toContain("Resumed arbitrate")
@@ -715,7 +707,7 @@ describe("team_resume: arbitrate case", () => {
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(res).toContain("Resumed arbitrate")
@@ -748,7 +740,7 @@ describe("team_resume: arbitrate case", () => {
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(res).toContain("Resumed arbitrate")
@@ -784,7 +776,7 @@ describe("team_resume: arbitrate case", () => {
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(res).toContain("Resumed arbitrate")

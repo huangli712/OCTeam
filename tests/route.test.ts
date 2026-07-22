@@ -17,7 +17,7 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeTeam, tmpRoot, type DispatchCall, waitForEvent } from "./helpers.js"
+import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot, waitForEvent } from './helpers.js';
 
 // --- fixtures ---
 
@@ -542,7 +542,7 @@ describe("teamRouteTool: input validation", () => {
                 input: "x",
                 routes: [{ name: "a", member: "alice" }],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: router must be a member name, not "master"')
     })
@@ -562,7 +562,7 @@ describe("teamRouteTool: input validation", () => {
                     { name: "dup", member: "bob" },
                 ],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe("Error: route branch names must be unique")
     })
@@ -582,7 +582,7 @@ describe("teamRouteTool: input validation", () => {
                     { name: "b", member: "alice" },
                 ],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe("Error: route branch members must be unique")
     })
@@ -599,7 +599,7 @@ describe("teamRouteTool: input validation", () => {
                 input: "x",
                 routes: [{ name: "a", member: "router" }],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe("Error: router must not also be a branch target")
     })
@@ -616,7 +616,7 @@ describe("teamRouteTool: input validation", () => {
                 input: "x",
                 routes: [{ name: "a", member: "ghost" }],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: unknown member "ghost" in router/routes')
     })
@@ -793,7 +793,7 @@ describe("team_resume: route case", () => {
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(res).toContain("Resumed route")

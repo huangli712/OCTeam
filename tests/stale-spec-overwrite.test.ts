@@ -40,7 +40,7 @@ import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { configPath, teamDir } from "../src/state/paths.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 
 async function readSpecFromDisk(storageRoot: string, teamName: string, sid: string): Promise<TeamSpec> {
@@ -85,11 +85,11 @@ describe("stale team spec overwrite (finding: stale-team-spec-overwrite)", () =>
         const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const addBob = tool.execute(
             { team_id: "alpha", name: "bob", role: "coder", prompt: "p", agent: "oct-junior" },
-            { sessionID: leadSid } as unknown as ToolContext,
+            makeToolContext(leadSid),
         )
         const addCarol = tool.execute(
             { team_id: "alpha", name: "carol", role: "coder", prompt: "p", agent: "oct-junior" },
-            { sessionID: leadSid } as unknown as ToolContext,
+            makeToolContext(leadSid),
         )
 
         // Drain all microtasks so both adds progress through loadTeamState,

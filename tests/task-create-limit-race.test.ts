@@ -30,7 +30,7 @@ import { teamTaskCreateTool } from "../src/tools/exchange/task.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 
 const tracked: string[] = []
@@ -69,11 +69,11 @@ describe("task-create limit race (finding: task-create-limit-race)", () => {
         await Promise.all([
             tool.execute(
                 { team_id: "alpha", subject: "task-A", description: "desc-A" },
-                { sessionID: aliceSid } as unknown as ToolContext,
+                makeToolContext(aliceSid),
             ),
             tool.execute(
                 { team_id: "alpha", subject: "task-B", description: "desc-B" },
-                { sessionID: aliceSid } as unknown as ToolContext,
+                makeToolContext(aliceSid),
             ),
         ])
 

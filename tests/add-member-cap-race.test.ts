@@ -29,7 +29,7 @@ import type { TeamSpec } from "../src/core/types.js"
 import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 
 const tracked: string[] = []
@@ -75,11 +75,11 @@ describe("add-member cap race (finding: add-member-cap-race)", () => {
         const tool = teamAddMemberTool(makeCtx({ storageRoot: root }))
         const addCarol = tool.execute(
             { team_id: "alpha", name: "carol", role: "coder", prompt: "p", agent: "oct-junior" },
-            { sessionID: leadSid } as unknown as ToolContext,
+            makeToolContext(leadSid),
         )
         const addDave = tool.execute(
             { team_id: "alpha", name: "dave", role: "coder", prompt: "p", agent: "oct-junior" },
-            { sessionID: leadSid } as unknown as ToolContext,
+            makeToolContext(leadSid),
         )
 
         // Drain microtasks so both adds progress through loadTeamState, the

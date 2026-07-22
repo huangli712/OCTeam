@@ -33,7 +33,7 @@ import { teamTaskCreateTool } from "../src/tools/exchange/task.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 
 const tracked: string[] = []
@@ -67,7 +67,7 @@ describe("unvalidated task blockers (finding: unvalidated-task-blockers)", () =>
                 description: "depends on a typo'd task",
                 blocked_by: [realTask.id, "00000000-0000-0000-0000-nonexist01"],
             },
-            { sessionID: aliceSid } as unknown as ToolContext,
+            makeToolContext(aliceSid),
         )
 
         // --- ASSERT 1: creation must be REJECTED ---

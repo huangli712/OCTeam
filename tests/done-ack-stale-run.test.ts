@@ -34,7 +34,7 @@ import type { ParallelTask } from "../src/core/types.js"
 import { teamDoneTool } from "../src/tools/control/done.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 
 /** Build a minimal parallel/isolated task with require_done_ack enabled. */
@@ -92,7 +92,7 @@ describe("stale team_done ack across runs (finding: stale-team-done-ack)", () =>
         const tool = teamDoneTool(makeCtx({ storageRoot: root }))
         const donePromise = tool.execute(
             { team_id: "alpha" },
-            { sessionID: aliceSid } as unknown as ToolContext,
+            makeToolContext(aliceSid),
         )
 
         // Drain all pending microtasks so team_done progresses through its

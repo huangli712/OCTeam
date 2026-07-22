@@ -32,7 +32,7 @@ import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
 import { writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { inboxPath } from "../src/state/paths.js"
-import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 import type { Message } from "../src/core/types.js"
 
 
@@ -107,7 +107,7 @@ describe("mailbox backpressure overflow (finding: mailbox-backpressure-allows-ov
         const newBody = "y".repeat(200) // 200 bytes body → ~330-byte line
         const result = await tool.execute(
             { team_id: "alpha", to: "bob", body: newBody },
-            { sessionID: aliceSid } as unknown as ToolContext,
+            makeToolContext(aliceSid),
         )
 
         // --- ASSERT: the tool must report rejection AND the total inbox size

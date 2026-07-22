@@ -15,7 +15,7 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeTeam, tmpRoot, type DispatchCall } from "./helpers.js"
+import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot } from './helpers.js';
 
 // --- fixtures ---
 
@@ -876,7 +876,7 @@ describe("teamTollgateTool: input validation", () => {
                 team_id: "alpha",
                 stages: [{ member: "alice", task: "do x", verifier: "alice", criteria: "ok" }],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: stage verifier "alice" must not equal its producer "alice"')
     })
@@ -893,7 +893,7 @@ describe("teamTollgateTool: input validation", () => {
                     { member: "alice", task: "do x", verifier: "ghost", criteria: "ok" },
                 ],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: unknown member "ghost" in stages/escalate_to')
     })
@@ -909,7 +909,7 @@ describe("teamTollgateTool: input validation", () => {
                 stages: [{ member: "alice", task: "do x", verifier: "bob", criteria: "ok" }],
                 escalate_to: "ghost",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe('Error: unknown member "ghost" in stages/escalate_to')
     })
@@ -930,7 +930,7 @@ describe("teamTollgateTool: input validation", () => {
                 // passed and the master-only gate is actually reached.
                 stages: [{ member: "alice", task: "do x", verifier: "bob", criteria: "ok" }],
             },
-            { sessionID: memberSid } as unknown as ToolContext,
+            makeToolContext(memberSid),
         )
         expect(result).toContain("master-only")
     })
@@ -952,7 +952,7 @@ describe("teamTollgateTool: input validation", () => {
                 team_id: "alpha",
                 stages: [{ member: "alice", task: "do x", verifier: "bob", criteria: "ok" }],
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toContain("already has an active orchestration")
     })
@@ -968,7 +968,7 @@ describe("teamTollgateTool: input validation", () => {
                 stages: [{ member: "alice", task: "do x", verifier: "bob", criteria: "ok" }],
                 signoff_policy: "decider",
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
         expect(result).toBe(
             "Error: signoff_policy 'decider' requires signoff_decider (a member name)",
@@ -992,7 +992,7 @@ describe("teamTollgateTool: happy-path start", () => {
                 escalate_to: "carol",
                 max_gate_retries: 1,
             },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(result).toBe('team_tollgate started on "alpha" with 1 gate(s).')
@@ -1070,7 +1070,7 @@ describe("team_resume: tollgate case", () => {
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(res).toContain("Resumed tollgate")
@@ -1099,7 +1099,7 @@ describe("team_resume: tollgate case", () => {
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(res).toContain("Resumed tollgate")
@@ -1127,7 +1127,7 @@ describe("team_resume: tollgate case", () => {
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(res).toContain("Resumed tollgate")
@@ -1156,7 +1156,7 @@ describe("team_resume: tollgate case", () => {
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
-            { sessionID: sid } as unknown as ToolContext,
+            makeToolContext(sid),
         )
 
         expect(res).toContain("Resumed tollgate")
