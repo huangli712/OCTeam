@@ -60,7 +60,12 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
             )
             if (!caller) return "Error: caller is not a member of this team"
             if (!caller.isMaster) return "Error: team_resume is master-only"
-            const team = await loadTeamState(caller.storageRoot, team_id, caller.leadSessionId)
+            let team
+            try {
+                team = await loadTeamState(caller.storageRoot, team_id, caller.leadSessionId)
+            } catch {
+                return `Error: team "${team_id}" not found`
+            }
             const actErr = activationError(team_id, team.activatedAt)
             if (actErr) return actErr
             if (team.status !== "failed" || !team.lastInterruptedTask) {

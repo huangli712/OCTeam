@@ -338,7 +338,12 @@ export function teamFixWorkflowTool(ctx: PluginContext): ToolDefinition {
             )
             if (!caller) return "Error: caller is not a member of this team"
             if (!caller.isMaster) return "Error: team_fix_workflow is master-only"
-            const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+            let team: Team
+            try {
+                team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+            } catch {
+                return `Error: team "${args.team_id}" not found`
+            }
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate
 

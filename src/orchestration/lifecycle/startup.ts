@@ -193,7 +193,12 @@ export async function startOrchestration(
 
     // Step 2: load + activation gate. The master may only orchestrate the
     // active team.
-    const team = await loadTeamState(ctx.storageRoot, teamId, caller.leadSessionId)
+    let team: Team
+    try {
+        team = await loadTeamState(ctx.storageRoot, teamId, caller.leadSessionId)
+    } catch {
+        return `Error: team "${teamId}" not found`
+    }
     const gate = activationError(team.teamName, team.activatedAt)
     if (gate) return gate
 
