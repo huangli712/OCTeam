@@ -25,14 +25,16 @@
  * I/O completes, so both capture the member with sessionId still undefined.
  * Both then spawn.
  */
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
 
 import type { PluginContext } from "../src/core/context.js"
 import type { ActiveTask, TeamSpec } from "../src/core/types.js"
 import { startOrchestration } from "../src/orchestration/lifecycle/startup.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { isIndexedMember, rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 describe("concurrent-workflow-spawns-duplicate-sessions", () => {
     const tracked: string[] = []

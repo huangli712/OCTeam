@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
 
 import type { ActiveTask, MemberState, MemberStatus } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
@@ -6,9 +6,10 @@ import { handleStatusEvent } from "../src/orchestration/lifecycle/status.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { writeMailboxMessage } from "../src/messaging/mailbox.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from './helpers.js';
 import type { Message } from "../src/core/types.js"
 
+afterAll(cleanupTmpRoots)
 
 async function makeTeam(
     root: string,

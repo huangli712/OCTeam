@@ -27,7 +27,7 @@ import { afterAll, describe, expect, test } from "bun:test"
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, invalidateTeam, loadTeamState } from "../src/state/store.js"
 import { sweepTeamOnce } from "../src/hooks.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from './helpers.js';
 
 async function absent(p: string): Promise<boolean> {
     try {

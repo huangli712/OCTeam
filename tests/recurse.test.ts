@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { getExpectedMember, processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { parseDecompose } from "../src/orchestration/protocol/decisions.js"
@@ -14,8 +14,9 @@ import { buildSummary } from "../src/orchestration/records/summary.js"
 import { teamRecurseTool } from "../src/tools/modes/recurse.js"
 import { teamResumeTool } from "../src/tools/control/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, makeToolContext, statusIdleFrom, tmpRoot, waitForEvent } from './helpers.js';
+import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, statusIdleFrom, tmpRoot, waitForEvent } from './helpers.js';
 
+afterAll(cleanupTmpRoots)
 
 // --- fixtures ---
 

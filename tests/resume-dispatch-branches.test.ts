@@ -21,7 +21,7 @@
  * These drive resumeDispatch directly (mirrors resume-signoff-reduce.test.ts),
  * which is exactly what team_resume Phase 3 calls under the mutex.
  */
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import type { ActiveTask } from "../src/core/types.js";
 import {
@@ -31,13 +31,14 @@ import {
 } from "../src/state/store.js";
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js";
 import { resumeDispatch } from "../src/orchestration/lifecycle/resume.js";
-import { makeCtx, makeMember, makeState, makeTask, tmpRoot } from "./helpers.js";
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTask, tmpRoot } from './helpers.js';
 
 
 const tracked: string[] = [];
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid);
 });
+afterAll(cleanupTmpRoots)
 
 /** Commit a task as the active task on a freshly-loaded failed team, indexed. */
 async function setup(

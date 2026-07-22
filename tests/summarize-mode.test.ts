@@ -8,7 +8,7 @@
  * summarizeDelegate and summarizeRecurse require disk I/O (listAllTasks);
  * they are tested with real tmp directories.
  */
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from 'bun:test';
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 
@@ -26,7 +26,9 @@ import {
     summarizeTollgate,
     summarizeWorkflow,
 } from "../src/orchestration/records/renderers.js"
-import { makeTeam, makeWorkflowTask, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeTeam, makeWorkflowTask, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 const HEAD = "mode=test reason=test_complete tokens=0 messages=0"
 

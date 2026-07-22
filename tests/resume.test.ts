@@ -1,14 +1,15 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamResumeTool } from "../src/tools/control/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeTask, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTask, makeToolContext, tmpRoot } from './helpers.js';
 import fs from "node:fs/promises"
 import { createTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 
+afterAll(cleanupTmpRoots)
 
 /** Build a failed team with lastInterruptedTask, indexed for master resolution. */
 async function setupFailed(

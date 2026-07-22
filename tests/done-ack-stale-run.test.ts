@@ -27,15 +27,16 @@
  * run; on fixed code it is refused and declaredDone stays false.
  */
 
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { ParallelTask } from "../src/core/types.js"
 import { teamDoneTool } from "../src/tools/control/done.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
+afterAll(cleanupTmpRoots)
 
 /** Build a minimal parallel/isolated task with require_done_ack enabled. */
 function makeParallelAckTask(runId: string, taskText: string): ParallelTask {

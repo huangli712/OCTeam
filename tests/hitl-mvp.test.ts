@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import type { ActiveTask, GatedStage, LoopTask, MemberState, PipelineTask, Stage, TollgateTask } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
@@ -7,12 +7,13 @@ import { teamApproveTool, teamRejectTool } from "../src/tools/control/approve.js
 import { teamProgressTool } from "../src/tools/query/progress.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot, type DispatchCall } from "./helpers.js"
+import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
+afterAll(cleanupTmpRoots)
 
 async function setupTeam(root: string, sid: string, members: MemberState[]): Promise<Team> {
     tracked.push(sid)

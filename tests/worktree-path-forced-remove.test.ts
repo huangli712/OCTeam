@@ -39,7 +39,7 @@ import { promisify } from "node:util"
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamDeleteTool } from "../src/tools/lifecycle/delete.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const execFileP = promisify(execFile)
 

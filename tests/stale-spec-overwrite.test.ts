@@ -31,7 +31,7 @@
  * both adds read their stale spec snapshots before either enters the lock.
  */
 
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { readFile } from "node:fs/promises"
 
 import type { ToolContext } from "@opencode-ai/plugin"
@@ -40,8 +40,9 @@ import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { configPath, teamDir } from "../src/state/paths.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
+afterAll(cleanupTmpRoots)
 
 async function readSpecFromDisk(storageRoot: string, teamName: string, sid: string): Promise<TeamSpec> {
     const raw = await readFile(configPath(teamDir(storageRoot, teamName, sid)), "utf8")

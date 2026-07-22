@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { teamDir } from "../src/state/paths.js"
 import { initTeamState } from "../src/state/store.js"
@@ -12,7 +12,7 @@ import {
     unindexMasterTeam,
     unindexSession,
 } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from './helpers.js';
 
 const LEAD = "ses_lead"
 const MEMBER = "ses_member"
@@ -21,6 +21,7 @@ afterEach(() => {
     unindexSession(LEAD)
     unindexSession(MEMBER)
 })
+afterAll(cleanupTmpRoots)
 
 describe("resolveTeamMember scoping", () => {
     test("master resolves with leadSessionId + leader's team dir", async () => {

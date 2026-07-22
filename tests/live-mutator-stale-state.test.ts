@@ -24,16 +24,17 @@
  * and refuses.
  */
 
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { ParallelTask } from "../src/core/types.js"
 import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 import type { TeamSpec } from "../src/core/types.js"
 
+afterAll(cleanupTmpRoots)
 
 /** Minimal busy parallel task, the shape startOrchestration commits. */
 function makeBusyTask(): ParallelTask {

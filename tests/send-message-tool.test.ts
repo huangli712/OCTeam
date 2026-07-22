@@ -8,7 +8,7 @@
  * backpressure, per-run message cap, happy-path delivery) had NO coverage
  * (12.15% line per bun --coverage). These exercise each guard end-to-end.
  */
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
 import { teamSendMessageTool } from "../src/tools/exchange/messaging.js"
@@ -16,7 +16,9 @@ import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { Message } from "../src/core/types.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 const TEAM = "alpha"
 

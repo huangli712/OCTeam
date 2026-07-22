@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 
 import type { ToolContext } from "@opencode-ai/plugin"
@@ -17,7 +17,9 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot, waitForEvent } from './helpers.js';
+import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot, waitForEvent } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 // --- fixtures ---
 

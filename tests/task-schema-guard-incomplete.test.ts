@@ -31,7 +31,7 @@ import path from "node:path"
 
 import { listAllTasks } from "../src/state/tasks.js"
 import { taskPath } from "../src/state/paths.js"
-import { tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, tmpRoot } from './helpers.js';
 
 /** Ensure the tasks/ dir exists, then write a task JSON file. */
 async function writeTaskFile(teamDir: string, taskId: string, obj: unknown): Promise<void> {

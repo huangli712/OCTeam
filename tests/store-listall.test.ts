@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from 'bun:test';
 
 import { initTeamState, listAllTeams } from "../src/state/store.js"
-import { makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeState, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 type Entry = { leadSessionId?: string; teamName: string }
 

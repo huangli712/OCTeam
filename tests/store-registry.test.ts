@@ -1,8 +1,10 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from 'bun:test';
 
 import { teamDir } from "../src/state/paths.js"
 import { activeTeams, initTeamState, invalidateTeam, loadTeamState } from "../src/state/store.js"
-import { makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeState, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 describe("teamRegistry keyed by resolved teamDir", () => {
     test("same teamName under two lead sessions → distinct registry entries", async () => {

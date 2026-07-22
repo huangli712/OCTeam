@@ -21,19 +21,20 @@
  * at maxTasks → PASS.
  */
 
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import { teamRecurseTool } from "../src/tools/modes/recurse.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMasterTeam, indexMember, setActiveTeam, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
+afterAll(cleanupTmpRoots)
 
 describe("recurse root task cap bypass (finding: recurse-root-task-cap-bypass)", () => {
     test("starting recurse when the task list is full must not exceed maxTasks", async () => {

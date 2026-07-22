@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
 import { rmSync } from "node:fs"
 import path from "node:path"
 
@@ -12,7 +12,9 @@ import {
     rebuildSessionIndex,
     unindexSession,
 } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 interface LogCall {
     message: string

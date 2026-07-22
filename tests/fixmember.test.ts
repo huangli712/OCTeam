@@ -1,14 +1,15 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { teamFixMemberTool } from "../src/tools/lifecycle/fixmember.js"
 import { initTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
+afterAll(cleanupTmpRoots)
 
 describe("team_fix_member constraint (1)", () => {
     test("member session → rejected (master-only), even on an active team", async () => {

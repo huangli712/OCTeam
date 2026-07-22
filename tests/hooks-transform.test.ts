@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import type { PluginContext } from "../src/core/context.js"
 import { createCompactingHook, createTransformHook } from "../src/hooks.js"
@@ -9,7 +9,9 @@ import { processedPath, reservedDir, teamDir } from "../src/state/paths.js"
 import { initTeamState } from "../src/state/store.js"
 import type { Message } from "../src/core/types.js"
 import { indexMasterTeam, indexMember, setActiveTeam, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 const LEAD = "ses_lead"
 const MEMBER = "ses_member"

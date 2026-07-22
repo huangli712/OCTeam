@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, test } from 'bun:test';
 
 import type { PluginContext } from "../src/core/context.js"
 import { createEventHandler } from "../src/hooks.js"
@@ -7,7 +7,9 @@ import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailb
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import type { ActiveTask, Message, TeamState } from "../src/core/types.js"
 import { indexMasterTeam, setActiveTeam, unindexSession } from "../src/state/resolve.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 const LEAD = "ses_lead_drain"
 

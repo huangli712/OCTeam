@@ -17,20 +17,21 @@
  * dispatch-level fail-safe is covered by tests/dispatch-context.test.ts.
  */
 
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { teamCreateTool } from "../src/tools/lifecycle/create.js"
 import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { teamFixMemberTool } from "../src/tools/lifecycle/fixmember.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { indexMasterTeam, setActiveTeam, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 import type { TeamSpec } from "../src/core/types.js"
 
 const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
+afterAll(cleanupTmpRoots)
 
 /** Set up a live team with both config.json (TeamSpec) and state.json. */
 async function setupLiveTeam(root: string, sid: string, members: ReturnType<typeof makeMember>[]): Promise<void> {

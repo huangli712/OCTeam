@@ -15,7 +15,7 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot } from './helpers.js';
+import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot } from './helpers.js';
 
 // --- fixtures ---
 

@@ -9,7 +9,7 @@ import {
     updateTask,
 } from "../src/state/tasks.js"
 import { claimMutexPath } from "../src/state/paths.js"
-import { tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, tmpRoot } from './helpers.js';
 
 async function setupTeamDir(label: string): Promise<string> {
     const root = tmpRoot(label)

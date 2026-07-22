@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import {
     teamTaskCreateTool,
@@ -9,7 +9,7 @@ import {
 import { createTask, getTask, updateTask } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 import type { RecurseTask } from "../src/core/types.js"
 
 

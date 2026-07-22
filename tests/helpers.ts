@@ -346,7 +346,7 @@ export function makeTeam(opts: MakeTeamOptions = {}): Team {
         createdAt: 0,
         activeTask: opts.activeTask,
         mutex: new AsyncMutex(),
-        directory: opts.directory ?? mkdtempSync(path.join(os.tmpdir(), "octeam-team-")),
+        directory: opts.directory ?? tmpRoot("team"),
     } as unknown as Team
 }
 

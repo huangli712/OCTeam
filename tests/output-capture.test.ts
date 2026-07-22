@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
 import { readFile } from "node:fs/promises"
 
 import { extractOutputFromParts, extractTextFromParts } from "../src/orchestration/protocol/output.js"
@@ -7,9 +7,11 @@ import type { ActiveTask, SdkMessage } from "../src/core/types.js"
 import { appendTurnBlock, captureMemberOutput } from "../src/orchestration/records/capture.js"
 import { runMemberOutputPath, runReduceOutputPath } from "../src/state/paths.js"
 import { initTeamState } from "../src/state/store.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from './helpers.js';
 import { runDelegateStyleTail } from "../src/orchestration/modes/delegate.js"
 import { createTask, updateTask } from "../src/state/tasks.js"
+
+afterAll(cleanupTmpRoots)
 
 describe("extractTextFromParts (baseline regression)", () => {
     test("extracts text from text-only parts", () => {

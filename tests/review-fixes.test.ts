@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { existsSync } from "node:fs"
 
 import type { PluginContext } from "../src/core/context.js"
@@ -11,7 +11,9 @@ import { isSafePathSegment, teamDir, runEventsPath, runRecordPath } from "../src
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeTask, makeTeam, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTask, makeTeam, makeToolContext, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 // ============================================================================
 // Fix1 — path-traversal rejection (BLOCKING-1, security)

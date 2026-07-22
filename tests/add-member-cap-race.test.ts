@@ -22,20 +22,21 @@
  * section.
  */
 
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { TeamSpec } from "../src/core/types.js"
 import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 
 const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
+afterAll(cleanupTmpRoots)
 
 describe("add-member cap race (finding: add-member-cap-race)", () => {
     test("two concurrent team_add_member calls must not exceed maxMembers", async () => {

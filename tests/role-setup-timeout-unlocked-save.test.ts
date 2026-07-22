@@ -60,8 +60,9 @@ import { ensureMembersReady } from "../src/orchestration/control/members.js"
 import { initTeamState, loadTeamState, saveTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { statePath } from "../src/state/paths.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from './helpers.js';
 
+afterAll(cleanupTmpRoots)
 
 /** Read state.json directly from disk, bypassing the registry cache. */
 async function readDiskState(directory: string): Promise<{ members: Array<{ status: string; initialized: boolean }> }> {

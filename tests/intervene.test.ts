@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import fs from "node:fs/promises"
 
@@ -9,7 +9,9 @@ import { inboxPath, teamDir } from "../src/state/paths.js"
 import { loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { ActiveTask, Message, MemberState, TeamState } from "../src/core/types.js"
-import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 const TEAM = "intervene-team"
 

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import fs from "node:fs/promises"
 import path from "node:path"
 
@@ -12,7 +12,9 @@ import {
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { statePath, teamDir } from "../src/state/paths.js"
-import { makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 // --- ctx fixture ---
 

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import fs from "node:fs/promises"
 
 import type { TeamSpec } from "../src/core/types.js"
@@ -7,12 +7,13 @@ import { initTeamState, writeTeamSpec } from "../src/state/store.js"
 import { teamDir, runDir, runMemberOutputPath } from "../src/state/paths.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { persistRun } from "../src/orchestration/records/runs.js"
-import { makeCtx, makeMember, makeState, makeTask, makeTeam, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTask, makeTeam, makeToolContext, tmpRoot } from './helpers.js';
 
 const tracked: string[] = []
 afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
+afterAll(cleanupTmpRoots)
 
 async function setupTeam(
     root: string,

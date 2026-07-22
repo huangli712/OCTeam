@@ -19,7 +19,7 @@
  * exists, worktreePath set) → test FAILS. On FIXED code all are gone → PASSES.
  */
 
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { execFile } from "node:child_process"
 import { access } from "node:fs/promises"
 import { promisify } from "node:util"
@@ -29,7 +29,9 @@ import { ensureMembersReady } from "../src/orchestration/control/members.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { worktreePath } from "../src/state/paths.js"
-import { makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from './helpers.js';
+
+afterAll(cleanupTmpRoots)
 
 const execFileP = promisify(execFile)
 
