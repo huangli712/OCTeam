@@ -203,6 +203,7 @@ export interface ActiveTaskBase {
     tokenBudget?: number                     // optional cost cap
     tokensUsed: number                       // running total = sum of tokensByMember (recomputed)
     tokensByMember: Record<string, number>   // memberName -> sum(input+output+reasoning)
+    tokenBaselineByMember?: Record<string, number> // per-run baseline; session tokens at run start (excludes prior runs)
     messagesSent: number                     // total team_send_message writes this run (maxMessagesPerRun)
 
     // result collection (serializable — NOT a Map)

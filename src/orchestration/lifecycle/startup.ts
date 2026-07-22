@@ -29,7 +29,8 @@ import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { ensureMembersReady } from "../control/members.js"
 import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import type { ActiveTask, DecisionRecord, ReducePolicy, SignoffPolicy } from "../../core/types.js"
+import type { ActiveTask, DecisionRecord, ReducePolicy, SignoffPolicy, SdkMessage } from "../../core/types.js"
+import { sumMemberTokens } from "../protocol/output.js"
 
 // ============================================================
 // Orchestration defaults
@@ -221,6 +222,21 @@ export async function startOrchestration(
         // Step 5: Phase 2 — spawn + role-setup barrier (OUTSIDE mutex).
         await ensureMembersReady(ctx, team)
 
+        // Snapshot per-member token baselines so run-local token accounting
+        // excludes tokens from prior runs on the same persistent session.
+        // OpenCode sessions survive across runs; without this baseline, a
+        // second run's tokenBudget check would include the first run's tokens.
+        const tokenBaselineByMember: Record<string, number> = {}
+        for (const m of team.members) {
+            if (m.isMaster || !m.sessionId) continue
+            try {
+                const result = await ctx.client.session.messages({ path: { id: m.sessionId } })
+                tokenBaselineByMember[m.name] = sumMemberTokens((result.data ?? []) as SdkMessage[])
+            } catch {
+                // Best-effort: baseline stays 0 (over-counts, safe for budget).
+            }
+        }
+
         // Step 6: Phase 3 — commit activeTask + initial dispatch (UNDER mutex).
         await team.mutex.runExclusive(async () => {
             if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
@@ -229,6 +245,7 @@ export async function startOrchestration(
                 buildError = built.error
                 return
             }
+            built.tokenBaselineByMember = tokenBaselineByMember
             const prevStatus = team.status
             team.status = "busy"
             team.activeTask = built

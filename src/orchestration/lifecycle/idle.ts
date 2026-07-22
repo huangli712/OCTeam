@@ -164,8 +164,10 @@ async function accountAndValidateIdle(
     const msgs = await ctx.client.session.messages({ path: { id: sessionID } })
     const messages = (msgs.data ?? []) as SdkMessage[]
     if (team.activeTask) {
-        // Step 4: Token accounting (recompute from full history, never +=).
-        team.activeTask.tokensByMember[member.name] = sumMemberTokens(messages)
+        // Step 4: Token accounting (recompute from full session history, then
+        // subtract the per-run baseline so only THIS run's tokens are counted).
+        const baseline = team.activeTask.tokenBaselineByMember?.[member.name] ?? 0
+        team.activeTask.tokensByMember[member.name] = Math.max(0, sumMemberTokens(messages) - baseline)
         team.activeTask.tokensUsed = Object.values(team.activeTask.tokensByMember).reduce(
             (a, b) => a + b,
             0,
