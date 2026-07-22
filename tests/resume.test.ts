@@ -182,7 +182,7 @@ describe("team_resume", () => {
             makeMember("bob", "ses_bob"),
         ])
         let bobPrompt = ""
-        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: { path: { id: string } }) => { if (req.path.id === "ses_bob") bobPrompt = req.body.parts[0].text } })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: { path: { id: string }; body: { parts: Array<{ text: string }> } }) => { if (req.path.id === "ses_bob") bobPrompt = req.body.parts[0].text } })
         await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(bobPrompt).toContain("ALICE_UPSTREAM_OUTPUT")
     })

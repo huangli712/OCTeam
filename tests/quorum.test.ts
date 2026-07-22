@@ -12,6 +12,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { handleQuorumIdle } from "../src/orchestration/modes/quorum.js"
+import { resumeDispatch } from "../src/orchestration/lifecycle/resume.js"
 import { RunRecordSchema } from "../src/orchestration/records/schemas.js"
 import { runRecordPath } from "../src/state/paths.js"
 import type { QuorumTask } from "../src/core/types.js"
@@ -553,14 +554,13 @@ describe("misc", () => {
 // Group G: resume (defends v4 fix D — quorum-specific predicate)
 // ============================================================
 
-describe("resume predicates (v4 fix D defense)", () => {
-    test("G1 (indirect): resumeQuorumMode filters errored participants from dispatch count", async () => {
+describe("resume integration (v4 fix D defense)", () => {
+    test("G1: resumeDispatch filters errored participants and re-drives the quorum barrier", async () => {
         // Scenario from Momus v3 concern D1: N=3, A/B idle+response, C errored+no-response.
-        // Without the errored guard, dispatch would count C as a no-op dispatch,
-        // suppressing the zero-dispatch barrier re-drive and hanging the run.
-        //
-        // We verify the predicate logic directly: errored participant must not pass.
-        // (Full resume integration test would require handleStatusEvent mocking; see plan §7 step 8.)
+        // Without the errored guard in resumeQuorumMode, dispatch would count C as a no-op
+        // dispatch, suppressing the zero-dispatch barrier re-drive and hanging the run.
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({ calls })
         const task = makeQuorumTask({
             participants: ["alice", "bob", "carol"],
             responses: { alice: vote("A"), bob: vote("A") },
@@ -574,24 +574,13 @@ describe("resume predicates (v4 fix D defense)", () => {
             ],
         })
 
-        // Simulate the resumeQuorumMode predicate (mirror of resume.ts:resumeQuorumMode)
-        const participantSet = new Set(task.participants)
-        const memberShouldDispatch = (m: { name: string; status: string; sessionId?: string }) =>
-            participantSet.has(m.name)
-            && m.status !== "errored"
-            && !!m.sessionId
-            && !task.responses[m.name]
+        // resumeDispatch -> resumeQuorumMode: the errored guard prevents dispatching to
+        // carol. Zero real dispatches -> barrier re-drive -> handleQuorumIdle completes the run.
+        await resumeDispatch(ctx, team, task)
 
-        // alice and bob have responses → false
-        // carol is errored → false (the v4 fix D1 guard)
-        for (const m of team.members) {
-            expect(memberShouldDispatch(m)).toBe(false)
-        }
-
-        // Zero dispatches → barrier would re-drive (assert via direct handleQuorumIdle call)
-        const calls: DispatchCall[] = []
-        const ctx = makeCtx({ calls })
-        await handleQuorumIdle(ctx, team)
+        // No dispatch was sent to any participant (alice/bob already responded, carol is errored).
+        expect(calls.filter(c => c.sessionId !== "ses_lead")).toHaveLength(0)
+        // The barrier re-drive completed the quorum.
         expect(calls.find(c => c.sessionId === "ses_lead")!.text).toContain("quorum_succeeded:A")
     })
 })
