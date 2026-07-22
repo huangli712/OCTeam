@@ -114,6 +114,6 @@ describe("acquireLock handle/file leak (finding: acquire-lock-handle-leak)", () 
         expect(await pathExists(lockPath)).toBe(false)
 
         // Assertion 2: the file handle must have been closed (no leak).
-        expect(lockHandleCloseCount).toBeGreaterThan(0)
+        expect(lockHandleCloseCount).toBe(1)
     })
 })

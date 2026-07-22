@@ -13,7 +13,7 @@ import type { ActiveTask, ArbitrateTask, MemberState } from "../src/core/types.j
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot, waitForEvent } from './helpers.js';
+import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeResumeCtx, makeState, makeTeam, makeToolContext, setupFailedTeam, tmpRoot, waitForEvent } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
 
@@ -608,44 +608,6 @@ describe("teamArbitrateTool: input validation", () => {
 })
 
 // --- LOW-2: team_resume arbitrate branches ---
-
-/** Build a failed team carrying an arbitrate lastInterruptedTask, indexed for resume. */
-async function setupFailedArbitrate(
-    root: string,
-    sid: string,
-    task: ActiveTask,
-    members: MemberState[],
-): Promise<Team> {
-    const state = makeState("alpha", sid, members, Date.now())
-    state.status = "failed"
-    await initTeamState(root, state, sid)
-    const team = await loadTeamState(root, "alpha", sid)
-    await team.mutex.runExclusive(async () => {
-        team.lastInterruptedTask = task
-        await saveTeamState(team)
-    })
-    await rebuildSessionIndex(root, `${root}__unused`)
-    return team
-}
-
-/** PluginContext for resume: storageRoot + a capturing promptAsync. */
-function makeResumeCtx(
-    root: string,
-    promptAsync: (req: { path: { id: string } }) => Promise<void>,
-): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                promptAsync,
-                messages: async () => ({ data: [] }),
-            },
-        },
-    } as unknown as PluginContext
-}
-
 describe("team_resume: arbitrate case", () => {
     test("Phase A re-dispatches only debaters that have no captured response", async () => {
         const root = tmpRoot("arb-resume-a-redispatch")
@@ -660,7 +622,7 @@ describe("team_resume: arbitrate case", () => {
             // alice argued before the crash; bob did not.
             responses: { alice: "ship it" },
         })
-        const team = await setupFailedArbitrate(root, sid, task, [
+        const team = await setupFailedTeam(root, sid, task, [
             makeMember("arbiter", "ses_arbiter"),
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
@@ -695,7 +657,7 @@ describe("team_resume: arbitrate case", () => {
             // Both debaters already argued -> nothing to re-dispatch.
             responses: { alice: "ship it", bob: "wait" },
         })
-        const team = await setupFailedArbitrate(root, sid, task, [
+        const team = await setupFailedTeam(root, sid, task, [
             makeMember("arbiter", "ses_arbiter"),
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
@@ -728,7 +690,7 @@ describe("team_resume: arbitrate case", () => {
             // Arbiter was dispatched but crashed before producing a ruling.
             responses: { alice: "ship it", bob: "wait" },
         })
-        const team = await setupFailedArbitrate(root, sid, task, [
+        const team = await setupFailedTeam(root, sid, task, [
             makeMember("arbiter", "ses_arbiter"),
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
@@ -764,7 +726,7 @@ describe("team_resume: arbitrate case", () => {
                 arbiter: '<ruling>{"decision": "delay to Monday", "rationale": "risk"}</ruling>',
             },
         })
-        const team = await setupFailedArbitrate(root, sid, task, [
+        const team = await setupFailedTeam(root, sid, task, [
             makeMember("arbiter", "ses_arbiter"),
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),

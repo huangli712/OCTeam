@@ -25,7 +25,7 @@ describe("OCTEAM_AGENTS registry", () => {
         expect(keys).toHaveLength(9)
     })
 
-    test("has the exact 6 expected agent keys (no extras, no missing)", () => {
+    test("has the exact 9 expected agent keys (no extras, no missing)", () => {
         const keys = new Set(Object.keys(OCTEAM_AGENTS))
         const expected = new Set(ALL_AGENT_KEYS)
         expect(keys).toEqual(expected)
@@ -90,7 +90,7 @@ describe("analysis agents (metis / momus) — deny edit, NOT deny task", () => {
     }
 })
 
-describe("executor agents (junior / ultrabrain) — deny task, NOT deny edit", () => {
+describe("executor agents (junior / deep) — deny task, NOT deny edit", () => {
     for (const key of EXECUTOR_AGENTS) {
         test(`${key}: permission.task is 'deny'`, () => {
             expect(getAgent(key).permission?.task).toBe("deny")

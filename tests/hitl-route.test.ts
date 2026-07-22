@@ -1,27 +1,12 @@
-import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 
 import type { MemberState, RouteBranch, RouteTask } from "../src/core/types.js"
 import { handleRouteIdle } from "../src/orchestration/modes/route.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/control/approve.js"
-import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
+import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
-const tracked: string[] = []
-afterEach(() => {
-    for (const sid of tracked.splice(0)) unindexSession(sid)
-})
-afterAll(cleanupTmpRoots)
-
-async function setupTeam(root: string, sid: string, members: MemberState[]): Promise<Team> {
-    tracked.push(sid)
-    for (const member of members) {
-        if (member.sessionId) tracked.push(member.sessionId)
-    }
-    await initTeamState(root, makeState("alpha", sid, members, Date.now()), sid)
-    await rebuildSessionIndex(root, `${root}__user_unused`)
-    return loadTeamState(root, "alpha", sid)
-}
+const { setupTeam } = makeHitlLifecycle()
 
 async function setRouteTask(team: Team, task: RouteTask): Promise<void> {
     await team.mutex.runExclusive(async () => {

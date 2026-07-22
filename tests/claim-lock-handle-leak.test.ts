@@ -140,6 +140,6 @@ describe("claimTask lock handle leak (finding: claim-lock-handle-leak)", () => {
         expect(await pathExists(lockPath)).toBe(false)
 
         // Assertion 2: the file handle must have been closed (no leak).
-        expect(claimLockHandleCloseCount).toBeGreaterThan(0)
+        expect(claimLockHandleCloseCount).toBe(1)
     })
 })

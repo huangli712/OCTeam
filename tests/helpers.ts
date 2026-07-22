@@ -6,10 +6,53 @@ import path from "node:path"
 import type { ToolContext } from "@opencode-ai/plugin"
 import type { ActiveTask, MemberState, TeamState, WorkflowTask } from "../src/core/types.js"
 import type { PluginContext } from "../src/core/context.js"
-import type { Team } from "../src/state/store.js"
+import { afterAll, afterEach } from 'bun:test'
+
+import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
+import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import { waitUntil } from "../src/core/utils.js"
 import { inboxPath, runEventsPath } from "../src/state/paths.js"
+
+/** PluginContext for resume: storageRoot + a capturing promptAsync. */
+export function makeResumeCtx(
+    root: string,
+    promptAsync: (req: { path: { id: string } }) => Promise<void>,
+): PluginContext {
+    return {
+        storageRoot: root,
+        scope: "project",
+        directory: "/app",
+        client: {
+            session: {
+                promptAsync,
+                messages: async () => ({ data: [] }),
+            },
+        },
+    } as unknown as PluginContext
+}
+
+/**
+ * Build a failed team carrying a lastInterruptedTask, indexed for resume.
+ * Common to route/arbitrate/recurse/tollgate resume tests.
+ */
+export async function setupFailedTeam(
+    root: string,
+    sid: string,
+    task: ActiveTask,
+    members: MemberState[],
+): Promise<Team> {
+    const state = makeState("alpha", sid, members, Date.now())
+    state.status = "failed"
+    await initTeamState(root, state, sid)
+    const team = await loadTeamState(root, "alpha", sid)
+    await team.mutex.runExclusive(async () => {
+        team.lastInterruptedTask = task
+        await saveTeamState(team)
+    })
+    await rebuildSessionIndex(root, `${root}__unused`)
+    return team
+}
 
 // Track every tmp root created in this process. mkdtempSync dirs otherwise
 // leak: most suites only unindexSession in their afterEach and never remove the
@@ -262,7 +305,7 @@ export function makeCtx(opts: MakeCtxOptions = {}): PluginContext {
             session.promptAsync = async (args: PromptAsyncRequest) => {
                 // Strip the OMO_INTERNAL_INITIATOR marker appended by dispatchToMember;
                 // it is a dispatch-layer detail, not semantic task content.
-                const raw = args.body.parts[0].text.replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "")
+                const raw = (args.body.parts[0]?.text ?? "").replace(/\n<!-- OMO_INTERNAL_INITIATOR -->$/, "")
                 calls.push({ sessionId: args.path.id, text: raw })
                 return { data: {} }
             }
@@ -366,6 +409,32 @@ export async function writeRawInboxLine(teamDir: string, recipient: string, line
  * `outputs` and nothing for others. Used by orchestration-handler suites
  * to simulate member idle events deterministically.
  */
-export function statusIdleFrom(outputs: Record<string, string>) {
+export function statusIdleFrom(outputs: Record<string, string>): () => Promise<{ data: Record<string, { type: string }> }> {
     return async () => ({ data: Object.fromEntries(Object.entries(outputs).map(([id]) => [id, { type: "idle" }])) })
+}
+
+/**
+ * Shared HITL test lifecycle: tracked session cleanup + setupTeam for team-creation.
+ * Call once at module level in any HITL test file to replace the 15-line
+ * duplicated pattern (tracked/afterEach/afterAll/setupTeam).
+ */
+export function makeHitlLifecycle() {
+    const tracked: string[] = []
+
+    afterEach(() => {
+        for (const sid of tracked.splice(0)) unindexSession(sid)
+    })
+    afterAll(cleanupTmpRoots)
+
+    async function setupTeam(root: string, sid: string, members: MemberState[]): Promise<Team> {
+        tracked.push(sid)
+        for (const member of members) {
+            if (member.sessionId) tracked.push(member.sessionId)
+        }
+        await initTeamState(root, makeState("alpha", sid, members, Date.now()), sid)
+        await rebuildSessionIndex(root, `${root}__user_unused`)
+        return loadTeamState(root, "alpha", sid)
+    }
+
+    return { setupTeam }
 }

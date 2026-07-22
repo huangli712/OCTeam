@@ -17,7 +17,7 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot, waitForEvent } from './helpers.js';
+import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeResumeCtx, makeState, makeTeam, makeToolContext, setupFailedTeam, tmpRoot, waitForEvent } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
 
@@ -694,43 +694,6 @@ describe("checkTermination: route Phase B errored target", () => {
 
 // --- LOW-4: summary + resume route branches ---
 
-/** Build a failed team carrying a route lastInterruptedTask, indexed for resume. */
-async function setupFailedRoute(
-    root: string,
-    sid: string,
-    task: ActiveTask,
-    members: MemberState[],
-): Promise<Team> {
-    const state = makeState("alpha", sid, members, Date.now())
-    state.status = "failed"
-    await initTeamState(root, state, sid)
-    const team = await loadTeamState(root, "alpha", sid)
-    await team.mutex.runExclusive(async () => {
-        team.lastInterruptedTask = task
-        await saveTeamState(team)
-    })
-    await rebuildSessionIndex(root, `${root}__unused`)
-    return team
-}
-
-/** PluginContext for resume: storageRoot + a capturing promptAsync. */
-function makeResumeCtx(
-    root: string,
-    promptAsync: (req: { path: { id: string } }) => Promise<void>,
-): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                promptAsync,
-                messages: async () => ({ data: [] }),
-            },
-        },
-    } as unknown as PluginContext
-}
-
 describe("buildSummary: route case", () => {
     test("excludes router decision JSON, shows target outputs + rationale", async () => {
         const task = makeRouteTask({
@@ -781,7 +744,7 @@ describe("team_resume: route case", () => {
             // Router already decided before the crash.
             responses: { router: '<route>{"branch": "support", "rationale": "billing"}</route>' },
         })
-        const team = await setupFailedRoute(root, sid, task, [
+        const team = await setupFailedTeam(root, sid, task, [
             makeMember("router", "ses_router"),
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),

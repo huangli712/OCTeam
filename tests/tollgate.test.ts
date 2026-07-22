@@ -15,7 +15,7 @@ import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/s
 
 import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot } from './helpers.js';
+import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, setupFailedTeam, tmpRoot } from './helpers.js';
 
 // --- fixtures ---
 
@@ -1009,46 +1009,6 @@ describe("teamTollgateTool: happy-path start", () => {
 })
 
 // --- team_resume: tollgate three-phase recovery (T-5) ---
-
-/** Build a failed team carrying a tollgate lastInterruptedTask, indexed for resume. */
-async function setupFailedTollgate(
-    root: string,
-    sid: string,
-    task: ActiveTask,
-    members: MemberState[],
-): Promise<Team> {
-    const state = makeState("alpha", sid, members, Date.now())
-    state.status = "failed"
-    await initTeamState(root, state, sid)
-    const team = await loadTeamState(root, "alpha", sid)
-    await team.mutex.runExclusive(async () => {
-        team.lastInterruptedTask = task
-        await saveTeamState(team)
-    })
-    await rebuildSessionIndex(root, `${root}__unused`)
-    return team
-}
-
-function makeResumeCtx(
-    root: string,
-    calls: DispatchCall[],
-): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                promptAsync: async (args: any) => {
-                    calls.push({ sessionId: args.path.id, text: args.body.parts[0].text })
-                    return { data: {} }
-                },
-                messages: async () => ({ data: [] }),
-            },
-        },
-    } as unknown as PluginContext
-}
-
 describe("team_resume: tollgate case", () => {
     test("verify phase with a captured PASS verdict re-runs the gate and completes", async () => {
         const root = tmpRoot("tg-resume-verify-deliver")
@@ -1059,12 +1019,12 @@ describe("team_resume: tollgate case", () => {
             tollgatePhase: "verify",
             responses: { alice: "artifact", bob: V.pass },
         })
-        const team = await setupFailedTollgate(root, sid, task, [
+        const team = await setupFailedTeam(root, sid, task, [
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
         ])
         const calls: DispatchCall[] = []
-        const ctx = makeResumeCtx(root, calls)
+        const ctx = makeCtx({ storageRoot: root, calls })
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
@@ -1088,12 +1048,12 @@ describe("team_resume: tollgate case", () => {
             tollgatePhase: "verify",
             responses: { alice: "artifact" }, // no bob response yet
         })
-        const team = await setupFailedTollgate(root, sid, task, [
+        const team = await setupFailedTeam(root, sid, task, [
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
         ])
         const calls: DispatchCall[] = []
-        const ctx = makeResumeCtx(root, calls)
+        const ctx = makeCtx({ storageRoot: root, calls })
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
@@ -1115,13 +1075,13 @@ describe("team_resume: tollgate case", () => {
             escalateTo: "carol",
             responses: { alice: "artifact", bob: V.invalid() },
         })
-        const team = await setupFailedTollgate(root, sid, task, [
+        const team = await setupFailedTeam(root, sid, task, [
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
             makeMember("carol", "ses_carol"),
         ])
         const calls: DispatchCall[] = []
-        const ctx = makeResumeCtx(root, calls)
+        const ctx = makeCtx({ storageRoot: root, calls })
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
@@ -1145,12 +1105,12 @@ describe("team_resume: tollgate case", () => {
             currentStageIndex: 0,
             tollgatePhase: "produce",
         })
-        await setupFailedTollgate(root, sid, task, [
+        await setupFailedTeam(root, sid, task, [
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
         ])
         const calls: DispatchCall[] = []
-        const ctx = makeResumeCtx(root, calls)
+        const ctx = makeCtx({ storageRoot: root, calls })
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },

@@ -14,7 +14,7 @@ import { buildSummary } from "../src/orchestration/records/summary.js"
 import { teamRecurseTool } from "../src/tools/modes/recurse.js"
 import { teamResumeTool } from "../src/tools/control/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, statusIdleFrom, tmpRoot, waitForEvent } from './helpers.js';
+import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeResumeCtx, makeState, makeTeam, makeToolContext, setupFailedTeam, statusIdleFrom, tmpRoot, waitForEvent } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
 
@@ -423,41 +423,6 @@ async function setupRecurseTeam(
     await rebuildSessionIndex(root, `${root}__unused`)
 }
 
-async function setupFailedRecurse(
-    root: string,
-    sid: string,
-    task: ActiveTask,
-    members: MemberState[],
-): Promise<Team> {
-    const state = makeState("alpha", sid, members, Date.now())
-    state.status = "failed"
-    await initTeamState(root, state, sid)
-    const team = await loadTeamState(root, "alpha", sid)
-    await team.mutex.runExclusive(async () => {
-        team.lastInterruptedTask = task
-        await saveTeamState(team)
-    })
-    await rebuildSessionIndex(root, `${root}__unused`)
-    return team
-}
-
-function makeResumeCtx(
-    root: string,
-    promptAsync: (req: { path: { id: string } }) => Promise<void>,
-): PluginContext {
-    return {
-        storageRoot: root,
-        scope: "project",
-        directory: "/app",
-        client: {
-            session: {
-                promptAsync,
-                messages: async () => ({ data: [] }),
-            },
-        },
-    } as unknown as PluginContext
-}
-
 // --- MEDIUM-1: maxTasks resource cap ---
 
 describe("MEDIUM-1: maxTasks cap degrades an over-budget decomposition to a leaf", () => {
@@ -597,7 +562,7 @@ describe("team_resume: recurse case", () => {
         const sid = "ses_rec_resume_reset"
         tracked.push(sid)
         const task = makeRecurseTask({ decomposerMember: "alice", rootTaskId: "root-1" })
-        const team = await setupFailedRecurse(root, sid, task, [
+        const team = await setupFailedTeam(root, sid, task, [
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
         ])
@@ -628,7 +593,7 @@ describe("team_resume: recurse case", () => {
         const sid = "ses_rec_resume_running"
         tracked.push(sid)
         const task = makeRecurseTask({ decomposerMember: "alice", rootTaskId: "root-1" })
-        await setupFailedRecurse(root, sid, task, [
+        await setupFailedTeam(root, sid, task, [
             makeMember("alice", "ses_alice"),
             { ...makeMember("bob", "ses_bob"), status: "running" },
         ])
