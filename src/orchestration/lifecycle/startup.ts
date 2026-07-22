@@ -236,7 +236,8 @@ export async function startOrchestration(
             if (m.isMaster || !m.sessionId) continue
             try {
                 const result = await ctx.client.session.messages({ path: { id: m.sessionId } })
-                tokenBaselineByMember[m.name] = sumMemberTokens((result.data ?? []) as SdkMessage[])
+                const data = Array.isArray(result.data) ? result.data : []
+                tokenBaselineByMember[m.name] = sumMemberTokens(data as SdkMessage[])
             } catch {
                 // Best-effort: baseline stays 0 (over-counts, safe for budget).
             }
@@ -254,7 +255,6 @@ export async function startOrchestration(
             const prevStatus = team.status
             team.status = "busy"
             team.activeTask = built
-            await saveTeamState(team)
             // Reset per-member done/retry flags for the new run so a previous
             // run's acks don't bleed in. declaredDone only matters when
             // requireDoneAck is true, but cheap to always reset.
@@ -263,6 +263,9 @@ export async function startOrchestration(
                 m.retryCount = 0
                 m.turnCount = 0
             }
+            // Persist AFTER flag resets so a crash between saveTeamState and
+            // the reset loop does not leave stale member flags on disk.
+            await saveTeamState(team)
             try {
                 await dispatch(team, built)
             } catch (err) {

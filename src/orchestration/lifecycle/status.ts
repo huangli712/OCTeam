@@ -11,6 +11,7 @@ import type { MemberState } from "../../core/types.js"
 import { type Team, loadTeamState, saveTeamState } from "../../state/store.js"
 import { resolveTeamMember } from "../../state/resolve.js"
 import { recordEvent } from "../records/events.js"
+import { extractSessionStatusEntry } from "../protocol/output.js"
 import { checkTermination } from "./termination.js"
 import { handleReduceIdle } from "../modes/reduce.js"
 import { handleSignoffIdle } from "../control/signoff.js"
@@ -99,8 +100,8 @@ export async function handleStatusEvent(
     ctx: PluginContext,
     event: { properties?: Record<string, unknown>; type?: string },
 ): Promise<void> {
-    const sessionID = (event.properties as { sessionID?: string } | undefined)?.sessionID
-    if (!sessionID) return
+    const sessionID = event.properties?.sessionID
+    if (typeof sessionID !== "string" || !sessionID) return
     const member = await resolveTeamMember(ctx.storageRoot, sessionID)
     if (!member || member.isMaster) return
 
@@ -112,7 +113,7 @@ export async function handleStatusEvent(
         // The event payload is only a signal; re-query to read the authoritative
         // status entry for this session.
         const status = await ctx.client.session.status({})
-        const entry = (status.data as Record<string, { type: string; message?: string }> | undefined)?.[sessionID]
+        const entry = extractSessionStatusEntry(status.data, sessionID)
         if (entry?.type === "retry") {
             live.retryingSince ??= Date.now()
             if (Date.now() - live.retryingSince > RETRY_ESCALATION_MS) {

@@ -169,7 +169,8 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                         const uuid = indexToUuid.get(i)
                         if (!uuid) continue
                         const blockedBy = (t.blocked_by ?? [])
-                            .map(r => refToUuid.get(r)!)
+                            .map(r => refToUuid.get(r))
+                            .filter((id): id is string => id !== undefined)
                         if (blockedBy.length > 0) {
                             await updateTask(team.directory, uuid, { blockedBy })
                         }

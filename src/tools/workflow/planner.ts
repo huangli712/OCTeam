@@ -246,7 +246,7 @@ function coerceJsonArg(value: unknown, name: string): { value: unknown } | { err
         try {
             return { value: JSON.parse(value) }
         } catch (err) {
-            return { error: `Error: ${name} is a string but not valid JSON: ${(err as Error).message}` }
+            return { error: `Error: ${name} is a string but not valid JSON: ${err instanceof Error ? err.message : String(err)}` }
         }
     }
     return { value }

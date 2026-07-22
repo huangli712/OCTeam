@@ -23,6 +23,31 @@ import type { MemberState, SdkMessage } from "./core/types.js"
 import { logEvent, logSwallowed } from "./core/log.js"
 import { handleSessionDeleted } from "./orchestration/lifecycle/reconcile.js"
 
+/** Narrow an unknown SDK event into a type+properties shape, or null. */
+function narrowSdkEvent(event: unknown): { type?: string; properties?: Record<string, unknown> } | null {
+    if (typeof event !== "object" || event === null) return null
+    const e = event as Record<string, unknown>
+    return {
+        type: typeof e.type === "string" ? e.type : undefined,
+        properties: typeof e.properties === "object" && e.properties !== null
+            ? e.properties as Record<string, unknown>
+            : undefined,
+    }
+}
+
+/** Safely extract a string sessionID from an SDK event's properties or top-level id. */
+function sdkEventSessionID(event: unknown): string | undefined {
+    const narrowed = narrowSdkEvent(event)
+    if (!narrowed) return undefined
+    const fromProps = narrowed.properties?.sessionID
+    if (typeof fromProps === "string" && fromProps) return fromProps
+    if (typeof event === "object" && event !== null) {
+        const id = (event as Record<string, unknown>).id
+        if (typeof id === "string" && id) return id
+    }
+    return undefined
+}
+
 // Period between sweep-timer ticks (missed-idle reconciliation, termination enforcement).
 const SWEEP_INTERVAL_MS = 15_000
 
@@ -99,13 +124,14 @@ export function createCompactingHook(): NonNullable<Hooks["experimental.session.
  */
 export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event"]> {
     return async ({ event }) => {
-        const type = (event as { type?: string }).type
-        const props = (event as { properties?: Record<string, unknown> }).properties
+        const narrowed = narrowSdkEvent(event)
+        const type = narrowed?.type
+        const props = narrowed?.properties
 
         // session.status carries retry/error signals that session.idle does not.
         if (type === "session.status") {
             try {
-                await handleStatusEvent(ctx, event as { properties?: Record<string, unknown>; type?: string })
+                if (narrowed) await handleStatusEvent(ctx, narrowed)
             } catch (err) {
                 logSwallowed(ctx, "session.status handler failed", err, { type })
             }
@@ -116,15 +142,17 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
         // project-scope teams it owned and drop its index entry. User-scope is
         // flat (no session segment) so only unindex applies there.
         if (type === "session.deleted") {
-            const sid = (props as { sessionID?: string } | undefined)?.sessionID
-                ?? (event as { id?: string }).id
+            const sid = sdkEventSessionID(event)
             if (sid) await handleSessionDeleted(ctx, sid)
             return
         }
 
         if (type !== "session.idle") return
 
-        const sessionID = (props as { sessionID?: string } | undefined)?.sessionID
+        const sessionID = (() => {
+            const fromProps = props?.sessionID
+            return typeof fromProps === "string" && fromProps ? fromProps : undefined
+        })()
         if (!sessionID) return
 
         // Master drain-all: a master session may own MULTIPLE teams. Drain each

@@ -142,7 +142,7 @@ export function parseVerdict(
 ): { verdict?: Verdict; rationale: string; diff: string; score?: number; confidence?: number; issues?: WorkflowIssue[]; parseFailed?: boolean } {
     const p = extractTaggedJSON(rawText, "verdict", "判定")
     if (!p) return { rationale: "", diff: "", parseFailed: true }
-    const raw = typeof p.result === "string" ? p.result.toUpperCase() : ""
+    const raw = typeof p.result === "string" ? p.result.trim().toUpperCase() : ""
     if (raw !== "PASS" && raw !== "FAIL" && raw !== "INVALID") {
         return { rationale: "", diff: "", parseFailed: true }
     }

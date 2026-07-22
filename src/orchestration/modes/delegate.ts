@@ -17,6 +17,7 @@ import { type Team } from "../../state/store.js"
 import type { MemberState, SdkMessage } from "../../core/types.js"
 import { listAllTasks } from "../../state/tasks.js"
 import { dispatchToMember } from "../control/dispatch.js"
+import { extractSessionStatusEntry } from "../protocol/output.js"
 import { finishRun } from "../control/completion.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { captureMemberOutput } from "../records/capture.js"
@@ -90,7 +91,7 @@ export async function runDelegateStyleTail(
             const status = await ctx.client.session.status({})
             const trulyAllIdle = team.members.every(m => {
                 if (!m.sessionId) return true
-                const entry = (status.data as Record<string, { type?: string }> | undefined)?.[m.sessionId]
+                const entry = extractSessionStatusEntry(status.data, m.sessionId)
                 // A member is truly idle only when its SDK session reports
                 // "idle" (or the entry is missing). The SDK SessionStatus type
                 // has no "running" variant — an actively-working session

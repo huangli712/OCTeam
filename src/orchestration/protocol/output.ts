@@ -171,3 +171,24 @@ export function buildRolePrompt(
     )
     return lines.join("\n")
 }
+
+/**
+ * Type-safe extraction of a session's status entry from the SDK's
+ * session.status({}) response. The SDK types `data` loosely; this helper
+ * narrows it to the shape we rely on without an unsafe `as` cast at every
+ * call site.
+ *
+ * Returns undefined when the data shape does not match or the sessionID
+ * has no entry.
+ */
+export function extractSessionStatusEntry(
+    data: unknown,
+    sessionID: string,
+): { type: string; message?: string } | undefined {
+    if (typeof data !== "object" || data === null) return undefined
+    const entry = (data as Record<string, unknown>)[sessionID]
+    if (typeof entry !== "object" || entry === null) return undefined
+    const e = entry as Record<string, unknown>
+    if (typeof e.type !== "string") return undefined
+    return { type: e.type, message: typeof e.message === "string" ? e.message : undefined }
+}

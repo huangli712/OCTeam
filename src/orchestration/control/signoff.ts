@@ -112,9 +112,10 @@ export async function handleSignoffIdle(
             member: member.name,
         })
     }
-    // A missing or unparseable verdict counts as non-approval so a single
-    // reviewer's malformed output cannot stall the policy indefinitely.
-    task.signoffApprovals![member.name] = signoff?.approved === true
+    // signoffApprovals is initialized to {} in maybeTriggerSignoff before
+    // signoffStage is set. Guard against undefined for robustness.
+    if (!task.signoffApprovals) task.signoffApprovals = {}
+    task.signoffApprovals[member.name] = signoff?.approved === true
 
     if (task.signoffPolicy === "decider") {
         const reason = signoff?.approved === true ? "signoff_approved" : "signoff_rejected"

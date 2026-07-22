@@ -553,7 +553,7 @@ function expandMatrix(
     return combos.map(combo => {
         const vars: Record<string, string> = {}
         keys.forEach((key, i) => { vars[key] = combo[i] ?? "" })
-        const branchId = combo.join("_")
+        const branchId = sanitizeBranchId(combo.join("_"))
         return { id: branchId, steps: substituteVarsInSteps(templateSteps, vars) }
     })
 }
