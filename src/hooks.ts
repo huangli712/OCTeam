@@ -113,8 +113,10 @@ export async function persistTeamState(
  */
 export function createCompactingHook(): NonNullable<Hooks["experimental.session.compacting"]> {
     return async input => {
-        const sid = (input as { sessionID?: string }).sessionID
-        if (sid) compacting.set(sid, Date.now() + COMPACTING_FLAG_TTL_MS)
+        const sid = typeof input === "object" && input !== null
+            ? (input as Record<string, unknown>).sessionID
+            : undefined
+        if (typeof sid === "string" && sid) compacting.set(sid, Date.now() + COMPACTING_FLAG_TTL_MS)
     }
 }
 

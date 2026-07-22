@@ -22,8 +22,8 @@ export function defaultBounds(override?: Partial<Bounds>): Bounds {
         maxWallClockMinutes: 30,
         maxMemberTurns: 50,
         maxTasks: 200,
-        messagePayloadMaxBytes: 32768,
-        messageUnreadMaxBytes: 1048576,
+        messagePayloadMaxBytes: 32 * 1024,
+        messageUnreadMaxBytes: 1024 * 1024,
         ...override,
     }
 }

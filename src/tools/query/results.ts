@@ -1,3 +1,5 @@
+/** Byte cap for indented step output in the workflow tree display. */
+const STEP_OUTPUT_DISPLAY_CAP = 1024
 /**
  * team_results / team_result_get tools.
  *
@@ -95,7 +97,7 @@ function formatRunLine(r: RunRecord): string {
 
 /** Indent multi-line output by a prefix (for nested step output). */
 function formatIndentedOutput(output: string, indent: string): string {
-    const text = truncateOutput(output, 1024)
+    const text = truncateOutput(output, STEP_OUTPUT_DISPLAY_CAP)
     if (indent === "") return text
     return text.split("\n").map(line => `${indent}  ${line}`).join("\n")
 }
@@ -162,8 +164,8 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
 function formatWorkflowBranchLine(fanoutStep: WorkflowRunStep, branchId: string, branchIndex: number): string {
     const range = fanoutStep.fanout?.branchRanges[branchIndex]
     if (range === undefined) {
-    throw new Error(`workflow fanout step ${fanoutStep.step} missing branch range ${branchIndex}`)
-}
+        return `Error: workflow fanout step ${fanoutStep.step} missing branch range ${branchIndex}`
+    }
     const status = fanoutStep.branchStatuses?.[branchId] ?? "pending"
     return `  - Branch ${branchId} [${status}] steps ${range.startIndex + 1}-${range.endIndex + 1}`
 }
