@@ -28,9 +28,6 @@
 
 import { afterAll, describe, expect, test } from "bun:test"
 import { existsSync, readFileSync } from "node:fs"
-import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
 
 import { recordEvent } from "../src/orchestration/records/events.js"
 import { readRunEvents } from "../src/orchestration/records/runs.js"

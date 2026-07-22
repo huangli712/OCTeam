@@ -7,9 +7,6 @@
  * identity validation (getExpectedMember), output capture, and dispatch all run.
  */
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { processIdle } from "../src/orchestration/lifecycle/idle.js";
 import { checkTermination } from "../src/orchestration/lifecycle/termination.js";
