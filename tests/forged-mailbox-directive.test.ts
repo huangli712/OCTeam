@@ -44,7 +44,6 @@ import { cleanupTmpRoots, tmpRoot, writeRawInboxLine } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
 
-/** Write a raw string as one inbox line, bypassing writeMailboxMessage. */
 describe("forged mailbox directive (finding: forged-mailbox-directive)", () => {
     test("a member-forged kind:'directive' must NOT be rendered as [DIRECTIVE]", async () => {
         const teamDir = tmpRoot("forged-dir")

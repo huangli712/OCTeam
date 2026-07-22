@@ -38,7 +38,6 @@ function makeMessage(id: string, body = `body-${id}`): Message {
     } as Message
 }
 
-/** Write a raw string as one inbox line (no JSON validation). */
 /** Write a reserved file directly, bypassing pollMailbox (for stale/fresh/unreadable scenarios). */
 async function writeReservedFile(
     teamDir: string,

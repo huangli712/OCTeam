@@ -38,7 +38,6 @@ import { cleanupTmpRoots, tmpRoot, writeRawInboxLine } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
 
-/** Write a raw string as one inbox line, bypassing writeMailboxMessage. */
 describe("mailbox message id not validated (finding: mailbox-message-id-not-validated)", () => {
     test("a tampered inbox entry with an unsafe id must not block pollMailbox delivery", async () => {
         const teamDir = tmpRoot("mb-id-unsafe")

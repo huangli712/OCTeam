@@ -9,7 +9,7 @@ import { teamParallelTool } from "../src/tools/modes/parallel.js"
 import { teamPipelineTool } from "../src/tools/modes/pipeline.js"
 import { teamRecurseTool } from "../src/tools/modes/recurse.js"
 import { teamRouteTool } from "../src/tools/modes/router.js"
-import { initTeamState, loadTeamState, readTeamSpec, writeTeamSpec } from "../src/state/store.js"
+import { initTeamState, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
@@ -98,7 +98,7 @@ describe("team_fix_member: input validation", () => {
         const team = await loadTeamState(root, "alpha", sid)
         await team.mutex.runExclusive(async () => {
             team.status = "busy"
-            await (await import("../src/state/store.js")).saveTeamState(team)
+            await saveTeamState(team)
         })
 
         const result = await teamFixMemberTool(makeFullCtx(root)).execute(

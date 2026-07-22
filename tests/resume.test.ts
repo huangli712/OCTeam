@@ -48,9 +48,7 @@ describe("team_resume", () => {
             makeMember("bob", "ses_bob"),
         ])
         const calls: string[] = []
-        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
-            calls.push(req.path.id)
-        } })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: { path: { id: string } }) => { calls.push(req.path.id) } })
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -71,9 +69,7 @@ describe("team_resume", () => {
         })
         await setupFailed(root, sid, task, [makeMember("alice", "ses_alice")])
         const calls: string[] = []
-        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
-            calls.push(req.path.id)
-        } })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: { path: { id: string } }) => { calls.push(req.path.id) } })
 
         const res = await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
@@ -96,9 +92,7 @@ describe("team_resume", () => {
         alice.error = "crashed"
         const team = await setupFailed(root, sid, task, [alice])
         const calls: string[] = []
-        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
-            calls.push(req.path.id)
-        } })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: { path: { id: string } }) => { calls.push(req.path.id) } })
         await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -118,9 +112,7 @@ describe("team_resume", () => {
             makeMember("bob", "ses_bob"),
         ])
         const calls: string[] = []
-        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
-            calls.push(req.path.id)
-        } })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: { path: { id: string } }) => { calls.push(req.path.id) } })
         await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -163,9 +155,7 @@ describe("team_resume", () => {
         alice.declaredDone = false
         await setupFailed(root, sid, task, [alice])
         const calls: string[] = []
-        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
-            calls.push(req.path.id)
-        } })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: { path: { id: string } }) => { calls.push(req.path.id) } })
         await teamResumeTool(ctx).execute(
             { team_id: "alpha" },
             makeToolContext(sid),
@@ -192,9 +182,7 @@ describe("team_resume", () => {
             makeMember("bob", "ses_bob"),
         ])
         let bobPrompt = ""
-        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
-            if (req.path.id === "ses_bob") bobPrompt = req.body.parts[0].text
-        } })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: { path: { id: string } }) => { if (req.path.id === "ses_bob") bobPrompt = req.body.parts[0].text } })
         await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(bobPrompt).toContain("ALICE_UPSTREAM_OUTPUT")
     })
@@ -280,7 +268,7 @@ describe("team_resume", () => {
             makeMember("bob", "ses_bob"),
         ])
         const calls: string[] = []
-        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => { calls.push(req.path.id) } })
+        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: { path: { id: string } }) => { calls.push(req.path.id) } })
         await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
         expect(calls).toEqual([sid])
         expect(team.status).toBe("failed")

@@ -70,11 +70,6 @@ function parallelTask(): ActiveTask {
 // tmp roots created across tests; cleaned once at suite end.
 const roots: string[] = []
 afterEach(() => {
-    // Registry isolation: each test uses a unique tmpRoot (unique dir key), so
-    // the module-level teamRegistry does not leak entries across tests. Tmp
-    // dirs themselves are reaped by cleanupTmpRoots.
-})
-afterEach(() => {
     for (const r of roots.splice(0)) {
         try {
             const { rmSync } = require("node:fs")
