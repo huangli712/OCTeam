@@ -408,7 +408,7 @@ export async function gotoWorkflowStep(
     if (!gate || gate.kind !== "gate" || !target) return false;
 
     // Loop-controlled backward gotos use loopIterations instead of jumpCount.
-    const isLoopGoto = gate.loop !== undefined && targetIndex <= gateIndex && transition.reason.startsWith("on_fail");
+    const isLoopGoto = gate.loop !== undefined && targetIndex <= gateIndex && transition.verdict === "FAIL";
     const maxJ = gate.maxJumps ?? 3;
     if (!isLoopGoto) {
         gate.jumpCount = (gate.jumpCount ?? 0) + 1;

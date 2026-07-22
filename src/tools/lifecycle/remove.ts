@@ -70,7 +70,14 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 }
                 const specIdx = spec.members.findIndex(m => m.name === args.member_name)
                 if (specIdx !== -1) spec.members.splice(specIdx, 1)
-                team.members.splice(stateIdx, 1)
+                // Recompute index INSIDE the mutex: a concurrent remove may have
+                // shifted the array, making the outside-mutex stateIdx stale.
+                const currentIdx = team.members.findIndex(m => m.name === args.member_name)
+                if (currentIdx === -1 || team.members.length <= 1) {
+                    staleState = true
+                    return
+                }
+                team.members.splice(currentIdx, 1)
 
                 await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
                 await saveTeamState(team)

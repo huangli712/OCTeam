@@ -15,7 +15,7 @@
  */
 
 import { existsSync } from "node:fs"
-import { writeFile } from "node:fs/promises"
+import { unlink, writeFile } from "node:fs/promises"
 import path from "node:path"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
@@ -520,7 +520,13 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
         )
     }
     await writeFile(teamPath, `${JSON.stringify(team, null, 4)}\n`)
-    await writeFile(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`)
+    try {
+        await writeFile(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`)
+    } catch (err) {
+        // Rollback: remove the team loader so we don't leave a half-written pair.
+        await unlink(teamPath).catch(() => { /* best-effort rollback */ })
+        throw err
+    }
     return (
         `Wrote ${teamFileName(args.team_id)} and ${workflowFileName(args.team_id)}`
         + ` under ${ctx.directory}.\n\n${artifact}`

@@ -10,6 +10,7 @@ import type { Team } from "../../state/store.js";
 import { prependStandingInstruction } from "../control/dispatch.js";
 import { truncateOutput } from "../protocol/output.js";
 import { recordEvent } from "../records/events.js";
+import { finishRun } from "../control/completion.js";
 
 /** Hard byte cap on assembled upstream context to prevent unbounded prompt growth. */
 const UPSTREAM_TOTAL_CAP = 65_536;
@@ -63,7 +64,14 @@ export async function advanceToStage(
     if (!task) return;
     const member = team.members.find((candidate) => candidate.name === stage.member);
     if (!member?.sessionId) {
-        throw new Error(`advanceToStage: member "${stage.member}" has no session`);
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "errored",
+            member: stage.member,
+            detail: `advanceToStage: member "${stage.member}" has no session`,
+        });
+        await finishRun(ctx, team, `stage_failed:missing_session:${stage.member}`, "failed");
+        return;
     }
     const upstream = buildUpstreamContext(
         task.stages,

@@ -93,7 +93,7 @@ function checkStep(context: WorkflowInvariantContext, index: number, step: Workf
 
     switch (step.kind) {
         case "task": {
-            if (step.taskAttempts !== undefined && step.taskAttempts > (step.maxTaskRetries ?? 0)) {
+            if (step.taskAttempts !== undefined && step.taskAttempts > (step.maxTaskRetries ?? 0) + 1) {
                 context.violations.push(
                     `step ${index}: taskAttempts ${step.taskAttempts} exceeds cap ${step.maxTaskRetries ?? 0}`,
                 )

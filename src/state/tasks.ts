@@ -373,10 +373,17 @@ export async function reapStaleClaims(teamDirectory: string): Promise<void> {
         if (task.status !== "claimed") continue
         const fresh = await lockFresh(claimLockPath(teamDirectory, task.id), CLAIM_TTL_MS)
         if (isClaimStale(fresh, task.claimedAt ?? 0, Date.now(), CLAIM_TTL_MS)) {
-            await updateTask(teamDirectory, task.id, {
-                status: "pending",
-                owner: undefined,
-            })
+            try {
+                await updateTask(teamDirectory, task.id, {
+                    status: "pending",
+                    owner: undefined,
+                }, { expectedStatus: "claimed" })
+            } catch (err) {
+                // Task transitioned out of "claimed" (e.g. owner moved to "in_progress")
+                // between our stale check and the update — do NOT clobber the new status.
+                if (err instanceof TaskStatusError) continue
+                throw err
+            }
         }
     }
 }

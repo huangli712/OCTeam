@@ -113,7 +113,7 @@ describe("advanceToStage", () => {
         expect(promptAsync).toHaveBeenCalledTimes(0)
     })
 
-    test("member has no sessionId: rejects with 'has no session'", async () => {
+    test("member has no sessionId: fails the run gracefully instead of throwing", async () => {
         const root = tmpRoot("ats-nosess")
         const sid = "ses_ats_nosess"
         tracked.push(sid)
@@ -125,10 +125,12 @@ describe("advanceToStage", () => {
         })
 
         const stage: Stage = { member: "alice", task: "x", completed: false }
-        expect(advanceToStage(ctx, team, stage)).rejects.toThrow(/has no session/)
+        await advanceToStage(ctx, team, stage) // does not throw
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeFalsy()
     })
 
-    test("unknown member name: rejects with 'has no session'", async () => {
+    test("unknown member name: fails the run gracefully instead of throwing", async () => {
         const root = tmpRoot("ats-unknown")
         const sid = "ses_ats_unknown"
         tracked.push(sid)
@@ -140,7 +142,9 @@ describe("advanceToStage", () => {
         })
 
         const stage: Stage = { member: "ghost", task: "x", completed: false }
-        expect(advanceToStage(ctx, team, stage)).rejects.toThrow(/has no session/)
+        await advanceToStage(ctx, team, stage) // does not throw
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeFalsy()
     })
 
     test("injects upstream context with [Output from] label and [Your task] header", async () => {
