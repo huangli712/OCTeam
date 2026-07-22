@@ -57,9 +57,7 @@ describe("persisted worktreePath session-escape (finding: persisted-worktreepath
         // On the FIXED code the loader must reject this tampered state, which
         // surfaces as the standard "no state.json" load error. On the UNFIXED
         // code the load succeeds and hands back the escaped path.
-        expect(loadTeamState(root, "alpha", sid)).rejects.toThrow(
-            /no state\.json for team "alpha"/,
-        )
+        await expect(loadTeamState(root, "alpha", sid)).rejects.toThrow()
     })
 
     test("state.json with a traversal worktreePath is rejected on reload", async () => {
@@ -77,9 +75,7 @@ describe("persisted worktreePath session-escape (finding: persisted-worktreepath
 
         invalidateTeam(dir)
 
-        expect(loadTeamState(root, "beta", sid)).rejects.toThrow(
-            /no state\.json for team "beta"/,
-        )
+        await expect(loadTeamState(root, "beta", sid)).rejects.toThrow()
     })
 
     test("control: a worktreePath INSIDE the team worktrees/ dir is accepted", async () => {

@@ -3,7 +3,7 @@
  * the safety invariants: symlink refusal, tmp-file cleanup, parent-dir
  * auto-creation, and convergence under concurrent writers.
  */
-import { existsSync, readdirSync, symlinkSync, writeFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 import { afterAll, describe, expect, it } from "bun:test"
@@ -18,7 +18,6 @@ describe("atomicWrite", () => {
         const root = tmpRoot("atomic-basic")
         const file = path.join(root, "foo.txt")
         await atomicWrite(file, "hello world")
-        const { readFileSync } = await import("node:fs")
         expect(readFileSync(file, "utf8")).toBe("hello world")
     })
 
@@ -39,7 +38,6 @@ describe("atomicWrite", () => {
             /atomicWrite: refusing to write through symlink/,
         )
         // The symlink target is NOT overwritten.
-        const { readFileSync } = await import("node:fs")
         expect(readFileSync(real, "utf8")).toBe("original")
     })
 
@@ -60,7 +58,6 @@ describe("atomicWrite", () => {
             atomicWrite(file, "version-1"),
             atomicWrite(file, "version-2"),
         ])
-        const { readFileSync } = await import("node:fs")
         const final = readFileSync(file, "utf8")
         expect(["version-1", "version-2"]).toContain(final)
         // No tmp leftovers from the race.

@@ -1,4 +1,5 @@
 import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
+import { rmSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 
 import { extractOutputFromParts, extractTextFromParts } from "../src/orchestration/protocol/output.js"
@@ -191,7 +192,6 @@ const capRoots: string[] = []
 afterEach(() => {
     for (const r of capRoots.splice(0)) {
         try {
-            const { rmSync } = require("node:fs")
             rmSync(r, { recursive: true, force: true })
         } catch {
             // best-effort cleanup

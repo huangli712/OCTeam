@@ -20,6 +20,7 @@
  */
 
 import { access, readFile } from "node:fs/promises"
+import { rmSync } from "node:fs"
 
 import { afterEach, describe, expect, mock, test } from "bun:test"
 
@@ -72,8 +73,7 @@ const roots: string[] = []
 afterEach(() => {
     for (const r of roots.splice(0)) {
         try {
-            const { rmSync } = require("node:fs")
-            rmSync(r, { recursive: true, force: true })
+        rmSync(r, { recursive: true, force: true })
         } catch {
             // best-effort
         }
