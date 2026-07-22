@@ -87,9 +87,12 @@ function makeCtx(opts: {
                     const entry = script[Math.min(i, script.length - 1)] ?? []
                     return { data: entry }
                 }),
+                delete: mock(async () => {
+                    return {}
+                }),
             },
         },
-    } as unknown as PluginContext
+    }
     return { ctx, rec }
 }
 

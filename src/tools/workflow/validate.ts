@@ -780,8 +780,7 @@ export async function resolveWorkflowArgs(
         if (shapeError !== null) return shapeError
         return { ...args, steps: expandMatrixForeachFanout(args.steps) }
     }
-    if (args.workflow_file === undefined) return "Error: team_workflow must set exactly one of steps or workflow_file"
-    const loaded = await loadWorkflowFile(ctx.directory, args.workflow_file, args.vars ?? {})
+    const loaded = await loadWorkflowFile(ctx.directory, args.workflow_file!, args.vars ?? {})
     if ("error" in loaded) return loaded.error
     const shapeError = validateMatrixForeachShapeInSteps(loaded.steps)
     if (shapeError !== null) return shapeError

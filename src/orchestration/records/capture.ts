@@ -17,6 +17,9 @@ import { runMemberOutputPath, runReduceOutputPath, runSignoffOutputPath } from "
 import { recordEvent } from "./events.js"
 import type { MemberState, SdkMessage } from "../../core/types.js"
 
+/** Hard byte cap on the accumulated per-member output file to prevent unbounded
+ * growth from multi-turn members (reducer role, re-prompt cycles). */
+const ACCUMULATED_OUTPUT_CAP = 262_144 // 256 KiB
 /**
  * Build the accumulated run-member output by appending the current turn's
  * output to whatever was captured previously.
@@ -116,8 +119,12 @@ export async function captureMemberOutput(
         if (!isEnoent(err)) throw err
     }
     const accumulated = appendTurnBlock(prev, full, new Date().toISOString())
+    // Cap the accumulated file so multi-turn members do not grow it unbounded.
+    const capped = accumulated.length > ACCUMULATED_OUTPUT_CAP
+        ? truncateOutput(accumulated, ACCUMULATED_OUTPUT_CAP)
+        : accumulated
 
-    await atomicWrite(outPath, accumulated)
+    await atomicWrite(outPath, capped)
     // Record the message-history watermark so a re-entry whose history hasn't
     // grown is skipped (idempotency guard at the top).
     member.lastCapturedMsgCount = messages.length

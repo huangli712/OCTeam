@@ -178,34 +178,46 @@ export async function runPlannerSession(ctx: PluginContext, opts: RunPlannerOpti
         throw new Error("team_planner: session.create returned no child session id")
     }
 
-    const poll: PollConfig = { timeoutMs: opts.timeoutMs, pollMs: opts.pollMs }
-    let dispatchText = opts.prompt
-    let lastError = ""
-    for (let attempt = 0; attempt <= opts.maxRetries; attempt += 1) {
-        await ctx.client.session.promptAsync({
+    try {
+        const poll: PollConfig = { timeoutMs: opts.timeoutMs, pollMs: opts.pollMs }
+        let dispatchText = opts.prompt
+        let lastError = ""
+        for (let attempt = 0; attempt <= opts.maxRetries; attempt += 1) {
+            await ctx.client.session.promptAsync({
+                path: { id: childId },
+                body: {
+                    parts: [
+                        {
+                            type: "text",
+                            text: dispatchText,
+                            synthetic: false,
+                        }
+                    ],
+                    agent: PLANNER_AGENT,
+                },
+                query: { directory: ctx.directory },
+            })
+            const output = await pollForAssistantOutput(ctx, childId, poll)
+            const evaluated = evaluatePlannerOutput(output, opts.validate)
+            if ("value" in evaluated) return evaluated.value
+            lastError = evaluated.error
+            dispatchText = buildCorrectionPrompt(evaluated.error)
+        }
+        throw new Error(
+            `team_planner: planner did not return a valid team/workflow after`
+                + ` ${opts.maxRetries + 1} attempt(s). Last error: ${lastError}`,
+        )
+    } finally {
+        // Close the child session so it does not linger in the session list
+        // after the planner completes (success, error, or timeout).
+        await ctx.client.session.delete({
             path: { id: childId },
-            body: {
-                parts: [
-                    {
-                        type: "text",
-                        text: dispatchText,
-                        synthetic: false,
-                    }
-                ],
-                agent: PLANNER_AGENT,
-            },
             query: { directory: ctx.directory },
+        }).catch(() => {
+            // Best-effort: if delete fails the session lingers but does
+            // not block the planner result.
         })
-        const output = await pollForAssistantOutput(ctx, childId, poll)
-        const evaluated = evaluatePlannerOutput(output, opts.validate)
-        if ("value" in evaluated) return evaluated.value
-        lastError = evaluated.error
-        dispatchText = buildCorrectionPrompt(evaluated.error)
     }
-    throw new Error(
-        `team_planner: planner did not return a valid team/workflow after`
-            + ` ${opts.maxRetries + 1} attempt(s). Last error: ${lastError}`,
-    )
 }
 
 // --- deterministic validation (shared by the validate seam and op=write) ----

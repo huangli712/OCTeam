@@ -29,7 +29,7 @@ import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { ensureMembersReady } from "../control/members.js"
 import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import type { ActiveTask, DecisionRecord, ReducePolicy, SignoffPolicy, SdkMessage } from "../../core/types.js"
+import type { ActiveTask, DecisionRecord, MemberState, ReducePolicy, SignoffPolicy, SdkMessage } from "../../core/types.js"
 import { sumMemberTokens } from "../protocol/output.js"
 
 // ============================================================
@@ -232,16 +232,22 @@ export async function startOrchestration(
         // OpenCode sessions survive across runs; without this baseline, a
         // second run's tokenBudget check would include the first run's tokens.
         const tokenBaselineByMember: Record<string, number> = {}
-        for (const m of team.members) {
-            if (m.isMaster || !m.sessionId) continue
-            try {
-                const result = await ctx.client.session.messages({ path: { id: m.sessionId } })
-                const data = Array.isArray(result.data) ? result.data : []
-                tokenBaselineByMember[m.name] = sumMemberTokens(data as SdkMessage[])
-            } catch {
-                // Best-effort: baseline stays 0 (over-counts, safe for budget).
-            }
-        }
+        const baselineMembers = team.members.filter(
+            (m): m is MemberState & { sessionId: string } => !m.isMaster && typeof m.sessionId === "string",
+        )
+        const baselines = await Promise.all(
+            baselineMembers.map(async m => {
+                try {
+                    const result = await ctx.client.session.messages({ path: { id: m.sessionId } })
+                    const data = Array.isArray(result.data) ? result.data : []
+                    return [m.name, sumMemberTokens(data as SdkMessage[])] as const
+                } catch {
+                    // Best-effort: baseline stays 0 (over-counts, safe for budget).
+                    return [m.name, 0] as const
+                }
+            }),
+        )
+        for (const [name, tokens] of baselines) tokenBaselineByMember[name] = tokens
 
         // Step 6: Phase 3 — commit activeTask + initial dispatch (UNDER mutex).
         await team.mutex.runExclusive(async () => {

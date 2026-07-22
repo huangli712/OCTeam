@@ -124,7 +124,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     const signoffErr = validateSignoff(args, team)
                     if (signoffErr) return signoffErr
                     // Validate reducer_member is a real member.
-                    if (args.reduce_policy && args.reduce_policy !== "summarize" && args.reducer_member) {
+                    if (args.reducer_member) {
                         const err = assertMember(team, args.reducer_member, "reducer_member")
                         if (err) return err
                     }

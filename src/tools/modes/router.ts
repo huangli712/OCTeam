@@ -19,8 +19,8 @@ import {
 import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { validateSignoff } from "../support.js"
 
-// Re-export buildRouterPrompt for any external consumers that historically
-// imported it from this module. The canonical home is orchestration/modes/route.ts.
+// Re-export buildRouterPrompt for tests and any external consumers that
+// historically imported it from this module.
 export { buildRouterPrompt }
 
 /** Content-based routing: a router inspects input and dispatches to matching branches. */

@@ -93,14 +93,17 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
                 lines.push("Active: none")
             }
             lines.push("Members:")
-            for (const m of team.members) {
-                const unread = await countUnreadMessages(team.directory, m.name)
+            const unreadCounts = await Promise.all(
+                team.members.map(m => countUnreadMessages(team.directory, m.name)),
+            )
+            team.members.forEach((m, i) => {
+                const unread = unreadCounts[i]
                 const modelStr = m.model ? ` (${m.model})` : ""
                 const memberLine = `  - ${m.name}: ${m.status}${modelStr}`
                     + `${unread ? ` ${unread} unread` : ""}`
                     + `${m.turnCount ? ` ${m.turnCount} turns` : ""}`
                 lines.push(memberLine)
-            }
+            })
             return lines.join("\n")
         },
     })
