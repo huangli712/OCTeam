@@ -95,6 +95,9 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
                             return `Error: unknown member "${name}" in members`
                         }
                     }
+                    if (args.max_errored_members !== undefined && args.max_errored_members >= participants.length) {
+                        return `Error: max_errored_members (${args.max_errored_members}) must be less than participant count (${participants.length})`
+                    }
                     return null
                 },
                 // buildTask

@@ -70,9 +70,20 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                 const now = Date.now()
                 target.activatedAt = now
                 setActiveTeam(context.sessionID, target.directory)
+                // Deactivate the outgoing sibling so its state.json does not
+                // retain a stale activatedAt that would be incorrectly recovered
+                // as 'active' on restart.
+                if (activeSibling) {
+                    activeSibling.activatedAt = undefined
+                }
                 await saveTeamState(target).catch((err) =>
                     logSwallowed(ctx, "persist team state failed (activate)", err, { team: target.teamName })
                 )
+                if (activeSibling) {
+                    await saveTeamState(activeSibling).catch((err) =>
+                        logSwallowed(ctx, "persist team state failed (deactivate sibling)", err, { team: activeSibling!.teamName })
+                    )
+                }
                 result = `Team "${args.team_id}" activated.`
             })
             return result

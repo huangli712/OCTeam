@@ -121,6 +121,10 @@ export async function handleSignoffIdle(
         const reason = signoff?.approved === true ? "signoff_approved" : "signoff_rejected"
         await finishRun(ctx, team, reason, "idle")
     } else if (task.signoffPolicy === "peer-quorum") {
+        // Reviewer list: use current live members. An errored reviewer
+        // is excluded from the denominator, but their dispatch already
+        // happened — the barrier waits only for non-errored reviewers.
+        // This is the same set used by maybeTriggerSignoff at dispatch time.
         const reviewers = team.members
             .filter(member => !member.isMaster && member.sessionId && member.status !== "errored")
             .map(member => member.name)

@@ -130,6 +130,13 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                     specError = true
                     return
                 }
+                // Re-check duplicate name INSIDE the mutex: a concurrent add
+                // with the same explicit name could have passed the outside-mutex
+                // check (line 59) and already pushed to team.members.
+                if (args.name && team.members.some(m => m.name === memberName)) {
+                    staleState = true
+                    return
+                }
                 spec.members.push(newSpec)
                 team.members.push(newState)
 

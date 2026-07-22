@@ -55,9 +55,15 @@ export async function runDelegateStyleTail(
         // Idempotent: already-captured members yield empty outputs and return early.
         for (const m of team.members) {
             if (m.isMaster || !m.sessionId) continue
-            const res = await ctx.client.session.messages({ path: { id: m.sessionId } })
-            const msgs = asSdkMessages(res.data)
-            await captureMemberOutput(team, m, msgs)
+            try {
+                const res = await ctx.client.session.messages({ path: { id: m.sessionId } })
+                const msgs = asSdkMessages(res.data)
+                await captureMemberOutput(team, m, msgs)
+            } catch {
+                // Best-effort capture: a transient session.messages failure must
+                // not crash the delegate barrier — the member's last captured
+                // output (if any) will be used in the summary.
+            }
         }
         if (await maybeTriggerSignoff(ctx, team)) {
             return  // signoff in progress
