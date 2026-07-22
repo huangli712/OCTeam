@@ -14,14 +14,10 @@ import { buildSummary } from "../src/orchestration/records/summary.js"
 import { teamRecurseTool } from "../src/tools/modes/recurse.js"
 import { teamResumeTool } from "../src/tools/control/resume.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot, waitForEvent } from './helpers.js';
+import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, makeToolContext, statusIdleFrom, tmpRoot, waitForEvent } from './helpers.js';
 
 
 // --- fixtures ---
-
-function statusIdleFrom(outputs: Record<string, string>) {
-    return async () => ({ data: Object.fromEntries(Object.entries(outputs).map(([id]) => [id, { type: "idle" }])) })
-}
 
 function makeRecurseTask(opts: Partial<RecurseTask> = {}): RecurseTask {
     return {
@@ -415,9 +411,7 @@ afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
 
-function makeToolCtx(root: string): PluginContext {
-    return { storageRoot: root, scope: "project" } as unknown as PluginContext
-}
+
 
 async function setupRecurseTeam(
     root: string,
@@ -529,7 +523,7 @@ describe("teamRecurseTool: input validation", () => {
         const sid = "ses_rec_val_master"
         tracked.push(sid)
         await setupRecurseTeam(root, sid)
-        const result = await teamRecurseTool(makeToolCtx(root)).execute(
+        const result = await teamRecurseTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 task: "build the whole app",
@@ -545,7 +539,7 @@ describe("teamRecurseTool: input validation", () => {
         const sid = "ses_rec_val_unknown"
         tracked.push(sid)
         await setupRecurseTeam(root, sid)
-        const result = await teamRecurseTool(makeToolCtx(root)).execute(
+        const result = await teamRecurseTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 task: "build the whole app",
@@ -561,7 +555,7 @@ describe("teamRecurseTool: input validation", () => {
         const sid = "ses_rec_val_nodecider"
         tracked.push(sid)
         await setupRecurseTeam(root, sid)
-        const result = await teamRecurseTool(makeToolCtx(root)).execute(
+        const result = await teamRecurseTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 task: "build the whole app",
@@ -580,7 +574,7 @@ describe("teamRecurseTool: input validation", () => {
         const sid = "ses_rec_val_baddecider"
         tracked.push(sid)
         await setupRecurseTeam(root, sid)
-        const result = await teamRecurseTool(makeToolCtx(root)).execute(
+        const result = await teamRecurseTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 task: "build the whole app",

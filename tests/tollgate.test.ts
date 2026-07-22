@@ -830,9 +830,7 @@ afterEach(() => {
     for (const sid of tracked.splice(0)) unindexSession(sid)
 })
 
-function makeToolCtx(root: string): PluginContext {
-    return { storageRoot: root, scope: "project" } as unknown as PluginContext
-}
+
 
 function makeToolCtxWithCapture(root: string, calls: DispatchCall[]): PluginContext {
     return {
@@ -871,7 +869,7 @@ describe("teamTollgateTool: input validation", () => {
         const sid = "ses_tg_val_selfverify"
         tracked.push(sid)
         await setupTollgateTeam(root, sid)
-        const result = await teamTollgateTool(makeToolCtx(root)).execute(
+        const result = await teamTollgateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 stages: [{ member: "alice", task: "do x", verifier: "alice", criteria: "ok" }],
@@ -886,7 +884,7 @@ describe("teamTollgateTool: input validation", () => {
         const sid = "ses_tg_val_unknown"
         tracked.push(sid)
         await setupTollgateTeam(root, sid)
-        const result = await teamTollgateTool(makeToolCtx(root)).execute(
+        const result = await teamTollgateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 stages: [
@@ -903,7 +901,7 @@ describe("teamTollgateTool: input validation", () => {
         const sid = "ses_tg_val_badescalate"
         tracked.push(sid)
         await setupTollgateTeam(root, sid)
-        const result = await teamTollgateTool(makeToolCtx(root)).execute(
+        const result = await teamTollgateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 stages: [{ member: "alice", task: "do x", verifier: "bob", criteria: "ok" }],
@@ -923,7 +921,7 @@ describe("teamTollgateTool: input validation", () => {
             makeMember("alice", memberSid),
             makeMember("bob", "ses_bob"),
         ])
-        const result = await teamTollgateTool(makeToolCtx(root)).execute(
+        const result = await teamTollgateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 // Valid verifier (!= member) so the self-verification check is
@@ -947,7 +945,7 @@ describe("teamTollgateTool: input validation", () => {
             team.activeTask = makeTollgateTask({ gatedStages: [gate({ member: "alice", verifier: "bob" })] })
             await saveTeamState(team)
         })
-        const result = await teamTollgateTool(makeToolCtx(root)).execute(
+        const result = await teamTollgateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 stages: [{ member: "alice", task: "do x", verifier: "bob", criteria: "ok" }],
@@ -962,7 +960,7 @@ describe("teamTollgateTool: input validation", () => {
         const sid = "ses_tg_val_nodecider"
         tracked.push(sid)
         await setupTollgateTeam(root, sid)
-        const result = await teamTollgateTool(makeToolCtx(root)).execute(
+        const result = await teamTollgateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 stages: [{ member: "alice", task: "do x", verifier: "bob", criteria: "ok" }],

@@ -21,7 +21,7 @@ import {
 } from "../src/messaging/mailbox.js"
 import { RESERVATION_TTL_MS } from "../src/state/locks.js"
 import { inboxPath, reservedDir, reservedPath } from "../src/state/paths.js"
-import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, tmpRoot, writeRawInboxLine } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
 
@@ -39,12 +39,6 @@ function makeMessage(id: string, body = `body-${id}`): Message {
 }
 
 /** Write a raw string as one inbox line (no JSON validation). */
-async function writeRawInboxLine(teamDir: string, recipient: string, line: string): Promise<void> {
-    const p = inboxPath(teamDir, recipient)
-    await fs.mkdir(path.dirname(p), { recursive: true })
-    await fs.appendFile(p, line + "\n", "utf8")
-}
-
 /** Write a reserved file directly, bypassing pollMailbox (for stale/fresh/unreadable scenarios). */
 async function writeReservedFile(
     teamDir: string,

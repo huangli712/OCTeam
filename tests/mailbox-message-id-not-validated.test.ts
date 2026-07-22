@@ -34,17 +34,11 @@ import path from "node:path"
 import type { Message } from "../src/core/types.js"
 import { pollMailbox, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { inboxPath } from "../src/state/paths.js"
-import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, tmpRoot, writeRawInboxLine } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
 
 /** Write a raw string as one inbox line, bypassing writeMailboxMessage. */
-async function writeRawInboxLine(teamDir: string, recipient: string, line: string): Promise<void> {
-    const p = inboxPath(teamDir, recipient)
-    await fs.mkdir(path.dirname(p), { recursive: true })
-    await fs.appendFile(p, line + "\n", "utf8")
-}
-
 describe("mailbox message id not validated (finding: mailbox-message-id-not-validated)", () => {
     test("a tampered inbox entry with an unsafe id must not block pollMailbox delivery", async () => {
         const teamDir = tmpRoot("mb-id-unsafe")

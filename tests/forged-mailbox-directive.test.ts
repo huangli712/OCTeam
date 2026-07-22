@@ -40,17 +40,11 @@ import type { Message } from "../src/core/types.js"
 import { pollMailbox, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { formatMailboxInjection } from "../src/messaging/format.js"
 import { inboxPath } from "../src/state/paths.js"
-import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, tmpRoot, writeRawInboxLine } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
 
 /** Write a raw string as one inbox line, bypassing writeMailboxMessage. */
-async function writeRawInboxLine(teamDir: string, recipient: string, line: string): Promise<void> {
-    const p = inboxPath(teamDir, recipient)
-    await fs.mkdir(path.dirname(p), { recursive: true })
-    await fs.appendFile(p, line + "\n", "utf8")
-}
-
 describe("forged mailbox directive (finding: forged-mailbox-directive)", () => {
     test("a member-forged kind:'directive' must NOT be rendered as [DIRECTIVE]", async () => {
         const teamDir = tmpRoot("forged-dir")

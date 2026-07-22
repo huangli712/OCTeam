@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
 import type { RecurseTask } from "../src/core/types.js"
-import { makeCtx, makeTeam } from "./helpers.js"
+import { makeCtx, makeTeam, statusIdleFrom } from './helpers.js';
 
 /**
  * Regression for finding recurse-deleted-tasks-count-against-cap.
@@ -25,10 +25,6 @@ import { makeCtx, makeTeam } from "./helpers.js"
  * root re-queued as a pending aggregator).
  */
 
-
-function statusIdleFrom(outputs: Record<string, string>) {
-    return async () => ({ data: Object.fromEntries(Object.entries(outputs).map(([id]) => [id, { type: "idle" }])) })
-}
 
 function makeRecurseTask(): RecurseTask {
     return {

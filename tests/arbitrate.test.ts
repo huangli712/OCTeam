@@ -482,9 +482,7 @@ afterEach(() => {
 })
 
 /** Minimal PluginContext exposing only storageRoot (teamArbitrateTool validation). */
-function makeToolCtx(root: string): PluginContext {
-    return { storageRoot: root, scope: "project" } as unknown as PluginContext
-}
+
 
 /** Create an active on-disk team and index its master session. */
 async function setupArbitrateTeam(
@@ -504,7 +502,7 @@ describe("teamArbitrateTool: input validation", () => {
         const sid = "ses_arb_val_master"
         tracked.push(sid)
         await setupArbitrateTeam(root, sid)
-        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+        const result = await teamArbitrateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 task: "Should we ship on Friday?",
@@ -521,7 +519,7 @@ describe("teamArbitrateTool: input validation", () => {
         const sid = "ses_arb_val_dupnames"
         tracked.push(sid)
         await setupArbitrateTeam(root, sid)
-        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+        const result = await teamArbitrateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 task: "Should we ship on Friday?",
@@ -538,7 +536,7 @@ describe("teamArbitrateTool: input validation", () => {
         const sid = "ses_arb_val_selfdebater"
         tracked.push(sid)
         await setupArbitrateTeam(root, sid)
-        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+        const result = await teamArbitrateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 task: "Should we ship on Friday?",
@@ -555,7 +553,7 @@ describe("teamArbitrateTool: input validation", () => {
         const sid = "ses_arb_val_unknown"
         tracked.push(sid)
         await setupArbitrateTeam(root, sid)
-        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+        const result = await teamArbitrateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 task: "Should we ship on Friday?",
@@ -572,7 +570,7 @@ describe("teamArbitrateTool: input validation", () => {
         const sid = "ses_arb_val_nodecider"
         tracked.push(sid)
         await setupArbitrateTeam(root, sid)
-        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+        const result = await teamArbitrateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 task: "Should we ship on Friday?",
@@ -592,7 +590,7 @@ describe("teamArbitrateTool: input validation", () => {
         const sid = "ses_arb_val_baddecider"
         tracked.push(sid)
         await setupArbitrateTeam(root, sid)
-        const result = await teamArbitrateTool(makeToolCtx(root)).execute(
+        const result = await teamArbitrateTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 task: "Should we ship on Friday?",

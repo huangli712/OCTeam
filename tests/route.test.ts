@@ -513,9 +513,7 @@ afterEach(() => {
 })
 
 /** Minimal PluginContext exposing only storageRoot (teamRouteTool validation). */
-function makeToolCtx(root: string): PluginContext {
-    return { storageRoot: root, scope: "project" } as unknown as PluginContext
-}
+
 
 /** Create an active on-disk team and index its master session. */
 async function setupRouteTeam(
@@ -535,7 +533,7 @@ describe("teamRouteTool: input validation", () => {
         const sid = "ses_route_val_master"
         tracked.push(sid)
         await setupRouteTeam(root, sid)
-        const result = await teamRouteTool(makeToolCtx(root)).execute(
+        const result = await teamRouteTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 router: "master",
@@ -552,7 +550,7 @@ describe("teamRouteTool: input validation", () => {
         const sid = "ses_route_val_dupnames"
         tracked.push(sid)
         await setupRouteTeam(root, sid)
-        const result = await teamRouteTool(makeToolCtx(root)).execute(
+        const result = await teamRouteTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 router: "router",
@@ -572,7 +570,7 @@ describe("teamRouteTool: input validation", () => {
         const sid = "ses_route_val_dupmembers"
         tracked.push(sid)
         await setupRouteTeam(root, sid)
-        const result = await teamRouteTool(makeToolCtx(root)).execute(
+        const result = await teamRouteTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 router: "router",
@@ -592,7 +590,7 @@ describe("teamRouteTool: input validation", () => {
         const sid = "ses_route_val_selftarget"
         tracked.push(sid)
         await setupRouteTeam(root, sid)
-        const result = await teamRouteTool(makeToolCtx(root)).execute(
+        const result = await teamRouteTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 router: "router",
@@ -609,7 +607,7 @@ describe("teamRouteTool: input validation", () => {
         const sid = "ses_route_val_unknown"
         tracked.push(sid)
         await setupRouteTeam(root, sid)
-        const result = await teamRouteTool(makeToolCtx(root)).execute(
+        const result = await teamRouteTool(makeCtx({ storageRoot: root })).execute(
             {
                 team_id: "alpha",
                 router: "router",

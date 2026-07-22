@@ -1,4 +1,5 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { appendFile, mkdir } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
@@ -8,7 +9,7 @@ import type { PluginContext } from "../src/core/context.js"
 import type { Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import { waitUntil } from "../src/core/utils.js"
-import { runEventsPath } from "../src/state/paths.js"
+import { inboxPath, runEventsPath } from "../src/state/paths.js"
 
 // Track every tmp root created in this process. mkdtempSync dirs otherwise
 // leak: most suites only unindexSession in their afterEach and never remove the
@@ -347,4 +348,24 @@ export function makeTeam(opts: MakeTeamOptions = {}): Team {
         mutex: new AsyncMutex(),
         directory: opts.directory ?? mkdtempSync(path.join(os.tmpdir(), "octeam-team-")),
     } as unknown as Team
+}
+
+/**
+ * Append a raw line to a recipient's inbox file, creating the directory if
+ * needed. Used by mailbox regression tests to seed malformed/edge-case lines
+ * directly, bypassing writeMailboxMessage's validation.
+ */
+export async function writeRawInboxLine(teamDir: string, recipient: string, line: string): Promise<void> {
+    const p = inboxPath(teamDir, recipient)
+    await mkdir(path.dirname(p), { recursive: true })
+    await appendFile(p, line + "\n", "utf8")
+}
+
+/**
+ * Build a status() function that returns "idle" for sessions listed in
+ * `outputs` and nothing for others. Used by orchestration-handler suites
+ * to simulate member idle events deterministically.
+ */
+export function statusIdleFrom(outputs: Record<string, string>) {
+    return async () => ({ data: Object.fromEntries(Object.entries(outputs).map(([id]) => [id, { type: "idle" }])) })
 }
