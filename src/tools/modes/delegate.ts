@@ -155,14 +155,23 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     // a dependency *target*, not to *have* dependencies).
                     const refToUuid = new Map<string, string>()
                     const indexToUuid = new Map<number, string>()
-                    for (let i = 0; i < args.tasks.length; i++) {
-                        const t = args.tasks[i]
-                        const created = await createTask(team.directory, {
-                            subject: t.subject,
-                            description: t.description,
-                        })
-                        indexToUuid.set(i, created.id)
-                        if (t.ref) refToUuid.set(t.ref, created.id)
+                    try {
+                        for (let i = 0; i < args.tasks.length; i++) {
+                            const t = args.tasks[i]
+                            const created = await createTask(team.directory, {
+                                subject: t.subject,
+                                description: t.description,
+                            })
+                            indexToUuid.set(i, created.id)
+                            if (t.ref) refToUuid.set(t.ref, created.id)
+                        }
+                    } catch (err) {
+                        // Rollback: mark already-created tasks as deleted so they
+                        // do not linger as orphans counting against maxTasks.
+                        for (const uuid of indexToUuid.values()) {
+                            await updateTask(team.directory, uuid, { status: "deleted" }).catch(() => {})
+                        }
+                        throw err
                     }
                     for (let i = 0; i < args.tasks.length; i++) {
                         const t = args.tasks[i]
