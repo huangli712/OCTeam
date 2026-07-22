@@ -14,10 +14,10 @@
 
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
-import type { MemberState, SdkMessage } from "../../core/types.js"
+import type { MemberState } from "../../core/types.js"
 import { listAllTasks } from "../../state/tasks.js"
 import { dispatchToMember } from "../control/dispatch.js"
-import { extractSessionStatusEntry } from "../protocol/output.js"
+import { extractSessionStatusEntry, asSdkMessages } from "../protocol/output.js"
 import { finishRun } from "../control/completion.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { captureMemberOutput } from "../records/capture.js"
@@ -56,7 +56,7 @@ export async function runDelegateStyleTail(
         for (const m of team.members) {
             if (m.isMaster || !m.sessionId) continue
             const res = await ctx.client.session.messages({ path: { id: m.sessionId } })
-            const msgs = (res.data ?? []) as SdkMessage[]
+            const msgs = asSdkMessages(res.data)
             await captureMemberOutput(team, m, msgs)
         }
         if (await maybeTriggerSignoff(ctx, team)) {

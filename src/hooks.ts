@@ -19,7 +19,8 @@ import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent } from "./orchestration/lifecycle/status.js"
 import { processIdle } from "./orchestration/lifecycle/idle.js"
 import { checkTermination } from "./orchestration/lifecycle/termination.js"
-import type { MemberState, SdkMessage } from "./core/types.js"
+import type { MemberState } from "./core/types.js"
+import { asSdkMessages, extractSessionStatusEntry } from "./orchestration/protocol/output.js"
 import { logEvent, logSwallowed } from "./core/log.js"
 import { handleSessionDeleted } from "./orchestration/lifecycle/reconcile.js"
 
@@ -234,7 +235,7 @@ export function createTransformHook(
     return async (_input, output) => {
         // Read sessionID from the messages (input is `{}`). All messages in a
         // single transform call share one sessionID.
-        const messages = output.messages as SdkMessage[]
+        const messages = asSdkMessages(output.messages)
         const sessionID = messages.find(m => m.info?.sessionID)?.info?.sessionID
         if (!sessionID) return
 
@@ -339,7 +340,7 @@ export function createTransformHook(
 export async function sweepTeamOnce(
     ctx: PluginContext,
     team: Team,
-    statusMap: Record<string, { type: string }>,
+    statusMap: unknown,
 ): Promise<void> {
     await team.mutex.runExclusive(async () => {
         // Tombstone guard: a team_delete may have completed (set
@@ -366,7 +367,8 @@ export async function sweepTeamOnce(
         // 3. Missed-idle reconciliation.
         for (const member of team.members) {
             if (!member.sessionId || member.status !== "running") continue
-            if (statusMap[member.sessionId]?.type === "idle") {
+            const entry = extractSessionStatusEntry(statusMap, member.sessionId)
+            if (entry?.type === "idle") {
                 await processIdle(ctx, team, member, member.sessionId)
             }
         }
@@ -380,7 +382,7 @@ export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
         try {
             // No directory filter — include sessions in member worktrees too.
             const statusResult = await ctx.client.session.status({})
-            const statusMap = (statusResult.data ?? {}) as Record<string, { type: string }>
+            const statusMap = statusResult.data
             for (const team of activeTeams()) {
                 await sweepTeamOnce(ctx, team, statusMap)
             }

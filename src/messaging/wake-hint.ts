@@ -28,7 +28,7 @@ function evictStaleWakeHints(): void {
     const sorted = [...wakeHintLastSent.entries()].sort((a, b) => a[1] - b[1])
     const toRemove = sorted.length - WAKE_HINT_MAP_CAP
     for (let i = 0; i < toRemove; i++) {
-        wakeHintLastSent.delete(sorted[i]![0])
+        wakeHintLastSent.delete(sorted[i][0])
     }
 }
 

@@ -304,7 +304,7 @@ export function aggregateEnsembleVerdict(step: WorkflowStep): {
             diff: "",
         };
     }
-    const verdicts = results.map(r => r.verdict).filter(v => v !== undefined) as Verdict[];
+    const verdicts = results.map(r => r.verdict).filter((v): v is Verdict => v !== undefined);
     const passCount = verdicts.filter(v => v === "PASS").length;
     const failCount = verdicts.filter(v => v === "FAIL").length;
     const invalidCount = verdicts.filter(v => v === "INVALID").length;

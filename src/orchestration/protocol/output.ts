@@ -192,3 +192,13 @@ export function buildRolePrompt(
     )
     return lines.join("\n")
 }
+
+/**
+ * Type-safe cast of unknown SDK data to SdkMessage[] with a runtime Array
+ * guard. Use this instead of `data as SdkMessage[]` at every session.messages
+ * call site so an unexpected SDK response shape degrades to empty rather than
+ * propagating as a wrongly-typed reference.
+ */
+export function asSdkMessages(data: unknown): import("../../core/types.js").SdkMessage[] {
+    return Array.isArray(data) ? data as import("../../core/types.js").SdkMessage[] : []
+}

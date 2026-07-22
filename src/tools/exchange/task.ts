@@ -26,6 +26,7 @@ import {
     listAllTasks,
     updateTask,
 } from "../../state/tasks.js"
+import type { Task } from "../../core/types/task.js"
 import type { TaskStatus } from "../../state/tasks.js"
 
 /** Create a new task on the team's shared task list. */
@@ -87,7 +88,7 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
             // team_task_create calls cannot both read the same live-task count
             // and both bypass maxTasks. Without this, the check-then-act race
             // lets two callers both pass the limit and both create.
-            let task
+            let task: Task | undefined
             let limitError = false
             await team.mutex.runExclusive(async () => {
                 const liveTasks = (await listAllTasks(caller.directory)).filter(
@@ -109,7 +110,10 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     + "Complete or delete tasks before creating more."
                 )
             }
-            return `Task created: ${task!.id} [${task!.subject}]`
+            if (!task) {
+                return "Error: failed to create task (internal error)"
+            }
+            return `Task created: ${task.id} [${task.subject}]`
         },
     })
 }

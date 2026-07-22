@@ -23,7 +23,7 @@ import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../
 import { type Team, saveTeamState } from "../../state/store.js"
 import { countUnreadMessages } from "../../messaging/mailbox.js"
 import { sendWakeHint } from "../../messaging/wake-hint.js"
-import { sumMemberTokens } from "../protocol/output.js"
+import { asSdkMessages, sumMemberTokens } from "../protocol/output.js"
 import {
     findActiveWorkflowStepIndexForMember,
     getActiveWorkflowStepActors,
@@ -162,7 +162,7 @@ async function accountAndValidateIdle(
     sessionID: string,
 ): Promise<SdkMessage[] | null> {
     const msgs = await ctx.client.session.messages({ path: { id: sessionID } })
-    const messages = (msgs.data ?? []) as SdkMessage[]
+    const messages = asSdkMessages(msgs.data)
     if (team.activeTask) {
         // Step 4: Token accounting (recompute from full session history, then
         // subtract the per-run baseline so only THIS run's tokens are counted).

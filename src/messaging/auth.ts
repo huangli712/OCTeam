@@ -29,7 +29,7 @@ function evictStaleAuthDirectives(): void {
     const sorted = [...authenticatedDirectives.entries()].sort((a, b) => a[1].ts - b[1].ts)
     const toRemove = sorted.length - AUTH_DIRECTIVE_MAP_CAP
     for (let i = 0; i < toRemove; i++) {
-        authenticatedDirectives.delete(sorted[i]![0])
+        authenticatedDirectives.delete(sorted[i][0])
     }
 }
 

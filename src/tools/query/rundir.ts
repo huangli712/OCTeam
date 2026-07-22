@@ -45,7 +45,7 @@ export function teamRunDirTool(ctx: PluginContext): ToolDefinition {
             } else {
                 const records = await listRunRecords(caller.directory)
                 if (records.length === 0) return `No run records for team "${args.team_id}" yet.`
-                runId = records[0]!.runId
+                runId = records[0].runId
             }
 
             const absPath = path.resolve(runDir(caller.directory, runId))

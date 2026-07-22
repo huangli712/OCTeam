@@ -102,7 +102,7 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
                     const participants = args.members
                         ?? team.members.filter(m => !m.isMaster).map(m => m.name)
                     return {
-                        type: "quorum" as const,
+                        type: "quorum",
                         ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
                         stages: [],                         // ActiveTaskBase requires this field
                         task: args.task,

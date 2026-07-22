@@ -107,18 +107,19 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
 
                 // --- new_name: rename member across state, spec, index, mailbox ---
                 if (renaming) {
+                    const newName = args.new_name!
                     const oldName = member.name
-                    member.name = args.new_name!
-                    if (specMember) specMember.name = args.new_name!
+                    member.name = newName
+                    if (specMember) specMember.name = newName
                     if (member.sessionId) {
                         unindexSession(member.sessionId)
                         indexMember(
-                            member.sessionId, team.teamName, args.new_name!,
+                            member.sessionId, team.teamName, newName,
                             caller.leadSessionId, ctx.storageRoot,
                         )
                     }
                     try {
-                        await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, args.new_name!))
+                        await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, newName))
                     } catch (err) {
                         if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
                             changes.push(`warning: mailbox rename failed (${err instanceof Error ? err.message : String(err)})`)
@@ -127,19 +128,19 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     if (team.activeTask) {
                         const at = team.activeTask
                         if (at.tokensByMember[oldName] !== undefined) {
-                            at.tokensByMember[args.new_name!] = at.tokensByMember[oldName]
+                            at.tokensByMember[newName] = at.tokensByMember[oldName]
                             delete at.tokensByMember[oldName]
                         }
                         if (at.responses[oldName] !== undefined) {
-                            at.responses[args.new_name!] = at.responses[oldName]
+                            at.responses[newName] = at.responses[oldName]
                             delete at.responses[oldName]
                         }
-                        if (at.type === "loop" && at.deciderMember === oldName) at.deciderMember = args.new_name!
+                        if (at.type === "loop" && at.deciderMember === oldName) at.deciderMember = newName
                         for (const s of at.stages) {
-                            if (s.member === oldName) s.member = args.new_name!
+                            if (s.member === oldName) s.member = newName
                         }
                     }
-                    changes.push(`name: ${oldName} → ${args.new_name}`)
+                    changes.push(`name: ${oldName} → ${newName}`)
                 }
 
                 // --- new_role: normalize to a preset role ---
