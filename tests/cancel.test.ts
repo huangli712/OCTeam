@@ -1,6 +1,5 @@
 import { afterAll, describe, expect, mock, test } from "bun:test"
 
-import type { ToolContext } from "@opencode-ai/plugin"
 import type { ActiveTask } from "../src/core/types.js"
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { teamCancelTool } from "../src/tools/control/cancel.js"

@@ -30,7 +30,6 @@
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import type { ToolContext } from "@opencode-ai/plugin"
 import { teamCreateTool } from "../src/tools/lifecycle/create.js"
 import { loadTeamState } from "../src/state/store.js"
 import { unindexSession } from "../src/state/resolve.js"

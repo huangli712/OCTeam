@@ -9,7 +9,6 @@ import { persistRun, readRunRecord, runStatusFromReason } from "../src/orchestra
 import { buildSummary } from "../src/orchestration/records/summary.js"
 import type { ActiveTask, ArenaTask, MemberState, RunRecord } from "../src/core/types.js"
 import { type DispatchCall, cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
-import type { ToolContext } from "@opencode-ai/plugin"
 import type { PluginContext } from "../src/core/context.js"
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"

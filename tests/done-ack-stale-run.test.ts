@@ -29,7 +29,6 @@
 
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
-import type { ToolContext } from "@opencode-ai/plugin"
 import type { ParallelTask } from "../src/core/types.js"
 import { teamDoneTool } from "../src/tools/control/done.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"

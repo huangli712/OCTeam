@@ -24,7 +24,6 @@
 
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
-import type { ToolContext } from "@opencode-ai/plugin"
 import type { TeamSpec } from "../src/core/types.js"
 import { teamAddMemberTool } from "../src/tools/lifecycle/add.js"
 import { initTeamState, loadTeamState, writeTeamSpec } from "../src/state/store.js"

@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { ConsensusTask, MemberState } from "../src/core/types.js"
+import type { ConsensusTask } from "../src/core/types.js"
 import { handleConsensusIdle } from "../src/orchestration/modes/consensus.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/control/approve.js"
 import { loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeToolContext, tmpRoot } from './helpers.js';
 
 const AGREE = '<consensus>{"agreed":true}</consensus>'
 const DISAGREE = '<consensus>{"agreed":false}</consensus>'

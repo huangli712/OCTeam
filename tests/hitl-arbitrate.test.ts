@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { ArbitrateTask, MemberState } from "../src/core/types.js"
+import type { ArbitrateTask } from "../src/core/types.js"
 import { handleArbitrateIdle } from "../src/orchestration/modes/arbitrate.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/control/approve.js"
 import { loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeToolContext, tmpRoot } from './helpers.js';
 
 const RULING = '<ruling>{"decision":"ship Friday","rationale":"risk is low"}</ruling>'
 

@@ -31,7 +31,6 @@ import { afterAll, afterEach, describe, expect, mock, test } from "bun:test"
 import { createRequire } from "node:module"
 import fs from "node:fs/promises"
 
-import type { ToolContext } from "@opencode-ai/plugin"
 import { teamDir } from "../src/state/paths.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeToolContext, tmpRoot } from './helpers.js';

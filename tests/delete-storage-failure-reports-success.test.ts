@@ -75,7 +75,6 @@ mock.module("node:fs/promises", () => ({ ...mockedFs, default: mockedFs }))
 const { teamDeleteTool } = await import("../src/tools/lifecycle/delete.js")
 const { initTeamState } = await import("../src/state/store.js")
 
-import type { ToolContext } from "@opencode-ai/plugin"
 import { teamDir } from "../src/state/paths.js"
 import { unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
