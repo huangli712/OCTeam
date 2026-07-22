@@ -24,7 +24,7 @@ import type { PluginContext } from "../../core/context.js"
 import { isIndexedMember } from "../../state/resolve.js"
 import { validateMemberAgent, validateMemberName } from "../support.js"
 import { validateWorkflowSteps } from "../../orchestration/workflow/loader.js"
-import { validateWorkflowStepsAgainstMembers } from "./engine.js"
+import { validateWorkflowStepsAgainstMembers } from "./validate.js"
 
 /** Agent name for planner child sessions. */
 const PLANNER_AGENT = "oct-metis"

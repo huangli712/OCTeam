@@ -10,10 +10,8 @@
  */
 import { describe, expect, test } from "bun:test"
 
-import {
-    validateWorkflowStepsAgainstMembers,
-    type WorkflowToolStep,
-} from "../src/tools/workflow/engine.js"
+import { validateWorkflowStepsAgainstMembers } from "../src/tools/workflow/validate.js"
+import type { WorkflowToolStep } from "../src/core/types/workflow.js"
 
 describe("validateWorkflowStepsAgainstMembers", () => {
     test("passes a valid task + gate against supplied members", () => {

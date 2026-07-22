@@ -18,6 +18,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 import type { PluginContext } from "../src/core/context.js"
+import type { Project } from "@opencode-ai/sdk"
 import { createTools } from "../src/tools/index.js"
 // RED: this module + exports do not exist yet (implemented by Task 5).
 import { runPlannerSession, teamPlannerTool } from "../src/tools/workflow/planner.js"
@@ -68,6 +69,7 @@ function makeCtx(opts: {
         storageRoot: "/unused",
         scope: "project",
         directory: opts.directory ?? "/app",
+        project: { id: "test-project" } as Project,
         projectStorageRoot: "/unused",
         userStorageRoot: "/unused__user",
         client: {
@@ -92,7 +94,7 @@ function makeCtx(opts: {
                 }),
             },
         },
-    }
+    } as unknown as PluginContext
     return { ctx, rec }
 }
 
