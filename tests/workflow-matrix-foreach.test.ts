@@ -4,7 +4,7 @@ import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { checkTermination } from "../src/orchestration/lifecycle/termination.js"
 import { teamWorkflowTool } from "../src/tools/workflow/engine.js"
 import { expandMatrixForeachFanout } from "../src/tools/workflow/engine.js"
-import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { type DispatchCall, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import type { WorkflowToolStep } from "../src/tools/workflow/engine.js"

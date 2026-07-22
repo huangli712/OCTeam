@@ -23,7 +23,6 @@
 
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
-import type { ToolContext } from "@opencode-ai/plugin"
 import { teamRecurseTool } from "../src/tools/modes/recurse.js"
 import { createTask, listAllTasks } from "../src/state/tasks.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"

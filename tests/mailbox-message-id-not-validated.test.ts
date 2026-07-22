@@ -28,12 +28,9 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test"
-import fs from "node:fs/promises"
-import path from "node:path"
 
 import type { Message } from "../src/core/types.js"
 import { pollMailbox, writeMailboxMessage } from "../src/messaging/mailbox.js"
-import { inboxPath } from "../src/state/paths.js"
 import { cleanupTmpRoots, tmpRoot, writeRawInboxLine } from './helpers.js';
 
 afterAll(cleanupTmpRoots)

@@ -63,6 +63,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             // processIdle early-returns and saveTeamState skips persistence, preventing
             // the handler from recreating the just-deleted directory via atomicWrite's
             // mkdir({recursive:true}).
+            const worktreeErrors: string[] = []
             try {
                 await team.mutex.runExclusive(async () => {
                 team.deleted = true  // tombstone: prevent any racing handler from resurrecting this dir
@@ -86,13 +87,17 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 // master's map (unindexSession on the leader would wipe the session's
                 // OTHER teams).
                 for (const m of team.members) {
-                    await destroyWorktree(
-                        ctx.directory,
-                        m.worktreePath,
-                        worktreesDir(team.directory),
-                        team.teamName,
-                        m.name,
-                    )
+                    try {
+                        await destroyWorktree(
+                            ctx.directory,
+                            m.worktreePath,
+                            worktreesDir(team.directory),
+                            team.teamName,
+                            m.name,
+                        )
+                    } catch (err) {
+                        worktreeErrors.push(`${m.name}: ${err instanceof Error ? err.message : String(err)}`)
+                    }
                     if (m.sessionId) {
                         unindexSession(m.sessionId)
                         clearWakeHint(m.sessionId)
@@ -103,7 +108,10 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
                     invalidateTeam(team.directory)
                 })
-                return `Team "${args.team_id}" deleted${force ? " (forced)" : ""}.`
+                const wtWarning = worktreeErrors.length > 0
+                    ? ` (worktree cleanup failed for: ${worktreeErrors.join("; ")})`
+                    : ""
+                return `Team "${args.team_id}" deleted${force ? " (forced)" : ""}.${wtWarning}`
             } catch (err: unknown) {
                 // deleteTeamStorage failed (non-ENOENT fs.rm error). The on-disk
                 // state still exists — surface the failure so the caller knows

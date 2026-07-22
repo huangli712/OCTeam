@@ -38,9 +38,13 @@ import { logSwallowed } from "../../core/log.js"
 async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx: PluginContext): Promise<void> {
     if (team.status !== "busy" && team.status !== "idle") return
     await team.mutex.runExclusive(async () => {
-        await releaseStaleReservations(team.directory, "master").catch(() => {})
+        await releaseStaleReservations(team.directory, "master").catch(err =>
+            logSwallowed(ctx, "release stale reservations failed (master)", err, { team: team.teamName })
+        )
         for (const m of team.members) {
-            await releaseStaleReservations(team.directory, m.name).catch(() => {})
+            await releaseStaleReservations(team.directory, m.name).catch(err =>
+                logSwallowed(ctx, "release stale reservations failed", err, { team: team.teamName, member: m.name })
+            )
         }
         if (team.status === "busy") {
             // Do NOT auto-fail a busy team here. The original logic assumed the
@@ -140,14 +144,16 @@ export async function handleSessionDeleted(ctx: PluginContext, sessionID: string
             try {
                 const team = await loadTeamState(ctx.projectStorageRoot, teamName, leadSessionId)
                 invalidateTeam(team.directory)
-            } catch {
-                // already gone — skip
+            } catch (err) {
+                logSwallowed(ctx, "team state unreadable during session deletion", err, { team: teamName })
             }
         }
         const sessionDir = path.join(ctx.projectStorageRoot, sessionID)
         await fs.rm(sessionDir, { recursive: true, force: true })
-    } catch {
-        // best-effort — never block the event handler on cleanup
+    } catch (err) {
+        // best-effort — never block the event handler on cleanup, but log
+        // so orphaned session directories are diagnosable.
+        logSwallowed(ctx, "session deletion cleanup failed", err, { sessionID })
     }
     // Always unindex (covers lead sessions with teams AND bare member sessions).
     unindexSession(sessionID)

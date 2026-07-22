@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { MemberState, RecurseTask, Task } from "../src/core/types.js"
+import type { RecurseTask, Task } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/control/approve.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
-import { loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { saveTeamState, type Team } from "../src/state/store.js"
+import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeToolContext, tmpRoot } from './helpers.js';
 
 const DECOMPOSE = '<decompose>{"subtasks":[{"subject":"part A","description":"do A"},{"subject":"part B","description":"do B"}]}</decompose>'
 

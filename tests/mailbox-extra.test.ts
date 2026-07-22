@@ -20,7 +20,7 @@ import {
     writeMailboxMessage,
 } from "../src/messaging/mailbox.js"
 import { RESERVATION_TTL_MS } from "../src/state/locks.js"
-import { inboxPath, reservedDir, reservedPath } from "../src/state/paths.js"
+import { reservedDir, reservedPath } from "../src/state/paths.js"
 import { cleanupTmpRoots, tmpRoot, writeRawInboxLine } from './helpers.js';
 
 afterAll(cleanupTmpRoots)

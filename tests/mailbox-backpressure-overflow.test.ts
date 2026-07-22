@@ -26,7 +26,6 @@
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import type { ToolContext } from "@opencode-ai/plugin"
 import { teamSendMessageTool } from "../src/tools/exchange/messaging.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { indexMember, unindexSession } from "../src/state/resolve.js"

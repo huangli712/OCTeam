@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { MemberState, RouteBranch, RouteTask } from "../src/core/types.js"
+import type { RouteBranch, RouteTask } from "../src/core/types.js"
 import { handleRouteIdle } from "../src/orchestration/modes/route.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/control/approve.js"
 import { loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeToolContext, tmpRoot } from './helpers.js';
 
 const { setupTeam } = makeHitlLifecycle()
 

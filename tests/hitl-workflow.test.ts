@@ -6,12 +6,12 @@
  */
 import { describe, expect, test } from 'bun:test';
 
-import type { ActiveTask, MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
+import type { ActiveTask, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/control/approve.js"
 import { teamProgressTool } from "../src/tools/query/progress.js"
 import { loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
+import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeToolContext, tmpRoot } from './helpers.js';
 
 const { setupTeam } = makeHitlLifecycle()
 

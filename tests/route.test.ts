@@ -1,7 +1,6 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 
-import type { ToolContext } from "@opencode-ai/plugin"
 
 import { getExpectedMember } from "../src/orchestration/lifecycle/idle.js"
 import { handleRouteIdle } from "../src/orchestration/modes/route.js"
@@ -12,10 +11,9 @@ import { buildSummary } from "../src/orchestration/records/summary.js"
 import { checkTermination } from "../src/orchestration/lifecycle/termination.js"
 import { buildRouterPrompt, teamRouteTool } from "../src/tools/modes/router.js"
 import { teamResumeTool } from "../src/tools/control/resume.js"
-import type { ActiveTask, MemberState, RouteBranch, RouteTask } from "../src/core/types.js"
-import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
+import type { MemberState, RouteBranch, RouteTask } from "../src/core/types.js"
+import { initTeamState } from "../src/state/store.js"
 
-import type { PluginContext } from "../src/core/context.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeResumeCtx, makeState, makeTeam, makeToolContext, setupFailedTeam, tmpRoot, waitForEvent } from './helpers.js';
 

@@ -119,7 +119,11 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     }
                     try {
                         await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, args.new_name!))
-                    } catch { /* inbox may not exist yet */ }
+                    } catch (err) {
+                        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+                            changes.push(`warning: mailbox rename failed (${err instanceof Error ? err.message : String(err)})`)
+                        }
+                    }
                     if (team.activeTask) {
                         const at = team.activeTask
                         if (at.tokensByMember[oldName] !== undefined) {
