@@ -170,13 +170,20 @@ async function spawnMemberSafely(
         member.promptDelivered = false
         member.turnCount = 0
         if (worktreeCreated) {
-            await destroyWorktree(
-                ctx.directory,
-                member.worktreePath,
-                worktreesDir(team.directory),
-                team.teamName,
-                member.name,
-            )
+            try {
+                await destroyWorktree(
+                    ctx.directory,
+                    member.worktreePath,
+                    worktreesDir(team.directory),
+                    team.teamName,
+                    member.name,
+                )
+            } catch (worktreeError) {
+                // Do NOT let the cleanup error mask the original spawn error.
+                logSwallowed(ctx, "spawn rollback failed to destroy worktree", worktreeError, {
+                    team: team.teamName, member: member.name,
+                })
+            }
             member.worktreePath = undefined
         }
         throw err

@@ -269,7 +269,7 @@ export async function handleTollgateIdle(
         const producer = team.members.find(m => m.name === stage.member)
         if (producer?.sessionId) {
             const feedback =
-                `[Gate FAILED — attempt ${stage.attempts}/${maxR}]\n`
+                `[Gate FAILED — attempt ${stage.attempts}/${maxR}]`
                 + `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`
             await dispatchToMember(
                 ctx,
@@ -278,6 +278,12 @@ export async function handleTollgateIdle(
                 producer.worktreePath ?? ctx.directory,
                 team,
             )
+        } else {
+            // Producer has no live session — cannot re-dispatch. The tollgate
+            // would stall in "produce" forever waiting for a dispatch that
+            // cannot happen. Fail the run instead.
+            await finishRun(ctx, team, `tollgate_failed:${stage.member}:no_session`, "failed")
+            return
         }
         await saveTeamState(team)
         return

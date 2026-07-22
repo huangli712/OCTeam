@@ -56,17 +56,23 @@ export async function deliverSummaryToLeader(
  * deliverSummaryToLeader directly and perform the remaining steps themselves.
  */
 export async function finishRun(
-    ctx: PluginContext,
-    team: Team,
-    reason: string,
-    status: "idle" | "failed",
+ctx: PluginContext,
+team: Team,
+reason: string,
+status: "idle" | "failed",
 ): Promise<void> {
-    await deliverSummaryToLeader(
-        ctx,
-        team,
-        reason,
-        status === "failed" ? "failed" : "completed",
+    try {
+await deliverSummaryToLeader(
+ctx,
+team,
+reason,
+status === "failed" ? "failed" : "completed",
     )
-    clearActiveTask(team)
-    team.status = status
+    } finally {
+        // clearActiveTask and terminal status MUST execute even if delivery
+        // throws — otherwise the team is stuck in "busy" with an activeTask
+        // that can never be cleared.
+clearActiveTask(team)
+team.status = status
+}
 }
