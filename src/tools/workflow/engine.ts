@@ -45,7 +45,7 @@ import {
 
 // --- re-exports for backward compat ---
 
-// --- public types (canonical home: core/workflow-types.ts; re-exported here
+// --- public types (canonical home: core/types/workflow.ts; re-exported here
 //     for backward compatibility with existing imports from this module) ---
 
 export type {
@@ -59,8 +59,6 @@ export type {
     WorkflowWhere,
 } from "../../core/types/workflow.js"
 
-export { validateWorkflowStepsAgainstMembers } from "./validate.js"
-export { expandMatrixForeachFanout } from "./lower.js"
 
 // --- tool definition ---
 
