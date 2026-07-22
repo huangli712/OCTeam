@@ -37,7 +37,7 @@ export const signoffSchemaFields = {
         .max(1)
         .optional()
         .describe(
-            "fraction of members needed for peer-quorum (default 0.5 = majority). " +
+            "fraction of members needed for peer-quorum (default 0.5 = at least half approve). " +
             "Only when signoff_policy='peer-quorum'.",
         ),
 }

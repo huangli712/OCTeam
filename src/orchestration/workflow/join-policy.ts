@@ -34,7 +34,7 @@ export function joinPolicySatisfied(
     switch (policy) {
         case undefined:
         case "tolerance":
-            return survivors > 0 && errors <= join.maxErrored
+            return survivors > 0 && errors <= (join.maxErrored ?? 0)
         case "all":
         case "reduce":
         case "select":
@@ -52,7 +52,7 @@ export function joinPolicySatisfied(
         }
         default:
             policy satisfies never
-            return survivors > 0 && errors <= join.maxErrored
+            return survivors > 0 && errors <= (join.maxErrored ?? 0)
     }
 }
 
@@ -75,7 +75,7 @@ export function joinPolicyImpossible(
         case "tolerance":
             return (
                 remainingSurvivors === 0 ||
-                erroredBranchIds.length > join.maxErrored
+                erroredBranchIds.length > (join.maxErrored ?? 0)
             )
         case "all":
         case "reduce":
@@ -97,7 +97,7 @@ export function joinPolicyImpossible(
             policy satisfies never
             return (
                 remainingSurvivors === 0 ||
-                erroredBranchIds.length > join.maxErrored
+                erroredBranchIds.length > (join.maxErrored ?? 0)
             )
     }
 }
