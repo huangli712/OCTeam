@@ -101,7 +101,7 @@ describe("acquireLock handle/file leak (finding: acquire-lock-handle-leak)", () 
         failLockWrite = true
 
         // withLock must propagate the failure (non-EEXIST error at :155).
-        expect(
+        await expect(
             withLock(lockPath, async () => {
                 throw new Error("critical section must never run when acquire failed")
             }),

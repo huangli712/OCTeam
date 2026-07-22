@@ -102,7 +102,7 @@ describe("releaseLock error swallowed (finding: release-lock-error-swallowed)", 
         //     withLock resolves with "done" → the rejects assertion FAILS.
         // --- FIXED: non-ENOENT error propagates from releaseLock through the
         //     finally → withLock rejects → the assertion PASSES. ---
-        expect(
+        await expect(
             withLock(lockPath, async () => {
                 criticalRan = true
                 return "done"

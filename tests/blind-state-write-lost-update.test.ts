@@ -99,17 +99,17 @@ describe("blind state write lost update (finding: blind-state-write-lost-update)
         expect(afterA.members.find(m => m.name === "alice")!.status).toBe("errored")
 
         // --- Writer B: its in-memory snapshot is STALE (alice=idle — captured
-        //     before A's write). B mutates bob → completed and saves. ---
-        teamB.members.find(m => m.name === "bob")!.status = "idle"
+        //     before A's write). B mutates bob → running and saves. ---
+        teamB.members.find(m => m.name === "bob")!.status = "running"
         await saveTeamState(teamB)
 
         // --- ASSERT: BOTH writers' mutations must survive on disk. ---
         // On UNFIXED code: B's blind write serialized its whole stale snapshot
         // (alice=idle) → clobbered A's alice=errored → FAILS here.
         // On FIXED code (read-merge-write under the lock): B re-read inside the
-        // lock, saw alice=errored, preserved it, applied bob=completed → PASSES.
+        // lock, saw alice=errored, preserved it, applied bob=running → PASSES.
         const final = await readDiskState(dir)
         expect(final.members.find(m => m.name === "alice")!.status).toBe("errored")
-        expect(final.members.find(m => m.name === "bob")!.status).toBe("idle")
+        expect(final.members.find(m => m.name === "bob")!.status).toBe("running")
     })
 })

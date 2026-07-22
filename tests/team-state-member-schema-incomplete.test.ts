@@ -82,7 +82,7 @@ describe("team state member schema incomplete (finding: team-state-member-schema
 
             // releaseStaleReservations is exactly what hooks.ts:292 calls.
             // reservedDir → assertSafeSegment → throws.
-            expect(
+            await expect(
                 releaseStaleReservations(dir, evilMember.name),
             ).rejects.toThrow(/unsafe.*segment/i)
         } else {
@@ -122,7 +122,7 @@ describe("team state member schema incomplete (finding: team-state-member-schema
 
         // On UNFIXED code: passes isValidTeamState (status unchecked) → loads.
         // On FIXED code: status is required → rejected.
-        expect(loadTeamState(root, "alpha", sid)).rejects.toThrow(
+        await expect(loadTeamState(root, "alpha", sid)).rejects.toThrow(
             /no state\.json for team "alpha"/,
         )
     })

@@ -129,7 +129,7 @@ describe("claimTask lock handle leak (finding: claim-lock-handle-leak)", () => {
         failClaimLockWrite = true
 
         // claimTask must propagate the failure (non-EEXIST error at :272).
-        expect(
+        await expect(
             claimTask(dir, task.id, "alice"),
         ).rejects.toThrow("simulated writeFile failure")
 

@@ -35,7 +35,7 @@ describe("atomicWrite", () => {
         const link = path.join(root, "link.txt")
         writeFileSync(real, "original")
         symlinkSync(real, link)
-        expect(atomicWrite(link, "hijacked")).rejects.toThrow(
+        await expect(atomicWrite(link, "hijacked")).rejects.toThrow(
             /atomicWrite: refusing to write through symlink/,
         )
         // The symlink target is NOT overwritten.

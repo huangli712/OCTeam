@@ -283,7 +283,7 @@ describe("maybeAdvanceBarrier: edge cases", () => {
         expect(fired).toBe(0)
     })
 
-    test("onBarrier is called exactly once per ready state", async () => {
+    test("onBarrier is NOT idempotent — fires once per call (caller must guard)", async () => {
         const team = makeTeam({
             members: [
                 { name: "alice", declaredDone: true },

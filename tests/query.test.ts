@@ -95,7 +95,7 @@ describe("team_query tool", () => {
         expect(result).toContain(wtPath)
     })
 
-    test("member without model → model field shown as 'none'", async () => {
+    test("member without model → model field shown as 'unknown'", async () => {
         const root = tmpRoot("q-nomodel")
         const sid = "ses_q_nomodel"
         tracked.push(sid)
@@ -105,5 +105,6 @@ describe("team_query tool", () => {
             makeToolContext(sid),
         )
         expect(result).toContain("Model:")
+        expect(result).toContain("unknown")
     })
 })

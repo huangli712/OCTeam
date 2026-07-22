@@ -133,6 +133,7 @@ describe("delete storage failure reports success (finding: delete-storage-failur
         //     FIXED:   result is an error message or throw → does NOT contain
         //              "deleted" → assertion PASSES. ---
         expect(result).not.toContain("deleted")
+        expect(result).toMatch(/Error|fail|THREW/i)
 
         // Evidence of the harm: the team directory is still on disk (rm
         // genuinely failed). On restart, rebuildSessionIndex would scan disk

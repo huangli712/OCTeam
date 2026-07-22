@@ -323,7 +323,7 @@ describe("persistRun", () => {
         const dir = tmpTeamDir()
         const team = makeTeam({ directory: dir })
         await persistRun(team, "whatever")
-        expect(fs.readdir(runsDir(dir))).rejects.toThrow()
+        await expect(fs.readdir(runsDir(dir))).rejects.toThrow()
     })
 })
 
