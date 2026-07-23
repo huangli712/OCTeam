@@ -241,97 +241,104 @@ export function createTransformHook(
         const sessionID = messages.find(m => m.info?.sessionID)?.info?.sessionID
         if (!sessionID) return
 
-        const member = await resolveTeamMember(ctx.storageRoot, sessionID)
-        if (!member) return
+        try {
+            const member = await resolveTeamMember(ctx.storageRoot, sessionID)
+            if (!member) return
 
-        // The master (leader) mailbox is drained by the event handler's
-        // deliverQueuedResultsToMaster (promptAsync, distinct turn). Skip it here
-        // to avoid inline-injecting team results into the user's interactive turn.
-        if (member.isMaster) return
+            // The master (leader) mailbox is drained by the event handler's
+            // deliverQueuedResultsToMaster (promptAsync, distinct turn). Skip it here
+            // to avoid inline-injecting team results into the user's interactive turn.
+            if (member.isMaster) return
 
-        // Compaction guard. This hook also fires on a structuredClone of the
-        // head during compaction — injecting there is lost, but pollMailbox +
-        // ackMessages have real side effects → silent message loss. Consume the
-        // compacting flag once and skip the clone turn (TTL bounds a stuck flag).
-        const deadline = compacting.get(sessionID)
-        if (deadline !== undefined) {
-            compacting.delete(sessionID) // consume-once: next live transform proceeds
-            if (Date.now() < deadline) return
-        }
-        // Opportunistic eviction: sweep expired entries so the Map does not grow
-        // unbounded when sessions are deleted without ever triggering a transform.
-        if (compacting.size > 64) {
-            const now = Date.now()
-            for (const [sid, exp] of compacting) {
-                if (now >= exp) compacting.delete(sid)
+            // Compaction guard. This hook also fires on a structuredClone of the
+            // head during compaction — injecting there is lost, but pollMailbox +
+            // ackMessages have real side effects → silent message loss. Consume the
+            // compacting flag once and skip the clone turn (TTL bounds a stuck flag).
+            const deadline = compacting.get(sessionID)
+            if (deadline !== undefined) {
+                compacting.delete(sessionID) // consume-once: next live transform proceeds
+                if (Date.now() < deadline) return
             }
-        }
-
-        const unread = await pollMailbox(member.directory, member.name)
-        if (unread.length === 0) return
-
-        // runId-scoped directive filtering. A directive carrying a runId
-        // belongs to one specific orchestration run; once that run ends the
-        // directive is stale and must be dropped (not injected). Only consult
-        // team state when at least one runId-scoped directive is present — this
-        // guards against an unconditional team load on every turn.
-        let toInject = unread
-        const hasScopedDirective = unread.some(
-            m => m.kind === "directive" && m.runId !== undefined,
-        )
-        if (hasScopedDirective) {
-            let activeRunId: string | undefined
-            let injectAllScoped = false
-            try {
-                const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
-                activeRunId = team.activeTask?.runId
-            } catch {
-                // Team state unreadable — fall back to injecting all. The
-                // ack-full-set below still prevents a reservation loop.
-                injectAllScoped = true
-            }
-            toInject = unread.filter(m => {
-                // Non-directives, and directives without a runId, always pass
-                // (backward-compat with unscoped directives).
-                if (m.kind !== "directive" || m.runId === undefined) return true
-                // Scoped directive: inject only when it matches the active run;
-                // a mismatch is a stale directive from an ended run → skip.
-                // On unreadable team state, honor the "fall back to injecting
-                // all" contract above instead of silently dropping them.
-                if (injectAllScoped) return true
-                return m.runId === activeRunId
-            })
-        }
-
-        // Empty-injection guard: when every polled message was filtered out
-        // (e.g. all stale directives), inject no text part — but still ack the
-        // FULL reserved set below so the stale directives are dropped.
-        if (toInject.length > 0) {
-            const injection = formatMailboxInjection(toInject)
-
-            // Append the injection as a synthetic text part to an existing message
-            // (prefer the last user message) rather than fabricating a partial Message
-            // object. A hand-rolled { info: { role } } is missing required Message fields
-            // and risks crashing the host renderer / token accounting.
-            let targetIdx = -1
-            for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i]?.info?.role === "user") {
-                    targetIdx = i
-                    break
+            // Opportunistic eviction: sweep expired entries so the Map does not grow
+            // unbounded when sessions are deleted without ever triggering a transform.
+            if (compacting.size > 64) {
+                const now = Date.now()
+                for (const [sid, exp] of compacting) {
+                    if (now >= exp) compacting.delete(sid)
                 }
             }
-            if (targetIdx === -1) targetIdx = messages.length - 1
-            if (targetIdx < 0) return // nothing to attach to; leave reserved for retry (do NOT ack)
-            const target = messages[targetIdx]
-            const parts = (target.parts = target.parts ?? [])
-            parts.push({ type: "text", text: injection, synthetic: true })
-        }
 
-        // ACK the FULL reserved set, inject-or-not. Acking only the
-        // injected subset would strand skipped stale directives in `reserved` →
-        // releaseStaleReservations returns them after the TTL → pollMailbox
-        // re-reserves → infinite loop. Ack-all drops stale directives exactly once.
-        await ackMessages(member.directory, member.name, unread)
+            const unread = await pollMailbox(member.directory, member.name)
+            if (unread.length === 0) return
+
+            // runId-scoped directive filtering. A directive carrying a runId
+            // belongs to one specific orchestration run; once that run ends the
+            // directive is stale and must be dropped (not injected). Only consult
+            // team state when at least one runId-scoped directive is present — this
+            // guards against an unconditional team load on every turn.
+            let toInject = unread
+            const hasScopedDirective = unread.some(
+                m => m.kind === "directive" && m.runId !== undefined,
+            )
+            if (hasScopedDirective) {
+                let activeRunId: string | undefined
+                let injectAllScoped = false
+                try {
+                    const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
+                    activeRunId = team.activeTask?.runId
+                } catch {
+                    // Team state unreadable — fall back to injecting all. The
+                    // ack-full-set below still prevents a reservation loop.
+                    injectAllScoped = true
+                }
+                toInject = unread.filter(m => {
+                    // Non-directives, and directives without a runId, always pass
+                    // (backward-compat with unscoped directives).
+                    if (m.kind !== "directive" || m.runId === undefined) return true
+                    // Scoped directive: inject only when it matches the active run;
+                    // a mismatch is a stale directive from an ended run → skip.
+                    // On unreadable team state, honor the "fall back to injecting
+                    // all" contract above instead of silently dropping them.
+                    if (injectAllScoped) return true
+                    return m.runId === activeRunId
+                })
+            }
+
+            // Empty-injection guard: when every polled message was filtered out
+            // (e.g. all stale directives), inject no text part — but still ack the
+            // FULL reserved set below so the stale directives are dropped.
+            if (toInject.length > 0) {
+                const injection = formatMailboxInjection(toInject)
+
+                // Append the injection as a synthetic text part to an existing message
+                // (prefer the last user message) rather than fabricating a partial Message
+                // object. A hand-rolled { info: { role } } is missing required Message fields
+                // and risks crashing the host renderer / token accounting.
+                let targetIdx = -1
+                for (let i = messages.length - 1; i >= 0; i--) {
+                    if (messages[i]?.info?.role === "user") {
+                        targetIdx = i
+                        break
+                    }
+                }
+                if (targetIdx === -1) targetIdx = messages.length - 1
+                if (targetIdx < 0) return // nothing to attach to; leave reserved for retry (do NOT ack)
+                const target = messages[targetIdx]
+                const parts = (target.parts = target.parts ?? [])
+                parts.push({ type: "text", text: injection, synthetic: true })
+            }
+
+            // ACK the FULL reserved set, inject-or-not. Acking only the
+            // injected subset would strand skipped stale directives in `reserved` →
+            // releaseStaleReservations returns them after the TTL → pollMailbox
+            // re-reserves → infinite loop. Ack-all drops stale directives exactly once.
+            await ackMessages(member.directory, member.name, unread)
+        } catch (err) {
+            // The transform hook runs inside the user's interactive turn. An
+            // unhandled rejection here crashes that turn. Swallow and log so
+            // mailbox injection failures never break the host chat experience.
+            logSwallowed(ctx, "transform hook failed", err, { sessionID })
+        }
     }
 }
 
