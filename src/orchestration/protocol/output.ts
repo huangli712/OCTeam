@@ -202,3 +202,30 @@ export function buildRolePrompt(
 export function asSdkMessages(data: unknown): import("../../core/types.js").SdkMessage[] {
     return Array.isArray(data) ? data as import("../../core/types.js").SdkMessage[] : []
 }
+
+/**
+ * Severity ordering for workflow gate issue display: critical > high > medium > low.
+ * Shared by records/ledger.ts (live WorkflowStep) and tools/query/results.ts
+ * (read-only WorkflowRunStep) to avoid duplicated sort + format logic.
+ */
+const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+
+export interface WorkflowIssueLike {
+    severity?: string
+    message?: string
+}
+
+/**
+ * Format a gate step's structured issues as severity-sorted detail lines.
+ * Works for both WorkflowStep (live) and WorkflowRunStep (read-only) —
+ * both carry `issues?: WorkflowIssue[]`.
+ */
+export function formatWorkflowIssueDetail(issues: WorkflowIssueLike[] | undefined): string {
+    if (!issues || issues.length === 0) return ""
+    const sorted = [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity ?? ""] ?? 99) - (SEVERITY_ORDER[b.severity ?? ""] ?? 99))
+    const lines = sorted.map(issue => {
+        const msg = issue.message && issue.message.trim() !== "" ? `: ${issue.message}` : ""
+        return `    - [${issue.severity ?? "unknown"}]${msg}`
+    })
+    return "\n" + lines.join("\n")
+}

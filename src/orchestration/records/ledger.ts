@@ -7,11 +7,7 @@
  */
 
 import type { WorkflowStep } from "../../core/types.js";
-import { truncateOutput } from "../protocol/output.js";
-
-/** Per-issue detail lines for a gate step with structured verdict. Severity-sorted
- * (critical > high > medium > low) so the most actionable issues surface first. */
-const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+import { truncateOutput, formatWorkflowIssueDetail } from "../protocol/output.js";
 
 /** Whether the step list contains any fanout/join/branch structure. */
 function hasWorkflowBranchTree(steps: readonly WorkflowStep[]): boolean {
@@ -59,17 +55,6 @@ function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: Wo
         .join(", ")
 }
 
-/** Format the per-issue detail lines for a gate step's structured verdict, severity-sorted. */
-function formatWorkflowIssueDetail(s: WorkflowStep): string {
-    const issues = s.issues
-    if (!issues || issues.length === 0) return ""
-    const sorted = [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99))
-    const lines = sorted.map(issue => {
-        const msg = issue.message && issue.message.trim() !== "" ? `: ${issue.message}` : ""
-        return `    - [${issue.severity}]${msg}`
-    })
-    return "\n" + lines.join("\n")
-}
 
 /** Format a single branch line: id, status, and step range. */
 function formatWorkflowBranchLine(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
@@ -93,7 +78,7 @@ export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: W
             const target = workflowTargetLabel(step)
             const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
             const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""
-            return `${index + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${(step.attempts ?? 0) > 0 ? ` (${step.attempts} retries)` : ""}${invalidTag}${jumpTag}${formatWorkflowIssueDetail(step)}`
+            return `${index + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target} -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${(step.attempts ?? 0) > 0 ? ` (${step.attempts} retries)` : ""}${invalidTag}${jumpTag}${formatWorkflowIssueDetail(step.issues)}`
         }
         case "fanout": {
             const fanout = step.fanout

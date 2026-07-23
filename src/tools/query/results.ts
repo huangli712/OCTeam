@@ -16,7 +16,7 @@ import fs from "node:fs/promises"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import { truncateOutput } from "../../orchestration/protocol/output.js"
+import { truncateOutput, formatWorkflowIssueDetail } from "../../orchestration/protocol/output.js"
 import { formatWorkflowMermaid } from "../../orchestration/records/mermaid.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { listRunRecords, readRunRecord } from "../../orchestration/records/runs.js"
@@ -24,9 +24,6 @@ import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js
 import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
 import type { RunRecord, WorkflowRunStep } from "../../core/types.js"
 
-/** Per-issue detail lines for a gate step with structured verdict. Severity-sorted
- * (critical > high > medium > low) so the most actionable issues surface first. */
-const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
 
 /** Label for a gate's target step (for display in step lines). */
 function workflowTargetLabel(step: WorkflowRunStep): string {
@@ -131,7 +128,7 @@ function formatWorkflowStepLine(step: WorkflowRunStep): string {
                 ` ${step.dispatchedActor ?? step.verifier ?? "?"} verifies ${target}` +
                 ` -> ${step.verdict ?? "pending"}${workflowVerdictMetrics(step)}${attempts}` +
                 `${invalidTag}${malformedTag}${jumpTag}` +
-                `${workflowStepDurationTag(step)}${formatWorkflowIssueDetail(step)}` +
+                `${workflowStepDurationTag(step)}${formatWorkflowIssueDetail(step.issues)}` +
                 `${workflowStepControlsTag(step)}`
             )
         }
@@ -170,17 +167,6 @@ function formatWorkflowBranchLine(fanoutStep: WorkflowRunStep, branchId: string,
     return `  - Branch ${branchId} [${status}] steps ${range.startIndex + 1}-${range.endIndex + 1}`
 }
 
-/** Format a gate step's structured issues as severity-sorted detail lines. */
-function formatWorkflowIssueDetail(step: WorkflowRunStep): string {
-    const issues = step.issues
-    if (!issues || issues.length === 0) return ""
-    const sorted = [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 99) - (SEVERITY_ORDER[b.severity] ?? 99))
-    const lines = sorted.map(issue => {
-        const msg = issue.message && issue.message.trim() !== "" ? `: ${issue.message}` : ""
-        return `    - [${issue.severity}]${msg}`
-    })
-    return "\n" + lines.join("\n")
-}
 
 /** Render all workflow steps into display lines, handling fanout branch trees. */
 function formatWorkflowStepLines(steps: readonly WorkflowRunStep[]): string[] {
