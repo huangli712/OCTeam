@@ -22,10 +22,8 @@ import type {
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js";
 import { initTeamState, loadTeamState } from "../src/state/store.js";
 import type { Team } from "../src/state/store.js"
-import {
-    teamWorkflowTool,
-    type WorkflowToolStep,
-} from "../src/tools/workflow/engine.js";
+import { teamWorkflowTool } from "../src/tools/workflow/engine.js";
+import type { WorkflowToolStep } from "../src/core/types/workflow.js";
 import type { PluginContext } from "../src/core/context.js";
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, makeWorkflowTask, tmpRoot, type DispatchCall } from "./helpers.js";
 

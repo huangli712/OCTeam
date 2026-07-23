@@ -12,10 +12,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import type {
-    WorkflowStep,
-    WorkflowTask,
-} from "../../core/types.js"
+import type { WorkflowStep, WorkflowTask } from "../../core/types.js"
 import {
     advanceWorkflowStep,
     dispatchTaskStep,
@@ -31,33 +28,10 @@ import {
 import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState } from "../../state/store.js"
-
-import {
-    humanApprovalSchemaFields,
-    signoffSchemaFields
-} from "../schema.js"
+import { humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { lowerWorkflowSteps, toWorkflowStep } from "./lower.js"
 import { formatWorkflowDryRun } from "./format.js"
-import {
-    resolveWorkflowArgs,
-    validateWorkflowArgs,
-} from "./validate.js"
-
-// --- re-exports for backward compat ---
-
-// --- public types (canonical home: core/types/workflow.ts; re-exported here
-//     for backward compatibility with existing imports from this module) ---
-
-export type {
-    ResolvedWorkflowToolArgs,
-    WorkflowFanoutBranch,
-    WorkflowFanoutToolStep,
-    WorkflowLinearToolStep,
-    WorkflowStepRef,
-    WorkflowToolArgs,
-    WorkflowToolStep,
-    WorkflowWhere,
-} from "../../core/types/workflow.js"
+import { resolveWorkflowArgs, validateWorkflowArgs } from "./validate.js"
 
 // --- tool definition ---
 

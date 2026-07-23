@@ -19,7 +19,7 @@ import type {
     WorkflowToolStep,
     WorkflowToolArgs,
     ResolvedWorkflowToolArgs,
-} from "./engine.js"
+} from "../../core/types/workflow.js"
 import {
     assertNever,
     canConsumeWorkflowInput,
