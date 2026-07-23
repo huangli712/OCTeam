@@ -74,6 +74,8 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
 
             let restored: ActiveTask | undefined
             let resumeRaced = false
+            // Snapshot of errored members reset in Phase 1, for rollback if Phase 2/3 fails.
+            let memberSnapshot: Array<{ name: string; error?: string; declaredDone?: boolean; retryingSince?: number }> = []
 
             try {
                 // --- Phase 1 (mutex): snapshot + reset, DO NOT commit activeTask. ---
@@ -107,6 +109,8 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                             ) {
                                 continue
                             }
+                            // Snapshot before reset so Phase 2/3 failure can rollback.
+                            memberSnapshot.push({ name: m.name, error: m.error, declaredDone: m.declaredDone, retryingSince: m.retryingSince })
                             m.status = "idle"
                             m.error = undefined
                             m.declaredDone = false
@@ -163,6 +167,16 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     team.activeTask = undefined
                     team.status = "failed"
                     if (restored) team.lastInterruptedTask = restored
+                    // Restore member states that were reset in Phase 1 (errored→idle).
+                    for (const saved of memberSnapshot) {
+                        const m = team.members.find(mm => mm.name === saved.name)
+                        if (m) {
+                            m.status = "errored"
+                            m.error = saved.error
+                            m.declaredDone = saved.declaredDone
+                            m.retryingSince = saved.retryingSince
+                        }
+                    }
                     await saveTeamState(team)
                 })
                 const msg = e instanceof Error ? e.message : String(e)
