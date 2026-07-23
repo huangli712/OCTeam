@@ -59,7 +59,6 @@ export type {
     WorkflowWhere,
 } from "../../core/types/workflow.js"
 
-
 // --- tool definition ---
 
 /** Run a declarative workflow engine with task, gate, fanout, and join steps. */
