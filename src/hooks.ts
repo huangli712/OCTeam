@@ -258,6 +258,14 @@ export function createTransformHook(
             compacting.delete(sessionID) // consume-once: next live transform proceeds
             if (Date.now() < deadline) return
         }
+        // Opportunistic eviction: sweep expired entries so the Map does not grow
+        // unbounded when sessions are deleted without ever triggering a transform.
+        if (compacting.size > 64) {
+            const now = Date.now()
+            for (const [sid, exp] of compacting) {
+                if (now >= exp) compacting.delete(sid)
+            }
+        }
 
         const unread = await pollMailbox(member.directory, member.name)
         if (unread.length === 0) return
