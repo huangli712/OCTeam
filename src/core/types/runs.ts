@@ -17,74 +17,20 @@ import type {
     SignoffPolicy,
 } from "./orchestration.js"
 
-import type {
-    Verdict,
-    WorkflowBranchMetadata,
-    WorkflowEnsemblePolicy,
-    WorkflowEnsembleResult,
-    WorkflowFanoutMetadata,
-    WorkflowIssue,
-    WorkflowJoinMetadata,
-    WorkflowLoopConfig,
-    WorkflowOnInvalid,
-    WorkflowOnMalformed,
-    WorkflowRetryCondition,
-    WorkflowStepKind,
-} from "./workflow.js"
+import type { WorkflowStepBase } from "./workflow.js"
 
 /** Per-branch status within a workflow fanout. */
 export type WorkflowBranchStatus = "pending" | "completed" | "skipped" | "errored"
 
 /** Persisted snapshot of a single workflow step for run records. */
-export type WorkflowRunStep = {
+export type WorkflowRunStep = WorkflowStepBase & {
     index: number                      // zero-based internal workflow step index
     step: number                       // one-based display step number
-    kind: WorkflowStepKind
-    id?: string                        // stable step identifier when declared
-    member?: string
-    verifier?: string
-    verifiers?: readonly string[]
-    ensemblePolicy?: WorkflowEnsemblePolicy
-    ensembleQuorum?: number
-    ensembleResults?: Record<string, WorkflowEnsembleResult>
-    dispatchedActor?: string           // the actor (primary or fallback) that actually executed the step
     targetStep?: number                // one-based display primary target task step for gate steps
     targetSteps?: number[]             // one-based display multi-target task steps for gate steps
-    verdict?: Verdict
-    score?: number
-    confidence?: number
-    issues?: WorkflowIssue[]
-    attempts?: number
-    onInvalid?: WorkflowOnInvalid
-    onMalformed?: WorkflowOnMalformed
-    maxMalformedRetries?: number
-    malformedAttempts?: number
-    invalidAttempts?: number
-    jumpCount?: number
-    loop?: WorkflowLoopConfig
-    loopIterations?: number
-    skipped?: boolean
-    completed: boolean
-    output?: string                    // bounded task-step snapshot captured at completion
     outputBytes?: number
     joinedOutputBytes?: number
-    startedAt?: number
-    completedAt?: number
-    durationMs?: number
-    inputs?: number[]
-    exposeOutput?: boolean
-    retryOn?: WorkflowRetryCondition
-    maxTaskRetries?: number
-    taskAttempts?: number
-    fanout?: WorkflowFanoutMetadata
-    branch?: WorkflowBranchMetadata
-    join?: WorkflowJoinMetadata
     branchStatuses?: Record<string, WorkflowBranchStatus>
-    // Static step-level control config (post-run audit mirror of the runtime
-    // declared controls). approvalBeforeGranted is transient and not persisted.
-    approvalBefore?: boolean
-    approvalAfter?: boolean
-    maxOutputBytes?: number
 }
 
 /** Run outcome: completed successfully or failed. */

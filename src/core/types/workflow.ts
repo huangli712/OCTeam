@@ -141,42 +141,70 @@ export type WorkflowJoinMetadata = {
 // WorkflowStep — the runtime step (task, gate, fanout marker, or join marker)
 // ---------------------------------------------------------------------------
 
-/** A single workflow step — task, gate, fanout marker, or join marker. */
-export type WorkflowStep = {
+/**
+ * Fields shared between {@link WorkflowStep} (runtime) and {@link WorkflowRunStep}
+ * (persisted run record). Extracting this base prevents field drift: adding a
+ * field here automatically makes it available in both representations.
+ *
+ * Fields that are runtime-only (e.g. dispatchedAt, correlationId, approvalBeforeGranted)
+ * or persisted-only (e.g. index, step, outputBytes) live on the respective subtypes.
+ */
+export type WorkflowStepBase = {
     kind: WorkflowStepKind
-    id?: string                         // stable step identifier (optional); when set, gates may reference it via targetStepId
+    id?: string
+    member?: string
+    verifier?: string
+    verifiers?: readonly string[]
+    ensemblePolicy?: WorkflowEnsemblePolicy
+    ensembleQuorum?: number
+    ensembleResults?: Record<string, WorkflowEnsembleResult>
+    dispatchedActor?: string
+    verdict?: Verdict
+    score?: number
+    confidence?: number
+    issues?: WorkflowIssue[]
+    attempts?: number
+    onInvalid?: WorkflowOnInvalid
+    onMalformed?: WorkflowOnMalformed
+    maxMalformedRetries?: number
+    malformedAttempts?: number
+    invalidAttempts?: number
+    jumpCount?: number
+    loop?: WorkflowLoopConfig
+    loopIterations?: number
+    skipped?: boolean
+    completed: boolean
+    output?: string
+    startedAt?: number
+    completedAt?: number
+    durationMs?: number
+    inputs?: number[]
+    exposeOutput?: boolean
+    retryOn?: WorkflowRetryCondition
+    maxTaskRetries?: number
+    taskAttempts?: number
+    fanout?: WorkflowFanoutMetadata
+    branch?: WorkflowBranchMetadata
+    join?: WorkflowJoinMetadata
+    approvalBefore?: boolean
+    approvalAfter?: boolean
+    maxOutputBytes?: number
+}
+
+/** A single workflow step — task, gate, fanout marker, or join marker. */
+export type WorkflowStep = WorkflowStepBase & {
     // task step
-    member?: string                     // the actor member name (task steps)
     fallbackMember?: string
     task?: string                       // the task text (task steps)
     // gate step
-    verifier?: string                   // the verifier member name (gate steps; NOT the preceding task's member)
     fallbackVerifier?: string
-    verifiers?: readonly string[]            // gate steps: multiple verifiers for ensemble verdict (mutually exclusive with verifier)
-    ensemblePolicy?: WorkflowEnsemblePolicy  // gate steps: aggregation policy for ensemble verdict
-    ensembleQuorum?: number                  // gate steps: quorum fraction (0 < quorum <= 1) for ensemble_policy='quorum'
-    ensembleResults?: Record<string, WorkflowEnsembleResult>  // gate steps: per-verifier results (runtime)
     criteria?: string                   // verification criteria (gate steps)
     targetStepIndex?: number            // gate steps: zero-based primary task step being verified; omitted means nearest preceding task
     targetStepIndices?: number[]        // gate steps: zero-based multi-target task steps; targetStepIndex remains the primary/legacy target
     onFail?: "retry" | "fail" | "skip"  // FAIL control: retry the preceding task, fail the run, or skip this gate (gate steps; default "fail")
     maxRetries?: number                 // FAIL retry cap, distinct from provider-retry maxRetries (gate steps; default 0)
-    attempts?: number                   // FAIL retry count so far (gate steps)
-    onInvalid?: WorkflowOnInvalid       // INVALID control: fail the run, re-dispatch the verifier, or escalate to the leader (gate steps; default "fail")
     maxInvalidRetries?: number          // retry_verifier cap for INVALID verdicts (gate steps; default 0)
-    invalidAttempts?: number            // retry_verifier attempt count so far (gate steps)
-    onMalformed?: WorkflowOnMalformed   // parse_failure control: fail, retry_verifier, skip, or escalate. Falls back to onInvalid when unset (gate steps)
-    maxMalformedRetries?: number        // retry_verifier cap for malformed verdicts (gate steps; default 0)
-    malformedAttempts?: number          // retry_verifier attempt count for malformed verdicts (gate steps)
-    verdict?: Verdict                   // last verdict rendered (gate steps)
-    score?: number                      // optional structured score from the last verdict (gate steps)
-    confidence?: number                 // optional structured confidence from the last verdict (gate steps)
-    issues?: WorkflowIssue[]            // optional structured issues from the last verdict (gate steps)
-    inputs?: number[]
-    exposeOutput?: boolean
-    retryOn?: WorkflowRetryCondition    // task steps: auto-retry condition (empty output, output contains/missing pattern, regex match)
-    maxTaskRetries?: number             // task steps: max auto-retry attempts (default 0)
-    taskAttempts?: number               // task steps: auto-retry attempt count so far
+
     // conditional jumps: verdict-gated goto targets (0-based internal index,
     // resolved at build time from a 1-based number or step id). Omitted = the
     // verdict's default behavior (PASS: advance; FAIL/INVALID: terminate).
@@ -185,34 +213,13 @@ export type WorkflowStep = {
     onInvalidGoto?: number              // at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted): jump instead of terminating. NOT applied to escalate.
     where?: WorkflowCondition           // optional threshold condition gating on_pass_goto/on_fail_goto
     maxJumps?: number                   // per-gate cap on verdict-driven jumps; default 3, max 10
-    jumpCount?: number                  // verdict-driven jumps taken so far at this gate
-    loop?: WorkflowLoopConfig           // gate steps: loop control for on_fail_goto (bounds iterations + exhaust behavior)
-    loopIterations?: number             // gate steps: loop iteration count so far (runtime)
-    output?: string                     // task steps: captured output snapshot at completion time (per-step, NOT overwritten by later steps the same member runs)
-    // step-level controls: per-step HITL pauses and output cap,
-    // overriding/complementing the task-global humanApproval flag.
-    approvalBefore?: boolean            // pause for team_approve before dispatching this step
-    approvalAfter?: boolean             // pause for team_approve after this step completes, before advancing
     approvalBeforeGranted?: boolean     // transient: approval_before was requested for the current step instance; consumed on dispatch, reset on re-entry (retry/goto-back)
-    maxOutputBytes?: number             // task steps: cap the captured output snapshot to N UTF-8 bytes (head+tail preserved)
     timeoutMs?: number                  // task/gate steps: wall-clock deadline from dispatch time
     onTimeout?: "fail" | "retry" | "skip" // timeout control; default fail
     maxTimeoutRetries?: number          // timeout retry cap when onTimeout=retry
     timeoutAttempts?: number            // timeout retry attempts so far
-    startedAt?: number
-    completedAt?: number
-    durationMs?: number
     dispatchedAt?: number               // epoch ms when this step was last dispatched
-    dispatchedActor?: string
     correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl
-    // fanout/join DAG metadata. Runtime dispatch wiring lands in a
-    // later task.
-    fanout?: WorkflowFanoutMetadata     // fanout marker steps
-    branch?: WorkflowBranchMetadata     // task/gate steps inside a fanout branch
-    join?: WorkflowJoinMetadata         // join marker steps
-    // shared
-    completed: boolean                  // true when the step is done (task produced; gate PASS; or skipped by a forward jump)
-    skipped?: boolean                   // true when a forward jump marked this step as skipped (not run)
 }
 
 // ============================================================================
