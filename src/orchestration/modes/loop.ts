@@ -21,6 +21,9 @@ import { recordEvent } from "../records/events.js"
 import { allReadOnlyStagesReportNoIssues, parseDecision } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../control/approval.js"
 
+/** Max consecutive decision parse failures before the loop is failed. */
+const MAX_DECISION_PARSE_FAILURES = 3
+
 /**
  * Advance to the next loop round: bump the round counter, reset all stages to
  * incomplete, and re-dispatch stage 0 with the decider's feedback (rationale +
@@ -104,7 +107,7 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
     if (decision.parseFailed) {
         logEvent(ctx, "warn", "decision parse failed", { team: team.teamName, member: member.name })
         task.decisionParseFailures++
-        if (task.decisionParseFailures >= 3) {
+        if (task.decisionParseFailures >= MAX_DECISION_PARSE_FAILURES) {
             await finishRun(ctx, team, "loop_complete:decision_parse_failure", "failed")
             return
         }
