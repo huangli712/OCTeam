@@ -87,6 +87,19 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
 
             const changes: string[] = []
 
+            // Pre-fetch agent registry OUTSIDE the mutex — this API call can
+            // be slow (network/IPC) and would block all team operations while
+            // the mutex is held. Only needed when changing agent/role.
+            let agentsList: Array<{ name: string; model?: { providerID: string; modelID: string } }> = []
+            const targetAgent = args.new_agent ?? (args.new_role ? roleAgent(normalizeRole(args.new_role)) : undefined)
+            if (targetAgent) {
+                try {
+                    agentsList = (await ctx.client.app.agents({ query: { directory: ctx.directory } })).data ?? []
+                } catch {
+                    agentsList = []
+                }
+            }
+
             let staleState = false
             await team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
@@ -156,24 +169,19 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 }
 
                 // --- agent: explicit new_agent wins; otherwise a changed role
-                // re-derives the agent. Either way the bound model is re-resolved. ---
-                const targetAgent =
-                    args.new_agent ?? (args.new_role ? roleAgent(normalizeRole(args.new_role)) : undefined)
+                // re-derives the agent. The agent registry was pre-fetched outside the mutex.
                 if (targetAgent) {
                     member.agent = targetAgent
                     if (specMember) specMember.agent = targetAgent
-                    try {
-                        const agentsRes = await ctx.client.app.agents({ query: { directory: ctx.directory } })
-                        const entry = (agentsRes.data ?? []).find(a => a.name === targetAgent)
-                        if (entry?.model) {
-                            const m = `${entry.model.providerID}/${entry.model.modelID}`
-                            member.model = m
-                            if (specMember) specMember.model = m
-                            changes.push(`agent: ${targetAgent}, model: ${m}`)
-                        } else {
-                            changes.push(`agent: ${targetAgent} (no bound model — model unchanged)`)
-                        }
-                    } catch {
+                    const entry = agentsList.find(a => a.name === targetAgent)
+                    if (entry?.model) {
+                        const m = `${entry.model.providerID}/${entry.model.modelID}`
+                        member.model = m
+                        if (specMember) specMember.model = m
+                        changes.push(`agent: ${targetAgent}, model: ${m}`)
+                    } else if (agentsList.length > 0) {
+                        changes.push(`agent: ${targetAgent} (no bound model — model unchanged)`)
+                    } else {
                         changes.push(`agent: ${targetAgent} (registry unavailable — model unchanged)`)
                     }
                 }

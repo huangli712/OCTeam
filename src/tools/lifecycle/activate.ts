@@ -34,21 +34,28 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                 return "Error: team_activate is master-only (only the team's leader session can activate it)"
             }
 
-            // Find the currently-active sibling (if any).
+            // Find the currently-active sibling (if any) — scan in parallel
+            // since loadTeamState is I/O-bound.
             let activeSibling: Team | undefined
-            for (const other of await listTeamNames(ctx.storageRoot, leadSessionId)) {
-                try {
-                    const t = await loadTeamState(ctx.storageRoot, other, leadSessionId)
-                    if (
-                        t.leadSessionId === context.sessionID
-                        && t.activatedAt !== undefined
-                        && t.directory !== target.directory
-                    ) {
-                        activeSibling = t
-                        break
-                    }
-                } catch {
-                    // unreadable team state — ignore
+            const siblings = await listTeamNames(ctx.storageRoot, leadSessionId)
+            const loaded = await Promise.all(
+                siblings
+                    .filter(name => name !== args.team_id)
+                    .map(name =>
+                        loadTeamState(ctx.storageRoot, name, leadSessionId)
+                            .then(t => ({ t, ok: true as const }))
+                            .catch(() => ({ ok: false as const })),
+                    ),
+            )
+            for (const r of loaded) {
+                if (
+                    r.ok
+                    && r.t.leadSessionId === context.sessionID
+                    && r.t.activatedAt !== undefined
+                    && r.t.directory !== target.directory
+                ) {
+                    activeSibling = r.t
+                    break
                 }
             }
 

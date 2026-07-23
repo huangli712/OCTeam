@@ -268,6 +268,7 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     await pruneRuns(team.directory, DEFAULT_MAX_RUNS)
 }
 
+
 /**
  * Keep the most recent `keep` runs (by record.finishedAt), deleting older run
  * directories. Best-effort; a prune failure never blocks termination.
@@ -282,14 +283,16 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     }
 
     const dated: Array<{ runId: string; finishedAt: number }> = []
-    for (const runId of runIds) {
-        try {
-            const raw = await fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
-            const rec = parseRunRecord(raw)
-            dated.push({ runId, finishedAt: rec.finishedAt ?? 0 })
-        } catch {
-            // no/invalid record.json (e.g. a run still mid-capture) — leave it alone
-        }
+    const records = await Promise.all(
+        runIds.map(runId =>
+            fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
+                .then(raw => { try { return parseRunRecord(raw) } catch { return null } })
+                .catch(() => null)
+                .then(rec => ({ runId, rec })),
+        ),
+    )
+    for (const { runId, rec } of records) {
+        if (rec) dated.push({ runId, finishedAt: rec.finishedAt ?? 0 })
     }
     if (dated.length <= keep) return
 
@@ -300,7 +303,6 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
         })
     }
 }
-
 /**
  * Read all run records for a team, newest-first (by finishedAt). Runs without a
  * valid record.json (mid-capture / corrupt) are skipped. Used by team_results.
