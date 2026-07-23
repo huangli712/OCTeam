@@ -339,7 +339,6 @@ export async function maybePauseBeforeWorkflowStep(
     const step = task.steps?.[index];
     if (!step || !step.approvalBefore || step.approvalBeforeGranted)
         return false;
-    step.approvalBeforeGranted = true;
     const paused = await forceApprovalRequest(ctx, team, {
         kind: "workflow_step",
         stage: index,
@@ -347,11 +346,11 @@ export async function maybePauseBeforeWorkflowStep(
             + ` reject to fail the run as workflow_human_rejected.`,
     });
     if (paused) {
+        step.approvalBeforeGranted = true;
         await saveTeamState(team);
         return true;
     }
-    // No escalation handler available -> clear the grant and fall through to dispatch.
-    step.approvalBeforeGranted = undefined;
+    // No escalation handler available -> fall through to dispatch.
     return false;
 }
 

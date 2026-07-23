@@ -78,29 +78,38 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 // Rename directory on disk.
                 await fs.rename(oldDir, newDir)
 
-                // Update in-memory state references.
-                team.teamName = args.new_name
-                team.directory = newDir
+                try {
+                    // Update in-memory state references.
+                    team.teamName = args.new_name
+                    team.directory = newDir
 
-                // Evict the old registry cache entry (keyed by oldDir).
-                invalidateTeam(oldDir)
+                    // Evict the old registry cache entry (keyed by oldDir).
+                    invalidateTeam(oldDir)
 
-                // Update TeamSpec and write to new directory.
-                if (spec) {
-                    spec = { ...spec, name: args.new_name }
-                    await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
+                    // Update TeamSpec and write to new directory.
+                    if (spec) {
+                        spec = { ...spec, name: args.new_name }
+                        await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
+                    }
+
+                    // Update master index.
+                    unindexMasterTeam(context.sessionID, oldDir)
+                    indexMasterTeam(context.sessionID, args.new_name, pathLeadSessionId, ctx.storageRoot, newDir)
+                    if (wasActive) {
+                        setActiveTeam(context.sessionID, newDir)
+                    }
+
+                    // Save state to the new directory.
+                    await saveTeamState(team)
+                } catch (writeErr) {
+                    // Rollback: restore the old directory and in-memory state.
+                    team.teamName = args.team_id
+                    team.directory = oldDir
+                    await fs.rename(newDir, oldDir).catch(() => {})
+                    throw writeErr
                 }
-
-                // Update master index.
-                unindexMasterTeam(context.sessionID, oldDir)
-                indexMasterTeam(context.sessionID, args.new_name, pathLeadSessionId, ctx.storageRoot, newDir)
-                if (wasActive) {
-                    setActiveTeam(context.sessionID, newDir)
-                }
-
-                // Save state to the new directory.
-                await saveTeamState(team)
             })
+
 
             if (staleState) {
                 return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
