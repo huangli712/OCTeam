@@ -115,9 +115,25 @@ export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }
 
 /** Render a pipeline run: concatenated stage outputs in order. */
 export function summarizePipeline(task: ActiveTask, head: string): string {
-    // Concatenate stage outputs in order.
-    const candidates = Object.entries(task.responses)
-        .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
+    // Concatenate stage outputs in pipeline order (stages[].member), not
+    // Object.entries order (insertion order can diverge when a stage
+    // member is re-dispatched after an error on an earlier stage).
+    const stages = task.stages ?? []
+    const seen = new Set<string>()
+    const orderedNames: string[] = []
+    for (const s of stages) {
+        if (!seen.has(s.member)) {
+            seen.add(s.member)
+            orderedNames.push(s.member)
+        }
+    }
+    // Include any response keys not in stages (defensive — should not happen
+    // for well-formed pipeline tasks, but avoids silently dropping output).
+    for (const name of Object.keys(task.responses)) {
+        if (!seen.has(name)) orderedNames.push(name)
+    }
+    const candidates = orderedNames
+        .map(name => `by ${name}:\n${truncateOutput(task.responses[name] ?? "")}`)
         .join("\n\n")
     return `${head}\n${candidates}`
 }

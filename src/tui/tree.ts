@@ -125,8 +125,15 @@ export async function loadChildren(
     api: Pick<TuiPluginApi, "client" | "state">,
     currentSessionId: string,
 ): Promise<SessionTreeNode[]> {
-    const mainResult = await api.client.session.list()
-    const allSessions = mainResult?.data ?? []
+    let allSessions: NonNullable<Awaited<ReturnType<typeof api.client.session.list>>["data"]> = []
+    try {
+        const mainResult = await api.client.session.list()
+        allSessions = mainResult?.data ?? []
+    } catch {
+        // Network/backend failure — return empty list so the TUI sidebar
+        // renders blank instead of crashing the user's session.
+        return []
+    }
 
     // Merge in sessions from each worktree directory owned by a team whose
     // lead is the current session. Errors here are best-effort: a failed
