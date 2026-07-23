@@ -118,8 +118,12 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 // the deletion was incomplete and the orphaned state may
                 // resurrect on restart.
                 const msg = err instanceof Error ? err.message : String(err)
-                return `Error: failed to fully delete team "${args.team_id}" storage: ${msg}. `
-                    + `The team directory may still exist on disk; manual cleanup may be required.`
+                // Still evict the registry cache: team.deleted is set so handlers
+                // no-op, but leaving the stale entry in the registry is a memory
+                // leak for the lifetime of this process.
+                invalidateTeam(team.directory)
+return `Error: failed to fully delete team "${args.team_id}" storage: ${msg}. `
++ `The team directory may still exist on disk; manual cleanup may be required.`
             }
         },
     })
