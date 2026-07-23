@@ -137,10 +137,15 @@ export function logSwallowed(
     extra?: Record<string, unknown>,
     level: LogLevel = "warn",
 ): void {
-    logEvent(ctx, level, message, {
-        ...extra,
-        error: err instanceof Error ? err.message : String(err),
-    })
+    try {
+        logEvent(ctx, level, message, {
+            ...extra,
+            error: err instanceof Error ? err.message : String(err),
+        })
+    } catch {
+        // logSwallowed must never throw — it is used exclusively in catch
+        // blocks where throwing would mask the original error.
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ import { initTeamState, writeTeamSpec } from "../../state/store.js"
 import { indexMasterTeam, isIndexedMember } from "../../state/resolve.js"
 import { teamDir, teamsDir } from "../../state/paths.js"
 import { normalizeRole, roleAgent } from "../../core/role.js"
+import { logSwallowed } from "../../core/log.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../../core/types.js"
 import { pickName } from "../../state/naming.js"
 import { defaultBounds, validateMemberAgent, validateMemberName } from "../support.js"
@@ -41,14 +42,14 @@ async function resolveCreateModel(
         for (const a of agentsRes.data ?? []) {
             if (a.model) modelByAgent.set(a.name, `${a.model.providerID}/${a.model.modelID}`)
         }
-    } catch {
-        // best-effort — members fall back to no explicit model
+    } catch (err) {
+        logSwallowed(ctx, "resolveCreateModel: agents lookup failed", err)
     }
     let defaultModel: string | undefined
     try {
         defaultModel = (await ctx.client.config.get()).data?.model
-    } catch {
-        // best-effort — build/agents with no model use the provider default
+    } catch (err) {
+        logSwallowed(ctx, "resolveCreateModel: config.get failed", err)
     }
     // Final fallback: the leader session's active model.
     let sessionModel: string | undefined
@@ -65,8 +66,8 @@ async function resolveCreateModel(
                 break
             }
         }
-    } catch {
-        // best-effort
+    } catch (err) {
+        logSwallowed(ctx, "resolveCreateModel: session.messages failed", err)
     }
     return { modelByAgent, defaultModel, sessionModel }
 }
