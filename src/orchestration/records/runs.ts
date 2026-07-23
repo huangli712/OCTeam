@@ -16,6 +16,8 @@
 import crypto from "node:crypto"
 import fs from "node:fs/promises"
 
+import { logger } from "../../core/log.js"
+
 import type { Team } from "../../state/store.js"
 import type { RunRecord, RunStatus, WorkflowBranchStatus, WorkflowRunStep, WorkflowStep } from "../../core/types.js"
 import { atomicWrite } from "../../state/locks.js"
@@ -279,7 +281,9 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
 
     dated.sort((a, b) => b.finishedAt - a.finishedAt)
     for (const { runId } of dated.slice(keep)) {
-        await fs.rm(runDir(teamDirectory, runId), { recursive: true, force: true }).catch(() => {})
+        await fs.rm(runDir(teamDirectory, runId), { recursive: true, force: true }).catch((err) => {
+            logger.warn("pruneRuns: failed to remove run directory", { runId, error: err instanceof Error ? err.message : String(err) })
+        })
     }
 }
 

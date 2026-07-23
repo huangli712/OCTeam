@@ -51,7 +51,7 @@ export function waitUntil(
 
 /** Split the array into batches of size n. */
 export function chunk<T>(arr: T[], n: number): T[][] {
-    if (n <= 0) return [arr]
+    if (n <= 0) return []
     const out: T[][] = []
     for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
     return out

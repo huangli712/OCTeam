@@ -8,6 +8,7 @@ import fs from "node:fs/promises"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import {
     invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec,
 } from "../../state/store.js"
@@ -116,7 +117,9 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // Rollback: restore the old directory and in-memory state.
                     team.teamName = args.team_id
                     team.directory = oldDir
-                    await fs.rename(newDir, oldDir).catch(() => {})
+                    await fs.rename(newDir, oldDir).catch((rollbackErr) => {
+                        logSwallowed(ctx, "rename rollback: fs.rename failed", rollbackErr, { oldDir, newDir })
+                    })
                     throw writeErr
                 }
             })
