@@ -47,14 +47,18 @@ export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promi
             return
         }
         // Next round: broadcast prior-round summary, reset to running.
-        task.currentRound = (task.currentRound ?? 0) + 1
-        recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
+        // currentRound is incremented AFTER the dispatch loop so a partial
+        // dispatch failure (promptAsync throws mid-loop) does not advance the
+        // round counter — the barrier re-fire will retry the same round.
+        const nextRound = (task.currentRound ?? 0) + 1
         const summary = buildRoundSummary(task.responses)
         const roundText =
-            `[Consensus Round ${task.currentRound}]\n${summary}\n\n`
+            `[Consensus Round ${nextRound}]\n${summary}\n\n`
             + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`
         for (const m of team.members.filter(x => !x.isMaster)) {
             await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory, team)
         }
+        task.currentRound = nextRound
+        recordEvent(team, { timestamp: Date.now(), kind: "round", round: nextRound })
     })
 }
