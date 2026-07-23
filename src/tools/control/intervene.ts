@@ -47,7 +47,7 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
 
             let team
             try {
-                team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+                team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
             } catch {
                 return `Error: team "${args.team_id}" not found`
             }

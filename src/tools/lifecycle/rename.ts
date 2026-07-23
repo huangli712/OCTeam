@@ -66,6 +66,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
             const wasActive = team.activatedAt !== undefined
 
             let staleState = false
+            let collision = false
             await team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status live→busy since
@@ -74,6 +75,16 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 if (team.status !== "live") {
                     staleState = true
                     return
+                }
+                // Re-check name collision inside the mutex: a concurrent
+                // rename or create may have claimed the new directory since
+                // the outside-mutex check at line 52-56.
+                try {
+                    await fs.stat(newDir)
+                    collision = true
+                    return
+                } catch {
+                    // newDir does not exist — safe to rename
                 }
                 // Rename directory on disk.
                 await fs.rename(oldDir, newDir)
@@ -114,6 +125,9 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
             if (staleState) {
                 return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
                     + `Teams can only be renamed before sessions are spawned.`
+            }
+            if (collision) {
+                return `Error: a team named "${args.new_name}" already exists under this session`
             }
 
             return `Team "${args.team_id}" renamed to "${args.new_name}".`

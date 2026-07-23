@@ -79,7 +79,6 @@ export async function startArenaEvaluation(ctx: PluginContext, team: Team): Prom
         await finishRun(ctx, team, "arena_failed:evaluator_unavailable", "failed")
         return
     }
-    task.arenaPhase = "evaluate"
     await dispatchToMember(
         ctx,
         evaluator,
@@ -87,6 +86,7 @@ export async function startArenaEvaluation(ctx: PluginContext, team: Team): Prom
         evaluator.worktreePath ?? ctx.directory,
         team,
     )
+    task.arenaPhase = "evaluate"
     await saveTeamState(team)
 }
 

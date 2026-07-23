@@ -102,7 +102,13 @@ export async function destroyWorktree(
     teamName: string,
     memberName: string,
 ): Promise<void> {
-    await cleanWorktree(projectDir, worktreePath, worktreesRoot);
+    try {
+        await cleanWorktree(projectDir, worktreePath, worktreesRoot);
+    } catch (err) {
+        logger.warn("destroyWorktree: cleanWorktree failed, proceeding with branch deletion", {
+            error: err instanceof Error ? err.message : String(err),
+        });
+    }
     const branch = `team/${teamName}/${memberName}`;
     await execFileP("git", ["branch", "-D", branch], {
         cwd: projectDir,

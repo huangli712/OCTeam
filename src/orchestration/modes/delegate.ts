@@ -131,7 +131,7 @@ export async function runDelegateStyleTail(
     )
     // Sort so the current member is first (it just produced output / has the
     // freshest context), then the rest.
-    idleMembers.sort(a => a.name === member.name ? -1 : 1)
+    idleMembers.sort((a, b) => (a.name === member.name ? -1 : b.name === member.name ? 1 : 0))
     for (const m of idleMembers) {
         const curRunning = team.members.filter(mm => mm.status === "running" && !mm.isMaster).length
         if (claimable.length <= curRunning) break // enough dispatched

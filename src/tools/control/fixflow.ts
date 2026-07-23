@@ -340,7 +340,7 @@ export function teamFixWorkflowTool(ctx: PluginContext): ToolDefinition {
             if (!caller.isMaster) return "Error: team_fix_workflow is master-only"
             let team: Team
             try {
-                team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+                team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
             } catch {
                 return `Error: team "${args.team_id}" not found`
             }
