@@ -191,32 +191,37 @@ export type WorkflowStepBase = {
     maxOutputBytes?: number
 }
 
+/**
+ * Gate configuration fields shared between {@link WorkflowStep} (runtime) and
+ * {@link WorkflowRunStep} (persisted run record). Extracting this prevents
+ * field drift: adding a gate config field here automatically makes it
+ * available in both representations.
+ */
+export type WorkflowGateConfig = {
+    criteria?: string                   // verification criteria (gate steps)
+    onFail?: "retry" | "fail" | "skip"  // FAIL control: retry the preceding task, fail the run, or skip this gate (gate steps; default "fail")
+    maxRetries?: number                 // FAIL retry cap, distinct from provider-retry maxRetries (gate steps; default 0)
+    maxInvalidRetries?: number          // retry_verifier cap for INVALID verdicts (gate steps; default 0)
+    onPassGoto?: number                 // after PASS: jump here instead of advancing linearly
+    onFailGoto?: number                 // at a FAIL terminal point (on_fail=fail, or retry exhausted): jump instead of failing
+    onInvalidGoto?: number              // at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted): jump instead of terminating. NOT applied to escalate.
+    maxJumps?: number                   // per-gate cap on verdict-driven jumps; default 3, max 10
+    timeoutMs?: number                  // task/gate steps: wall-clock deadline from dispatch time
+    onTimeout?: "fail" | "retry" | "skip" // timeout control; default fail
+    maxTimeoutRetries?: number          // timeout retry cap when onTimeout=retry
+}
+
 /** A single workflow step — task, gate, fanout marker, or join marker. */
-export type WorkflowStep = WorkflowStepBase & {
+export type WorkflowStep = WorkflowStepBase & WorkflowGateConfig & {
     // task step
     fallbackMember?: string
     task?: string                       // the task text (task steps)
     // gate step
     fallbackVerifier?: string
-    criteria?: string                   // verification criteria (gate steps)
     targetStepIndex?: number            // gate steps: zero-based primary task step being verified; omitted means nearest preceding task
     targetStepIndices?: number[]        // gate steps: zero-based multi-target task steps; targetStepIndex remains the primary/legacy target
-    onFail?: "retry" | "fail" | "skip"  // FAIL control: retry the preceding task, fail the run, or skip this gate (gate steps; default "fail")
-    maxRetries?: number                 // FAIL retry cap, distinct from provider-retry maxRetries (gate steps; default 0)
-    maxInvalidRetries?: number          // retry_verifier cap for INVALID verdicts (gate steps; default 0)
-
-    // conditional jumps: verdict-gated goto targets (0-based internal index,
-    // resolved at build time from a 1-based number or step id). Omitted = the
-    // verdict's default behavior (PASS: advance; FAIL/INVALID: terminate).
-    onPassGoto?: number                 // after PASS: jump here instead of advancing linearly
-    onFailGoto?: number                 // at a FAIL terminal point (on_fail=fail, or retry exhausted): jump instead of failing
-    onInvalidGoto?: number              // at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted): jump instead of terminating. NOT applied to escalate.
     where?: WorkflowCondition           // optional threshold condition gating on_pass_goto/on_fail_goto
-    maxJumps?: number                   // per-gate cap on verdict-driven jumps; default 3, max 10
     approvalBeforeGranted?: boolean     // transient: approval_before was requested for the current step instance; consumed on dispatch, reset on re-entry (retry/goto-back)
-    timeoutMs?: number                  // task/gate steps: wall-clock deadline from dispatch time
-    onTimeout?: "fail" | "retry" | "skip" // timeout control; default fail
-    maxTimeoutRetries?: number          // timeout retry cap when onTimeout=retry
     timeoutAttempts?: number            // timeout retry attempts so far
     dispatchedAt?: number               // epoch ms when this step was last dispatched
     correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl

@@ -17,29 +17,17 @@ import type {
     SignoffPolicy,
 } from "./orchestration.js"
 
-import type { WorkflowStepBase } from "./workflow.js"
+import type { WorkflowStepBase, WorkflowGateConfig } from "./workflow.js"
 
 /** Per-branch status within a workflow fanout. */
 export type WorkflowBranchStatus = "pending" | "completed" | "skipped" | "errored"
 
 /** Persisted snapshot of a single workflow step for run records. */
-export type WorkflowRunStep = WorkflowStepBase & {
+export type WorkflowRunStep = WorkflowStepBase & WorkflowGateConfig & {
     index: number                      // zero-based internal workflow step index
     step: number                       // one-based display step number
     targetStep?: number                // one-based display primary target task step for gate steps
     targetSteps?: number[]             // one-based display multi-target task steps for gate steps
-    // Gate static config (persisted for post-run forensic analysis).
-    criteria?: string
-    onFail?: "retry" | "fail" | "skip"
-    maxRetries?: number
-    maxInvalidRetries?: number
-    onPassGoto?: number                // one-based display
-    onFailGoto?: number                // one-based display
-    onInvalidGoto?: number             // one-based display
-    maxJumps?: number
-    timeoutMs?: number
-    onTimeout?: "fail" | "retry" | "skip"
-    maxTimeoutRetries?: number
     outputBytes?: number
     joinedOutputBytes?: number
     branchStatuses?: Record<string, WorkflowBranchStatus>

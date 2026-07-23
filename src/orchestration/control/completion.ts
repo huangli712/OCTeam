@@ -62,17 +62,17 @@ reason: string,
 status: "idle" | "failed",
 ): Promise<void> {
     try {
-await deliverSummaryToLeader(
-ctx,
-team,
-reason,
-status === "failed" ? "failed" : "completed",
-    )
+        await deliverSummaryToLeader(
+            ctx,
+            team,
+            reason,
+            status === "failed" ? "failed" : "completed",
+        )
     } finally {
         // clearActiveTask and terminal status MUST execute even if delivery
         // throws — otherwise the team is stuck in "busy" with an activeTask
         // that can never be cleared.
-clearActiveTask(team)
-team.status = status
-}
+        clearActiveTask(team)
+        team.status = status
+    }
 }
