@@ -437,8 +437,9 @@ describe("team_fix_workflow", () => {
             makeToolContext(masterSid),
         )
 
-        // Then: the original error propagates unchanged...
-        expect(call).rejects.toThrow("promptAsync exploded")
+        // Then: the error is returned as a string (not thrown), and...
+        const out = await call
+        expect(out).toContain("Error: team_fix_workflow failed: promptAsync exploded")
         // ...and the registry-cached team is rolled back to the failed checkpoint.
         const after = await loadTeamState(root, "alpha", masterSid)
         expect(after.status).toBe("failed")

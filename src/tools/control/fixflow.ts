@@ -359,10 +359,11 @@ export function teamFixWorkflowTool(ctx: PluginContext): ToolDefinition {
                 } catch (err) {
                     // dispatch/advance can throw after workflowRepairTarget already
                     // mutated the registry-cached team. Roll cache + disk back to the
-                    // snapshot, then rethrow the original error unchanged.
+                    // snapshot, then return an error string (not throw — the OpenCode
+                    // tool framework expects string returns, not thrown exceptions).
                     restoreSnapshot(team, snapshot)
                     await saveTeamState(team)
-                    throw err
+                    result = `Error: team_fix_workflow failed: ${err instanceof Error ? err.message : String(err)}`
                 }
             })
             return result
