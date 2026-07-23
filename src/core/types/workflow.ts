@@ -189,6 +189,13 @@ export type WorkflowStepBase = {
     approvalBefore?: boolean
     approvalAfter?: boolean
     maxOutputBytes?: number
+    timeoutMs?: number                  // task/gate steps: wall-clock deadline from dispatch time
+    onTimeout?: "fail" | "retry" | "skip" // timeout control; default fail
+    maxTimeoutRetries?: number          // timeout retry cap when onTimeout=retry
+    approvalBeforeGranted?: boolean     // transient: approval_before was requested
+    timeoutAttempts?: number            // timeout retry attempts so far
+    dispatchedAt?: number               // epoch ms when this step was last dispatched
+    correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl
 }
 
 /**
@@ -206,9 +213,6 @@ export type WorkflowGateConfig = {
     onFailGoto?: number                 // at a FAIL terminal point (on_fail=fail, or retry exhausted): jump instead of failing
     onInvalidGoto?: number              // at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted): jump instead of terminating. NOT applied to escalate.
     maxJumps?: number                   // per-gate cap on verdict-driven jumps; default 3, max 10
-    timeoutMs?: number                  // task/gate steps: wall-clock deadline from dispatch time
-    onTimeout?: "fail" | "retry" | "skip" // timeout control; default fail
-    maxTimeoutRetries?: number          // timeout retry cap when onTimeout=retry
 }
 
 /** A single workflow step — task, gate, fanout marker, or join marker. */
@@ -218,13 +222,9 @@ export type WorkflowStep = WorkflowStepBase & WorkflowGateConfig & {
     task?: string                       // the task text (task steps)
     // gate step
     fallbackVerifier?: string
-    targetStepIndex?: number            // gate steps: zero-based primary task step being verified; omitted means nearest preceding task
-    targetStepIndices?: number[]        // gate steps: zero-based multi-target task steps; targetStepIndex remains the primary/legacy target
+    targetStepIndex?: number            // gate steps: zero-based primary task step being verified
+    targetStepIndices?: number[]        // gate steps: zero-based multi-target task steps
     where?: WorkflowCondition           // optional threshold condition gating on_pass_goto/on_fail_goto
-    approvalBeforeGranted?: boolean     // transient: approval_before was requested for the current step instance; consumed on dispatch, reset on re-entry (retry/goto-back)
-    timeoutAttempts?: number            // timeout retry attempts so far
-    dispatchedAt?: number               // epoch ms when this step was last dispatched
-    correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl
 }
 
 // ============================================================================

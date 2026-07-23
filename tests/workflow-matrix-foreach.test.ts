@@ -29,7 +29,7 @@ describe("expandMatrixForeachFanout (unit)", () => {
         ]
         const expanded = expandMatrixForeachFanout(steps)
         const fanout = expanded[0]
-        expect(fanout?.branches).toEqual([
+        expect(fanout?.kind === "fanout" ? fanout.branches : undefined).toEqual([
             { id: "api", steps: [{ kind: "task", member: "bob", task: "Build api" }] },
             { id: "docs", steps: [{ kind: "task", member: "bob", task: "Build docs" }] },
         ])
@@ -41,7 +41,8 @@ describe("expandMatrixForeachFanout (unit)", () => {
             { kind: "join" },
         ]
         const expanded = expandMatrixForeachFanout(steps)
-        const ids = (expanded[0]?.branches ?? []).map(b => b.id).sort()
+        const first = expanded[0]
+        const ids = (first?.kind === "fanout" ? (first.branches ?? []) : []).map(b => b.id).sort()
         expect(ids).toEqual(["api_fast", "qa_fast"])
     })
 
