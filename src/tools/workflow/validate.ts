@@ -113,7 +113,7 @@ export function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]):
                 break
             }
             default:
-                assertNever(step.kind)
+                assertNever(step)
         }
     }
     return null
@@ -133,7 +133,7 @@ export function validateMatrixForeachShapeInSteps(steps: readonly WorkflowToolSt
 }
 
 /** Validate that a single fanout step does not combine matrix, foreach, and branches. */
-function validateMatrixForeachShape(step: WorkflowToolStep, displayStep: number): string | null {
+function validateMatrixForeachShape(step: WorkflowFanoutToolStep, displayStep: number): string | null {
     const hasMatrix = step.matrix !== undefined
     const hasForeach = step.foreach !== undefined
     const hasBranches = (step.branches ?? []).length > 0
@@ -318,7 +318,7 @@ function validateBranchSteps(
                 break
             }
             default:
-                assertNever(step.kind)
+                assertNever(step)
         }
     }
     return null
@@ -390,6 +390,7 @@ export function resolveAndValidateGateTargets(
     displayStep: number,
 ): { readonly indices: readonly number[] } | { readonly error: string } {
     const location = stepLocation(gate, displayStep, true)
+    if (gate.kind !== "gate") return { error: `Error: ${location} is not a gate step` }
     const targetIndices: number[] = []
     if (gate.targets !== undefined) {
         for (let index = 0; index < gate.targets.length; index += 1) {
@@ -456,12 +457,16 @@ function validateLoweredTaskStep(
     displayStep: number,
     team: Team,
 ): string | null {
+    if (task.kind !== "task") return null
     const location = stepLocation(task, displayStep, true)
-    if (task.verifier !== undefined || task.fallback_verifier !== undefined
-        || task.criteria !== undefined || task.target_step !== undefined
-        || task.targets !== undefined || task.on_fail !== undefined
-        || task.max_retries !== undefined || task.on_invalid !== undefined
-        || task.max_invalid_retries !== undefined || task.where !== undefined) {
+    // Cross-kind field check: validate that a task step does NOT have gate-only fields.
+    // Cast to Record because the union type prevents direct access to gate fields on task steps.
+    const f = task as Record<string, unknown>
+    if (f.verifier !== undefined || f.fallback_verifier !== undefined
+        || f.criteria !== undefined || f.target_step !== undefined
+        || f.targets !== undefined || f.on_fail !== undefined
+        || f.max_retries !== undefined || f.on_invalid !== undefined
+        || f.max_invalid_retries !== undefined || f.where !== undefined) {
         return `Error: ${location} must not set gate fields`
     }
     if (!task.member) return `Error: ${location} requires \`member\``
@@ -513,8 +518,11 @@ function validateLoweredGateStep(
     displayStep: number,
     team: Team,
 ): string | null {
+    if (gate.kind !== "gate") return null
     const location = stepLocation(gate, displayStep, true)
-    if (gate.member !== undefined || gate.fallback_member !== undefined || gate.task !== undefined) {
+    // Cross-kind field check: validate that a gate step does NOT have task-only fields.
+    const f = gate as Record<string, unknown>
+    if (f.member !== undefined || f.fallback_member !== undefined || f.task !== undefined) {
         return `Error: ${location} must not set task fields`
     }
     if (gate.inputs !== undefined || gate.expose_output !== undefined) {

@@ -262,13 +262,32 @@ export type WorkflowFanoutBranch = {
 // Tool API: WorkflowToolStep & narrowed variants
 // ---------------------------------------------------------------------------
 
-/** A single workflow step (task, gate, fanout, or join marker). */
-export type WorkflowToolStep = {
-    readonly kind: "task" | "gate" | "fanout" | "join"
+/** Shared fields across all workflow step kinds (tool API). */
+type WorkflowToolStepBase = {
     readonly id?: string
+    readonly inputs?: readonly WorkflowStepRef[]
+    readonly expose_output?: boolean
+    readonly approval_before?: boolean
+    readonly approval_after?: boolean
+    readonly max_output_bytes?: number
+    readonly timeout_ms?: number
+    readonly on_timeout?: "fail" | "retry" | "skip"
+    readonly max_timeout_retries?: number
+}
+
+/** Tool API task step — executed by a member. */
+export type WorkflowTaskToolStep = WorkflowToolStepBase & {
+    readonly kind: "task"
     readonly member?: string
     readonly fallback_member?: string
     readonly task?: string
+    readonly retry_on?: { readonly empty?: boolean; readonly output_contains?: string; readonly output_not_contains?: string; readonly regex?: string }
+    readonly max_task_retries?: number
+}
+
+/** Tool API gate step — executed by a verifier. */
+export type WorkflowGateToolStep = WorkflowToolStepBase & {
+    readonly kind: "gate"
     readonly verifier?: string
     readonly fallback_verifier?: string
     readonly verifiers?: readonly string[]
@@ -277,10 +296,6 @@ export type WorkflowToolStep = {
     readonly criteria?: string
     readonly target_step?: WorkflowStepRef
     readonly targets?: readonly WorkflowStepRef[]
-    readonly inputs?: readonly WorkflowStepRef[]
-    readonly expose_output?: boolean
-    readonly retry_on?: { readonly empty?: boolean; readonly output_contains?: string; readonly output_not_contains?: string; readonly regex?: string }
-    readonly max_task_retries?: number
     readonly on_fail?: "retry" | "fail" | "skip"
     readonly max_retries?: number
     readonly on_invalid?: "fail" | "retry_verifier" | "escalate"
@@ -291,14 +306,13 @@ export type WorkflowToolStep = {
     readonly on_fail_goto?: WorkflowStepRef
     readonly on_invalid_goto?: WorkflowStepRef
     readonly where?: WorkflowWhere
-    readonly approval_before?: boolean
-    readonly approval_after?: boolean
-    readonly max_output_bytes?: number
-    readonly timeout_ms?: number
-    readonly on_timeout?: "fail" | "retry" | "skip"
-    readonly max_timeout_retries?: number
     readonly max_jumps?: number
     readonly loop?: { readonly max_iterations: number; readonly on_exhaust?: "fail" | "continue" }
+}
+
+/** Tool API fanout step — spawns parallel branches with join metadata. */
+export type WorkflowFanoutToolStep = WorkflowToolStepBase & {
+    readonly kind: "fanout"
     readonly branches?: readonly WorkflowFanoutBranch[]
     readonly max_errored?: number
     readonly join_policy?: "tolerance" | "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
@@ -312,11 +326,25 @@ export type WorkflowToolStep = {
     readonly steps?: readonly WorkflowToolStep[]
 }
 
-/** A linear (non-fanout) workflow step narrowed to kind "task" or "gate". */
-export type WorkflowLinearToolStep = WorkflowToolStep & { readonly kind: "task" | "gate" }
+/** Tool API join step — companion marker for the preceding fanout. */
+export type WorkflowJoinToolStep = WorkflowToolStepBase & {
+    readonly kind: "join"
+    readonly join_policy?: "tolerance" | "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
+    readonly quorum?: number
+    readonly required_branches?: readonly string[]
+    readonly reducer_member?: string
+    readonly use_survivors?: boolean
+}
 
-/** A fanout workflow step narrowed to kind "fanout". */
-export type WorkflowFanoutToolStep = WorkflowToolStep & { readonly kind: "fanout" }
+/** Discriminated union of all workflow step kinds (tool API). */
+export type WorkflowToolStep =
+    | WorkflowTaskToolStep
+    | WorkflowGateToolStep
+    | WorkflowFanoutToolStep
+    | WorkflowJoinToolStep
+
+/** A linear (non-fanout) workflow step narrowed to kind "task" or "gate". */
+export type WorkflowLinearToolStep = WorkflowTaskToolStep | WorkflowGateToolStep
 
 // ---------------------------------------------------------------------------
 // Tool API: top-level args

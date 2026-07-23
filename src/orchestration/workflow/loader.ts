@@ -7,7 +7,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 
-import type { WorkflowToolStep } from "../../core/types/workflow.js"
+import type { WorkflowFanoutToolStep, WorkflowToolStep } from "../../core/types/workflow.js"
 
 // Supported workflow_file schema versions. When the schema gains a v2, add it
 // here and branch on `version` in loadWorkflowFile. A file with an unlisted
@@ -155,7 +155,7 @@ function validateWorkflowStep(value: unknown, location: StepLocation): { step: W
 /** Validate the branches array of a fanout step. */
 function validateWorkflowBranches(
     value: unknown, location: StepLocation,
-): { branches: NonNullable<WorkflowToolStep["branches"]> } | { error: string } {
+): { branches: NonNullable<WorkflowFanoutToolStep["branches"]> } | { error: string } {
     if (!Array.isArray(value)) {
         return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} branches must be an array` }
     }

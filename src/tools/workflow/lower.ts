@@ -17,6 +17,7 @@ import type {
 import { parseWorkflowCondition } from "../../orchestration/workflow/gate.js"
 import type {
     WorkflowFanoutBranch,
+    WorkflowGateToolStep,
     WorkflowLinearToolStep,
     WorkflowStepRef,
     WorkflowToolStep,
@@ -287,14 +288,14 @@ export function lowerLinearStep(
         ? inputLowered
         : { ...inputLowered, branch, branchContext }
     }
-    const lowered: WorkflowLinearToolStep = {
-        ...inputLowered,
+    const lowered = {
+        ...inputLowered as WorkflowGateToolStep,
         target_step: step.target_step === undefined ? undefined : convertRef(step.target_step),
         targets: step.targets?.map(target => convertRef(target)),
         on_pass_goto: step.on_pass_goto === undefined ? undefined : convertRef(step.on_pass_goto),
         on_fail_goto: step.on_fail_goto === undefined ? undefined : convertRef(step.on_fail_goto),
         on_invalid_goto: step.on_invalid_goto === undefined ? undefined : convertRef(step.on_invalid_goto),
-    }
+    } as WorkflowGateToolStep
     return branch === undefined || branchContext === undefined ? lowered : { ...lowered, branch, branchContext }
 }
 
@@ -392,7 +393,7 @@ export function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly
                             case "join":
                                 break
                             default:
-                                assertNever(branchStep.kind)
+                                assertNever(branchStep)
                         }
                     }
                 }
@@ -414,7 +415,7 @@ export function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly
                 break
             }
             default:
-                assertNever(step.kind)
+                assertNever(step)
         }
     }
 
@@ -587,22 +588,25 @@ function substituteVarsInSteps(steps: readonly WorkflowToolStep[], vars: Record<
 
 /** Substitute ${var} placeholders in string fields of a single step. */
 function substituteVarsInStep(step: WorkflowToolStep, vars: Record<string, string>): WorkflowToolStep {
+    // Cast to Record for cross-kind string field access — this function substitutes
+    // ${vars} in ANY string field regardless of step kind.
+    const f = step as Record<string, unknown>
     return {
         ...step,
-        ...(typeof step.task === "string" ? { task: substituteVars(step.task, vars) } : {}),
-        ...(typeof step.criteria === "string" ? { criteria: substituteVars(step.criteria, vars) } : {}),
-        ...(typeof step.member === "string" ? { member: substituteVars(step.member, vars) } : {}),
-        ...(typeof step.fallback_member === "string"
-            ? { fallback_member: substituteVars(step.fallback_member, vars) }
+        ...(typeof f.task === "string" ? { task: substituteVars(f.task, vars) } : {}),
+        ...(typeof f.criteria === "string" ? { criteria: substituteVars(f.criteria, vars) } : {}),
+        ...(typeof f.member === "string" ? { member: substituteVars(f.member, vars) } : {}),
+        ...(typeof f.fallback_member === "string"
+            ? { fallback_member: substituteVars(f.fallback_member, vars) }
             : {}),
-        ...(typeof step.verifier === "string" ? { verifier: substituteVars(step.verifier, vars) } : {}),
-        ...(typeof step.fallback_verifier === "string"
-            ? { fallback_verifier: substituteVars(step.fallback_verifier, vars) }
+        ...(typeof f.verifier === "string" ? { verifier: substituteVars(f.verifier, vars) } : {}),
+        ...(typeof f.fallback_verifier === "string"
+            ? { fallback_verifier: substituteVars(f.fallback_verifier, vars) }
             : {}),
-        ...(typeof step.reducer_member === "string"
-            ? { reducer_member: substituteVars(step.reducer_member, vars) }
+        ...(typeof f.reducer_member === "string"
+            ? { reducer_member: substituteVars(f.reducer_member, vars) }
             : {}),
-    }
+    } as WorkflowToolStep
 }
 
 /** Replace ${name} placeholders with variable values. */
