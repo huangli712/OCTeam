@@ -128,8 +128,12 @@ export function shouldReapStaleLock(
  * Writes the current PID into the lock file for ownership tracking.
  */
 async function acquireLock(lockPath: string): Promise<void> {
-    await fs.mkdir(path.dirname(lockPath), { recursive: true }).catch(() => {
-        // parent may already exist
+    await fs.mkdir(path.dirname(lockPath), { recursive: true }).catch((err: unknown) => {
+        // EEXIST is benign (parent already exists); any other errno
+        // (EACCES, ENOSPC, EROFS) is a real failure that the open("wx")
+        // below would also hit — let it surface with the real root cause.
+        const code = (err as NodeJS.ErrnoException).code
+        if (code !== "EEXIST") throw err
     })
     const deadline = Date.now() + LOCK_MAX_WAIT_MS
     for (;;) {
@@ -198,8 +202,9 @@ async function releaseLock(lockPath: string): Promise<void> {
  *   with FS write access cannot silently redirect the write elsewhere.
  */
 export async function atomicWrite(filePath: string, content: string): Promise<void> {
-    await fs.mkdir(path.dirname(filePath), { recursive: true }).catch(() => {
-        // parent may already exist
+    await fs.mkdir(path.dirname(filePath), { recursive: true }).catch((err: unknown) => {
+        const code = (err as NodeJS.ErrnoException).code
+        if (code !== "EEXIST") throw err
     })
 
     // st-symlink: refuse to overwrite a symlink so the write cannot be
@@ -277,8 +282,9 @@ export async function refuseSymlink(filePath: string): Promise<void> {
  */
 export async function appendJsonl(filePath: string, line: string): Promise<void> {
     await refuseSymlink(filePath)
-    await fs.mkdir(path.dirname(filePath), { recursive: true }).catch(() => {
-        // parent may already exist
+    await fs.mkdir(path.dirname(filePath), { recursive: true }).catch((err: unknown) => {
+        const code = (err as NodeJS.ErrnoException).code
+        if (code !== "EEXIST") throw err
     })
     await fs.appendFile(filePath, line, "utf8")
 }

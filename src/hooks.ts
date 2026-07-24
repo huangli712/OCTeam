@@ -405,6 +405,12 @@ export async function sweepTeamOnce(
 export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
     const handle = setInterval(async () => {
         try {
+            // Periodic cleanup of expired compacting flags so sessions
+            // deleted without a transform do not leak entries.
+            const now = Date.now()
+            for (const [sid, exp] of compacting) {
+                if (now >= exp) compacting.delete(sid)
+            }
             // No directory filter — include sessions in member worktrees too.
             const statusResult = await ctx.client.session.status({})
             const statusMap = statusResult.data

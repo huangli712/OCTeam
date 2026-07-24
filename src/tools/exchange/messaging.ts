@@ -130,7 +130,14 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                         return
                     }
                     task.messagesSent += recipients.length
-                    await saveTeamState(team)
+                    try {
+                        await saveTeamState(team)
+                    } catch (err) {
+                        // Roll back the in-memory increment so the next call
+                        // re-reads from disk (which has the stale count).
+                        task.messagesSent -= recipients.length
+                        throw err
+                    }
                 })
                 if (overLimit) {
                     return `Error: per-run message limit reached (${team.bounds.maxMessagesPerRun}). Message not sent.`
