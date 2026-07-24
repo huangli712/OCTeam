@@ -88,7 +88,7 @@ const COMPACTING_MAP_CAP = 64
  */
 export async function persistTeamState(
     ctx: PluginContext,
-    team: Parameters<typeof saveTeamState>[0],
+    team: Team,
     label: string,
     extra: Record<string, unknown>,
 ): Promise<void> {

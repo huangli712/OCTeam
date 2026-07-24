@@ -306,6 +306,9 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             if (!caller?.isMaster) return "Error: team_workflow is master-only"
             const resolvedArgs = await resolveWorkflowArgs(ctx, args)
             if (typeof resolvedArgs === "string") return resolvedArgs
+            // Pre-compute lowered step count so the successMessage callback
+            // does not need to call lowerWorkflowSteps a second time.
+            const loweredStepCount = lowerWorkflowSteps(resolvedArgs.steps).length
             if (args.dry_run) {
                 const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
                 const gate = activationError(team.teamName, team.activatedAt)
@@ -356,7 +359,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                     }
                 },
                 () => `team_workflow started on "${args.team_id}" with ${
-                    lowerWorkflowSteps(resolvedArgs.steps).length
+                    loweredStepCount
                 } step(s).`,
             )
         },
