@@ -272,6 +272,11 @@ function canGateGotoStep(
     const gate = steps[gateIndex];
     const target = steps[targetIndex];
     if (gate?.kind !== "gate" || target === undefined) return false;
+    // Goto targets must be task or gate steps — fanout/join steps are
+    // structural markers, not dispatchable jump destinations. gotoWorkflowStep
+    // dispatches via a task/gate ternary; allowing fanout/join targets would
+    // silently call dispatchGateStep on a non-gate step (returns false).
+    if (target.kind !== "task" && target.kind !== "gate") return false;
 
     const gateBranch = gate.branch;
     if (gateBranch === undefined) return target.branch === undefined;

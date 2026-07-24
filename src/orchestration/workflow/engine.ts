@@ -664,6 +664,12 @@ export async function redispatchWorkflowStep(
     const step = task.steps?.[index];
     if (!step || step.completed) return false;
 
+    // Reset stale timing metadata from the prior (crashed/timeout) dispatch
+    // so durationMs on completion reflects only the new attempt. All other
+    // re-dispatch paths (handleTaskIdle, handleGateRetry, gotoWorkflowStep,
+    // handleInvalidVerdict) call this before re-dispatching.
+    resetWorkflowStepTiming(step);
+
     switch (step.kind) {
         case "task":
             return await dispatchTaskStep(ctx, team, task, index);
