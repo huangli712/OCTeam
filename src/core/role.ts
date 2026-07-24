@@ -489,7 +489,6 @@ export const SAFE_FALLBACK_AGENT: string = roleAgent(DEFAULT_ROLE)
  * falsely match.
  */
 export function normalizeRole(role: string): string {
-    if (typeof role !== "string") return DEFAULT_ROLE
     const key = role.toLowerCase()
     return Object.prototype.hasOwnProperty.call(ROLES, key) ? key : DEFAULT_ROLE
 }

@@ -62,7 +62,7 @@ export async function approveLoopDone(ctx: PluginContext, team: Team): Promise<v
     const decision = parseDecision(deciderOutput ?? "")
     // Record the final decision BEFORE delivering so summarizeLoop reads it as
     // the last history entry (final: done + rationale), not after (final: n/a).
-    task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
+    recordLoopDecision(task, decision)
     await deliverSummaryToLeader(ctx, team, "loop_complete:human_approved", "completed")
     clearActiveTask(team)
     team.status = "idle"
@@ -74,7 +74,7 @@ export async function rejectLoopDone(ctx: PluginContext, team: Team, feedback?: 
     if (!task || task.type !== "loop") return
     const deciderOutput = task.responses[task.deciderMember ?? ""]
     const decision = parseDecision(deciderOutput ?? "")
-    task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
+    recordLoopDecision(task, decision)
     if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
         await finishRun(ctx, team, "loop_complete:human_rejected_max_rounds", "failed")
         return
@@ -130,7 +130,7 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
         }
         // Record the final decision BEFORE delivering so summarizeLoop reads it
         // as the last history entry (final: done + rationale), not after.
-        task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
+        recordLoopDecision(task, decision)
         await deliverSummaryToLeader(ctx, team, "loop_complete:decider_done", "completed")
         clearActiveTask(team)
         team.status = "idle"
@@ -154,6 +154,6 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
     // Continue to next round -- inject the decider's feedback (rationale +
     // nextActions) into stage 0's prompt so the loop is actually corrective.
     // Without this the next round re-sends the original task verbatim.
-    task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
+    recordLoopDecision(task, decision)
     await continueLoopRound(ctx, team, decision.rationale, decision.nextActions)
 }

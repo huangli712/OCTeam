@@ -11,7 +11,7 @@ import type { Hooks } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "./core/context.js"
 import type { Team } from "./state/store.js"
-import { activeTeams, loadTeamState, saveTeamState } from './state/store.js';
+import { activeTeams, loadTeamState, saveTeamState } from "./state/store.js"
 import { resolveMasterTeams, resolveTeamMember, isMasterSession } from "./state/resolve.js"
 import { ackMessages, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
 import { formatMailboxInjection } from "./messaging/format.js"

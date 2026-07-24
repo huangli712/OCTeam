@@ -108,8 +108,8 @@ export function truncateOutput(text: string, maxBytes: number = 8192): string {
     if (Buffer.byteLength(text, "utf8") <= maxBytes) return text
     const buf = Buffer.from(text, "utf8")
     // Reserve a fixed overhead for the elision marker and split the rest evenly
-    // between head and tail. 48 bytes covers "\n…[truncated <digits> middle
-    // bytes]…\n" for any realistic omitted count (each … is 3 UTF-8 bytes).
+    // between head and tail. 48 bytes covers "\n...[truncated <digits> middle
+    // bytes]...\n" for any realistic omitted count.
     const sepOverhead = 48
     const usable = Math.max(0, maxBytes - sepOverhead)
     const half = Math.floor(usable / 2)

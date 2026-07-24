@@ -285,6 +285,16 @@ export function whereReason(step: WorkflowStep, fallback: string): string {
 
 // --- ensemble verdict aggregation ---
 
+/** Build an ensemble aggregation result with the given verdict and rationale. */
+function ensembleResult(verdict: Verdict, rationale: string): {
+    verdict: Verdict
+    parseFailed: boolean
+    rationale: string
+    diff: string
+} {
+    return { verdict, parseFailed: false, rationale, diff: "" }
+}
+
 /**
  * Aggregate per-verifier results into a single verdict using the ensemble policy.
  */
@@ -311,66 +321,21 @@ export function aggregateEnsembleVerdict(step: WorkflowStep): {
     const total = verdicts.length;
     switch (step.ensemblePolicy) {
         case "majority":
-            if (passCount > total / 2) return {
-                verdict: "PASS",
-                parseFailed: false,
-                rationale: `Majority PASS (${passCount}/${total})`,
-                diff: "",
-            };
-            if (failCount > total / 2) return {
-                verdict: "FAIL",
-                parseFailed: false,
-                rationale: `Majority FAIL (${failCount}/${total})`,
-                diff: "",
-            };
-            return {
-                verdict: "INVALID",
-                parseFailed: false,
-                rationale: `No majority (${passCount}P/${failCount}F/${invalidCount}I)`,
-                diff: "",
-            };
+            if (passCount > total / 2) return ensembleResult("PASS", `Majority PASS (${passCount}/${total})`);
+            if (failCount > total / 2) return ensembleResult("FAIL", `Majority FAIL (${failCount}/${total})`);
+            return ensembleResult("INVALID", `No majority (${passCount}P/${failCount}F/${invalidCount}I)`);
         case "quorum": {
             const threshold = step.ensembleQuorum ?? 0.5;
-            if (passCount / total >= threshold) return {
-                verdict: "PASS",
-                parseFailed: false,
-                rationale: `Quorum PASS (${passCount}/${total} >= ${threshold})`,
-                diff: "",
-            };
-            if (failCount / total >= threshold) return {
-                verdict: "FAIL",
-                parseFailed: false,
-                rationale: `Quorum FAIL (${failCount}/${total} >= ${threshold})`,
-                diff: "",
-            };
-            return {
-                verdict: "INVALID",
-                parseFailed: false,
-                rationale: `No quorum (${passCount}P/${failCount}F/${invalidCount}I)`,
-                diff: "",
-            };
+            if (passCount / total >= threshold) return ensembleResult("PASS", `Quorum PASS (${passCount}/${total} >= ${threshold})`);
+            if (failCount / total >= threshold) return ensembleResult("FAIL", `Quorum FAIL (${failCount}/${total} >= ${threshold})`);
+            return ensembleResult("INVALID", `No quorum (${passCount}P/${failCount}F/${invalidCount}I)`);
         }
         case "unanimous":
-            if (passCount === total) return {
-                verdict: "PASS",
-                parseFailed: false,
-                rationale: `Unanimous PASS (${passCount}/${total})`,
-                diff: "",
-            };
-            if (failCount === total) return {
-                verdict: "FAIL",
-                parseFailed: false,
-                rationale: `Unanimous FAIL (${failCount}/${total})`,
-                diff: "",
-            };
-            return {
-                verdict: "INVALID",
-                parseFailed: false,
-                rationale: `Not unanimous (${passCount}P/${failCount}F/${invalidCount}I)`,
-                diff: "",
-            };
+            if (passCount === total) return ensembleResult("PASS", `Unanimous PASS (${passCount}/${total})`);
+            if (failCount === total) return ensembleResult("FAIL", `Unanimous FAIL (${failCount}/${total})`);
+            return ensembleResult("INVALID", `Not unanimous (${passCount}P/${failCount}F/${invalidCount}I)`);
         default:
-            return { verdict: "INVALID", parseFailed: false, rationale: `Unknown ensemble policy`, diff: "" };
+            return ensembleResult("INVALID", `Unknown ensemble policy`);
     }
 }
 
@@ -441,7 +406,7 @@ export function formatWorkflowCondition(condition: WorkflowCondition): string {
     return `${condition.kind} ${condition.value}`
 }
 
-/** Exhaustive check helper that throws for unhandled condition kinds. */
+/** Exhaustive check helper that throws for unhandled severity or condition kinds. */
 function assertNeverCondition(value: never): never {
-    throw new Error(`unhandled workflow condition: ${String(value)}`)
+    throw new Error(`unhandled workflow value: ${String(value)}`)
 }

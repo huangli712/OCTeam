@@ -324,6 +324,10 @@ async function handleGatePass(
     verifierName: string,
     v: ParsedVerdict,
 ): Promise<void> {
+    // Clear the verifier's response so a backward jump or re-run does not read
+    // a stale verdict (parity with FAIL/INVALID paths and ensemble gates).
+    const task = team.activeTask;
+    if (task) delete task.responses[verifierName];
     resetStepAfterCompletion(step, { completed: true });
     // approval_after on a gate is validator-guaranteed incompatible with
     // on_*_goto, so pausing here cannot be bypassed by a goto jump.

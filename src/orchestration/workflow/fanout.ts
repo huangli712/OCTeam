@@ -24,6 +24,7 @@ import { recordEvent } from "../records/events.js";
 import { truncateOutput } from "../protocol/output.js";
 import { joinPolicyImpossible } from "./join-policy.js";
 import {
+    assertNeverWorkflowStepKind,
     findActiveWorkflowStepIndexForMember,
     getActiveWorkflowStepIndices,
     isSameWorkflowBranch,
@@ -528,6 +529,6 @@ function dispatchFailureActorName(step: WorkflowStep): string | undefined {
         case "fanout":
             return undefined;
         default:
-            throw new Error(`unhandled workflow step kind: ${String(step.kind)}`);
+            throw assertNeverWorkflowStepKind(step.kind);
     }
 }

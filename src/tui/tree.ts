@@ -19,6 +19,7 @@ export type SessionTreeNode = {
     startTime: string
     status: DisplayStatus
     childCount: number
+    created: number
 }
 
 /**

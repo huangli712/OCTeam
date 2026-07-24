@@ -9,7 +9,7 @@
 
 import type { WorkflowStep } from "../../core/types.js";
 import { truncateOutput } from "../protocol/output.js";
-import { isSameWorkflowBranch } from "./dag.js";
+import { assertNeverWorkflowStepKind, isSameWorkflowBranch } from "./dag.js";
 
 /** Total byte budget for injected upstream context. */
 const UPSTREAM_TOTAL_CAP = 65_536;
@@ -87,7 +87,7 @@ function workflowUpstreamBlock(
         case "fanout":
             return null;
         default:
-            throw new Error(`unhandled workflow step kind: ${String(candidate.kind)}`);
+            throw assertNeverWorkflowStepKind(candidate.kind);
     }
 }
 

@@ -53,6 +53,8 @@ export function formatMailboxInjection(msgs: Message[]): string {
     // downgraded to a regular message (no [DIRECTIVE] prefix, no priority).
     const directives = msgs.filter(m => isAuthenticatedDirective(m))
     const regular = msgs.filter(m => !isAuthenticatedDirective(m))
+    // Note: two filters over the same array is intentional for clarity; a
+    // single reduce would be less readable for this small partition.
     return [
         ...directives.map(m => render(m, "[DIRECTIVE] ")),
         ...regular.map(m => render(m, "")),
