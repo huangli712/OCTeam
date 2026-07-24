@@ -66,6 +66,8 @@ export async function applyApprovalDecision(
     }
     if (decision.feedback !== undefined) record.feedback = decision.feedback
     task.approvalHistory = [...(task.approvalHistory ?? []), record]
+    const savedApprovalStage = task.approvalStage
+    const savedApprovalRequest = task.approvalRequest
     task.approvalStage = undefined
     task.approvalRequest = undefined
     recordEvent(team, {
@@ -76,6 +78,7 @@ export async function applyApprovalDecision(
         detail: `${request.kind}:${decision.approved ? "approved" : "rejected"}`,
     })
 
+    try {
     if (!decision.approved) {
         switch (request.kind) {
             case "pipeline_stage":
@@ -165,6 +168,14 @@ export async function applyApprovalDecision(
             void _exhaustive
             return `Error: unsupported approval kind.`
         }
+    }
+    } catch (err) {
+        // A dispatch or advance threw after the approval was already
+        // cleared. Restore the pending approval so the caller can retry
+        // instead of being permanently stuck with no approval pause.
+        task.approvalStage = savedApprovalStage
+        task.approvalRequest = savedApprovalRequest
+        throw err
     }
 }
 

@@ -135,17 +135,25 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 // Re-check duplicate name INSIDE the mutex: a concurrent add
-                // with the same explicit name could have passed the outside-mutex
-                // check (line 59) and already pushed to team.members.
-                if (args.name && team.members.some(m => m.name === memberName)) {
+                // (explicit OR auto-picked) could have pushed the same name
+                // since the outside-mutex check at line 59/67.
+                if (team.members.some(m => m.name === memberName)) {
                     staleState = true
                     return
                 }
                 spec.members.push(newSpec)
                 team.members.push(newState)
 
-                await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
-                await saveTeamState(team)
+                try {
+                    await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
+                    await saveTeamState(team)
+                } catch (err) {
+                    // Rollback in-memory mutations so the team object stays
+                    // consistent with the un-persisted disk state.
+                    spec.members.pop()
+                    team.members.pop()
+                    throw err
+                }
             })
 
             if (staleState) {

@@ -62,11 +62,6 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
             const oldDir = team.directory
             const newDir = teamDir(ctx.storageRoot, args.new_name, pathLeadSessionId)
 
-            let spec: TeamSpec | null = null
-            try {
-                spec = await readTeamSpec(ctx.storageRoot, args.team_id, pathLeadSessionId)
-            } catch { /* best-effort; spec may be absent for old teams */ }
-
             const wasActive = team.activatedAt !== undefined
 
             let staleState = false
@@ -90,6 +85,14 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 } catch {
                     // newDir does not exist — safe to rename
                 }
+                // Re-read spec INSIDE the mutex so concurrent mutators
+                // (e.g. a parallel add/remove) don't clobber each other's
+                // spec changes. Reading outside the lock would produce a
+                // stale snapshot whose writeTeamSpec overwrites another op.
+                let spec: TeamSpec | null = null
+                try {
+                    spec = await readTeamSpec(ctx.storageRoot, args.team_id, pathLeadSessionId)
+                } catch { /* best-effort; spec may be absent for old teams */ }
                 // Rename directory on disk.
                 await fs.rename(oldDir, newDir)
 

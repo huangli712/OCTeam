@@ -73,6 +73,7 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 const specIdx = spec.members.findIndex(m => m.name === args.member_name)
+                const removedSpecMember = specIdx !== -1 ? spec.members[specIdx] : undefined
                 if (specIdx !== -1) spec.members.splice(specIdx, 1)
                 // Recompute index INSIDE the mutex: a concurrent remove may have
                 // shifted the array, making the outside-mutex stateIdx stale.
@@ -81,10 +82,18 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                     staleState = true
                     return
                 }
+                const removedStateMember = team.members[currentIdx]
                 team.members.splice(currentIdx, 1)
 
-                await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
-                await saveTeamState(team)
+                try {
+                    await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
+                    await saveTeamState(team)
+                } catch (err) {
+                    // Rollback in-memory mutations to match un-persisted disk.
+                    if (specIdx !== -1 && removedSpecMember) spec.members.splice(specIdx, 0, removedSpecMember)
+                    team.members.splice(currentIdx, 0, removedStateMember)
+                    throw err
+                }
             })
 
             if (staleState) {

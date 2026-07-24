@@ -363,8 +363,12 @@ function mergeMembers(
         }
         const d = disk.find(m => m.name === name)
         if (!d) {
-            // Member added by caller — use caller's.
-            result.push(c)
+            // Member absent from disk: either the caller added it (not in
+            // ancestor) or another process removed it (in ancestor). Without
+            // the ancestor check, a stale snapshot from a process that still
+            // holds the member would resurrect it on disk.
+            if (ancestorByName.has(name)) continue  // concurrent removal: honor
+            result.push(c)  // caller added it
             continue
         }
         const a = ancestorByName.get(name)

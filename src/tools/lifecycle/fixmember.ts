@@ -106,6 +106,8 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             }
 
             let staleState = false
+            let renameCollision = false
+            let specMissing = false
             await team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status to "busy" since
@@ -124,6 +126,21 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     logger.warn("fixmember: failed to read team spec", { teamName: caller.teamName, error: String(err) })
                 }
                 const specMember = spec?.members.find(m => m.name === args.member_name)
+
+                // Re-check name collision INSIDE the mutex: a concurrent
+                // fixmember could have renamed another member to the same
+                // new_name since the outside-mutex check at line 88.
+                if (renaming && team.members.some(m => m.name === args.new_name && m !== member)) {
+                    renameCollision = true
+                    return
+                }
+                // If renaming, the spec must be readable and contain the
+                // member — otherwise config.json would retain the old name
+                // after rename, creating a state/spec inconsistency.
+                if (renaming && !specMember) {
+                    specMissing = true
+                    return
+                }
 
                 // --- new_name: rename member across state, spec, index, mailbox ---
                 if (renaming) {
@@ -193,13 +210,23 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     }
                 }
 
-                await saveTeamState(team)
+                // Write spec FIRST so that if saveTeamState fails, the
+                // disk state.json (runtime source of truth) retains the old
+                // values while config.json has the new ones — strictly better
+                // than the reverse where state.json is ahead of config.json.
                 if (spec) await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
+                await saveTeamState(team)
             })
 
             if (staleState) {
                 return `Error: team "${args.team_id}" is busy. `
                     + `Wait for the workflow to finish before modifying members.`
+            }
+            if (renameCollision) {
+                return `Error: name "${args.new_name}" already exists in this team`
+            }
+            if (specMissing) {
+                return `Error: cannot rename member — team config (config.json) is unreadable or member absent from spec`
             }
 
             return `Member "${args.member_name}" updated — ${changes.join("; ")}`

@@ -139,17 +139,26 @@ export async function handleSessionDeleted(ctx: PluginContext, sessionID: string
         // via path traversal" — this mirrors that posture for consistency.
         assertSafeSegment(sessionID, "handleSessionDeleted", "sessionID")
         const teams = await listAllTeams(ctx.projectStorageRoot, true)
+        // Collect directories to invalidate AFTER fs.rm so that during the
+        // deletion window, cache hits return the tombstoned team object
+        // (deleted=true) and racing handlers no-op instead of recreating
+        // the directory via saveTeamState.
+        const dirsToInvalidate: string[] = []
         for (const { leadSessionId, teamName } of teams) {
             if (leadSessionId !== sessionID) continue
             try {
                 const team = await loadTeamState(ctx.projectStorageRoot, teamName, leadSessionId)
-                invalidateTeam(team.directory)
+                team.deleted = true  // tombstone: prevent racing handlers from resurrecting
+                dirsToInvalidate.push(team.directory)
             } catch (err) {
                 logSwallowed(ctx, "team state unreadable during session deletion", err, { team: teamName })
             }
         }
         const sessionDir = path.join(ctx.projectStorageRoot, sessionID)
         await fs.rm(sessionDir, { recursive: true, force: true })
+        for (const dir of dirsToInvalidate) {
+            invalidateTeam(dir)
+        }
     } catch (err) {
         // best-effort — never block the event handler on cleanup, but log
         // so orphaned session directories are diagnosable.

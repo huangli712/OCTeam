@@ -9,7 +9,7 @@ import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
-import { clearActiveTeam } from "../../state/resolve.js"
+import { clearActiveTeam, setActiveTeam } from "../../state/resolve.js"
 
 /** Deactivate the currently active team for this session. */
 export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
@@ -41,16 +41,33 @@ export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
             }
 
             let result = ""
+            const prevActivatedAt = team.activatedAt
             await team.mutex.runExclusive(async () => {
+                // Revalidate inside the mutex: a concurrent
+                // startOrchestration may have flipped status to "busy" since
+                // the outside-mutex check at line 38. Refuse rather than
+                // deactivating during an active run.
+                if (team.status === "busy" || team.activeTask !== undefined) {
+                    result = `Error: team "${args.team_id}" is busy with an active orchestration. `
+                        + `Wait for it to finish before deactivating.`
+                    return
+                }
                 if (team.activatedAt === undefined) {
                     result = `Team "${args.team_id}" is already inactive.`
                     return
                 }
                 team.activatedAt = undefined
                 clearActiveTeam(context.sessionID)
-                await saveTeamState(team).catch((err) =>
+                try {
+                    await saveTeamState(team)
+                } catch (err) {
+                    // Restore in-memory state so it matches the disk.
+                    team.activatedAt = prevActivatedAt
+                    setActiveTeam(context.sessionID, team.directory)
                     logSwallowed(ctx, "persist team state failed (deactivate)", err, { team: team.teamName })
-                )
+                    result = `Error: failed to persist deactivation for team "${args.team_id}" (state file write failed)`
+                    return
+                }
                 result = `Team "${args.team_id}" deactivated. No team is active in this session — `
                     + `call team_activate to pick one.`
             })

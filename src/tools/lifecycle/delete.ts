@@ -68,8 +68,17 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             // the handler from recreating the just-deleted directory via atomicWrite's
             // mkdir({recursive:true}).
             const worktreeErrors: string[] = []
+            let staleBusy = false
             try {
                 await team.mutex.runExclusive(async () => {
+                // Revalidate inside the mutex: a concurrent
+                // startOrchestration may have flipped status to "busy" since
+                // the outside-mutex check at line 45. For non-force, refuse
+                // rather than aborting an active run the user did not authorize.
+                if (!force && team.status === "busy") {
+                    staleBusy = true
+                    return
+                }
                 team.deleted = true  // tombstone: prevent any racing handler from resurrecting this dir
                 // Force-deleting a busy team: abort running members and clear the
                 // active task in memory FIRST (mirrors team_cancel) so any handler
@@ -112,6 +121,10 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
                     invalidateTeam(team.directory)
                 })
+                if (staleBusy) {
+                    return `Error: team "${args.team_id}" is busy with an active orchestration. `
+                        + `Wait for it to finish, or re-run with force: true.`
+                }
                 const wtWarning = worktreeErrors.length > 0
                     ? ` (worktree cleanup failed for: ${worktreeErrors.join("; ")})`
                     : ""

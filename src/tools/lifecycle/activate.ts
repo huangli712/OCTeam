@@ -9,7 +9,7 @@ import type { PluginContext } from "../../core/context.js"
 import { listTeamNames, loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
-import { setActiveTeam } from "../../state/resolve.js"
+import { clearActiveTeam, setActiveTeam } from "../../state/resolve.js"
 import { decideActivate, withOrderedLocks } from "../../state/activation.js"
 
 /** Activate a team for the current session. Only one team may be active at a time. */
@@ -78,6 +78,7 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 const now = Date.now()
+                const prevSiblingActivatedAt = activeSibling?.activatedAt
                 target.activatedAt = now
                 setActiveTeam(context.sessionID, target.directory)
                 // Deactivate the outgoing sibling so its state.json does not
@@ -86,13 +87,28 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                 if (activeSibling) {
                     activeSibling.activatedAt = undefined
                 }
-                await saveTeamState(target).catch((err) =>
+                try {
+                    await saveTeamState(target)
+                } catch (err) {
+                    // Restore in-memory state to match the un-persisted disk.
+                    target.activatedAt = undefined
+                    clearActiveTeam(context.sessionID)
+                    if (activeSibling) activeSibling.activatedAt = prevSiblingActivatedAt
                     logSwallowed(ctx, "persist team state failed (activate)", err, { team: target.teamName })
-                )
+                    result = `Error: failed to persist activation for team "${args.team_id}" (state file write failed)`
+                    return
+                }
                 if (activeSibling) {
-                    await saveTeamState(activeSibling).catch((err) =>
+                    try {
+                        await saveTeamState(activeSibling)
+                    } catch (err) {
+                        // Target is activated successfully, but sibling deactivation
+                        // did not persist — it may be recovered as active on restart.
+                        activeSibling.activatedAt = prevSiblingActivatedAt
                         logSwallowed(ctx, "persist team state failed (deactivate sibling)", err, { team: activeSibling!.teamName })
-                    )
+                        result = `Team "${args.team_id}" activated (warning: failed to persist deactivation of sibling "${activeSibling!.teamName}" on disk).`
+                        return
+                    }
                 }
                 result = `Team "${args.team_id}" activated.`
             })
