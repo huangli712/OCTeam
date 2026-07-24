@@ -69,7 +69,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                     }
                     // Validate arbiter + debaters are real members.
                     for (const name of [args.arbiter, ...args.debaters]) {
-                        if (!team.members.some(m => m.name === name)) {
+                        if (!team.members.some(m => m.name === name && !m.isMaster)) {
                             return `Error: unknown member "${name}" in arbiter/debaters`
                         }
                     }

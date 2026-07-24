@@ -50,7 +50,7 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                     if (signoffErr) return signoffErr
                     // Validate members exist.
                     for (const name of stageMembers) {
-                        if (!team.members.some(m => m.name === name)) {
+                        if (!team.members.some(m => m.name === name && !m.isMaster)) {
                             return `Error: unknown member "${name}" in stages`
                         }
                     }

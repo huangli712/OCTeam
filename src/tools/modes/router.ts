@@ -88,7 +88,7 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                         return "Error: router must not also be a branch target"
                     }
                     for (const name of [args.router, ...branchMembers]) {
-                        if (!team.members.some(m => m.name === name)) {
+                        if (!team.members.some(m => m.name === name && !m.isMaster)) {
                             return `Error: unknown member "${name}" in router/routes`
                         }
                     }

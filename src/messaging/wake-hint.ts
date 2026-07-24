@@ -7,6 +7,7 @@
  */
 
 import type { PluginContext } from "../core/context.js"
+import { logger } from "../core/log.js"
 
 // Minimum gap between wake hints sent to the same session. Prevents wake loops
 // where a long unread backlog keeps re-triggering promptAsync on every sweep.
@@ -63,8 +64,8 @@ export async function sendWakeHint(
                 ],
             },
         })
-        .catch(() => {
-            // best-effort — Transform hook remains the delivery source of truth
+        .catch((err) => {
+            logger.debug("wake-hint promptAsync failed (best-effort)", { sessionID, error: String(err) })
         })
 }
 

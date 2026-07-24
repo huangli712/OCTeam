@@ -466,7 +466,10 @@ export async function gotoWorkflowStep(
             s.skipped = false;
             s.approvalBeforeGranted = undefined;
             resetWorkflowStepTiming(s);
-            if (s.kind === "task") s.output = undefined;
+            if (s.kind === "task") {
+                s.output = undefined;
+                s.taskAttempts = 0;
+            }
             if (s.kind === "gate") {
                 s.verdict = undefined;
                 // Clear cached per-verifier results so the ensemble gate

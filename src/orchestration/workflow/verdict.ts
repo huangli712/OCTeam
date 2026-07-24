@@ -498,7 +498,10 @@ async function handleGateRetry(
         retryStep.skipped = false;
         retryStep.approvalBeforeGranted = undefined;
         resetWorkflowStepTiming(retryStep);
-        if (retryStep.kind === "task") retryStep.output = undefined;
+        if (retryStep.kind === "task") {
+            retryStep.output = undefined;
+            retryStep.taskAttempts = 0;
+        }
         if (retryStep.kind === "gate") {
             retryStep.verdict = undefined;
             retryStep.ensembleResults = undefined;

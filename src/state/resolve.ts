@@ -176,6 +176,9 @@ function syntheticMaster(team: {
 async function resolveMemberFromIndex(sessionID: string): Promise<ResolvedMember | null> {
     const m = memberIndex.get(sessionID)
     if (!m) return null
+    // Propagate loadTeamState errors so the caller's try/catch can log them.
+    // Returning null here would make a corrupted-state indexed member look like
+    // a non-member, silently swallowing the error instead of logging it.
     const team = await loadTeamState(m.storageRoot, m.teamName, m.leadSessionId)
     const member = team.members.find(x => x.name === m.memberName)
     return member
@@ -211,7 +214,12 @@ export async function resolveTeamMember(
     if (!master || !master.activeDirectory) return null
     const entry = master.teams.get(master.activeDirectory)
     if (!entry) return null
-    const team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
+    let team
+    try {
+        team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
+    } catch {
+        return null
+    }
     return syntheticMaster(team, entry.leadSessionId, entry.storageRoot)
 }
 
@@ -251,7 +259,12 @@ export async function resolveCallerInTeam(
     if (!master) return null
     const entry = Array.from(master.teams.values()).find(t => t.teamName === teamId)
     if (!entry) return null
-    const team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
+    let team
+    try {
+        team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
+    } catch {
+        return null
+    }
     if (requireActive && isInteractionForbidden(true, team.activatedAt)) return null
     return syntheticMaster(team, entry.leadSessionId, entry.storageRoot)
 }

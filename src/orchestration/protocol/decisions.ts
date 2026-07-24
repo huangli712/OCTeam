@@ -81,7 +81,9 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
         round: 0,
         decision: parsed.decision === "done" || parsed.done === true ? "done" : "continue",
         rationale: typeof parsed.rationale === "string" ? parsed.rationale : "No rationale provided",
-        nextActions: Array.isArray(parsed.nextActions) ? parsed.nextActions : [],
+        nextActions: Array.isArray(parsed.nextActions)
+            ? parsed.nextActions.filter((a): a is string => typeof a === "string")
+            : [],
         timestamp: Date.now(),
     }
 }

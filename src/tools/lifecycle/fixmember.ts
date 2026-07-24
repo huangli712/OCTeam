@@ -8,6 +8,7 @@ import fs from "node:fs/promises"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import { logger } from "../../core/log.js"
 import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
 import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
 import { inboxPath } from "../../state/paths.js"
@@ -115,7 +116,9 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 let spec: TeamSpec | null = null
                 try {
                     spec = await readTeamSpec(ctx.storageRoot, caller.teamName, caller.leadSessionId)
-                } catch { /* best-effort */ }
+                } catch (err) {
+                    logger.warn("fixmember: failed to read team spec", { teamName: caller.teamName, error: String(err) })
+                }
                 const specMember = spec?.members.find(m => m.name === args.member_name)
 
                 // --- new_name: rename member across state, spec, index, mailbox ---

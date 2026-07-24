@@ -108,7 +108,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                     }
                     if (args.escalate_to) namedMembers.add(args.escalate_to)
                     for (const name of namedMembers) {
-                        if (!team.members.some(m => m.name === name)) {
+                        if (!team.members.some(m => m.name === name && !m.isMaster)) {
                             return `Error: unknown member "${name}" in stages/escalate_to`
                         }
                     }

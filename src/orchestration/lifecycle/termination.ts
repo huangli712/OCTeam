@@ -203,6 +203,7 @@ async function handleWorkflowStepTimeout(
             step.dispatchedAt = undefined
             if (!await redispatchWorkflowStep(ctx, team, index)) {
                 await finishRun(ctx, team, workflowNoSessionReason(workflowTimeoutStepActor(step)), "failed")
+                return
             }
             step.dispatchedAt = now
             return

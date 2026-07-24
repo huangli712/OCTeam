@@ -7,6 +7,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
+import { logger } from "../../core/log.js"
 import type { MemberState } from "../../core/types.js"
 import { type Team, loadTeamState, saveTeamState } from "../../state/store.js"
 import { resolveTeamMember } from "../../state/resolve.js"
@@ -105,7 +106,13 @@ export async function handleStatusEvent(
     const member = await resolveTeamMember(ctx.storageRoot, sessionID)
     if (!member || member.isMaster) return
 
-    const team = await loadTeamState(ctx.storageRoot, member.teamName, member.leadSessionId)
+    let team
+    try {
+        team = await loadTeamState(ctx.storageRoot, member.teamName, member.leadSessionId)
+    } catch (err) {
+        logger.warn("status handler: failed to load team state", { teamName: member.teamName, error: String(err) })
+        return
+    }
     await team.mutex.runExclusive(async () => {
         if (team.deleted) return
         const live = team.members.find(m => m.name === member.name)

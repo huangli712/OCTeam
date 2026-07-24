@@ -466,7 +466,12 @@ function validateLoweredTaskStep(
         || f.criteria !== undefined || f.target_step !== undefined
         || f.targets !== undefined || f.on_fail !== undefined
         || f.max_retries !== undefined || f.on_invalid !== undefined
-        || f.max_invalid_retries !== undefined || f.where !== undefined) {
+        || f.max_invalid_retries !== undefined || f.where !== undefined
+        || f.verifiers !== undefined || f.ensemble_policy !== undefined
+        || f.ensemble_quorum !== undefined || f.on_malformed !== undefined
+        || f.max_malformed_retries !== undefined || f.on_pass_goto !== undefined
+        || f.on_fail_goto !== undefined || f.on_invalid_goto !== undefined
+        || f.max_jumps !== undefined || f.loop !== undefined) {
         return `Error: ${location} must not set gate fields`
     }
     if (!task.member) return `Error: ${location} requires \`member\``
@@ -524,6 +529,9 @@ function validateLoweredGateStep(
     const f = gate as Record<string, unknown>
     if (f.member !== undefined || f.fallback_member !== undefined || f.task !== undefined) {
         return `Error: ${location} must not set task fields`
+    }
+    if (f.retry_on !== undefined || f.max_task_retries !== undefined) {
+        return `Error: ${location} must not set task retry fields`
     }
     if (gate.inputs !== undefined || gate.expose_output !== undefined) {
         return `Error: ${location} must not set task data-flow fields`

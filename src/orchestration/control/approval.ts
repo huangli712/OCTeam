@@ -101,6 +101,10 @@ async function createApprovalPause(
     }
     task.approvalStage = true
     task.approvalRequest = request
+    // Persist BEFORE notifying so a crash between notify and save does not
+    // leave the leader notified of a pause that is not on disk (mirrors
+    // completion.ts's persist-then-notify ordering).
+    await saveTeamState(team)
     recordEvent(team, {
         timestamp: request.requestedAt,
         kind: "approval_requested",
@@ -109,7 +113,6 @@ async function createApprovalPause(
         detail: request.kind,
     })
     await notifyLeader(ctx, team, request)
-    await saveTeamState(team)
     return true
 }
 

@@ -55,7 +55,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                         return "Error: loop stages must have unique member names"
                     }
                     for (const name of stageMembers) {
-                        if (!team.members.some(m => m.name === name)) {
+                        if (!team.members.some(m => m.name === name && !m.isMaster)) {
                             return `Error: unknown member "${name}" in stages`
                         }
                     }

@@ -292,9 +292,10 @@ export function createTransformHook(
                 try {
                     const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
                     activeRunId = team.activeTask?.runId
-                } catch {
+                } catch (err) {
                     // Team state unreadable — fall back to injecting all. The
                     // ack-full-set below still prevents a reservation loop.
+                    logSwallowed(ctx, "transform: team state unreadable for scoped directive filter", err, { teamName: member.teamName })
                     injectAllScoped = true
                 }
                 toInject = unread.filter(m => {

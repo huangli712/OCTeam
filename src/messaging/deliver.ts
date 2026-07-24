@@ -7,6 +7,7 @@
  */
 
 import type { PluginContext } from "../core/context.js"
+import { logger } from "../core/log.js"
 import type { Message } from "../core/types.js"
 import { type Team } from "../state/store.js"
 import { countUnreadMessages, writeMailboxMessage } from "./mailbox.js"
@@ -42,8 +43,9 @@ export async function deliverToRecipients(
                 const n = await countUnreadMessages(team.directory, r)
                 await sendWakeHint(ctx, member.sessionId, n)
             }
-        } catch {
-            // wake-hint is best-effort
+        } catch (err) {
+            // wake-hint is best-effort — the message is already in the mailbox
+            logger.debug("deliver: wake-hint failed (best-effort)", { recipient: r, error: String(err) })
         }
     }
     if (failures.length > 0) {
