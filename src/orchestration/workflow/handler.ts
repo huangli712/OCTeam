@@ -6,6 +6,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js";
+import { logger } from "../../core/log.js";
 import { type Team, saveTeamState } from "../../state/store.js";
 import type { MemberState, WorkflowStep, WorkflowTask } from "../../core/types.js";
 import {
@@ -46,7 +47,14 @@ export function shouldRetryTask(step: WorkflowStep, output: string): boolean {
         case "regex":
             try {
                 return new RegExp(step.retryOn.pattern).test(output);
-            } catch {
+            } catch (err) {
+                // An invalid regex pattern is a config error, not an output
+                // property. Log so operators notice; fall back to no-retry so
+                // a malformed pattern does not loop the step forever.
+                logger.warn("shouldRetryTask: invalid regex pattern, treating as no-retry", {
+                    pattern: step.retryOn.pattern,
+                    error: err instanceof Error ? err.message : String(err),
+                });
                 return false;
             }
         default:

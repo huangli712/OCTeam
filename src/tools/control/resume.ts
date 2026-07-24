@@ -30,6 +30,8 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import type { ActiveTask } from "../../core/types.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { ensureMembersReady } from "../../orchestration/control/members.js"
@@ -63,8 +65,10 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
             let team
             try {
                 team = await loadTeamState(caller.storageRoot, team_id, caller.leadSessionId)
-            } catch {
-                return `Error: team "${team_id}" not found`
+            } catch (err) {
+                if (isEnoent(err)) return `Error: team "${team_id}" not found`
+                logSwallowed(ctx, "loadTeamState failed (resume)", err, { team: team_id })
+                return `Error: team "${team_id}" could not be loaded (state file unreadable)`
             }
             const actErr = activationError(team_id, team.activatedAt)
             if (actErr) return actErr

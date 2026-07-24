@@ -8,6 +8,7 @@
  */
 
 import type { PluginContext } from "../core/context.js"
+import { logSwallowed } from "../core/log.js"
 import { OCTEAM_AGENTS, isOCTeamAgent } from "../core/role.js"
 import type { Team } from "../state/store.js"
 import { MEMBER_NAME_POOL, RESERVED_NAMES } from "../state/naming.js"
@@ -69,8 +70,9 @@ export async function abortAndResetMembers(ctx: PluginContext, team: Team): Prom
                     path: { id: m.sessionId },
                     query: { directory: m.worktreePath ?? ctx.directory },
                 })
-                .catch(() => {
+                .catch((err) => {
                     // best-effort: a failed abort must not block teardown
+                    logSwallowed(ctx, "session.abort failed during teardown", err, { member: m.name, session: m.sessionId })
                 })
         }
     }

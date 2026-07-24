@@ -21,6 +21,7 @@ import path from "node:path"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import { isIndexedMember } from "../../state/resolve.js"
 import { validateMemberAgent, validateMemberName } from "../support.js"
 import { validateWorkflowSteps } from "../../orchestration/workflow/loader.js"
@@ -213,9 +214,10 @@ export async function runPlannerSession(ctx: PluginContext, opts: RunPlannerOpti
         await ctx.client.session.delete({
             path: { id: childId },
             query: { directory: ctx.directory },
-        }).catch(() => {
+        }).catch((err) => {
             // Best-effort: if delete fails the session lingers but does
             // not block the planner result.
+            logSwallowed(ctx, "planner: child session.delete failed", err, { childId })
         })
     }
 }

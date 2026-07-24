@@ -15,6 +15,7 @@ import path from "node:path"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 
 /** Return the filesystem path to a team's root directory. */
@@ -49,7 +50,7 @@ export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
                 entries = (await fs.readdir(absPath)).sort()
             } catch (err) {
                 if ((err as NodeJS.ErrnoException).code === "ENOENT") missing = true
-                // other errors: best-effort, leave entries empty
+                else logSwallowed(ctx, "readdir failed (rootdir)", err, { path: absPath })
             }
 
             const lines = [`team_root_dir: ${absPath}`]

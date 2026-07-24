@@ -8,6 +8,8 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import type { ActiveTask, WorkflowTask } from "../../core/types.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 import { checkWorkflowInvariants } from "../../orchestration/workflow/invariants.js"
 import { activationError } from "../../state/activation.js"
 import { workflowOperatorFailReason } from "../../orchestration/workflow/reasons.js"
@@ -342,8 +344,10 @@ export function teamFixWorkflowTool(ctx: PluginContext): ToolDefinition {
             let team: Team
             try {
                 team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
-            } catch {
-                return `Error: team "${args.team_id}" not found`
+            } catch (err) {
+                if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
+                logSwallowed(ctx, "loadTeamState failed (fix_workflow)", err, { team: args.team_id })
+                return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
             const gate = activationError(team.teamName, team.activatedAt)
             if (gate) return gate

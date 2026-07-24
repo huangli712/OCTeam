@@ -10,7 +10,7 @@
 import { listAllTeams, loadTeamState } from "./store.js"
 import type { MemberState } from "../core/types.js"
 import type { PluginContext } from "../core/context.js"
-import { logSwallowed } from "../core/log.js"
+import { logSwallowed, logger } from "../core/log.js"
 import { isInteractionForbidden } from "./activation.js"
 
 /** Map of sessionID -> member index entry for non-master team members. */
@@ -217,7 +217,10 @@ export async function resolveTeamMember(
     let team
     try {
         team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
-    } catch {
+    } catch (err) {
+        logger.warn("resolveTeamMember: failed to load team state for active master", {
+            team: entry.teamName, error: err instanceof Error ? err.message : String(err),
+        })
         return null
     }
     return syntheticMaster(team, entry.leadSessionId, entry.storageRoot)
@@ -262,7 +265,10 @@ export async function resolveCallerInTeam(
     let team
     try {
         team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
-    } catch {
+    } catch (err) {
+        logger.warn("resolveCallerInTeam: failed to load team state for master caller", {
+            team: entry.teamName, error: err instanceof Error ? err.message : String(err),
+        })
         return null
     }
     if (requireActive && isInteractionForbidden(true, team.activatedAt)) return null

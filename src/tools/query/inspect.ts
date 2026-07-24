@@ -42,8 +42,8 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
                 const sm = spec?.members.find(m => m.name === args.member_name)
                 role = sm?.role
                 prompt = sm?.prompt
-            } catch {
-                // spec unreadable
+            } catch (err) {
+                logSwallowed(ctx, "readTeamSpec failed (inspect)", err, { team: caller.teamName })
             }
 
             const lines: string[] = [
