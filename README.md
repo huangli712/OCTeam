@@ -99,7 +99,7 @@ orchestration. Only one orchestration can be active per team at a time.
 
 ## Key concepts
 
-**Team.** A named group of up to 8 members. Each team has a leader session
+**Team.** A named group of up to 12 members (the `maxMembers` default; configurable per team). Each team has a leader session
 ("master") and a set of member sessions. Teams live in a storage scope:
 project-scope (`<dir>/.octeam`) or user-scope (`~/.octeam`).
 
