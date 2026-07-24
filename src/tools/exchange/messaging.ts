@@ -18,6 +18,7 @@ import { loadTeamState, saveTeamState } from "../../state/store.js"
 import { unreadInboxBytes } from "../../messaging/mailbox.js"
 import { deliverToRecipients } from "../../messaging/deliver.js"
 import type { Message, ParallelMode } from "../../core/types.js"
+import { nonMasterMembers } from "../support.js"
 
 /**
  * isolated-mode comms gate: in an isolated parallel run, members may not send
@@ -77,7 +78,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
             }
             const recipients: string[] =
                 args.to === "*"
-                    ? team.members.filter(m => !m.isMaster).map(m => m.name)
+                    ? nonMasterMembers(team).map(m => m.name)
                     : [args.to]
             // Validate recipient exists.
             for (const r of recipients) {

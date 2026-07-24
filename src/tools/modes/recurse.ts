@@ -20,7 +20,7 @@ import {
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
 import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
-import { assertMember, validateSignoff } from "../support.js"
+import { assertMember, validateSignoff, findMember } from "../support.js"
 
 /** Truncate the root subject to fit within the 500-char delegate schema limit. */
 const SUBJECT_MAX_LEN = 480
@@ -133,7 +133,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                 // dispatch: ONLY the decomposer with the recursive contract;
                 // other members pull claimable tasks via the tail's re-prompt.
                 async (team) => {
-                    const decomposer = team.members.find(m => m.name === args.decomposer && !m.isMaster)
+                    const decomposer = findMember(team, args.decomposer)
                     if (decomposer) {
                         await dispatchToMember(
                             ctx, decomposer, buildRecursePrompt(),

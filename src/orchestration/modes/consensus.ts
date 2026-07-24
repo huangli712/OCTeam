@@ -18,6 +18,7 @@ import { recordEvent } from "../records/events.js"
 import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { allMembersAgree } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../control/approval.js"
+import { nonMasterMembers } from "../../tools/support.js"
 
 /**
  * Consensus idle handler: wait for the round barrier, then either deliver on
@@ -27,7 +28,7 @@ import { maybeRequestApproval } from "../control/approval.js"
 export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "consensus") return
-    const participants = team.members.filter(m => !m.isMaster).map(m => m.name)
+    const participants = nonMasterMembers(team).map(m => m.name)
 
     await maybeAdvanceBarrier(team, participants, async () => {
         task.consensusReached = allMembersAgree(task.responses)
@@ -55,7 +56,7 @@ export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promi
         const roundText =
             `[Consensus Round ${nextRound}]\n${summary}\n\n`
             + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`
-        for (const m of team.members.filter(x => !x.isMaster)) {
+        for (const m of nonMasterMembers(team)) {
             await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory, team)
         }
         task.currentRound = nextRound

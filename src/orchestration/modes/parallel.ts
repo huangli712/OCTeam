@@ -15,12 +15,13 @@ import { finishRun } from "../control/completion.js"
 import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { maybeTriggerReduce } from "./reduce.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
+import { nonMasterMembers } from "../../tools/support.js"
 
 /** Single-barrier fan-in for parallel mode: wait for all members, then maybe reduce, signoff, and deliver. */
 export async function handleParallelIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task) return
-    const participants = team.members.filter(m => !m.isMaster).map(m => m.name)
+    const participants = nonMasterMembers(team).map(m => m.name)
 
     await maybeAdvanceBarrier(team, participants, async () => {
         // Failure isolation: count terminally-errored members. Within tolerance ->

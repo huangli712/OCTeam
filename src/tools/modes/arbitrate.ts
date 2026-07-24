@@ -17,7 +17,7 @@ import {
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
 import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
-import { validateSignoff } from "../support.js"
+import { assertMember, validateSignoff, findMember } from "../support.js"
 
 /** Run a binding arbitration with structured debate between members and a ruling arbiter. */
 export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
@@ -69,9 +69,8 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                     }
                     // Validate arbiter + debaters are real members.
                     for (const name of [args.arbiter, ...args.debaters]) {
-                        if (!team.members.some(m => m.name === name && !m.isMaster)) {
-                            return `Error: unknown member "${name}" in arbiter/debaters`
-                        }
+                        const memberErr = assertMember(team, name, "arbiter/debaters")
+                        if (memberErr) return memberErr
                     }
                     const signoffErr = validateSignoff(args, team)
                     if (signoffErr) return signoffErr
@@ -96,7 +95,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                 // the ruling phase.
                 async (team, task) => {
                     for (const name of args.debaters) {
-                        const m = team.members.find(x => x.name === name && !x.isMaster)
+                        const m = findMember(team, name)
                         if (!m) continue
                         await dispatchToMember(ctx, m, buildDebatePrompt(task), m.worktreePath ?? ctx.directory, team)
                     }

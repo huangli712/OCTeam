@@ -62,6 +62,7 @@ import {
     markWorkflowStepCompleted,
     markWorkflowStepDispatched,
 } from "./fanout.js";
+import { findMember } from "../../tools/support.js";
 
 import { buildWorkflowUpstream } from "./upstream.js";
 
@@ -157,9 +158,7 @@ export async function dispatchEnsembleGate(
     for (const verifierName of step.verifiers) {
         // skip verifiers that already have results (e.g., on partial retry)
         if (step.ensembleResults?.[verifierName] !== undefined) continue;
-        const verifier = team.members.find(
-            (m) => m.name === verifierName && !m.isMaster,
-        );
+        const verifier = findMember(team, verifierName);
         if (!(verifier?.sessionId !== undefined && verifier.status !== "errored")) {
             // Verifier is dead/unavailable — track it so we can record a
             // placeholder INVALID result. Without this, collectEnsembleVerdicts

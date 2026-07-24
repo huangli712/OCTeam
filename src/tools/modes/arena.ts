@@ -16,6 +16,7 @@ import {
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
 import { commonOrchestrationFields } from "../schema.js"
+import { assertMember, findMember, nonMasterMembers } from "../support.js"
 
 /** Competitive arena with multiple candidates and a dedicated evaluator. */
 export function teamArenaTool(ctx: PluginContext): ToolDefinition {
@@ -85,7 +86,7 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
             // the evaluator.
             const resolveCandidates = (team: Team): string[] =>
                 args.candidates
-                ?? team.members.filter(m => !m.isMaster && m.name !== args.evaluator).map(m => m.name)
+                ?? nonMasterMembers(team).filter(m => m.name !== args.evaluator).map(m => m.name)
             let candidateCount = 0
             return startOrchestration(
                 args.team_id, context, ctx, "team_arena",
@@ -117,9 +118,8 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                         return "Error: team_arena requires at least one of eval_command or eval_criteria"
                     }
                     for (const name of candidates) {
-                        if (!team.members.some(m => m.name === name && !m.isMaster)) {
-                            return `Error: unknown member "${name}" in candidates`
-                        }
+                        const memberErr = assertMember(team, name, "candidate")
+                        if (memberErr) return memberErr
                     }
                     return null
                 },
@@ -160,7 +160,7 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                 async (team, task) => {
                     if (task.type !== "arena") return
                     for (const name of task.candidates) {
-                        const m = team.members.find(x => x.name === name && !x.isMaster)
+                        const m = findMember(team, name)
                         if (!m) continue
                         await dispatchToMember(ctx, m, task.task, m.worktreePath ?? ctx.directory, team)
                     }

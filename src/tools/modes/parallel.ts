@@ -15,7 +15,7 @@ import {
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
 import { commonOrchestrationFields, signoffSchemaFields } from "../schema.js"
-import { assertMember, validateSignoff } from "../support.js"
+import { assertMember, validateSignoff, nonMasterMembers } from "../support.js"
 
 /** Run a task across all team members in parallel with isolated or cooperative mode. */
 export function teamParallelTool(ctx: PluginContext): ToolDefinition {
@@ -100,9 +100,8 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     // instead of silently ignoring it.
                     if (args.mode === "cooperative" && args.tasks) {
                         for (const name of Object.keys(args.tasks)) {
-                            if (!team.members.some(m => m.name === name && !m.isMaster)) {
-                                return `Error: unknown member "${name}" in tasks`
-                            }
+                            const memberErr = assertMember(team, name, "participant")
+                            if (memberErr) return memberErr
                         }
                     }
                     // reduce_policy 'rubric' scores outputs against
@@ -148,7 +147,7 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 }),
                 // dispatch
                 async (team) => {
-                    const participants = team.members.filter(m => !m.isMaster)
+                    const participants = nonMasterMembers(team)
                     for (const m of participants) {
                         const text = args.mode === "isolated"
                             ? args.task!

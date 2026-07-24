@@ -562,7 +562,7 @@ describe("teamArbitrateTool: input validation", () => {
             },
             makeToolContext(sid),
         )
-        expect(result).toBe('Error: unknown member "ghost" in arbiter/debaters')
+        expect(result).toBe('Error: arbiter/debaters "ghost" is not a member of team "alpha"')
     })
 
     test("signoff_policy 'decider' without signoff_decider is rejected", async () => {

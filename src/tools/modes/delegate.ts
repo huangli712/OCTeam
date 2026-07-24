@@ -15,7 +15,7 @@ import {
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
 import { commonOrchestrationFields, signoffSchemaFields } from "../schema.js"
-import { validateSignoff } from "../support.js"
+import { validateSignoff, nonMasterMembers } from "../support.js"
 
 /**
  * Detect a cycle in the blocked_by dependency graph declared by a delegate
@@ -196,7 +196,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 // dispatch: prompt every member to start pulling from the
                 // tasklist.
                 async (team) => {
-                    for (const m of team.members.filter(x => !x.isMaster)) {
+                    for (const m of nonMasterMembers(team)) {
                     const text =
                         `You are on team "${team.teamName}" in delegate mode. `
                         + `${args.tasks.length} task(s) published. `

@@ -11,6 +11,7 @@ import type { PluginContext } from "../core/context.js"
 import { OCTEAM_AGENTS, isOCTeamAgent } from "../core/role.js"
 import type { Team } from "../state/store.js"
 import { MEMBER_NAME_POOL } from "../state/naming.js"
+import type { MemberState } from "../core/types.js"
 import type { Bounds, SignoffPolicy } from "../core/types.js"
 
 /** Resource bounds with design defaults, overridden by user input. */
@@ -40,6 +41,16 @@ export function assertMember(team: Team, name: string, label: string): string | 
         return `Error: ${label} "${name}" is not a member of team "${team.teamName}"`
     }
     return null
+}
+
+/** Return all non-master members of a team (workers only). */
+export function nonMasterMembers(team: Team): MemberState[] {
+    return team.members.filter(m => !m.isMaster)
+}
+
+/** Find a non-master member by name. Returns undefined if not found or is the master. */
+export function findMember(team: Team, name: string): MemberState | undefined {
+    return team.members.find(m => m.name === name && !m.isMaster)
 }
 
 /**

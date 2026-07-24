@@ -29,6 +29,7 @@ import { truncateOutput } from "../protocol/output.js"
 import { parseVerdict } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/approval.js"
+import { findMember } from "../../tools/support.js"
 
 /**
  * Build the verifier's dispatch prompt: the producer's output, the criteria,
@@ -68,7 +69,7 @@ export async function startVerification(
 ): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "tollgate") return
-    const verifier = team.members.find(m => m.name === stage.verifier && !m.isMaster)
+    const verifier = findMember(team, stage.verifier)
     if (!verifier?.sessionId) {
         // Verifier unavailable -> INVALID escalation (does not penalize producer).
         await escalateInvalid(ctx, team, stage, "verifier_unavailable")
@@ -156,7 +157,7 @@ async function escalateInvalid(
         await finishRun(ctx, team, `tollgate_invalid:exhausted:${stage.member}`, "failed")
         return
     }
-    const handler = team.members.find(m => m.name === task.escalateTo && !m.isMaster)
+    const handler = findMember(team, task.escalateTo ?? "")
     if (handler?.sessionId) {
         task.tollgatePhase = "escalate"
         await dispatchToMember(

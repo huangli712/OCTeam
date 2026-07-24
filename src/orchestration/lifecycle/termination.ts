@@ -16,6 +16,7 @@ import {
     workflowNoSessionReason,
     workflowTimeoutStepReason,
 } from "../workflow/reasons.js"
+import { nonMasterMembers } from "../../tools/support.js"
 
 /**
  * Check the active task's termination conditions and, if met, deliver a summary
@@ -114,7 +115,7 @@ export async function checkTermination(
         }
         const concurrent = task.type === "parallel" || task.type === "delegate" || task.type === "recurse" || task.type === "quorum"
         const tolerance = concurrent ? (task.maxErroredMembers ?? 0) : 0
-        const survivors = team.members.filter(m => !m.isMaster).length - erroredMembers.length
+        const survivors = nonMasterMembers(team).length - erroredMembers.length
         if (erroredMembers.length > tolerance || survivors === 0) {
             const first = erroredMembers[0]
             await finishRun(ctx, team, `member_error:${first.name}:${first.error ?? "unknown"}`, "failed")

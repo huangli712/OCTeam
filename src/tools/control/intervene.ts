@@ -23,6 +23,7 @@ import { loadTeamState } from "../../state/store.js"
 import { unreadInboxBytes } from "../../messaging/mailbox.js"
 import { deliverToRecipients } from "../../messaging/deliver.js"
 import type { Message } from "../../core/types.js"
+import { nonMasterMembers } from "../support.js"
 
 /** Inject a high-priority directive into member mailboxes during a run. */
 export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
@@ -74,7 +75,7 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
             // broadcast. Validate each exists (mirror send_message validation).
             const recipients: string[] =
                 args.to === "*"
-                    ? team.members.filter(m => !m.isMaster).map(m => m.name)
+                    ? nonMasterMembers(team).map(m => m.name)
                     : [args.to]
             for (const r of recipients) {
                 if (!team.members.some(m => m.name === r) && r !== "master") {

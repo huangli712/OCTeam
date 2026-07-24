@@ -21,6 +21,7 @@ import { advanceWorkflowStep } from "../../orchestration/workflow/engine.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { dispatchToMember } from "../../orchestration/control/dispatch.js"
+import { findMember } from "../support.js"
 
 /** Result of a human approval decision: approved boolean with optional feedback. */
 type ApprovalDecision = {
@@ -136,7 +137,7 @@ export async function applyApprovalDecision(
         case "arbitrate_ruling":
             if (task.type === "arbitrate" && task.arbitrationStage && !task.responses[task.arbiterMember ?? ""]) {
                 // Pre-ruling pause approved: dispatch the arbiter to issue the ruling.
-                const arbiter = team.members.find(m => m.name === task.arbiterMember && !m.isMaster)
+                const arbiter = findMember(team, task.arbiterMember ?? "")
                 if (arbiter?.sessionId) {
                     await dispatchToMember(
                         ctx, arbiter, buildArbiterPrompt(task),

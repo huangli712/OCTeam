@@ -707,7 +707,7 @@ describe("team_arena tool", () => {
             },
             makeToolContext(sid),
         )
-        expect(result).toBe('Error: unknown member "ghost" in candidates')
+        expect(result).toBe('Error: candidate "ghost" is not a member of team "alpha"')
     })
 
     test("a candidate without an isolated worktree is rejected in buildTask", async () => {

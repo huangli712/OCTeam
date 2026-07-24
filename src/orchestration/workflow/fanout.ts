@@ -36,6 +36,7 @@ import {
     workflowFanoutOverToleranceReason,
     workflowNoSessionReason,
 } from "./reasons.js";
+import { findMember } from "../../tools/support.js";
 
 // Total byte budget for joined output (mirrors workflow.ts UPSTREAM_TOTAL_CAP).
 const JOINED_TOTAL_CAP = 65_536;
@@ -76,13 +77,9 @@ export function liveWorkflowActor(
     primaryName: string | undefined,
     fallbackName: string | undefined,
 ): (MemberState & { sessionId: string }) | undefined {
-    const primary = team.members.find(
-        (m) => m.name === primaryName && !m.isMaster,
-    );
+    const primary = findMember(team, primaryName ?? "");
     if (hasLiveSession(primary)) return primary;
-    const fallback = team.members.find(
-        (m) => m.name === fallbackName && !m.isMaster,
-    );
+    const fallback = findMember(team, fallbackName ?? "");
     return hasLiveSession(fallback) ? fallback : undefined;
 }
 

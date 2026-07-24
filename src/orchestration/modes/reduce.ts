@@ -10,6 +10,7 @@ import { type Team, saveTeamState } from "../../state/store.js"
 import { finishRun } from "../control/completion.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
+import { findMember } from "../../tools/support.js"
 import { buildSummary } from "../records/summary.js"
 
 /** Build the reducer's dispatch prompt: combine candidate outputs into one final result per the policy. */
@@ -32,7 +33,7 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     if (!task.reducePolicy || task.reducePolicy === "summarize") return false
     if (task.reduceStage) return true
     if (Object.keys(task.responses).length <= 1) return false
-    const reducer = team.members.find(member => member.name === task.reducerMember && !member.isMaster)
+    const reducer = findMember(team, task.reducerMember ?? "")
     if (!reducer?.sessionId || reducer.status === "errored") return false
 
     task.reduceStage = true

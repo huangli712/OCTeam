@@ -15,6 +15,7 @@ import {
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
 import { commonOrchestrationFields, humanApprovalSchemaFields } from "../schema.js"
+import { nonMasterMembers } from "../support.js"
 
 /** Run a multi-round structured debate until all members reach consensus. */
 export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
@@ -39,7 +40,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                     // A consensus needs at least two participants to be
                     // meaningful -- a single member trivially "agrees" with
                     // itself.
-                    const consensusParticipants = team.members.filter(m => !m.isMaster)
+                    const consensusParticipants = nonMasterMembers(team)
                     if (consensusParticipants.length < 2) {
                         return "Error: team_consensus requires at least 2 non-master members"
                     }
@@ -65,7 +66,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
                 }),
                 // dispatch: round 1 to every participant.
                 async (team, task) => {
-                    const participants = team.members.filter(m => !m.isMaster)
+                    const participants = nonMasterMembers(team)
                     for (const m of participants) {
                         const text = `[Consensus topic]\n` 
                             + `${args.topic}\n\n`

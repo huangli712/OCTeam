@@ -27,6 +27,7 @@ import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { parseArbitrationDecision } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/approval.js"
+import { findMember } from "../../tools/support.js"
 
 /** Max consecutive arbiter ruling parse failures before aborting the run. */
 const MAX_RULING_PARSE_FAILURES = 2
@@ -140,7 +141,7 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
         // Clear the malformed response so the next parse is not poisoned,
         // then re-dispatch the arbiter.
         delete task.responses[task.arbiterMember ?? ""]
-        const arbiter = team.members.find(m => m.name === task.arbiterMember && !m.isMaster)
+        const arbiter = findMember(team, task.arbiterMember ?? "")
         if (!arbiter?.sessionId) {
             await finishRun(ctx, team, "arbitrate_complete:arbiter_unavailable", "failed")
             return

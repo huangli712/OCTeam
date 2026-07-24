@@ -23,6 +23,7 @@ import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { parseRouteDecision } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/approval.js"
+import { findMember } from "../../tools/support.js"
 
 /** Max consecutive router parse failures before aborting the run. */
 const MAX_ROUTE_PARSE_FAILURES = 2
@@ -62,7 +63,7 @@ export async function advanceRouteAfterDecision(ctx: PluginContext, team: Team):
     const targets = task.routeTargets ?? []
     const selected = branches.filter(b => targets.includes(b.member))
     for (const b of selected) {
-        const m = team.members.find(x => x.name === b.member && !x.isMaster)
+        const m = findMember(team, b.member)
         if (!m?.sessionId) continue
         const text = b.task ?? task.task ?? ""
         await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
@@ -98,7 +99,7 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
             // Clear the malformed response so the next parse is not poisoned
             // by stale output, then re-dispatch the router.
             delete task.responses[task.routerMember ?? ""]
-            const router = team.members.find(m => m.name === task.routerMember && !m.isMaster)
+            const router = findMember(team, task.routerMember ?? "")
             if (!router?.sessionId) {
                 await finishRun(ctx, team, "route_complete:router_unavailable", "failed")
                 return

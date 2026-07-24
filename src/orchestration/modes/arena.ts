@@ -12,6 +12,7 @@ import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { parseScoreboard } from "../protocol/decisions.js"
 import { finishRun } from "../control/completion.js"
+import { findMember } from "../../tools/support.js"
 
 /**
  * Select the winning candidate deterministically from an evaluator-attested
@@ -74,7 +75,7 @@ export function selectArenaWinner(
 export async function startArenaEvaluation(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
     if (!task || task.type !== "arena") return
-    const evaluator = team.members.find(m => m.name === task.evaluatorMember && !m.isMaster)
+    const evaluator = findMember(team, task.evaluatorMember ?? "")
     if (!evaluator?.sessionId || evaluator.status === "errored") {
         await finishRun(ctx, team, "arena_failed:evaluator_unavailable", "failed")
         return

@@ -17,6 +17,7 @@ import { recordEvent } from "../../orchestration/records/events.js"
 import { advanceWorkflowStep, redispatchWorkflowStep } from "../../orchestration/workflow/engine.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
+import { findMember } from "../support.js"
 
 /** Workflow fix operation kind: redispatch, skip, advance, fail, or reassign. */
 type FixWorkflowOp = "redispatch" | "skip" | "advance" | "fail" | "reassign"
@@ -247,7 +248,7 @@ async function applyReassign(
 
     const currentActor = workflowStep.kind === "task" ? workflowStep.member : workflowStep.verifier
     if (currentActor === toMember) return `Error: step ${index + 1} is already owned by "${toMember}"`
-    const newMember = team.members.find(m => m.name === toMember && !m.isMaster)
+    const newMember = findMember(team, toMember)
     if (newMember === undefined) return `Error: "${toMember}" is not a team member`
     if (newMember.sessionId === undefined || newMember.status === "errored") {
         return `Error: "${toMember}" has no live session`

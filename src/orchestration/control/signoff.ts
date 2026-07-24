@@ -15,6 +15,7 @@ import { recordEvent } from "../records/events.js"
 import { buildSummary } from "../records/summary.js"
 import { finishRun } from "./completion.js"
 import { dispatchToMember } from "./dispatch.js"
+import { findMember } from "../../tools/support.js"
 
 /** Build the structured verdict contract shared by live and resumed reviews. */
 export function buildSignoffReviewPrompt(summary: string): string {
@@ -46,9 +47,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     // so a guard failure does not leave a stale "signoff" entry in the timeline.
     let reviewers: MemberState[]
     if (task.signoffPolicy === "decider") {
-        const decider = team.members.find(member =>
-            member.name === task.signoffDecider && !member.isMaster
-        )
+        const decider = findMember(team, task.signoffDecider ?? "")
         if (!decider?.sessionId || decider.status === "errored") {
             task.signoffStage = false
             return false
