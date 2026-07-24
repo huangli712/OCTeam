@@ -54,7 +54,7 @@ function mermaidStepLabel(step: WorkflowRunStep): string {
             return `${step.step}. join${idTag}${selected}`
         }
         default:
-            throw new Error(`unhandled WorkflowStepKind: ${String(step.kind)}`)
+            return `${step.step}. [unknown step kind: ${String(step.kind)}]`
     }
 }
 

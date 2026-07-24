@@ -114,7 +114,7 @@ async function handleTaskIdle(
         member: member.name,
         stepIndex: activeStepIndex,
         correlationId: capturedCorrelationId,
-        bytes: step.output?.length,
+        bytes: step.output !== undefined ? Buffer.byteLength(step.output, "utf8") : undefined,
         detail: `workflow step ${activeStepIndex + 1} captured`,
     });
     if (await maybePauseAfterWorkflowStep(ctx, team, activeStepIndex))
@@ -194,7 +194,7 @@ async function handleJoinIdle(
         member: member.name,
         stepIndex: activeStepIndex,
         correlationId,
-        bytes: step.join?.joinedOutput?.length,
+        bytes: step.join?.joinedOutput !== undefined ? Buffer.byteLength(step.join.joinedOutput, "utf8") : undefined,
         detail: `workflow ${joinPolicy} join step ${activeStepIndex + 1} captured`,
     });
     await advanceWorkflowStep(ctx, team);

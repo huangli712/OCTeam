@@ -16,10 +16,12 @@ import { logEvent } from "../../core/log.js"
 import { type Team, clearActiveTask } from "../../state/store.js"
 import type { DecisionRecord, MemberState } from "../../core/types.js"
 import { advanceToStage } from "./stages.js"
+import { dispatchToMember } from "../control/dispatch.js"
 import { deliverSummaryToLeader, finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { allReadOnlyStagesReportNoIssues, parseDecision } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../control/approval.js"
+import { truncateOutput } from "../protocol/output.js"
 
 /** Max consecutive decision parse failures before the loop is failed. */
 const MAX_DECISION_PARSE_FAILURES = 3
@@ -116,6 +118,26 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
             await finishRun(ctx, team, "loop_complete:decision_parse_failure", "failed")
             return
         }
+        // Re-dispatch the decider with a reformat prompt (parity with
+        // arbitrate/route which delete the stale response and re-dispatch
+        // on parse failure). Roll back the stage advance so the decider
+        // stage is re-run instead of progressing to the next round.
+        const deciderMember = team.members.find(m => m.name === (task.deciderMember ?? "") && !m.isMaster)
+        if (deciderMember) {
+            delete task.responses[task.deciderMember ?? ""]
+            task.currentStageIndex--  // roll back to the decider stage
+            const deciderStage = task.stages[task.currentStageIndex]
+            if (deciderStage) deciderStage.completed = false
+            const reformatPrompt =
+                `[Decision parse failed — attempt ${task.decisionParseFailures}/${MAX_DECISION_PARSE_FAILURES}]\n`
+                + `Your previous response could not be parsed as a valid <decision> or <决策> JSON block.\n`
+                + `Please re-emit your decision in the correct format:\n`
+                + `<decision>{"decision":"done"|"continue","rationale":"...","nextActions":[...]}</decision>\n`
+                + `Previous output (truncated):\n${truncateOutput(deciderOutput ?? "", 2048)}`
+            await dispatchToMember(ctx, deciderMember, reformatPrompt, deciderMember.worktreePath ?? ctx.directory, team)
+            await advanceToStage(ctx, team, deciderStage, reformatPrompt)
+        }
+        return
     } else {
         task.decisionParseFailures = 0
     }

@@ -119,7 +119,8 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                 // dispatch: ONLY the router; it decides the targets (Phase A).
                 async (team, task) => {
                     if (task.type !== "route") return
-                    const routerMember = team.members.find(m => m.name === args.router)!
+                    const routerMember = team.members.find(m => m.name === args.router)
+                    if (!routerMember) return
                     const prompt = buildRouterPrompt(team.teamName, args.input, task.routeBranches ?? [])
                     await dispatchToMember(ctx, routerMember, prompt, routerMember.worktreePath ?? ctx.directory, team)
                 },

@@ -233,10 +233,12 @@ describe("handleLoopIdle (via processIdle): decision parse failure escalation", 
         expect(task.decisionParseFailures).toBe(1)
         expect(team.status).toBe("busy")
         expect(team.activeTask).toBeDefined()
-        // Loop advanced to round 2 and re-dispatched stage 0 (alice).
-        expect(task.currentRound).toBe(2)
-        expect(task.currentStageIndex).toBe(0)
-        expect(calls.some(c => c.sessionId === "ses_alice")).toBe(true)
+        // Loop re-dispatches the decider with a reformat prompt (parity with
+        // arbitrate/route which re-dispatch on parse failure, NOT advance to
+        // the next round). The decider's stale response is cleared.
+        expect(task.currentStageIndex).toBe(1)  // still on the decider stage
+        expect(task.responses["bob"]).toBeUndefined()  // stale response cleared
+        expect(calls.some(c => c.sessionId === "ses_bob")).toBe(true)  // decider re-dispatched
     })
 
     test("3rd consecutive parse failure → run failed with 'loop_complete:decision_parse_failure'", async () => {

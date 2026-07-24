@@ -96,8 +96,12 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 },
                 // dispatch: first stage with the initial task.
                 async (team, task) => {
-                    const first = team.members.find(m => m.name === task.stages[0].member)!
-                    await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? ctx.directory, team)
+                    const member = task.stages[0]
+                    if (!member) return
+                    const first = team.members.find(m => m.name === member.member)
+                    if (first) {
+                        await dispatchToMember(ctx, first, args.initial_task, first.worktreePath ?? ctx.directory, team)
+                    }
                 },
                 // successMessage
                 () => `team_loop started on "${args.team_id}" `

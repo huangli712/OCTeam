@@ -73,8 +73,12 @@ export function teamPipelineTool(ctx: PluginContext): ToolDefinition {
                 },
                 // dispatch: stage 0.
                 async (team, task) => {
-                    const first = team.members.find(m => m.name === task.stages[0].member)!
-                    await dispatchToMember(ctx, first, task.stages[0].task, first.worktreePath ?? ctx.directory, team)
+                    const firstStage = task.stages[0]
+                    if (!firstStage) return
+                    const first = team.members.find(m => m.name === firstStage.member)
+                    if (first) {
+                        await dispatchToMember(ctx, first, firstStage.task, first.worktreePath ?? ctx.directory, team)
+                    }
                 },
                 // successMessage
                 () => `team_pipeline started on "${args.team_id}" with ${args.stages.length} stage(s).`,
