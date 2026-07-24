@@ -65,6 +65,10 @@ const VerdictSchema = z.enum(["PASS", "FAIL", "INVALID"])
 
 const WorkflowOnInvalidSchema = z.enum(["fail", "retry_verifier", "escalate"])
 
+const WorkflowOnFailSchema = z.enum(["fail", "retry", "skip"])
+
+const WorkflowOnTimeoutSchema = z.enum(["fail", "retry", "skip"])
+
 const WorkflowBranchStatusSchema = z.enum(["pending", "completed", "skipped", "errored"])
 
 /** A structured issue from a gate verifier: severity plus an optional human-readable message. */
@@ -145,6 +149,17 @@ const WorkflowRunStepSchema = z.object({
     attempts: z.number().optional(),
     onInvalid: WorkflowOnInvalidSchema.optional(),
     invalidAttempts: z.number().optional(),
+    onFail: WorkflowOnFailSchema.optional(),
+    maxRetries: z.number().optional(),
+    maxInvalidRetries: z.number().optional(),
+    onPassGoto: z.number().optional(),
+    onFailGoto: z.number().optional(),
+    onInvalidGoto: z.number().optional(),
+    maxJumps: z.number().optional(),
+    criteria: z.string().optional(),
+    timeoutMs: z.number().optional(),
+    onTimeout: WorkflowOnTimeoutSchema.optional(),
+    maxTimeoutRetries: z.number().optional(),
     jumpCount: z.number().optional(),
     skipped: z.boolean().optional(),
     completed: z.boolean(),

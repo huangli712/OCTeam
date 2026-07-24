@@ -495,12 +495,19 @@ async function handleGateRetry(
         const retryStep = steps[i];
         if (!retryStep) continue;
         retryStep.completed = false;
+        retryStep.skipped = false;
         retryStep.approvalBeforeGranted = undefined;
         resetWorkflowStepTiming(retryStep);
         if (retryStep.kind === "task") retryStep.output = undefined;
         if (retryStep.kind === "gate") {
             retryStep.verdict = undefined;
-            if (i !== gateIndex) retryStep.attempts = 0;
+            retryStep.ensembleResults = undefined;
+            if (i !== gateIndex) {
+                retryStep.attempts = 0;
+                retryStep.invalidAttempts = 0;
+                retryStep.malformedAttempts = 0;
+                retryStep.timeoutAttempts = 0;
+            }
         }
     }
     const producerStep = steps[producerIdx];

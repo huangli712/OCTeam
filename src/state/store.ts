@@ -51,6 +51,11 @@ export type Team = TeamState & {
 // restart; first access creates the entry, later accesses keep the mutex.
 const teamRegistry = new Map<string, Team>()
 
+// In-flight first-load promises keyed by directory, preventing two concurrent
+// first-accesses from creating separate Team objects (and separate mutexes)
+// for the same directory — which would break per-team serialization.
+const inflightLoads = new Map<string, Promise<Team>>()
+
 /**
  * Clear the active task while preserving its mode in `lastMode` for sidebar
  * display. Called at every orchestration completion/termination site.
@@ -200,8 +205,26 @@ export async function loadTeamState(
     leadSessionId?: string,
 ): Promise<Team> {
     const dir = teamDir(storageRoot, teamName, leadSessionId)
-    let team = teamRegistry.get(dir)
-    if (!team) {
+    const cached = teamRegistry.get(dir)
+    if (cached) return cached
+    // Deduplicate concurrent first-loads: if another caller is already
+    // loading this directory, await their result instead of creating a
+    // second Team object with a separate mutex.
+    let inflight = inflightLoads.get(dir)
+    if (!inflight) {
+        inflight = loadTeamFromDisk(dir, teamName)
+        inflightLoads.set(dir, inflight)
+    }
+    return inflight
+}
+
+/**
+ * Perform the actual disk read + Team construction for a first load.
+ * Extracted so loadTeamState can store the in-flight promise synchronously
+ * before the first await, closing the registry-race window.
+ */
+async function loadTeamFromDisk(dir: string, teamName: string): Promise<Team> {
+    try {
         const state = await readJsonOrNull<TeamState>(
             statePath(dir),
             (v): v is TeamState => isValidTeamState(v, dir),
@@ -209,15 +232,12 @@ export async function loadTeamState(
         if (!state) {
             throw new Error(`loadTeamState: no state.json for team "${teamName}"`)
         }
-        team = { ...state, mutex: new AsyncMutex(), directory: dir, _diskSnapshot: deepClone(state) }
+        const team: Team = { ...state, mutex: new AsyncMutex(), directory: dir, _diskSnapshot: deepClone(state) }
         teamRegistry.set(dir, team)
+        return team
+    } finally {
+        inflightLoads.delete(dir)
     }
-    // Once registered, the in-memory Team is the authoritative copy — every
-    // mutation goes through it under the per-team mutex, then saveTeamState writes
-    // it to disk. Re-reading disk here would clobber an in-flight mutex holder's
-    // unsaved mutations. The registry is rebuilt from disk only on first access or
-    // after invalidateTeam (restart / delete).
-    return team
 }
 
 /** Deep-clone a JSON-serializable value (all TeamState fields are JSON-safe). */
@@ -396,6 +416,19 @@ export async function saveTeamState(team: Team): Promise<void> {
         }
         await atomicWrite(statePath(dir), JSON.stringify(toWrite, null, 2))
         team._diskSnapshot = deepClone(toWrite)
+        // Sync concurrent member additions from the merged result back into
+        // the live team. Without this, the next save's three-way merge would
+        // see concurrent additions in _diskSnapshot but not in team.members,
+        // and silently drop them as "caller removals" (cross-process data
+        // loss). Only PUSH missing members — never replace existing objects
+        // or the array reference, which would break in-flight callers holding
+        // references to the current members/steps.
+        if (team.members) {
+            const liveNames = new Set(team.members.map(m => m.name))
+            for (const m of toWrite.members ?? []) {
+                if (!liveNames.has(m.name)) team.members.push(m)
+            }
+        }
     })
 }
 

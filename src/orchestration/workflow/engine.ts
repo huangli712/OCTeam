@@ -150,13 +150,20 @@ export async function dispatchEnsembleGate(
         targetIndices.length,
     );
     let dispatchedAny = false;
+    const unavailable: string[] = [];
     for (const verifierName of step.verifiers) {
         // skip verifiers that already have results (e.g., on partial retry)
         if (step.ensembleResults?.[verifierName] !== undefined) continue;
         const verifier = team.members.find(
             (m) => m.name === verifierName && !m.isMaster,
         );
-        if (!(verifier?.sessionId !== undefined && verifier.status !== "errored")) continue;
+        if (!(verifier?.sessionId !== undefined && verifier.status !== "errored")) {
+            // Verifier is dead/unavailable — track it so we can record a
+            // placeholder INVALID result. Without this, collectEnsembleVerdicts
+            // would wait forever for a result that can never arrive.
+            unavailable.push(verifierName);
+            continue;
+        }
         delete task.responses[verifier.name];
         step.dispatchedActor = verifier.name;
         if (step.correlationId === undefined) {
@@ -171,6 +178,23 @@ export async function dispatchEnsembleGate(
             { stepIndex: index, correlationId: step.correlationId },
         );
         dispatchedAny = true;
+    }
+    // When at least one verifier dispatched, populate INVALID for any
+    // unavailable verifiers so the ensemble can reach its completion
+    // threshold instead of hanging permanently.
+    if (dispatchedAny && unavailable.length > 0) {
+        if (step.ensembleResults === undefined) step.ensembleResults = {};
+        for (const name of unavailable) {
+            step.ensembleResults[name] = {
+                verdict: "INVALID",
+                score: undefined,
+                confidence: undefined,
+                issues: undefined,
+                rationale: "verifier unavailable",
+                diff: undefined,
+                parseFailed: true,
+            };
+        }
     }
     if (dispatchedAny) markWorkflowStepDispatched(step);
     return dispatchedAny;

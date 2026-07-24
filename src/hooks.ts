@@ -146,7 +146,13 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
         // flat (no session segment) so only unindex applies there.
         if (type === "session.deleted") {
             const sid = sdkEventSessionID(event)
-            if (sid) await handleSessionDeleted(ctx, sid)
+            if (sid) {
+                try {
+                    await handleSessionDeleted(ctx, sid)
+                } catch (err) {
+                    logSwallowed(ctx, "session.deleted handler failed", err, { type })
+                }
+            }
             return
         }
 
