@@ -644,8 +644,8 @@ describe("buildRouterPrompt", () => {
         expect(prompt).toContain("I need a refund")
         // The team name is referenced.
         expect(prompt).toContain("myteam")
-        // The \"do NOT use translated tags\" guard is present.
-        expect(prompt).toContain("do NOT use translated tags")
+        // The i18n note about Chinese alias is present.
+        expect(prompt).toContain("Chinese alias")
     })
 })
 

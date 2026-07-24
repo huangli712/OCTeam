@@ -132,7 +132,7 @@ export async function captureMemberOutput(
         timestamp: Date.now(),
         kind: "captured",
         member: member.name,
-        bytes: Buffer.byteLength(full, "utf8"),
+        bytes: Buffer.byteLength(captured, "utf8"),
     })
     return true
 }

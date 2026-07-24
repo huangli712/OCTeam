@@ -16,7 +16,6 @@ import { logEvent } from "../../core/log.js"
 import { type Team, clearActiveTask } from "../../state/store.js"
 import type { DecisionRecord, MemberState } from "../../core/types.js"
 import { advanceToStage } from "./stages.js"
-import { dispatchToMember } from "../control/dispatch.js"
 import { deliverSummaryToLeader, finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { allReadOnlyStagesReportNoIssues, parseDecision } from "../protocol/decisions.js"
@@ -134,7 +133,8 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
                 + `Please re-emit your decision in the correct format:\n`
                 + `<decision>{"decision":"done"|"continue","rationale":"...","nextActions":[...]}</decision>\n`
                 + `Previous output (truncated):\n${truncateOutput(deciderOutput ?? "", 2048)}`
-            await dispatchToMember(ctx, deciderMember, reformatPrompt, deciderMember.worktreePath ?? ctx.directory, team)
+            // advanceToStage handles the full dispatch (upstream context + promptAsync +
+            // member state). Do NOT also call dispatchToMember — that would double-dispatch.
             await advanceToStage(ctx, team, deciderStage, reformatPrompt)
         }
         return

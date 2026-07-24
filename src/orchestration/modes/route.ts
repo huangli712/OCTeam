@@ -49,7 +49,7 @@ export function buildRouterPrompt(teamName: string, input: string, branches: Rou
         + `Emit your decision as:\n`
         + `<route>{"branch": "<name>", "rationale": "<why>"}</route>\n`
         + `For multiple branches: <route>{"branches": ["a","b"], "rationale": "..."}</route>\n`
-        + `The tags must be the literal English <route> and </route> — do NOT use translated tags such as <路由>.\n\n`
+        + `The tags must be the literal English <route> and </route> (Chinese alias <路由> also accepted).\n\n`
         + `[Input]\n${input}`
     )
 }
