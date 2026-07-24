@@ -21,6 +21,7 @@ import {
 } from "../../orchestration/lifecycle/startup.js"
 import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { assertMember, validateSignoff, findMember } from "../support.js"
+import { MASTER_NAME } from "../../state/naming.js"
 
 /** Truncate the root subject to fit within the 500-char delegate schema limit. */
 const SUBJECT_MAX_LEN = 480
@@ -86,7 +87,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                 args.team_id, context, ctx, "team_recurse",
                 // validate
                 (team) => {
-                    if (args.decomposer === "master") {
+                    if (args.decomposer === MASTER_NAME) {
                         return "Error: decomposer must be a member name, not \"master\""
                     }
                     const decomposerErr = assertMember(team, args.decomposer, "decomposer")

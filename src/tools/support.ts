@@ -10,7 +10,7 @@
 import type { PluginContext } from "../core/context.js"
 import { OCTEAM_AGENTS, isOCTeamAgent } from "../core/role.js"
 import type { Team } from "../state/store.js"
-import { MEMBER_NAME_POOL } from "../state/naming.js"
+import { MEMBER_NAME_POOL, RESERVED_NAMES } from "../state/naming.js"
 import type { MemberState } from "../core/types.js"
 import type { Bounds, SignoffPolicy } from "../core/types.js"
 
@@ -92,7 +92,7 @@ export function validateMemberName(name: string): string | null {
     // "master" and "orchestrator" are reserved synthetic identities (the
     // leader pseudo-member and the orchestrator message sender); a real
     // member by either name would collide with them.
-    if (name === "master" || name === "orchestrator") {
+    if (RESERVED_NAMES.includes(name as (typeof RESERVED_NAMES)[number])) {
         return `Error: "${name}" is a reserved name and cannot be a member name`
     }
     if (!(MEMBER_NAME_POOL as readonly string[]).includes(name)) {

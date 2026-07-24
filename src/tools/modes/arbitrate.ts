@@ -18,6 +18,7 @@ import {
 } from "../../orchestration/lifecycle/startup.js"
 import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { assertMember, validateSignoff, findMember } from "../support.js"
+import { MASTER_NAME } from "../../state/naming.js"
 
 /** Run a binding arbitration with structured debate between members and a ruling arbiter. */
 export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
@@ -58,7 +59,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                 args.team_id, context, ctx, "team_arbitrate",
                 // validate
                 (team) => {
-                    if (args.arbiter === "master") {
+                    if (args.arbiter === MASTER_NAME) {
                         return "Error: arbiter must be a member name, not \"master\""
                     }
                     if (new Set(args.debaters).size !== args.debaters.length) {

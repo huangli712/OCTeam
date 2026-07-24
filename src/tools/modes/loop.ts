@@ -15,6 +15,7 @@ import {
 } from "../../orchestration/lifecycle/startup.js"
 import { commonOrchestrationFields, humanApprovalSchemaFields } from "../schema.js"
 import { assertMember } from "../support.js"
+import { MASTER_NAME } from "../../state/naming.js"
 
 /** Run a corrective loop with a decider that reviews and decides whether to continue. */
 export function teamLoopTool(ctx: PluginContext): ToolDefinition {
@@ -45,7 +46,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 args.team_id, context, ctx, "team_loop",
                 // validate
                 (team) => {
-                    if (args.decider === "master") {
+                    if (args.decider === MASTER_NAME) {
                         return "Error: decider must be a member name, not \"master\""
                     }
                     const deciderErr = assertMember(team, args.decider, "decider")

@@ -18,6 +18,7 @@ import {
 } from "../../orchestration/lifecycle/startup.js"
 import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { validateSignoff } from "../support.js"
+import { MASTER_NAME } from "../../state/naming.js"
 /** Content-based routing: a router inspects input and dispatches to matching branches. */
 export function teamRouteTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -69,7 +70,7 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                 args.team_id, context, ctx, "team_route",
                 // validate
                 (team) => {
-                    if (args.router === "master") {
+                    if (args.router === MASTER_NAME) {
                         return "Error: router must be a member name, not \"master\""
                     }
                     // Validate routes: unique names, unique members, members
