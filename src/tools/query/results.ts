@@ -351,7 +351,7 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                         "utf8",
                     )
                     previews.push(
-                        `### ${name} (${info.bytes} bytes)\n${truncateOutput(content, 1024)}\n` +
+                        `### ${name} (${info.bytes} bytes)\n${truncateOutput(content, STEP_OUTPUT_DISPLAY_CAP)}\n` +
                             `[full output: team_result_get(` +
                                 `team_id="${record.teamName}", run_id="${record.runId}", member="${name}")]`,
                     )

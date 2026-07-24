@@ -412,7 +412,7 @@ export const RunRecordSchema = z.object({
     tasks: z.array(z.object({
         id: z.string(),
         subject: z.string(),
-        status: z.string(),
+        status: z.enum(["pending", "claimed", "in_progress", "completed", "deleted"]),
         owner: z.string().optional(),
     })).optional(),
     workflow: WorkflowRunSchema.optional(),

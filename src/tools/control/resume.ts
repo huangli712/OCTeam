@@ -75,7 +75,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
             let restored: ActiveTask | undefined
             let resumeRaced = false
             // Snapshot of errored members reset in Phase 1, for rollback if Phase 2/3 fails.
-            let memberSnapshot: Array<{ name: string; error?: string; declaredDone?: boolean; retryingSince?: number }> = []
+            const memberSnapshot: Array<{ name: string; error?: string; declaredDone?: boolean; retryingSince?: number }> = []
 
             try {
                 // --- Phase 1 (mutex): snapshot + reset, DO NOT commit activeTask. ---

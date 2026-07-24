@@ -72,6 +72,7 @@ const compacting = new Map<string, number>() // sessionID -> expiresAt
 
 // TTL for compacting flags; bounds a stuck flag if compaction aborts before transform.
 const COMPACTING_FLAG_TTL_MS = 15_000
+const COMPACTING_MAP_CAP = 64
 
 /**
  * Save team state with bounded retry. Transient disk failures (EIO, ENOSPC)
@@ -267,7 +268,7 @@ export function createTransformHook(
             }
             // Opportunistic eviction: sweep expired entries so the Map does not grow
             // unbounded when sessions are deleted without ever triggering a transform.
-            if (compacting.size > 64) {
+            if (compacting.size > COMPACTING_MAP_CAP) {
                 const now = Date.now()
                 for (const [sid, exp] of compacting) {
                     if (now >= exp) compacting.delete(sid)

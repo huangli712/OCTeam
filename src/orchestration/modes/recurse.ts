@@ -25,6 +25,9 @@ import { finishRun } from "../control/completion.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { maybeRequestApproval } from "../control/approval.js"
 
+/** Cap on root re-dispatch attempts before declaring the run stalled. */
+const MAX_AGGREGATION_DISPATCHES = 3
+
 /**
  * Build the recursive-decomposition contract prompt: claim a task, then either
  * solve it directly or emit a <decompose> block; aggregate completed sub-tasks
@@ -248,7 +251,6 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                     // once it exceeds the cap the run fails fast instead of
                     // looping to wall-clock. Reset to 0 when the decomposer
                     // claims the root (see leaf branch above).
-                    const MAX_AGGREGATION_DISPATCHES = 3
                     task.aggregationDispatchCount = (task.aggregationDispatchCount ?? 0) + 1
                     if (task.aggregationDispatchCount > MAX_AGGREGATION_DISPATCHES) {
                         recordEvent(team, {

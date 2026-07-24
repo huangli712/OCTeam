@@ -83,7 +83,7 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
             const state = JSON.parse(raw)
             if (!isValidTeamState(state, dir)) continue
             // Also read config.json for member roles (role lives in MemberSpec, not MemberState).
-            let roleMap: Record<string, string> = {}
+            const roleMap: Record<string, string> = {}
             try {
                 const configRaw = await fs.readFile(configPath(dir), "utf8")
                 const config = JSON.parse(configRaw)

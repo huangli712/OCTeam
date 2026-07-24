@@ -74,7 +74,9 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
         timestamp: Date.now(),
         parseFailed: true,
     })
-    // Greedy {...} so nested braces (e.g. structured nextActions) parse correctly (L2).
+    // Lazy {...} + closing tag anchor: the regex expands until it finds the
+    // brace that precedes </decision>, so nested braces in structured
+    // nextActions parse correctly (L2).
     const parsed = extractTaggedJSON(rawText, "decision", "决策")
     if (!parsed) return fail()
     return {
@@ -162,7 +164,7 @@ export function parseVerdict(
 export function parseSelection(
     rawText: string,
 ): { winner: string; rationale: string; parseFailed?: boolean } {
-    const p = extractTaggedJSON(rawText, "selection")
+    const p = extractTaggedJSON(rawText, "selection", "选择")
     if (!p || typeof p.winner !== "string" || p.winner.length === 0) {
         return { winner: "", rationale: "", parseFailed: true }
     }
@@ -264,7 +266,7 @@ export function parseDecompose(
  * from a reviewer's output. Returns null if no valid signoff tag found.
  */
 export function parseSignoff(text: string): { approved: boolean; rationale: string } | null {
-    const parsed = extractTaggedJSON(text, "signoff")
+    const parsed = extractTaggedJSON(text, "signoff", "签核")
     if (!parsed) return null
     return {
         approved: parsed.approved === true,

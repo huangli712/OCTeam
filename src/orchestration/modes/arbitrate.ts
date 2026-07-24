@@ -28,6 +28,9 @@ import { parseArbitrationDecision } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/approval.js"
 
+/** Max consecutive arbiter ruling parse failures before aborting the run. */
+const MAX_RULING_PARSE_FAILURES = 2
+
 /**
  * Build a debater's prompt for the current debate round. Round 1 states the
  * dispute subject; later rounds rebut other debaters' positions (drawn from
@@ -127,7 +130,7 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
         // it would discard all prior debate-round tokens. Uses the shared
         // decisionParseFailures counter (ActiveTask base field).
         task.decisionParseFailures++
-        if (task.decisionParseFailures >= 2) {
+        if (task.decisionParseFailures >= MAX_RULING_PARSE_FAILURES) {
             await finishRun(ctx, team, "arbitrate_complete:decision_parse_failure", "failed")
             return
         }

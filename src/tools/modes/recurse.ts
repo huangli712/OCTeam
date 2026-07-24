@@ -22,6 +22,10 @@ import {
 import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
 import { assertMember, validateSignoff } from "../support.js"
 
+/** Truncate the root subject to fit within the 500-char delegate schema limit. */
+const SUBJECT_MAX_LEN = 480
+const SUBJECT_SLICE_LEN = SUBJECT_MAX_LEN - 3 // reserve room for "..."
+
 /** Hierarchical recursive decomposition of a root task into subtasks. */
 export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -105,7 +109,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                                 + `Complete or delete tasks before creating more.`,
                         }
                     }
-                    const subject = args.task.length <= 480 ? args.task : args.task.slice(0, 477) + "..."
+                    const subject = args.task.length <= SUBJECT_MAX_LEN ? args.task : args.task.slice(0, SUBJECT_SLICE_LEN) + "..."
                     const root = await createTask(team.directory, {
                         subject,
                         description: args.task,

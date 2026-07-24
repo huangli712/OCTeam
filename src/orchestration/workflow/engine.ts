@@ -65,6 +65,9 @@ import {
 
 import { buildWorkflowUpstream } from "./upstream.js";
 
+/** Default per-gate jump cap when max_jumps is not explicitly set. */
+const DEFAULT_MAX_JUMPS = 3;
+
 /** Provide a human-readable label for a workflow step, e.g. "step 3 (task) by alice". */
 export function describeStep(step: WorkflowStep | undefined, index: number): string {
     if (!step) return `step ${index + 1}`;
@@ -432,7 +435,7 @@ export async function gotoWorkflowStep(
 
     // Loop-controlled backward gotos use loopIterations instead of jumpCount.
     const isLoopGoto = gate.loop !== undefined && targetIndex <= gateIndex && transition.verdict === "FAIL";
-    const maxJ = gate.maxJumps ?? 3;
+    const maxJ = gate.maxJumps ?? DEFAULT_MAX_JUMPS;
     if (!isLoopGoto) {
         gate.jumpCount = (gate.jumpCount ?? 0) + 1;
         if (gate.jumpCount > maxJ) {

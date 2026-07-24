@@ -13,6 +13,9 @@ import type {
 } from "../../core/types.js"
 import { joinPolicySatisfied } from "./join-policy.js"
 
+/** Default per-gate jump cap (mirrors engine.ts; kept local to avoid a circular import). */
+const DEFAULT_MAX_JUMPS = 3
+
 /** Result of a workflow invariant check: either ok or a list of violations. */
 export type WorkflowInvariantCheckResult =
     | { readonly ok: true }
@@ -140,7 +143,7 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
         { field: "invalidAttempts", value: step.invalidAttempts, cap: step.maxInvalidRetries ?? 0 },
         { field: "malformedAttempts", value: step.malformedAttempts, cap: step.maxMalformedRetries ?? 0 },
         { field: "timeoutAttempts", value: step.timeoutAttempts, cap: step.maxTimeoutRetries ?? 0 },
-        { field: "jumpCount", value: step.jumpCount, cap: step.maxJumps ?? 3 },
+        { field: "jumpCount", value: step.jumpCount, cap: step.maxJumps ?? DEFAULT_MAX_JUMPS },
         { field: "loopIterations", value: step.loopIterations, cap: step.loop?.maxIterations ?? 0 },
     ] as const) {
         if (counter.value !== undefined && counter.value > counter.cap + 1) {

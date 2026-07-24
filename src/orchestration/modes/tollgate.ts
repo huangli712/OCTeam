@@ -18,6 +18,9 @@
 import type { PluginContext } from "../../core/context.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import type { ActiveTask, GatedStage, MemberState } from "../../core/types.js"
+
+/** Default max INVALID verdict cycles before declaring the gate exhausted. */
+const DEFAULT_MAX_INVALID_CYCLES = 3
 import { buildUpstreamContext } from "./stages.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { finishRun } from "../control/completion.js"
@@ -148,7 +151,7 @@ async function escalateInvalid(
     // Cap INVALID/escalate ping-pong: a persistently-INVALID verifier with an
     // escalateTo handler would otherwise loop verify→escalate→verify until the
     // wall-clock/turn budget is spent. Fail with a clear reason past the cap.
-    const maxI = task.maxInvalidCycles ?? 3
+    const maxI = task.maxInvalidCycles ?? DEFAULT_MAX_INVALID_CYCLES
     if (stage.invalidAttempts > maxI) {
         await finishRun(ctx, team, `tollgate_invalid:exhausted:${stage.member}`, "failed")
         return

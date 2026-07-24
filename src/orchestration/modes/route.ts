@@ -24,6 +24,9 @@ import { parseRouteDecision } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/approval.js"
 
+/** Max consecutive router parse failures before aborting the run. */
+const MAX_ROUTE_PARSE_FAILURES = 2
+
 /**
  * Build the router member's dispatch prompt: the input to route, the available
  * branches, and the <route> decision format the router must emit.
@@ -88,7 +91,7 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
             // Uses the shared decisionParseFailures counter (ActiveTask base
             // field, same as loop's parse-failure handling).
             task.decisionParseFailures++
-            if (task.decisionParseFailures >= 2) {
+            if (task.decisionParseFailures >= MAX_ROUTE_PARSE_FAILURES) {
                 await finishRun(ctx, team, "route_complete:decision_parse_failure", "failed")
                 return
             }

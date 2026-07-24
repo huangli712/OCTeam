@@ -55,7 +55,7 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
             if (member.sessionId) lines.push(`Session ID: ${member.sessionId}`)
             if (member.worktreePath) lines.push(`Worktree: ${member.worktreePath}`)
             if (member.error) lines.push(`Error: ${member.error}`)
-            if (team.activeTask?.tokensByMember?.[member.name]) {
+            if (team.activeTask?.tokensByMember?.[member.name] !== undefined) {
                 lines.push(`Tokens used: ${team.activeTask.tokensByMember[member.name]}`)
             }
             return lines.join("\n")

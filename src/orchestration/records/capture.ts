@@ -28,7 +28,7 @@ const ACCUMULATED_OUTPUT_CAP = 262_144 // 256 KiB
  * independent of ctx/team plumbing. Pure: no IO, no side effects.
  */
 export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: string): string {
-    const block = `--- captured ${capturedIso} (${turnOutput.length} bytes) ---\n\n${turnOutput}`
+    const block = `--- captured ${capturedIso} (${Buffer.byteLength(turnOutput, "utf8")} bytes) ---\n\n${turnOutput}`
     return prev === "" ? block : `${prev}\n\n${block}`
 }
 

@@ -18,6 +18,7 @@ import type {
 } from "./orchestration.js"
 
 import type { WorkflowStepBase, WorkflowGateConfig } from "./workflow.js"
+import type { TaskStatus } from "./task.js"
 
 /** Per-branch status within a workflow fanout. */
 export type WorkflowBranchStatus = "pending" | "completed" | "skipped" | "errored"
@@ -61,7 +62,7 @@ export type RunRecord = {
     // runs/<runId>/ (e.g. "alice.md").
     memberOutputs: Record<string, { bytes: number; file: string }>
     // delegate snapshot of the shared task list at completion
-    tasks?: Array<{ id: string; subject: string; status: string; owner?: string }>
+    tasks?: Array<{ id: string; subject: string; status: TaskStatus; owner?: string }>
     // workflow snapshot of the step ledger at completion/failure
     workflow?: { steps: WorkflowRunStep[] }
     // arena snapshot: winner + evaluator-attested scoreboard audit trail

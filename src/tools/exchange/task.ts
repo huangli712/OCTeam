@@ -27,7 +27,7 @@ import {
     updateTask,
 } from "../../state/tasks.js"
 import type { Task } from "../../core/types/task.js"
-import type { TaskStatus } from "../../state/tasks.js"
+import type { TaskStatus } from "../../core/types.js"
 
 /** Create a new task on the team's shared task list. */
 export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
