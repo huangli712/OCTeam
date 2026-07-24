@@ -21,6 +21,7 @@ import {
     TASK_ID_PATTERN,
     MemberHoldsActiveTaskError,
     TaskAlreadyClaimedError,
+    TaskBlockedByError,
     TaskOwnershipError,
     claimTask,
     createTask,
@@ -175,6 +176,9 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                 } catch (err) {
                     if (err instanceof TaskAlreadyClaimedError) {
                         return `Error: task ${args.task_id} already claimed or not claimable.`
+                    }
+                    if (err instanceof TaskBlockedByError) {
+                        return `Error: ${err.message}`
                     }
                     if (err instanceof MemberHoldsActiveTaskError) {
                         return `Error: ${err.message}`

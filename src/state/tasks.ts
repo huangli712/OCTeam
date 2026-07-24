@@ -69,6 +69,21 @@ export class TaskStatusError extends Error {
 }
 
 /**
+ * Raised by claimTask when the target task has unresolved blockedBy
+ * dependencies — at least one blocker is not yet "completed". Prevents a
+ * member from producing output before prerequisite tasks finish.
+ */
+export class TaskBlockedByError extends Error {
+    constructor(taskId: string, blockerId: string, blockerStatus: string) {
+        super(
+            `Task ${taskId} is blocked by ${blockerId} (currently "${blockerStatus}");`
+            + ` wait for the blocker to complete before claiming`,
+        )
+        this.name = "TaskBlockedByError"
+    }
+}
+
+/**
  * Canonical task-id shape. Task IDs are always crypto.randomUUID() (see
  * createTask). Exported so the tool layer (task.ts) validates the same shape at
  * the schema boundary — a single source of truth for both layers.
@@ -316,15 +331,32 @@ export async function claimTask(
             }
         }
 
-        // 2. Optimistic pending-check under claimMutex (clear error for the
-        // common "already claimed / not pending" case + handles !task).
-        const task = await readTaskFile(teamDirectory, taskId)
-        if (!task || task.status !== "pending") {
-            await fs.unlink(lockPath).catch(() => {
-                // release our lock since we are not claiming
-            })
-            throw new TaskAlreadyClaimedError(taskId)
-        }
+            // 2. Optimistic pending-check under claimMutex (clear error for the
+            // common "already claimed / not pending" case + handles !task).
+            const task = await readTaskFile(teamDirectory, taskId)
+            if (!task || task.status !== "pending") {
+                await fs.unlink(lockPath).catch(() => {
+                    // release our lock since we are not claiming
+                })
+                throw new TaskAlreadyClaimedError(taskId)
+            }
+            // 2b. blockedBy check: a task with unresolved blockers must NOT be
+            // claimable. Without this, a member could claim a task whose
+            // dependencies are still pending/in_progress, producing output
+            // before the prerequisite tasks complete and leaving the
+            // dependency chain in an inconsistent state.
+            if (task.blockedBy && task.blockedBy.length > 0) {
+                const blockers = await Promise.all(
+                    task.blockedBy.map(id => readTaskFile(teamDirectory, id)),
+                )
+                const incomplete = blockers.find(b => b && b.status !== "completed")
+                if (incomplete) {
+                    await fs.unlink(lockPath).catch(() => {
+                        // release our lock since we are not claiming
+                    })
+                    throw new TaskBlockedByError(taskId, incomplete!.id, incomplete!.status)
+                }
+            }
         // 3. Flip to "claimed" under taskUpdateLock with a TOCTOU-safe
         // expectedStatus check. The optimistic check above is NOT under
         // taskUpdateLock; this closes the narrow window where a concurrent

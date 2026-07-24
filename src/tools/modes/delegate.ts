@@ -108,7 +108,20 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                     // Pre-validate blockedBy refs against declared refs (before
                     // activeTask is set) so an invalid ref cannot leave the
                     // team in a dirty state.
-                    const declaredRefs = new Set(args.tasks.filter(t => t.ref).map(t => t.ref!))
+                    const declaredRefs = new Set<string>()
+                    const duplicateRefs: string[] = []
+                    for (const t of args.tasks) {
+                        if (t.ref) {
+                            if (declaredRefs.has(t.ref)) {
+                                duplicateRefs.push(t.ref)
+                            } else {
+                                declaredRefs.add(t.ref)
+                            }
+                        }
+                    }
+                    if (duplicateRefs.length > 0) {
+                        return `Error: duplicate ref "${duplicateRefs[0]}" — each ref must be unique`
+                    }
                     for (const t of args.tasks) {
                         if (!t.blocked_by) continue
                         for (const dep of t.blocked_by) {

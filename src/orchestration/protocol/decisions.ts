@@ -125,9 +125,9 @@ export function parseArbitrationDecision(
     const ruling = typeof p.decision === "string"
         ? p.decision
         : typeof p.ruling === "string" ? p.ruling : ""
-    if (!ruling) return { ruling: "", rationale: "", parseFailed: true }
+    if (!ruling || !ruling.trim()) return { ruling: "", rationale: "", parseFailed: true }
     return {
-        ruling,
+        ruling: ruling.trim(),
         rationale: typeof p.rationale === "string" ? p.rationale : "",
     }
 }
@@ -155,7 +155,7 @@ export function parseVerdict(
         rationale: typeof p.rationale === "string" ? p.rationale : "",
         diff: typeof p.diff === "string" ? p.diff : "",
         score: typeof p.score === "number" && Number.isFinite(p.score) ? p.score : undefined,
-        confidence: typeof p.confidence === "number" && Number.isFinite(p.confidence) ? p.confidence : undefined,
+        confidence: typeof p.confidence === "number" && Number.isFinite(p.confidence) && p.confidence >= 0 && p.confidence <= 1 ? p.confidence : undefined,
         issues: parseWorkflowIssues(p.issues),
     }
 }

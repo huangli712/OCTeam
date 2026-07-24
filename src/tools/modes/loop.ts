@@ -60,6 +60,17 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                             return `Error: unknown member "${name}" in stages`
                         }
                     }
+                    // A user-provided decider stage must be the LAST stage and
+                    // read-only — otherwise the decision would be emitted before
+                    // all modify stages have run, or be overwritten by a later
+                    // stage, breaking the loop contract.
+                    const explicitDeciderStageIndex = stageMembers.indexOf(args.decider)
+                    if (explicitDeciderStageIndex !== -1 && explicitDeciderStageIndex !== stageMembers.length - 1) {
+                        return `Error: decider "${args.decider}" appears in stage ${explicitDeciderStageIndex + 1} but must be the LAST stage (decision must follow all modify stages)`
+                    }
+                    if (explicitDeciderStageIndex !== -1 && args.stages[explicitDeciderStageIndex]?.action === "modify") {
+                        return `Error: decider "${args.decider}" stage must be action "read_only" (it reviews, not modifies)`
+                    }
                     return null
                 },
                 // buildTask (append decider as a final read-only stage if not

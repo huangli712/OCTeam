@@ -90,9 +90,29 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
                     if (participants.length < 2) {
                         return "Error: team_quorum requires at least 2 participants"
                     }
+                    // Deduplicate participants: a repeated name would give one
+                    // member's vote extra weight in the tally.
+                    const seen = new Set<string>()
                     for (const name of participants) {
+                        if (seen.has(name)) {
+                            return `Error: duplicate participant "${name}" in members`
+                        }
+                        seen.add(name)
                         if (!team.members.some(m => m.name === name && !m.isMaster)) {
                             return `Error: unknown member "${name}" in members`
+                        }
+                    }
+                    // vote_options whitelist, when provided, must be non-empty
+                    // and contain only non-blank values (otherwise every
+                    // ballot would abstain by definition).
+                    if (args.vote_options !== undefined) {
+                        if (args.vote_options.length === 0) {
+                            return "Error: vote_options must not be empty (omit it to accept any non-empty string)"
+                        }
+                        for (const opt of args.vote_options) {
+                            if (!opt.trim()) {
+                                return "Error: vote_options must not contain blank values"
+                            }
                         }
                     }
                     if (args.max_errored_members !== undefined && args.max_errored_members >= participants.length) {
