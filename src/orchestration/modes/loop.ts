@@ -14,7 +14,7 @@
 import type { PluginContext } from "../../core/context.js"
 import { logEvent } from "../../core/log.js"
 import { type Team, clearActiveTask } from "../../state/store.js"
-import type { MemberState } from "../../core/types.js"
+import type { DecisionRecord, MemberState } from "../../core/types.js"
 import { advanceToStage } from "./stages.js"
 import { deliverSummaryToLeader, finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
@@ -23,6 +23,11 @@ import { maybeRequestApproval } from "../control/approval.js"
 
 /** Max consecutive decision parse failures before the loop is failed. */
 const MAX_DECISION_PARSE_FAILURES = 3
+
+/** Append a parsed decision to the loop's history with the current round. */
+function recordLoopDecision(task: { decisionHistory: DecisionRecord[]; currentRound?: number }, decision: DecisionRecord): void {
+    task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
+}
 
 /**
  * Advance to the next loop round: bump the round counter, reset all stages to

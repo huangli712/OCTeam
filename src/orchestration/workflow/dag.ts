@@ -5,6 +5,7 @@
 
 import type { WorkflowBranchRange, WorkflowStep, WorkflowTask } from "../../core/types.js"
 import { joinPolicySatisfied } from "./join-policy.js"
+import { includesWorkflowIndex } from "./invariants.js"
 
 /** Outcome of validateWorkflowDag: either ok or a reason string. */
 export type WorkflowDagValidationResult =
@@ -303,7 +304,3 @@ function isInsideAnotherFanout(steps: readonly WorkflowStep[], index: number): b
     return false
 }
 
-/** Check whether a branch range includes the given index. */
-function includesWorkflowIndex(range: WorkflowBranchRange, index: number): boolean {
-    return range.startIndex <= index && index <= range.endIndex
-}

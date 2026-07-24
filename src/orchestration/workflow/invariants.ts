@@ -342,7 +342,7 @@ function isIndexInBounds(steps: readonly WorkflowStep[], index: number): boolean
 }
 
 /** Check whether an index falls within the given branch range. */
-function includesWorkflowIndex(range: WorkflowBranchRange, index: number): boolean {
+export function includesWorkflowIndex(range: WorkflowBranchRange, index: number): boolean {
     return range.startIndex <= index && index <= range.endIndex
 }
 
