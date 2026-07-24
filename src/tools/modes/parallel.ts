@@ -148,10 +148,11 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 // dispatch
                 async (team) => {
                     const participants = nonMasterMembers(team)
+                    const isolatedTask = args.mode === "isolated" ? args.task : undefined
+                    const cooperativeTasks = args.mode === "cooperative" ? args.tasks : undefined
                     for (const m of participants) {
-                        const text = args.mode === "isolated"
-                            ? args.task!
-                            : (args.tasks![m.name] ?? `No task assigned for ${m.name}.`)
+                        const text = isolatedTask
+                            ?? (cooperativeTasks?.[m.name] ?? `No task assigned for ${m.name}.`)
                         await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
                     }
                 },

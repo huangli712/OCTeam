@@ -460,18 +460,18 @@ function validateLoweredTaskStep(
     if (task.kind !== "task") return null
     const location = stepLocation(task, displayStep, true)
     // Cross-kind field check: validate that a task step does NOT have gate-only fields.
-    // Cast to Record because the union type prevents direct access to gate fields on task steps.
+    // Gate-only field names — if any is defined on a task step, it is a user error.
+    // Kept in sync with WorkflowGateToolStep in core/types/workflow.ts.
+    const GATE_ONLY_FIELDS = [
+        "verifier", "fallback_verifier", "criteria", "target_step",
+        "targets", "on_fail", "max_retries", "on_invalid",
+        "max_invalid_retries", "where", "verifiers", "ensemble_policy",
+        "ensemble_quorum", "on_malformed", "max_malformed_retries",
+        "on_pass_goto", "on_fail_goto", "on_invalid_goto",
+        "max_jumps", "loop",
+    ] as const satisfies readonly string[]
     const f = task as Record<string, unknown>
-    if (f.verifier !== undefined || f.fallback_verifier !== undefined
-        || f.criteria !== undefined || f.target_step !== undefined
-        || f.targets !== undefined || f.on_fail !== undefined
-        || f.max_retries !== undefined || f.on_invalid !== undefined
-        || f.max_invalid_retries !== undefined || f.where !== undefined
-        || f.verifiers !== undefined || f.ensemble_policy !== undefined
-        || f.ensemble_quorum !== undefined || f.on_malformed !== undefined
-        || f.max_malformed_retries !== undefined || f.on_pass_goto !== undefined
-        || f.on_fail_goto !== undefined || f.on_invalid_goto !== undefined
-        || f.max_jumps !== undefined || f.loop !== undefined) {
+    if (GATE_ONLY_FIELDS.some(field => f[field] !== undefined)) {
         return `Error: ${location} must not set gate fields`
     }
     if (!task.member) return `Error: ${location} requires \`member\``
@@ -526,12 +526,14 @@ function validateLoweredGateStep(
     if (gate.kind !== "gate") return null
     const location = stepLocation(gate, displayStep, true)
     // Cross-kind field check: validate that a gate step does NOT have task-only fields.
+    // Task-only field names — kept in sync with WorkflowTaskToolStep.
+    const TASK_ONLY_FIELDS = [
+        "member", "fallback_member", "task", "retry_on", "max_task_retries",
+    ] as const satisfies readonly string[]
     const f = gate as Record<string, unknown>
-    if (f.member !== undefined || f.fallback_member !== undefined || f.task !== undefined) {
-        return `Error: ${location} must not set task fields`
-    }
-    if (f.retry_on !== undefined || f.max_task_retries !== undefined) {
-        return `Error: ${location} must not set task retry fields`
+    if (TASK_ONLY_FIELDS.some(field => f[field] !== undefined)) {
+        const hasRetryFields = f.retry_on !== undefined || f.max_task_retries !== undefined
+        return `Error: ${location} must not set ${hasRetryFields ? "task retry" : "task"} fields`
     }
     if (gate.inputs !== undefined || gate.expose_output !== undefined) {
         return `Error: ${location} must not set task data-flow fields`
@@ -796,7 +798,10 @@ export async function resolveWorkflowArgs(
         if (shapeError !== null) return shapeError
         return { ...args, steps: expandMatrixForeachFanout(args.steps) }
     }
-    const loaded = await loadWorkflowFile(ctx.directory, args.workflow_file!, args.vars ?? {})
+    if (!args.workflow_file) {
+        return "Error: either steps or workflow_file is required"
+    }
+    const loaded = await loadWorkflowFile(ctx.directory, args.workflow_file, args.vars ?? {})
     if ("error" in loaded) return loaded.error
     const shapeError = validateMatrixForeachShapeInSteps(loaded.steps)
     if (shapeError !== null) return shapeError
