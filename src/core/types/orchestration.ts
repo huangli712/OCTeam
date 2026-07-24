@@ -59,7 +59,7 @@ export type ApprovalKind =
     | "workflow_step"
 
 /** Action taken when an approval pause times out. */
-export type ApprovalTimeoutAction = "fail" | "approve" | "reject"
+type ApprovalTimeoutAction = "fail" | "approve" | "reject"
 
 // --- Stage types ---
 

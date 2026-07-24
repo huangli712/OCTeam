@@ -480,7 +480,7 @@ export const OCTEAM_AGENTS: readonly string[] = Object.freeze(
  * Fail-safe: an unrecognized or tampered agent degrades to least privilege,
  * never escalates to a full-capability host agent.
  */
-export const SAFE_FALLBACK_AGENT: string = roleAgent(DEFAULT_ROLE)
+const SAFE_FALLBACK_AGENT: string = roleAgent(DEFAULT_ROLE)
 
 /**
  * Normalize a role label to a preset role key. Matching is case-insensitive;

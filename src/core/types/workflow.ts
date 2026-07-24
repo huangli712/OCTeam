@@ -54,10 +54,10 @@ export type WorkflowCondition =
 export type WorkflowStepKind = "task" | "gate" | "fanout" | "join"
 
 /** Workflow gate INVALID verdict control: fail, retry the verifier, or escalate. */
-export type WorkflowOnInvalid = "fail" | "retry_verifier" | "escalate"
+type WorkflowOnInvalid = "fail" | "retry_verifier" | "escalate"
 
 /** Workflow gate malformed-verdict control: fail, retry, skip, or escalate. */
-export type WorkflowOnMalformed = "fail" | "retry_verifier" | "skip" | "escalate"
+type WorkflowOnMalformed = "fail" | "retry_verifier" | "skip" | "escalate"
 
 /** Auto-retry trigger for a workflow task step. */
 export type WorkflowRetryCondition =
@@ -73,7 +73,7 @@ export type WorkflowLoopConfig = {
 }
 
 /** Ensemble verdict aggregation policy: majority, quorum, or unanimous. */
-export type WorkflowEnsemblePolicy = "majority" | "quorum" | "unanimous"
+type WorkflowEnsemblePolicy = "majority" | "quorum" | "unanimous"
 
 /** Structured result from a single verifier in an ensemble gate. */
 export type WorkflowEnsembleResult = {
