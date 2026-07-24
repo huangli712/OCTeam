@@ -154,6 +154,10 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
     // Continue to next round -- inject the decider's feedback (rationale +
     // nextActions) into stage 0's prompt so the loop is actually corrective.
     // Without this the next round re-sends the original task verbatim.
-    recordLoopDecision(task, decision)
+    // Do not record parse-failed decisions to history: they carry a fixed
+    // error string as rationale, not the decider's actual judgment.
+    if (!decision.parseFailed) {
+        recordLoopDecision(task, decision)
+    }
     await continueLoopRound(ctx, team, decision.rationale, decision.nextActions)
 }

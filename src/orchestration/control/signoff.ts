@@ -72,6 +72,11 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         kind: "signoff",
         detail: task.signoffPolicy,
     })
+    // Persist BEFORE dispatching reviewers so a crash between save and
+    // dispatch does not leave reviewers prompted without signoffStage
+    // persisted. On resume, signoffStage=true ensures reviewer responses
+    // are routed to handleSignoffIdle instead of being treated as stray.
+    await saveTeamState(team)
     for (const reviewer of reviewers) {
         await dispatchToMember(
             ctx,
@@ -82,7 +87,6 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         )
     }
 
-    await saveTeamState(team)
     return true
 }
 

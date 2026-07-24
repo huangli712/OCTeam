@@ -95,7 +95,7 @@ export type MemberSpec = {
     role: string                       // role label, e.g. "coder", "verifier"
     prompt: string                     // system prompt content (the member's instructions)
     model?: string                     // model identifier, e.g. "claude-sonnet"
-        agent?: string                     // OpenCode agent type; resolved via safeMemberAgent() at dispatch (falls back to oct-oracle for non-oct-* values)
+    agent?: string                     // OpenCode agent type; resolved via safeMemberAgent() at dispatch (falls back to oct-oracle for non-oct-* values)
     worktree?: boolean                 // create isolated git worktree, default false
 }
 

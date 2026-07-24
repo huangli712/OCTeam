@@ -94,7 +94,7 @@ function buildStructuredVerdictHint(
             );
             break;
         default:
-            throw new Error(`unhandled workflow condition: ${String(where)}`);
+            throw assertNeverCondition(where);
     }
     return (
         `This gate gates a downstream step on a threshold condition (${formatWorkflowCondition(where)}). ` +
@@ -122,7 +122,7 @@ function buildVerdictSchemaExample(
             extras.push(`"issues":[{"severity":"high","message":"..."}]`);
             break;
         default:
-            throw new Error(`unhandled workflow condition: ${String(where)}`);
+            throw assertNeverCondition(where);
     }
     return `{${base},${extras.join(",")}}`;
 }

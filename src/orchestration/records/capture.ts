@@ -120,7 +120,7 @@ export async function captureMemberOutput(
     }
     const accumulated = appendTurnBlock(prev, full, new Date().toISOString())
     // Cap the accumulated file so multi-turn members do not grow it unbounded.
-    const capped = accumulated.length > ACCUMULATED_OUTPUT_CAP
+    const capped = Buffer.byteLength(accumulated, "utf8") > ACCUMULATED_OUTPUT_CAP
         ? truncateOutput(accumulated, ACCUMULATED_OUTPUT_CAP)
         : accumulated
 
@@ -132,7 +132,7 @@ export async function captureMemberOutput(
         timestamp: Date.now(),
         kind: "captured",
         member: member.name,
-        bytes: full.length,
+        bytes: Buffer.byteLength(full, "utf8"),
     })
     return true
 }

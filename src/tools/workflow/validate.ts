@@ -42,7 +42,7 @@ import { expandMatrixForeachFanout } from "./lower.js"
 
 /** Check whether \`name\` is a member of the given team. */
 function isTeamMember(team: Team, name: string): boolean {
-    return team.members.some(member => member.name === name)
+    return team.members.some(member => member.name === name && !member.isMaster)
 }
 
 /** Narrow a \`WorkflowToolStep\` to \`WorkflowFanoutToolStep\` when its kind is \`"fanout"\`. */

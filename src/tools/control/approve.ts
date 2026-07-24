@@ -51,7 +51,9 @@ export async function applyApprovalDecision(
     const request = task.approvalRequest
     const resolvedAt = Date.now()
     const pausedMs = Math.max(0, resolvedAt - request.requestedAt)
-    task.startedAt += pausedMs
+    // Shift startedAt by the paused duration so wall-clock timeout
+    // accounts for the human delay. Guard against undefined startedAt.
+    task.startedAt = (task.startedAt ?? Date.now()) + pausedMs
     const record: ApprovalDecisionRecord = {
         id: request.id,
         kind: request.kind,

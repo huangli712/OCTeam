@@ -111,13 +111,16 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
                 return
             }
             // Next debate round: broadcast prior positions, re-dispatch debaters.
-            task.currentRound = (task.currentRound ?? 1) + 1
-            recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
+            // Increment round AFTER the dispatch loop (not before) so a partial
+            // dispatch failure followed by a barrier re-fire does not skip a round.
+            const nextRound = (task.currentRound ?? 1) + 1
             for (const name of disputants) {
                 const m = team.members.find(x => x.name === name)
                 if (!m?.sessionId) continue
-                await dispatchToMember(ctx, m, buildDebatePrompt(task), m.worktreePath ?? ctx.directory, team)
+                await dispatchToMember(ctx, m, buildDebatePrompt({ ...task, currentRound: nextRound }), m.worktreePath ?? ctx.directory, team)
             }
+            task.currentRound = nextRound
+            recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
         })
         return
     }

@@ -280,8 +280,9 @@ export async function handleInvalidVerdict(
         if (escalated) {
             // Mark the gate complete so that on team_approve (which calls
             // advanceWorkflowStep) the workflow proceeds past this gate.
-            step.completed = true;
-            step.dispatchedActor = undefined;
+            // Use resetStepAfterCompletion for full cleanup parity with
+            // PASS/skip completion paths (clears dispatchedAt/correlationId).
+            resetStepAfterCompletion(step, { completed: true });
             await saveTeamState(team);
             return;
         }

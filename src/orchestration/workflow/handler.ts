@@ -30,6 +30,8 @@ import {
     handleWorkflowDispatchUnavailable,
 } from "./fanout.js";
 import { handleGateVerdict, resetStepAfterCompletion } from "./verdict.js";
+import { resetWorkflowStepTiming } from "./engine.js";
+import { assertNeverWorkflowStepKind } from "./dag.js";
 
 /** Check whether a task step's output matches its retry_on condition. */
 export function shouldRetryTask(step: WorkflowStep, output: string): boolean {
@@ -81,8 +83,7 @@ async function handleTaskIdle(
             const nudge = `[Auto-retry attempt ${step.taskAttempts}/${maxR}]`
                 + ` Previous output triggered retry_on condition. Please try again.`;
             step.output = undefined;
-            step.dispatchedAt = undefined;
-            step.dispatchedActor = undefined;
+            resetWorkflowStepTiming(step);
             step.correlationId = undefined;
             recordEvent(team, {
                 timestamp: Date.now(),
@@ -223,7 +224,11 @@ export async function handleWorkflowIdle(
             return await handleJoinIdle(ctx, team, member, task, steps, step, activeStepIndex);
         case "gate":
             return await handleGateVerdict(ctx, team, member, step, activeStepIndex);
-        default:
+        case "fanout":
+            // Fanout steps have no actor and are auto-completed by advanceWorkflowStep.
+            // Reaching here is unexpected but harmless — no-op.
             return;
+        default:
+            assertNeverWorkflowStepKind(step.kind);
     }
 }

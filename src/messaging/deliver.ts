@@ -27,9 +27,10 @@ export async function deliverToRecipients(
     for (const r of recipients) {
         try {
             await writeMailboxMessage(team.directory, r, { ...base, to: r })
-        } catch {
+        } catch (err) {
             // Isolate per-recipient failures: one bad write must NOT abort the
             // remaining recipients (partial broadcast). Record and continue.
+            logger.warn("deliver: mailbox write failed", { recipient: r, error: String(err) })
             failures.push(r)
             continue
         }

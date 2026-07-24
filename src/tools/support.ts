@@ -36,7 +36,7 @@ export function defaultBounds(override?: Partial<Bounds>): Bounds {
  * previous inline checks so existing error-string assertions still hold.
  */
 export function assertMember(team: Team, name: string, label: string): string | null {
-    if (!team.members.some(m => m.name === name)) {
+    if (!team.members.some(m => m.name === name && !m.isMaster)) {
         return `Error: ${label} "${name}" is not a member of team "${team.teamName}"`
     }
     return null
