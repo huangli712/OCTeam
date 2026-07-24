@@ -110,7 +110,9 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                                 + `Complete or delete tasks before creating more.`,
                         }
                     }
-                    const subject = args.task.length <= SUBJECT_MAX_LEN ? args.task : args.task.slice(0, SUBJECT_SLICE_LEN) + "..."
+                    const subject = args.task.length <= SUBJECT_MAX_LEN
+                        ? args.task
+                        : Array.from(args.task).slice(0, SUBJECT_SLICE_LEN).join("") + "..."
                     const root = await createTask(team.directory, {
                         subject,
                         description: args.task,

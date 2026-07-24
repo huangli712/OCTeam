@@ -340,22 +340,23 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                     if (task.type !== "workflow") return
                     const step = task.steps?.[0]
                     if (!step) {
-                        throw new Error("workflow has no steps")
+                        // No steps should have been caught by validation; guard
+                        // defensively but do NOT throw — startOrchestration's
+                        // dispatch callback returns void and a throw here would
+                        // become an unhandled rejection.
+                        return
                     }
                     if (await maybePauseBeforeWorkflowStep(ctx, team, 0)) return
                     if (step.kind === "task") {
-                        if (!step.member || !step.task) {
-                            throw new Error("workflow initial task step is invalid")
-                        }
-                        if (!(await dispatchTaskStep(ctx, team, task, 0))) {
-                            throw new Error(`workflow initial member "${step.member}" has no live session`)
-                        }
+                        if (!step.member || !step.task) return
+                        if (!(await dispatchTaskStep(ctx, team, task, 0))) return
                     } else if (step.kind === "fanout") {
                         // fanout is a container, not directly dispatched; let the main
                         // advance loop expand its branch heads via activeStepIndices.
                         await advanceWorkflowStep(ctx, team)
                     } else {
-                        throw new Error(`workflow initial step kind "${step.kind}" is not supported`)
+                        // gate/join as initial step: let advanceWorkflowStep handle it.
+                        await advanceWorkflowStep(ctx, team)
                     }
                 },
                 () => `team_workflow started on "${args.team_id}" with ${

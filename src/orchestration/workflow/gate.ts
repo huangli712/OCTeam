@@ -324,6 +324,12 @@ export function aggregateEnsembleVerdict(step: WorkflowStep): {
     const failCount = verdicts.filter(v => v === "FAIL").length;
     const invalidCount = verdicts.filter(v => v === "INVALID").length;
     const total = verdicts.length;
+    // Guard against empty ensemble results (corrupted state or all-unavailable
+    // verifiers with no placeholders). Without this, unanimous policy returns
+    // PASS because 0 === 0.
+    if (total === 0) {
+        return ensembleResult("INVALID", "No verifier results");
+    }
     switch (step.ensemblePolicy) {
         case "majority":
             if (passCount > total / 2) return ensembleResult("PASS", `Majority PASS (${passCount}/${total})`);
