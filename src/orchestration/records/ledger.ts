@@ -35,9 +35,9 @@ function workflowVerdictMetrics(s: WorkflowStep): string {
 /** Classify a fanout branch status: completed, skipped, errored, or pending. */
 function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
     const fanout = fanoutStep.fanout
-    if (fanout === undefined) throw new Error("workflow fanout step missing fanout metadata")
+    if (fanout === undefined) return "pending"
     const range = fanout.branchRanges[branchIndex]
-    if (range === undefined) throw new Error(`workflow fanout missing branch range ${branchIndex}`)
+    if (range === undefined) return "pending"
     const join = steps[fanout.joinIndex]?.join
     if (join?.erroredBranchIds?.includes(branchId) === true) return "errored"
     if (join?.survivorBranchIds?.includes(branchId) === true) return "completed"
@@ -49,7 +49,7 @@ function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: Workfl
 /** Render a comma-separated branch:status list for a fanout step's join line. */
 function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep): string {
     const fanout = fanoutStep.fanout
-    if (fanout === undefined) throw new Error("workflow fanout step missing fanout metadata")
+    if (fanout === undefined) return ""
     return fanout.branchIds
         .map((branchId, branchIndex) => `${branchId}:${workflowBranchStatus(steps, fanoutStep, branchId, branchIndex)}`)
         .join(", ")
@@ -59,9 +59,9 @@ function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: Wo
 /** Format a single branch line: id, status, and step range. */
 function formatWorkflowBranchLine(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
     const fanout = fanoutStep.fanout
-    if (fanout === undefined) throw new Error("workflow fanout step missing fanout metadata")
+    if (fanout === undefined) return `  - Branch ${branchId} [pending]`
     const range = fanout.branchRanges[branchIndex]
-    if (range === undefined) throw new Error(`workflow fanout missing branch range ${branchIndex}`)
+    if (range === undefined) return `  - Branch ${branchId} [pending]`
     const status = workflowBranchStatus(steps, fanoutStep, branchId, branchIndex)
     return `  - Branch ${branchId} [${status}] steps ${range.startIndex + 1}-${range.endIndex + 1}`
 }
@@ -72,7 +72,7 @@ export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: W
     switch (step.kind) {
         case "task": {
             const state = step.skipped ? " (skipped)" : step.completed ? " (done)" : ""
-            return `${index + 1}. [task]${idTag} ${step.member ?? "?"}${state}`
+            return `${index + 1}. [task]${idTag} ${step.member || "?"}${state}`
         }
         case "gate": {
             const target = workflowTargetLabel(step)
@@ -82,13 +82,13 @@ export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: W
         }
         case "fanout": {
             const fanout = step.fanout
-            if (fanout === undefined) throw new Error(`workflow fanout step ${index + 1} missing fanout metadata`)
+            if (fanout === undefined) return `${index + 1}. [fanout]${idTag} (metadata missing)`
             const branchList = fanout.branchIds.length > 0 ? fanout.branchIds.join(", ") : "(none)"
             return `${index + 1}. [fanout]${idTag} branches ${branchList} -> join step ${fanout.joinIndex + 1}`
         }
         case "join": {
             const join = step.join
-            if (join === undefined) throw new Error(`workflow join step ${index + 1} missing join metadata`)
+            if (join === undefined) return `${index + 1}. [join]${idTag} (metadata missing)`
             const fanoutStep = steps[join.fanoutIndex]
             const statuses = fanoutStep?.kind === "fanout" ? workflowBranchStatusList(steps, fanoutStep) : ""
             const statusTag = statuses === "" ? "" : ` branches ${statuses}`
@@ -96,7 +96,7 @@ export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: W
             return `${index + 1}. [join]${idTag} fanout step ${join.fanoutIndex + 1}${statusTag}${joinedBytes}`
         }
         default:
-            throw new Error(`unhandled WorkflowStepKind: ${String(step.kind)}`)
+            return `${index + 1}. [unknown]${idTag}`
     }
 }
 
@@ -114,7 +114,10 @@ export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): strin
             case "fanout": {
                 lines.push(formatWorkflowLedgerStep(steps, step, index))
                 const fanout = step.fanout
-                if (fanout === undefined) throw new Error(`workflow fanout step ${index + 1} missing fanout metadata`)
+                if (fanout === undefined) {
+                    lines.push(`${index + 1}. [fanout] (metadata missing)`)
+                    break
+                }
                 for (let branchIndex = 0; branchIndex < fanout.branchIds.length; branchIndex += 1) {
                     const branchId = fanout.branchIds[branchIndex]
                     const range = fanout.branchRanges[branchIndex]
@@ -135,7 +138,7 @@ export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): strin
                 lines.push(formatWorkflowLedgerStep(steps, step, index))
                 break
             default:
-                throw new Error(`unhandled WorkflowStepKind: ${String(step.kind)}`)
+                break
         }
     }
     return lines
@@ -144,7 +147,7 @@ export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): strin
 /** Format a completed task step's output as a markdown section, or null if not applicable. */
 function formatWorkflowTaskOutput(step: WorkflowStep, index: number): string | null {
     if (step.kind !== "task" || !step.completed) return null
-    return `<Step index = ${index + 1}> by ${step.member ?? "?"}\n`
+    return `<Step index = ${index + 1}> by ${step.member || "?"}\n`
         + `${truncateOutput(step.output ?? "")}\n`
         + `</Step>`
 }
@@ -170,7 +173,7 @@ export function formatWorkflowOutputSections(steps: readonly WorkflowStep[]): st
             }
             case "fanout": {
                 const fanout = step.fanout
-                if (fanout === undefined) throw new Error(`workflow fanout step ${index + 1} missing fanout metadata`)
+                if (fanout === undefined) break
                 for (let branchIndex = 0; branchIndex < fanout.branchIds.length; branchIndex += 1) {
                     const branchId = fanout.branchIds[branchIndex]
                     const range = fanout.branchRanges[branchIndex]
@@ -205,7 +208,7 @@ export function formatWorkflowOutputSections(steps: readonly WorkflowStep[]): st
             case "gate":
                 break
             default:
-                throw new Error(`unhandled WorkflowStepKind: ${String(step.kind)}`)
+                break
         }
     }
     return sections

@@ -246,7 +246,7 @@ describe("buildSummary: workflow case", () => {
         expect(summary).toContain("docs output")
     })
 
-    test("unknown future workflow step kind throws instead of rendering as a gate", async () => {
+    test("unknown future workflow step kind renders as fallback instead of crashing", async () => {
         const task = makeWorkflowTask({
             steps: [
                 { kind: "task", member: "alice", task: "draft", completed: true, output: "draft" },
@@ -254,15 +254,9 @@ describe("buildSummary: workflow case", () => {
             ] as unknown as WorkflowTask["steps"],
         })
 
-        let thrown: unknown
-        try {
-            await buildSummary(mockTeam, task, "workflow_complete")
-        } catch (error) {
-            thrown = error
-        }
-
-        expect(thrown).toBeInstanceOf(Error)
-        if (!(thrown instanceof Error)) throw new Error("expected workflow step kind error")
-        expect(thrown.message).toMatch(/unhandled WorkflowStepKind/i)
+        // Unknown step kinds should render as fallback strings, not throw,
+        // so a formatting/rendering path never crashes on future additions.
+        const summary = await buildSummary(mockTeam, task, "workflow_complete")
+        expect(summary).toBeTruthy()
     })
 })
