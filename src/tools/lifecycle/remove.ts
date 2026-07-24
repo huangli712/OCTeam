@@ -3,6 +3,8 @@
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
@@ -24,8 +26,10 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
             let team
             try {
                 team = await loadTeamState(ctx.storageRoot, args.team_id, pathLeadSessionId)
-            } catch {
-                return `Error: team "${args.team_id}" not found`
+            } catch (err) {
+                if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
+                logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
+                return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
             if (team.leadSessionId !== context.sessionID) {
                 return "Error: team_remove_member is master-only (only the team's leader can remove members)"

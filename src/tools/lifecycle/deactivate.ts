@@ -8,6 +8,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { logSwallowed } from "../../core/log.js"
+import { isEnoent } from "../../core/utils.js"
 import { clearActiveTeam } from "../../state/resolve.js"
 
 /** Deactivate the currently active team for this session. */
@@ -26,8 +27,10 @@ export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
             let team: Team
             try {
                 team = await loadTeamState(ctx.storageRoot, args.team_id, pathLeadSessionId)
-            } catch {
-                return `Error: team "${args.team_id}" not found`
+            } catch (err) {
+                if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
+                logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
+                return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
             if (team.leadSessionId !== context.sessionID) {
                 return "Error: team_deactivate is master-only (only the team's leader session can deactivate it)"

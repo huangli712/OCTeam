@@ -4,6 +4,8 @@
  */
 
 import fs from "node:fs/promises"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
@@ -51,8 +53,10 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             let team
             try {
                 team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
-            } catch {
-                return `Error: team "${args.team_id}" not found`
+            } catch (err) {
+                if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
+                logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
+                return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
             if (team.status === "busy") {
                 return `Error: team "${args.team_id}" is busy. `

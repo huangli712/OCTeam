@@ -3,6 +3,8 @@
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, readTeamSpec } from "../../state/store.js"
@@ -25,8 +27,10 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
             let team
             try {
                 team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
-            } catch {
-                return `Error: team "${args.team_id}" not found`
+            } catch (err) {
+                if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
+                logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
+                return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
             const member = team.members.find(m => m.name === args.member_name)
             if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`

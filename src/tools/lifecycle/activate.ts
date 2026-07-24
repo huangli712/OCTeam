@@ -8,6 +8,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../../core/context.js"
 import { listTeamNames, loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { logSwallowed } from "../../core/log.js"
+import { isEnoent } from "../../core/utils.js"
 import { setActiveTeam } from "../../state/resolve.js"
 import { decideActivate, withOrderedLocks } from "../../state/activation.js"
 
@@ -27,8 +28,10 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
             let target: Team
             try {
                 target = await loadTeamState(ctx.storageRoot, args.team_id, leadSessionId)
-            } catch {
-                return `Error: team "${args.team_id}" not found`
+            } catch (err) {
+                if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
+                logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
+                return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
             if (target.leadSessionId !== context.sessionID) {
                 return "Error: team_activate is master-only (only the team's leader session can activate it)"

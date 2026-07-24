@@ -4,6 +4,8 @@
  */
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
 import type { ApprovalDecisionRecord, ApprovalRequest } from "../../core/types.js"
@@ -186,8 +188,10 @@ function approvalTool(ctx: PluginContext, approved: boolean): ToolDefinition {
             let team
             try {
                 team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
-            } catch {
-                return `Error: team "${args.team_id}" not found`
+            } catch (err) {
+                if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
+                logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
+                return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
 
             let result = ""

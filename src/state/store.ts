@@ -230,7 +230,9 @@ async function loadTeamFromDisk(dir: string, teamName: string): Promise<Team> {
             (v): v is TeamState => isValidTeamState(v, dir),
         )
         if (!state) {
-            throw new Error(`loadTeamState: no state.json for team "${teamName}"`)
+            const err = new Error(`loadTeamState: no state.json for team "${teamName}"`) as NodeJS.ErrnoException
+            err.code = "ENOENT"
+            throw err
         }
         const team: Team = { ...state, mutex: new AsyncMutex(), directory: dir, _diskSnapshot: deepClone(state) }
         teamRegistry.set(dir, team)
