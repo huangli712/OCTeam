@@ -131,8 +131,16 @@ export async function handleSignoffIdle(
         const reviewers = team.members
             .filter(member => !member.isMaster && member.sessionId && member.status !== "errored")
             .map(member => member.name)
+        const reviewerSet = new Set(reviewers)
+        // Filter approvals to only include current non-errored reviewers so
+        // that members who errored AFTER responding do not inflate the
+        // response count or approval count beyond the active set.
+        const activeApprovals: Record<string, boolean> = {}
+        for (const [name, approved] of Object.entries(task.signoffApprovals ?? {})) {
+            if (reviewerSet.has(name)) activeApprovals[name] = approved
+        }
         const { allResponded, reached } = isQuorumReached(
-            task.signoffApprovals ?? {},
+            activeApprovals,
             reviewers.length,
             task.signoffQuorum ?? 0.5,
         )

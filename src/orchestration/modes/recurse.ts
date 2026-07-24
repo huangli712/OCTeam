@@ -94,13 +94,23 @@ export async function approveRecurseDecompose(
     if (!parent) return
     const childDepth = (parent.depth ?? 0) + 1
     const ids: string[] = []
-    for (const subtask of request.subtasks) {
-        const child = await createTask(team.directory, {
-            subject: subtask.subject,
-            description: subtask.description,
-            depth: childDepth,
-        })
-        ids.push(child.id)
+    try {
+        for (const subtask of request.subtasks) {
+            const child = await createTask(team.directory, {
+                subject: subtask.subject,
+                description: subtask.description,
+                depth: childDepth,
+            })
+            ids.push(child.id)
+        }
+    } catch (err) {
+        // Clean up any orphaned children created before the failure so they
+        // don't linger unlinked in the task list (parent.blockedBy was never
+        // set, so they'd be claimable but never aggregated).
+        for (const id of ids) {
+            await updateTask(team.directory, id, { status: "deleted" }).catch(() => { /* best-effort */ })
+        }
+        throw err
     }
     await updateTask(team.directory, parent.id, {
         status: "pending",

@@ -62,7 +62,23 @@ export async function handleReduceIdle(
     if (!task?.reduceStage) return
     if (member.name !== task.reducerMember) return
 
-    task.reducedResult = task.responses[member.name] ?? ""
+    const reduced = task.responses[member.name]
+    if (reduced === undefined) {
+        // No new output was captured for the reducer this turn (stale idle or
+        // empty extraction). Re-dispatch the reducer instead of silently
+        // completing with an empty result — an empty reduction would discard
+        // all mapper outputs.
+        const reducer = findMember(team, task.reducerMember ?? "")
+        if (!reducer?.sessionId) {
+            await finishRun(ctx, team, "parallel_cooperative_complete:reducer_unavailable", "failed")
+            return
+        }
+        const body = await buildSummary(team, task, "pending_reduce")
+        await dispatchToMember(ctx, reducer, buildReducePrompt(body), reducer.worktreePath ?? ctx.directory, team)
+        await saveTeamState(team)
+        return
+    }
+    task.reducedResult = reduced
     task.reduceStage = false
     if (await maybeTriggerSignoff(ctx, team)) return
     await finishRun(ctx, team, `parallel_${task.mode}_reduced:${task.reducePolicy}`, "idle")

@@ -52,12 +52,22 @@ function isInside(baseDir: string, filePath: string): boolean {
 }
 
 /** Resolve a relative workflow_file path, validating it stays within the workspace. */
-function resolveWorkflowFilePath(baseDir: string, relPath: string): { filePath: string } | { error: string } {
+async function resolveWorkflowFilePath(baseDir: string, relPath: string): Promise<{ filePath: string } | { error: string }> {
     if (path.isAbsolute(relPath)) return { error: "Error: workflow_file must be relative to the workspace" }
     if (!relPath.endsWith(".json")) return { error: "Error: workflow_file must point to a .json file" }
     const base = normalizeBase(baseDir)
     const filePath = path.resolve(base, relPath)
     if (!isInside(base, filePath)) return { error: "Error: workflow_file must stay inside the workspace" }
+    // Resolve symlinks and re-check containment so a symlinked workflow_file
+    // cannot redirect the read outside the workspace.
+    try {
+        const real = await fs.realpath(filePath)
+        if (!isInside(base, real)) return { error: "Error: workflow_file must not be a symlink outside the workspace" }
+    } catch (err: unknown) {
+        // File does not exist yet — the string-path check above is sufficient.
+        const code = (err as NodeJS.ErrnoException).code
+        if (code !== "ENOENT") throw err
+    }
     return { filePath }
 }
 
@@ -329,7 +339,7 @@ function isValidWhere(value: unknown): boolean {
 export async function loadWorkflowFile(
     baseDir: string, relPath: string, vars: Record<string, string>,
 ): Promise<WorkflowFileResult> {
-    const resolved = resolveWorkflowFilePath(baseDir, relPath)
+    const resolved = await resolveWorkflowFilePath(baseDir, relPath)
     if ("error" in resolved) return resolved
 
     let raw: string
