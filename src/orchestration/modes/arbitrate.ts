@@ -160,17 +160,19 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
         member: task.arbiterMember,
         detail: truncateOutput(r.ruling, 200),
     })
-    if (await maybeTriggerSignoff(ctx, team)) {
-        return // signoff in progress
-    }
     // Post-ruling HITL: leader reviews the arbiter's binding ruling before
     // delivery. Triggered when hitlPhase is "post" or "both" (NOT default "pre").
+    // Must run BEFORE signoff so a configured post-HITL is not bypassed by
+    // the signoff stage's early return.
     const hitlPhase = task.hitlPhase ?? "pre"
     if ((hitlPhase === "post" || hitlPhase === "both") && await maybeRequestApproval(ctx, team, {
         kind: "arbitrate_ruling",
         summary: `Arbiter ${task.arbiterMember ?? "unknown"} ruled: "${r.ruling}".\n\nRationale: ${r.rationale}`,
     })) {
         return
+    }
+    if (await maybeTriggerSignoff(ctx, team)) {
+        return // signoff in progress
     }
     await finishRun(ctx, team, "arbitrate_complete:ruled", "idle")
 }

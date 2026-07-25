@@ -200,6 +200,8 @@ export async function handleInvalidVerdict(
             detail: `workflow gate step ${gateIndex + 1} skipped after`
                 + ` malformed verdict from ${verifierName}: ${rationale}`,
         });
+        if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
+            return;
         await advanceWorkflowStep(ctx, team);
         return;
     }
@@ -337,10 +339,14 @@ async function handleGatePass(
     const gotoIdx = gatedGotoIndex(steps, gateIndex, step.onPassGoto);
     const nextIndex =
         gotoIdx >= 0 ? gotoIdx : steps.findIndex((s) => !s.completed);
+    // Skip the task-global approval when on_pass_goto is set: the approval
+    // resume path calls advanceWorkflowStep, which would ignore the goto.
+    // The goto has its own jump-bound safeguard (maxJumps).
     if (
-        step.branch === undefined &&
-        nextIndex !== -1 &&
-        (await maybeRequestApproval(ctx, team, {
+        gotoIdx < 0
+        && step.branch === undefined
+        && nextIndex !== -1
+        && (await maybeRequestApproval(ctx, team, {
             kind: "workflow_step",
             stage: gateIndex,
             summary: `Completed ${describeStep(step, gateIndex)} with PASS`

@@ -520,7 +520,11 @@ function dispatchFailureActorName(step: WorkflowStep): string | undefined {
         case "task":
             return step.member;
         case "gate":
-            return step.verifier;
+            // Ensemble gates have no single verifier; return the first
+            // verifier name so the branch-errored path can attribute
+            // the failure. Falls back to undefined (run-fail) only when
+            // neither verifier nor verifiers is set.
+            return step.verifier ?? step.verifiers?.[0];
         case "join":
             return step.join?.reducerMember;
         case "fanout":

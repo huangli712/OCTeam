@@ -298,7 +298,6 @@ export function hasWaitingActiveWorkflowActor(
             case "task":
             case "gate":
                 if (!step.completed) return true;
-                break;
             case "fanout":
             case "join":
                 break;
