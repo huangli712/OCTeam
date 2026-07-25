@@ -7,7 +7,7 @@
 /**
  * Candidate name pool for members whose name is omitted at creation. A name is
  * drawn at random and not reused within the same team. The pool (32) exceeds the
- * 8-member team cap, so it never runs out for a single team.
+ * 12-member team cap, so it never runs out for a single team.
  */
 export const MEMBER_NAME_POOL = [
     "alice", "bob", "carol", "dave", "erin", "frank", "grace", "henry",

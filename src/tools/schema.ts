@@ -15,8 +15,8 @@ import { tool } from "@opencode-ai/plugin"
 
 /**
  * The three signoff schema fields shared by every workflow tool that supports
- * post-completion review (7 of 9 tools — all except consensus and loop, which
- * have their own built-in agreement gates). Spread into a tool's
+ * post-completion review (9 of 12 tools — all except consensus, loop, and
+ * quorum, which have their own built-in agreement gates). Spread into a tool's
  * tool.schema.object({...}) to single-source the descriptions and constraints.
  */
 export const signoffSchemaFields = {

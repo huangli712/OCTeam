@@ -1,7 +1,7 @@
 /**
- * Orchestration startup helpers shared by all workflow tools (the 11
+ * Orchestration startup helpers shared by all workflow tools (the 12
  * orchestration modes: parallel, pipeline, loop, delegate, consensus, route,
- * arbitrate, recurse, tollgate, workflow, arena).
+ * arbitrate, recurse, tollgate, arena, quorum, workflow).
  *
  * Extracted from tools/support.ts so that pure validation/utility helpers
  * (validateMemberName, validateSignoff, defaultBounds, ...) no longer pull in

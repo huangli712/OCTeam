@@ -1,5 +1,5 @@
 /**
- * Per-mode re-dispatch entry for team_resume's Phase 3. The 11 mode-specific
+ * Per-mode re-dispatch entry for team_resume's Phase 3. The 12 mode-specific
  * resume handlers and their shared helpers live in resume-modes.ts; this file
  * owns only the dispatcher (called by tools/control/resume.ts).
  *

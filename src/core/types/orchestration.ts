@@ -226,7 +226,7 @@ export interface ActiveTaskBase {
     currentStageIndex: number
 
     // loop decision log. Constructed by ALL variants (kept in Base to avoid
-    // excess-property churn across the 11 construction literals), but only
+    // excess-property churn across the 12 construction literals), but only
     // loop reads it at runtime.
     decisionHistory: DecisionRecord[]        // structured decisions per round (loop)
     decisionParseFailures: number            // consecutive <decision> parse failures; abort at 3 (loop)

@@ -40,7 +40,7 @@ export type LastModeRecord = {
 // Team types
 // ---------------------------------------------------------------------------
 
-/** Immutable team specification stored as config.json. */
+/** Declarative team specification stored as config.json. */
 export type TeamSpec = {
     readonly version: 1
     readonly name: string              // /^[a-z0-9-]+$/, unique within scope
@@ -65,7 +65,7 @@ export type TeamStatus =
  */
 export type TeamState = {
     version: 1
-    teamRunId: string                  // UUID, unique per run
+    teamRunId: string                  // UUID, unique per team
     teamName: string
     status: TeamStatus
     leadSessionId: string              // always context.sessionID; leader name is "master"
@@ -116,7 +116,6 @@ export type MemberState = {
     initialized: boolean               // true after role-setup prompt completes
     worktreePath?: string              // absolute path to git worktree
     turnCount: number                  // incremented per promptAsync dispatch
-    lastTurnMarkers?: string           // Transform hook injection dedup
     lastNotifiedAt?: number            // delegate: rate-limit re-prompts
     retryingSince?: number             // epoch ms when session entered "retry"
     error?: string                     // if status === "errored"
