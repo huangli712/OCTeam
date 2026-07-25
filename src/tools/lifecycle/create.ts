@@ -111,12 +111,12 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 .max(12),
             bounds: tool.schema
                 .object({
-                    maxMembers: tool.schema.number().min(1).optional(),
-                    maxParallelMembers: tool.schema.number().min(1).optional(),
-                    maxMessagesPerRun: tool.schema.number().min(1).optional(),
-                    maxWallClockMinutes: tool.schema.number().min(1).optional(),
-                    maxMemberTurns: tool.schema.number().min(1).optional(),
-                    maxTasks: tool.schema.number().min(1).optional(),
+                    maxMembers: tool.schema.number().int().min(1).optional(),
+                    maxParallelMembers: tool.schema.number().int().min(1).optional(),
+                    maxMessagesPerRun: tool.schema.number().int().min(1).optional(),
+                    maxWallClockMinutes: tool.schema.number().int().min(1).optional(),
+                    maxMemberTurns: tool.schema.number().int().min(1).optional(),
+                    maxTasks: tool.schema.number().int().min(1).optional(),
                 })
                 .optional(),
         },

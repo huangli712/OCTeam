@@ -21,7 +21,7 @@ import type { Message } from "../core/types.js"
 // Directives are authenticated at write time and checked at poll time
 // (typically seconds later); 64 is far above any realistic in-flight count.
 const AUTH_DIRECTIVE_MAP_CAP = 64
-const authenticatedDirectives = new Map<string, { from: string; body: string; ts: number }>()
+const authenticatedDirectives = new Map<string, { from: string; to: string; body: string; ts: number }>()
 
 /** Evict the oldest auth entries once the map exceeds the cap. */
 function evictStaleAuthDirectives(): void {
@@ -39,7 +39,7 @@ function evictStaleAuthDirectives(): void {
  * from replaying a legitimate id with forged content.
  */
 export function authenticateDirective(msg: Message): void {
-    authenticatedDirectives.set(msg.id, { from: msg.from, body: msg.body, ts: Date.now() })
+    authenticatedDirectives.set(msg.id, { from: msg.from, to: msg.to, body: msg.body, ts: Date.now() })
     evictStaleAuthDirectives()
 }
 
@@ -53,6 +53,7 @@ export function isAuthenticatedDirective(msg: Message): boolean {
     const registered = authenticatedDirectives.get(msg.id)
     return registered !== undefined
         && registered.from === msg.from
+        && registered.to === msg.to
         && registered.body === msg.body
 }
 

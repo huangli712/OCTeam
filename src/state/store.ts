@@ -130,8 +130,14 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     // the team's own worktrees/ directory. A missing worktreePath is allowed
     // (members without worktree: true).
     const wtRoot = worktreesDir(teamDirectory)
-    for (const m of s.members) {
-        if (typeof m !== "object" || m === null) return false
+        for (const m of s.members) {
+            if (typeof m !== "object" || m === null) return false
+            // Reject isMaster on persisted members: it is a runtime-only flag
+            // on the synthetic master record. A tampered state.json that wrote
+            // isMaster:true onto a real member must not load — it would exclude
+            // the member from orchestration (nonMasterMembers filter) and could
+            // confuse authorization checks that read member.isMaster.
+            if ((m as { isMaster?: unknown }).isMaster === true) return false
         // Validate required per-member fields: name (used as a path segment in
         // mailbox/reserved dir operations) must be a safe segment, and status
         // must be a string. A tampered state.json with a missing/unsafe name

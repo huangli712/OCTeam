@@ -232,13 +232,18 @@ function validateTeamId(teamId: string): string | null {
     return null
 }
 
-/** Validate team bounds object: numeric fields, maxMembers >= member count. */
+/** Validate team bounds object: numeric fields must be positive integers, maxMembers >= member count. */
 function validatePlannerBounds(bounds: unknown, memberCount: number): string | null {
     if (bounds === undefined) return null
     if (!isRecord(bounds)) return "Error: team.bounds must be an object"
     for (const [key, value] of Object.entries(bounds)) {
-        if (value !== undefined && typeof value !== "number") {
-            return `Error: team.bounds.${key} must be numeric`
+        if (value !== undefined) {
+            if (typeof value !== "number") {
+                return `Error: team.bounds.${key} must be numeric`
+            }
+            if (!Number.isInteger(value) || value < 1) {
+                return `Error: team.bounds.${key} must be a positive integer (got ${value})`
+            }
         }
     }
     const maxMembers = bounds.maxMembers
