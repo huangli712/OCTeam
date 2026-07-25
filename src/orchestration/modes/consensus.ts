@@ -53,6 +53,14 @@ export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promi
         // round counter — the barrier re-fire will retry the same round.
         const nextRound = (task.currentRound ?? 0) + 1
         const summary = buildRoundSummary(task.responses)
+        // Clear stale responses from the previous round so the next barrier
+        // fire evaluates agreement on THIS round's fresh responses only.
+        // Without this, a member whose round-1 response agrees with their
+        // round-2 response could appear to have already agreed before they
+        // actually respond in round 2 (stale-response false consensus).
+        for (const name of Object.keys(task.responses)) {
+            delete task.responses[name]
+        }
         const roundText =
             `[Consensus Round ${nextRound}]\n${summary}\n\n`
             + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`

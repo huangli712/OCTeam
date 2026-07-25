@@ -88,7 +88,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                         resumeRaced = true
                         return
                     }
-                    restored = team.lastInterruptedTask
+                    restored = structuredClone(team.lastInterruptedTask)
                     // DO NOT clear lastInterruptedTask here — defer to Phase 3 success
                     // (clearing here loses the checkpoint if Phase 2/3 throws).
                     // Reset errored members → idle (errored-is-terminal broken ONLY in
@@ -137,9 +137,12 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
 
                 // --- Phase 3 (mutex): commit + dispatch. ---
                 await team.mutex.runExclusive(async () => {
-                    // Double-resume guard: a concurrent resume can't have run (Phase 1
-                    // never cleared lastInterruptedTask), so the reference must match.
-                    if (team.status !== "failed" || team.lastInterruptedTask !== task) {
+                    // Double-resume guard: a concurrent resume can't have run
+                    // (Phase 1 never cleared lastInterruptedTask, and Phase 3
+                    // is the only place that clears it). Since `task` is now a
+                    // structuredClone snapshot, check status + presence instead
+                    // of reference equality.
+                    if (team.status !== "failed" || !team.lastInterruptedTask) {
                         resumeRaced = true
                         return
                     }

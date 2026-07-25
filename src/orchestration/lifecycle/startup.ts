@@ -274,6 +274,11 @@ export async function startOrchestration(
             await saveTeamState(team)
             try {
                 await dispatch(team, built)
+                // Persist post-dispatch member states (status="running",
+                // turnCount=1) so a crash between dispatch and the first
+                // idle event does not leave persisted state showing pre-dispatch
+                // member flags while the runtime shows them as running.
+                await saveTeamState(team)
             } catch (err) {
                 // Roll back the busy+activeTask commit so a dispatch failure
                 // does not wedge the team requiring external recovery.

@@ -13,10 +13,10 @@
 
 import type { PluginContext } from "../../core/context.js"
 import { logEvent } from "../../core/log.js"
-import { type Team, clearActiveTask } from "../../state/store.js"
+import { type Team } from "../../state/store.js"
 import type { DecisionRecord, MemberState } from "../../core/types.js"
 import { advanceToStage } from "./stages.js"
-import { deliverSummaryToLeader, finishRun } from "../control/completion.js"
+import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { allReadOnlyStagesReportNoIssues, parseDecision } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../control/approval.js"
@@ -64,9 +64,7 @@ export async function approveLoopDone(ctx: PluginContext, team: Team): Promise<v
     // Record the final decision BEFORE delivering so summarizeLoop reads it as
     // the last history entry (final: done + rationale), not after (final: n/a).
     recordLoopDecision(task, decision)
-    await deliverSummaryToLeader(ctx, team, "loop_complete:human_approved", "completed")
-    clearActiveTask(team)
-    team.status = "idle"
+    await finishRun(ctx, team, "loop_complete:human_approved", "idle")
 }
 
 /** Reject a loop's completion: parse the decision, continue to the next round (or fail if max rounds reached). */
@@ -153,9 +151,7 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
         // Record the final decision BEFORE delivering so summarizeLoop reads it
         // as the last history entry (final: done + rationale), not after.
         recordLoopDecision(task, decision)
-        await deliverSummaryToLeader(ctx, team, "loop_complete:decider_done", "completed")
-        clearActiveTask(team)
-        team.status = "idle"
+        await finishRun(ctx, team, "loop_complete:decider_done", "idle")
         return
     }
 
@@ -169,6 +165,16 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
     }
 
     if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
+        // Parity with consensus max_rounds: offer HITL approval before
+        // failing the run. The leader can approve to deliver the loop's
+        // current state (best-effort) instead of failing outright.
+        if (await maybeRequestApproval(ctx, team, {
+            kind: "loop_done",
+            round: task.currentRound,
+            summary: `Loop reached max rounds (${task.maxRounds}) without a done decision. The decider's last rationale: ${decision.rationale}. Approve to deliver current state, or reject to continue.`,
+        })) {
+            return
+        }
         await finishRun(ctx, team, "loop_complete:max_rounds", "failed")
         return
     }
