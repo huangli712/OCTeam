@@ -667,6 +667,15 @@ function validateLoweredGateStep(
                 }
             }
         }
+        // Deduplicate check: a member listed twice would have its vote counted
+        // twice under majority/quorum/unanimous aggregation.
+        const dedup = new Set<string>()
+        for (const vName of gate.verifiers) {
+            if (dedup.has(vName)) {
+                return `Error: ${location} verifiers contains duplicate "${vName}"`
+            }
+            dedup.add(vName)
+        }
     }
     if (gate.ensemble_policy !== undefined && gate.verifiers === undefined) {
         return `Error: ${location} ensemble_policy requires \`verifiers\``

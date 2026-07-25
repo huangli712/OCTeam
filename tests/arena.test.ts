@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs"
+import { readFile as readFileAsync, writeFile as writeFileAsync } from "node:fs/promises"
 import path from "node:path"
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
@@ -10,10 +11,10 @@ import { buildSummary } from "../src/orchestration/records/summary.js"
 import type { ActiveTask, ArenaTask, MemberState, RunRecord } from "../src/core/types.js"
 import { type DispatchCall, cleanupTmpRoots, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 import type { PluginContext } from "../src/core/context.js"
-import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
+import { initTeamState, invalidateTeam, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { teamDir } from "../src/state/paths.js"
+import { statePath, teamDir } from "../src/state/paths.js"
 import { teamArenaTool } from "../src/tools/modes/arena.js"
 import { teamResumeTool } from "../src/tools/control/resume.js"
 import { teamResultGetTool, teamResultsTool } from "../src/tools/query/results.js"
@@ -584,11 +585,31 @@ describe("team_arena tool", () => {
         const root = tmpRoot("arena-tool-master-eval")
         const sid = "ses_arena_master_eval_m"
         arenaTracked.push(sid)
+        // The master is NOT a persisted team member (master is a synthetic
+        // runtime record built from the lead session index). Persisting
+        // isMaster:true on a real member is now rejected at load time by
+        // isValidTeamState (security hardening). So we test the tool-layer
+        // rejection path directly: alice is a regular member, and the tool
+        // should still reject an evaluator that resolves to the master via
+        // the session index. Since the arena tool checks member.isMaster
+        // (runtime flag), and only the synthetic master carries it, a real
+        // member cannot be the master — so the relevant guard is the
+        // nonMasterMembers filter in the candidates check. We instead verify
+        // the load-time rejection of a tampered state.
         await setupArenaTeam(root, sid, [
-            { ...arenaMember("alice", "ses_alice"), isMaster: true },
+            arenaMember("alice", "ses_alice"),
             arenaMember("bob", "ses_bob"),
             arenaMember("carol", "ses_carol"),
         ])
+        // Tamper state.json to add isMaster:true to alice (simulating disk
+        // tampering) and verify the load is rejected.
+        const stateFile = statePath(teamDir(root, "alpha", sid))
+        const raw = await readFileAsync(stateFile, "utf8")
+        const tampered = JSON.parse(raw)
+        tampered.members[0].isMaster = true
+        await writeFileAsync(stateFile, JSON.stringify(tampered, null, 2))
+        // Force a cache invalidation so the next load reads from disk.
+        invalidateTeam(teamDir(root, "alpha", sid))
         const result = await teamArenaTool(makeArenaCtx(root, [])).execute(
             {
                 team_id: "alpha",
@@ -599,9 +620,9 @@ describe("team_arena tool", () => {
             },
             makeToolContext(sid),
         )
-        // alice exists but is the master → must NOT say "unknown evaluator"
+        // The tampered state must be rejected at load time.
+        expect(result).toContain("Error:")
         expect(result).not.toContain("unknown evaluator")
-        expect(result).toContain("non-master")
     })
 
     test("evaluator listed as a candidate is rejected", async () => {

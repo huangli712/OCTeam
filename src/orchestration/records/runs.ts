@@ -283,6 +283,7 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     }
 
     const dated: Array<{ runId: string; finishedAt: number }> = []
+    const orphaned: string[] = []
     const records = await Promise.all(
         runIds.map(runId =>
             fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
@@ -293,6 +294,14 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     )
     for (const { runId, rec } of records) {
         if (rec) dated.push({ runId, finishedAt: rec.finishedAt ?? 0 })
+        else orphaned.push(runId)  // no valid record.json: mid-capture crash or corrupt
+    }
+    // Remove orphaned run directories (no valid record.json) regardless of the
+    // keep window so a crash-during-capture does not leak a directory forever.
+    for (const runId of orphaned) {
+        await fs.rm(runDir(teamDirectory, runId), { recursive: true, force: true }).catch((err) => {
+            logger.warn("pruneRuns: failed to remove orphaned run directory", { runId, error: err instanceof Error ? err.message : String(err) })
+        })
     }
     if (dated.length <= keep) return
 

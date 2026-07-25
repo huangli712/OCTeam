@@ -544,6 +544,11 @@ export function expandMatrixForeachFanout(steps: readonly WorkflowToolStep[]): W
     })
 }
 
+/** Maximum branches a matrix fanout may expand to. Bounds memory for large
+ * cartesian products and surfaces authoring mistakes (e.g. a 100x100 matrix)
+ * at validation time rather than at dispatch time. */
+const MAX_MATRIX_BRANCHES = 64
+
 /** Expand matrix vars into cartesian product branches from template steps. */
 function expandMatrix(
     matrix: Readonly<Record<string, readonly string[]>>,
@@ -551,6 +556,12 @@ function expandMatrix(
 ): WorkflowFanoutBranch[] {
     const keys = Object.keys(matrix)
     const combos = cartesianProduct(keys.map(k => matrix[k] ?? []))
+    if (combos.length > MAX_MATRIX_BRANCHES) {
+        throw new Error(
+            `matrix expansion produced ${combos.length} branches (limit ${MAX_MATRIX_BRANCHES});`
+            + ` reduce the cartesian product or use explicit branches`,
+        )
+    }
     return combos.map(combo => {
         const vars: Record<string, string> = {}
         keys.forEach((key, i) => { vars[key] = combo[i] ?? "" })
@@ -565,6 +576,12 @@ function expandForeach(
     asName: string,
     templateSteps: readonly WorkflowToolStep[],
 ): WorkflowFanoutBranch[] {
+    if (values.length > MAX_MATRIX_BRANCHES) {
+        throw new Error(
+            `foreach expansion produced ${values.length} branches (limit ${MAX_MATRIX_BRANCHES});`
+            + ` reduce the value list or use explicit branches`,
+        )
+    }
     return values.map(value => {
         const vars: Record<string, string> = { [asName]: value }
         const branchId = sanitizeBranchId(value)

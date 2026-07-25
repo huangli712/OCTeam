@@ -46,6 +46,11 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
         } else if (await maybeTriggerReduce(ctx, team)) {
             return  // reducer dispatched; handleReduceIdle finishes the run
         }
+        // Clear stale responses from errored members before delivery so they do
+        // not leak into the summary as if those members had produced deliverables.
+        for (const name of errored) {
+            delete task.responses[name]
+        }
         // Maybe trigger signoff before delivering.
         if (await maybeTriggerSignoff(ctx, team)) {
             return  // signoff in progress
