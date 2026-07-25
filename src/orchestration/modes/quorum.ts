@@ -53,7 +53,7 @@ function parseBallot(
  * k-of-n quorum tally: wait for all participants, then count ballots.
  * Single mutation site: all task writes happen inside the barrier callback
  * (no concurrency). Tally reads member.status === "errored" first so runtime
- * errors are counted once via erroredCount, not double-counted via parseBallot.
+ * errors are counted once via abstainCount, not double-counted via parseBallot.
  */
 export async function handleQuorumIdle(ctx: PluginContext, team: Team): Promise<void> {
     const task = team.activeTask
@@ -62,7 +62,7 @@ export async function handleQuorumIdle(ctx: PluginContext, team: Team): Promise<
 
     await maybeAdvanceBarrier(team, participants, async () => {
         const ballots: Record<string, QuorumBallot> = {}
-        let erroredCount = 0
+        let abstainCount = 0
 
         for (const name of participants) {
             const member = team.members.find(m => m.name === name)
@@ -70,19 +70,19 @@ export async function handleQuorumIdle(ctx: PluginContext, team: Team): Promise<
             // even if it contains output from an earlier turn.
             if (member?.status === "errored") {
                 ballots[name] = { vote: "", status: "errored" }
-                erroredCount++
+                abstainCount++
                 continue
             }
             const ballot = parseBallot(task.responses[name], task.voteKey, task.voteOptions)
             ballots[name] = ballot
-            if (ballot.status !== "valid") erroredCount++
+            if (ballot.status !== "valid") abstainCount++
         }
 
-        const nEff = participants.length - erroredCount
+        const nEff = participants.length - abstainCount
         const threshold = Math.floor(nEff / 2) + 1
 
         task.ballots = ballots
-        task.erroredCount = erroredCount
+        task.erroredCount = abstainCount
         task.nEff = nEff
         task.threshold = threshold
 

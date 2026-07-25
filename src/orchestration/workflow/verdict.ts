@@ -166,18 +166,28 @@ function collectEnsembleVerdicts(
  *     escalate      -> force a human-approval pause; approve marks the gate
  *                      complete and advances, reject terminates.
  */
+/** Gate-scoped parameters shared by handleInvalidVerdict and handleGateFail. */
+type GateVerdictContext = {
+    step: WorkflowStep;
+    gateIndex: number;
+    verifierName: string;
+};
+
+/** Verdict payload for an INVALID / parse_failure verdict. */
+type InvalidVerdictPayload = GateVerdictContext & {
+    reason: "INVALID" | "parse_failure";
+    rationale: string;
+    diff: string;
+};
+
 export async function handleInvalidVerdict(
     ctx: PluginContext,
     team: Team,
-    step: WorkflowStep,
-    gateIndex: number,
-    verifierName: string,
-    reason: "INVALID" | "parse_failure",
-    rationale: string,
-    diff: string,
+    gate: InvalidVerdictPayload,
 ): Promise<void> {
     const task = team.activeTask;
     if (!task || task.type !== "workflow") return;
+    const { step, gateIndex, verifierName, reason, rationale, diff } = gate;
     const isMalformed = reason === "parse_failure";
     // When on_malformed is set, parse_failure uses its own policy and counters.
     // When on_malformed is unset, parse_failure falls back to on_invalid (same
@@ -374,16 +384,19 @@ async function handleGatePass(
  * on_fail=skip (mark skipped and advance). The on_fail=retry path is handled
  * by handleGateRetry.
  */
+/** Verdict payload for a FAIL verdict. */
+type FailVerdictPayload = GateVerdictContext & {
+    v: ParsedVerdict;
+};
+
 async function handleGateFail(
     ctx: PluginContext,
     team: Team,
     task: WorkflowTask,
-    step: WorkflowStep,
-    gateIndex: number,
     steps: WorkflowStep[],
-    verifierName: string,
-    v: ParsedVerdict,
+    gate: FailVerdictPayload,
 ): Promise<void> {
+    const { step, gateIndex, verifierName, v } = gate;
     const onFail = step.onFail ?? "fail";
     if (onFail === "skip") {
         delete task.responses[verifierName];
@@ -603,12 +616,7 @@ export async function handleGateVerdict(
         await handleInvalidVerdict(
             ctx,
             team,
-            step,
-            gateIndex,
-            verifierName,
-            "parse_failure",
-            v.rationale,
-            v.diff,
+            { step, gateIndex, verifierName, reason: "parse_failure", rationale: v.rationale, diff: v.diff },
         );
         return;
     }
@@ -617,12 +625,7 @@ export async function handleGateVerdict(
         await handleInvalidVerdict(
             ctx,
             team,
-            step,
-            gateIndex,
-            verifierName,
-            "INVALID",
-            v.rationale,
-            v.diff,
+            { step, gateIndex, verifierName, reason: "INVALID", rationale: v.rationale, diff: v.diff },
         );
         return;
     }
@@ -636,6 +639,6 @@ export async function handleGateVerdict(
     if ((step.onFail ?? "fail") === "retry") {
         await handleGateRetry(ctx, team, task, step, gateIndex, steps, verifierName, v);
     } else {
-        await handleGateFail(ctx, team, task, step, gateIndex, steps, verifierName, v);
+        await handleGateFail(ctx, team, task, steps, { step, gateIndex, verifierName, v });
     }
 }
