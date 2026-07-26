@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import type { MemberState, WorkflowStep, WorkflowTask } from "../src/core/types.js"
+import type { MemberState, WorkflowJoinStep, WorkflowStep, WorkflowTask } from "../src/core/types.js"
 import { checkTermination } from "../src/orchestration/lifecycle/termination.js"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { advanceWorkflowStep } from "../src/orchestration/workflow/engine.js"
@@ -16,6 +16,12 @@ function makeWorkflowTask(steps: WorkflowStep[], activeStepIndices: number[]): W
         currentStageIndex: activeStepIndices[0] ?? 0,
         wallClockTimeoutMs: Number.MAX_SAFE_INTEGER,
     })
+}
+
+function joinStepAt(steps: readonly WorkflowStep[] | undefined, index: number): WorkflowJoinStep {
+    const step = steps?.[index]
+    if (step?.kind !== "join") throw new Error(`Expected join step at index ${index}`)
+    return step
 }
 
 
@@ -115,9 +121,9 @@ describe("workflow join policy runtime semantics", () => {
 
         // Then: all would normally fail on the error, but useSurvivors joins api only.
         expect(task.steps?.[3]?.completed).toBe(true)
-        expect(task.steps?.[3]?.join?.erroredBranchIds).toEqual(["qa"])
-        expect(task.steps?.[3]?.join?.joinedOutput).toContain("api output")
-        expect(task.steps?.[3]?.join?.joinedOutput).not.toContain("qa")
+        expect(joinStepAt(task.steps, 3).join.erroredBranchIds).toEqual(["qa"])
+        expect(joinStepAt(task.steps, 3).join.joinedOutput).toContain("api output")
+        expect(joinStepAt(task.steps, 3).join.joinedOutput).not.toContain("qa")
         expect(calls.some(c => c.sessionId === "ses_carol")).toBe(true)
     })
 
@@ -152,7 +158,7 @@ describe("workflow join policy runtime semantics", () => {
         // Then: join completed, gate dispatched carol, carol received the
         // join's joinedOutput in her prompt (not an empty target).
         expect(task.steps?.[3]?.completed).toBe(true)
-        expect(task.steps?.[3]?.join?.joinedOutput).toContain("SORT_OK")
+        expect(joinStepAt(task.steps, 3).join.joinedOutput).toContain("SORT_OK")
         expect(calls.some(c => c.sessionId === "ses_carol")).toBe(true)
         const carolCall = calls.find(c => c.sessionId === "ses_carol")
         expect(carolCall?.text).toContain("SORT_OK")
@@ -245,7 +251,7 @@ describe("workflow join policy runtime semantics", () => {
         await processIdle(ctx, team, member(team, "bob"), "ses_bob")
 
         // Then: api is degraded to an errored branch, qa survives, and ship is dispatched.
-        expect(task.steps?.[3]?.join?.erroredBranchIds).toEqual(["api"])
+        expect(joinStepAt(task.steps, 3).join.erroredBranchIds).toEqual(["api"])
         expect(task.steps?.[3]?.completed).toBe(true)
         expect(calls).toContainEqual({ sessionId: "ses_bob", text: "qa" })
         expect(calls.some(c => c.sessionId === "ses_carol")).toBe(true)
@@ -329,8 +335,8 @@ describe("workflow join policy runtime semantics", () => {
         // Then: only the selected branch is promoted into joinedOutput.
         expect(calls[0]?.sessionId).toBe("ses_dave")
         expect(calls[0]?.text).toContain("[Workflow select task]")
-        expect(task.steps?.[3]?.join?.selectedBranchId).toBe("api")
-        expect(task.steps?.[3]?.join?.joinedOutput).toContain("api output")
-        expect(task.steps?.[3]?.join?.joinedOutput).not.toContain("docs output")
+        expect(joinStepAt(task.steps, 3).join.selectedBranchId).toBe("api")
+        expect(joinStepAt(task.steps, 3).join.joinedOutput).toContain("api output")
+        expect(joinStepAt(task.steps, 3).join.joinedOutput).not.toContain("docs output")
     })
 })

@@ -6,8 +6,11 @@
 import type {
     WorkflowBranchMetadata,
     WorkflowBranchRange,
+    WorkflowFanoutStep,
     WorkflowFanoutMetadata,
+    WorkflowGateStep,
     WorkflowJoinMetadata,
+    WorkflowJoinStep,
     WorkflowStep,
     WorkflowTask,
 } from "../../core/types.js"
@@ -85,7 +88,7 @@ function activeStepViolation(steps: readonly WorkflowStep[], index: number, step
             }
             return `step ${index} join cannot advance`
         default:
-            return assertNever(step.kind)
+            return assertNever(step)
     }
 }
 
@@ -113,12 +116,12 @@ function checkStep(context: WorkflowInvariantContext, index: number, step: Workf
             checkJoinStep(context, index, step)
             return
         default:
-            assertNever(step.kind)
+            assertNever(step)
     }
 }
 
 /** Validate a gate step's target indices, verifier conflicts, and attempt counters. */
-function checkGateStep(context: WorkflowInvariantContext, index: number, step: WorkflowStep): void {
+function checkGateStep(context: WorkflowInvariantContext, index: number, step: WorkflowGateStep): void {
     const targetIndices = gateTargetIndices(context.steps, index, step)
     if (targetIndices.length === 0) context.violations.push(`step ${index}: gate has no previous task target`)
 
@@ -153,7 +156,7 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
 }
 
 /** Resolve the target step indices a gate step should verify against. */
-function gateTargetIndices(steps: readonly WorkflowStep[], gateIndex: number, gate: WorkflowStep): readonly number[] {
+function gateTargetIndices(steps: readonly WorkflowStep[], gateIndex: number, gate: WorkflowGateStep): readonly number[] {
     if (gate.targetStepIndices !== undefined) return gate.targetStepIndices
     if (gate.targetStepIndex !== undefined) return [gate.targetStepIndex]
     for (let index = gateIndex - 1; index >= 0; index -= 1) {
@@ -206,7 +209,7 @@ function checkBranchMetadata(context: WorkflowInvariantContext, index: number, b
 }
 
 /** Validate a fanout step's join link, branch ranges, and range ordering. */
-function checkFanoutStep(context: WorkflowInvariantContext, index: number, step: WorkflowStep): void {
+function checkFanoutStep(context: WorkflowInvariantContext, index: number, step: WorkflowFanoutStep): void {
     const fanout = step.fanout
     if (fanout === undefined) {
         context.violations.push(`step ${index}: fanout metadata is missing`)
@@ -247,7 +250,7 @@ function checkFanoutStep(context: WorkflowInvariantContext, index: number, step:
 }
 
 /** Validate a join step's fanout link, branch tails, errored/survivor IDs, and policy satisfaction. */
-function checkJoinStep(context: WorkflowInvariantContext, index: number, step: WorkflowStep): void {
+function checkJoinStep(context: WorkflowInvariantContext, index: number, step: WorkflowJoinStep): void {
     const join = step.join
     if (join === undefined) {
         context.violations.push(`step ${index}: join metadata is missing`)

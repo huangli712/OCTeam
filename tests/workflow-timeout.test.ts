@@ -117,8 +117,10 @@ describe("workflow step timeout policy", () => {
         // Then
         expect(team.status).toBe("busy")
         expect(task.steps?.[1]?.skipped).toBe(true)
-        expect(task.steps?.[3]?.join?.erroredBranchIds).toEqual(["api"])
-        expect(task.steps?.[3]?.completed).toBe(true)
+        const timedOutJoinStep = task.steps?.[3]
+        if (timedOutJoinStep?.kind !== "join") throw new Error("Expected join step at index 3")
+        expect(timedOutJoinStep.join.erroredBranchIds).toEqual(["api"])
+        expect(timedOutJoinStep.completed).toBe(true)
     })
 
     test("uses the dispatched fallback actor when a fanout branch times out", async () => {
@@ -153,8 +155,10 @@ describe("workflow step timeout policy", () => {
         // Then: the api branch is degraded, not the workflow as a whole.
         expect(team.status).toBe("busy")
         expect(task.steps?.[1]?.skipped).toBe(true)
-        expect(task.steps?.[3]?.join?.erroredBranchIds).toEqual(["api"])
-        expect(task.steps?.[3]?.completed).toBe(true)
+        const fallbackJoinStep = task.steps?.[3]
+        if (fallbackJoinStep?.kind !== "join") throw new Error("Expected join step at index 3")
+        expect(fallbackJoinStep.join.erroredBranchIds).toEqual(["api"])
+        expect(fallbackJoinStep.completed).toBe(true)
         expect(calls.some(call => call.sessionId === "ses_dave")).toBe(true)
     })
 })

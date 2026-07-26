@@ -12,7 +12,14 @@
 import { describe, expect, test } from "bun:test";
 
 import { processIdle } from "../src/orchestration/lifecycle/idle.js";
+import type { WorkflowGateStep, WorkflowStep } from "../src/core/types.js";
 import { makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js";
+
+function gateStepAt(steps: readonly WorkflowStep[] | undefined, index: number): WorkflowGateStep {
+    const step = steps?.[index];
+    if (step?.kind !== "gate") throw new Error(`Expected gate step at index ${index}`);
+    return step;
+}
 
 
 const MALFORMED_OUTPUT = "I cannot decide, no verdict tag";
@@ -102,7 +109,7 @@ describe("workflow on_malformed gate policy", () => {
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].malformedAttempts).toBe(1);
+        expect(gateStepAt(task.steps, 1).malformedAttempts).toBe(1);
         expect(task.responses.bob).toBeUndefined();
         // verifier should be re-dispatched
         const redispatch = calls.find((c) => c.sessionId === "ses_bob");
@@ -141,7 +148,7 @@ describe("workflow on_malformed gate policy", () => {
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         // malformedAttempts was 1, incremented to 2, exceeds maxMalformedRetries=1
-        expect(task.steps![1].malformedAttempts).toBe(2);
+        expect(gateStepAt(task.steps, 1).malformedAttempts).toBe(2);
         expect(team.status).toBe("failed");
         const leaderCall = calls.find((c) => c.sessionId === "ses_lead");
         expect(leaderCall).toBeDefined();
@@ -216,8 +223,8 @@ describe("workflow on_malformed gate policy", () => {
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         // Falls back to on_invalid='retry_verifier', uses invalidAttempts counter
-        expect(task.steps![1].invalidAttempts).toBe(1);
-        expect(task.steps![1].malformedAttempts).toBeUndefined();
+        expect(gateStepAt(task.steps, 1).invalidAttempts).toBe(1);
+        expect(gateStepAt(task.steps, 1).malformedAttempts).toBeUndefined();
         const redispatch = calls.find((c) => c.sessionId === "ses_bob");
         expect(redispatch).toBeDefined();
     });

@@ -17,6 +17,7 @@ import type {
     WorkflowBranchMetadata,
     WorkflowStep,
     WorkflowTask,
+    WorkflowJoinMetadata,
 } from "../../core/types.js";
 import { dispatchToMember } from "../control/dispatch.js";
 import { finishRun } from "../control/completion.js";
@@ -91,10 +92,11 @@ function buildJoinedWorkflowOutput(
     joinIndex: number,
 ): string {
     const joinStep = steps[joinIndex];
-    const join = joinStep?.join;
+    const join = joinStep?.kind === "join" ? joinStep.join : undefined;
     if (join === undefined) return "";
 
-    const fanout = steps[join.fanoutIndex]?.fanout;
+    const fanoutStep = steps[join.fanoutIndex];
+    const fanout = fanoutStep?.kind === "fanout" ? fanoutStep.fanout : undefined;
     const ranges =
         fanout?.branchRanges ??
         join.branchTailIndices.map((tailIndex) => ({
@@ -149,8 +151,10 @@ export function buildBranchWorkflowOutput(
     joinIndex: number,
     branchId: string,
 ): string {
-    const join = steps[joinIndex]?.join;
-    const fanout = join === undefined ? undefined : steps[join.fanoutIndex]?.fanout;
+    const joinStep = steps[joinIndex];
+    const join = joinStep?.kind === "join" ? joinStep.join : undefined;
+    const fanoutStep = join === undefined ? undefined : steps[join.fanoutIndex];
+    const fanout = fanoutStep?.kind === "fanout" ? fanoutStep.fanout : undefined;
     if (join === undefined || fanout === undefined) return "";
     const branchIndex = fanout.branchIds.indexOf(branchId);
     const range = branchIndex < 0 ? undefined : fanout.branchRanges[branchIndex];
@@ -189,7 +193,8 @@ function buildWorkflowSelectPrompt(
     joinIndex: number,
 ): string {
     const step = steps[joinIndex];
-    const branchIds = step?.join === undefined ? [] : branchIdsForJoin(steps, step.join);
+    const join = step?.kind === "join" ? step.join : undefined;
+    const branchIds = join === undefined ? [] : branchIdsForJoin(steps, join);
     return `[Workflow select task]\n` 
         + `You are the selector for workflow join step ${joinIndex + 1}.`
         + ` Choose exactly one winning branch id from: ${branchIds.join(", ")}.`
@@ -205,10 +210,10 @@ export async function dispatchWorkflowJoinReducer(
     index: number,
 ): Promise<boolean> {
     const step = task.steps?.[index];
-    const joinPolicy = step?.join?.joinPolicy;
-    const reducerMember = step?.join?.reducerMember;
+    if (step?.kind !== "join") return false;
+    const joinPolicy = step.join.joinPolicy;
+    const reducerMember = step.join.reducerMember;
     if (
-        step?.kind !== "join" ||
         (joinPolicy !== "reduce" && joinPolicy !== "select") ||
         reducerMember === undefined
     ) return false;
@@ -247,9 +252,10 @@ function pushUniqueBranchId(
 /** Collect all branch ids belonging to a fanout join. */
 export function branchIdsForJoin(
     steps: WorkflowStep[],
-    join: NonNullable<WorkflowStep["join"]>,
+    join: WorkflowJoinMetadata,
 ): readonly string[] {
-    const fanout = steps[join.fanoutIndex]?.fanout;
+    const fanoutStep = steps[join.fanoutIndex];
+    const fanout = fanoutStep?.kind === "fanout" ? fanoutStep.fanout : undefined;
     if (fanout !== undefined) return fanout.branchIds;
 
     const branchIds: string[] = [];
@@ -262,7 +268,7 @@ export function branchIdsForJoin(
 /** Collect branch ids that have not yet errored for a given join. */
 function survivorBranchIdsForJoin(
     steps: WorkflowStep[],
-    join: NonNullable<WorkflowStep["join"]>,
+    join: WorkflowJoinMetadata,
 ): readonly string[] {
     const erroredBranchIds = new Set(join.erroredBranchIds ?? []);
     return branchIdsForJoin(steps, join).filter(
@@ -273,8 +279,8 @@ function survivorBranchIdsForJoin(
 /** Augment join metadata with survivor and errored branch info. */
 function joinWithBranchStatus(
     steps: WorkflowStep[],
-    join: NonNullable<WorkflowStep["join"]>,
-): NonNullable<WorkflowStep["join"]> {
+    join: WorkflowJoinMetadata,
+): WorkflowJoinMetadata {
     const erroredBranchIds = [...new Set(join.erroredBranchIds ?? [])];
     return {
         ...join,
@@ -307,8 +313,9 @@ export async function completeWorkflowJoinStep(
     joinIndex: number,
 ): Promise<WorkflowJoinAdvanceResult> {
     const step = steps[joinIndex];
-    const join = step?.join;
-    if (step?.kind !== "join" || join === undefined || step.completed)
+    if (step?.kind !== "join") return "noop";
+    const join = step.join;
+    if (join === undefined || step.completed)
         return "noop";
 
     const baseJoin = joinWithBranchStatus(steps, join);
@@ -371,8 +378,9 @@ function evaluateWorkflowFanoutError(
     joinIndex: number,
 ): WorkflowFanoutErrorResult {
     const joinStep = steps[joinIndex];
-    const join = joinStep?.join;
-    if (joinStep?.kind !== "join" || join === undefined)
+    if (joinStep?.kind !== "join") return { kind: "not_fanout" };
+    const join = joinStep.join;
+    if (join === undefined)
         return { kind: "not_fanout" };
 
     const branchIds = branchIdsForJoin(steps, join);
@@ -410,7 +418,8 @@ function markWorkflowBranchStepsSkipped(
     steps: WorkflowStep[],
     branch: WorkflowBranchMetadata,
 ): void {
-    const fanout = steps[branch.fanoutIndex]?.fanout;
+    const fanoutStep = steps[branch.fanoutIndex];
+    const fanout = fanoutStep?.kind === "fanout" ? fanoutStep.fanout : undefined;
     const range = fanout?.branchRanges[branch.branchIndex];
     const startIndex = range?.startIndex ?? branch.fanoutIndex + 1;
     const endIndex = range?.endIndex ?? branch.joinIndex - 1;
@@ -455,7 +464,8 @@ function recordedErroredBranchForMember(
             workflowStepActorName(step) !== memberName
         )
             continue;
-        const join = steps[step.branch.joinIndex]?.join;
+        const joinStep = steps[step.branch.joinIndex];
+        const join = joinStep?.kind === "join" ? joinStep.join : undefined;
         if (join?.erroredBranchIds?.includes(step.branch.branchId) === true)
             return step.branch;
     }
@@ -476,8 +486,9 @@ export function markWorkflowFanoutBranchErrored(
     if (branch === null) return { kind: "not_fanout" };
 
     const joinStep = steps[branch.joinIndex];
-    const join = joinStep?.join;
-    if (joinStep?.kind !== "join" || join === undefined)
+    if (joinStep?.kind !== "join") return { kind: "not_fanout" };
+    const join = joinStep.join;
+    if (join === undefined)
         return { kind: "not_fanout" };
 
     const erroredBranchIds = [
@@ -531,6 +542,6 @@ function dispatchFailureActorName(step: WorkflowStep): string | undefined {
         case "fanout":
             return undefined;
         default:
-            throw assertNeverWorkflowStepKind(step.kind);
+            throw assertNeverWorkflowStepKind(step);
     }
 }

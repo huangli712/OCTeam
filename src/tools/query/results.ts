@@ -24,7 +24,12 @@ import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js
 import { logger } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
 import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
-import type { RunRecord, WorkflowRunStep } from "../../core/types.js"
+import type { RunRecord, WorkflowGateStep, WorkflowRunStep } from "../../core/types.js"
+
+type DisplayWorkflowRunStep = WorkflowRunStep & {
+    onMalformed?: WorkflowGateStep["onMalformed"]
+    malformedAttempts?: number
+}
 
 
 /** Label for a gate's target step (for display in step lines). */
@@ -102,7 +107,7 @@ function formatIndentedOutput(output: string, indent: string): string {
 }
 
 /** Format a single workflow step into a display line. */
-function formatWorkflowStepLine(step: WorkflowRunStep): string {
+function formatWorkflowStepLine(step: DisplayWorkflowRunStep): string {
     const idTag = step.id ? ` (${step.id})` : ""
     switch (step.kind) {
         case "task": {

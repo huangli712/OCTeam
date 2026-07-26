@@ -11,6 +11,7 @@ import type {
     WorkflowCondition,
     WorkflowIssue,
     WorkflowIssueSeverity,
+    WorkflowGateStep,
     WorkflowStep,
 } from "../../core/types.js";
 import { isWorkflowIssueSeverity } from "../protocol/decisions.js";
@@ -44,7 +45,7 @@ type ParsedCondition =
  * criteria, and the exact <verdict> block the verifier must emit.
  */
 export function buildGateVerifierPrompt(
-    step: WorkflowStep,
+    step: WorkflowGateStep,
     producerOutput: string,
     targetLabel: string,
     targetCount: number,
@@ -284,7 +285,7 @@ function canGateGotoStep(
 }
 
 /** Describe the jump reason prefixed with the where condition kind, or fallback. */
-export function whereReason(step: WorkflowStep, fallback: string): string {
+export function whereReason(step: WorkflowGateStep, fallback: string): string {
     return step.where === undefined ? fallback : `when:${step.where.kind}`;
 }
 
@@ -306,7 +307,7 @@ function ensembleResult(verdict: Verdict, rationale: string, score?: number, con
 /**
  * Aggregate per-verifier results into a single verdict using the ensemble policy.
  */
-export function aggregateEnsembleVerdict(step: WorkflowStep): {
+export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
     verdict: Verdict
     parseFailed: boolean
     rationale: string

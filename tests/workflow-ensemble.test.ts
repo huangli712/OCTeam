@@ -16,6 +16,7 @@ import { describe, expect, test } from "bun:test";
 import { processIdle } from "../src/orchestration/lifecycle/idle.js";
 import type {
     MemberState,
+    WorkflowGateStep,
     WorkflowStep,
 } from "../src/core/types.js";
 
@@ -41,6 +42,12 @@ function makeEnsembleSteps(
         },
         { kind: "task", member: "erin", task: "final step", completed: false },
     ];
+}
+
+function gateStepAt(steps: readonly WorkflowStep[] | undefined, index: number): WorkflowGateStep {
+    const step = steps?.[index];
+    if (step?.kind !== "gate") throw new Error(`Expected gate step at index ${index}`);
+    return step;
 }
 
 function memberByName(team: Team, name: string): MemberState {
@@ -81,7 +88,7 @@ describe("workflow ensemble gate", () => {
         await processIdle(ctx, team, memberByName(team, "carol"), "ses_carol");
         await processIdle(ctx, team, memberByName(team, "dave"), "ses_dave");
 
-        expect(task.steps![1].verdict).toBe("PASS");
+        expect(gateStepAt(task.steps, 1).verdict).toBe("PASS");
         expect(task.steps![1].completed).toBe(true);
         // workflow should advance to erin
         const erinDispatch = calls.find((c) => c.sessionId === "ses_erin");
@@ -93,7 +100,7 @@ describe("workflow ensemble gate", () => {
         const calls: DispatchCall[] = [];
         const steps = makeEnsembleSteps("majority");
         const gate = steps[1];
-        if (gate === undefined) throw new Error("Missing ensemble gate fixture");
+        if (gate?.kind !== "gate") throw new Error("Missing ensemble gate fixture");
         gate.dispatchedActor = "dave";
         const task = makeWorkflowTask({
             steps,
@@ -154,7 +161,7 @@ describe("workflow ensemble gate", () => {
         await processIdle(ctx, team, memberByName(team, "carol"), "ses_carol");
         await processIdle(ctx, team, memberByName(team, "dave"), "ses_dave");
 
-        expect(task.steps![1].verdict).toBe("FAIL");
+        expect(gateStepAt(task.steps, 1).verdict).toBe("FAIL");
         expect(team.status).toBe("failed");
     });
 
@@ -185,7 +192,7 @@ describe("workflow ensemble gate", () => {
         await processIdle(ctx, team, memberByName(team, "carol"), "ses_carol");
         await processIdle(ctx, team, memberByName(team, "dave"), "ses_dave");
 
-        expect(task.steps![1].verdict).toBe("PASS");
+        expect(gateStepAt(task.steps, 1).verdict).toBe("PASS");
         expect(task.steps![1].completed).toBe(true);
         const erinDispatch = calls.find((c) => c.sessionId === "ses_erin");
         expect(erinDispatch).toBeDefined();
@@ -219,7 +226,7 @@ describe("workflow ensemble gate", () => {
         await processIdle(ctx, team, memberByName(team, "dave"), "ses_dave");
 
         // unanimous fails when not all agree -> INVALID -> default on_invalid=fail
-        expect(task.steps![1].verdict).toBe("INVALID");
+        expect(gateStepAt(task.steps, 1).verdict).toBe("INVALID");
         expect(team.status).toBe("failed");
     });
 
@@ -251,7 +258,7 @@ describe("workflow ensemble gate", () => {
         await processIdle(ctx, team, memberByName(team, "dave"), "ses_dave");
 
         // 2/3 = 0.667 >= 0.6 -> PASS
-        expect(task.steps![1].verdict).toBe("PASS");
+        expect(gateStepAt(task.steps, 1).verdict).toBe("PASS");
         expect(task.steps![1].completed).toBe(true);
     });
 
@@ -283,7 +290,7 @@ describe("workflow ensemble gate", () => {
         await processIdle(ctx, team, memberByName(team, "dave"), "ses_dave");
 
         // dave produced malformed verdict -> aggregated INVALID with parseFailed
-        expect(task.steps![1].verdict).toBe("INVALID");
+        expect(gateStepAt(task.steps, 1).verdict).toBe("INVALID");
         expect(team.status).toBe("failed");
     });
 
@@ -315,6 +322,6 @@ describe("workflow ensemble gate", () => {
         await processIdle(ctx, team, memberByName(team, "dave"), "ses_dave");
 
         // 1/3 = 0.333 < 0.6 -> FAIL
-        expect(task.steps![1].verdict).toBe("FAIL");
+        expect(gateStepAt(task.steps, 1).verdict).toBe("FAIL");
     });
 });

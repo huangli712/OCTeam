@@ -6,7 +6,7 @@
  * they read WorkflowStep data and produce strings, with no side effects.
  */
 
-import type { WorkflowStep } from "../../core/types.js";
+import type { WorkflowStep, WorkflowGateStep, WorkflowFanoutStep } from "../../core/types.js";
 import { truncateOutput, formatWorkflowIssueDetail } from "../protocol/output.js";
 
 /** Whether the step list contains any fanout/join/branch structure. */
@@ -15,7 +15,7 @@ function hasWorkflowBranchTree(steps: readonly WorkflowStep[]): boolean {
 }
 
 /** Render the target step label for a gate step (e.g. "step 3" or "nearest task"). */
-function workflowTargetLabel(s: WorkflowStep): string {
+function workflowTargetLabel(s: WorkflowGateStep): string {
     if (s.targetStepIndices !== undefined && s.targetStepIndices.length > 0) {
         const targets = s.targetStepIndices.map(index => index + 1)
         return targets.length === 1 ? `step ${targets[0]}` : `steps ${targets.join(", ")}`
@@ -24,7 +24,7 @@ function workflowTargetLabel(s: WorkflowStep): string {
 }
 
 /** Render verdict metrics (score, confidence, issue count) as a bracketed string. */
-function workflowVerdictMetrics(s: WorkflowStep): string {
+function workflowVerdictMetrics(s: WorkflowGateStep): string {
     const metrics: string[] = []
     if (s.score !== undefined) metrics.push(`score=${s.score}`)
     if (s.confidence !== undefined) metrics.push(`confidence=${s.confidence}`)
@@ -33,12 +33,12 @@ function workflowVerdictMetrics(s: WorkflowStep): string {
 }
 
 /** Classify a fanout branch status: completed, skipped, errored, or pending. */
-function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
+function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: WorkflowFanoutStep, branchId: string, branchIndex: number): string {
     const fanout = fanoutStep.fanout
-    if (fanout === undefined) return "pending"
     const range = fanout.branchRanges[branchIndex]
     if (range === undefined) return "pending"
-    const join = steps[fanout.joinIndex]?.join
+    const joinStep = steps[fanout.joinIndex]
+    const join = joinStep?.kind === "join" ? joinStep.join : undefined
     if (join?.erroredBranchIds?.includes(branchId) === true) return "errored"
     if (join?.survivorBranchIds?.includes(branchId) === true) return "completed"
     const tail = steps[range.endIndex]
@@ -47,9 +47,8 @@ function workflowBranchStatus(steps: readonly WorkflowStep[], fanoutStep: Workfl
 }
 
 /** Render a comma-separated branch:status list for a fanout step's join line. */
-function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep): string {
+function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: WorkflowFanoutStep): string {
     const fanout = fanoutStep.fanout
-    if (fanout === undefined) return ""
     return fanout.branchIds
         .map((branchId, branchIndex) => `${branchId}:${workflowBranchStatus(steps, fanoutStep, branchId, branchIndex)}`)
         .join(", ")
@@ -57,9 +56,8 @@ function workflowBranchStatusList(steps: readonly WorkflowStep[], fanoutStep: Wo
 
 
 /** Format a single branch line: id, status, and step range. */
-function formatWorkflowBranchLine(steps: readonly WorkflowStep[], fanoutStep: WorkflowStep, branchId: string, branchIndex: number): string {
+function formatWorkflowBranchLine(steps: readonly WorkflowStep[], fanoutStep: WorkflowFanoutStep, branchId: string, branchIndex: number): string {
     const fanout = fanoutStep.fanout
-    if (fanout === undefined) return `  - Branch ${branchId} [pending]`
     const range = fanout.branchRanges[branchIndex]
     if (range === undefined) return `  - Branch ${branchId} [pending]`
     const status = workflowBranchStatus(steps, fanoutStep, branchId, branchIndex)

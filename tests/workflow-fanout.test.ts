@@ -14,6 +14,8 @@ import { advanceWorkflowStep } from "../src/orchestration/workflow/engine.js";
 import { readRunEvents, readRunRecord } from "../src/orchestration/records/runs.js";
 import type {
     MemberState,
+    WorkflowFanoutStep,
+    WorkflowJoinStep,
     WorkflowStep,
     WorkflowTask,
 } from "../src/core/types.js";
@@ -26,6 +28,18 @@ import { teamWorkflowTool } from "../src/tools/workflow/engine.js";
 import type { WorkflowToolStep } from "../src/core/types/workflow.js";
 import type { PluginContext } from "../src/core/context.js";
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTeam, makeToolContext, makeWorkflowTask, tmpRoot, type DispatchCall } from "./helpers.js";
+
+function joinStepAt(steps: readonly WorkflowStep[] | undefined, index: number): WorkflowJoinStep {
+    const step = steps?.[index];
+    if (step?.kind !== "join") throw new Error(`Expected join step at index ${index}`);
+    return step;
+}
+
+function fanoutStepAt(steps: readonly WorkflowStep[] | undefined, index: number): WorkflowFanoutStep {
+    const step = steps?.[index];
+    if (step?.kind !== "fanout") throw new Error(`Expected fanout step at index ${index}`);
+    return step;
+}
 
 const trackedSessions: string[] = [];
 afterEach(() => {
@@ -312,11 +326,11 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
 
         await processIdle(ctx, team, findTeamMember(team, "erin"), "ses_erin");
 
-        const joinStep = task.steps?.[5];
-        expect(joinStep?.completed).toBe(true);
-        expect(joinStep?.join?.joinedOutput).toContain("api branch output");
-        expect(joinStep?.join?.joinedOutput).toContain("api packaged output");
-        expect(joinStep?.join?.joinedOutput).toContain("tests branch output");
+        const joinStep = joinStepAt(task.steps, 5);
+        expect(joinStep.completed).toBe(true);
+        expect(joinStep.join.joinedOutput).toContain("api branch output");
+        expect(joinStep.join.joinedOutput).toContain("api packaged output");
+        expect(joinStep.join.joinedOutput).toContain("tests branch output");
         expect(task.currentStageIndex).toBe(6);
         expect(task.activeStepIndices).toEqual([6]);
         const daveCall = calls.find((call) => call.sessionId === "ses_dave");
@@ -344,7 +358,8 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
             "ses_carol",
         );
         await processIdle(ctx, team, findTeamMember(team, "erin"), "ses_erin");
-        const joinedOutput = task.steps?.[5]?.join?.joinedOutput;
+        const joinStep = joinStepAt(task.steps, 5);
+        const joinedOutput = joinStep.join.joinedOutput;
 
         await processIdle(
             ctx,
@@ -355,8 +370,8 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
         await processIdle(ctx, team, findTeamMember(team, "bob"), "ses_bob");
         await processIdle(ctx, team, findTeamMember(team, "erin"), "ses_erin");
 
-        expect(task.steps?.[5]?.completed).toBe(true);
-        expect(task.steps?.[5]?.join?.joinedOutput).toBe(joinedOutput);
+        expect(joinStep.completed).toBe(true);
+        expect(joinStep.join.joinedOutput).toBe(joinedOutput);
         expect(
             calls.filter((call) => call.sessionId === "ses_dave"),
         ).toHaveLength(1);
@@ -458,7 +473,7 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
             "join",
             "task",
         ]);
-        expect(task.steps?.[1]?.fanout?.branchRanges).toEqual([
+        expect(fanoutStepAt(task.steps, 1).fanout.branchRanges).toEqual([
             { startIndex: 2, endIndex: 3 },
             { startIndex: 4, endIndex: 5 },
         ]);
@@ -503,11 +518,11 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
         );
 
         // Then: the join uses task outputs from both surviving branches and dispatches downstream work.
-        const joinStep = task.steps?.[6];
-        expect(joinStep?.completed).toBe(true);
-        expect(joinStep?.join?.joinedOutput).toContain("api branch output");
-        expect(joinStep?.join?.joinedOutput).toContain("tests branch output");
-        expect(joinStep?.join?.joinedOutput).not.toContain("PASS");
+        const joinStep = joinStepAt(task.steps, 6);
+        expect(joinStep.completed).toBe(true);
+        expect(joinStep.join.joinedOutput).toContain("api branch output");
+        expect(joinStep.join.joinedOutput).toContain("tests branch output");
+        expect(joinStep.join.joinedOutput).not.toContain("PASS");
         const daveCall = calls.find((call) =>
             call.text.includes("integrate branch results"),
         );
@@ -656,9 +671,9 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
         );
 
         // Then: the join output is the reducer result, and downstream receives only the aggregate.
-        const joinStep = task.steps?.[4];
-        expect(joinStep?.completed).toBe(true);
-        expect(joinStep?.join?.joinedOutput).toBe("reduced branch summary");
+        const joinStep = joinStepAt(task.steps, 4);
+        expect(joinStep.completed).toBe(true);
+        expect(joinStep.join.joinedOutput).toBe("reduced branch summary");
         const daveCall = calls.find((call) => call.sessionId === sessions.dave);
         expect(daveCall).toBeDefined();
         expect(daveCall?.text).toContain("integrate branch results");
@@ -784,15 +799,15 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
         );
 
         // Then: only the surviving branch feeds the join and downstream dispatch.
-        const joinStep = task.steps?.[6];
+        const joinStep = joinStepAt(task.steps, 6);
         expect(team.status).toBe("busy");
         expect(team.activeTask).toBeDefined();
         expect(task.steps?.[3]?.skipped).toBe(true);
-        expect(joinStep?.completed).toBe(true);
-        expect(joinStep?.join?.survivorBranchIds).toEqual(["tests"]);
-        expect(joinStep?.join?.erroredBranchIds).toEqual(["api"]);
-        expect(joinStep?.join?.joinedOutput).toContain("tests branch output");
-        expect(joinStep?.join?.joinedOutput).not.toContain("api branch output");
+        expect(joinStep.completed).toBe(true);
+        expect(joinStep.join.survivorBranchIds).toEqual(["tests"]);
+        expect(joinStep.join.erroredBranchIds).toEqual(["api"]);
+        expect(joinStep.join.joinedOutput).toContain("tests branch output");
+        expect(joinStep.join.joinedOutput).not.toContain("api branch output");
         const daveCall = calls.find((call) =>
             call.text.includes("integrate branch results"),
         );
@@ -979,11 +994,12 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
         expect(testsStep?.output).toContain("tests branch output");
         expect(apiStep?.output).not.toContain("tests branch output");
         expect(testsStep?.output).not.toContain("api branch output");
-        expect(task.steps?.[3]?.completed).toBe(true);
-        expect(task.steps?.[3]?.join?.joinedOutput).toContain(
+        const joinStep = joinStepAt(task.steps, 3);
+        expect(joinStep.completed).toBe(true);
+        expect(joinStep.join.joinedOutput).toContain(
             "api branch output",
         );
-        expect(task.steps?.[3]?.join?.joinedOutput).toContain(
+        expect(joinStep.join.joinedOutput).toContain(
             "tests branch output",
         );
         expect(task.currentStageIndex).toBe(3);
@@ -1100,15 +1116,15 @@ describe("handleWorkflowIdle (via processIdle): fanout frontier", () => {
         );
 
         // Then: the join fires with only survivor output and dispatches downstream work.
-        const joinStep = task.steps?.[5];
+        const joinStep = joinStepAt(task.steps, 5);
         expect(team.status).toBe("busy");
         expect(team.activeTask).toBeDefined();
-        expect(joinStep?.completed).toBe(true);
-        expect(joinStep?.join?.survivorBranchIds).toEqual(["tests"]);
-        expect(joinStep?.join?.erroredBranchIds).toEqual(["api"]);
-        expect(joinStep?.join?.joinedOutput).toContain("tests branch output");
-        expect(joinStep?.join?.joinedOutput).not.toContain("api branch output");
-        expect(joinStep?.join?.joinedOutput).not.toContain(
+        expect(joinStep.completed).toBe(true);
+        expect(joinStep.join.survivorBranchIds).toEqual(["tests"]);
+        expect(joinStep.join.erroredBranchIds).toEqual(["api"]);
+        expect(joinStep.join.joinedOutput).toContain("tests branch output");
+        expect(joinStep.join.joinedOutput).not.toContain("api branch output");
+        expect(joinStep.join.joinedOutput).not.toContain(
             "api packaged output",
         );
         const daveCall = calls.find((call) => call.sessionId === "ses_dave");

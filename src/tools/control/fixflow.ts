@@ -281,7 +281,11 @@ function activeBranchActorConflict(task: WorkflowTask, candidateMember: string, 
     for (const activeIndex of getActiveWorkflowStepIndices(task)) {
         if (activeIndex === excludeIndex) continue
         const step = task.steps?.[activeIndex]
-        const actor = step === undefined ? undefined : (step.kind === "task" ? step.member : step.verifier)
+        const actor = step?.kind === "task"
+            ? step.member
+            : step?.kind === "gate"
+                ? step.verifier
+                : undefined
         if (actor === candidateMember && step?.branch !== undefined) return step.branch.branchId
     }
     return null

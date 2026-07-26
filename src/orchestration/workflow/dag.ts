@@ -3,7 +3,12 @@
  * join satisfaction, fanout validation, and branch identity helpers.
  */
 
-import type { WorkflowStep, WorkflowTask } from "../../core/types.js"
+import type {
+    WorkflowFanoutStep,
+    WorkflowJoinMetadata,
+    WorkflowStep,
+    WorkflowTask,
+} from "../../core/types.js"
 import { joinPolicySatisfied } from "./join-policy.js"
 import { includesWorkflowIndex } from "./invariants.js"
 
@@ -50,7 +55,7 @@ export function workflowStepActor(step: WorkflowStep | undefined): string | null
         case "fanout":
             return null
         default:
-            return assertNeverWorkflowStepKind(step.kind)
+            return assertNeverWorkflowStepKind(step)
     }
 }
 
@@ -125,7 +130,7 @@ export function isWorkflowJoinSatisfied(steps: readonly WorkflowStep[], joinStep
         case "fanout":
             return false
         default:
-            return assertNeverWorkflowStepKind(joinStep.kind)
+            return assertNeverWorkflowStepKind(joinStep)
     }
 }
 
@@ -146,7 +151,7 @@ export function validateWorkflowDag(steps: readonly WorkflowStep[]): WorkflowDag
             case "join":
                 break
             default:
-                assertNeverWorkflowStepKind(step.kind)
+                assertNeverWorkflowStepKind(step)
         }
     }
 
@@ -154,7 +159,7 @@ export function validateWorkflowDag(steps: readonly WorkflowStep[]): WorkflowDag
 }
 
 /** Extract the start index of each branch in a fanout step. */
-function fanoutBranchHeadIndices(step: WorkflowStep): readonly number[] {
+function fanoutBranchHeadIndices(step: WorkflowFanoutStep): readonly number[] {
     const fanout = step.fanout
     if (fanout === undefined) return []
 
@@ -192,7 +197,7 @@ function collectReadyWorkflowStepIndices(
             collectWorkflowSuccessors(steps, index, ready)
             return
         default:
-            assertNeverWorkflowStepKind(step.kind)
+            assertNeverWorkflowStepKind(step)
     }
 }
 
@@ -248,7 +253,7 @@ export function workflowStepActorName(step: WorkflowStep): string | undefined {
         case "fanout":
             return undefined
         default:
-            throw new WorkflowDagInvariantError(step.kind)
+            throw new WorkflowDagInvariantError(step)
     }
 }
 
@@ -260,7 +265,7 @@ function pushUniqueWorkflowIndex(indices: number[], index: number): void {
 /** Check whether a join step's metadata indicates all branches have reached a terminal state. */
 function isJoinMetadataSatisfied(
     steps: readonly WorkflowStep[],
-    join: NonNullable<WorkflowStep["join"]>,
+    join: WorkflowJoinMetadata,
 ): boolean {
     const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
     const survivorBranchIds: string[] = []
@@ -307,10 +312,9 @@ function isInsideAnotherFanout(steps: readonly WorkflowStep[], index: number): b
             case "join":
                 break
             default:
-                assertNeverWorkflowStepKind(candidate.kind)
+                assertNeverWorkflowStepKind(candidate)
         }
     }
 
     return false
 }
-

@@ -11,7 +11,14 @@
 import { describe, expect, test } from "bun:test";
 
 import { processIdle } from "../src/orchestration/lifecycle/idle.js";
+import type { WorkflowStep, WorkflowTaskStep } from "../src/core/types.js";
 import { makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js";
+
+function taskStepAt(steps: readonly WorkflowStep[] | undefined, index: number): WorkflowTaskStep {
+    const step = steps?.[index];
+    if (step?.kind !== "task") throw new Error(`Expected task step at index ${index}`);
+    return step;
+}
 
 
 describe("workflow task retry_on", () => {
@@ -39,7 +46,7 @@ describe("workflow task retry_on", () => {
 
         await processIdle(ctx, team, team.members[0], "ses_alice");
 
-        expect(task.steps![0].taskAttempts).toBe(1);
+        expect(taskStepAt(task.steps, 0).taskAttempts).toBe(1);
         expect(task.steps![0].completed).toBe(false);
         // task should be re-dispatched with nudge
         const redispatch = calls.find((c) => c.sessionId === "ses_alice");
@@ -71,7 +78,7 @@ describe("workflow task retry_on", () => {
 
         await processIdle(ctx, team, team.members[0], "ses_alice");
 
-        expect(task.steps![0].taskAttempts).toBe(1);
+        expect(taskStepAt(task.steps, 0).taskAttempts).toBe(1);
         expect(task.steps![0].completed).toBe(false);
         const redispatch = calls.find((c) => c.sessionId === "ses_alice");
         expect(redispatch).toBeDefined();
@@ -101,7 +108,7 @@ describe("workflow task retry_on", () => {
 
         await processIdle(ctx, team, team.members[0], "ses_alice");
 
-        expect(task.steps![0].taskAttempts).toBe(1);
+        expect(taskStepAt(task.steps, 0).taskAttempts).toBe(1);
         expect(task.steps![0].completed).toBe(false);
     });
 
@@ -129,7 +136,7 @@ describe("workflow task retry_on", () => {
 
         await processIdle(ctx, team, team.members[0], "ses_alice");
 
-        expect(task.steps![0].taskAttempts).toBe(1);
+        expect(taskStepAt(task.steps, 0).taskAttempts).toBe(1);
         expect(task.steps![0].completed).toBe(false);
     });
 
@@ -166,7 +173,7 @@ describe("workflow task retry_on", () => {
 
         await processIdle(ctx, team, team.members[0], "ses_alice");
 
-        expect(task.steps![0].taskAttempts).toBe(0);
+        expect(taskStepAt(task.steps, 0).taskAttempts).toBe(0);
         expect(task.steps![0].completed).toBe(true);
         // workflow should advance to bob
         const bobDispatch = calls.find((c) => c.sessionId === "ses_bob");
@@ -208,7 +215,7 @@ describe("workflow task retry_on", () => {
 
         // taskAttempts was 1, incremented to 2, exceeds maxTaskRetries=1
         // -> falls through to normal completion
-        expect(task.steps![0].taskAttempts).toBe(2);
+        expect(taskStepAt(task.steps, 0).taskAttempts).toBe(2);
         expect(task.steps![0].completed).toBe(true);
         // workflow should advance to bob
         const bobDispatch = calls.find((c) => c.sessionId === "ses_bob");

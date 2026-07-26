@@ -516,7 +516,11 @@ export async function resumeWorkflowMode(
 
     const step = steps[task.currentStageIndex];
     if (step) {
-        const actorName = step.kind === "gate" ? step.verifier : step.member;
+        const actorName = step.kind === "task"
+            ? step.member
+            : step.kind === "gate"
+                ? step.verifier
+                : null;
         if (actorName && task.responses[actorName]) {
             const actor = team.members.find(
                 (m) => m.name === actorName && !m.isMaster,

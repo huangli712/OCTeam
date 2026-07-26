@@ -92,7 +92,7 @@ function workflowUpstreamBlock(
         case "fanout":
             return null;
         default:
-            throw assertNeverWorkflowStepKind(candidate.kind);
+            throw assertNeverWorkflowStepKind(candidate);
     }
 }
 

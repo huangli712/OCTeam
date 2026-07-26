@@ -12,6 +12,7 @@ import { type Team, saveTeamState } from "../../state/store.js";
 import type {
     MemberState,
     WorkflowStep,
+    WorkflowGateStep,
     WorkflowTask,
 } from "../../core/types.js";
 import {
@@ -82,7 +83,7 @@ export function resetStepAfterCompletion(
 function collectEnsembleVerdicts(
     team: Team,
     task: WorkflowTask,
-    step: WorkflowStep,
+    step: WorkflowGateStep,
     gateIndex: number,
     verifierName: string,
     v: ParsedVerdict,
@@ -168,7 +169,7 @@ function collectEnsembleVerdicts(
  */
 /** Gate-scoped parameters shared by handleInvalidVerdict and handleGateFail. */
 type GateVerdictContext = {
-    step: WorkflowStep;
+    step: WorkflowGateStep;
     gateIndex: number;
     verifierName: string;
 };
@@ -331,7 +332,7 @@ export async function handleInvalidVerdict(
 async function handleGatePass(
     ctx: PluginContext,
     team: Team,
-    step: WorkflowStep,
+    step: WorkflowGateStep,
     gateIndex: number,
     steps: WorkflowStep[],
     verifierName: string,
@@ -475,7 +476,7 @@ async function handleGateRetry(
     ctx: PluginContext,
     team: Team,
     task: WorkflowTask,
-    step: WorkflowStep,
+    step: WorkflowGateStep,
     gateIndex: number,
     steps: WorkflowStep[],
     verifierName: string,
@@ -604,7 +605,7 @@ export async function handleGateVerdict(
     ctx: PluginContext,
     team: Team,
     member: MemberState,
-    step: WorkflowStep,
+    step: WorkflowGateStep,
     gateIndex: number,
 ): Promise<void> {
     const task = team.activeTask;

@@ -29,7 +29,8 @@ function activeFanoutJoinPolicy(task: WorkflowTask): string {
     for (const index of getActiveWorkflowStepIndices(task)) {
         const branch = steps[index]?.branch
         if (branch === undefined) continue
-        const joinPolicy = steps[branch.fanoutIndex]?.fanout?.joinPolicy
+        const fanoutStep = steps[branch.fanoutIndex]
+        const joinPolicy = fanoutStep?.kind === "fanout" ? fanoutStep.fanout.joinPolicy : undefined
         if (joinPolicy !== undefined) return ` join_policy=${joinPolicy}`
     }
     return ""
@@ -37,39 +38,50 @@ function activeFanoutJoinPolicy(task: WorkflowTask): string {
 
 /** Convert live WorkflowStep[] into WorkflowRunStep[] for mermaid rendering. */
 function liveStepsToRunSteps(steps: readonly WorkflowStep[]): WorkflowRunStep[] {
-    return steps.map((step, index) => ({
-        index,
-        step: index + 1,
-        kind: step.kind,
-        id: step.id,
-        member: step.member,
-        verifier: step.verifier,
-        dispatchedActor: step.dispatchedActor,
-        targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
-        targetSteps: step.targetStepIndices?.map(targetIndex => targetIndex + 1),
-        verdict: step.verdict,
-        score: step.score,
-        confidence: step.confidence,
-        issues: step.issues,
-        attempts: step.attempts,
-        onInvalid: step.onInvalid,
-        invalidAttempts: step.invalidAttempts,
-        jumpCount: step.jumpCount,
-        skipped: step.skipped,
-        completed: step.completed,
-        output: step.output,
-        startedAt: step.startedAt,
-        completedAt: step.completedAt,
-        durationMs: step.durationMs,
-        inputs: step.inputs,
-        exposeOutput: step.exposeOutput,
-        fanout: step.fanout,
-        branch: step.branch,
-        join: step.join,
-        approvalBefore: step.approvalBefore,
-        approvalAfter: step.approvalAfter,
-        maxOutputBytes: step.maxOutputBytes,
-    }))
+    return steps.map((step, index) => {
+        const base = {
+            index,
+            step: index + 1,
+            kind: step.kind,
+            id: step.id,
+            dispatchedActor: step.dispatchedActor,
+            skipped: step.skipped,
+            completed: step.completed,
+            output: step.output,
+            startedAt: step.startedAt,
+            completedAt: step.completedAt,
+            durationMs: step.durationMs,
+            inputs: step.inputs,
+            exposeOutput: step.exposeOutput,
+            branch: step.branch,
+            approvalBefore: step.approvalBefore,
+            approvalAfter: step.approvalAfter,
+            maxOutputBytes: step.maxOutputBytes,
+        }
+        switch (step.kind) {
+            case "task":
+                return { ...base, member: step.member }
+            case "gate":
+                return {
+                    ...base,
+                    verifier: step.verifier,
+                    targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
+                    targetSteps: step.targetStepIndices?.map(targetIndex => targetIndex + 1),
+                    verdict: step.verdict,
+                    score: step.score,
+                    confidence: step.confidence,
+                    issues: step.issues,
+                    attempts: step.attempts,
+                    onInvalid: step.onInvalid,
+                    invalidAttempts: step.invalidAttempts,
+                    jumpCount: step.jumpCount,
+                }
+            case "fanout":
+                return { ...base, fanout: step.fanout }
+            case "join":
+                return { ...base, join: step.join }
+        }
+    })
 }
 
 /** Build a status map (pending/active/done/skipped) by step index. */

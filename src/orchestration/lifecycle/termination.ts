@@ -244,7 +244,7 @@ function workflowTimeoutStepActor(step: WorkflowStep): string | undefined {
         case "join":
             return undefined
         default:
-            step.kind satisfies never
+            step satisfies never
             return undefined
     }
 }

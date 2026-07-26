@@ -137,8 +137,10 @@ describe("team_fix_workflow", () => {
         const after = await loadTeamState(root, "alpha", masterSid)
         const afterTask = after.activeTask as WorkflowTask
         expect(afterTask.activeStepIndices).toEqual([1, 2])
-        expect(afterTask.steps?.[2]?.member).toBe("carol")
-        expect(afterTask.steps?.[2]?.completed).toBe(false)
+        const branchTaskStep = afterTask.steps?.[2]
+        if (branchTaskStep?.kind !== "task") throw new Error("Expected task step at index 2")
+        expect(branchTaskStep.member).toBe("carol")
+        expect(branchTaskStep.completed).toBe(false)
         expect(checkWorkflowInvariants(afterTask)).toEqual({ ok: true })
     })
 
@@ -511,7 +513,9 @@ describe("team_fix_workflow", () => {
         expect(result).toContain("reassigned step 1 to \"bob\"")
         const after = await loadTeamState(root, "alpha", masterSid)
         const afterTask = after.activeTask as WorkflowTask
-        expect(afterTask.steps?.[0]?.member).toBe("bob")
+        const reassignedTaskStep = afterTask.steps?.[0]
+        if (reassignedTaskStep?.kind !== "task") throw new Error("Expected task step at index 0")
+        expect(reassignedTaskStep.member).toBe("bob")
         expect(calls.some(call => call.sessionId === bobSid && call.text.includes("do work"))).toBe(true)
         expect(checkWorkflowInvariants(afterTask)).toEqual({ ok: true })
     })

@@ -255,7 +255,9 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         >;
         // api branch degraded (alice has no live session)
         expect(wfTask.steps?.[1].skipped).toBe(true);
-        expect(wfTask.steps?.[3].join?.erroredBranchIds).toEqual(["api"]);
+        const degradedJoinStep = wfTask.steps?.[3];
+        if (degradedJoinStep?.kind !== "join") throw new Error("Expected join step at index 3");
+        expect(degradedJoinStep.join.erroredBranchIds).toEqual(["api"]);
         // tests branch actor still dispatched (resume continued past degradation)
         expect(dispatched.map((d) => d.id)).toEqual(["ses_bob"]);
         expect(dispatched[0].text).toContain("build test branch");
@@ -349,11 +351,13 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
         >;
         expect(wfTask.steps?.[1].output).toBe("api branch output");
         expect(wfTask.steps?.[2].output).toBe("test branch output");
-        expect(wfTask.steps?.[3].completed).toBe(true);
-        expect(wfTask.steps?.[3].join?.joinedOutput).toContain(
+        const readyJoinStep = wfTask.steps?.[3];
+        if (readyJoinStep?.kind !== "join") throw new Error("Expected join step at index 3");
+        expect(readyJoinStep.completed).toBe(true);
+        expect(readyJoinStep.join.joinedOutput).toContain(
             "api branch output",
         );
-        expect(wfTask.steps?.[3].join?.joinedOutput).toContain(
+        expect(readyJoinStep.join.joinedOutput).toContain(
             "test branch output",
         );
         expect(dispatched.map((d) => d.id)).toEqual(["ses_dave"]);
@@ -563,8 +567,10 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
             { type: "workflow" }
         >;
         // The join must not have completed using the stale "rachel earlier output".
-        expect(wfTask.steps?.[4].completed).toBe(false);
-        expect(wfTask.steps?.[4].join?.joinedOutput).toBeUndefined();
+        const reducerJoinStep = wfTask.steps?.[4];
+        if (reducerJoinStep?.kind !== "join") throw new Error("Expected join step at index 4");
+        expect(reducerJoinStep.completed).toBe(false);
+        expect(reducerJoinStep.join.joinedOutput).toBeUndefined();
         // The reducer is re-dispatched (its response was stale, not a fresh reduce turn).
         expect(dispatched.map((d) => d.id)).toEqual(["ses_rachel"]);
         expect(dispatched.some((d) => d.id === "ses_dave")).toBe(false);
@@ -682,8 +688,10 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
             ActiveTask,
             { type: "workflow" }
         >;
-        expect(wfTask.steps?.[2].completed).toBe(true);
-        expect(wfTask.steps?.[2].verdict).toBe("PASS");
+        const branchGateStep = wfTask.steps?.[2];
+        if (branchGateStep?.kind !== "gate") throw new Error("Expected gate step at index 2");
+        expect(branchGateStep.completed).toBe(true);
+        expect(branchGateStep.verdict).toBe("PASS");
         expect(wfTask.steps?.[5].completed).toBe(false);
         expect(wfTask.activeStepIndices).toEqual([3]);
         expect(dispatched.map((d) => d.id)).toEqual(["ses_carol"]);
@@ -827,9 +835,11 @@ describe("resumeDispatch: workflow fanout active frontier", () => {
             ActiveTask,
             { type: "workflow" }
         >;
-        expect(wfTask.steps?.[2].completed).toBe(true);
-        expect(wfTask.steps?.[2].verdict).toBe("PASS");
-        expect(wfTask.steps?.[2].jumpCount).toBe(1);
+        const gotoGateStep = wfTask.steps?.[2];
+        if (gotoGateStep?.kind !== "gate") throw new Error("Expected gate step at index 2");
+        expect(gotoGateStep.completed).toBe(true);
+        expect(gotoGateStep.verdict).toBe("PASS");
+        expect(gotoGateStep.jumpCount).toBe(1);
         expect(wfTask.steps?.[3].skipped).toBe(true);
         expect(wfTask.steps?.[6].completed).toBe(false);
         expect(dispatched.map((d) => d.id)).toEqual(["ses_frank"]);

@@ -9,7 +9,14 @@
 import { afterAll, describe, expect, test } from "bun:test";
 
 import { processIdle } from "../src/orchestration/lifecycle/idle.js";
+import type { WorkflowGateStep, WorkflowStep } from "../src/core/types.js";
 import { cleanupTmpRoots, makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js";
+
+function gateStepAt(steps: readonly WorkflowStep[] | undefined, index: number): WorkflowGateStep {
+    const step = steps?.[index];
+    if (step?.kind !== "gate") throw new Error(`Expected gate step at index ${index}`);
+    return step;
+}
 
 afterAll(cleanupTmpRoots);
 
@@ -74,7 +81,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].jumpCount).toBe(1);
+        expect(gateStepAt(task.steps, 1).jumpCount).toBe(1);
         expect(task.steps![2].completed).toBe(true);
         expect(task.steps![2].skipped).toBe(true);
         expect(task.currentStageIndex).toBe(3);
@@ -122,7 +129,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].jumpCount).toBe(1);
+        expect(gateStepAt(task.steps, 1).jumpCount).toBe(1);
         expect(task.steps![0].completed).toBe(false);
         expect(task.steps![0].output).toBeUndefined();
         expect(task.currentStageIndex).toBe(0);
@@ -177,7 +184,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].jumpCount).toBe(1);
+        expect(gateStepAt(task.steps, 1).jumpCount).toBe(1);
         expect(task.currentStageIndex).toBe(2);
         const carolCall = calls.find((c) => c.sessionId === "ses_carol");
         expect(carolCall).toBeDefined();
@@ -280,8 +287,8 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].score).toBe(9);
-        expect(task.steps![1].confidence).toBe(0.9);
+        expect(gateStepAt(task.steps, 1).score).toBe(9);
+        expect(gateStepAt(task.steps, 1).confidence).toBe(0.9);
         expect(task.currentStageIndex).toBe(3);
         expect(task.steps![2].skipped).toBe(true);
         const daveCall = calls.find((c) => c.sessionId === "ses_dave");
@@ -380,7 +387,7 @@ describe("handleWorkflowIdle (via processIdle): conditional jumps", () => {
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].issues).toEqual([
+        expect(gateStepAt(task.steps, 1).issues).toEqual([
             { severity: "high", message: "risk" },
         ]);
         expect(task.currentStageIndex).toBe(0);

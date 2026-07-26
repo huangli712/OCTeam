@@ -91,7 +91,7 @@ export function describeStep(step: WorkflowStep | undefined, index: number): str
         case "join":
             return `step ${index + 1}${idTag} (join)`;
         default:
-            return assertNeverWorkflowStepKind(step.kind);
+            return assertNeverWorkflowStepKind(step);
     }
 }
 
@@ -323,7 +323,7 @@ export function hasWaitingActiveWorkflowActor(
             case "join":
                 break;
             default:
-                return assertNeverWorkflowStepKind(step.kind);
+                return assertNeverWorkflowStepKind(step);
         }
     }
 
@@ -363,7 +363,7 @@ export function completeExpandedFanoutMarkers(
             case "join":
                 break;
             default:
-                assertNeverWorkflowStepKind(step.kind);
+                assertNeverWorkflowStepKind(step);
         }
     }
 }
@@ -662,7 +662,7 @@ export async function advanceWorkflowStep(
                         break;
                     }
                     default:
-                        assertNeverWorkflowStepKind(step.kind);
+                        assertNeverWorkflowStepKind(step);
                 }
             }
 
@@ -728,6 +728,6 @@ export async function redispatchWorkflowStep(
         case "fanout":
             return false;
         default:
-            return assertNeverWorkflowStepKind(step.kind);
+            return assertNeverWorkflowStepKind(step);
     }
 }

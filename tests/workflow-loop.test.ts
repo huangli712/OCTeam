@@ -14,11 +14,18 @@ import { describe, expect, test } from "bun:test";
 
 import { processIdle } from "../src/orchestration/lifecycle/idle.js";
 import type {
+    WorkflowGateStep,
     WorkflowStep,
 } from "../src/core/types.js";
 
 
 import { makeTeam, makeCtx, makeWorkflowTask, type DispatchCall } from "./helpers.js";
+
+function gateStepAt(steps: readonly WorkflowStep[] | undefined, index: number): WorkflowGateStep {
+    const step = steps?.[index];
+    if (step?.kind !== "gate") throw new Error(`Expected gate step at index ${index}`);
+    return step;
+}
 
 
 
@@ -64,12 +71,12 @@ describe("workflow loop", () => {
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].loopIterations).toBe(1);
+        expect(gateStepAt(task.steps, 1).loopIterations).toBe(1);
         // loop back to step 0 (alice) should be re-dispatched
         const aliceRedispatch = calls.find((c) => c.sessionId === "ses_alice");
         expect(aliceRedispatch).toBeDefined();
         // jumpCount should NOT increment for loop-controlled goto
-        expect(task.steps![1].jumpCount ?? 0).toBe(0);
+        expect(gateStepAt(task.steps, 1).jumpCount ?? 0).toBe(0);
     });
 
     test("loop revalidates the body before dispatching the successor", async () => {
@@ -127,7 +134,7 @@ describe("workflow loop", () => {
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         // loopIterations was 2, incremented to 3, exceeds maxIterations=2
-        expect(task.steps![1].loopIterations).toBe(3);
+        expect(gateStepAt(task.steps, 1).loopIterations).toBe(3);
         expect(team.status).toBe("failed");
         const leaderCall = calls.find((c) => c.sessionId === "ses_lead");
         expect(leaderCall).toBeDefined();
@@ -153,7 +160,7 @@ describe("workflow loop", () => {
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].loopIterations).toBe(3);
+        expect(gateStepAt(task.steps, 1).loopIterations).toBe(3);
         expect(task.steps![1].completed).toBe(true);
         // workflow should advance to step 2 (carol)
         const carolDispatch = calls.find((c) => c.sessionId === "ses_carol");
@@ -180,7 +187,7 @@ describe("workflow loop", () => {
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         // PASS does not increment loopIterations
-        expect(task.steps![1].loopIterations).toBe(1);
+        expect(gateStepAt(task.steps, 1).loopIterations).toBe(1);
         expect(task.steps![1].completed).toBe(true);
         // workflow should advance to step 2 (carol)
         const carolDispatch = calls.find((c) => c.sessionId === "ses_carol");

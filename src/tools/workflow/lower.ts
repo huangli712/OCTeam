@@ -433,9 +433,9 @@ export function toWorkflowStep(
             return {
                 kind: "task",
                 id: step.id,
-                member: step.member,
+                member: step.member ?? "",
                 fallbackMember: step.fallback_member,
-                task: step.task,
+                task: step.task ?? "",
                 inputs: resolveWorkflowInputIndices(steps, index),
                 exposeOutput: step.expose_output,
                 retryOn: step.retry_on === undefined
@@ -692,4 +692,3 @@ export function targetStepErrorLabel(
             return assertNever(step)
     }
 }
-

@@ -8,7 +8,13 @@
 import type { PluginContext } from "../../core/context.js";
 import { logger } from "../../core/log.js";
 import { type Team, saveTeamState } from "../../state/store.js";
-import type { MemberState, WorkflowStep, WorkflowTask } from "../../core/types.js";
+import type {
+    MemberState,
+    WorkflowJoinStep,
+    WorkflowStep,
+    WorkflowTask,
+    WorkflowTaskStep,
+} from "../../core/types.js";
 import {
     advanceWorkflowStep,
     describeStep,
@@ -35,7 +41,7 @@ import { resetWorkflowStepTiming } from "./engine.js";
 import { assertNeverWorkflowStepKind } from "./dag.js";
 
 /** Check whether a task step's output matches its retry_on condition. */
-export function shouldRetryTask(step: WorkflowStep, output: string): boolean {
+export function shouldRetryTask(step: WorkflowTaskStep, output: string): boolean {
     if (step.retryOn === undefined) return false;
     switch (step.retryOn.kind) {
         case "empty":
@@ -76,7 +82,7 @@ async function handleTaskIdle(
     member: MemberState,
     task: WorkflowTask,
     steps: WorkflowStep[],
-    step: WorkflowStep,
+    step: WorkflowTaskStep,
     activeStepIndex: number,
 ): Promise<void> {
     const raw = step.output ?? task.responses[member.name] ?? "";
@@ -161,7 +167,7 @@ async function handleJoinIdle(
     member: MemberState,
     task: WorkflowTask,
     steps: WorkflowStep[],
-    step: WorkflowStep,
+    step: WorkflowJoinStep,
     activeStepIndex: number,
 ): Promise<void> {
     const join = step.join;
@@ -241,6 +247,6 @@ export async function handleWorkflowIdle(
             // Reaching here is unexpected but harmless — no-op.
             return;
         default:
-            assertNeverWorkflowStepKind(step.kind);
+            assertNeverWorkflowStepKind(step);
     }
 }

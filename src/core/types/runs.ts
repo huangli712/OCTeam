@@ -17,20 +17,64 @@ import type {
     SignoffPolicy,
 } from "./orchestration.js"
 
-import type { WorkflowStepBase, WorkflowGateConfig } from "./workflow.js"
+import type { WorkflowStepKind, Verdict, WorkflowIssue, WorkflowFanoutMetadata, WorkflowJoinMetadata, WorkflowBranchMetadata } from "./workflow.js"
 import type { TaskStatus } from "./task.js"
 
 /** Per-branch status within a workflow fanout. */
 export type WorkflowBranchStatus = "pending" | "completed" | "skipped" | "errored"
 
-/** Persisted snapshot of a single workflow step for run records. */
-export type WorkflowRunStep = WorkflowStepBase & WorkflowGateConfig & {
-    index: number                      // zero-based internal workflow step index
-    step: number                       // one-based display step number
-    targetStep?: number                // one-based display primary target task step for gate steps
-    targetSteps?: number[]             // one-based display multi-target task steps for gate steps
+/** Persisted snapshot of a single workflow step for run records.
+ * Independently defined (NOT derived from WorkflowStep union) so persisted
+ * JSON tolerates missing fields per-kind and backward compat with legacy records. */
+export type WorkflowRunStep = {
+    index: number
+    step: number
+    kind: WorkflowStepKind
+    id?: string
+    // task
+    member?: string
+    dispatchedActor?: string
+    // gate
+    verifier?: string
+    targetStep?: number
+    targetSteps?: number[]
+    verdict?: Verdict
+    score?: number
+    confidence?: number
+    issues?: WorkflowIssue[]
+    attempts?: number
+    onInvalid?: string
+    invalidAttempts?: number
+    onFail?: string
+    maxRetries?: number
+    maxInvalidRetries?: number
+    onPassGoto?: number
+    onFailGoto?: number
+    onInvalidGoto?: number
+    maxJumps?: number
+    criteria?: string
+    jumpCount?: number
+    // fanout / join
+    fanout?: WorkflowFanoutMetadata
+    join?: WorkflowJoinMetadata
+    // shared runtime
+    timeoutMs?: number
+    onTimeout?: string
+    maxTimeoutRetries?: number
+    output?: string
     outputBytes?: number
     joinedOutputBytes?: number
+    startedAt?: number
+    completedAt?: number
+    durationMs?: number
+    inputs?: number[]
+    exposeOutput?: boolean
+    branch?: WorkflowBranchMetadata
+    approvalBefore?: boolean
+    approvalAfter?: boolean
+    maxOutputBytes?: number
+    completed: boolean
+    skipped?: boolean
     branchStatuses?: Record<string, WorkflowBranchStatus>
 }
 

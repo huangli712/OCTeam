@@ -10,7 +10,14 @@ import { afterAll, describe, expect, test } from "bun:test";
 
 import { processIdle } from "../src/orchestration/lifecycle/idle.js";
 import { advanceWorkflowStep } from "../src/orchestration/workflow/engine.js";
+import type { WorkflowGateStep, WorkflowStep } from "../src/core/types.js";
 import { cleanupTmpRoots, makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js";
+
+function gateStepAt(steps: readonly WorkflowStep[] | undefined, index: number): WorkflowGateStep {
+    const step = steps?.[index];
+    if (step?.kind !== "gate") throw new Error(`Expected gate step at index ${index}`);
+    return step;
+}
 
 afterAll(cleanupTmpRoots);
 
@@ -226,7 +233,7 @@ describe("handleWorkflowIdle (via processIdle): approval_before honored on retry
         expect(task.approvalRequest?.kind).toBe("workflow_step");
         expect(task.steps![0].approvalBeforeGranted).toBe(true);
         expect(task.steps![0].completed).toBe(false); // reset for retry
-        expect(task.steps![1].attempts).toBe(1); // counter still bumped
+        expect(gateStepAt(task.steps, 1).attempts).toBe(1); // counter still bumped
         // alice NOT re-dispatched yet.
         expect(calls.some((c) => c.sessionId === "ses_alice")).toBe(false);
         expect(team.activeTask).toBeDefined();
@@ -279,7 +286,7 @@ describe("handleWorkflowIdle (via processIdle): approval_before honored on retry
         expect(task.approvalStage).toBe(true);
         expect(task.approvalRequest?.kind).toBe("workflow_step");
         expect(task.steps![1].approvalBeforeGranted).toBe(true);
-        expect(task.steps![1].invalidAttempts).toBe(1); // counter still bumped
+        expect(gateStepAt(task.steps, 1).invalidAttempts).toBe(1); // counter still bumped
         // bob NOT re-dispatched yet.
         expect(calls.some((c) => c.sessionId === "ses_bob")).toBe(false);
         // Timing was reset before the pause so the resumed dispatch measures only the new attempt.

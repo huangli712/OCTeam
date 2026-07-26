@@ -12,9 +12,9 @@
  * and post-condition (invariants) stay in lockstep.
  */
 
-import type { WorkflowStep } from "../../core/types.js"
+import type { WorkflowJoinMetadata } from "../../core/types.js"
 
-type Join = NonNullable<WorkflowStep["join"]>
+type Join = WorkflowJoinMetadata
 
 /**
  * Apply the join policy to decide whether a fully-terminal fanout survives.

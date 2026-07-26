@@ -202,10 +202,11 @@ describe("team_workflow matrix/foreach end-to-end execution", () => {
         // Then: required_branches allows the join to complete and dispatches the downstream step.
         if (team.activeTask?.type !== "workflow") throw new Error("Expected live workflow task")
         const joinStep = team.activeTask.steps?.[4]
+        if (joinStep?.kind !== "join") throw new Error("Expected join step at index 4")
         expect(team.status).not.toBe("failed")
-        expect(joinStep?.completed).toBe(true)
-        expect(joinStep?.join?.erroredBranchIds).toEqual(["docs"])
-        expect(joinStep?.join?.survivorBranchIds).toEqual(["api"])
+        expect(joinStep.completed).toBe(true)
+        expect(joinStep.join.erroredBranchIds).toEqual(["docs"])
+        expect(joinStep.join.survivorBranchIds).toEqual(["api"])
         expect(calls.some(call => call.sessionId === daveSid && call.text.includes("Integrate"))).toBe(true)
     })
 })

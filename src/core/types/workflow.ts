@@ -147,90 +147,109 @@ export type WorkflowJoinMetadata = {
 // ---------------------------------------------------------------------------
 
 /**
- * Fields shared between {@link WorkflowStep} (runtime) and {@link WorkflowRunStep}
- * (persisted run record). Extracting this base prevents field drift: adding a
- * field here automatically makes it available in both representations.
- *
- * Fields that are runtime-only (e.g. dispatchedAt, correlationId, approvalBeforeGranted)
- * or persisted-only (e.g. index, step, outputBytes) live on the respective subtypes.
+ * Shared runtime fields common to ALL step kinds. Every variant includes
+ * these via intersection. NOTE: WorkflowRunStep (persisted JSON) is defined
+ * INDEPENDENTLY in runs.ts and does NOT derive from this type — the union
+ * base is intentionally slim (kind-specific fields live on each variant).
  */
-export type WorkflowStepBase = {
-    kind: WorkflowStepKind
+// ---------------------------------------------------------------------------
+// WorkflowStep — discriminated union of per-kind runtime step variants
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared runtime fields common to ALL step kinds. Every variant includes
+ * these via intersection. NOTE: WorkflowRunStep (persisted JSON) is defined
+ * INDEPENDENTLY in runs.ts and does NOT derive from this type — the union
+ * base is intentionally slim (kind-specific fields live on each variant).
+ */
+export type WorkflowStepRuntime = {
     id?: string
-    member?: string
-    verifier?: string
-    verifiers?: readonly string[]
-    ensemblePolicy?: WorkflowEnsemblePolicy
-    ensembleQuorum?: number
-    ensembleResults?: Record<string, WorkflowEnsembleResult>
-    dispatchedActor?: string
-    verdict?: Verdict
-    score?: number
-    confidence?: number
-    issues?: WorkflowIssue[]
-    attempts?: number
-    onInvalid?: WorkflowOnInvalid
-    onMalformed?: WorkflowOnMalformed
-    maxMalformedRetries?: number
-    malformedAttempts?: number
-    invalidAttempts?: number
-    jumpCount?: number
-    loop?: WorkflowLoopConfig
-    loopIterations?: number
-    skipped?: boolean
     completed: boolean
+    skipped?: boolean
     output?: string
     startedAt?: number
     completedAt?: number
     durationMs?: number
     inputs?: number[]
     exposeOutput?: boolean
+    dispatchedAt?: number
+    dispatchedActor?: string
+    correlationId?: string
+    approvalBefore?: boolean
+    approvalBeforeGranted?: boolean
+    approvalAfter?: boolean
+    maxOutputBytes?: number
+    timeoutMs?: number
+    onTimeout?: "fail" | "retry" | "skip"
+    maxTimeoutRetries?: number
+    timeoutAttempts?: number
+    branch?: WorkflowBranchMetadata
+}
+
+/** Runtime task step variant — executed by a member. */
+export type WorkflowTaskStep = WorkflowStepRuntime & {
+    kind: "task"
+    member: string
+    task: string
+    fallbackMember?: string
     retryOn?: WorkflowRetryCondition
     maxTaskRetries?: number
     taskAttempts?: number
-    fanout?: WorkflowFanoutMetadata
-    branch?: WorkflowBranchMetadata
-    join?: WorkflowJoinMetadata
-    approvalBefore?: boolean
-    approvalAfter?: boolean
-    maxOutputBytes?: number
-    timeoutMs?: number                  // task/gate steps: wall-clock deadline from dispatch time
-    onTimeout?: "fail" | "retry" | "skip" // timeout control; default fail
-    maxTimeoutRetries?: number          // timeout retry cap when onTimeout=retry
-    approvalBeforeGranted?: boolean     // transient: approval_before was requested
-    timeoutAttempts?: number            // timeout retry attempts so far
-    dispatchedAt?: number               // epoch ms when this step was last dispatched
-    correlationId?: string              // links this step's dispatch/capture/verdict events in events.jsonl
 }
 
-/**
- * Gate configuration fields shared between {@link WorkflowStep} (runtime) and
- * {@link WorkflowRunStep} (persisted run record). Extracting this prevents
- * field drift: adding a gate config field here automatically makes it
- * available in both representations.
- */
-export type WorkflowGateConfig = {
-    criteria?: string                   // verification criteria (gate steps)
-    onFail?: "retry" | "fail" | "skip"  // FAIL control: retry the preceding task, fail the run, or skip this gate (gate steps; default "fail")
-    maxRetries?: number                 // FAIL retry cap, distinct from provider-retry maxRetries (gate steps; default 0)
-    maxInvalidRetries?: number          // retry_verifier cap for INVALID verdicts (gate steps; default 0)
-    onPassGoto?: number                 // after PASS: jump here instead of advancing linearly
-    onFailGoto?: number                 // at a FAIL terminal point (on_fail=fail, or retry exhausted): jump instead of failing
-    onInvalidGoto?: number              // at an INVALID terminal point (on_invalid=fail, or retry_verifier exhausted): jump instead of terminating. NOT applied to escalate.
-    maxJumps?: number                   // per-gate cap on verdict-driven jumps; default 3, max 10
-}
-
-/** A single workflow step — task, gate, fanout marker, or join marker. */
-export type WorkflowStep = WorkflowStepBase & WorkflowGateConfig & {
-    // task step
-    fallbackMember?: string
-    task?: string                       // the task text (task steps)
-    // gate step
+/** Runtime gate step variant — executed by a verifier. */
+export type WorkflowGateStep = WorkflowStepRuntime & {
+    kind: "gate"
+    verifier?: string
+    verifiers?: readonly string[]
     fallbackVerifier?: string
-    targetStepIndex?: number            // gate steps: zero-based primary task step being verified
-    targetStepIndices?: number[]        // gate steps: zero-based multi-target task steps
-    where?: WorkflowCondition           // optional threshold condition gating on_pass_goto/on_fail_goto
+    ensemblePolicy?: WorkflowEnsemblePolicy
+    ensembleQuorum?: number
+    ensembleResults?: Record<string, WorkflowEnsembleResult>
+    criteria?: string
+    targetStepIndex?: number
+    targetStepIndices?: number[]
+    verdict?: Verdict
+    score?: number
+    confidence?: number
+    issues?: WorkflowIssue[]
+    where?: WorkflowCondition
+    onFail?: "retry" | "fail" | "skip"
+    maxRetries?: number
+    onInvalid?: WorkflowOnInvalid
+    onMalformed?: WorkflowOnMalformed
+    maxInvalidRetries?: number
+    maxMalformedRetries?: number
+    invalidAttempts?: number
+    malformedAttempts?: number
+    attempts?: number
+    onPassGoto?: number
+    onFailGoto?: number
+    onInvalidGoto?: number
+    maxJumps?: number
+    jumpCount?: number
+    loop?: WorkflowLoopConfig
+    loopIterations?: number
 }
+
+/** Runtime fanout marker variant. */
+export type WorkflowFanoutStep = WorkflowStepRuntime & {
+    kind: "fanout"
+    fanout: WorkflowFanoutMetadata
+}
+
+/** Runtime join marker variant. */
+export type WorkflowJoinStep = WorkflowStepRuntime & {
+    kind: "join"
+    join: WorkflowJoinMetadata
+}
+
+/** A single workflow step — discriminated union on `kind`. */
+export type WorkflowStep =
+    | WorkflowTaskStep
+    | WorkflowGateStep
+    | WorkflowFanoutStep
+    | WorkflowJoinStep
 
 // ============================================================================
 // EXTERNAL TOOL API TYPES

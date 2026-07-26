@@ -336,8 +336,10 @@ describe("resumeDispatch: workflow goto-after-restart", () => {
             ActiveTask,
             { type: "workflow" }
         >;
-        expect(wfTask.steps?.[1].completed).toBe(true);
-        expect(wfTask.steps?.[1].jumpCount).toBe(1);
+        const passGateStep = wfTask.steps?.[1];
+        if (passGateStep?.kind !== "gate") throw new Error("Expected gate step at index 1");
+        expect(passGateStep.completed).toBe(true);
+        expect(passGateStep.jumpCount).toBe(1);
         expect(wfTask.steps?.[2].skipped).toBe(true);
     });
 
@@ -575,7 +577,9 @@ describe("resumeDispatch: workflow retry/jump counter recovery", () => {
             { type: "workflow" }
         >;
         // attempts continued from the pre-crash value (1 -> 2), within budget.
-        expect(wfTask.steps?.[1].attempts).toBe(2);
+        const retryGateStep = wfTask.steps?.[1];
+        if (retryGateStep?.kind !== "gate") throw new Error("Expected gate step at index 1");
+        expect(retryGateStep.attempts).toBe(2);
         // Producer (alice) re-dispatched for the retry; not failed.
         expect(dispatched.map((d) => d.id)).toEqual(["ses_alice"]);
         expect(dispatched[0].text).toContain("Gate FAILED");
@@ -685,7 +689,9 @@ describe("resumeDispatch: workflow retry/jump counter recovery", () => {
             { type: "workflow" }
         >;
         // jumpCount continued from the pre-crash value (1 -> 2), within the default cap of 3.
-        expect(wfTask.steps?.[1].jumpCount).toBe(2);
+        const jumpGateStep = wfTask.steps?.[1];
+        if (jumpGateStep?.kind !== "gate") throw new Error("Expected gate step at index 1");
+        expect(jumpGateStep.jumpCount).toBe(2);
         expect(wfTask.steps?.[0].completed).toBe(false);
         expect(dispatched.map((d) => d.id)).toEqual(["ses_alice"]);
     });

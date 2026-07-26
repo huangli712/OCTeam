@@ -11,7 +11,14 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { processIdle } from "../src/orchestration/lifecycle/idle.js";
 import { advanceWorkflowStep } from "../src/orchestration/workflow/engine.js";
 import { readRunEvents } from "../src/orchestration/records/runs.js";
+import type { WorkflowGateStep, WorkflowStep } from "../src/core/types.js";
 import { cleanupTmpRoots, makeCtx, makeTeam, makeWorkflowTask, type DispatchCall, waitForEvent } from "./helpers.js";
+
+function gateStepAt(steps: readonly WorkflowStep[] | undefined, index: number): WorkflowGateStep {
+    const step = steps?.[index];
+    if (step?.kind !== "gate") throw new Error(`Expected gate step at index ${index}`);
+    return step;
+}
 
 afterAll(cleanupTmpRoots);
 
@@ -65,7 +72,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         expect(task.steps![1].completed).toBe(true);
-        expect(task.steps![1].verdict).toBe("PASS");
+        expect(gateStepAt(task.steps, 1).verdict).toBe("PASS");
         expect(task.currentStageIndex).toBe(2);
         const carolCall = calls.find((c) => c.sessionId === "ses_carol");
         expect(carolCall).toBeDefined();
@@ -189,7 +196,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         let ctx = makeCtx({ outputs: { ses_bob: FAIL_VERDICT }, calls: calls });
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].attempts).toBe(1);
+        expect(gateStepAt(task.steps, 1).attempts).toBe(1);
         expect(task.steps![0].completed).toBe(false);
         expect(task.responses.alice).toBeUndefined();
         expect(task.responses.bob).toBeUndefined();
@@ -330,7 +337,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
 
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].invalidAttempts).toBe(1);
+        expect(gateStepAt(task.steps, 1).invalidAttempts).toBe(1);
         expect(task.responses.bob).toBeUndefined();
         expect(task.steps![1].dispatchedAt).toBeNumber();
         expect(task.steps![1].startedAt).toBe(task.steps![1].dispatchedAt);
@@ -412,7 +419,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         expect(team.status).toBe("failed");
-        expect(task.steps![1].attempts).toBe(0);
+        expect(gateStepAt(task.steps, 1).attempts).toBe(0);
         expect(calls.some((c) => c.sessionId === "ses_alice")).toBe(false);
         const leaderCall = calls.find((c) => c.sessionId === "ses_lead");
         expect(leaderCall).toBeDefined();
@@ -507,7 +514,7 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         let ctx = makeCtx({ outputs: { ses_bob: INVALID_VERDICT }, calls: calls });
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
-        expect(task.steps![1].invalidAttempts).toBe(1);
+        expect(gateStepAt(task.steps, 1).invalidAttempts).toBe(1);
         expect(task.steps![0].completed).toBe(true);
         expect(task.currentStageIndex).toBe(1);
         const reverifyCall = calls.find((c) => c.sessionId === "ses_bob");

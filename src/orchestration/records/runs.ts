@@ -19,6 +19,7 @@ import fs from "node:fs/promises"
 import { logger } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
 
+import type { WorkflowJoinMetadata } from "../../core/types.js"
 import type { Team } from "../../state/store.js"
 import type { RunRecord, RunStatus, WorkflowBranchStatus, WorkflowRunStep, WorkflowStep } from "../../core/types.js"
 import { atomicWrite } from "../../state/locks.js"
@@ -94,7 +95,7 @@ function parseRunEvent(line: string): RunEvent {
 }
 
 /** Project a runtime join metadata object into the persisted (RunRecord) shape. */
-function runJoinMetadata(join: WorkflowStep["join"]): WorkflowRunStep["join"] {
+function runJoinMetadata(join: WorkflowJoinMetadata | undefined): WorkflowRunStep["join"] {
     if (join === undefined) return undefined
     return {
         fanoutIndex: join.fanoutIndex,
@@ -189,53 +190,67 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     if (task.type === "workflow") {
         const steps = task.steps ?? []
         record.workflow = {
-            steps: steps.map((step, index) => ({
-                index,
-                step: index + 1,
-                kind: step.kind,
-                id: step.id,
-                member: step.member,
-                verifier: step.verifier,
-                dispatchedActor: step.dispatchedActor,
-                targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
-                targetSteps: step.targetStepIndices?.map(index => index + 1),
-                verdict: step.verdict,
-                score: step.score,
-                confidence: step.confidence,
-                issues: step.issues,
-                attempts: step.attempts,
-                onInvalid: step.onInvalid,
-                invalidAttempts: step.invalidAttempts,
-                onFail: step.onFail,
-                maxRetries: step.maxRetries,
-                maxInvalidRetries: step.maxInvalidRetries,
-                onPassGoto: step.onPassGoto === undefined || step.onPassGoto < 0 ? undefined : step.onPassGoto + 1,
-                onFailGoto: step.onFailGoto === undefined || step.onFailGoto < 0 ? undefined : step.onFailGoto + 1,
-                onInvalidGoto: step.onInvalidGoto === undefined || step.onInvalidGoto < 0 ? undefined : step.onInvalidGoto + 1,
-                maxJumps: step.maxJumps,
-                criteria: step.criteria,
-                timeoutMs: step.timeoutMs,
-                onTimeout: step.onTimeout,
-                maxTimeoutRetries: step.maxTimeoutRetries,
-                jumpCount: step.jumpCount,
-                skipped: step.skipped,
-                completed: step.completed,
-                output: step.output,
-                outputBytes: step.output === undefined ? undefined : Buffer.byteLength(step.output, "utf8"),
-                joinedOutputBytes: step.join?.joinedOutput === undefined ? undefined : Buffer.byteLength(step.join.joinedOutput, "utf8"),
-                startedAt: step.startedAt,
-                completedAt: step.completedAt,
-                durationMs: step.durationMs,
-                inputs: step.inputs,
-                exposeOutput: step.exposeOutput,
-                fanout: step.fanout,
-                branch: step.branch,
-                join: runJoinMetadata(step.join),
-                branchStatuses: workflowBranchStatusesForStep(steps, index, step),
-                approvalBefore: step.approvalBefore,
-                approvalAfter: step.approvalAfter,
-                maxOutputBytes: step.maxOutputBytes,
-            })),
+            steps: steps.map((step, index) => {
+                const base = {
+                    index,
+                    step: index + 1,
+                    kind: step.kind,
+                    id: step.id,
+                    dispatchedActor: step.dispatchedActor,
+                    timeoutMs: step.timeoutMs,
+                    onTimeout: step.onTimeout,
+                    maxTimeoutRetries: step.maxTimeoutRetries,
+                    skipped: step.skipped,
+                    completed: step.completed,
+                    output: step.output,
+                    outputBytes: step.output === undefined ? undefined : Buffer.byteLength(step.output, "utf8"),
+                    startedAt: step.startedAt,
+                    completedAt: step.completedAt,
+                    durationMs: step.durationMs,
+                    inputs: step.inputs,
+                    exposeOutput: step.exposeOutput,
+                    branch: step.branch,
+                    branchStatuses: workflowBranchStatusesForStep(steps, index, step),
+                    approvalBefore: step.approvalBefore,
+                    approvalAfter: step.approvalAfter,
+                    maxOutputBytes: step.maxOutputBytes,
+                }
+                switch (step.kind) {
+                    case "task":
+                        return { ...base, member: step.member }
+                    case "gate":
+                        return {
+                            ...base,
+                            verifier: step.verifier,
+                            targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
+                            targetSteps: step.targetStepIndices?.map(i => i + 1),
+                            verdict: step.verdict,
+                            score: step.score,
+                            confidence: step.confidence,
+                            issues: step.issues,
+                            attempts: step.attempts,
+                            onInvalid: step.onInvalid,
+                            invalidAttempts: step.invalidAttempts,
+                            onFail: step.onFail,
+                            maxRetries: step.maxRetries,
+                            maxInvalidRetries: step.maxInvalidRetries,
+                            onPassGoto: step.onPassGoto === undefined || step.onPassGoto < 0 ? undefined : step.onPassGoto + 1,
+                            onFailGoto: step.onFailGoto === undefined || step.onFailGoto < 0 ? undefined : step.onFailGoto + 1,
+                            onInvalidGoto: step.onInvalidGoto === undefined || step.onInvalidGoto < 0 ? undefined : step.onInvalidGoto + 1,
+                            maxJumps: step.maxJumps,
+                            criteria: step.criteria,
+                            jumpCount: step.jumpCount,
+                        }
+                    case "fanout":
+                        return { ...base, fanout: step.fanout }
+                    case "join":
+                        return {
+                            ...base,
+                            join: runJoinMetadata(step.join),
+                            joinedOutputBytes: step.join.joinedOutput === undefined ? undefined : Buffer.byteLength(step.join.joinedOutput, "utf8"),
+                        }
+                }
+            }),
         }
     }
 
@@ -400,10 +415,12 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
  * on the join's survivor/errored sets and branch-tail step state.
  */
 function workflowBranchStatuses(steps: readonly WorkflowStep[], fanoutIndex: number): Record<string, WorkflowBranchStatus> | undefined {
-    const fanout = steps[fanoutIndex]?.fanout
+    const fanoutStep = steps[fanoutIndex]
+    const fanout = fanoutStep?.kind === "fanout" ? fanoutStep.fanout : undefined
     if (fanout === undefined) return undefined
 
-    const join = steps[fanout.joinIndex]?.join
+    const joinStep = steps[fanout.joinIndex]
+    const join = joinStep?.kind === "join" ? joinStep.join : undefined
     const survivorBranchIds = new Set(join?.survivorBranchIds ?? [])
     const erroredBranchIds = new Set(join?.erroredBranchIds ?? [])
     const statuses: Record<string, WorkflowBranchStatus> = {}
@@ -450,7 +467,7 @@ function workflowBranchStatusesForStep(
         case "gate":
             return undefined
         default:
-            step.kind satisfies never
+            step satisfies never
             return undefined
     }
 }

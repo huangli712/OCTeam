@@ -126,7 +126,7 @@ describe("workflow runtime invariants", () => {
             survivorBranchIds: ["api"],
         })
         const joinStep = steps[3]
-        if (joinStep?.join === undefined) throw new Error("Missing join fixture step")
+        if (joinStep?.kind !== "join") throw new Error("Missing join fixture step")
         joinStep.join = {
             ...joinStep.join,
             joinPolicy: "all",
