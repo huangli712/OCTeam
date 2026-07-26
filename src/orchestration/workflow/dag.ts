@@ -62,7 +62,17 @@ export function getActiveWorkflowStepActors(
     const actors: string[] = []
 
     for (const index of getActiveWorkflowStepIndices(task)) {
-        const actor = workflowStepActor(steps[index])
+        const step = steps[index]
+        if (step === undefined) continue
+        // Ensemble gates have multiple verifiers — include ALL of them so
+        // termination's error-tolerance check sees every active verifier.
+        if (step.kind === "gate" && step.verifiers !== undefined) {
+            for (const v of step.verifiers) {
+                if (step.ensembleResults?.[v] === undefined) actors.push(v)
+            }
+            continue
+        }
+        const actor = workflowStepActor(step)
         if (actor !== null) actors.push(actor)
     }
 

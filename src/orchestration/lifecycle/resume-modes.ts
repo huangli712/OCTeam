@@ -415,6 +415,13 @@ export async function resumeWorkflowMode(
     if (task.activeStepIndices !== undefined) {
         const originalActive = getActiveWorkflowStepIndices(task);
         const originalActiveSet = new Set(originalActive);
+        // Snapshot which steps had dispatchedAt BEFORE the handleWorkflowIdle
+        // replay loop. Steps dispatched DURING replay (by advanceWorkflowStep)
+        // must NOT be re-dispatched by the redispatch loop below.
+        const dispatchedBefore = new Set<number>();
+        for (const index of originalActive) {
+            if (steps[index]?.dispatchedAt !== undefined) dispatchedBefore.add(index);
+        }
 
         for (const index of originalActive) {
             const activeStep = steps[index];
@@ -444,6 +451,9 @@ export async function resumeWorkflowMode(
             if (!originalActiveSet.has(index)) continue;
             const step = steps[index];
             if (step === undefined || step.completed) continue;
+            // Skip steps dispatched during the handleWorkflowIdle replay
+            // above — advanceWorkflowStep already dispatched them.
+            if (step.dispatchedAt !== undefined && !dispatchedBefore.has(index)) continue;
             if (step.kind === "join") {
                 if (!(await redispatchWorkflowStep(ctx, team, index))) {
                     await handleWorkflowDispatchUnavailable(ctx, team, task, step);

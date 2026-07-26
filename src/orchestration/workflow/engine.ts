@@ -284,11 +284,22 @@ export function moveActiveWorkflowStep(
     task.currentStageIndex = task.activeStepIndices[0] ?? toIndex;
 }
 
+/** Check if a step's actor has a pending (uncaptured) response in task.responses. */
+function stepHasPendingResponse(task: WorkflowTask, step: WorkflowStep): boolean {
+    if (step.kind === "task") return step.member !== undefined && task.responses[step.member] !== undefined;
+    if (step.kind === "gate") {
+        const actor = step.verifier ?? step.dispatchedActor;
+        return actor !== undefined && task.responses[actor] !== undefined;
+    }
+    return false;
+}
+
 /** Check whether any previously-active step still has a dispatched but uncompleted actor. */
 export function hasWaitingActiveWorkflowActor(
     steps: WorkflowStep[],
     previousActive: ReadonlySet<number>,
     ready: readonly number[],
+    responses: Record<string, string>,
 ): boolean {
     for (const index of ready) {
         const step = steps[index];
@@ -296,8 +307,14 @@ export function hasWaitingActiveWorkflowActor(
 
         switch (step.kind) {
             case "task":
-            case "gate":
-                if (!step.completed) return true;
+            case "gate": {
+                const actorName = step.kind === "task"
+                    ? step.member
+                    : step.verifier ?? step.dispatchedActor;
+                if (!step.completed && (step.dispatchedAt !== undefined
+                    || (actorName !== undefined && responses[actorName] !== undefined))) return true;
+                break;
+            }
             case "fanout":
             case "join":
                 break;
@@ -483,6 +500,19 @@ export async function gotoWorkflowStep(
                     s.timeoutAttempts = 0;
                 }
             }
+            // Reset join runtime tracking so a re-run fanout/join pair
+            // starts with a clean branch state (no stale errored/survivor
+            // branch IDs from the prior run through this range).
+            if (s.kind === "join" && s.join) {
+                s.join = {
+                    ...s.join,
+                    erroredBranchIds: undefined,
+                    survivorBranchIds: undefined,
+                    selectedBranchId: undefined,
+                    selectionRationale: undefined,
+                    joinedOutput: undefined,
+                };
+            }
         }
     }
     // Forward jumps mark the triggering gate complete so find-next-incomplete
@@ -570,7 +600,11 @@ export async function advanceWorkflowStep(
 
                 switch (step.kind) {
                     case "task": {
-                        if (previousActive.has(index)) break;
+                        // Skip if previously active AND either dispatched (in-flight)
+                        // or has a pending response (will be processed by
+                        // handleWorkflowIdle, e.g. during resume).
+                        if (previousActive.has(index) && (step.dispatchedAt !== undefined
+                            || stepHasPendingResponse(task, step))) break;
                         if (
                             await maybePauseBeforeWorkflowStep(ctx, team, index)
                         )
@@ -584,7 +618,8 @@ export async function advanceWorkflowStep(
                         break;
                     }
                     case "gate": {
-                        if (previousActive.has(index)) break;
+                        if (previousActive.has(index) && (step.dispatchedAt !== undefined
+                            || stepHasPendingResponse(task, step))) break;
                         if (
                             await maybePauseBeforeWorkflowStep(ctx, team, index)
                         )
@@ -622,7 +657,7 @@ export async function advanceWorkflowStep(
                 await saveTeamState(team);
                 return;
             }
-            if (hasWaitingActiveWorkflowActor(steps, previousActive, ready)) {
+            if (hasWaitingActiveWorkflowActor(steps, previousActive, ready, task.responses)) {
                 await saveTeamState(team);
                 return;
             }
