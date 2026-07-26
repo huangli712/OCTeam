@@ -15,7 +15,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../../core/context.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState, saveTeamState } from "../../state/store.js"
-import { unreadInboxBytes } from "../../messaging/mailbox.js"
+import { BackpressureError } from "../../messaging/mailbox.js"
 import { deliverToRecipients } from "../../messaging/deliver.js"
 import type { Message, ParallelMode } from "../../core/types.js"
 import { nonMasterMembers } from "../support.js"
@@ -94,30 +94,9 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 return `Error: isolated mode forbids member-to-member messaging. You may message "master" only.`
             }
 
-            // Backpressure: enforce unread mailbox cap per recipient using the
-            // ACTUAL inbox byte size (not a line-count proxy that under-counts
-            // max-size bodies by up to 32x). Account for the new message's
-            // projected on-disk size (JSON-serialized line + "\n") so a
-            // near-limit mailbox cannot accept another message and exceed the
-            // cap.
-            const baseSize = Buffer.byteLength(JSON.stringify({
-                version: 1,
-                id: "",
-                from: sender.name,
-                to: args.to,
-                kind: "message",
-                body: args.body,
-                summary: args.summary,
-                timestamp: 0,
-                correlationId: args.correlation_id,
-                deliveryStatus: "pending",
-            }), "utf8") + 1  // +1 for the appended "\n"
-            for (const r of recipients) {
-                const bytes = await unreadInboxBytes(team.directory, r)
-                if (bytes + baseSize > team.bounds.messageUnreadMaxBytes) {
-                    return `Error: recipient "${r}" mailbox is full (backpressure). Try later.`
-                }
-            }
+            // Backpressure is now enforced INSIDE the mailbox lock by
+            // writeMailboxMessage (via deliverToRecipients) so concurrent
+            // senders cannot both pass the check and collectively exceed the cap.
 
             // Enforce maxMessagesPerRun during an active orchestration.
             if (team.activeTask) {
@@ -156,7 +135,14 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 correlationId: args.correlation_id,
                 deliveryStatus: "pending",
             }
-            await deliverToRecipients(ctx, team, recipients, base)
+            try {
+                await deliverToRecipients(ctx, team, recipients, base, team.bounds.messageUnreadMaxBytes)
+            } catch (err) {
+                if (err instanceof BackpressureError) {
+                    return `Error: recipient "${err.recipient}" mailbox is full (backpressure). Try later.`
+                }
+                throw err
+            }
             return `Message delivered to ${recipients.length === 1 ? recipients[0] : `${recipients.length} members`}.`
         },
     })

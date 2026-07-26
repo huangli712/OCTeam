@@ -64,7 +64,10 @@ export async function advanceRouteAfterDecision(ctx: PluginContext, team: Team):
     const selected = branches.filter(b => targets.includes(b.member))
     for (const b of selected) {
         const m = findMember(team, b.member)
-        if (!m?.sessionId) continue
+        if (!m?.sessionId) {
+            await finishRun(ctx, team, `route_complete:target_unavailable:${b.member}`, "failed")
+            return
+        }
         const text = b.task ?? task.task ?? ""
         await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
     }

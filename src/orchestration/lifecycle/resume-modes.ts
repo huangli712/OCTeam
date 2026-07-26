@@ -1,7 +1,7 @@
 /**
  * Per-mode resume dispatch handlers. Extracted from resume.ts to keep each
  * file focused: resume.ts owns the Phase 1/2/3 entry point + rollback, while
- * this module owns the 11 mode-specific re-dispatch functions and their shared
+ * this module owns the 12 mode-specific re-dispatch functions and their shared
  * helpers.
  */
 

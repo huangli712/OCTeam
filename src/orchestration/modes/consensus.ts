@@ -31,7 +31,7 @@ export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promi
     const participants = nonMasterMembers(team).map(m => m.name)
 
     await maybeAdvanceBarrier(team, participants, async () => {
-        task.consensusReached = allMembersAgree(task.responses)
+        task.consensusReached = allMembersAgree(task.responses, participants)
         if (task.consensusReached) {
             await finishRun(ctx, team, "consensus_reached", "idle")
             return

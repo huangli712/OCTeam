@@ -22,9 +22,10 @@ import {
 
 /**
  * Mode-aware summary. delegate aggregates from the task list (per-task results
- * were already delivered to master via team_send_message; responses[] is NOT
- * used for delegate). loop uses decisionHistory (structured) rather than
- * the overwritten responses[]. parallel/pipeline concatenate captured outputs.
+ * were already delivered to master via team_send_message) and also uses
+ * responses[] for the final output. loop uses decisionHistory (structured)
+ * rather than the overwritten responses[]. parallel/pipeline concatenate
+ * captured outputs.
  *
  * Per-mode formatting lives in the summarize* helpers below; this function is
  * a thin dispatcher with an exhaustiveness guard on OrchestrationType.

@@ -115,16 +115,21 @@ export async function checkTermination(
         }
         const concurrent = task.type === "parallel" || task.type === "delegate" || task.type === "recurse" || task.type === "quorum"
         const tolerance = concurrent ? (task.maxErroredMembers ?? 0) : 0
-        // survivors = non-master members NOT in errored state. An errored
-        // member within tolerance is absorbed by the barrier (parallel/delegate
-        // barrier delivers survivors), and finishRun clears activeTask so the
-        // next checkTermination returns early at the `!task` guard above.
+        // For quorum, scope error/survivor counts to task.participants so
+        // non-participant errored members do not consume the tolerance budget.
+        // survivors = relevant members NOT in errored state.
         // Tolerance-0 sequential modes fail on the FIRST error, so a stale
         // errored member from a prior stage cannot exist (the run would have
         // already terminated).
-        const survivors = nonMasterMembers(team).length - erroredMembers.length
-        if (erroredMembers.length > tolerance || survivors === 0) {
-            const first = erroredMembers[0]
+        const relevantErrored = task.type === "quorum" && task.participants
+            ? erroredMembers.filter(m => task.participants!.includes(m.name))
+            : erroredMembers
+        const relevantTotal = task.type === "quorum" && task.participants
+            ? task.participants!.length
+            : nonMasterMembers(team).length
+        const survivors = relevantTotal - relevantErrored.length
+        if (relevantErrored.length > tolerance || survivors === 0) {
+            const first = relevantErrored[0] ?? erroredMembers[0]
             await finishRun(ctx, team, `member_error:${first.name}:${first.error ?? "unknown"}`, "failed")
             return
         }

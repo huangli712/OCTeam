@@ -10,7 +10,7 @@ import type { PluginContext } from "../core/context.js"
 import { logger } from "../core/log.js"
 import type { Message } from "../core/types.js"
 import { type Team } from "../state/store.js"
-import { countUnreadMessages, writeMailboxMessage } from "./mailbox.js"
+import { countUnreadMessages, writeMailboxMessage, BackpressureError } from "./mailbox.js"
 import { sendWakeHint } from "./wake-hint.js"
 
 /**
@@ -22,12 +22,16 @@ export async function deliverToRecipients(
     team: Team,
     recipients: string[],
     base: Omit<Message, "to">,
+    backpressureMaxBytes?: number,
 ): Promise<void> {
     const failures: string[] = []
     for (const r of recipients) {
         try {
-            await writeMailboxMessage(team.directory, r, { ...base, to: r })
+            await writeMailboxMessage(team.directory, r, { ...base, to: r }, backpressureMaxBytes)
         } catch (err) {
+            // BackpressureError is a deliberate rejection, not an I/O failure —
+            // propagate immediately so the caller can return the right message.
+            if (err instanceof BackpressureError) throw err
             // Isolate per-recipient failures: one bad write must NOT abort the
             // remaining recipients (partial broadcast). Record and continue.
             logger.warn("deliver: mailbox write failed", { recipient: r, error: String(err) })

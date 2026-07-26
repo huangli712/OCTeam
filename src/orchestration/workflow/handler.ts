@@ -46,7 +46,11 @@ export function shouldRetryTask(step: WorkflowStep, output: string): boolean {
             return !output.includes(step.retryOn.pattern);
         case "regex":
             try {
-                return new RegExp(step.retryOn.pattern).test(output);
+                // Cap output length before testing to mitigate catastrophic
+                // backtracking on very large strings. A retry_on regex is meant
+                // to match meaningful content patterns, not scan megabytes.
+                const cappedOutput = output.length > 100_000 ? output.slice(0, 100_000) : output;
+                return new RegExp(step.retryOn.pattern).test(cappedOutput);
             } catch (err) {
                 // An invalid regex pattern is a config error, not an output
                 // property. Log so operators notice; fall back to no-retry so

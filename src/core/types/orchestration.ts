@@ -275,6 +275,7 @@ export interface ActiveTaskBase {
 export interface ParallelTask extends ActiveTaskBase {
     type: "parallel"
     tasks?: Record<string, string>           // cooperative: { memberName: task }
+    reduceRetries?: number                   // consecutive empty-output reducer re-dispatches
 }
 
 // pipeline: ordered stages, output prefixed forward.

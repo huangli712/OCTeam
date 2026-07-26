@@ -59,7 +59,7 @@ export async function handleReduceIdle(
     member: MemberState,
 ): Promise<void> {
     const task = team.activeTask
-    if (!task?.reduceStage) return
+    if (!task?.reduceStage || task.type !== "parallel") return
     if (member.name !== task.reducerMember) return
 
     const reduced = task.responses[member.name]
@@ -68,9 +68,15 @@ export async function handleReduceIdle(
         // empty extraction). Re-dispatch the reducer instead of silently
         // completing with an empty result — an empty reduction would discard
         // all mapper outputs.
+        const maxRetries = task.maxRetries ?? 0
+        task.reduceRetries = (task.reduceRetries ?? 0) + 1
+        if (task.reduceRetries > maxRetries) {
+            await finishRun(ctx, team, "parallel_reduce_failed:empty_output", "failed")
+            return
+        }
         const reducer = findMember(team, task.reducerMember ?? "")
         if (!reducer?.sessionId) {
-            await finishRun(ctx, team, "parallel_cooperative_complete:reducer_unavailable", "failed")
+            await finishRun(ctx, team, "parallel_reduce_failed:reducer_unavailable", "failed")
             return
         }
         const body = await buildSummary(team, task, "pending_reduce")

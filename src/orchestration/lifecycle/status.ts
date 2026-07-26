@@ -122,7 +122,12 @@ export async function handleStatusEvent(
         const status = await ctx.client.session.status({})
         const entry = extractSessionStatusEntry(status.data, sessionID)
         if (entry?.type === "retry") {
+            const wasUnset = live.retryingSince === undefined
             live.retryingSince ??= Date.now()
+            // Persist retryingSince on first set so crash-resume does not lose
+            // the escalation timer (otherwise a restart resets it and the
+            // 60s escalation window starts over).
+            if (wasUnset) await saveTeamState(team)
             if (Date.now() - live.retryingSince > RETRY_ESCALATION_MS) {
                 const maxRetries = team.activeTask?.maxRetries ?? 0
                 // Within grace (max_retries not exhausted): consume one grace retry

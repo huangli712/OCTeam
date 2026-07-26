@@ -54,11 +54,21 @@ const PROCESSED_MAX_LINES = 1000
 /**
  * Append a single message to a recipient's inbox. Caller handles broadcast by
  * invoking this once per recipient. Enforces payload size before writing.
+ * When `backpressureMaxBytes` is provided, checks inbox size INSIDE the lock
+ * before appending and throws a BackpressureError if the cap would be exceeded.
  */
+export class BackpressureError extends Error {
+    constructor(public readonly recipient: string, message: string) {
+        super(message)
+        this.name = "BackpressureError"
+    }
+}
+
 export async function writeMailboxMessage(
     teamDirectory: string,
     recipient: string,
     message: Message,
+    backpressureMaxBytes?: number,
 ): Promise<void> {
     // Authenticate directives at the legitimate write-API boundary, binding
     // the id to the actual (from, body) content. A member forging a line via
@@ -72,6 +82,15 @@ export async function writeMailboxMessage(
     // between pollMailbox's read and truncate is silently destroyed
     // (read-truncate race). O_APPEND still applies inside the lock.
     await withLock(mailboxLockPath(teamDirectory, recipient), async () => {
+        // Backpressure check INSIDE the lock so concurrent senders cannot
+        // both pass the check and collectively exceed the cap.
+        if (backpressureMaxBytes !== undefined) {
+            const lineBytes = Buffer.byteLength(JSON.stringify(message) + "\n", "utf8")
+            const currentBytes = await unreadInboxBytes(teamDirectory, recipient)
+            if (currentBytes + lineBytes > backpressureMaxBytes) {
+                throw new BackpressureError(recipient, `recipient "${recipient}" mailbox is full (backpressure)`)
+            }
+        }
         await appendJsonl(inboxPath(teamDirectory, recipient), message)
     })
 }

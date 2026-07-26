@@ -142,9 +142,26 @@ export function formatWorkflowMermaid(
                 const target = steps[targetStep - 1]
                 if (target !== undefined) lines.push(`  ${mermaidNodeId(target)} -. verifies .-> ${mermaidNodeId(step)}`)
             }
+            // Draw goto edges so the graph reflects non-linear control flow.
+            // onPassGoto replaces the default sequential edge (PASS skips ahead).
+            if (step.onPassGoto !== undefined) {
+                const gotoTarget = steps[step.onPassGoto - 1]
+                if (gotoTarget !== undefined) lines.push(`  ${mermaidNodeId(step)} -- PASS --> ${mermaidNodeId(gotoTarget)}`)
+            }
+            if (step.onFailGoto !== undefined) {
+                const gotoTarget = steps[step.onFailGoto - 1]
+                if (gotoTarget !== undefined) lines.push(`  ${mermaidNodeId(step)} -. FAIL .-> ${mermaidNodeId(gotoTarget)}`)
+            }
+            if (step.onInvalidGoto !== undefined) {
+                const gotoTarget = steps[step.onInvalidGoto - 1]
+                if (gotoTarget !== undefined) lines.push(`  ${mermaidNodeId(step)} -. INVALID .-> ${mermaidNodeId(gotoTarget)}`)
+            }
         }
+        // Draw the default sequential edge ONLY when the gate does not have
+        // an onPassGoto (without it, PASS flow continues to the next step).
+        const hasPassGoto = step.kind === "gate" && step.onPassGoto !== undefined
         const next = steps[step.index + 1]
-        if (step.branch === undefined && next !== undefined && next.branch === undefined && step.kind !== "fanout") {
+        if (!hasPassGoto && step.branch === undefined && next !== undefined && next.branch === undefined && step.kind !== "fanout") {
             lines.push(`  ${mermaidNodeId(step)} --> ${mermaidNodeId(next)}`)
         }
     }

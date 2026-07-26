@@ -282,10 +282,15 @@ export function allReadOnlyStagesReportNoIssues(task: ActiveTask): boolean {
 }
 
 /** Consensus: every participant must emit agreed consensus. */
-export function allMembersAgree(responses: Record<string, string>): boolean {
-    const texts = Object.values(responses)
-    if (texts.length === 0) return false
-    return texts.every(t => {
+export function allMembersAgree(responses: Record<string, string>, participants?: string[]): boolean {
+    // When participants are provided, verify EACH one has a response.
+    // Without this, an errored member (no response) is silently ignored,
+    // and consensus is declared among only the responding subset.
+    const names = participants ?? Object.keys(responses)
+    if (names.length === 0) return false
+    return names.every(name => {
+        const t = responses[name]
+        if (!t) return false
         // Bilingual tag, aligned with parseDecision's <(?:decision|决策)> so a
         // non-English agent emitting <共识> is recognized.
         const parsed = extractTaggedJSON(t, "consensus", "共识")

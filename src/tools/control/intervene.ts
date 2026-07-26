@@ -20,7 +20,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../../core/context.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState } from "../../state/store.js"
-import { unreadInboxBytes } from "../../messaging/mailbox.js"
+import { BackpressureError } from "../../messaging/mailbox.js"
 import { deliverToRecipients } from "../../messaging/deliver.js"
 import type { Message } from "../../core/types.js"
 import { nonMasterMembers } from "../support.js"
@@ -103,22 +103,21 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                 deliveryStatus: "pending",
             }
 
-            // Backpressure: enforce the unread mailbox cap per recipient using
-            // the ACTUAL inbox byte size. This is the ONLY rate bound on
-            // directives — there is NO separate quota and NO maxMessagesPerRun
-            // check (directives are master control traffic).
-            const projectedSize = Buffer.byteLength(JSON.stringify(base), "utf8") + 1
-            for (const r of recipients) {
-                const bytes = await unreadInboxBytes(team.directory, r)
-                if (bytes + projectedSize > team.bounds.messageUnreadMaxBytes) {
-                    return `Error: recipient "${r}" mailbox is full (backpressure). Try later.`
-                }
-            }
+            // Backpressure is now enforced INSIDE the mailbox lock by
+            // writeMailboxMessage (via deliverToRecipients) so concurrent
+            // senders cannot both pass the check and collectively exceed the cap.
 
             // Mailbox write only — no activeTask.messagesSent increment, no mutex.
             // Directive authentication is handled inside writeMailboxMessage
             // (the in-memory ID registration), which a FS-level forger bypasses.
-            await deliverToRecipients(ctx, team, recipients, base)
+            try {
+                await deliverToRecipients(ctx, team, recipients, base, team.bounds.messageUnreadMaxBytes)
+            } catch (err) {
+                if (err instanceof BackpressureError) {
+                    return `Error: recipient "${err.recipient}" mailbox is full (backpressure). Try later.`
+                }
+                throw err
+            }
             return `Directive delivered to ${recipients.length === 1 ? recipients[0] : `${recipients.length} members`}.`
         },
     })

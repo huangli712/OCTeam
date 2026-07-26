@@ -11,6 +11,7 @@ import { listAllTasks } from "../../state/tasks.js"
 import { truncateOutput } from "../protocol/output.js"
 import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./ledger.js"
 import type { ActiveTask, ArenaCandidateScore } from "../../core/types.js"
+import type { Task } from "../../core/types.js"
 
 /**
  * Render a delegate run: task status lines plus each member's captured output.
@@ -84,16 +85,36 @@ export function summarizeArbitrate(task: Extract<ActiveTask, { type: "arbitrate"
 /** Render a recurse run: root task result + depth-indented decomposition tree. */
 export async function summarizeRecurse(team: Team, task: Extract<ActiveTask, { type: "recurse" }>, head: string): Promise<string> {
     // Lead with the root task's result (the final deliverable); follow
-    // with the decomposition tree (depth-indented subject/status).
-    const tasks = await listAllTasks(team.directory)
-    const root = tasks.find(t => t.id === task.rootTaskId)
+    // with the decomposition tree built from rootTaskId via blockedBy edges.
+    const allTasks = await listAllTasks(team.directory)
+    const root = allTasks.find(t => t.id === task.rootTaskId)
     const rootResult = root?.result ?? "(no result)"
-    const tree = tasks
-        .slice()
-        .sort((a, b) => (a.depth ?? 0) - (b.depth ?? 0))
-        .map(t => `${"  ".repeat(t.depth ?? 0)}- [${t.status}] ${t.subject}`)
-        .join("\n")
-    return `${head}\nRoot result:\n${truncateOutput(rootResult)}\n\nTask tree:\n${tree}`
+    // Build a parent->children index using blockedBy so the tree reflects
+    // the actual decomposition hierarchy (not just depth-sorted flat list).
+    // Only tasks reachable from rootTaskId are included.
+    const taskById = new Map(allTasks.map(t => [t.id, t]))
+    const childrenOf = new Map<string, Task[]>()
+    const visited = new Set<string>()
+    const collectChildren = (parentId: string) => {
+        if (visited.has(parentId)) return
+        visited.add(parentId)
+        const children = allTasks.filter(t => (t.blockedBy ?? []).includes(parentId))
+        childrenOf.set(parentId, children)
+        for (const c of children) collectChildren(c.id)
+    }
+    if (task.rootTaskId) collectChildren(task.rootTaskId)
+    // Render tree via DFS from root
+    const treeLines: string[] = []
+    const renderNode = (taskId: string, depth: number) => {
+        const t = taskById.get(taskId)
+        if (!t) return
+        treeLines.push(`${"  ".repeat(depth)}- [${t.status}] ${t.subject}`)
+        for (const child of childrenOf.get(taskId) ?? []) {
+            renderNode(child.id, depth + 1)
+        }
+    }
+    if (task.rootTaskId) renderNode(task.rootTaskId, 0)
+    return `${head}\nRoot result:\n${truncateOutput(rootResult)}\n\nTask tree:\n${treeLines.join("\n")}`
 }
 
 /** Render a tollgate run: per-gate verdict table + completed gates' outputs. */

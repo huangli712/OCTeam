@@ -99,7 +99,10 @@ export async function advanceToGatedStage(
     const task = team.activeTask
     if (!task || task.type !== "tollgate") return
     const producer = team.members.find(m => m.name === stage.member)
-    if (!producer?.sessionId) return
+    if (!producer?.sessionId) {
+        await finishRun(ctx, team, `tollgate_producer_unavailable:${stage.member ?? "unknown"}`, "failed")
+        return
+    }
     const upstream = buildUpstreamContext(
         task.gatedStages ?? [], task.responses, task.currentStageIndex)
     const text = upstream ? `${upstream}\n\n[Your task]\n${stage.task}` : stage.task
@@ -273,7 +276,7 @@ export async function handleTollgateIdle(
         const producer = team.members.find(m => m.name === stage.member)
         if (producer?.sessionId) {
             const feedback =
-                `[Gate FAILED — attempt ${stage.attempts}/${maxR}]`
+                `[Gate FAILED — attempt ${stage.attempts}/${maxR}]\n`
                 + `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`
             await dispatchToMember(
                 ctx,

@@ -503,9 +503,18 @@ function validateLoweredTaskStep(
         if (condCount > 1) return `Error: ${location} retry_on must set exactly one condition (found ${condCount})`
         if (task.max_task_retries === undefined) return `Error: ${location} with retry_on requires \`max_task_retries\``
     }
-    if (task.max_task_retries !== undefined && task.retry_on === undefined) {
-        return `Error: ${location} max_task_retries requires \`retry_on\``
-    }
+        if (task.max_task_retries !== undefined && task.retry_on === undefined) {
+            return `Error: ${location} max_task_retries requires \`retry_on\``
+        }
+        // Pre-compile regex at validation time to catch invalid patterns
+        // before the run starts.
+        if (task.retry_on?.regex !== undefined) {
+            try {
+                new RegExp(task.retry_on.regex)
+            } catch (err) {
+                return `Error: ${location} retry_on.regex is invalid: ${err instanceof Error ? err.message : String(err)}`
+            }
+        }
     if (task.max_output_bytes !== undefined
         && (!Number.isInteger(task.max_output_bytes) || task.max_output_bytes <= 0)) {
         return `Error: ${location} max_output_bytes must be a positive integer`
