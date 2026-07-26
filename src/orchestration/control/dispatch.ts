@@ -9,8 +9,9 @@
 import type { PluginContext } from "../../core/context.js"
 import { safeMemberAgent } from "../../core/role.js"
 import type { MemberState } from "../../core/types.js"
-import type { Team } from "../../state/store.js"
+import { type Team, saveTeamState } from "../../state/store.js"
 import { recordEvent } from "../records/events.js"
+import { logSwallowed } from "../../core/log.js"
 
 /**
  * Prefix a member's persistent standing instruction until the first successful
@@ -31,6 +32,13 @@ export function prependStandingInstruction(
  * Members without sessions are unavailable, and errored members are terminal
  * until an explicit recovery path resets them. When a Team is supplied, the
  * dispatch is also appended to the run event stream.
+ *
+ * C5 atomicity: after promptAsync succeeds and state is mutated, saveTeamState
+ * is called IMMEDIATELY (before returning to the caller). This eliminates the
+ * window where a caller could forget or delay the save, leaving the member
+ * dispatched on the host but not persisted to disk. Callers that also call
+ * saveTeamState after dispatch will double-save (harmless: the second save is
+ * a three-way merge no-op for unchanged fields).
  */
 export async function dispatchToMember(
     ctx: PluginContext,
@@ -67,5 +75,17 @@ export async function dispatchToMember(
             member: member.name,
             ...eventMeta,
         })
+        // C5: persist immediately so the dispatched state survives a crash
+        // before the caller's own saveTeamState call. If this save fails,
+        // log it but do NOT throw — the member is already dispatched on the
+        // host, and throwing would leave the caller unable to recover. The
+        // caller's subsequent saveTeamState (or the sweep's save) will retry.
+        try {
+            await saveTeamState(team)
+        } catch (err) {
+            logSwallowed(ctx, "dispatchToMember: immediate saveTeamState failed after dispatch", err, {
+                member: member.name, team: team.teamName,
+            })
+        }
     }
 }

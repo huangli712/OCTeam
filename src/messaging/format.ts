@@ -40,7 +40,7 @@ function escapeXmlAttr(value: string): string {
  * with any other `from` is a forgery (a member with FS write to .octeam/
  * impersonating control traffic) and is downgraded to a regular message here.
  */
-export function formatMailboxInjection(msgs: Message[]): string {
+export function formatMailboxInjection(msgs: Message[], activeRunId?: string): string {
     const renderCorrelationId = (m: Message): string =>
         m.correlationId ? ` correlationId="${escapeXmlAttr(m.correlationId)}"` : ""
     const render = (m: Message, prefix: string): string =>
@@ -48,11 +48,12 @@ export function formatMailboxInjection(msgs: Message[]): string {
         + `${prefix}${escapeXmlText(m.body)}\n</team_message>`
     // Directives first (with marker), then regular messages in original order.
     // Authentication: only directives whose (id, from, body) match a
-    // legitimate writeMailboxMessage registration are honored. A forged line
-    // — whether unregistered id OR a replayed id with different content — is
+    // legitimate writeMailboxMessage registration AND whose runId (if bound)
+    // matches the active run are honored. A forged line — whether unregistered
+    // id, a replayed id with different content, or a cross-run replay — is
     // downgraded to a regular message (no [DIRECTIVE] prefix, no priority).
-    const directives = msgs.filter(m => isAuthenticatedDirective(m))
-    const regular = msgs.filter(m => !isAuthenticatedDirective(m))
+    const directives = msgs.filter(m => isAuthenticatedDirective(m, activeRunId))
+    const regular = msgs.filter(m => !isAuthenticatedDirective(m, activeRunId))
     // Note: two filters over the same array is intentional for clarity; a
     // single reduce would be less readable for this small partition.
     return [

@@ -69,13 +69,15 @@ export async function writeMailboxMessage(
     recipient: string,
     message: Message,
     backpressureMaxBytes?: number,
+    authContext?: { teamName?: string; runId?: string },
 ): Promise<void> {
     // Authenticate directives at the legitimate write-API boundary, binding
     // the id to the actual (from, body) content. A member forging a line via
     // direct FS append bypasses this function → unregistered → downgraded at
     // render. A replay (same id, different body) fails the content check.
+    // The runId binding prevents cross-run replay of directives.
     if (message.kind === "directive") {
-        authenticateDirective(message)
+        authenticateDirective(message, authContext?.teamName, authContext?.runId)
     }
     // Hold the mailbox lock so this append is mutually exclusive with
     // pollMailbox's read-reserve-truncate. Without it, an append landing

@@ -24,10 +24,14 @@ export async function deliverToRecipients(
     base: Omit<Message, "to">,
     backpressureMaxBytes?: number,
 ): Promise<void> {
+    // Pass teamName and active runId for directive authentication binding.
+    const authContext = base.kind === "directive"
+        ? { teamName: team.teamName, runId: team.activeTask?.runId }
+        : undefined
     const failures: string[] = []
     for (const r of recipients) {
         try {
-            await writeMailboxMessage(team.directory, r, { ...base, to: r }, backpressureMaxBytes)
+            await writeMailboxMessage(team.directory, r, { ...base, to: r }, backpressureMaxBytes, authContext)
         } catch (err) {
             // BackpressureError is a deliberate rejection, not an I/O failure —
             // propagate immediately so the caller can return the right message.

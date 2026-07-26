@@ -196,14 +196,20 @@ describe("team_resume", () => {
             makeMember("alice", "ses_alice"),
             makeMember("bob", "ses_bob"),
         ])
-        let captured: unknown
+        const captured: unknown[] = []
         const ctx = makeCtx({ storageRoot: root, promptAsync: async () => {
-            // Disk state during Phase 3 dispatch = Phase 1 save (Phase 3 save not yet).
+            // Disk state during Phase 3 dispatch. After C5 (dispatch
+            // atomicity), the FIRST dispatch saves state immediately, so
+            // subsequent dispatches see activeTask on disk. The FIRST
+            // dispatch's promptAsync must still see Phase 1 state (no
+            // activeTask) because C5's save runs AFTER promptAsync resolves.
             const raw = await fs.readFile(`${team.directory}/state.json`, "utf8")
-            captured = JSON.parse(raw).activeTask
+            captured.push(JSON.parse(raw).activeTask)
         } })
         await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
-        expect(captured).toBeUndefined()
+        // The FIRST promptAsync call must see no activeTask (Phase 1 did not
+        // commit it, and C5's save runs after promptAsync resolves).
+        expect(captured[0]).toBeUndefined()
     })
 
     test("(e) processIdle with no activeTask → no summary (O1 absorption)", async () => {

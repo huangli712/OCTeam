@@ -284,6 +284,7 @@ export function createTransformHook(
             // team state when at least one runId-scoped directive is present — this
             // guards against an unconditional team load on every turn.
             let toInject = unread
+            let activeRunIdForAuth: string | undefined
             const hasScopedDirective = unread.some(
                 m => m.kind === "directive" && m.runId !== undefined,
             )
@@ -293,6 +294,7 @@ export function createTransformHook(
                 try {
                     const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
                     activeRunId = team.activeTask?.runId
+                    activeRunIdForAuth = activeRunId
                 } catch (err) {
                     // Team state unreadable — fall back to injecting all. The
                     // ack-full-set below still prevents a reservation loop.
@@ -316,7 +318,7 @@ export function createTransformHook(
             // (e.g. all stale directives), inject no text part — but still ack the
             // FULL reserved set below so the stale directives are dropped.
             if (toInject.length > 0) {
-                const injection = formatMailboxInjection(toInject)
+                const injection = formatMailboxInjection(toInject, activeRunIdForAuth)
 
                 // Append the injection as a synthetic text part to an existing message
                 // (prefer the last user message) rather than fabricating a partial Message

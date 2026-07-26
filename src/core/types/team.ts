@@ -68,6 +68,13 @@ export type TeamState = {
     teamRunId: string                  // UUID, unique per team
     teamName: string
     status: TeamStatus
+    // leadSessionId is a directory locator used to construct the team path
+    // (project scope: <root>/<leadSessionId>/teams/<teamName>). It is NOT an
+    // authorization credential — authorization is derived from the session
+    // index rebuilt from disk structure at startup (resolve.ts). A tampered
+    // state.json changing leadSessionId cannot grant master privileges because
+    // resolveCallerInTeam uses the index entry's leadSessionId, not the disk
+    // value, for authorization decisions.
     leadSessionId: string              // always context.sessionID; leader name is "master"
     members: MemberState[]
     activeTask?: ActiveTask            // only one active orchestration at a time
@@ -119,11 +126,11 @@ export type MemberState = {
     lastNotifiedAt?: number            // delegate: rate-limit re-prompts
     retryingSince?: number             // epoch ms when session entered "retry"
     error?: string                     // if status === "errored"
-    isMaster?: boolean                 // runtime-only: true on the synthetic master record
+    isMaster?: boolean                 // RUNTIME-ONLY: true on the synthetic master record
                                        // (built by masterPseudoMember / syntheticMaster).
-                                       // Never stored in team.members and never written to
-                                       // state.json; lives on MemberState so the synthetic
-                                       // master can flow through MemberState-typed code paths.
+                                       // NEVER persisted to state.json. isValidTeamState
+                                       // rejects ANY truthy value (not just boolean true)
+                                       // to defeat tampered state.json privilege escalation.
     declaredDone?: boolean             // require_done_ack: member has called team_done() this run
     retryCount?: number                // OCTeam-level grace-extension windows consumed this run (reset to 0 at task commit)
     prompt?: string                    // member's standing instruction (copied from MemberSpec.prompt at

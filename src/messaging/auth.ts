@@ -21,7 +21,7 @@ import type { Message } from "../core/types.js"
 // Directives are authenticated at write time and checked at poll time
 // (typically seconds later); 64 is far above any realistic in-flight count.
 const AUTH_DIRECTIVE_MAP_CAP = 64
-const authenticatedDirectives = new Map<string, { from: string; to: string; body: string; ts: number }>()
+const authenticatedDirectives = new Map<string, { from: string; to: string; body: string; teamName?: string; runId?: string; ts: number }>()
 
 /** Evict the oldest auth entries once the map exceeds the cap. */
 function evictStaleAuthDirectives(): void {
@@ -36,25 +36,50 @@ function evictStaleAuthDirectives(): void {
 /**
  * Register a directive's authenticated content (called by writeMailboxMessage
  * for kind:"directive" messages). The (from, body) binding prevents a member
- * from replaying a legitimate id with forged content.
+ * from replaying a legitimate id with forged content. The optional runId
+ * binding prevents cross-run replay: a directive authenticated for run A is
+ * rejected when the active run is B.
  */
-export function authenticateDirective(msg: Message): void {
-    authenticatedDirectives.set(msg.id, { from: msg.from, to: msg.to, body: msg.body, ts: Date.now() })
+export function authenticateDirective(
+    msg: Message,
+    teamName?: string,
+    runId?: string,
+): void {
+    authenticatedDirectives.set(msg.id, {
+        from: msg.from,
+        to: msg.to,
+        body: msg.body,
+        teamName,
+        runId,
+        ts: Date.now(),
+    })
     evictStaleAuthDirectives()
 }
 
 /**
  * True iff `msg` is a directive whose (id, from, body) match a registered
  * legitimate write. Rejects forged lines (unregistered id OR same id with
- * different content).
+ * different content). When `activeRunId` is provided and the registered
+ * directive has a runId, the runId must match — this prevents cross-run
+ * replay of directives from ended orchestrations.
  */
-export function isAuthenticatedDirective(msg: Message): boolean {
+export function isAuthenticatedDirective(
+    msg: Message,
+    activeRunId?: string,
+): boolean {
     if (msg.kind !== "directive") return false
     const registered = authenticatedDirectives.get(msg.id)
-    return registered !== undefined
-        && registered.from === msg.from
-        && registered.to === msg.to
-        && registered.body === msg.body
+    if (registered === undefined) return false
+    if (registered.from !== msg.from) return false
+    if (registered.to !== msg.to) return false
+    if (registered.body !== msg.body) return false
+    // runId binding: if the registered directive has a runId and an active
+    // runId is provided for comparison, they must match. A directive without
+    // a registered runId (legacy/unscoped) passes regardless.
+    if (registered.runId !== undefined && activeRunId !== undefined && registered.runId !== activeRunId) {
+        return false
+    }
+    return true
 }
 
 // ---------------------------------------------------------------------------

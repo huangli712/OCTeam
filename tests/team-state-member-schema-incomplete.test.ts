@@ -127,3 +127,87 @@ describe("team state member schema incomplete (finding: team-state-member-schema
         )
     })
 })
+
+describe("C3: isMaster privilege escalation hardening", () => {
+    test("truthy non-boolean isMaster (string) is rejected", async () => {
+        const root = tmpRoot("c3-isMaster-string")
+        const sid = "ses_c3_str"
+        const alice = makeMember("alice")
+        await initTeamState(root, makeState("alpha", sid, [alice]), sid)
+        const dir = teamDir(root, "alpha", sid)
+
+        const sp = statePath(dir)
+        const raw = JSON.parse(await readFile(sp, "utf8"))
+        raw.members[0].isMaster = "true"  // truthy string, not boolean true
+        await writeFile(sp, JSON.stringify(raw, null, 2), "utf8")
+        invalidateTeam(dir)
+
+        await expect(loadTeamState(root, "alpha", sid)).rejects.toThrow()
+    })
+
+    test("truthy non-boolean isMaster (number 1) is rejected", async () => {
+        const root = tmpRoot("c3-isMaster-num")
+        const sid = "ses_c3_num"
+        const alice = makeMember("alice")
+        await initTeamState(root, makeState("alpha", sid, [alice]), sid)
+        const dir = teamDir(root, "alpha", sid)
+
+        const sp = statePath(dir)
+        const raw = JSON.parse(await readFile(sp, "utf8"))
+        raw.members[0].isMaster = 1  // truthy number
+        await writeFile(sp, JSON.stringify(raw, null, 2), "utf8")
+        invalidateTeam(dir)
+
+        await expect(loadTeamState(root, "alpha", sid)).rejects.toThrow()
+    })
+
+    test("truthy non-boolean isMaster (object) is rejected", async () => {
+        const root = tmpRoot("c3-isMaster-obj")
+        const sid = "ses_c3_obj"
+        const alice = makeMember("alice")
+        await initTeamState(root, makeState("alpha", sid, [alice]), sid)
+        const dir = teamDir(root, "alpha", sid)
+
+        const sp = statePath(dir)
+        const raw = JSON.parse(await readFile(sp, "utf8"))
+        raw.members[0].isMaster = {}  // truthy object
+        await writeFile(sp, JSON.stringify(raw, null, 2), "utf8")
+        invalidateTeam(dir)
+
+        await expect(loadTeamState(root, "alpha", sid)).rejects.toThrow()
+    })
+
+    test("isMaster: false and isMaster: undefined are accepted (legitimate)", async () => {
+        const root = tmpRoot("c3-isMaster-ok")
+        const sid = "ses_c3_ok"
+        const alice = makeMember("alice")
+        await initTeamState(root, makeState("alpha", sid, [alice]), sid)
+        const dir = teamDir(root, "alpha", sid)
+
+        // isMaster: false should load fine
+        const sp = statePath(dir)
+        const raw = JSON.parse(await readFile(sp, "utf8"))
+        raw.members[0].isMaster = false
+        await writeFile(sp, JSON.stringify(raw, null, 2), "utf8")
+        invalidateTeam(dir)
+
+        const team = await loadTeamState(root, "alpha", sid)
+        expect(team.members[0].isMaster).toBe(false)
+    })
+
+    test("leadSessionId as non-string is rejected when present", async () => {
+        const root = tmpRoot("c3-leadses-num")
+        const sid = "ses_c3_leadses"
+        const alice = makeMember("alice")
+        await initTeamState(root, makeState("alpha", sid, [alice]), sid)
+        const dir = teamDir(root, "alpha", sid)
+
+        const sp = statePath(dir)
+        const raw = JSON.parse(await readFile(sp, "utf8"))
+        raw.leadSessionId = 12345  // number instead of string
+        await writeFile(sp, JSON.stringify(raw, null, 2), "utf8")
+        invalidateTeam(dir)
+
+        await expect(loadTeamState(root, "alpha", sid)).rejects.toThrow()
+    })
+})

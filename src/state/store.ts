@@ -119,6 +119,13 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     ) {
         return false
     }
+    // leadSessionId is a directory locator (used to construct the team path),
+    // NOT an authorization credential. Authorization is derived from the
+    // session index (rebuilt from disk structure at startup). When present,
+    // validate it is a non-empty string so a tampered state.json cannot inject
+    // a non-string value that could break path operations. Absent is allowed
+    // for legacy fixtures/tests that predate the field.
+    if (s.leadSessionId !== undefined && (typeof s.leadSessionId !== "string" || s.leadSessionId.length === 0)) return false
     // Reject any member whose agent is present but not in the oct-* allowlist.
     // A missing agent is allowed here (legacy/old state) — safeMemberAgent at
     // dispatch falls back to oct-oracle (read-only) in that case.
@@ -132,12 +139,14 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     const wtRoot = worktreesDir(teamDirectory)
         for (const m of s.members) {
             if (typeof m !== "object" || m === null) return false
-            // Reject isMaster on persisted members: it is a runtime-only flag
-            // on the synthetic master record. A tampered state.json that wrote
-            // isMaster:true onto a real member must not load — it would exclude
-            // the member from orchestration (nonMasterMembers filter) and could
-            // confuse authorization checks that read member.isMaster.
-            if ((m as { isMaster?: unknown }).isMaster === true) return false
+            // Reject ANY truthy isMaster on persisted members, not just
+            // boolean true. isMaster is a runtime-only flag on the synthetic
+            // master record. A tampered state.json could write isMaster:"true",
+            // isMaster:1, or isMaster:{} to bypass an === true check and gain
+            // master privileges. undefined (absent) is the only safe persisted
+            // value; any other value is tampering.
+            const isMasterVal = (m as { isMaster?: unknown }).isMaster
+            if (isMasterVal !== undefined && isMasterVal !== false && isMasterVal !== null) return false
         // Validate required per-member fields: name (used as a path segment in
         // mailbox/reserved dir operations) must be a safe segment, and status
         // must be a string. A tampered state.json with a missing/unsafe name
