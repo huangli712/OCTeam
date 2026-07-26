@@ -80,7 +80,11 @@ function workflowUpstreamBlock(
         }
         case "join": {
             const joinedOutput = candidate.join?.joinedOutput;
-            if (!joinedOutput || !shouldIncludeJoinUpstream(steps, uptoIndex))
+            // An explicit `inputs` reference to a join step is legitimate even
+            // from within a branch (the author chose to depend on the join
+            // result). Without this, shouldIncludeJoinUpstream would silently
+            // drop the dependency.
+            if (!joinedOutput || (!explicit && !shouldIncludeJoinUpstream(steps, uptoIndex)))
                 return null;
             return `[Joined output from workflow step ${candidateIndex + 1}]\n${truncateOutput(joinedOutput)}`;
         }
