@@ -311,6 +311,17 @@ function validateBranchSteps(
                     fanoutDisplayStep, branch.id,
                 )
                 if (fallbackActorError !== null) return fallbackActorError
+                // Register every ensemble verifier so the branch-concurrency
+                // check catches a verifier that also acts in a sibling branch.
+                if (step.verifiers !== undefined) {
+                    for (const ensVerifier of step.verifiers) {
+                        const ensError = registerFanoutBranchActor(
+                            branchByMember, ensVerifier,
+                            fanoutDisplayStep, branch.id,
+                        )
+                        if (ensError !== null) return ensError
+                    }
+                }
                 const targetError = validateBranchGateTargets(branch.steps, index, fanoutDisplayStep, branch.id)
                 if (targetError !== null) return targetError
                 const gotoError = validateBranchGateGotos(branch.steps, index, fanoutDisplayStep, branch.id)

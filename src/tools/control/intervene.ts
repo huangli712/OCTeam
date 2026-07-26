@@ -83,17 +83,6 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                 }
             }
 
-            // Backpressure: enforce the unread mailbox cap per recipient using
-            // the ACTUAL inbox byte size. This is the ONLY rate bound on
-            // directives — there is NO separate quota and NO maxMessagesPerRun
-            // check (directives are master control traffic).
-            for (const r of recipients) {
-                const bytes = await unreadInboxBytes(team.directory, r)
-                if (bytes > team.bounds.messageUnreadMaxBytes) {
-                    return `Error: recipient "${r}" mailbox is full (backpressure). Try later.`
-                }
-            }
-
             // Snapshot the run id once before writing. activeTask.runId is
             // eager-assigned at workflow Phase 3 creation, so it is normally
             // defined; in the pre-capture edge it may be undefined, in which case
@@ -113,6 +102,19 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                 runId,
                 deliveryStatus: "pending",
             }
+
+            // Backpressure: enforce the unread mailbox cap per recipient using
+            // the ACTUAL inbox byte size. This is the ONLY rate bound on
+            // directives — there is NO separate quota and NO maxMessagesPerRun
+            // check (directives are master control traffic).
+            const projectedSize = JSON.stringify(base).length + 1
+            for (const r of recipients) {
+                const bytes = await unreadInboxBytes(team.directory, r)
+                if (bytes + projectedSize > team.bounds.messageUnreadMaxBytes) {
+                    return `Error: recipient "${r}" mailbox is full (backpressure). Try later.`
+                }
+            }
+
             // Mailbox write only — no activeTask.messagesSent increment, no mutex.
             // Directive authentication is handled inside writeMailboxMessage
             // (the in-memory ID registration), which a FS-level forger bypasses.

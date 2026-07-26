@@ -223,7 +223,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             + " of failing on branch errors.",
         ),
         matrix: tool.schema.record(
-            tool.schema.string(),
+            tool.schema.string().regex(/^[A-Za-z0-9_]+$/, "matrix key must match ${name} substitution pattern"),
             tool.schema.array(tool.schema.string().min(1)),
         ).optional().describe(
             "fanout steps: expand into the cartesian product of named value arrays, substituting"
@@ -233,7 +233,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             "fanout steps: single-dimension value list; one branch per value, substituting ${as} in each"
             + " branch step. Mutually exclusive with branches/matrix.",
         ),
-        as: tool.schema.string().min(1).optional().describe(
+        as: tool.schema.string().min(1).regex(/^[A-Za-z0-9_]+$/, "as must match ${name} substitution pattern").optional().describe(
             "fanout steps: variable name bound to the current foreach value (default 'item').",
         ),
     }
