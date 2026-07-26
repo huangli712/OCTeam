@@ -100,7 +100,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
             // projected on-disk size (JSON-serialized line + "\n") so a
             // near-limit mailbox cannot accept another message and exceed the
             // cap.
-            const baseSize = JSON.stringify({
+            const baseSize = Buffer.byteLength(JSON.stringify({
                 version: 1,
                 id: "",
                 from: sender.name,
@@ -111,7 +111,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 timestamp: 0,
                 correlationId: args.correlation_id,
                 deliveryStatus: "pending",
-            }).length + 1  // +1 for the appended "\n"
+            }), "utf8") + 1  // +1 for the appended "\n"
             for (const r of recipients) {
                 const bytes = await unreadInboxBytes(team.directory, r)
                 if (bytes + baseSize > team.bounds.messageUnreadMaxBytes) {

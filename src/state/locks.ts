@@ -264,13 +264,18 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
  * follow them by default).
  */
 export async function refuseSymlink(filePath: string): Promise<void> {
-    try {
-        const stat = await fs.lstat(filePath)
-        if (stat.isSymbolicLink()) {
-            throw new Error(`refuseSymlink: refusing to write through symlink: ${filePath}`)
+    // Check both the target file and its immediate parent directory.
+    // The parent-dir check prevents the common attack of symlinking the
+    // containing directory to redirect writes outside the team root.
+    for (const p of [filePath, path.dirname(filePath)]) {
+        try {
+            const stat = await fs.lstat(p)
+            if (stat.isSymbolicLink()) {
+                throw new Error(`refuseSymlink: refusing to write through symlink: ${p}`)
+            }
+        } catch (err: unknown) {
+            if (!isEnoent(err)) throw err
         }
-    } catch (err: unknown) {
-        if (!isEnoent(err)) throw err
     }
 }
 

@@ -17,6 +17,7 @@ import crypto from "node:crypto"
 import fs from "node:fs/promises"
 
 import { logger } from "../../core/log.js"
+import { isEnoent } from "../../core/utils.js"
 
 import type { Team } from "../../state/store.js"
 import type { RunRecord, RunStatus, WorkflowBranchStatus, WorkflowRunStep, WorkflowStep } from "../../core/types.js"
@@ -284,24 +285,37 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
 
     const dated: Array<{ runId: string; finishedAt: number }> = []
     const orphaned: string[] = []
+    const corrupted: string[] = []
     const records = await Promise.all(
         runIds.map(runId =>
             fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
-                .then(raw => { try { return parseRunRecord(raw) } catch { return null } })
-                .catch(() => null)
-                .then(rec => ({ runId, rec })),
+                .then(raw => {
+                    try { return { kind: "ok" as const, rec: parseRunRecord(raw) } }
+                    catch { return { kind: "corrupt" as const, rec: null } }
+                })
+                .catch(err => ({
+                    kind: isEnoent(err) ? "missing" as const : "corrupt" as const,
+                    rec: null,
+                }))
+                .then(result => ({ runId, ...result })),
         ),
     )
-    for (const { runId, rec } of records) {
-        if (rec) dated.push({ runId, finishedAt: rec.finishedAt ?? 0 })
-        else orphaned.push(runId)  // no valid record.json: mid-capture crash or corrupt
+    for (const { runId, kind, rec } of records) {
+        if (kind === "ok" && rec) dated.push({ runId, finishedAt: rec.finishedAt ?? 0 })
+        else if (kind === "missing") orphaned.push(runId)
+        else corrupted.push(runId)
     }
-    // Remove orphaned run directories (no valid record.json) regardless of the
-    // keep window so a crash-during-capture does not leak a directory forever.
+    // Remove orphaned run directories (no record.json at all = crash-during-capture).
     for (const runId of orphaned) {
         await fs.rm(runDir(teamDirectory, runId), { recursive: true, force: true }).catch((err) => {
             logger.warn("pruneRuns: failed to remove orphaned run directory", { runId, error: err instanceof Error ? err.message : String(err) })
         })
+    }
+    // Quarantine corrupted run directories — record.json exists but is unreadable
+    // or invalid. Do NOT delete: member output .md files and event logs may still
+    // be valid and recoverable. Log a warning so operators can investigate.
+    for (const runId of corrupted) {
+        logger.warn("pruneRuns: run directory has unreadable/invalid record.json; quarantining (not deleting) to preserve member outputs", { runId })
     }
     if (dated.length <= keep) return
 

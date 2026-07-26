@@ -129,14 +129,15 @@ function buildJoinedWorkflowOutput(
 
         if (branchBlocks.length === 0) continue;
         const block = `[Branch ${branchId}]\n${branchBlocks.join("\n\n")}`;
-        if (used + block.length > JOINED_TOTAL_CAP) {
+        const blockSize = Buffer.byteLength(block, "utf8");
+        if (used + blockSize > JOINED_TOTAL_CAP) {
             blocks.push(
                 `[…joined output truncated at ${JOINED_TOTAL_CAP} bytes]`,
             );
             break;
         }
         blocks.push(block);
-        used += block.length;
+        used += blockSize;
     }
 
     return blocks.join("\n\n");

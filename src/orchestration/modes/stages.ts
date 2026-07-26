@@ -38,12 +38,13 @@ export function buildUpstreamContext(
         const output = responses[stage.member];
         if (!output) continue;
         const block = `[Output from ${stage.member}]\n${truncateOutput(output)}`;
-        if (used + block.length > UPSTREAM_TOTAL_CAP) {
+        const blockSize = Buffer.byteLength(block, "utf8");
+        if (used + blockSize > UPSTREAM_TOTAL_CAP) {
             blocks.push(`[…upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`);
             break;
         }
         blocks.push(block);
-        used += block.length;
+        used += blockSize;
     }
     return blocks.join("\n\n");
 }

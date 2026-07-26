@@ -107,7 +107,7 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
             // the ACTUAL inbox byte size. This is the ONLY rate bound on
             // directives — there is NO separate quota and NO maxMessagesPerRun
             // check (directives are master control traffic).
-            const projectedSize = JSON.stringify(base).length + 1
+            const projectedSize = Buffer.byteLength(JSON.stringify(base), "utf8") + 1
             for (const r of recipients) {
                 const bytes = await unreadInboxBytes(team.directory, r)
                 if (bytes + projectedSize > team.bounds.messageUnreadMaxBytes) {
