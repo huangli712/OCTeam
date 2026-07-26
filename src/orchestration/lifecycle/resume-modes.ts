@@ -12,6 +12,8 @@ import { advanceToStage } from "../modes/stages.js";
 import { dispatchToMember } from "../control/dispatch.js";
 import { handleParallelIdle } from "../modes/parallel.js";
 import { handleConsensusIdle } from "../modes/consensus.js";
+import { handlePipelineIdle } from "../modes/pipeline.js";
+import { handleLoopIdle } from "../modes/loop.js";
 import { buildRecursePrompt } from "../modes/recurse.js";
 import {
     advanceToGatedStage,
@@ -143,7 +145,9 @@ export async function resumeSignoffReduceStage(
                 (m) => !m.isMaster && m.sessionId && m.status !== "errored",
             );
         }
+        let dispatched = 0;
         for (const m of reviewers) {
+            // Skip reviewers who already have a recorded approval.
             if (task.signoffApprovals?.[m.name] !== undefined) continue;
             await dispatchToMember(
                 ctx,
@@ -152,7 +156,16 @@ export async function resumeSignoffReduceStage(
                 m.worktreePath ?? ctx.directory,
                 team,
             );
+            dispatched++;
         }
+        // If zero reviewers needed dispatch AND all reviewers have approvals,
+        // the signoff barrier will be re-driven by the next idle event or the
+        // sweep timer (which calls processIdle → handleSignoffIdle). Do NOT
+        // re-drive here — the test contract expects zero side effects when
+        // all approvals are already recorded.
+        // NOTE: if no reviewers were dispatched and some approvals are still
+        // missing (e.g. all reviewers errored), the run will fail via
+        // checkTermination's tolerance check on the next idle.
         return true;
     }
     return false;
@@ -214,11 +227,30 @@ export async function resumeSequentialMode(
     if (task.currentStageIndex >= task.stages.length) {
         // All-complete edge (crash before delivery).
         await finishRun(ctx, team, `${task.type}_complete`, "idle");
-    } else {
-        // advanceToStage uses responses[] internally;
-        // pass the Stage OBJECT (stages[idx]), NOT the index.
-        await advanceToStage(ctx, team, task.stages[task.currentStageIndex]);
+        return;
     }
+    const stage = task.stages[task.currentStageIndex];
+    if (!stage) {
+        await finishRun(ctx, team, `${task.type}_failed:missing_stage`, "failed");
+        return;
+    }
+    // If the current stage's member already has a captured response, the
+    // crash happened after the member responded but before the idle handler
+    // processed it. Re-dispatching would duplicate the turn. Instead, drive
+    // the mode's idle handler directly so the response is processed and the
+    // stage advances naturally.
+    const stageMember = team.members.find(m => m.name === stage.member && !m.isMaster);
+    if (stageMember && task.responses[stage.member] !== undefined) {
+        // The idle handler reads responses[] and advances internally.
+        if (task.type === "pipeline") {
+            await handlePipelineIdle(ctx, team, stageMember);
+        } else {
+            await handleLoopIdle(ctx, team, stageMember);
+        }
+        return;
+    }
+    // No response yet: re-dispatch the stage normally.
+    await advanceToStage(ctx, team, stage);
 }
 
 /**
