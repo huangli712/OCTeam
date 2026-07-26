@@ -1,37 +1,24 @@
 /**
- * Regression test for confirmed finding "release-lock-error-swallowed".
+ * Regression test for the lock-release error contract.
  *
- * Bug: src/state/locks.ts:220 — releaseLock does
- *   `await fs.unlink(lockPath).catch(() => { /* raced *\/ })`
- * swallowing ALL unlink failures, not just the legitimate ENOENT race.
- * A non-ENOENT failure (EPERM, EBUSY, EROFS, ...) leaves the lock file on
- * disk still recording THIS process's pid, yet withLock resolves as if the
- * release succeeded.
+ * History: releaseLock originally swallowed ALL unlink failures
+ * (.catch(()=>{})), including non-ENOENT errors. That was fixed to only
+ * swallow ENOENT and rethrow everything else.
  *
- * Harm: the next withLock caller on the same lockPath hits EEXIST at :149,
- * then the stale-reap guard at :168 (requires mtime > LOCK_TTL_MS old) AND
- * :176/:182 (refuses a live owner pid) BOTH refuse to touch the fresh
- * live-owner lock — so the caller spins on LOCK_POLL_MS until the 30s
- * deadline (:193) and throws a timeout. A single transient unlink failure
- * thus wedges that lock (and every state.json write it guards) for 30
- * seconds, with the caller never learning the release failed.
+ * Subsequent audit (C1, 2026-07-26) found that rethrowing release errors
+ * AFTER fn() already succeeded causes a worse bug: callers misinterpret the
+ * release error as a work failure and roll back in-memory state that
+ * correctly matches disk, causing memory/disk divergence.
  *
- * Likely fix: only swallow ENOENT (the documented race), rethrow every
- * other errno so the release failure surfaces through withLock's finally.
+ * Current correct contract:
+ *   - fn() succeeds + release fails → withLock RESOLVES with fn's value.
+ *     The release error is logged (logger.warn) so it is surfaced, not
+ *     silently swallowed. The stale-lock reaper recovers the stuck lock.
+ *   - fn() fails + release succeeds → fn's error propagates normally.
+ *   - fn() fails + release fails → fn's error propagates (release logged).
  *
- * This test mocks node:fs/promises so fs.unlink throws EPERM for ".lock"
- * paths during release. It asserts that withLock does NOT silently succeed
- * when its release fails — the error must propagate.
- *   UNFIXED: .catch(()=>{}) swallows EPERM → withLock resolves normally
- *            → the rejects assertion FAILS.
- *   FIXED:   non-ENOENT error propagates from releaseLock through the
- *            finally → withLock rejects → the assertion PASSES.
- *
- * Mocking notes: node:fs/promises is pre-cached by bun's runtime, so
- * mock.module must (a) include a `default` export (locks.ts does
- * `import fs from "node:fs/promises"`) and (b) be in effect before locks.ts
- * is imported, achieved via a dynamic `await import` after mock.module.
- * The EPERM throw is flag-gated so other test files get real unlink behavior.
+ * This test verifies the first case: fn() succeeds, releaseLock throws EPERM,
+ * and withLock resolves with fn's return value instead of rejecting.
  */
 
 import { afterAll, afterEach, describe, expect, mock, test } from "bun:test"
@@ -84,8 +71,8 @@ afterEach(() => {
 })
 afterAll(cleanupTmpRoots)
 
-describe("releaseLock error swallowed (finding: release-lock-error-swallowed)", () => {
-    test("non-ENOENT unlink failure during release must surface, not be swallowed", async () => {
+describe("releaseLock error contract (finding: release-lock-error-swallowed + C1 audit)", () => {
+    test("fn() result preserved when release fails: release error logged, not propagated", async () => {
         const root = tmpRoot("lock-release-swallowed")
         const lockPath = `${root}/state.json.lock`
 
@@ -98,26 +85,23 @@ describe("releaseLock error swallowed (finding: release-lock-error-swallowed)", 
         // by releaseLock in withLock's finally.
         failLockRelease = true
 
-        // --- UNFIXED: releaseLock's .catch(()=>{}) swallows the EPERM →
-        //     withLock resolves with "done" → the rejects assertion FAILS.
-        // --- FIXED: non-ENOENT error propagates from releaseLock through the
-        //     finally → withLock rejects → the assertion PASSES. ---
-        await expect(
-            withLock(lockPath, async () => {
-                criticalRan = true
-                return "done"
-            }),
-        ).rejects.toThrow(/EPERM/)
+        // C1 audit fix: fn() already succeeded, so the release error must NOT
+        // propagate — the caller would misinterpret it as a work failure and
+        // roll back in-memory state that correctly matches disk. The error is
+        // logged via logger.warn instead.
+        const result = await withLock(lockPath, async () => {
+            criticalRan = true
+            return "done"
+        })
 
-        // The critical section MUST have run — proves the failure is in the
-        // release, not a trivial acquire error (different bug).
+        // fn() ran and its result is preserved.
         expect(criticalRan).toBe(true)
+        expect(result).toBe("done")
 
-        // Evidence of the harm: the failed release left the lock file on disk
-        // with this process's pid (a fresh live-owner lock). The stale-reap
-        // guard at locks.ts:168/:182 will refuse it, so the next caller would
-        // spin to the 30s timeout. (This assertion passes on both fixed and
-        // unfixed since unlink genuinely failed; it documents the harm.)
+        // Evidence of the residual harm: the failed release left the lock
+        // file on disk with this process's pid (a fresh live-owner lock).
+        // The stale-reap guard refuses it, so the next caller would spin to
+        // the 30s timeout. The stale-lock reaper eventually cleans it up.
         expect(await pathExists(lockPath)).toBe(true)
     })
 })

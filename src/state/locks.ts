@@ -7,6 +7,7 @@ import crypto from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 
+import { logger } from "../core/log.js"
 import { isEnoent } from '../core/utils.js';
 
 /** Default stale-lock age threshold and heartbeat basis (30s). */
@@ -104,7 +105,18 @@ export async function withLock<T>(lockPath: string, fn: () => Promise<T>): Promi
         return await fn()
     } finally {
         clearInterval(heartbeat)
-        await releaseLock(lockPath)
+        // releaseLock failure after fn() completed must NOT propagate: the
+        // caller would misinterpret a release error as a work failure and
+        // roll back in-memory state that correctly matches disk. The stale-
+        // lock reaper (LOCK_TTL_MS) will eventually clean up a stuck lock.
+        try {
+            await releaseLock(lockPath)
+        } catch (err) {
+            logger.warn("withLock: failed to release lock after fn() completed; stale-lock reaper will recover", {
+                lockPath,
+                error: err instanceof Error ? err.message : String(err),
+            })
+        }
     }
 }
 

@@ -419,9 +419,17 @@ export async function saveTeamState(team: Team): Promise<void> {
         let toWrite: TeamState
         if (ancestor) {
             const diskState = await readJsonOrNull<TeamState>(statePath(dir))
-            toWrite = diskState
-                ? mergeTeamState(diskState, ancestor, currentState)
-                : currentState
+            if (diskState && !isValidTeamState(diskState, dir)) {
+                // Disk state is corrupt or tampered. Do NOT merge it into the
+                // three-way merge — that would re-persist the corrupt data.
+                // Fall back to a blind write of the current state.
+                logger.warn("saveTeamState: disk state failed validation; skipping merge to avoid persisting corrupt data", { dir })
+                toWrite = currentState
+            } else {
+                toWrite = diskState
+                    ? mergeTeamState(diskState, ancestor, currentState)
+                    : currentState
+            }
         } else {
             // No ancestor snapshot (first save / legacy) — blind write.
             toWrite = currentState

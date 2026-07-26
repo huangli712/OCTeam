@@ -101,24 +101,25 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     team.teamName = args.new_name
                     team.directory = newDir
 
-                    // Evict the old registry cache entry (keyed by oldDir).
-                    invalidateTeam(oldDir)
-
-                    // Update TeamSpec and write to new directory.
+                    // Write spec and state to the new directory FIRST, before
+                    // touching any indexes. If persistence fails, the rollback
+                    // only needs to restore the directory and in-memory state
+                    // — no index/registry cleanup needed.
                     if (spec) {
                         spec = { ...spec, name: args.new_name }
                         await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
                     }
+                    await saveTeamState(team)
 
-                    // Update master index.
+                    // Only after persistence succeeds: update registry, master
+                    // index, and active-team pointer. These are in-memory only
+                    // and cannot fail in a way that requires disk rollback.
+                    invalidateTeam(oldDir)
                     unindexMasterTeam(context.sessionID, oldDir)
                     indexMasterTeam(context.sessionID, args.new_name, pathLeadSessionId, ctx.storageRoot, newDir)
                     if (wasActive) {
                         setActiveTeam(context.sessionID, newDir)
                     }
-
-                    // Save state to the new directory.
-                    await saveTeamState(team)
                 } catch (writeErr) {
                     // Rollback: restore the old directory and in-memory state.
                     team.teamName = args.team_id

@@ -102,11 +102,20 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                     try {
                         await saveTeamState(activeSibling)
                     } catch (err) {
-                        // Target is activated successfully, but sibling deactivation
-                        // did not persist — it may be recovered as active on restart.
+                        // Compensating write: undo target's activation on disk
+                        // so restart does not see two active teams. Without
+                        // this, target's state.json has activatedAt while
+                        // sibling's still has its old activatedAt.
+                        target.activatedAt = undefined
+                        try {
+                            await saveTeamState(target)
+                        } catch (compensateErr) {
+                            logSwallowed(ctx, "activate: compensating write failed after sibling deactivation failure", compensateErr, { team: target.teamName })
+                        }
+                        clearActiveTeam(context.sessionID)
                         activeSibling.activatedAt = prevSiblingActivatedAt
                         logSwallowed(ctx, "persist team state failed (deactivate sibling)", err, { team: activeSibling!.teamName })
-                        result = `Team "${args.team_id}" activated (warning: failed to persist deactivation of sibling "${activeSibling!.teamName}" on disk).`
+                        result = `Error: failed to persist deactivation of sibling "${activeSibling!.teamName}". Activation of "${args.team_id}" was rolled back.`
                         return
                     }
                 }
