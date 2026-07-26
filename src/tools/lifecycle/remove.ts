@@ -80,6 +80,8 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 const currentIdx = team.members.findIndex(m => m.name === args.member_name)
                 if (currentIdx === -1 || team.members.length <= 1) {
                     staleState = true
+                    // Restore spec mutation before returning
+                    if (specIdx !== -1 && removedSpecMember) spec.members.splice(specIdx, 0, removedSpecMember)
                     return
                 }
                 const removedStateMember = team.members[currentIdx]
@@ -87,11 +89,25 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
 
                 try {
                     await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
-                    await saveTeamState(team)
                 } catch (err) {
-                    // Rollback in-memory mutations to match un-persisted disk.
+                    // Config write failed — nothing on disk, full rollback.
                     if (specIdx !== -1 && removedSpecMember) spec.members.splice(specIdx, 0, removedSpecMember)
                     team.members.splice(currentIdx, 0, removedStateMember)
+                    throw err
+                }
+                try {
+                    await saveTeamState(team)
+                } catch (err) {
+                    // State write failed but config was already written.
+                    // Rollback memory, then compensating write to revert
+                    // config.json so disk stays consistent.
+                    if (specIdx !== -1 && removedSpecMember) spec.members.splice(specIdx, 0, removedSpecMember)
+                    team.members.splice(currentIdx, 0, removedStateMember)
+                    try {
+                        await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
+                    } catch (compensateErr) {
+                        logSwallowed(ctx, "remove: compensating spec revert failed after state save failure", compensateErr, { team: args.team_id })
+                    }
                     throw err
                 }
             })

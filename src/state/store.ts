@@ -436,11 +436,28 @@ export async function saveTeamState(team: Team): Promise<void> {
         }
         await atomicWrite(statePath(dir), JSON.stringify(toWrite, null, 2))
         team._diskSnapshot = deepClone(toWrite)
-        // Sync concurrent member additions from the merged result back into
-        // the live team. Without this, the next save's three-way merge would
-        // see concurrent additions in _diskSnapshot but not in team.members,
-        // and silently drop them as "caller removals" (cross-process data
-        // loss). Only PUSH missing members — never replace existing objects
+        // Sync concurrent changes from the merged result back into the live
+        // team. Without this, the live Team diverges from disk after a
+        // cross-process mutation (e.g. another process changed status to
+        // "busy" — the merge writes it to disk correctly, but the live Team
+        // still has "live", so the next in-process operation uses stale data).
+        //
+        // Scalar fields: adopt the merged value for fields the caller did NOT
+        // change (merge already took disk's value for those). For fields the
+        // caller DID change, the merged value == caller's value, so the sync
+        // is a no-op. Skip identity fields (teamName, leadSessionId, teamRunId)
+        // that must not change via merge — they are set at creation/rename.
+        const scalarsToSync: Array<keyof TeamState> = [
+            "status", "activatedAt", "startedAt", "createdAt",
+            "lastInterruptedTask", "lastMode", "bounds",
+        ]
+        for (const key of scalarsToSync) {
+            const merged = toWrite[key]
+            if (merged !== undefined && !jsonEqual(team[key], merged)) {
+                ;(team as Record<string, unknown>)[key] = deepClone(merged)
+            }
+        }
+        // Members: only PUSH missing members — never replace existing objects
         // or the array reference, which would break in-flight callers holding
         // references to the current members/steps.
         if (team.members) {

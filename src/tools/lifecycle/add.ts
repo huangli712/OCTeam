@@ -146,12 +146,25 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
 
                 try {
                     await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
-                    await saveTeamState(team)
                 } catch (err) {
-                    // Rollback in-memory mutations so the team object stays
-                    // consistent with the un-persisted disk state.
+                    // Config write failed — nothing on disk, full rollback.
                     spec.members.pop()
                     team.members.pop()
+                    throw err
+                }
+                try {
+                    await saveTeamState(team)
+                } catch (err) {
+                    // State write failed but config was already written.
+                    // Rollback memory, then compensating write to revert
+                    // config.json so disk stays consistent.
+                    spec.members.pop()
+                    team.members.pop()
+                    try {
+                        await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
+                    } catch (compensateErr) {
+                        logSwallowed(ctx, "add: compensating spec revert failed after state save failure", compensateErr, { team: args.team_id })
+                    }
                     throw err
                 }
             })

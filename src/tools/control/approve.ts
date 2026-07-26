@@ -56,6 +56,7 @@ export async function applyApprovalDecision(
     const pausedMs = Math.max(0, resolvedAt - request.requestedAt)
     // Shift startedAt by the paused duration so wall-clock timeout
     // accounts for the human delay. Guard against undefined startedAt.
+    const savedStartedAt = task.startedAt
     task.startedAt = (task.startedAt ?? Date.now()) + pausedMs
     const record: ApprovalDecisionRecord = {
         id: request.id,
@@ -65,6 +66,7 @@ export async function applyApprovalDecision(
         resolvedAt,
     }
     if (decision.feedback !== undefined) record.feedback = decision.feedback
+    const savedApprovalHistory = task.approvalHistory
     task.approvalHistory = [...(task.approvalHistory ?? []), record]
     const savedApprovalStage = task.approvalStage
     const savedApprovalRequest = task.approvalRequest
@@ -171,8 +173,11 @@ export async function applyApprovalDecision(
     }
     } catch (err) {
         // A dispatch or advance threw after the approval was already
-        // cleared. Restore the pending approval so the caller can retry
-        // instead of being permanently stuck with no approval pause.
+        // cleared. Restore ALL mutation state so the caller can retry
+        // instead of being permanently stuck with no approval pause,
+        // a shifted startedAt, or a duplicate approvalHistory entry.
+        task.startedAt = savedStartedAt
+        task.approvalHistory = savedApprovalHistory
         task.approvalStage = savedApprovalStage
         task.approvalRequest = savedApprovalRequest
         throw err

@@ -40,9 +40,21 @@ const server = async (input: PluginInput): Promise<Hooks> => {
 
     // Crash recovery: rebuild the sessionID -> member index from on-disk state
     // so idles/transforms resolve correctly after a plugin/OpenCode restart.
-    await rebuildSessionIndex(ctx.projectStorageRoot, ctx.userStorageRoot, ctx).catch((err) => {
-        logSwallowed(ctx, "rebuildSessionIndex failed", err)
-    })
+    // FAIL-CLOSED: if the index cannot be rebuilt, the plugin must not start —
+    // master-only authorization depends on this index, and a missing index
+    // would cause legitimate sessions to be denied or, worse, inconsistent
+    // partial indexes to authorize the wrong sessions.
+    try {
+        await rebuildSessionIndex(ctx.projectStorageRoot, ctx.userStorageRoot, ctx)
+    } catch (err) {
+        logSwallowed(ctx, "rebuildSessionIndex failed; aborting plugin startup", err)
+        throw new Error(
+            `octeam: rebuildSessionIndex failed — session authorization index is unavailable. `
+            + `Plugin startup aborted to prevent inconsistent authorization. Error: ${
+                err instanceof Error ? err.message : String(err)
+            }`,
+        )
+    }
 
     // Restart invariant: clear all teams' activatedAt so none is auto-active
     // after a restart. Users must team_activate explicitly.

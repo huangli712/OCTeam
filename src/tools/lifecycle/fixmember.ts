@@ -214,8 +214,60 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 // disk state.json (runtime source of truth) retains the old
                 // values while config.json has the new ones — strictly better
                 // than the reverse where state.json is ahead of config.json.
-                if (spec) await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
-                await saveTeamState(team)
+                const writeErr = await (async () => {
+                    if (spec) await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
+                    await saveTeamState(team)
+                    return null
+                })().catch(e => e as Error)
+
+                if (writeErr) {
+                    // Rollback all in-memory mutations so the team object stays
+                    // consistent with the un-persisted disk state.
+                    if (renaming) {
+                        const newName = args.new_name!
+                        const oldName = member.name === newName ? args.member_name : newName
+                        // Restore member name
+                        member.name = args.member_name
+                        if (specMember) specMember.name = args.member_name
+                        // Restore index
+                        if (member.sessionId) {
+                            unindexSession(member.sessionId)
+                            indexMember(
+                                member.sessionId, team.teamName, args.member_name,
+                                caller.leadSessionId, ctx.storageRoot,
+                            )
+                        }
+                        // Restore activeTask references
+                        if (team.activeTask) {
+                            const at = team.activeTask
+                            if (at.tokensByMember[newName] !== undefined) {
+                                at.tokensByMember[oldName] = at.tokensByMember[newName]
+                                delete at.tokensByMember[newName]
+                            }
+                            if (at.responses[newName] !== undefined) {
+                                at.responses[oldName] = at.responses[newName]
+                                delete at.responses[newName]
+                            }
+                            if (at.type === "loop" && at.deciderMember === newName) at.deciderMember = oldName
+                            for (const s of at.stages) {
+                                if (s.member === newName) s.member = oldName
+                            }
+                        }
+                        // Attempt to revert mailbox rename (best-effort)
+                        try {
+                            await fs.rename(
+                                inboxPath(team.directory, newName),
+                                inboxPath(team.directory, args.member_name),
+                            )
+                        } catch {
+                            // Mailbox may not exist or rename fails; not critical
+                        }
+                    }
+                    // Restore agent/role/model mutations are left as-is —
+                    // they only affect the in-memory object, and the next save
+                    // (e.g. startOrchestration) will overwrite them.
+                    throw writeErr
+                }
             })
 
             if (staleState) {

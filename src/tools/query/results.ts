@@ -21,6 +21,8 @@ import { formatWorkflowMermaid } from "../../orchestration/records/mermaid.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { listRunRecords, readRunRecord } from "../../orchestration/records/runs.js"
 import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js"
+import { logger } from "../../core/log.js"
+import { isEnoent } from "../../core/utils.js"
 import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
 import type { RunRecord, WorkflowRunStep } from "../../core/types.js"
 
@@ -318,7 +320,10 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                 }
                 try {
                     return await fs.readFile(runMemberOutputPath(caller.directory, record.runId, args.member), "utf8")
-                } catch {
+                } catch (err) {
+                    if (!isEnoent(err)) {
+                        logger.warn("team_result_get: failed to read member output file", { runId: record.runId, member: args.member, error: err instanceof Error ? err.message : String(err) })
+                    }
                     return `Error: output file for "${args.member}" is missing in run ${record.runId}`
                 }
             }

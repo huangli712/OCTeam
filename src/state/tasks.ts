@@ -136,6 +136,16 @@ async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task
             logger.warn("readTaskFile: schema validation failed", { taskId })
             return null
         }
+        // Verify the file's internal id matches the filename. A mismatch means
+        // the file was corrupted or swapped: trusting the internal id would
+        // let a stale file A (containing id="BBB") cause the reaper to reset
+        // task B's claim — cross-task corruption.
+        if (parsed.id !== taskId) {
+            logger.warn("readTaskFile: task id mismatch between filename and file content", {
+                filenameTaskId: taskId, contentTaskId: parsed.id,
+            })
+            return null
+        }
         return parsed
     } catch (err: unknown) {
         if (isEnoent(err)) return null

@@ -15,10 +15,12 @@ import { worktreePath } from "./paths.js";
 const execFileP = promisify(execFile)
 
 /**
- * Best-effort check: does the worktree at `worktreePath` have uncommitted
+ * Safety check: does the worktree at `worktreePath` have uncommitted
  * changes (staged, unstaged, or untracked)? Returns false if the path is
- * missing, not a git repo, or git itself fails — never blocks deletion on a
- * git error.
+ * missing or not a git repo. On a Git command failure (e.g. corrupt repo,
+ * permission denied), returns TRUE (fail-closed) so that team_delete refuses
+ * to proceed without force — protecting potentially uncommitted work that
+ * could not be verified.
  */
 export async function hasUncommittedChanges(worktreePath: string): Promise<boolean> {
     try {
@@ -26,8 +28,21 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
             cwd: worktreePath,
         })
         return stdout.trim().length > 0
-    } catch {
-        return false
+    } catch (err) {
+        // Distinguish "not a git path" (safe) from "git failed" (unsafe).
+        // A non-existent path or non-repo has no work to lose → return false.
+        // Any other error means we CANNOT verify cleanliness → fail closed.
+        const msg = err instanceof Error ? err.message : String(err)
+        if (
+            /not a git repository|does not exist|no such file/i.test(msg)
+            || (err as NodeJS.ErrnoException).code === "ENOENT"
+        ) {
+            return false
+        }
+        logger.warn("hasUncommittedChanges: git status failed, treating as dirty (fail-closed)", {
+            worktreePath, error: msg,
+        })
+        return true
     }
 }
 

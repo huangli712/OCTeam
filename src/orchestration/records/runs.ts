@@ -343,8 +343,11 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
         try {
             const raw = await fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
             records.push(parseRunRecord(raw))
-        } catch {
-            // skip incomplete/corrupt runs
+        } catch (err) {
+            // skip incomplete/corrupt runs, but log non-ENOENT errors for observability
+            if (!isEnoent(err)) {
+                logger.warn("listRunRecords: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })
+            }
         }
     }
     records.sort((a, b) => b.finishedAt - a.finishedAt)
@@ -356,7 +359,10 @@ export async function readRunRecord(teamDirectory: string, runId: string): Promi
     try {
         const raw = await fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
         return parseRunRecord(raw)
-    } catch {
+    } catch (err) {
+        if (!isEnoent(err)) {
+            logger.warn("readRunRecord: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })
+        }
         return null
     }
 }
@@ -370,7 +376,10 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
     let raw: string
     try {
         raw = await fs.readFile(runEventsPath(teamDirectory, runId), "utf8")
-    } catch {
+    } catch (err) {
+        if (!isEnoent(err)) {
+            logger.warn("readRunEvents: failed to read events file", { runId, error: err instanceof Error ? err.message : String(err) })
+        }
         return []
     }
     const events: RunEvent[] = []

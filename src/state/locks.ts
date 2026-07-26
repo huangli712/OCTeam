@@ -77,8 +77,12 @@ async function fsyncDir(dir: string): Promise<void> {
         } finally {
             await dirFd.close().catch(() => {})
         }
-    } catch {
-        // best-effort: dir fsync unsupported or dir missing
+    } catch (err) {
+        // best-effort: dir fsync unsupported or dir missing. Log non-ENOENT
+        // errors (e.g. EIO) so durability issues are observable.
+        if (!isEnoent(err)) {
+            logger.warn("fsyncDir: directory fsync failed", { dir, error: err instanceof Error ? err.message : String(err) })
+        }
     }
 }
 

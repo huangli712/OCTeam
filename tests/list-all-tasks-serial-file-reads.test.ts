@@ -67,6 +67,9 @@ describe("listAllTasks must read task files concurrently (finding: list-all-task
             initiated++
             inFlight++
             if (inFlight > peak) peak = inFlight
+            // Extract taskId from the file path so the id matches the filename
+            // (readTaskFile validates parsed.id === taskId per C12 fix).
+            const taskId = String(file).split("/").pop()?.replace(/\.json$/, "") ?? "unknown"
             return new Promise<string>(resolve => {
                 releasers.push(() => {
                     inFlight--
@@ -74,7 +77,7 @@ describe("listAllTasks must read task files concurrently (finding: list-all-task
                     // accepts it and listAllTasks returns the row.
                     resolve(
                         JSON.stringify({
-                            id: "00000000-0000-0000-0000-000000000000",
+                            id: taskId,
                             subject: String(file),
                             status: "pending",
                             blockedBy: [],

@@ -31,6 +31,8 @@ import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import type { ActiveTask, DecisionRecord, MemberState, ReducePolicy, SignoffPolicy, SdkMessage } from "../../core/types.js"
 import { sumMemberTokens } from "../protocol/output.js"
+import { isEnoent } from "../../core/utils.js"
+import { logSwallowed } from "../../core/log.js"
 
 // ============================================================
 // Orchestration defaults
@@ -196,8 +198,10 @@ export async function startOrchestration(
     let team: Team
     try {
         team = await loadTeamState(ctx.storageRoot, teamId, caller.leadSessionId)
-    } catch {
-        return `Error: team "${teamId}" not found`
+    } catch (err) {
+        if (isEnoent(err)) return `Error: team "${teamId}" not found`
+        logSwallowed(ctx, "loadTeamState failed", err, { team: teamId })
+        return `Error: team "${teamId}" could not be loaded (state file unreadable)`
     }
     const gate = activationError(team.teamName, team.activatedAt)
     if (gate) return gate
