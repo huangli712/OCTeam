@@ -127,7 +127,8 @@ describe("workflow signoff output capture", () => {
             "ses_alice",
         )
 
-        expect(task.responses.alice).toBe(signoff)
+        expect(task.signoffRawOutputs?.alice).toBe(signoff)
+        expect(task.responses.alice).toBe("stale workflow output")
         expect(task.signoffApprovals?.alice).toBe(true)
         expect(team.activeTask).toBeUndefined()
     })
@@ -157,12 +158,12 @@ describe("workflow signoff output capture", () => {
         })
 
         await processIdle(ctx, team, requireMember(team, "alice"), "ses_alice")
-        expect(task.responses.alice).toBe(aliceSignoff)
+        expect(task.signoffRawOutputs?.alice).toBe(aliceSignoff)
         expect(task.signoffApprovals?.alice).toBe(true)
         expect(team.activeTask).toBe(task)
 
         await processIdle(ctx, team, requireMember(team, "bob"), "ses_bob")
-        expect(task.responses.bob).toBe(bobSignoff)
+        expect(task.signoffRawOutputs?.bob).toBe(bobSignoff)
         expect(task.signoffApprovals).toEqual({ alice: true, bob: false })
         expect(team.activeTask).toBeUndefined()
     })

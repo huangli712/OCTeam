@@ -165,13 +165,16 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
     }
 
     if ((task.currentRound ?? 0) >= (task.maxRounds ?? 0)) {
+        // Record the final decision so summarizeLoop shows the decider's last
+        // rationale instead of "final: n/a".
+        recordLoopDecision(task, decision)
         // Parity with consensus max_rounds: offer HITL approval before
         // failing the run. The leader can approve to deliver the loop's
         // current state (best-effort) instead of failing outright.
         if (await maybeRequestApproval(ctx, team, {
             kind: "loop_done",
             round: task.currentRound,
-            summary: `Loop reached max rounds (${task.maxRounds}) without a done decision. The decider's last rationale: ${decision.rationale}. Approve to deliver current state, or reject to continue.`,
+            summary: `Loop reached max rounds (${task.maxRounds}) without a done decision. The decider's last rationale: ${decision.rationale}. Approve to deliver current state, or reject to fail the run.`,
         })) {
             return
         }

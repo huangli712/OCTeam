@@ -194,7 +194,11 @@ export async function dispatchEnsembleGate(
                 issues: undefined,
                 rationale: "verifier unavailable",
                 diff: undefined,
-                parseFailed: true,
+                // Do NOT set parseFailed: an unavailable verifier is NOT a
+                // parse failure. Setting parseFailed would make
+                // aggregateEnsembleVerdict treat the entire ensemble as
+                // malformed, routing to on_malformed instead of on_invalid.
+                parseFailed: false,
             };
         }
     }
@@ -584,8 +588,17 @@ export async function advanceWorkflowStep(
                     );
                     return;
                 }
-                task.activeStepIndices = [];
-                await saveTeamState(team);
+                // Frontier deadlock: steps remain incomplete but NONE are ready.
+                // Persisting activeStepIndices=[] would make all future
+                // readyWorkflowStepIndices calls return empty, permanently
+                // locking the workflow. Fail-fast instead so the run terminates
+                // with a diagnosable reason rather than hanging to wall-clock.
+                await finishRun(
+                    ctx,
+                    team,
+                    "workflow_frontier_deadlock",
+                    "failed",
+                );
                 return;
             }
 

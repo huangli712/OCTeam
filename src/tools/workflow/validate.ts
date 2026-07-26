@@ -635,7 +635,14 @@ function validateLoweredGateStep(
         const target = steps[targetIndex]
         // join steps carry joinedOutput (no member/actor); skip member and
         // self-verification checks — they only apply to task steps.
-        if (target?.kind === "join") continue
+        if (target?.kind === "join") {
+            // A gate verifying a join cannot retry: the retry path re-dispatches
+            // the target as a task, but a join has no actor. Reject at config time.
+            if (gate.on_fail === "retry") {
+                return `Error: ${location} on_fail='retry' is incompatible with a join target (join has no actor to re-dispatch). Use on_fail='fail' or on_fail='skip' instead.`
+            }
+            continue
+        }
         if (target?.kind !== "task" || !target.member) {
             return `Error: step ${targetIndex + 1} (task) requires \`member\``
         }

@@ -250,6 +250,7 @@ export interface ActiveTaskBase {
     signoffQuorum?: number                   // 0-1, default 0.5 (peer-quorum mode, Phase D)
     signoffApprovals?: Record<string, boolean>  // collected approvals
     signoffStage?: boolean                   // true when in signoff phase
+    signoffRawOutputs?: Record<string, string>  // per-reviewer signoff turn output (side-channel so task.responses preserves work output)
 
     // human approval policy (mid-run HITL pause; distinct from post-completion signoff)
     humanApproval?: boolean                  // true when configured for modes that support HITL

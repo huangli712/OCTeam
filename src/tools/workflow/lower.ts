@@ -555,13 +555,22 @@ function expandMatrix(
     templateSteps: readonly WorkflowToolStep[],
 ): WorkflowFanoutBranch[] {
     const keys = Object.keys(matrix)
-    const combos = cartesianProduct(keys.map(k => matrix[k] ?? []))
-    if (combos.length > MAX_MATRIX_BRANCHES) {
-        throw new Error(
-            `matrix expansion produced ${combos.length} branches (limit ${MAX_MATRIX_BRANCHES});`
-            + ` reduce the cartesian product or use explicit branches`,
-        )
+    // Compute total combination count BEFORE generating the product to avoid
+    // OOM on large cartesian products (e.g. 10 keys × 10 values = 10^10).
+    let totalCount = 1
+    for (const key of keys) {
+        const len = (matrix[key] ?? []).length
+        if (len === 0) { totalCount = 0; break }
+        totalCount *= len
+        if (totalCount > MAX_MATRIX_BRANCHES) {
+            throw new Error(
+                `matrix expansion would produce >${MAX_MATRIX_BRANCHES} branches (limit ${MAX_MATRIX_BRANCHES});`
+                + ` reduce the cartesian product or use explicit branches`,
+            )
+        }
     }
+    if (totalCount === 0) return []
+    const combos = cartesianProduct(keys.map(k => matrix[k] ?? []))
     return combos.map(combo => {
         const vars: Record<string, string> = {}
         keys.forEach((key, i) => { vars[key] = combo[i] ?? "" })

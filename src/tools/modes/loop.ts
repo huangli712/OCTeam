@@ -36,7 +36,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 )
                 .min(1),
             decider: tool.schema.string().min(1).describe("member name of the decider (NOT \"master\")"),
-            max_rounds: tool.schema.number().min(1).max(50),
+            max_rounds: tool.schema.number().int().min(1).max(50),
             initial_task: tool.schema.string().min(1).max(8192),
             ...commonOrchestrationFields,
             ...humanApprovalSchemaFields,

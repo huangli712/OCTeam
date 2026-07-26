@@ -141,9 +141,9 @@ function collectEnsembleVerdicts(
         rationale: aggregated.rationale,
         diff: aggregated.diff,
         parseFailed: aggregated.parseFailed,
-        score: undefined,
-        confidence: undefined,
-        issues: undefined,
+        score: aggregated.score,
+        confidence: aggregated.confidence,
+        issues: aggregated.issues,
     };
 }
 
@@ -409,6 +409,9 @@ async function handleGateFail(
             stepIndex: gateIndex,
             detail: `workflow gate step ${gateIndex + 1} skipped after FAIL from ${verifierName}`,
         });
+        // Honor approval_after before advancing (parity with handleGatePass).
+        if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
+            return;
         await advanceWorkflowStep(ctx, team);
         return;
     }
@@ -536,6 +539,16 @@ async function handleGateRetry(
                 retryStep.timeoutAttempts = 0;
             }
         }
+        if (retryStep.kind === "join" && retryStep.join !== undefined) {
+            // Clear stale join state so re-run does not reuse old join results.
+            // Mutable runtime fields only; structural metadata (branchTailIndices,
+            // joinPolicy, etc.) is readonly and stays.
+            retryStep.join.joinedOutput = undefined;
+            retryStep.join.survivorBranchIds = undefined;
+            retryStep.join.erroredBranchIds = undefined;
+            retryStep.join.selectedBranchId = undefined;
+            retryStep.join.selectionRationale = undefined;
+        }
     }
     const producerStep = steps[producerIdx];
     if (!producerStep || producerStep.kind !== "task") {
@@ -600,7 +613,9 @@ export async function handleGateVerdict(
     if (step.verifier === undefined && step.verifiers === undefined) return;
     const verifierName = member.name;
     const response = task.responses[verifierName];
-    if (response !== undefined) step.output = response;
+    if (response !== undefined) {
+        step.output = response;
+    }
     const parsed = parseVerdict(step.output ?? "");
 
     const collected = collectEnsembleVerdicts(team, task, step, gateIndex, verifierName, parsed);

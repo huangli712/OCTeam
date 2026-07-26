@@ -359,12 +359,20 @@ export async function claimTask(
                 const blockers = await Promise.all(
                     task.blockedBy.map(id => readTaskFile(teamDirectory, id)),
                 )
-                const incomplete = blockers.find(b => b && b.status !== "completed")
+                // A blocker that is null (missing/corrupt file) must BLOCK the
+                // claim — we cannot verify it completed. A deleted blocker is
+                // treated as resolved (no longer relevant).
+                const incomplete = blockers.find(b =>
+                    b === null || (b.status !== "completed" && b.status !== "deleted"),
+                )
                 if (incomplete) {
                     await fs.unlink(lockPath).catch(() => {
                         // release our lock since we are not claiming
                     })
-                    throw new TaskBlockedByError(taskId, incomplete!.id, incomplete!.status)
+                    if (incomplete === null) {
+                        throw new TaskBlockedByError(taskId, "unknown", "missing")
+                    }
+                    throw new TaskBlockedByError(taskId, incomplete.id, incomplete.status)
                 }
             }
         // 3. Flip to "claimed" under taskUpdateLock with a TOCTOU-safe

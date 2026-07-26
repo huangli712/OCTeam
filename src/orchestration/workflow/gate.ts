@@ -291,13 +291,16 @@ export function whereReason(step: WorkflowStep, fallback: string): string {
 // --- ensemble verdict aggregation ---
 
 /** Build an ensemble aggregation result with the given verdict and rationale. */
-function ensembleResult(verdict: Verdict, rationale: string): {
+function ensembleResult(verdict: Verdict, rationale: string, score?: number, confidence?: number, issues?: WorkflowIssue[]): {
     verdict: Verdict
     parseFailed: boolean
     rationale: string
     diff: string
+    score?: number
+    confidence?: number
+    issues?: WorkflowIssue[]
 } {
-    return { verdict, parseFailed: false, rationale, diff: "" }
+    return { verdict, parseFailed: false, rationale, diff: "", score, confidence, issues }
 }
 
 /**
@@ -308,6 +311,9 @@ export function aggregateEnsembleVerdict(step: WorkflowStep): {
     parseFailed: boolean
     rationale: string
     diff: string
+    score?: number
+    confidence?: number
+    issues?: WorkflowIssue[]
 } {
     const results = Object.values(step.ensembleResults ?? {});
     const parseFailures = results.filter(r => r.parseFailed).length;
@@ -330,20 +336,37 @@ export function aggregateEnsembleVerdict(step: WorkflowStep): {
     if (total === 0) {
         return ensembleResult("INVALID", "No verifier results");
     }
+    // Aggregate score/confidence/issues so `where` conditions on ensemble
+    // gates can evaluate against meaningful values. Score and confidence use
+    // the MAX across verifiers (best-case); issues are merged (worst-case
+    // severity wins for has_issue_severity checks).
+    const scores = results.map(r => r.score).filter((s): s is number => typeof s === "number")
+    const confidences = results.map(r => r.confidence).filter((c): c is number => typeof c === "number")
+    const allIssues = results.flatMap(r => r.issues ?? [])
+    const aggScore = scores.length > 0 ? Math.max(...scores) : undefined
+    const aggConfidence = confidences.length > 0 ? Math.max(...confidences) : undefined
+    const aggIssues = allIssues.length > 0 ? allIssues : undefined
     switch (step.ensemblePolicy) {
         case "majority":
-            if (passCount > total / 2) return ensembleResult("PASS", `Majority PASS (${passCount}/${total})`);
-            if (failCount > total / 2) return ensembleResult("FAIL", `Majority FAIL (${failCount}/${total})`);
+            if (passCount > total / 2) return ensembleResult("PASS", `Majority PASS (${passCount}/${total})`, aggScore, aggConfidence, aggIssues);
+            if (failCount > total / 2) return ensembleResult("FAIL", `Majority FAIL (${failCount}/${total})`, aggScore, aggConfidence, aggIssues);
             return ensembleResult("INVALID", `No majority (${passCount}P/${failCount}F/${invalidCount}I)`);
         case "quorum": {
             const threshold = step.ensembleQuorum ?? 0.5;
-            if (passCount / total >= threshold) return ensembleResult("PASS", `Quorum PASS (${passCount}/${total} >= ${threshold})`);
-            if (failCount / total >= threshold) return ensembleResult("FAIL", `Quorum FAIL (${failCount}/${total} >= ${threshold})`);
+            const passMeets = passCount / total >= threshold;
+            const failMeets = failCount / total >= threshold;
+            // When BOTH pass and fail meet the threshold simultaneously
+            // (e.g. 1P/1F at threshold 0.5), there is no clear winner → INVALID.
+            if (passMeets && failMeets) {
+                return ensembleResult("INVALID", `Tie at quorum threshold (${passCount}P/${failCount}F/${invalidCount}I, threshold ${threshold})`);
+            }
+            if (passMeets) return ensembleResult("PASS", `Quorum PASS (${passCount}/${total} >= ${threshold})`, aggScore, aggConfidence, aggIssues);
+            if (failMeets) return ensembleResult("FAIL", `Quorum FAIL (${failCount}/${total} >= ${threshold})`, aggScore, aggConfidence, aggIssues);
             return ensembleResult("INVALID", `No quorum (${passCount}P/${failCount}F/${invalidCount}I)`);
         }
         case "unanimous":
-            if (passCount === total) return ensembleResult("PASS", `Unanimous PASS (${passCount}/${total})`);
-            if (failCount === total) return ensembleResult("FAIL", `Unanimous FAIL (${failCount}/${total})`);
+            if (passCount === total) return ensembleResult("PASS", `Unanimous PASS (${passCount}/${total})`, aggScore, aggConfidence, aggIssues);
+            if (failCount === total) return ensembleResult("FAIL", `Unanimous FAIL (${failCount}/${total})`, aggScore, aggConfidence, aggIssues);
             return ensembleResult("INVALID", `Not unanimous (${passCount}P/${failCount}F/${invalidCount}I)`);
         default:
             return ensembleResult("INVALID", `Unknown ensemble policy`);

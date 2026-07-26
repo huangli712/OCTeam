@@ -248,8 +248,8 @@ describe("summarizeTollgate", () => {
             responses: { alice: "impl output" },
         }) as Extract<ActiveTask, { type: "tollgate" }>
         const summary = summarizeTollgate(task, HEAD)
-        expect(summary).toContain("0. [PASS] alice -> verified by bob")
-        expect(summary).toContain("1. [pending] carol -> verified by bob")
+        expect(summary).toContain("1. [PASS] alice -> verified by bob")
+        expect(summary).toContain("2. [pending] carol -> verified by bob")
         expect(summary).toContain("1 retries")
         expect(summary).toContain("by alice:")
         expect(summary).toContain("impl output")

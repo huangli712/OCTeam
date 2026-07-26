@@ -37,6 +37,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                 .describe("debater member names (at least 2, unique; none may be the arbiter)"),
             max_rounds: tool.schema
                 .number()
+                .int()
                 .min(1)
                 .max(20)
                 .optional()

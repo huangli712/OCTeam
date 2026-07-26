@@ -83,7 +83,6 @@ export async function captureMemberOutput(
     if (outputs.length === 0) return false
     const full = outputs.join("\n\n")
     const captured = truncateOutput(full)
-    task.responses[member.name] = captured
     const runId = (task.runId ??= crypto.randomUUID())
 
     // Reduce-stage reducer output is a run-level artifact, not the reducer's own
@@ -104,6 +103,15 @@ export async function captureMemberOutput(
         && !member.isMaster
         && (task.signoffPolicy === "peer-quorum"
             || member.name === task.signoffDecider)
+    // For signoff/reduce turns, store the output in a side-channel so the
+    // member's work output in task.responses is preserved for the final
+    // summary. The mode handler reads from the side-channel instead.
+    if (isSignoffTurn) {
+        if (!task.signoffRawOutputs) task.signoffRawOutputs = {}
+        task.signoffRawOutputs[member.name] = captured
+    } else {
+        task.responses[member.name] = captured
+    }
     const outPath = isReduceTurn
         ? runReduceOutputPath(team.directory, runId)
         : isSignoffTurn

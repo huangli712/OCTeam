@@ -120,7 +120,12 @@ export type WorkflowBranchMetadata = {
     readonly joinIndex: number
 }
 
-/** Join marker metadata — collected branch results and survivor/error tracking. */
+/** Join marker metadata — collected branch results and survivor/error tracking.
+ * Structural fields (fanoutIndex, branchTailIndices, maxErrored, joinPolicy,
+ * quorum, requiredBranchIds, reducerMember, useSurvivors) are readonly.
+ * Runtime fields (survivorBranchIds, erroredBranchIds, selectedBranchId,
+ * selectionRationale, joinedOutput) are mutable so FAIL-retry and backward
+ * jumps can reset them. */
 export type WorkflowJoinMetadata = {
     readonly fanoutIndex: number
     readonly branchTailIndices: readonly number[]
@@ -130,11 +135,11 @@ export type WorkflowJoinMetadata = {
     readonly requiredBranchIds?: readonly string[]
     readonly reducerMember?: string
     readonly useSurvivors?: boolean
-    readonly survivorBranchIds?: readonly string[]
-    readonly erroredBranchIds?: readonly string[]
-    readonly selectedBranchId?: string
-    readonly selectionRationale?: string
-    readonly joinedOutput?: string
+    survivorBranchIds?: readonly string[]
+    erroredBranchIds?: readonly string[]
+    selectedBranchId?: string
+    selectionRationale?: string
+    joinedOutput?: string
 }
 
 // ---------------------------------------------------------------------------

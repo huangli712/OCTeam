@@ -107,7 +107,7 @@ export async function handleSignoffIdle(
         return
     }
 
-    const memberOutput = task.responses[member.name] ?? ""
+    const memberOutput = task.signoffRawOutputs?.[member.name] ?? task.responses[member.name] ?? ""
     const signoff = parseSignoff(memberOutput)
     if (!signoff) {
         logEvent(ctx, "debug", "signoff tag parse failed", {

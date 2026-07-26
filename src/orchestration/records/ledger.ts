@@ -115,7 +115,8 @@ export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): strin
                 lines.push(formatWorkflowLedgerStep(steps, step, index))
                 const fanout = step.fanout
                 if (fanout === undefined) {
-                    lines.push(`${index + 1}. [fanout] (metadata missing)`)
+                    // formatWorkflowLedgerStep already emitted the "metadata
+                    // missing" line — do not duplicate it.
                     break
                 }
                 for (let branchIndex = 0; branchIndex < fanout.branchIds.length; branchIndex += 1) {

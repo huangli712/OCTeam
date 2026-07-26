@@ -28,7 +28,7 @@ export function teamConsensusTool(ctx: PluginContext): ToolDefinition {
         args: {
             team_id: tool.schema.string().min(1),
             topic: tool.schema.string().min(1).max(4096).describe("the debate topic"),
-            max_rounds: tool.schema.number().min(1).max(20).optional().describe("round limit (default 3)"),
+            max_rounds: tool.schema.number().int().min(1).max(20).optional().describe("round limit (default 3)"),
             ...commonOrchestrationFields,
             ...humanApprovalSchemaFields,
         },

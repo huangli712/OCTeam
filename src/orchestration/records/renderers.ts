@@ -123,7 +123,7 @@ export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }
     // and FAIL-retry count. Follow with each completed gate's output.
     const stages = task.gatedStages ?? []
     const rows = stages.map((s, i) =>
-        `${i}. [${s.verdict ?? "pending"}] ${s.member} -> verified by ${s.verifier}`
+        `${i + 1}. [${s.verdict ?? "pending"}] ${s.member} -> verified by ${s.verifier}`
         + (s.attempts > 0 ? ` (${s.attempts} retries)` : ""))
     const outputs = stages
         .filter(s => s.completed)
