@@ -107,7 +107,7 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 // startOrchestration may have flipped status live→busy and
                 // committed an activeTask since the outside-mutex check at
                 // line 40. Refuse rather than mutating during an active run.
-                if (team.status !== "live") {
+                if (team.status !== "live" || team.spawning) {
                     staleState = true
                     return
                 }

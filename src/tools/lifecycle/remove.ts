@@ -55,7 +55,7 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 // startOrchestration may have flipped status live→busy since
                 // the outside-mutex check at line 32. Refuse rather than
                 // mutating during an active run.
-                if (team.status !== "live") {
+                if (team.status !== "live" || team.spawning) {
                     staleState = true
                     return
                 }

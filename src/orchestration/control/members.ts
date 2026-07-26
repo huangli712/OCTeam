@@ -6,7 +6,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { logSwallowed } from "../../core/log.js"
+import { logger, logSwallowed } from "../../core/log.js"
 import { safeMemberAgent } from "../../core/role.js"
 import type { MemberSpec, MemberState } from "../../core/types.js"
 import { chunk, waitUntil } from "../../core/utils.js"
@@ -37,16 +37,47 @@ async function waitForRoleSetupBarrier(
             ),
         { timeoutMs: ROLE_SETUP_BARRIER_TIMEOUT_MS },
     ).catch(async () => {
-        // Timeout state is persisted under the mutex before aborting startup.
-        await team.mutex.runExclusive(async () => {
-            for (const name of waitNames) {
-                const current = team.members.find((member) => member.name === name)
-                if (current && !current.initialized) {
-                    current.status = "errored"
-                    current.error = "role-setup barrier timed out"
+        // Synchronous cleanup: delete sessions and destroy worktrees for
+        // members that were spawned but did not initialize. This MUST happen
+        // here (inside the failure path), not deferred to sweep — sweep only
+        // runs for teams with activeTask, which is not yet set at this point.
+        for (const name of waitNames) {
+            const current = team.members.find(member => member.name === name)
+            if (current && !current.initialized && current.sessionId) {
+                const sid = current.sessionId
+                const dir = current.worktreePath ?? ctx.directory
+                try {
+                    await ctx.client.session.delete({
+                        path: { id: sid },
+                        query: { directory: dir },
+                    })
+                } catch (err) {
+                    logSwallowed(ctx, "barrier timeout: session.delete failed", err, {
+                        team: team.teamName, member: name, sessionId: sid,
+                    })
+                }
+                unindexSession(sid)
+                current.sessionId = undefined
+                if (current.worktreePath) {
+                    await destroyWorktree(
+                        ctx.directory, current.worktreePath,
+                        worktreesDir(team.directory), team.teamName, name,
+                    ).catch(err =>
+                        logSwallowed(ctx, "barrier timeout: destroyWorktree failed", err, {
+                            team: team.teamName, member: name,
+                        }),
+                    )
+                    current.worktreePath = undefined
                 }
             }
-            await saveTeamState(team).catch((err) =>
+            if (current && !current.initialized) {
+                current.status = "errored"
+                current.error = "role-setup barrier timed out"
+            }
+        }
+        // Timeout state is persisted under the mutex before aborting startup.
+        await team.mutex.runExclusive(async () => {
+            await saveTeamState(team).catch(err =>
                 logSwallowed(
                     ctx,
                     "persist failed before barrier-timeout abort",
@@ -150,17 +181,27 @@ async function spawnMemberSafely(
         // Roll back every side effect before exposing the spawn error.
         if (member.sessionId) {
             const sessionId = member.sessionId
-            await ctx.client.session.delete({
-                path: { id: sessionId },
-                query: { directory: member.worktreePath ?? ctx.directory },
-            }).catch((deleteError) =>
-                logSwallowed(
-                    ctx,
-                    "spawn rollback failed to delete session",
-                    deleteError,
-                    { team: team.teamName, member: member.name, sessionId },
-                ),
-            )
+            const dir = member.worktreePath ?? ctx.directory
+            // Retry session.delete once after a short delay to handle transient
+            // network errors. If it still fails, log at error level so operators
+            // notice the orphaned host session.
+            let deleted = false
+            try {
+                await ctx.client.session.delete({ path: { id: sessionId }, query: { directory: dir } })
+                deleted = true
+            } catch {
+                await new Promise(r => setTimeout(r, 500))
+                try {
+                    await ctx.client.session.delete({ path: { id: sessionId }, query: { directory: dir } })
+                    deleted = true
+                } catch (secondErr) {
+                    logger.error("spawn rollback: session.delete failed after retry; host session is orphaned", {
+                        team: team.teamName, member: member.name, sessionId,
+                        error: secondErr instanceof Error ? secondErr.message : String(secondErr),
+                    })
+                }
+            }
+            void deleted  // acknowledged; cleanup continues regardless
             unindexSession(sessionId)
             member.sessionId = undefined
         }

@@ -46,8 +46,9 @@ export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status to "busy" since
                 // the outside-mutex check at line 38. Refuse rather than
-                // deactivating during an active run.
-                if (team.status === "busy" || team.activeTask !== undefined) {
+                // deactivating during an active run. Also refuse during
+                // spawning (Phase 2 member sessions are being created).
+                if (team.status === "busy" || team.activeTask !== undefined || team.spawning) {
                     result = `Error: team "${args.team_id}" is busy with an active orchestration. `
                         + `Wait for it to finish before deactivating.`
                     return

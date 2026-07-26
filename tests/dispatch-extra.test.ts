@@ -409,7 +409,8 @@ describe("ensureMembersReady", () => {
         }
 
         expect(thrown).toBe(promptError)
-        expect(deleteSession).toHaveBeenCalledTimes(1)
+        // session.delete is retried once on failure (transient error mitigation)
+        expect(deleteSession).toHaveBeenCalledTimes(2)
         expect(deleteSession).toHaveBeenCalledWith({
             path: { id: spawnedSid },
             query: { directory: "/project" },
