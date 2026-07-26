@@ -15,7 +15,7 @@
  */
 
 import { existsSync } from "node:fs"
-import { unlink, writeFile } from "node:fs/promises"
+import { unlink } from "node:fs/promises"
 import path from "node:path"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
@@ -23,6 +23,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import { isIndexedMember } from "../../state/resolve.js"
+import { atomicWrite } from "../../state/locks.js"
 import { validateMemberAgent, validateMemberName } from "../support.js"
 import { validateWorkflowSteps } from "../../orchestration/workflow/loader.js"
 import { validateWorkflowStepsAgainstMembers } from "./validate.js"
@@ -79,6 +80,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** Promise-based delay helper. */
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/** Read a file as string, returning null on any error (for backup snapshots). */
+async function readFileWithFallback(filePath: string): Promise<string | null> {
+    try {
+        const { readFile } = await import("node:fs/promises")
+        return await readFile(filePath, "utf8")
+    } catch {
+        return null
+    }
 }
 
 /**
@@ -538,12 +549,30 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
             + ` or ${workflowFileName(args.team_id)} already exists; pass overwrite: true to replace both.`
         )
     }
-    await writeFile(teamPath, `${JSON.stringify(team, null, 4)}\n`)
+    // Back up existing files so rollback can restore them (overwrite:true case).
+    // Without this, a failed second write + unlink leaves NO file at all.
+    let teamBackup: string | null = null
+    if (args.overwrite === true) {
+        if (existsSync(teamPath)) teamBackup = await readFileWithFallback(teamPath)
+    }
+    // Use atomicWrite for symlink-safety (refuses to write through symlinks)
+    // and crash-safety (tmp + rename, fsync'd).
+    await atomicWrite(teamPath, `${JSON.stringify(team, null, 4)}\n`)
     try {
-        await writeFile(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`)
+        await atomicWrite(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`)
     } catch (err) {
-        // Rollback: remove the team loader so we don't leave a half-written pair.
-        await unlink(teamPath).catch(() => { /* best-effort rollback */ })
+        // Rollback: restore the ORIGINAL content (or delete if none existed).
+        // This is critical for overwrite:true — without it, the old loader
+        // data is permanently lost.
+        try {
+            if (teamBackup !== null) {
+                await atomicWrite(teamPath, teamBackup)
+            } else {
+                await unlink(teamPath).catch(() => { /* best-effort */ })
+            }
+        } catch (rollbackErr) {
+            logSwallowed(ctx, "planner: rollback failed after workflow write failure", rollbackErr, { teamId: args.team_id })
+        }
         throw err
     }
     return (

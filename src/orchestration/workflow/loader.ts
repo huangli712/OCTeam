@@ -342,9 +342,18 @@ export async function loadWorkflowFile(
     const resolved = await resolveWorkflowFilePath(baseDir, relPath)
     if ("error" in resolved) return resolved
 
+    // Re-verify realpath immediately before reading. resolveWorkflowFilePath
+    // checks realpath, but the gap between that check and this read is a
+    // TOCTOU window where a symlink could be installed.
+    const real = await fs.realpath(resolved.filePath).catch(() => resolved.filePath)
+    const base = normalizeBase(baseDir)
+    if (!isInside(base, real)) {
+        return { error: "Error: workflow_file must not be a symlink outside the workspace" }
+    }
+
     let raw: string
     try {
-        raw = await fs.readFile(resolved.filePath, "utf8")
+        raw = await fs.readFile(real, "utf8")
     } catch {
         return { error: `Error: workflow_file "${relPath}" could not be read` }
     }
