@@ -16,6 +16,16 @@ import { assertNoSymlinkTraversal } from "../../state/locks.js"
 // silently mis-parsing fields (e.g. a renamed key, a removed shape).
 const SUPPORTED_WORKFLOW_FILE_VERSIONS = new Set([1])
 
+// C-7 resource caps. Workflow files are caller-supplied JSON (read from the
+// project workspace, which member agents can write to). Without caps a
+// hostile or buggy file can exhaust memory (giant file, giant branch array)
+// or stack (deeply nested fanout). These limits are generous enough for any
+// realistic workflow and tight enough to fail fast on abuse.
+const WORKFLOW_FILE_MAX_BYTES = 1024 * 1024 // 1 MiB raw file
+const WORKFLOW_MAX_TOTAL_STEPS = 256 // across linear + nested fanouts
+const WORKFLOW_MAX_FANOUT_DEPTH = 8 // nested fanout levels
+const WORKFLOW_MAX_BRANCHES_PER_FANOUT = 64 // raw branch array (matrix/foreach expansion is capped separately in lower.ts)
+
 /** Result of loading a workflow_file: parsed steps or an error message. */
 type WorkflowFileResult =
     | { steps: WorkflowToolStep[] }
@@ -96,16 +106,30 @@ function applyTemplateVars(value: unknown, vars: Record<string, string>, strict:
     return value
 }
 
-/** Validate an array of workflow step objects. */
-function validateWorkflowStepArray(
-    value: unknown, location: StepLocation,
+/** Internal accumulator for resource-limit tracking across the recursion. */
+type ValidationBudget = {
+    totalSteps: number // running count of validated steps (linear + nested)
+    depth: number      // current fanout-nesting depth (0 at top level)
+}
+
+/** Recursive worker that enforces total-step and depth caps. */
+function validateWorkflowStepArrayInternal(
+    value: unknown,
+    location: StepLocation,
+    budget: ValidationBudget,
 ): { steps: WorkflowToolStep[] } | { error: string } {
     if (!Array.isArray(value)) {
         return { error: `Error: workflow_file "${location.filePath}" must contain a workflow steps array` }
     }
     const steps: WorkflowToolStep[] = []
     for (let index = 0; index < value.length; index += 1) {
-        const step = validateWorkflowStep(value[index], { ...location, prefix: `${location.prefix} ${index + 1}` })
+        budget.totalSteps += 1
+        if (budget.totalSteps > WORKFLOW_MAX_TOTAL_STEPS) {
+            return {
+                error: `Error: workflow_file "${location.filePath}" exceeds the maximum of ${WORKFLOW_MAX_TOTAL_STEPS} total steps`,
+            }
+        }
+        const step = validateWorkflowStep(value[index], { ...location, prefix: `${location.prefix} ${index + 1}` }, budget)
         if ("error" in step) return step
         steps.push(step.step)
     }
@@ -132,11 +156,11 @@ export function validateWorkflowSteps(
 export function validateWorkflowSteps(
     value: unknown, sourcePath = "<workflow>",
 ): { steps: WorkflowToolStep[] } | { error: string } {
-    return validateWorkflowStepArray(value, { filePath: sourcePath, prefix: "step" })
+    return validateWorkflowStepArrayInternal(value, { filePath: sourcePath, prefix: "step" }, { totalSteps: 0, depth: 0 })
 }
 
 /** Validate a single workflow step, recursing into fanout branches. */
-function validateWorkflowStep(value: unknown, location: StepLocation): { step: WorkflowToolStep } | { error: string } {
+function validateWorkflowStep(value: unknown, location: StepLocation, budget: ValidationBudget): { step: WorkflowToolStep } | { error: string } {
     if (!isRecord(value)) {
         return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} must be an object` }
     }
@@ -156,7 +180,7 @@ function validateWorkflowStep(value: unknown, location: StepLocation): { step: W
         case "join":
             return { step: value as WorkflowToolStep }
         case "fanout": {
-            const branches = validateWorkflowBranches(value.branches, location)
+            const branches = validateWorkflowBranches(value.branches, location, budget)
             if ("error" in branches) return branches
             return { step: { ...value, branches: branches.branches } as WorkflowToolStep }
         }
@@ -165,12 +189,27 @@ function validateWorkflowStep(value: unknown, location: StepLocation): { step: W
 
 /** Validate the branches array of a fanout step. */
 function validateWorkflowBranches(
-    value: unknown, location: StepLocation,
+    value: unknown,
+    location: StepLocation,
+    budget: ValidationBudget,
 ): { branches: NonNullable<WorkflowFanoutToolStep["branches"]> } | { error: string } {
     if (!Array.isArray(value)) {
         return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} branches must be an array` }
     }
+    if (value.length > WORKFLOW_MAX_BRANCHES_PER_FANOUT) {
+        return {
+            error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                + ` has ${value.length} branches; limit is ${WORKFLOW_MAX_BRANCHES_PER_FANOUT}`,
+        }
+    }
+    if (budget.depth >= WORKFLOW_MAX_FANOUT_DEPTH) {
+        return {
+            error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                + ` exceeds the maximum fanout nesting depth of ${WORKFLOW_MAX_FANOUT_DEPTH}`,
+        }
+    }
     const branches: Array<{ id: string; steps: WorkflowToolStep[] }> = []
+    const childBudget: ValidationBudget = { totalSteps: budget.totalSteps, depth: budget.depth + 1 }
     for (let index = 0; index < value.length; index += 1) {
         const branch = value[index]
         if (!isRecord(branch)) {
@@ -187,13 +226,15 @@ function validateWorkflowBranches(
             }
         }
         const branchId = idValue
-        const steps = validateWorkflowStepArray(branch.steps, {
+        const steps = validateWorkflowStepArrayInternal(branch.steps, {
             filePath: location.filePath,
             prefix: `${location.prefix} branch "${branchId}" step`,
-        })
+        }, childBudget)
         if ("error" in steps) return steps
         branches.push({ id: branchId, steps: steps.steps })
     }
+    // Propagate the running totals back up so siblings see them.
+    budget.totalSteps = childBudget.totalSteps
     return { branches }
 }
 
@@ -367,6 +408,15 @@ export async function loadWorkflowFile(
 
     let raw: string
     try {
+        // C-7: stat before read so a hostile workflow_file does not get slurped
+        // into memory in full. The cap is generous for real workflows but
+        // blocks OOM-by-giant-file attacks.
+        const fileStat = await fs.stat(resolved.filePath)
+        if (fileStat.size > WORKFLOW_FILE_MAX_BYTES) {
+            return {
+                error: `Error: workflow_file "${relPath}" is too large: ${fileStat.size} bytes exceeds the ${WORKFLOW_FILE_MAX_BYTES}-byte limit`,
+            }
+        }
         raw = await fs.readFile(real, "utf8")
     } catch {
         return { error: `Error: workflow_file "${relPath}" could not be read` }

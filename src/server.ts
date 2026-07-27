@@ -6,7 +6,7 @@
 
 import type { Hooks, PluginInput, PluginModule } from "@opencode-ai/plugin"
 
-import { createPluginContext } from "./core/context.js"
+import { createPluginContext, warnIfProjectScopeLacksIsolation } from "./core/context.js"
 import type { PluginContext } from "./core/context.js"
 import { createTools } from "./tools/index.js"
 import {
@@ -37,6 +37,10 @@ const server = async (input: PluginInput): Promise<Hooks> => {
     // Initialize the global logger sink so bottom-layer modules (state/,
     // messaging/) can emit structured logs without a ctx parameter.
     initLogger(ctx)
+
+    // C-11: surface the control-state isolation threat model when project
+    // scope is active. One-time startup warning; user scope is a no-op.
+    warnIfProjectScopeLacksIsolation(ctx, ctx.scope, ctx.projectStorageRoot)
 
     // Crash recovery: rebuild the sessionID -> member index from on-disk state
     // so idles/transforms resolve correctly after a plugin/OpenCode restart.

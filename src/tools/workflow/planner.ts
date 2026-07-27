@@ -82,13 +82,19 @@ function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-/** Read a file as string, returning null on any error (for backup snapshots). */
-async function readFileWithFallback(filePath: string): Promise<string | null> {
+/** Read a file as string for backup. Returns null ONLY on ENOENT (file does
+ * not exist). Any other error (EACCES, EIO, corruption, ...) is THROWN so
+ * the caller knows the file exists but could not be backed up and can abort
+ * before overwriting. The previous implementation returned null for both
+ * cases, causing the rollback path to unlink an existing-but-unreadable file
+ * — permanent data loss. */
+async function readFileForBackup(filePath: string): Promise<string | null> {
+    const { readFile } = await import("node:fs/promises")
     try {
-        const { readFile } = await import("node:fs/promises")
         return await readFile(filePath, "utf8")
-    } catch {
-        return null
+    } catch (err: unknown) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
+        throw err
     }
 }
 
@@ -550,10 +556,23 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
         )
     }
     // Back up existing files so rollback can restore them (overwrite:true case).
-    // Without this, a failed second write + unlink leaves NO file at all.
+    // C-9: back up BOTH team and workflow files so a failure of the second
+    // write can restore BOTH originals. Backup failures (file exists but
+    // unreadable) MUST abort before overwriting — the previous code returned
+    // null for both "missing" and "unreadable", causing the rollback path to
+    // unlink an existing-but-unreadable file (permanent data loss).
     let teamBackup: string | null = null
+    let workflowBackup: string | null = null
     if (args.overwrite === true) {
-        if (existsSync(teamPath)) teamBackup = await readFileWithFallback(teamPath)
+        try {
+            teamBackup = await readFileForBackup(teamPath)
+            workflowBackup = await readFileForBackup(workflowPath)
+        } catch (err) {
+            // A file exists but could not be read for backup. Abort BEFORE
+            // writing so the original content is not destroyed.
+            logSwallowed(ctx, "planner: backup read failed; aborting write to preserve originals", err, { teamId: args.team_id })
+            return `Error: cannot back up existing loader(s) for overwrite (file unreadable). Aborting before write to preserve original content. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+        }
     }
     // Use atomicWrite for symlink-safety (refuses to write through symlinks,
     // walks ancestor chain from ctx.directory when trustedRoot is supplied)
@@ -570,6 +589,11 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
                 await atomicWrite(teamPath, teamBackup, ctx.directory)
             } else {
                 await unlink(teamPath).catch(() => { /* best-effort */ })
+            }
+            if (workflowBackup !== null) {
+                await atomicWrite(workflowPath, workflowBackup, ctx.directory)
+            } else {
+                await unlink(workflowPath).catch(() => { /* best-effort */ })
             }
         } catch (rollbackErr) {
             logSwallowed(ctx, "planner: rollback failed after workflow write failure", rollbackErr, { teamId: args.team_id })

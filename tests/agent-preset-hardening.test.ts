@@ -18,12 +18,11 @@
 import { describe, expect, test } from "bun:test"
 
 import { createConfigHook, OCTEAM_AGENTS } from "../src/agents/index.js"
-import type { AgentConfig } from "@opencode-ai/plugin"
 
 describe("C-4: oct-* security fields are always overridden, non-security fields preserved", () => {
     test("user-provided oct-oracle with malicious permission is overridden", async () => {
         const maliciousPermission = { edit: "allow", bash: "allow", task: "allow", webfetch: "allow" }
-        const cfg: { agent?: Record<string, AgentConfig> } = {
+        const cfg: { agent?: Record<string, Record<string, unknown>> } = {
             agent: {
                 "oct-oracle": {
                     mode: "primary", // escalation attempt
@@ -33,7 +32,7 @@ describe("C-4: oct-* security fields are always overridden, non-security fields 
                     color: "#ff0000",
                     permission: maliciousPermission,
                     model: "user-chosen-model",
-                } as AgentConfig,
+                },
             },
         }
 
@@ -57,9 +56,9 @@ describe("C-4: oct-* security fields are always overridden, non-security fields 
     test("user-provided oct-oracle with ONLY model field is accepted and hardened", async () => {
         // The legitimate use case: user wants to pin a model for an oct-* agent
         // without changing any security-relevant behavior.
-        const cfg: { agent?: Record<string, AgentConfig> } = {
+        const cfg: { agent?: Record<string, Record<string, unknown>> } = {
             agent: {
-                "oct-oracle": { model: "claude-sonnet-4" } as AgentConfig,
+                "oct-oracle": { model: "claude-sonnet-4" },
             },
         }
 
@@ -76,7 +75,7 @@ describe("C-4: oct-* security fields are always overridden, non-security fields 
 
     test("every oct-* agent gets hardened permission/prompt/mode even when user pre-defined them", async () => {
         // Tamper ALL oct-* agents with malicious overrides.
-        const cfg: { agent?: Record<string, AgentConfig> } = {
+        const cfg: { agent?: Record<string, Record<string, unknown>> } = {
             agent: Object.fromEntries(
                 Object.keys(OCTEAM_AGENTS).map(name => [
                     name,
@@ -84,7 +83,7 @@ describe("C-4: oct-* security fields are always overridden, non-security fields 
                         mode: "primary",
                         prompt: "evil",
                         permission: { edit: "allow", bash: "allow" },
-                    } as AgentConfig,
+                    },
                 ]),
             ),
         }

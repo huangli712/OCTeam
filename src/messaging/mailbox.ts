@@ -34,7 +34,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 import { isEnoent } from "../core/utils.js"
-import { RESERVATION_TTL_MS, atomicWrite, withLock } from "../state/locks.js"
+import { assertNoSymlinkTraversal, RESERVATION_TTL_MS, atomicWrite, withLock } from "../state/locks.js"
 import {
     inboxPath,
     mailboxLockPath,
@@ -45,6 +45,7 @@ import {
 import type { Message } from "../core/types.js"
 import { authenticateDirective, consumeDirectiveAuth } from "./auth.js"
 import { appendJsonl, readJsonl, truncateFile } from "./jsonl.js"
+import { logger } from "../core/log.js"
 
 // Max lines retained in mailbox/{recipient}.processed.jsonl (audit log). The
 // log is append-only by nature; without a cap it grows unbounded across a
@@ -263,6 +264,21 @@ export async function releaseStaleReservations(
         }
         for (const f of files) {
             const p = path.join(dir, f)
+            // C-6: refuse to follow a symlinked entry inside reserved/. A
+            // hostile .octeam/ writer can drop a symlink here to make the
+            // reaper read/stat/unlink an arbitrary file outside the team
+            // root. Skip and log; do NOT process the entry. (The reserved/
+            // directory is an internal protocol artifact — only
+            // pollMailbox/ackMessages write to it, never with symlinks.)
+            try {
+                await assertNoSymlinkTraversal(teamDirectory, p)
+            } catch (err) {
+                logger.warn("releaseStaleReservations: skipping symlinked reserved entry", {
+                    recipient, entry: f,
+                    error: err instanceof Error ? err.message : String(err),
+                })
+                continue
+            }
             let reservedAt: number | undefined
             let parsed: Message & { reservedAt?: number } | undefined
             try {
@@ -289,28 +305,45 @@ export async function releaseStaleReservations(
                     })
                     continue
                 }
-                // Unlink BEFORE requeuing. If the unlink fails (any errno,
-                // including non-ENOENT like EPERM/EBUSY), skip the requeue and
-                // leave the file for the next sweep — otherwise the same
-                // reservation would be re-requeued on every sweep → infinite
-                // duplicate requeues. ENOENT means another sweep already
-                // removed it, so the requeue is still safe.
-                let unlinked = true
+                // Requeue: APPEND to inbox FIRST, then unlink the reserved file.
+                // The order matters for crash safety — if append fails (ENOSPC,
+                // EACCES, EROFS, or process crash mid-operation), the reserved
+                // file is still there for the next sweep to retry. Pre-fix code
+                // did unlink-then-append, which on append failure permanently
+                // lost the only copy of the message. The duplicate risk from
+                // append-then-unlink (requeue succeeds but unlink fails → next
+                // sweep re-appends) is bounded by pollMailbox's read-reserve-
+                // truncate exactly-once protocol and by the processedIds dedup.
+                try {
+                    await appendJsonl(inboxPath(teamDirectory, recipient), {
+                        ...parsed,
+                        deliveryStatus: "pending",
+                    }, teamDirectory)
+                } catch (err) {
+                    // Append failed — leave the reserved file in place for
+                    // the next sweep. Skip the unlink so the message survives.
+                    logger.warn("releaseStaleReservations: requeue append failed; preserving reserved file", {
+                        recipient, entry: parsed.id,
+                        error: err instanceof Error ? err.message : String(err),
+                    })
+                    continue
+                }
+                // Append succeeded — safe to remove the reserved copy. A
+                // failure here is best-effort: the message is already in the
+                // inbox and will be re-delivered; the orphaned reserved file
+                // is a benign duplicate that this same sweep will catch next
+                // tick (the requeue above is idempotent against pollMailbox's
+                // exactly-once protocol).
                 try {
                     await fs.unlink(p)
                 } catch (err: unknown) {
-                    if (isEnoent(err)) {
-                        // already gone — safe to requeue (no duplicate risk)
-                    } else {
-                        // unlink failed — do NOT requeue; retry next sweep
-                        unlinked = false
+                    if (!isEnoent(err)) {
+                        logger.debug("releaseStaleReservations: reserved unlink failed after requeue (orphan; benign)", {
+                            recipient, entry: parsed.id,
+                            error: err instanceof Error ? err.message : String(err),
+                        })
                     }
                 }
-                if (!unlinked) continue
-                await appendJsonl(inboxPath(teamDirectory, recipient), {
-                    ...parsed,
-                    deliveryStatus: "pending",
-                }, teamDirectory)
             }
         }
     })

@@ -51,24 +51,69 @@ export function shouldRetryTask(step: WorkflowTaskStep, output: string): boolean
         case "output_not_contains":
             return !output.includes(step.retryOn.pattern);
         case "regex":
-            try {
-                // Cap output length before testing to mitigate catastrophic
-                // backtracking on very large strings. A retry_on regex is meant
-                // to match meaningful content patterns, not scan megabytes.
-                const cappedOutput = output.length > 100_000 ? output.slice(0, 100_000) : output;
-                return new RegExp(step.retryOn.pattern).test(cappedOutput);
-            } catch (err) {
-                // An invalid regex pattern is a config error, not an output
-                // property. Log so operators notice; fall back to no-retry so
-                // a malformed pattern does not loop the step forever.
-                logger.warn("shouldRetryTask: invalid regex pattern, treating as no-retry", {
-                    pattern: step.retryOn.pattern,
-                    error: err instanceof Error ? err.message : String(err),
-                });
-                return false;
-            }
+            return testRegexSafely(step.retryOn.pattern, output);
         default:
             return false;
+    }
+}
+
+/** Max input size passed to a retry_on regex. Reduced from 100KB to 10KB to
+ * limit the worst-case wall time of a polynomial-time backtracking pattern
+ * that slips through the nested-quantifier heuristic below. 10KB is still
+ * far more than any legitimate output-content check needs. */
+const REDOS_INPUT_CAP = 10_000
+
+/** Max regex pattern length. A pattern longer than this is almost certainly
+ * either a mistake or an attempt to overflow the regex compiler. */
+const REDOS_PATTERN_MAX_LEN = 256
+
+/**
+ * Detect nested quantifiers — the canonical ReDoS signature. Patterns like
+ * `(a+)+`, `(.+)*`, `([a-z]+){2,}` have exponential or polynomial backtracking
+ * on adversarial input. The heuristic checks for a quantifier (`*`, `+`,
+ * `?`, `{n,m}`) immediately following a group that itself ends with a
+ * quantifier. False positives are possible but rare for legitimate patterns.
+ */
+function hasNestedQuantifier(pattern: string): boolean {
+    // Strip escaped metacharacters so they do not confuse the heuristic.
+    // (e.g. `\+` is a literal +, not a quantifier.)
+    const stripped = pattern.replace(/\\[+*?{}()[\].\\]/g, "")
+    // A group ending with a quantifier, followed by another quantifier.
+    // Matches: (a+)+, (.+)*, ([a-z]+)?, (a{2,3})+, (a+){2}, etc.
+    if (/\([^)]*[+*?}]\)[+*?{]/.test(stripped)) return true
+    return false
+}
+
+/**
+ * Test a retry_on regex pattern against an output string, with ReDoS guards:
+ *   1. Reject patterns longer than REDOS_PATTERN_MAX_LEN.
+ *   2. Reject patterns with nested quantifiers (the canonical ReDoS signature).
+ *   3. Cap input at REDOS_INPUT_CAP (10KB) to bound worst-case wall time for
+ *      polynomial-time patterns that slip through the heuristic.
+ * Returns false (no-retry) on rejection, logging the reason so operators notice.
+ */
+function testRegexSafely(pattern: string, output: string): boolean {
+    if (pattern.length > REDOS_PATTERN_MAX_LEN) {
+        logger.warn("shouldRetryTask: regex pattern exceeds length cap, treating as no-retry", {
+            patternLength: pattern.length, cap: REDOS_PATTERN_MAX_LEN,
+        })
+        return false
+    }
+    if (hasNestedQuantifier(pattern)) {
+        logger.warn("shouldRetryTask: regex pattern contains nested quantifiers (ReDoS risk), treating as no-retry", {
+            pattern,
+        })
+        return false
+    }
+    try {
+        const cappedOutput = output.length > REDOS_INPUT_CAP ? output.slice(0, REDOS_INPUT_CAP) : output
+        return new RegExp(pattern).test(cappedOutput)
+    } catch (err) {
+        logger.warn("shouldRetryTask: invalid regex pattern, treating as no-retry", {
+            pattern,
+            error: err instanceof Error ? err.message : String(err),
+        })
+        return false
     }
 }
 

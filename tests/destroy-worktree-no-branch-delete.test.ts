@@ -20,7 +20,7 @@
 import { afterAll, describe, expect, test } from "bun:test"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
-import { rm, mkdir } from "node:fs/promises"
+import { mkdir } from "node:fs/promises"
 import path from "node:path"
 
 import { destroyWorktree } from "../src/state/worktrees.js"
