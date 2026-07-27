@@ -192,7 +192,7 @@ describe("workflow runtime invariants", () => {
 
         // Then
         expect(violations).toContain("step 1: verifier matches target 0 member")
-        expect(violations).toContain("step 2: target 1 is not a previous task step")
+        expect(violations).toContain("step 2: target 1 is not a previous task or join step")
     })
 
     test("rejects branch metadata that disagrees with its fanout range", () => {

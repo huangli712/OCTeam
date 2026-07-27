@@ -299,12 +299,57 @@ export function lowerLinearStep(
     return branch === undefined || branchContext === undefined ? lowered : { ...lowered, branch, branchContext }
 }
 
-/** Lower a full public WorkflowToolStep array into the flat LoweredWorkflowStep array. */
-export function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly LoweredWorkflowStep[] {
-    const loweredSteps: LoweredWorkflowStep[] = []
+/** Compute the flat lowered index for every public step index.
+ * Phase 1 of two-phase lowering: builds the complete publicToFlat mapping
+ * BEFORE any refs are converted, so forward references (e.g. a gate's
+ * on_pass_goto pointing past a fanout) resolve correctly. */
+function computePublicToFlat(steps: readonly WorkflowToolStep[]): number[] {
     const publicToFlat: number[] = []
+    let flatIndex = 0
+    for (let publicIndex = 0; publicIndex < steps.length; publicIndex++) {
+        const step = steps[publicIndex]
+        if (step === undefined) continue
+        switch (step.kind) {
+            case "task":
+            case "gate":
+                if (!isLinearToolStep(step)) break
+                publicToFlat[publicIndex] = flatIndex
+                flatIndex += 1
+                break
+            case "join":
+                publicToFlat[publicIndex] = flatIndex
+                flatIndex += 1
+                break
+            case "fanout": {
+                const branches = step.branches ?? []
+                const totalBranchSteps = branches.reduce((sum, branch) => sum + branch.steps.length, 0)
+                publicToFlat[publicIndex] = flatIndex              // fanout marker
+                flatIndex += 1
+                flatIndex += totalBranchSteps                       // branch steps
+                publicToFlat[publicIndex + 1] = flatIndex            // join marker
+                flatIndex += 1
+                publicIndex += 1  // skip the companion join step (already mapped above)
+                break
+            }
+            default:
+                assertNever(step)
+        }
+    }
+    return publicToFlat
+}
 
-    for (let publicIndex = 0; publicIndex < steps.length; publicIndex += 1) {
+/** Lower a full public WorkflowToolStep array into the flat LoweredWorkflowStep array.
+ * Two-phase: first build the complete publicToFlat index map (so forward
+ * references resolve), then lower each step using the complete map. */
+export function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly LoweredWorkflowStep[] {
+    // Phase 1: compute the complete public→flat index mapping.
+    const publicToFlat = computePublicToFlat(steps)
+
+    // Phase 2: lower each step using the complete mapping so that forward
+    // references (e.g. a gate's goto pointing past a fanout) resolve correctly.
+    const loweredSteps: LoweredWorkflowStep[] = []
+
+    for (let publicIndex = 0; publicIndex < steps.length; publicIndex++) {
         const step = steps[publicIndex]
         if (step === undefined) continue
 
@@ -312,14 +357,12 @@ export function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly
             case "task":
             case "gate":
                 if (!isLinearToolStep(step)) break
-                publicToFlat[publicIndex] = loweredSteps.length
                 loweredSteps.push(lowerLinearStep(
                     step, ref => convertTopLevelRef(ref, publicToFlat),
                     undefined, undefined,
                 ))
                 break
             case "join":
-                publicToFlat[publicIndex] = loweredSteps.length
                 loweredSteps.push({
                     kind: "join", id: step.id,
                     join: { fanoutIndex: -1, branchTailIndices: [], maxErrored: 0 },
@@ -342,8 +385,6 @@ export function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly
                 })
                 const branchIds = branches.map(branch => branch.id)
                 const maxErrored = step.max_errored ?? 0
-                publicToFlat[publicIndex] = fanoutIndex
-                if (joinStep !== undefined) publicToFlat[publicIndex + 1] = joinIndex
                 loweredSteps.push({
                     kind: "fanout",
                     id: step.id,
@@ -359,11 +400,11 @@ export function lowerWorkflowSteps(steps: readonly WorkflowToolStep[]): readonly
                         ...(step.use_survivors === true ? { useSurvivors: true } : {}),
                     },
                 })
-                for (let branchIndex = 0; branchIndex < branches.length; branchIndex += 1) {
+                for (let branchIndex = 0; branchIndex < branches.length; branchIndex++) {
                     const branch = branches[branchIndex]
                     const range = branchRanges[branchIndex]
                     if (branch === undefined || range === undefined) continue
-                    for (let branchStepIndex = 0; branchStepIndex < branch.steps.length; branchStepIndex += 1) {
+                    for (let branchStepIndex = 0; branchStepIndex < branch.steps.length; branchStepIndex++) {
                         const branchStep = branch.steps[branchStepIndex]
                         if (branchStep === undefined) continue
                         switch (branchStep.kind) {

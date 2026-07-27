@@ -127,10 +127,15 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
 
     for (const targetIndex of targetIndices) {
         const target = context.steps[targetIndex]
-        if (targetIndex >= index || target?.kind !== "task") {
-            context.violations.push(`step ${index}: target ${targetIndex} is not a previous task step`)
+        // gate→join is legal: a join carries joinedOutput and can be verified
+        // (matches gate.ts:183 and validate.ts:638). Only task and join are
+        // valid gate targets; fanout is a pure structural marker.
+        if (targetIndex >= index || (target?.kind !== "task" && target?.kind !== "join")) {
+            context.violations.push(`step ${index}: target ${targetIndex} is not a previous task or join step`)
             continue
         }
+        // join has no member, so the self-verification check does not apply.
+        if (target?.kind === "join") continue
         if (step.verifier !== undefined && target.member !== undefined && step.verifier === target.member) {
             context.violations.push(`step ${index}: verifier matches target ${targetIndex} member`)
         }
