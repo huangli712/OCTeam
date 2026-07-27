@@ -94,6 +94,13 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                     if (args.mode === "cooperative" && !args.tasks) {
                         return "Error: cooperative mode requires `tasks`"
                     }
+                    // M-14: reject an empty tasks object — it has no member
+                    // assignments, so every member would get the default
+                    // "No task assigned" placeholder. Pre-fix code only checked
+                    // for !args.tasks (truthy), so {} passed.
+                    if (args.mode === "cooperative" && args.tasks && Object.keys(args.tasks).length === 0) {
+                        return "Error: cooperative mode `tasks` must contain at least one member assignment"
+                    }
                     // Every key in the cooperative `tasks` map must
                     // name a real non-master member. An unknown key is a typo
                     // whose task would never be dispatched, so reject it

@@ -73,6 +73,12 @@ export function formatWorkflowLedgerStep(steps: readonly WorkflowStep[], step: W
             return `${index + 1}. [task]${idTag} ${step.member || "?"}${state}`
         }
         case "gate": {
+            // M-19: show skipped gates as "(skipped)" not "pending". Pre-fix
+            // code rendered step.verdict ?? "pending", so a forward-jumped
+            // gate that was marked skipped still showed as pending.
+            if (step.skipped === true) {
+                return `${index + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${workflowTargetLabel(step)} (skipped)`
+            }
             const target = workflowTargetLabel(step)
             const invalidTag = step.onInvalid && step.onInvalid !== "fail" ? `, on_invalid=${step.onInvalid}${(step.invalidAttempts ?? 0) > 0 ? ` (${step.invalidAttempts})` : ""}` : ""
             const jumpTag = (step.jumpCount ?? 0) > 0 ? `, jumps=${step.jumpCount}` : ""

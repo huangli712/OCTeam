@@ -248,7 +248,17 @@ async function applyReassign(
         return `Error: step ${index + 1} marker steps cannot be reassigned`
     }
 
-    const currentActor = workflowStep.kind === "task" ? workflowStep.member : workflowStep.verifier
+    // M-11: for ensemble gates the actor is in `verifiers` (array), not
+    // `verifier` (scalar). Pre-fix code read workflowStep.verifier for the
+    // current-actor check and wrote workflowStep.verifier on reassign, which
+    // silently no-op'd for ensemble gates (verifier is undefined when
+    // verifiers is set) and left the verifiers array unchanged.
+    let currentActor: string | undefined
+    if (workflowStep.kind === "task") {
+        currentActor = workflowStep.member
+    } else if (workflowStep.kind === "gate") {
+        currentActor = workflowStep.verifier ?? workflowStep.verifiers?.[0]
+    }
     if (currentActor === toMember) return `Error: step ${index + 1} is already owned by "${toMember}"`
     const newMember = findMember(team, toMember)
     if (newMember === undefined) return `Error: "${toMember}" is not a team member`
@@ -263,8 +273,17 @@ async function applyReassign(
         if (conflict !== null) return `Error: "${toMember}" is already active in branch "${conflict}"`
     }
 
-    if (workflowStep.kind === "task") workflowStep.member = toMember
-    else workflowStep.verifier = toMember
+    // M-11: update the correct field based on step kind. For ensemble gates,
+    // replace the first entry in the verifiers array (the primary verifier).
+    if (workflowStep.kind === "task") {
+        workflowStep.member = toMember
+    } else if (workflowStep.kind === "gate") {
+        if (workflowStep.verifiers !== undefined && workflowStep.verifiers.length > 0) {
+            workflowStep.verifiers = [toMember, ...workflowStep.verifiers.slice(1)]
+        } else {
+            workflowStep.verifier = toMember
+        }
+    }
     workflowStep.dispatchedAt = undefined
     workflowStep.correlationId = undefined
 

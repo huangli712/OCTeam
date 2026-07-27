@@ -44,8 +44,10 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
             vote_key: tool.schema
                 .string()
                 .min(1)
+                .max(64)
+                .regex(/^[A-Za-z0-9_]+$/)
                 .describe(
-                    "ballot field name, e.g. 'decision'. Members are instructed "
+                    "ballot field name (alphanumeric + underscore, max 64 chars), e.g. 'decision'. Members are instructed "
                     + 'to emit <vote>{"<vote_key>": "<value>"}</vote>.',
                 ),
             vote_options: tool.schema

@@ -68,7 +68,13 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                     if (explicitDeciderStageIndex !== -1 && explicitDeciderStageIndex !== stageMembers.length - 1) {
                         return `Error: decider "${args.decider}" appears in stage ${explicitDeciderStageIndex + 1} but must be the LAST stage (decision must follow all modify stages)`
                     }
-                    if (explicitDeciderStageIndex !== -1 && args.stages[explicitDeciderStageIndex]?.action === "modify") {
+                    // M-12: decider stage MUST be read_only. An omitted action defaults
+                    // to read_only (the common case); only an explicit action:"modify"
+                    // is rejected. Pre-fix code allowed undefined to pass silently,
+                    // but also allowed modify — now we default undefined to read_only
+                    // and reject modify explicitly.
+                    const deciderAction = args.stages[explicitDeciderStageIndex]?.action
+                    if (deciderAction === "modify") {
                         return `Error: decider "${args.decider}" stage must be action "read_only" (it reviews, not modifies)`
                     }
                     return null
