@@ -181,12 +181,16 @@ export async function ackMessages(
             // durable delivery. Delete the in-memory auth record so a later
             // replay of the same JSONL line (via FS tampering or stale
             // reserved-file resurrection) no longer matches the registry and
-            // is downgraded to a regular message. The activeRunId argument is
-            // omitted here — consumption is delivery-confirmed regardless of
-            // current run state (by the time ack runs, formatMailboxInjection
-            // has already decided priority using the run binding).
+            // is downgraded to a regular message.
+            //
+            // C-5: pass msg.runId as activeRunId. The fail-closed runId check
+            // inside consumeDirectiveAuth requires the active run to match
+            // when the registered directive has a runId; omitting it leaves
+            // scoped directives forever unconsumed, enabling replay attacks
+            // after ack. The msg's runId is the same one bound at write time
+            // (intervene.ts), so it is the correct scope to consume.
             if (msg.kind === "directive") {
-                consumeDirectiveAuth(msg)
+                consumeDirectiveAuth(msg, msg.runId)
             }
             await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
                 // ENOENT is the benign race (reservation already removed) —

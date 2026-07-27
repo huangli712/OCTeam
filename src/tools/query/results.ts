@@ -23,6 +23,7 @@ import { listRunRecords, readRunRecord } from "../../orchestration/records/runs.
 import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js"
 import { logger } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
+import { assertNoSymlinkTraversal } from "../../state/locks.js"
 import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
 import type { RunRecord, WorkflowGateStep, WorkflowRunStep } from "../../core/types.js"
 
@@ -323,8 +324,16 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                 if (!out) {
                     return `Error: member "${args.member}" has no output in run ${record.runId}`
                 }
+                const memberOutputFile = runMemberOutputPath(caller.directory, record.runId, args.member)
                 try {
-                    return await fs.readFile(runMemberOutputPath(caller.directory, record.runId, args.member), "utf8")
+                    // C-4: refuse to read through a symlinked member output
+                    // file or intermediate dir. Without this, a member with FS
+                    // write access could symlink runs/<runId>/<member>.md to an
+                    // arbitrary file and have its contents returned through the
+                    // tool. assertNoSymlinkTraversal runs before readFile so the
+                    // rejection is not swallowed by the catch below.
+                    await assertNoSymlinkTraversal(caller.directory, memberOutputFile)
+                    return await fs.readFile(memberOutputFile, "utf8")
                 } catch (err) {
                     if (!isEnoent(err)) {
                         logger.warn("team_result_get: failed to read member output file", { runId: record.runId, member: args.member, error: err instanceof Error ? err.message : String(err) })
@@ -355,11 +364,12 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
 
             const previews: string[] = []
             for (const [name, info] of Object.entries(record.memberOutputs)) {
+                const memberOutputFile = runMemberOutputPath(caller.directory, record.runId, name)
                 try {
-                    const content = await fs.readFile(
-                        runMemberOutputPath(caller.directory, record.runId, name),
-                        "utf8",
-                    )
+                    // C-4: refuse to read through a symlinked member output
+                    // file. See team_result_get for the same guard.
+                    await assertNoSymlinkTraversal(caller.directory, memberOutputFile)
+                    const content = await fs.readFile(memberOutputFile, "utf8")
                     previews.push(
                         `### ${name} (${info.bytes} bytes)\n${truncateOutput(content, STEP_OUTPUT_DISPLAY_CAP)}\n` +
                             `[full output: team_result_get(` +

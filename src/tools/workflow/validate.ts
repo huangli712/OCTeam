@@ -174,9 +174,12 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
             break
         }
         case "required_branches": {
-            if (step.required_branches === undefined || step.required_branches.length === 0) {
+            // C-8: required_branches null/non-array guard. Pre-fix code called
+            // .length on the value, throwing TypeError on null/undefined
+            // sent by a malformed workflow_file.
+            if (!Array.isArray(step.required_branches) || step.required_branches.length === 0) {
                 return `Error: fanout step ${displayStep}`
-                    + ` join_policy='required_branches' requires \`required_branches\``
+                    + ` join_policy='required_branches' requires an array \`required_branches\``
             }
             for (const requiredId of step.required_branches) {
                 if (!branchIds.includes(requiredId)) {
@@ -460,6 +463,23 @@ function validateTaskInputs(
     return null
 }
 
+/** Validate that a retry-count field (max_task_retries, max_retries, etc.) is
+ * an integer in [0, MAX_RETRY_COUNT]. Returns null when absent or valid, an
+ * error string otherwise. C-8: pre-fix code accepted any number including
+ * 1e9, allowing resource exhaustion via workflow_file tampering. */
+const MAX_RETRY_COUNT = 5
+function validateRetryCountField(
+    value: number | undefined,
+    fieldName: string,
+    location: string,
+): string | null {
+    if (value === undefined) return null
+    if (!Number.isInteger(value) || value < 0 || value > MAX_RETRY_COUNT) {
+        return `Error: ${location} ${fieldName} must be an integer from 0 to ${MAX_RETRY_COUNT}`
+    }
+    return null
+}
+
 /** Full semantic validation of a lowered task step: rejects gate fields, validates retry/cap consistency, checks team membership. */
 function validateLoweredTaskStep(
     steps: readonly LoweredWorkflowStep[],
@@ -509,6 +529,11 @@ function validateLoweredTaskStep(
         if (condCount > 1) return `Error: ${location} retry_on must set exactly one condition (found ${condCount})`
         if (task.max_task_retries === undefined) return `Error: ${location} with retry_on requires \`max_task_retries\``
     }
+        // C-8: integer + bounded-range check for max_task_retries. Pre-fix
+        // accepted any number including 1e9, allowing resource exhaustion via
+        // workflow_file tampering.
+        const maxTaskRetriesErr = validateRetryCountField(task.max_task_retries, "max_task_retries", location)
+        if (maxTaskRetriesErr !== null) return maxTaskRetriesErr
         if (task.max_task_retries !== undefined && task.retry_on === undefined) {
             return `Error: ${location} max_task_retries requires \`retry_on\``
         }
@@ -531,6 +556,9 @@ function validateLoweredTaskStep(
     if (task.on_timeout === "retry" && task.max_timeout_retries === undefined) {
         return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
     }
+    // C-8: integer + bounded-range check for max_timeout_retries.
+    const maxTimeoutRetriesErr = validateRetryCountField(task.max_timeout_retries, "max_timeout_retries", location)
+    if (maxTimeoutRetriesErr !== null) return maxTimeoutRetriesErr
     if (!isTeamMember(team, task.member)) {
         return `Error: unknown member "${task.member}" in ${stepLocation(task, displayStep, false)}`
     }
@@ -573,6 +601,16 @@ function validateLoweredGateStep(
     if (gate.on_timeout === "retry" && gate.max_timeout_retries === undefined) {
         return `Error: ${location} with on_timeout='retry' requires \`max_timeout_retries\``
     }
+    // C-8: integer + bounded-range checks for all gate retry-count fields.
+    for (const [fieldName, value] of [
+        ["max_retries", gate.max_retries],
+        ["max_invalid_retries", gate.max_invalid_retries],
+        ["max_malformed_retries", gate.max_malformed_retries],
+        ["max_timeout_retries", gate.max_timeout_retries],
+    ] as const) {
+        const err = validateRetryCountField(value, fieldName, location)
+        if (err !== null) return err
+    }
     if (!gate.verifier && !gate.verifiers) return `Error: ${location} requires \`verifier\` or \`verifiers\``
     if (!gate.criteria) return `Error: ${location} requires \`criteria\``
     if (gate.target_step !== undefined && gate.targets !== undefined) {
@@ -598,6 +636,20 @@ function validateLoweredGateStep(
         return `Error: ${location} max_jumps requires on_pass_goto/on_fail_goto/on_invalid_goto (no goto to bound)`
     }
     if (gate.loop !== undefined) {
+        // C-8: validate loop shape. Pre-fix code accepted loop:{} (empty),
+        // loop:{max_iterations: 1e9}, loop:{on_exhaust: "explode"} silently,
+        // leading to runtime crashes or unbounded retries.
+        if (typeof gate.loop !== "object" || gate.loop === null || Array.isArray(gate.loop)) {
+            return `Error: ${location} loop must be an object`
+        }
+        const loopMax = (gate.loop as { max_iterations?: unknown }).max_iterations
+        if (!Number.isInteger(loopMax) || (loopMax as number) < 1 || (loopMax as number) > 20) {
+            return `Error: ${location} loop.max_iterations must be an integer from 1 to 20`
+        }
+        const loopOnExhaust = (gate.loop as { on_exhaust?: unknown }).on_exhaust
+        if (loopOnExhaust !== undefined && loopOnExhaust !== "fail" && loopOnExhaust !== "continue") {
+            return `Error: ${location} loop.on_exhaust must be 'fail' or 'continue'`
+        }
         if (gate.on_fail_goto === undefined) {
             return `Error: ${location} loop requires \`on_fail_goto\` (no backward jump target)`
         }
@@ -619,6 +671,13 @@ function validateLoweredGateStep(
         ["on_invalid_goto", gate.on_invalid_goto],
     ] as const) {
         if (ref === undefined) continue
+        // C-8: goto must not target a fanout marker step. Pre-fix code only
+        // checked that the index existed; resolving to a fanout marker silently
+        // returned -1 at runtime and fell through to sequential advance,
+        // skipping the intended jump target.
+        if (resolvesToMarkerStep(steps, index, ref)) {
+            return (`Error: ${location} ${field} "${String(ref)}" must not reference a fanout marker step`)
+        }
         const gotoIdx = resolveGotoIndex(steps, index, ref)
         if (gotoIdx < 0) {
             return (`Error: ${location} ${field} "${String(ref)}" must reference an existing step`

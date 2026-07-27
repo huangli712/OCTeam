@@ -107,12 +107,17 @@ describe("parseDecompose", () => {
         expect(parseDecompose("<decompose>{bad json}</decompose>").parseFailed).toBe(true)
     })
 
-    test("tag with no JSON braces is treated as a leaf (no match)", () => {
-        // The regex requires a {...} block; bare text inside the tag does not
-        // register as a decompose attempt and is treated like an absent tag.
+    test("tag with no JSON braces is treated as parse failure (H-14)", () => {
+        // H-14: extractTaggedJSON now enumerates ALL complete <tag>...</tag>
+        // pairs and treats the LAST as authoritative. A tag with no brace
+        // block is a parse failure (the LLM used the tag but produced invalid
+        // content). Pre-fix regex required `{...}` to match, so this was
+        // silently skipped and treated as an absent tag — letting stale earlier
+        // blocks win. The new contract surfaces the failure to the caller so
+        // the decider is asked to retry rather than silently inheriting a
+        // prior decision.
         const result = parseDecompose("<decompose>not json</decompose>")
-        expect(result).toEqual({ subtasks: [] })
-        expect(result.parseFailed).toBeUndefined()
+        expect(result).toEqual({ subtasks: [], parseFailed: true })
     })
 
     test("tag with no subtasks key returns parseFailed", () => {

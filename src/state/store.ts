@@ -4,6 +4,7 @@
  */
 
 import fs from "node:fs/promises"
+import { realpathSync } from "node:fs"
 import path from "node:path"
 
 import { logger } from '../core/log.js';
@@ -136,15 +137,7 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     // Reject any member whose agent is present but not in the oct-* allowlist.
     // A missing agent is allowed here (legacy/old state) — safeMemberAgent at
     // dispatch falls back to oct-oracle (read-only) in that case.
-    // Worktree-path hardening: a persisted worktreePath is passed VERBATIM as
-    // the child session's `directory` at spawn/dispatch time
-    // (dispatch.ts: `member.worktreePath ?? ctx.directory`), so a tampered
-    // state.json could otherwise make a member session run OUTSIDE the team
-    // worktree. Reject any worktreePath that does not resolve strictly inside
-    // the team's own worktrees/ directory. A missing worktreePath is allowed
-    // (members without worktree: true).
-    const wtRoot = worktreesDir(teamDirectory)
-        for (const m of s.members) {
+    for (const m of s.members) {
             if (typeof m !== "object" || m === null) return false
             // Reject ANY truthy isMaster on persisted members, not just
             // boolean true. isMaster is a runtime-only flag on the synthetic
@@ -167,29 +160,34 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
         if (agent !== undefined && (typeof agent !== "string" || !isOCTeamAgent(agent))) {
             return false
         }
-        const wt = (m as { worktreePath?: unknown }).worktreePath
-        if (wt !== undefined) {
-            if (typeof wt !== "string") return false
-            // C-3: path.resolve is lexical — it does not follow symlinks. A
-            // worktreePath that is a symlink pointing outside the worktrees/
-            // dir would pass the lexical containment check but actually
-            // redirect member operations to an external directory. Resolve
-            // via realpath and re-check containment.
-            //
-            // This runs synchronously in isValidTeamState; if realpath fails
-            // (ENOENT — worktree not created yet), accept the lexical check
-            // as a fallback (the path will be validated again at spawn time).
-            // We use the async fs.realptath via a sync try — but since this
-            // function is sync, we rely on the lexical check + the spawn-time
-            // assertNoSymlinkTraversal (C-1 fix) to catch active symlinks.
-            // The improvement here: reject paths containing ".." segments
-            // that path.resolve would normalize away but still indicate
-            // traversal intent.
-            const resolved = path.resolve(teamDirectory, wt)
-            if (resolved !== wtRoot && !resolved.startsWith(wtRoot + path.sep)) {
-                return false
+            const wt = (m as { worktreePath?: unknown }).worktreePath
+            if (wt !== undefined) {
+                if (typeof wt !== "string") return false
+                // C-3: path.resolve is lexical — it does not follow symlinks.
+                // A worktreePath that is a symlink pointing outside the worktrees/
+                // dir would pass the lexical containment check but actually
+                // redirect member operations to an external directory.
+                //
+                // When the path exists, use realpathSync to resolve symlinks and
+                // re-check containment. If the path does not yet exist (worktree
+                // not created at save time) or realpath fails for other reasons,
+                // fall back to the lexical check; the spawn-time check is the
+                // final guard for that case.
+                const wtRoot = worktreesDir(teamDirectory)
+                const resolved = path.resolve(teamDirectory, wt)
+                if (resolved !== wtRoot && !resolved.startsWith(wtRoot + path.sep)) {
+                    return false
+                }
+                try {
+                    const real = realpathSync(resolved)
+                    if (real !== wtRoot && !real.startsWith(wtRoot + path.sep)) {
+                        return false
+                    }
+                } catch {
+                    // ENOENT or other realpath failure: worktree may not exist
+                    // yet. Lexical check above already gated it; let it pass.
+                }
             }
-        }
     }
     return true
 }
@@ -465,7 +463,7 @@ export async function saveTeamState(team: Team): Promise<void> {
             // No ancestor snapshot (first save / legacy) — blind write.
             toWrite = currentState
         }
-        await atomicWrite(statePath(dir), JSON.stringify(toWrite, null, 2))
+        await atomicWrite(statePath(dir), JSON.stringify(toWrite, null, 2), dir)
         team._diskSnapshot = deepClone(toWrite)
         // Sync concurrent changes from the merged result back into the live
         // team. Without this, the live Team diverges from disk after a
@@ -509,15 +507,22 @@ export async function readTeamSpec(
     return readJsonOrNull<TeamSpec>(configPath(teamDir(storageRoot, teamName, leadSessionId)))
 }
 
-/** Write the immutable TeamSpec (config.json) atomically. Used at team_create. */
+/** Write the immutable TeamSpec (config.json) atomically. Used at team_create.
+ *
+ * `trustedRoot` (optional, recommended) is forwarded to atomicWrite's ancestor
+ * chain check (assertNoSymlinkTraversal) so an intermediate-dir symlink cannot
+ * redirect config.json outside the storage root. team_create always supplies it.
+ */
 export async function writeTeamSpec(
     storageRoot: string,
     spec: TeamSpec,
     leadSessionId?: string,
+    trustedRoot?: string,
 ): Promise<void> {
     await atomicWrite(
         configPath(teamDir(storageRoot, spec.name, leadSessionId)),
         JSON.stringify(spec, null, 2),
+        trustedRoot,
     )
 }
 
@@ -529,14 +534,19 @@ export async function writeTeamSpec(
  * self-call: present → <root>/<sid>/teams/<name> (project), omitted → flat
  * <root>/teams/<name> (user). state.leadSessionId is always populated, but the
  * param is what selects flat vs segmented placement, so write and read agree.
+ *
+ * `trustedRoot` (optional, recommended) is forwarded to atomicWrite's ancestor
+ * chain check (assertNoSymlinkTraversal) so an intermediate-dir symlink cannot
+ * redirect state.json outside the storage root.
  */
 export async function initTeamState(
     storageRoot: string,
     state: TeamState,
     leadSessionId?: string,
+    trustedRoot?: string,
 ): Promise<Team> {
     const dir = teamDir(storageRoot, state.teamName, leadSessionId)
-    await atomicWrite(statePath(dir), JSON.stringify(state, null, 2))
+    await atomicWrite(statePath(dir), JSON.stringify(state, null, 2), trustedRoot)
     // Register a fresh Team entry; loadTeamState will read what we just wrote.
     return loadTeamState(storageRoot, state.teamName, leadSessionId)
 }

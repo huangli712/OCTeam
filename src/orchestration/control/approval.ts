@@ -104,7 +104,20 @@ async function createApprovalPause(
     // Persist BEFORE notifying so a crash between notify and save does not
     // leave the leader notified of a pause that is not on disk (mirrors
     // completion.ts's persist-then-notify ordering).
-    await saveTeamState(team)
+    //
+    // H-30: rollback the in-memory pause on save failure. Pre-fix code set
+    // approvalStage/approvalRequest in memory and then called saveTeamState;
+    // a save throw left the team with a paused in-memory state that no
+    // caller could clear — the orchestrator idled indefinitely because the
+    // activeTask looked paused but the disk never recorded the pause, so
+    // team_resume had nothing to resume.
+    try {
+        await saveTeamState(team)
+    } catch (err) {
+        task.approvalStage = undefined
+        task.approvalRequest = undefined
+        throw err
+    }
     recordEvent(team, {
         timestamp: request.requestedAt,
         kind: "approval_requested",

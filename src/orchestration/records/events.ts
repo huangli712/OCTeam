@@ -38,7 +38,14 @@ export function recordEvent(team: Team, event: RunEvent): void {
         // is visible by the time the microtask resolves.
         if (team.deleted) return
         try {
-            await appendJsonl(runEventsPath(team.directory, runId), JSON.stringify(event) + "\n")
+            // C-2: pass team.directory as trustedRoot so refuseSymlink walks the
+            // full ancestor chain. Without it, a symlinked runs/ or intermediate
+            // <runId>/ directory could redirect the append outside the team root.
+            await appendJsonl(
+                runEventsPath(team.directory, runId),
+                JSON.stringify(event) + "\n",
+                team.directory,
+            )
         } catch (err: unknown) {
             // best-effort telemetry; a write failure must never affect orchestration,
             // but surface it so operators can diagnose missing timeline events.

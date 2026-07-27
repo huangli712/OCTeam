@@ -12,7 +12,7 @@ import { readFile } from "node:fs/promises"
 import type { Team } from "../../state/store.js"
 import { isEnoent } from "../../core/utils.js"
 import { extractOutputFromParts, truncateOutput } from "../protocol/output.js"
-import { atomicWrite } from "../../state/locks.js"
+import { assertNoSymlinkTraversal, atomicWrite } from "../../state/locks.js"
 import { runMemberOutputPath, runReduceOutputPath, runSignoffOutputPath } from "../../state/paths.js"
 import { recordEvent } from "./events.js"
 import type { MemberState, SdkMessage } from "../../core/types.js"
@@ -120,6 +120,13 @@ export async function captureMemberOutput(
 
     // Accumulate: read whatever was previously captured for this target, append
     // the current turn with a separator, and write back atomically.
+    // C-2: assert no symlink traversal before readFile. atomicWrite already
+    // refuses a leaf symlink via refuseSymlink, but a symlinked intermediate
+    // ancestor (e.g. <team>/runs/<runId> redirected) would silently follow
+    // without a trustedRoot-bearing check. Reading attacker-controlled content
+    // into the accumulator is itself the leak (it gets mixed into the next
+    // atomicWrite payload), so guard the read as well as the write.
+    await assertNoSymlinkTraversal(team.directory, outPath)
     let prev = ""
     try {
         prev = await readFile(outPath, "utf8")

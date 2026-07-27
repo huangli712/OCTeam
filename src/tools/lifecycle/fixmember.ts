@@ -221,8 +221,12 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 // disk state.json (runtime source of truth) retains the old
                 // values while config.json has the new ones — strictly better
                 // than the reverse where state.json is ahead of config.json.
+                let specWritten = false
                 const writeErr = await (async () => {
-                    if (spec) await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
+                    if (spec) {
+                        await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
+                        specWritten = true
+                    }
                     await saveTeamState(team)
                     return null
                 })().catch(e => e as Error)
@@ -274,17 +278,40 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             // Mailbox may not exist or rename fails; not critical
                         }
                     }
-                    // H-23: restore agent/model mutations too. Pre-fix code left
-                    // these as-is, so the in-memory object diverged from disk
-                    // after a save failure, and a subsequent unrelated save
-                    // would persist the unwanted agent/model change.
-                    if (savedAgent !== undefined) member.agent = savedAgent
-                    if (savedModel !== undefined) member.model = savedModel
+                    // H-23: restore agent/model mutations too. Pre-fix code
+                    // guarded each restore on `savedX !== undefined`, which
+                    // skipped restoration when the original value was absent —
+                    // the new value then silently persisted via the next
+                    // unrelated save. Restore agent/model unconditionally
+                    // (including back to undefined) so the in-memory object
+                    // matches disk. role/prompt are required strings on
+                    // MemberSpec, so we keep the undefined-guard for them
+                    // (when specMember exists, savedRole/savedPrompt are
+                    // always strings, but TS cannot infer that across the
+                    // earlier nullish-coalesce snapshot).
+                    member.agent = savedAgent
+                    member.model = savedModel
                     if (specMember) {
-                        if (savedAgent !== undefined) specMember.agent = savedAgent
+                        specMember.agent = savedAgent
+                        specMember.model = savedSpecModel
                         if (savedRole !== undefined) specMember.role = savedRole
                         if (savedPrompt !== undefined) specMember.prompt = savedPrompt
-                        if (savedSpecModel !== undefined) specMember.model = savedSpecModel
+                    }
+                    // H-23: if config.json was already written (specWritten=true)
+                    // but state.json save failed, the spec on disk still holds
+                    // the new values while we just rolled them back in memory.
+                    // Compensate by re-writing config.json with the rolled-back
+                    // spec so disk and memory agree. A failure here is logged
+                    // but does not mask the original writeErr.
+                    if (specWritten && spec) {
+                        try {
+                            await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
+                        } catch (specRollbackErr) {
+                            logger.warn("fixmember: failed to compensate-rewrite config.json after saveTeamState failure", {
+                                teamName: caller.teamName,
+                                error: specRollbackErr instanceof Error ? specRollbackErr.message : String(specRollbackErr),
+                            })
+                        }
                     }
                     throw writeErr
                 }

@@ -13,6 +13,7 @@ import type { PluginContext } from "../../core/context.js"
 import { initTeamState, writeTeamSpec } from "../../state/store.js"
 import { indexMasterTeam, isIndexedMember } from "../../state/resolve.js"
 import { teamDir, teamsDir } from "../../state/paths.js"
+import { assertNoSymlinkTraversal } from "../../state/locks.js"
 import { normalizeRole, roleAgent } from "../../core/role.js"
 import { logSwallowed } from "../../core/log.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../../core/types.js"
@@ -173,9 +174,19 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             // the OS-level atomic primitive: exactly one of N concurrent callers
             // wins, the rest get EEXIST. This closes the TOCTOU window that a
             // check-then-create sequence would leave open.
-            await fs.mkdir(teamsDir(ctx.storageRoot, leadSessionId), { recursive: true })
+            //
+            // C-1: assert no symlink traversal before any mkdir. Without this,
+            // a symlinked teams/ or <sid>/ ancestor can redirect both mkdir and
+            // the subsequent atomicWrite of config/state outside storageRoot.
+            // The check accepts not-yet-existing paths (ENOENT components are
+            // fine) so legitimate first-team creation still succeeds.
+            const teamsRoot = teamsDir(ctx.storageRoot, leadSessionId)
+            await assertNoSymlinkTraversal(ctx.storageRoot, teamsRoot)
+            await fs.mkdir(teamsRoot, { recursive: true })
+            const newTeamDir = teamDir(ctx.storageRoot, args.name, leadSessionId)
+            await assertNoSymlinkTraversal(ctx.storageRoot, newTeamDir)
             try {
-                await fs.mkdir(teamDir(ctx.storageRoot, args.name, leadSessionId), { recursive: false })
+                await fs.mkdir(newTeamDir, { recursive: false })
             } catch (err) {
                 if ((err as NodeJS.ErrnoException).code === "EEXIST") {
                     return `Error: team name "${args.name}" already exists in this ${ctx.scope} scope`
@@ -205,7 +216,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             if (bounds.maxMembers < resolved.length) {
                 // Best-effort cleanup of the just-created directory so a retry
                 // doesn't hit EEXIST.
-                await fs.rm(teamDir(ctx.storageRoot, args.name, leadSessionId), {
+                await fs.rm(newTeamDir, {
                     recursive: true, force: true,
                 }).catch(() => { /* best-effort */ })
                 return `Error: bounds.maxMembers (${bounds.maxMembers}) is less than the number of initial `
@@ -228,7 +239,10 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
             }))
 
             try {
-                await writeTeamSpec(ctx.storageRoot, spec, leadSessionId)
+                // trustedRoot hardens atomicWrite against intermediate-dir
+                // symlink redirection (assertNoSymlinkTraversal walks the full
+                // ancestor chain on every write).
+                await writeTeamSpec(ctx.storageRoot, spec, leadSessionId, ctx.storageRoot)
 
                 const createdTeam = await initTeamState(ctx.storageRoot, {
                     version: 1,
@@ -241,13 +255,13 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                     createdAt: now,
                     // Per project rule: never auto-activate.
                     activatedAt: undefined,
-                }, leadSessionId)
+                }, leadSessionId, ctx.storageRoot)
 
                 indexMasterTeam(context.sessionID, args.name, leadSessionId, ctx.storageRoot, createdTeam.directory)
             } catch (err) {
                 // Rollback the just-created directory so a transient write
                 // failure does not orphan it and permanently reserve the name.
-                await fs.rm(teamDir(ctx.storageRoot, args.name, leadSessionId), {
+                await fs.rm(newTeamDir, {
                     recursive: true, force: true,
                 }).catch(() => { /* best-effort */ })
                 throw err

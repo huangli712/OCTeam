@@ -22,7 +22,7 @@ import { isEnoent } from "../../core/utils.js"
 import type { WorkflowJoinMetadata } from "../../core/types.js"
 import type { Team } from "../../state/store.js"
 import type { RunRecord, RunStatus, WorkflowBranchStatus, WorkflowRunStep, WorkflowStep } from "../../core/types.js"
-import { atomicWrite } from "../../state/locks.js"
+import { assertNoSymlinkTraversal, atomicWrite } from "../../state/locks.js"
 import { runsDir, runDir, runRecordPath, runEventsPath } from "../../state/paths.js"
 import type { RunEvent } from "../../core/types.js"
 import { listAllTasks } from "../../state/tasks.js"
@@ -310,6 +310,10 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
  */
 export async function pruneRuns(teamDirectory: string, keep: number): Promise<void> {
     const root = runsDir(teamDirectory)
+    // C-2: refuse to scan/remove through a symlinked runs/ — without this,
+    // a symlinked <team>/runs could let pruneRuns issue rm -rf against an
+    // attacker-controlled location outside the team root.
+    await assertNoSymlinkTraversal(teamDirectory, root)
     let runIds: string[] = []
     try {
         runIds = await fs.readdir(root)
@@ -341,7 +345,9 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     }
     // Remove orphaned run directories (no record.json at all = crash-during-capture).
     for (const runId of orphaned) {
-        await fs.rm(runDir(teamDirectory, runId), { recursive: true, force: true }).catch((err) => {
+        const target = runDir(teamDirectory, runId)
+        await assertNoSymlinkTraversal(teamDirectory, target)
+        await fs.rm(target, { recursive: true, force: true }).catch((err) => {
             logger.warn("pruneRuns: failed to remove orphaned run directory", { runId, error: err instanceof Error ? err.message : String(err) })
         })
     }
@@ -355,7 +361,9 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
 
     dated.sort((a, b) => b.finishedAt - a.finishedAt)
     for (const { runId } of dated.slice(keep)) {
-        await fs.rm(runDir(teamDirectory, runId), { recursive: true, force: true }).catch((err) => {
+        const target = runDir(teamDirectory, runId)
+        await assertNoSymlinkTraversal(teamDirectory, target)
+        await fs.rm(target, { recursive: true, force: true }).catch((err) => {
             logger.warn("pruneRuns: failed to remove run directory", { runId, error: err instanceof Error ? err.message : String(err) })
         })
     }
@@ -366,6 +374,8 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
  */
 export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]> {
     const root = runsDir(teamDirectory)
+    // C-2: refuse to list through a symlinked runs/.
+    await assertNoSymlinkTraversal(teamDirectory, root)
     let runIds: string[] = []
     try {
         runIds = await fs.readdir(root)
@@ -374,8 +384,10 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
     }
     const records: RunRecord[] = []
     for (const runId of runIds) {
+        const recordPath = runRecordPath(teamDirectory, runId)
         try {
-            const raw = await fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
+            await assertNoSymlinkTraversal(teamDirectory, recordPath)
+            const raw = await fs.readFile(recordPath, "utf8")
             records.push(parseRunRecord(raw))
         } catch (err) {
             // skip incomplete/corrupt runs, but log non-ENOENT errors for observability
@@ -390,8 +402,14 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
 
 /** Read a single run record by id, or null if absent/corrupt. */
 export async function readRunRecord(teamDirectory: string, runId: string): Promise<RunRecord | null> {
+    const recordPath = runRecordPath(teamDirectory, runId)
+    // C-2: refuse to read through a symlinked record.json or intermediate dir.
+    // This MUST run before the try-catch below: the catch swallows non-ENOENT
+    // errors as "corrupt run", which would silently accept attacker-controlled
+    // content from a redirected file.
+    await assertNoSymlinkTraversal(teamDirectory, recordPath)
     try {
-        const raw = await fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
+        const raw = await fs.readFile(recordPath, "utf8")
         return parseRunRecord(raw)
     } catch (err) {
         if (!isEnoent(err)) {
@@ -407,9 +425,14 @@ export async function readRunRecord(teamDirectory: string, runId: string): Promi
  * Returns [] when the file is absent (run produced no events yet).
  */
 export async function readRunEvents(teamDirectory: string, runId: string): Promise<RunEvent[]> {
+    const eventsPath = runEventsPath(teamDirectory, runId)
+    // C-2: refuse to read through a symlinked events.jsonl or intermediate dir.
+    // See readRunRecord: must run before the try-catch below so the symlink
+    // rejection is not swallowed as "file unreadable".
+    await assertNoSymlinkTraversal(teamDirectory, eventsPath)
     let raw: string
     try {
-        raw = await fs.readFile(runEventsPath(teamDirectory, runId), "utf8")
+        raw = await fs.readFile(eventsPath, "utf8")
     } catch (err) {
         if (!isEnoent(err)) {
             logger.warn("readRunEvents: failed to read events file", { runId, error: err instanceof Error ? err.message : String(err) })

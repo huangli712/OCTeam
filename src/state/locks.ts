@@ -366,9 +366,18 @@ export async function refuseSymlink(filePath: string, trustedRoot?: string): Pro
  * append-only run event log (events.jsonl). fs.appendFile opens with O_APPEND,
  * so concurrent appends do not corrupt a line; readers sort by timestamp rather
  * than trusting file order.
+ *
+ * `trustedRoot` (optional, recommended) is forwarded to refuseSymlink's ancestor
+ * chain check (assertNoSymlinkTraversal) so an intermediate-dir symlink cannot
+ * redirect the append outside the team root. Callers with a trusted root should
+ * always supply it.
  */
-export async function appendJsonl(filePath: string, line: string): Promise<void> {
-    await refuseSymlink(filePath)
+export async function appendJsonl(
+    filePath: string,
+    line: string,
+    trustedRoot?: string,
+): Promise<void> {
+    await refuseSymlink(filePath, trustedRoot)
     await fs.mkdir(path.dirname(filePath), { recursive: true }).catch((err: unknown) => {
         const code = (err as NodeJS.ErrnoException).code
         if (code !== "EEXIST") throw err

@@ -77,10 +77,52 @@ const REDOS_PATTERN_MAX_LEN = 256
 function hasNestedQuantifier(pattern: string): boolean {
     // Strip escaped metacharacters so they do not confuse the heuristic.
     // (e.g. `\+` is a literal +, not a quantifier.)
-    const stripped = pattern.replace(/\\[+*?{}()[\].\\]/g, "")
+    const stripped = pattern.replace(/\\[+*?{}()[\].\\|]/g, "")
     // A group ending with a quantifier, followed by another quantifier.
     // Matches: (a+)+, (.+)*, ([a-z]+)?, (a{2,3})+, (a+){2}, etc.
     if (/\([^)]*[+*?}]\)[+*?{]/.test(stripped)) return true
+    // C-6: alternation-overlap under quantifier. Patterns like (a|aa)+$,
+    // (a|ab)+ have exponential backtracking when two alternation branches
+    // share a string-prefix overlap (one is a prefix of the other). For each
+    // group `(...)` followed by a quantifier that contains `|`, check pairwise
+    // prefix-overlap among the literal branches. Branches with nested groups /
+    // quantifiers are skipped (the prefix check is unreliable on them, and the
+    // nested-quantifier check above handles them).
+    //
+    // Real attack: (a|aa)+$ on 45 a's + X blocked ~500ms with V8's backtracking
+    // engine before this guard was added.
+    let i = 0
+    while (i < stripped.length) {
+        if (stripped[i] !== "(") { i++; continue }
+        // Find matching close paren (depth-aware).
+        let depth = 1, j = i + 1
+        while (j < stripped.length && depth > 0) {
+            if (stripped[j] === "(") depth++
+            else if (stripped[j] === ")") depth--
+            j++
+        }
+        if (depth !== 0) break
+        const body = stripped.slice(i + 1, j - 1)
+        const nextChar = stripped[j]
+        if (nextChar !== undefined && "+*?{".includes(nextChar) && body.includes("|")) {
+            const branches = body.split("|").filter(b => b.length > 0)
+            // Skip branches that still contain group/quantifier metacharacters —
+            // the prefix-overlap check is unreliable on them, and the
+            // nested-quantifier check above handles them.
+            const simpleBranches = branches.filter(b => !/[][{}()*+?]/.test(b))
+            for (let a = 0; a < simpleBranches.length; a++) {
+                for (let b = a + 1; b < simpleBranches.length; b++) {
+                    if (
+                        simpleBranches[a].startsWith(simpleBranches[b])
+                        || simpleBranches[b].startsWith(simpleBranches[a])
+                    ) {
+                        return true
+                    }
+                }
+            }
+        }
+        i = j
+    }
     return false
 }
 
@@ -281,15 +323,23 @@ export async function handleWorkflowIdle(
     const step = steps[activeStepIndex];
     if (!step) return;
 
-    // H-8: stale idle guard for TASK steps only. When capturedNew is false
-    // (the member's message history hasn't grown since its last capture) and
-    // the task step ALREADY has output set, advancing on the stale idle would
-    // re-read already-consumed output and falsely complete the step a second
-    // time. Gate steps are NOT guarded — they have their own attempt-counter
-    // protection (attempts/invalidAttempts/etc.) that prevents
-    // double-processing regardless of the capture signal. Join and fanout
-    // steps are structural (no actor output).
-    if (capturedNew === false && step.kind === "task" && step.output !== undefined) {
+    // H-8: stale idle guard for task AND gate actor steps.
+    //
+    // task step: skip when capturedNew is false AND step.output is already
+    // set — re-reading consumed output would double-complete. We do NOT skip
+    // when step.output is unset because retry_on='empty' relies on processing
+    // a turn that produced no assistant content (capturedNew=false but the
+    // turn genuinely fired). The empty-output retry path is exercised by the
+    // workflow-task-retry suite.
+    //
+    // gate step (H-8 regression extension): skip when capturedNew is false
+    // AND step.output is already set — ensemble gates accumulate verifier
+    // outputs into step.output, and a stale idle from a later verifier could
+    // reuse the prior verifier's output, double-counting the verdict. Gate
+    // attempt counters protect against double-processing of the same response
+    // but do not protect against an empty-response stale idle routing to
+    // on_malformed/parse_failure.
+    if (capturedNew === false && (step.kind === "task" || step.kind === "gate") && step.output !== undefined) {
         return;
     }
 

@@ -592,6 +592,12 @@ export async function gotoWorkflowStep(
               )
             : await dispatchGateStep(ctx, team, task, targetIndex);
     if (!dispatched) {
+        // H-2: dispatchTaskStep / dispatchGateStep may have already finishRun
+        // the team (e.g. input-skipped violation in dispatchTaskStep, or any
+        // other finishRun-on-false path). Detect that and bail rather than
+        // treating it as a tolerance-fanout branch error and continuing to
+        // dispatch other branches against the terminated run.
+        if (team.activeTask !== task) return false
         const result = await handleWorkflowDispatchUnavailable(ctx, team, task, target);
         if (result === "degraded") await advanceWorkflowStep(ctx, team);
         return false;
@@ -665,6 +671,9 @@ export async function advanceWorkflowStep(
                         )
                             return;
                         if (!(await dispatchTaskStep(ctx, team, task, index))) {
+                            // H-2: input-guard finishRun detection. See goto
+                            // jump path above for the same guard.
+                            if (team.activeTask !== task) return;
                             const result = await handleWorkflowDispatchUnavailable(ctx, team, task, step);
                             if (result === "failed") return;
                             break;
@@ -680,6 +689,9 @@ export async function advanceWorkflowStep(
                         )
                             return;
                         if (!(await dispatchGateStep(ctx, team, task, index))) {
+                            // H-2: same finishRun-already-called detection as
+                            // the task dispatch path above.
+                            if (team.activeTask !== task) return;
                             const result = await handleWorkflowDispatchUnavailable(ctx, team, task, step);
                             if (result === "failed") return;
                             break;
@@ -750,6 +762,8 @@ export async function advanceWorkflowStep(
             ? await dispatchTaskStep(ctx, team, task, nextIndex)
             : await dispatchGateStep(ctx, team, task, nextIndex);
     if (!dispatched) {
+        // H-2: detect prior finishRun (e.g. input-guard violation).
+        if (team.activeTask !== task) return;
         await handleWorkflowDispatchUnavailable(ctx, team, task, step);
         return;
     }

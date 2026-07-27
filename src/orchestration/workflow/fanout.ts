@@ -121,7 +121,12 @@ function buildJoinedWorkflowOutput(
             stepIndex += 1
         ) {
             const step = steps[stepIndex];
-            if (step?.kind !== "task" || !step.completed || !step.output)
+            // H-6: skip steps in cancelled (skipped) branches — any_success
+            // marks losing branches' intermediate steps skipped+completed
+            // when a winning branch opens the join. Pre-fix this only checked
+            // kind/completed/output, so losing branches' partial outputs
+            // leaked into the joined payload.
+            if (step?.kind !== "task" || !step.completed || step.skipped === true || !step.output)
                 continue;
             if (step.exposeOutput === false) continue;
             branchBlocks.push(

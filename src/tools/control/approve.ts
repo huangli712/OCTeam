@@ -66,10 +66,7 @@ export async function applyApprovalDecision(
         resolvedAt,
     }
     if (decision.feedback !== undefined) record.feedback = decision.feedback
-    const savedApprovalHistory = task.approvalHistory
     task.approvalHistory = [...(task.approvalHistory ?? []), record]
-    const savedApprovalStage = task.approvalStage
-    const savedApprovalRequest = task.approvalRequest
     task.approvalStage = undefined
     task.approvalRequest = undefined
     recordEvent(team, {
@@ -181,14 +178,20 @@ export async function applyApprovalDecision(
         }
     }
     } catch (err) {
-        // A dispatch or advance threw after the approval was already
-        // cleared. Restore ALL mutation state so the caller can retry
-        // instead of being permanently stuck with no approval pause,
-        // a shifted startedAt, or a duplicate approvalHistory entry.
+        // A dispatch or advance threw after the approval was already cleared
+        // AND persisted. Pre-fix code restored ALL mutation state
+        // (approvalStage/approvalRequest/approvalHistory) back to the pending
+        // shape, but the disk already held the resolved state (saved at line
+        // 90 above). On retry this let the master re-approve the SAME request,
+        // re-dispatching branches that had partially completed — duplicate
+        // prompts and double-advancement.
+        //
+        // H-13 fix: keep the approval as resolved in memory AND on disk. Only
+        // restore startedAt (a pure wall-clock adjustment that is meaningless
+        // without a successful dispatch). The next approve call finds
+        // approvalStage=undefined and returns "no pending approval" instead
+        // of re-running the dispatch.
         task.startedAt = savedStartedAt
-        task.approvalHistory = savedApprovalHistory
-        task.approvalStage = savedApprovalStage
-        task.approvalRequest = savedApprovalRequest
         throw err
     }
 }

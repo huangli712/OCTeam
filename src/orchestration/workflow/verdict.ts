@@ -342,7 +342,6 @@ async function handleGatePass(
     // a stale verdict (parity with FAIL/INVALID paths and ensemble gates).
     const task = team.activeTask;
     if (task) delete task.responses[verifierName];
-    resetStepAfterCompletion(step, { completed: true });
     // approval_after on a gate is validator-guaranteed incompatible with
     // on_*_goto, so pausing here cannot be bypassed by a goto jump.
     if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
@@ -352,6 +351,15 @@ async function handleGatePass(
         // H-4: the where condition was unevaluable (verifier omitted a
         // required field). Route to INVALID instead of silently advancing
         // to the default successor — the verifier's contract was violated.
+        //
+        // The step MUST NOT be marked completed before this check: the
+        // retry_verifier branch in handleInvalidVerdict re-dispatches the
+        // verifier and waits for a fresh idle response, but a completed gate
+        // is skipped by the idle router → the retry response would never
+        // process, deadlocking the run until wall-clock timeout. Pre-fix
+        // resetStepAfterCompletion ran unconditionally at the top of this
+        // function; it now runs only when the gate is actually settling
+        // (PASS advances, goto fires).
         await handleInvalidVerdict(ctx, team, {
             step, gateIndex, verifierName,
             reason: "INVALID",
@@ -360,6 +368,9 @@ async function handleGatePass(
         });
         return;
     }
+    // H-4: now that where has resolved (gotoIdx !== -2), the gate is truly
+    // settling — mark it completed for the advance / goto / approval paths.
+    resetStepAfterCompletion(step, { completed: true });
     const nextIndex =
         gotoIdx >= 0 ? gotoIdx : steps.findIndex((s) => !s.completed);
     // Skip the task-global approval when on_pass_goto is set: the approval

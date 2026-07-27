@@ -293,15 +293,51 @@ function isJoinMetadataSatisfied(
         if (successFound) {
             // Mark every non-terminal, non-errored branch as skipped so the
             // join opens immediately and late results are ignored.
+            //
+            // H-6: pre-fix code marked ONLY the tail step of each cancelling
+            // branch, leaving intermediate steps in the branch range still
+            // dispatchable. The engine would then concurrently open the join
+            // AND continue dispatching the losing branch's in-flight steps;
+            // those steps' outputs would also leak into the joined output via
+            // buildJoinedOutput (which collects any completed+output task step
+            // without checking the skipped flag). Fix: walk the full branch
+            // range from the fanout metadata and mark every non-terminal step
+            // skipped+completed.
+            const fanoutStep = steps[join.fanoutIndex]
+            const branchRanges = fanoutStep?.kind === "fanout" && fanoutStep.fanout !== undefined
+                ? fanoutStep.fanout.branchRanges
+                : undefined
+            const branchIdsOnFanout = fanoutStep?.kind === "fanout" && fanoutStep.fanout !== undefined
+                ? fanoutStep.fanout.branchIds
+                : undefined
             for (const tailIndex of join.branchTailIndices) {
                 const tail = steps[tailIndex]
                 if (tail === undefined) continue
                 const branchId = tail.branch?.branchId
                 if (branchId !== undefined && erroredBranchIds.has(branchId)) continue
-                if (!isTerminalWorkflowStep(tail)) {
-                    tail.completed = true
-                    tail.skipped = true
+                if (isTerminalWorkflowStep(tail)) continue
+                if (
+                    branchId !== undefined
+                    && branchRanges !== undefined
+                    && branchIdsOnFanout !== undefined
+                ) {
+                    const rangeIdx = branchIdsOnFanout.indexOf(branchId)
+                    const rangeEntry = rangeIdx >= 0 ? branchRanges[rangeIdx] : undefined
+                    if (rangeEntry !== undefined) {
+                        for (let r = rangeEntry.startIndex; r <= rangeEntry.endIndex; r++) {
+                            const rs = steps[r]
+                            if (rs === undefined) continue
+                            if (!isTerminalWorkflowStep(rs)) {
+                                rs.completed = true
+                                rs.skipped = true
+                            }
+                        }
+                        continue
+                    }
                 }
+                // Fallback: no range info — mark the tail only.
+                tail.completed = true
+                tail.skipped = true
             }
             return true
         }

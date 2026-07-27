@@ -56,15 +56,23 @@ function extractTaggedJSON(
     zh?: string,
 ): Record<string, unknown> | null | undefined {
     const tag = zh ? `(?:${en}|${zh})` : en
-    // Lazy quantifier so each tag block captures only its own {...} payload.
-    const re = new RegExp(`<${tag}>\\s*(\\{[\\s\\S]*?\\})\\s*</${tag}>`, "g")
+    // H-14: enumerate ALL complete <tag>...</tag> pairs, not just those whose
+    // inner payload contains a {...} block. Pre-fix regex required `{...}` to
+    // match, so a malformed trailing block like `<decision>oops</decision>` (no
+    // braces) was silently skipped, and an EARLIER parseable block won — the
+    // decider's final (corrupt) restatement was ignored, double-completing or
+    // double-advancing. The LATEST tag pair is authoritative: if it has no
+    // parseable JSON, that is a real failure.
+    const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "g")
     const matches = [...(text?.matchAll(re) ?? [])]
     if (matches.length === 0) return null
-    // H-14: parse ONLY the last match. If it fails, return undefined (parse
-    // failure). Earlier matches are NOT used as silent fallbacks.
-    const lastMatch = matches[matches.length - 1]
+    const lastPayload = matches[matches.length - 1][1]
+    // Extract the LAST {...} block in the payload (LLMs sometimes wrap JSON
+    // in prose). If there is no brace block at all, this is a parse failure.
+    const braceMatch = lastPayload.match(/\{[\s\S]*\}/)
+    if (braceMatch === null) return undefined
     try {
-        return JSON.parse(lastMatch[1]) as Record<string, unknown>
+        return JSON.parse(braceMatch[0]) as Record<string, unknown>
     } catch {
         return undefined
     }

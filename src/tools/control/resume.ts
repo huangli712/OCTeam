@@ -79,7 +79,9 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
             let restored: ActiveTask | undefined
             let resumeRaced = false
             // Snapshot of errored members reset in Phase 1, for rollback if Phase 2/3 fails.
-            const memberSnapshot: Array<{ name: string; error?: string; declaredDone?: boolean; retryingSince?: number; turnCount?: number }> = []
+            // H-31: contains EVERY member (errored and idle), so the catch-block
+            // rollback can find Phase-2-dispatched idle members too.
+            const memberSnapshot: Array<{ name: string; error?: string; declaredDone?: boolean; retryingSince?: number; turnCount?: number; status?: string }> = []
 
             try {
                 // --- Phase 1 (mutex): snapshot + reset, DO NOT commit activeTask. ---
@@ -104,7 +106,14 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     const arenaTask = team.lastInterruptedTask.type === "arena"
                         ? team.lastInterruptedTask
                         : undefined
+                    // H-31: snapshot EVERY member (not just errored ones). Phase 2
+                    // dispatches idle members to running; if Phase 2/3 then throws,
+                    // those running members are not in the pre-fix snapshot (which
+                    // only contained errored→idle resets), so the catch-block
+                    // rollback loop skipped them — they kept running with no
+                    // activeTask to process their idle, silently dropping output.
                     for (const m of team.members) {
+                        memberSnapshot.push({ name: m.name, error: m.error, declaredDone: m.declaredDone, retryingSince: m.retryingSince, turnCount: m.turnCount, status: m.status })
                         if (m.status === "errored") {
                             if (
                                 arenaTask
@@ -113,8 +122,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                             ) {
                                 continue
                             }
-                            // Snapshot before reset so Phase 2/3 failure can rollback.
-                            memberSnapshot.push({ name: m.name, error: m.error, declaredDone: m.declaredDone, retryingSince: m.retryingSince, turnCount: m.turnCount })
+                            // (snapshot already pushed above)
                             m.status = "idle"
                             m.error = undefined
                             m.declaredDone = false
