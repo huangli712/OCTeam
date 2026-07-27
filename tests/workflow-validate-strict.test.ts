@@ -13,8 +13,7 @@ import { validateWorkflowArgs } from "../src/tools/workflow/validate.js"
 import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex } from "../src/state/resolve.js"
-import { teamDir } from "../src/state/paths.js"
-import type { WorkflowToolArgs } from "../src/core/types.js"
+import type { ResolvedWorkflowToolArgs } from "../src/core/types.js"
 import { afterAll } from "bun:test"
 
 afterAll(cleanupTmpRoots)
@@ -32,10 +31,10 @@ async function makeTeam() {
     return loadTeamState(root, "alpha", sid)
 }
 
-function buildArgs(steps: unknown[]): WorkflowToolArgs {
+function buildArgs(steps: unknown[]): ResolvedWorkflowToolArgs {
     return {
         team_id: "alpha",
-        steps: steps as WorkflowToolArgs["steps"],
+        steps: steps as ResolvedWorkflowToolArgs["steps"],
     }
 }
 

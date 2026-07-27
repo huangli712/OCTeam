@@ -16,7 +16,7 @@ import { captureMemberOutput } from "../src/orchestration/records/capture.js"
 import { listRunRecords, pruneRuns, readRunEvents, readRunRecord } from "../src/orchestration/records/runs.js"
 import { runEventsPath, runMemberOutputPath, runsDir } from "../src/state/paths.js"
 import { waitUntil } from "../src/core/utils.js"
-import { cleanupTmpRoots, makeCtx, makeTeam, makeToolContext, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeCtx, makeTeam, tmpRoot } from "./helpers.js"
 import type { ActiveTask, SdkMessage } from "../src/core/types.js"
 import { initLogger, __test__ as logTest } from "../src/core/log.js"
 

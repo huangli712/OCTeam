@@ -11,7 +11,7 @@ import { rmSync, symlinkSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 import { teamFixMemberTool } from "../src/tools/lifecycle/fixmember.js"
-import { initTeamState, loadTeamState, invalidateTeam } from "../src/state/store.js"
+import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { statePath, teamDir } from "../src/state/paths.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"

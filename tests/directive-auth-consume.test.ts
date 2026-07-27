@@ -25,15 +25,15 @@ afterAll(cleanupTmpRoots)
 describe("consumeDirectiveAuth runId binding (C-5)", () => {
     test("consumeDirectiveAuth deletes a registered directive with runId when msg.runId matches", () => {
         const msg = {
-            version: 1,
+            version: 1 as const,
             id: "id-1",
             from: "master",
             to: "alice",
-            kind: "directive",
+            kind: "directive" as const,
             body: "stop",
             timestamp: 1,
             runId: "r1",
-            deliveryStatus: "pending",
+            deliveryStatus: "pending" as const,
         }
         const before = authTest.authDirectiveMapSize()
         authenticateDirective(msg, "team", "r1")
@@ -57,15 +57,15 @@ describe("consumeDirectiveAuth runId binding (C-5)", () => {
         await mkdir(mailDir, { recursive: true })
 
         const msg = {
-            version: 1,
+            version: 1 as const,
             id: "id-ack",
             from: "master",
             to: recipient,
-            kind: "directive",
+            kind: "directive" as const,
             body: "halt",
             timestamp: 1,
             runId: "r-ack",
-            deliveryStatus: "pending",
+            deliveryStatus: "pending" as const,
         }
 
         // Register the directive (mimics writeMailboxMessage during a real run).
@@ -89,14 +89,14 @@ describe("consumeDirectiveAuth runId binding (C-5)", () => {
 
     test("legacy directive without runId is still consumable (backward compat)", () => {
         const msg = {
-            version: 1,
+            version: 1 as const,
             id: "id-legacy",
             from: "master",
             to: "alice",
-            kind: "directive",
+            kind: "directive" as const,
             body: "old",
             timestamp: 1,
-            deliveryStatus: "pending",
+            deliveryStatus: "pending" as const,
         }
         authenticateDirective(msg, "team") // no runId
         expect(isAuthenticatedDirective(msg)).toBe(true)

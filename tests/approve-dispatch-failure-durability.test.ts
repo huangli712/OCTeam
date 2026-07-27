@@ -65,7 +65,6 @@ describe("H-13: approval resolution stays durable across dispatch failure", () =
 
         // applyApprovalDecision should throw because the dispatch fails.
         await expect(applyApprovalDecision(ctx, team, {
-            id: "approval-h13",
             approved: true,
         })).rejects.toThrow(/synthesized dispatch failure/)
 
@@ -78,7 +77,6 @@ describe("H-13: approval resolution stays durable across dispatch failure", () =
         // A second applyApprovalDecision call returns the "no pending" error
         // rather than re-running the dispatch (which would duplicate prompts).
         const secondResult = await applyApprovalDecision(ctx, team, {
-            id: "approval-h13",
             approved: true,
         })
         expect(secondResult).toMatch(/no pending human approval/i)

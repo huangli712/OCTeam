@@ -8,7 +8,7 @@
  * Threat model: a member with FS write access tampering with .octeam/ contents
  * between runs (per assertNoSymlinkTraversal docstring in src/state/locks.ts).
  */
-import { mkdirSync, symlinkSync, existsSync, writeFileSync } from "node:fs"
+import { mkdirSync, symlinkSync, existsSync } from "node:fs"
 import path from "node:path"
 
 import { afterAll, describe, expect, test } from "bun:test"
