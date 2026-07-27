@@ -55,6 +55,15 @@ export type TeamSummary = {
 export async function countMailbox(teamDirectory: string, recipient: string): Promise<{ unread: number; total: number }> {
     const countLines = async (file: string): Promise<number> => {
         try {
+            // HIGH-G: cap the file size before reading so a maliciously
+            // placed large file (or /dev/zero via symlink) cannot OOM the
+            // sidebar process. 1 MiB is far above any legitimate processed.jsonl
+            // (the retention cap is 1000 lines, ~100 KB typical).
+            const stat = await fs.stat(file)
+            if (stat.size > 1_048_576) {
+                console.warn(`[octeam] countMailbox: ${file} exceeds 1 MiB cap, refusing to read`)
+                return 0
+            }
             const raw = await fs.readFile(file, "utf8")
             return raw.split("\n").filter(l => l.length > 0).length
         } catch (err: unknown) {
