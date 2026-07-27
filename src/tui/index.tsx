@@ -23,8 +23,14 @@ const tui: TuiPlugin = async (api) => {
                 },
             },
         })
-    } catch {
-        // Host may not support api.slots; skip gracefully
+    } catch (err) {
+        // Host may not support api.slots; skip gracefully. But log non-trivial
+        // errors so operators can distinguish "unsupported host" from a
+        // real defect (M-23).
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!/slot|register|support|not.*found/i.test(msg)) {
+            console.warn(`[octeam] TUI slot registration failed: ${msg}`)
+        }
     }
 }
 

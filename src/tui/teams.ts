@@ -57,7 +57,14 @@ export async function countMailbox(teamDirectory: string, recipient: string): Pr
         try {
             const raw = await fs.readFile(file, "utf8")
             return raw.split("\n").filter(l => l.length > 0).length
-        } catch {
+        } catch (err: unknown) {
+            // M-22: ENOENT (no inbox yet) is expected — return 0. Other errors
+            // (EACCES, EIO, corruption) are real problems; log so operators
+            // notice, then fall back to 0 so the sidebar does not crash.
+            const code = (err as NodeJS.ErrnoException).code
+            if (code !== "ENOENT") {
+                console.warn(`[octeam] countMailbox: unreadable ${file}: ${err instanceof Error ? err.message : String(err)}`)
+            }
             return 0
         }
     }
@@ -131,8 +138,14 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                       : undefined,
                 tokensUsed: state.activeTask?.tokensUsed ?? state.lastMode?.tokensUsed,
             })
-        } catch {
-            // unreadable state.json — skip
+        } catch (err: unknown) {
+            // M-22: ENOENT means the team dir was removed between readdir and
+            // readFile — skip silently. Other errors (EACCES, EIO, corrupt JSON)
+            // are real problems; log so operators notice.
+            const code = (err as NodeJS.ErrnoException).code
+            if (code !== "ENOENT") {
+                console.warn(`[octeam] readTeamsFrom: unreadable state for "${e.name}": ${err instanceof Error ? err.message : String(err)}`)
+            }
         }
     }
     return out

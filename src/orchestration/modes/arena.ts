@@ -129,9 +129,14 @@ export function buildArenaEvaluatorPrompt(task: ArenaTask, team: Team): string {
         + `Candidates (name: absolute worktree path):\n${rows}\n\n`
         + `${basis.join("\n")}\n`
         + `Winner metric: "${task.winnerMetric}", selected by ${task.scoreDirection}.\n\n`
-        + `Run the eval command against EACH candidate's WORKING TREE at the absolute path `
-        + `above (include uncommitted agent edits; do NOT check out a committed ref).\n`
-        + `Read each candidate's files at the path shown and score them all identically.\n`
+        // M-30: only instruct "run the eval command" when one is provided.
+        // When only eval_criteria is set, the evaluator scores by reading
+        // code against the criteria, not by running a command.
+        + (task.evalCommand
+            ? `Run the eval command against EACH candidate's WORKING TREE at the absolute path `
+              + `above (include uncommitted agent edits; do NOT check out a committed ref).\n`
+            : `Read each candidate's files at the path shown and score them against the criteria above.\n`)
+        + `Score them all identically.\n`
         + `Emit EXACTLY one scoreboard block and nothing after it:\n`
         + `<scoreboard>{"scores":[{"member":"...","score":<n>,"metrics":{...},"passed":true|false,"rationale":"..."}],"rationale":"..."}</scoreboard>`
     )

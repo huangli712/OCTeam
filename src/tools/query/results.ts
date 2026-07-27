@@ -365,8 +365,16 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                             `[full output: team_result_get(` +
                                 `team_id="${record.teamName}", run_id="${record.runId}", member="${name}")]`,
                     )
-                } catch {
-                    previews.push(`### ${name} (${info.bytes} bytes)\n[output file missing]`)
+                } catch (err: unknown) {
+                    // M-31: distinguish ENOENT (file genuinely missing) from
+                    // other errors (EACCES, EIO, corruption). Pre-fix code
+                    // reported "[output file missing]" for ALL errors.
+                    const code = (err as NodeJS.ErrnoException).code
+                    if (code === "ENOENT") {
+                        previews.push(`### ${name} (${info.bytes} bytes)\n[output file missing]`)
+                    } else {
+                        previews.push(`### ${name} (${info.bytes} bytes)\n[output file unreadable: ${err instanceof Error ? err.message : String(err)}]`)
+                    }
                 }
             }
 

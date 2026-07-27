@@ -424,7 +424,16 @@ export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
             const statusResult = await ctx.client.session.status({})
             const statusMap = statusResult.data
             for (const team of activeTeams()) {
-                await sweepTeamOnce(ctx, team, statusMap)
+                // M-29: isolate per-team sweep failures so one bad team does
+                // not prevent the sweep from processing the remaining teams.
+                try {
+                    await sweepTeamOnce(ctx, team, statusMap)
+                } catch (err) {
+                    logEvent(ctx, "warn", "sweep: per-team sweep failed (continuing)", {
+                        team: team.teamName,
+                        error: err instanceof Error ? err.message : String(err),
+                    })
+                }
             }
         } catch (err) {
             logEvent(ctx, "error", "sweep iteration failed", { error: err instanceof Error ? err.message : String(err) })

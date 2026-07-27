@@ -70,16 +70,17 @@ export function SessionNavigatorSidebar(props: {
         }
     }
 
-    // Debounce refresh: session events arrive in bursts (created/status/
-    // updated/deleted). Each refresh runs N+1 HTTP calls plus O(n^2) childCount
-    // work, so coalesce rapid events into a single refresh after a short delay.
+    // M-24: debounce refresh to 300ms (up from 150ms) to coalesce burst
+    // events more aggressively and reduce N+1 mailbox-count request load.
+    // Each refresh runs N+1 HTTP calls plus O(n^2) childCount work, so
+    // coalescing more events into a single refresh materially reduces load.
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     const scheduleRefresh = () => {
         clearTimeout(refreshTimer)
         refreshTimer = setTimeout(() => {
             refresh()
             refreshTeams()
-        }, 150)
+        }, 300)
     }
 
     createEffect(

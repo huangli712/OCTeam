@@ -222,6 +222,11 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                         return {
                             ...base,
                             verifier: step.verifier,
+                            // M-27: persist ensemble gate fields so run records
+                            // capture which verifiers ran and their policy.
+                            verifiers: step.verifiers,
+                            ensemblePolicy: step.ensemblePolicy,
+                            ensembleQuorum: step.ensembleQuorum,
                             targetStep: step.targetStepIndex === undefined ? undefined : step.targetStepIndex + 1,
                             targetSteps: step.targetStepIndices?.map(i => i + 1),
                             verdict: step.verdict,
@@ -231,6 +236,15 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                             attempts: step.attempts,
                             onInvalid: step.onInvalid,
                             invalidAttempts: step.invalidAttempts,
+                            // M-27: persist malformed/timeout counters and
+                            // policies so the run record reflects the full
+                            // retry/escalation history.
+                            onMalformed: step.onMalformed,
+                            malformedAttempts: step.malformedAttempts,
+                            maxMalformedRetries: step.maxMalformedRetries,
+                            onTimeout: step.onTimeout,
+                            timeoutAttempts: step.timeoutAttempts,
+                            maxTimeoutRetries: step.maxTimeoutRetries,
                             onFail: step.onFail,
                             maxRetries: step.maxRetries,
                             maxInvalidRetries: step.maxInvalidRetries,
@@ -238,6 +252,11 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                             onFailGoto: step.onFailGoto === undefined || step.onFailGoto < 0 ? undefined : step.onFailGoto + 1,
                             onInvalidGoto: step.onInvalidGoto === undefined || step.onInvalidGoto < 0 ? undefined : step.onInvalidGoto + 1,
                             maxJumps: step.maxJumps,
+                            // M-27: persist `where` condition and `loop` config
+                            // so the run record reflects the gate's jump
+                            // conditions and backward-iteration setup.
+                            where: step.where,
+                            loop: step.loop,
                             criteria: step.criteria,
                             jumpCount: step.jumpCount,
                         }

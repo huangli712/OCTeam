@@ -488,7 +488,11 @@ const SAFE_FALLBACK_AGENT: string = roleAgent(DEFAULT_ROLE)
  * property check so inherited Object keys ("toString", "constructor", …) never
  * falsely match.
  */
-export function normalizeRole(role: string): string {
+export function normalizeRole(role: unknown): string {
+    // M-32: guard against non-string input (null, number, object from
+    // tampered config). Pre-fix code called role.toLowerCase() unconditionally,
+    // which threw on null/number/object. Now coerce to string safely.
+    if (typeof role !== "string") return DEFAULT_ROLE
     const key = role.toLowerCase()
     return Object.prototype.hasOwnProperty.call(ROLES, key) ? key : DEFAULT_ROLE
 }

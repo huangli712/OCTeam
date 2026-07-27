@@ -175,7 +175,12 @@ export async function loadChildren(
         let duration = ""
         let messages: MessageRow[] = []
         try {
-            const msgResult = await api.client.session.messages({ sessionID: s.id, limit: 100 })
+            // M-25: fetch up to 500 messages (up from 100) so work duration
+            // is not systematically underestimated for long sessions.
+            // The sidebar display only needs approximate duration, but
+            // 100 messages cap truncated multi-hour sessions to appear
+            // much shorter than they actually were.
+            const msgResult = await api.client.session.messages({ sessionID: s.id, limit: 500 })
             messages = msgResult?.data ?? []
             duration = computeDuration(messages)
         } catch {

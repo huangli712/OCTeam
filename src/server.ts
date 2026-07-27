@@ -74,7 +74,10 @@ const server = async (input: PluginInput): Promise<Hooks> => {
 
     // Background sweep timer: reaps stale resources, enforces termination, and
     // reconciles missed idle events. Runs for the lifetime of the plugin.
-    startSweepTimer(ctx)
+    // M-28: retain the handle so a future plugin-reload path could
+    // clearInterval(sweepHandle) to prevent duplicate sweep timers.
+    const sweepHandle = startSweepTimer(ctx)
+    void sweepHandle // retained for future teardown; .unref() prevents loop keepalive
 
     return {
         tool: createTools(ctx),

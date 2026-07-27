@@ -101,6 +101,16 @@ const WorkflowFanoutMetadataSchema = z.object({
 }).refine(
     fanout => fanout.branchIds.length === fanout.branchRanges.length,
     "fanout branchIds and branchRanges length mismatch",
+).refine(
+    // M-33: cross-field constraints — joinPolicy requires its companion field.
+    fanout => fanout.joinPolicy !== "reduce" && fanout.joinPolicy !== "select" || fanout.reducerMember !== undefined,
+    "joinPolicy 'reduce'/'select' requires reducerMember",
+).refine(
+    fanout => fanout.joinPolicy !== "quorum" || fanout.quorum !== undefined,
+    "joinPolicy 'quorum' requires quorum value",
+).refine(
+    fanout => fanout.joinPolicy !== "required_branches" || (fanout.requiredBranchIds ?? []).length > 0,
+    "joinPolicy 'required_branches' requires non-empty requiredBranchIds",
 )
 
 /** Persisted branch metadata: links a branch step to its containing fanout and join. */
@@ -397,18 +407,21 @@ export const RunRecordSchema = z.object({
     mode: ParallelModeSchema.optional(),
     reason: z.string(),
     status: RunStatusSchema,
-    startedAt: z.number(),
-    finishedAt: z.number(),
-    tokensUsed: z.number(),
-    tokensByMember: z.record(z.string(), z.number()),
-    messagesSent: z.number(),
+    // M-26: metric fields must be non-negative (pre-fix code used bare
+    // z.number(), allowing negative tokens/messages/bytes from corrupt
+    // or tampered run records).
+    startedAt: z.number().nonnegative(),
+    finishedAt: z.number().nonnegative(),
+    tokensUsed: z.number().nonnegative(),
+    tokensByMember: z.record(z.string(), z.number().nonnegative()),
+    messagesSent: z.number().nonnegative(),
     currentRound: z.number().optional(),
     decisionHistory: z.array(DecisionRecordSchema).optional(),
     approvalHistory: z.array(ApprovalDecisionRecordSchema).optional(),
     consensusReached: z.boolean().optional(),
     signoffPolicy: SignoffPolicySchema.optional(),
     signoffApprovals: z.record(z.string(), z.boolean()).optional(),
-    memberOutputs: z.record(z.string(), z.object({ bytes: z.number(), file: z.string() })),
+    memberOutputs: z.record(z.string(), z.object({ bytes: z.number().nonnegative(), file: z.string() })),
     tasks: z.array(z.object({
         id: z.string(),
         subject: z.string(),
