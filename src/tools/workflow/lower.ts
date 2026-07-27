@@ -653,27 +653,26 @@ function substituteVarsInSteps(steps: readonly WorkflowToolStep[], vars: Record<
     return steps.map(step => substituteVarsInStep(step, vars))
 }
 
-/** Substitute ${var} placeholders in string fields of a single step. */
+/** Substitute ${var} placeholders in ALL string fields of a single step.
+ * M-7: pre-fix code only substituted a hardcoded subset of fields (task,
+ * criteria, member, etc.), missing id, on_pass_goto, on_fail_goto,
+ * on_invalid_goto, target_step, targets, inputs, verifiers, etc. A
+ * matrix/foreach branch using ${var} in those fields would get the literal
+ * placeholder, not the expanded value. */
 function substituteVarsInStep(step: WorkflowToolStep, vars: Record<string, string>): WorkflowToolStep {
-    // Cast to Record for cross-kind string field access — this function substitutes
-    // ${vars} in ANY string field regardless of step kind.
     const f = step as Record<string, unknown>
-    return {
-        ...step,
-        ...(typeof f.task === "string" ? { task: substituteVars(f.task, vars) } : {}),
-        ...(typeof f.criteria === "string" ? { criteria: substituteVars(f.criteria, vars) } : {}),
-        ...(typeof f.member === "string" ? { member: substituteVars(f.member, vars) } : {}),
-        ...(typeof f.fallback_member === "string"
-            ? { fallback_member: substituteVars(f.fallback_member, vars) }
-            : {}),
-        ...(typeof f.verifier === "string" ? { verifier: substituteVars(f.verifier, vars) } : {}),
-        ...(typeof f.fallback_verifier === "string"
-            ? { fallback_verifier: substituteVars(f.fallback_verifier, vars) }
-            : {}),
-        ...(typeof f.reducer_member === "string"
-            ? { reducer_member: substituteVars(f.reducer_member, vars) }
-            : {}),
-    } as WorkflowToolStep
+    const out: Record<string, unknown> = { ...step }
+    // Substitute EVERY string field on the step object, regardless of kind.
+    for (const [key, value] of Object.entries(f)) {
+        if (typeof value === "string") {
+            out[key] = substituteVars(value, vars)
+        } else if (Array.isArray(value)) {
+            out[key] = value.map(item =>
+                typeof item === "string" ? substituteVars(item, vars) : item,
+            )
+        }
+    }
+    return out as WorkflowToolStep
 }
 
 /** Replace ${name} placeholders with variable values. */

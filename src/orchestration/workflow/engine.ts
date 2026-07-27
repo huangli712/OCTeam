@@ -312,6 +312,14 @@ export function moveActiveWorkflowStep(
 function stepHasPendingResponse(task: WorkflowTask, step: WorkflowStep): boolean {
     if (step.kind === "task") return step.member !== undefined && task.responses[step.member] !== undefined;
     if (step.kind === "gate") {
+        // H-1: for ensemble gates, check ALL verifiers' responses, not just
+        // the last dispatched one. Pre-fix code used step.verifier ??
+        // step.dispatchedActor which missed ensemble verifiers whose response
+        // arrived but was not yet collected.
+        if (step.verifiers !== undefined) {
+            return step.verifiers.some(v => task.responses[v] !== undefined
+                && step.ensembleResults?.[v] === undefined)
+        }
         const actor = step.verifier ?? step.dispatchedActor;
         return actor !== undefined && task.responses[actor] !== undefined;
     }
@@ -332,6 +340,14 @@ export function hasWaitingActiveWorkflowActor(
         switch (step.kind) {
             case "task":
             case "gate": {
+                // H-1: for ensemble gates, check all verifiers for pending
+                // responses (not just the last dispatched actor).
+                if (step.kind === "gate" && step.verifiers !== undefined) {
+                    const hasPending = step.verifiers.some(v =>
+                        responses[v] !== undefined && step.ensembleResults?.[v] === undefined)
+                    if (!step.completed && (step.dispatchedAt !== undefined || hasPending)) return true;
+                    break;
+                }
                 const actorName = step.kind === "task"
                     ? step.member
                     : step.verifier ?? step.dispatchedActor;

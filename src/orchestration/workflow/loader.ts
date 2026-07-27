@@ -82,25 +82,45 @@ async function resolveWorkflowFilePath(baseDir: string, relPath: string): Promis
     return { filePath }
 }
 
-/** Recursively replace ${name} placeholders in value using the provided vars dictionary. */
+/** Recursively replace ${name} placeholders in value using the provided vars dictionary.
+ * C-1: bounded by max depth and cumulative expansion bytes to prevent stack
+ * overflow and memory exhaustion from deeply nested or highly repetitive
+ * template values in a hostile workflow_file. */
+const TEMPLATE_MAX_DEPTH = 20
+const TEMPLATE_MAX_EXPANSION_BYTES = 512 * 1024 // 512 KiB cumulative output
+
 function applyTemplateVars(value: unknown, vars: Record<string, string>, strict: boolean): unknown {
+    return applyTemplateVarsBounded(value, vars, strict, 0, { expansionBytes: 0 })
+}
+
+function applyTemplateVarsBounded(
+    value: unknown,
+    vars: Record<string, string>,
+    strict: boolean,
+    depth: number,
+    budget: { expansionBytes: number },
+): unknown {
+    if (depth > TEMPLATE_MAX_DEPTH) {
+        throw new Error(`applyTemplateVars: exceeded max nesting depth (${TEMPLATE_MAX_DEPTH})`)
+    }
     if (typeof value === "string") {
-        return value.replace(/\$\{([A-Za-z0-9_]+)\}/g, (match, name: string) => {
+        const result = value.replace(/\$\{([A-Za-z0-9_]+)\}/g, (match, name: string) => {
             if (Object.prototype.hasOwnProperty.call(vars, name)) {
                 return vars[name] ?? ""
             }
-            // Strict mode: surface unknown variables explicitly so a typo in
-            // a var name fails the run loud instead of silently leaking a
-            // literal ${x} into the dispatch prompt. Non-strict keeps the
-            // backward-compatible literal-preserving behavior.
             if (strict) throw new UnknownTemplateVarError(name)
             return match
         })
+        budget.expansionBytes += Buffer.byteLength(result, "utf8")
+        if (budget.expansionBytes > TEMPLATE_MAX_EXPANSION_BYTES) {
+            throw new Error(`applyTemplateVars: exceeded max expansion bytes (${TEMPLATE_MAX_EXPANSION_BYTES})`)
+        }
+        return result
     }
-    if (Array.isArray(value)) return value.map(item => applyTemplateVars(item, vars, strict))
+    if (Array.isArray(value)) return value.map(item => applyTemplateVarsBounded(item, vars, strict, depth + 1, budget))
     if (isRecord(value)) {
         const out: Record<string, unknown> = {}
-        for (const [key, inner] of Object.entries(value)) out[key] = applyTemplateVars(inner, vars, strict)
+        for (const [key, inner] of Object.entries(value)) out[key] = applyTemplateVarsBounded(inner, vars, strict, depth + 1, budget)
         return out
     }
     return value
@@ -411,7 +431,13 @@ export async function loadWorkflowFile(
         // C-7: stat before read so a hostile workflow_file does not get slurped
         // into memory in full. The cap is generous for real workflows but
         // blocks OOM-by-giant-file attacks.
+        // C-2: reject non-regular files (FIFO, socket, device). A FIFO named
+        // workflow.json has size 0 but readFile would block forever waiting
+        // for data that never arrives, hanging the event loop permanently.
         const fileStat = await fs.stat(resolved.filePath)
+        if (!fileStat.isFile()) {
+            return { error: `Error: workflow_file "${relPath}" is not a regular file` }
+        }
         if (fileStat.size > WORKFLOW_FILE_MAX_BYTES) {
             return {
                 error: `Error: workflow_file "${relPath}" is too large: ${fileStat.size} bytes exceeds the ${WORKFLOW_FILE_MAX_BYTES}-byte limit`,

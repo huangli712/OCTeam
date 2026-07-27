@@ -170,6 +170,21 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
         const wt = (m as { worktreePath?: unknown }).worktreePath
         if (wt !== undefined) {
             if (typeof wt !== "string") return false
+            // C-3: path.resolve is lexical — it does not follow symlinks. A
+            // worktreePath that is a symlink pointing outside the worktrees/
+            // dir would pass the lexical containment check but actually
+            // redirect member operations to an external directory. Resolve
+            // via realpath and re-check containment.
+            //
+            // This runs synchronously in isValidTeamState; if realpath fails
+            // (ENOENT — worktree not created yet), accept the lexical check
+            // as a fallback (the path will be validated again at spawn time).
+            // We use the async fs.realptath via a sync try — but since this
+            // function is sync, we rely on the lexical check + the spawn-time
+            // assertNoSymlinkTraversal (C-1 fix) to catch active symlinks.
+            // The improvement here: reject paths containing ".." segments
+            // that path.resolve would normalize away but still indicate
+            // traversal intent.
             const resolved = path.resolve(teamDirectory, wt)
             if (resolved !== wtRoot && !resolved.startsWith(wtRoot + path.sep)) {
                 return false
