@@ -36,12 +36,27 @@ function narrowSdkEvent(event: unknown): { type?: string; properties?: Record<st
     }
 }
 
-/** Safely extract a string sessionID from an SDK event's properties or top-level id. */
+/** Safely extract a string sessionID from an SDK event's properties or top-level id.
+ * HIGH-G: SDK events come in multiple shapes across versions:
+ *   - v1 / common: properties.sessionID
+ *   - session.deleted (current SDK): properties.info.id
+ *   - top-level id (fallback)
+ * Read each in order so a session deletion does not silently leak the team
+ * directory and master authorization index. */
 function sdkEventSessionID(event: unknown): string | undefined {
     const narrowed = narrowSdkEvent(event)
     if (!narrowed) return undefined
     const fromProps = narrowed.properties?.sessionID
     if (typeof fromProps === "string" && fromProps) return fromProps
+    // HIGH-G: current SDK's session.deleted event places the id at
+    // properties.info.id (not properties.sessionID). Without this branch the
+    // deletion handler never fires and team directories + master authorization
+    // leak across plugin restarts.
+    const fromInfo = narrowed.properties?.info
+    if (typeof fromInfo === "object" && fromInfo !== null) {
+        const infoId = (fromInfo as Record<string, unknown>).id
+        if (typeof infoId === "string" && infoId) return infoId
+    }
     if (typeof event === "object" && event !== null) {
         const id = (event as Record<string, unknown>).id
         if (typeof id === "string" && id) return id
