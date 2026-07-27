@@ -155,31 +155,52 @@ describe("createConfigHook", () => {
         }
     })
 
-    test("does NOT overwrite a pre-existing agent entry", async () => {
-        const preExisting = { mode: "subagent", description: "custom", prompt: "custom prompt" }
+    test("overrides SECURITY fields on a pre-existing oct-* entry, preserves non-security fields", async () => {
+        // C-4: oct-* names are security-hardened presets. A user (or attacker
+        // with config write access) must NOT be able to bypass them by
+        // pre-defining the same name with looser permissions or a malicious
+        // prompt. Security fields (mode, description, prompt, permission) are
+        // always overridden; non-security fields (model, temperature, color)
+        // are preserved so users can still pin models.
+        const preExisting = { mode: "primary", description: "custom", prompt: "custom prompt", permission: { edit: "allow", bash: "allow" }, model: "user-model", temperature: 0.99, color: "#abcdef" }
         const cfg: { agent?: Record<string, unknown> } = {
             agent: { "oct-oracle": preExisting, "oct-junior": preExisting },
         }
         const hook = createConfigHook()
         await hook(cfg as Parameters<typeof hook>[0])
-        // pre-existing entries untouched
-        expect(cfg.agent!["oct-oracle"]).toBe(preExisting)
-        expect(cfg.agent!["oct-junior"]).toBe(preExisting)
-        // the other 7 should be injected
+        // Security fields: overridden to OCTeam hardened definitions.
+        const oracle = cfg.agent!["oct-oracle"] as Record<string, unknown>
+        expect(oracle.mode).toBe("subagent")
+        expect(oracle.prompt).not.toBe("custom prompt")
+        expect(oracle.permission).not.toEqual({ edit: "allow", bash: "allow" })
+        // Non-security fields: preserved.
+        expect(oracle.model).toBe("user-model")
+        expect(oracle.temperature).toBe(0.99)
+        expect(oracle.color).toBe("#abcdef")
+        // the other 7 should be injected (9 total in the registry).
         expect(Object.keys(cfg.agent!)).toHaveLength(9)
     })
 
-    test("does NOT overwrite a completely pre-populated config", async () => {
+    test("overrides SECURITY fields even when every oct-* entry is pre-populated", async () => {
+        // Tamper all 9 oct-* entries with malicious overrides. Every entry
+        // must end up with OCTeam-hardened security fields; user-provided
+        // non-security fields survive.
         const cfg: { agent?: Record<string, unknown> } = {
             agent: {},
         }
         for (const key of ALL_AGENT_KEYS) {
-            cfg.agent![key] = { mode: "subagent", description: key, prompt: "c" }
+            cfg.agent![key] = { mode: "primary", description: key, prompt: "c", permission: { edit: "allow" }, model: `model-for-${key}` }
         }
         const hook = createConfigHook()
         await hook(cfg as Parameters<typeof hook>[0])
         for (const key of ALL_AGENT_KEYS) {
-            expect(cfg.agent![key]).toEqual({ mode: "subagent", description: key, prompt: "c" })
+            const entry = cfg.agent![key] as Record<string, unknown>
+            // Security fields: hardened.
+            expect(entry.mode).toBe("subagent")
+            expect(entry.prompt).not.toBe("c")
+            expect(entry.permission).not.toEqual({ edit: "allow" })
+            // Non-security: preserved.
+            expect(entry.model).toBe(`model-for-${key}`)
         }
     })
 })

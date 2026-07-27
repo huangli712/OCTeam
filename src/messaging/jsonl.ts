@@ -13,8 +13,8 @@ import { isSafePathSegment } from "../state/paths.js"
 import type { Message } from "../core/types.js"
 
 /** Append a JSON object as a single line to filePath. */
-export async function appendJsonl(filePath: string, obj: unknown): Promise<void> {
-    await refuseSymlink(filePath)
+export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: string): Promise<void> {
+    await refuseSymlink(filePath, trustedRoot)
     await fs.mkdir(path.dirname(filePath), { recursive: true })
     await fs.appendFile(filePath, JSON.stringify(obj) + "\n", "utf8")
 }
@@ -71,8 +71,8 @@ export async function readJsonl(filePath: string): Promise<Message[]> {
 }
 
 /** Truncate filePath to empty (0 bytes). Silently ignores ENOENT. */
-export async function truncateFile(filePath: string): Promise<void> {
-    await refuseSymlink(filePath)
+export async function truncateFile(filePath: string, trustedRoot?: string): Promise<void> {
+    await refuseSymlink(filePath, trustedRoot)
     await fs.writeFile(filePath, "", "utf8").catch(err => {
         if (!isEnoent(err)) throw err
     })

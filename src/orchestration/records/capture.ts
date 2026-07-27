@@ -132,7 +132,7 @@ export async function captureMemberOutput(
         ? truncateOutput(accumulated, ACCUMULATED_OUTPUT_CAP)
         : accumulated
 
-    await atomicWrite(outPath, capped)
+    await atomicWrite(outPath, capped, team.directory)
     // Record the message-history watermark so a re-entry whose history hasn't
     // grown is skipped (idempotency guard at the top).
     member.lastCapturedMsgCount = messages.length

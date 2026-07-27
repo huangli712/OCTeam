@@ -280,7 +280,7 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         }
     }
 
-    await atomicWrite(runRecordPath(team.directory, runId), JSON.stringify(record, null, 2))
+    await atomicWrite(runRecordPath(team.directory, runId), JSON.stringify(record, null, 2), team.directory)
     await pruneRuns(team.directory, DEFAULT_MAX_RUNS)
 }
 

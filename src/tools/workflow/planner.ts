@@ -555,18 +555,19 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
     if (args.overwrite === true) {
         if (existsSync(teamPath)) teamBackup = await readFileWithFallback(teamPath)
     }
-    // Use atomicWrite for symlink-safety (refuses to write through symlinks)
+    // Use atomicWrite for symlink-safety (refuses to write through symlinks,
+    // walks ancestor chain from ctx.directory when trustedRoot is supplied)
     // and crash-safety (tmp + rename, fsync'd).
-    await atomicWrite(teamPath, `${JSON.stringify(team, null, 4)}\n`)
+    await atomicWrite(teamPath, `${JSON.stringify(team, null, 4)}\n`, ctx.directory)
     try {
-        await atomicWrite(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`)
+        await atomicWrite(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`, ctx.directory)
     } catch (err) {
         // Rollback: restore the ORIGINAL content (or delete if none existed).
         // This is critical for overwrite:true — without it, the old loader
         // data is permanently lost.
         try {
             if (teamBackup !== null) {
-                await atomicWrite(teamPath, teamBackup)
+                await atomicWrite(teamPath, teamBackup, ctx.directory)
             } else {
                 await unlink(teamPath).catch(() => { /* best-effort */ })
             }

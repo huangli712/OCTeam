@@ -43,7 +43,7 @@ import {
     reservedPath,
 } from "../state/paths.js"
 import type { Message } from "../core/types.js"
-import { authenticateDirective } from "./auth.js"
+import { authenticateDirective, consumeDirectiveAuth } from "./auth.js"
 import { appendJsonl, readJsonl, truncateFile } from "./jsonl.js"
 
 // Max lines retained in mailbox/{recipient}.processed.jsonl (audit log). The
@@ -93,7 +93,7 @@ export async function writeMailboxMessage(
                 throw new BackpressureError(recipient, `recipient "${recipient}" mailbox is full (backpressure)`)
             }
         }
-        await appendJsonl(inboxPath(teamDirectory, recipient), message)
+        await appendJsonl(inboxPath(teamDirectory, recipient), message, teamDirectory)
     })
 }
 
@@ -116,6 +116,7 @@ export async function pollMailbox(
                 await atomicWrite(
                     reservedPath(teamDirectory, recipient, msg.id),
                     JSON.stringify({ ...msg, deliveryStatus: "delivered", reservedAt: Date.now() }),
+                    teamDirectory,
                 )
             } catch (err) {
                 // Rollback: a later reservation write failed after earlier ones
@@ -134,7 +135,7 @@ export async function pollMailbox(
             }
         }
         try {
-            await truncateFile(inboxPath(teamDirectory, recipient))
+            await truncateFile(inboxPath(teamDirectory, recipient), teamDirectory)
         } catch (err) {
             // Rollback: truncate failed after reserves succeeded. Without this
             // cleanup the messages would exist in BOTH reserved/ and inbox/,
@@ -174,7 +175,18 @@ export async function ackMessages(
             await appendJsonl(processedPath(teamDirectory, recipient), {
                 ...msg,
                 deliveryStatus: "processed",
-            })
+            }, teamDirectory)
+            // One-shot directive auth consumption: a successful ack confirms
+            // durable delivery. Delete the in-memory auth record so a later
+            // replay of the same JSONL line (via FS tampering or stale
+            // reserved-file resurrection) no longer matches the registry and
+            // is downgraded to a regular message. The activeRunId argument is
+            // omitted here — consumption is delivery-confirmed regardless of
+            // current run state (by the time ack runs, formatMailboxInjection
+            // has already decided priority using the run binding).
+            if (msg.kind === "directive") {
+                consumeDirectiveAuth(msg)
+            }
             await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
                 // ENOENT is the benign race (reservation already removed) —
                 // swallow. Any other errno (EPERM, EBUSY, EROFS, ...) leaves
@@ -208,7 +220,7 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
     const lines = raw.split("\n").filter(l => l.length > 0)
     if (lines.length <= PROCESSED_MAX_LINES) return
     const kept = lines.slice(lines.length - PROCESSED_MAX_LINES)
-    await atomicWrite(p, kept.join("\n") + "\n")
+    await atomicWrite(p, kept.join("\n") + "\n", teamDirectory)
 }
 
 /**
@@ -298,7 +310,7 @@ export async function releaseStaleReservations(
                 await appendJsonl(inboxPath(teamDirectory, recipient), {
                     ...parsed,
                     deliveryStatus: "pending",
-                })
+                }, teamDirectory)
             }
         }
     })

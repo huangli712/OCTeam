@@ -290,26 +290,33 @@ export function createTransformHook(
             )
             if (hasScopedDirective) {
                 let activeRunId: string | undefined
-                let injectAllScoped = false
+                let teamStateUnreadable = false
                 try {
                     const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
                     activeRunId = team.activeTask?.runId
                     activeRunIdForAuth = activeRunId
                 } catch (err) {
-                    // Team state unreadable — fall back to injecting all. The
-                    // ack-full-set below still prevents a reservation loop.
-                    logSwallowed(ctx, "transform: team state unreadable for scoped directive filter", err, { teamName: member.teamName })
-                    injectAllScoped = true
+                    // Team state unreadable. Fail CLOSED for scoped directives:
+                    // dropping them is safer than failing open (the previous
+                    // behavior injected them with activeRunId=undefined, which
+                    // isAuthenticatedDirective interpreted as "skip runId check",
+                    // letting a directive authenticated for an ended run receive
+                    // [DIRECTIVE] priority during a different run).
+                    //
+                    // Non-scoped directives (no runId) are unaffected and still
+                    // inject normally below.
+                    logSwallowed(ctx, "transform: team state unreadable for scoped directive filter; dropping scoped directives", err, { teamName: member.teamName })
+                    teamStateUnreadable = true
                 }
                 toInject = unread.filter(m => {
                     // Non-directives, and directives without a runId, always pass
                     // (backward-compat with unscoped directives).
                     if (m.kind !== "directive" || m.runId === undefined) return true
-                    // Scoped directive: inject only when it matches the active run;
-                    // a mismatch is a stale directive from an ended run → skip.
-                    // On unreadable team state, honor the "fall back to injecting
-                    // all" contract above instead of silently dropping them.
-                    if (injectAllScoped) return true
+                    // Scoped directive. On unreadable team state we CANNOT
+                    // confirm the active run, so drop the directive entirely
+                    // (fail-closed). The ack-all below still clears the slot.
+                    if (teamStateUnreadable) return false
+                    // Otherwise inject only when runId matches the active run.
                     return m.runId === activeRunId
                 })
             }

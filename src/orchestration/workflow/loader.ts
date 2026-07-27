@@ -8,6 +8,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 import type { WorkflowFanoutToolStep, WorkflowToolStep } from "../../core/types/workflow.js"
+import { assertNoSymlinkTraversal } from "../../state/locks.js"
 
 // Supported workflow_file schema versions. When the schema gains a v2, add it
 // here and branch on `version` in loadWorkflowFile. A file with an unlisted
@@ -342,11 +343,24 @@ export async function loadWorkflowFile(
     const resolved = await resolveWorkflowFilePath(baseDir, relPath)
     if ("error" in resolved) return resolved
 
-    // Re-verify realpath immediately before reading. resolveWorkflowFilePath
-    // checks realpath, but the gap between that check and this read is a
-    // TOCTOU window where a symlink could be installed.
-    const real = await fs.realpath(resolved.filePath).catch(() => resolved.filePath)
     const base = normalizeBase(baseDir)
+
+    // Re-verify no symlink traversal immediately before reading.
+    // resolveWorkflowFilePath checks the resolved string path, but the gap
+    // between that check and this read is a TOCTOU window where a symlink
+    // could be installed. The helper walks every ancestor with lstat (no
+    // follow), failing closed on any symlink in the chain — replacing the
+    // previous realpath().catch(() => resolved.filePath) pattern which
+    // fail-opened on EPERM/EIO.
+    try {
+        await assertNoSymlinkTraversal(base, resolved.filePath)
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        return { error: msg.startsWith("assertNoSymlinkTraversal")
+            ? `Error: workflow_file must not be a symlink outside the workspace (${msg})`
+            : `Error: workflow_file symlink check failed: ${msg}` }
+    }
+    const real = resolved.filePath
     if (!isInside(base, real)) {
         return { error: "Error: workflow_file must not be a symlink outside the workspace" }
     }

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test"
-import { mkdirSync, writeFileSync } from "node:fs"
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { loadWorkflowFile, validateWorkflowSteps } from "../src/orchestration/workflow/loader.js"
@@ -166,6 +166,32 @@ describe("loadWorkflowFile error attribution", () => {
             expect(result.error).toContain(`workflow_file "${relPath}"`)
             expect(result.error).toContain("step 1 max_retries must be an integer from 0 to 5")
             expect(result.error).not.toContain("<workflow>")
+        }
+    })
+
+    // Regression: ancestor-symlink redirection. The pre-fix code used
+    // `fs.realpath(filePath).catch(() => resolved.filePath)` which failed OPEN
+    // on any realpath error other than ENOENT, allowing a symlinked parent
+    // directory to redirect the read outside the workspace. The fix replaces
+    // this with `assertNoSymlinkTraversal(base, resolved.filePath)` which walks
+    // every ancestor with lstat (no follow) and fails closed on any symlink.
+    test("rejects workflow_file under a symlinked directory (ancestor-chain check)", async () => {
+        const root = tmpRoot("wf-loader-symlink-ancestor")
+        const outside = tmpRoot("wf-loader-symlink-outside")
+        // <root>/workflows -> <outside> : a parent dir of the target file is
+        // a symlink, but the target leaf does not exist yet, so legacy
+        // refuseSymlink (target + parent only) would also miss it.
+        const realDir = join(root, "real-workflows")
+        mkdirSync(realDir, { recursive: true })
+        symlinkSync(outside, join(root, "workflows"))
+        writeFileSync(join(outside, "stolen.json"), JSON.stringify({
+            steps: [{ kind: "task", member: "x", task: "stolen" }],
+        }))
+
+        const result = await loadWorkflowFile(root, "workflows/stolen.json", {})
+        expect("error" in result).toBe(true)
+        if ("error" in result) {
+            expect(result.error).toMatch(/symlink/i)
         }
     })
 })

@@ -296,7 +296,26 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
     for (const { leadSessionId, teamName } of teams) {
         try {
             const team = await loadTeamState(storageRoot, teamName, leadSessionId)
-            indexMasterTeam(team.leadSessionId, team.teamName, leadSessionId, storageRoot, team.directory)
+            // C-3 master identity source: for project scope (segmented), the
+            // authoritative owner is the directory-derived `leadSessionId`
+            // (enumerated by listAllTeams from the filesystem layout
+            // <root>/<sid>/teams/<team>). The disk-persisted
+            // team.leadSessionId MUST NOT be trusted here — a member with
+            // .octeam/ write access can rewrite state.json to set
+            // leadSessionId to its own session, which on the pre-fix code
+            // granted that session master privilege on the next rebuild.
+            //
+            // For user scope (segmented=false), `leadSessionId` is undefined
+            // (flat layout has no per-session segment); the disk value is
+            // the only source. This is an accepted limitation for user scope
+            // and needs separate trusted-owner infrastructure to close.
+            const trustedLeadSessionId = segmented ? leadSessionId : team.leadSessionId
+            if (ctx && segmented && team.leadSessionId !== leadSessionId) {
+                logSwallowed(ctx, "indexScope: disk leadSessionId mismatches directory layout; using directory value", undefined, {
+                    teamName, diskLeadSessionId: team.leadSessionId, dirLeadSessionId: leadSessionId,
+                })
+            }
+            indexMasterTeam(trustedLeadSessionId ?? "", team.teamName, leadSessionId, storageRoot, team.directory)
             // Restart invariant: never auto-activate. The active pointer is NOT
             // restored from persisted activatedAt — reconcileActivation clears
             // all on-disk activatedAt, and the user must team_activate explicitly.

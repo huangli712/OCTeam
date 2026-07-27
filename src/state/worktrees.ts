@@ -9,6 +9,7 @@ import path from "node:path"
 import { promisify } from "node:util"
 
 import { logger } from '../core/log.js';
+import { assertNoSymlinkTraversal } from "./locks.js";
 import { worktreePath } from "./paths.js";
 
 /** Promisified child_process.execFile for git operations. */
@@ -67,6 +68,17 @@ export async function cleanWorktree(
     if (!worktreePath) return
     const root = path.resolve(worktreesRoot)
     const resolved = path.resolve(root, worktreePath)
+    // Walk ancestor chain with lstat (no follow) so an intermediate-directory
+    // symlink cannot redirect `git worktree remove --force` outside the team's
+    // worktrees root. The previous path.resolve-only check missed symlinks.
+    try {
+        await assertNoSymlinkTraversal(root, resolved)
+    } catch (err) {
+        logger.warn("cleanWorktree: refusing symlink-bearing worktreePath", {
+            path: worktreePath, error: err instanceof Error ? err.message : String(err),
+        })
+        return
+    }
     if (resolved !== root && !resolved.startsWith(root + path.sep)) {
         logger.warn("cleanWorktree: refusing out-of-bounds worktreePath", { path: worktreePath })
         return
@@ -109,6 +121,16 @@ export async function createWorktree(
  * original behavior): a git failure is swallowed so it never blocks team
  * teardown. Order matters — the worktree must be removed before its branch
  * can be deleted (a checked-out branch is locked while the worktree exists).
+ *
+ * C-10 branch-deletion guard: when `worktreePath` is undefined (the member
+ * never had a worktree registered with OCTeam — e.g. worktree: false was
+ * set at create time, or the team was created without worktrees), the
+ * companion `team/<team>/<member>` branch was NEVER created by OCTeam and
+ * MUST NOT be deleted. An unconditional `git branch -D` would silently
+ * destroy any user-defined unmerged branch that happens to share the same
+ * name (a real risk — `team/<team>/<member>` is a plausible feature-branch
+ * name). The branch is only OCTeam-owned when createWorktree created it,
+ * which is the only call site that also registers a worktreePath.
  */
 export async function destroyWorktree(
     projectDir: string,
@@ -117,6 +139,10 @@ export async function destroyWorktree(
     teamName: string,
     memberName: string,
 ): Promise<void> {
+    // No registered worktree → no OCTeam-owned companion branch. Skip BOTH
+    // the worktree removal (cleanWorktree already early-returns on undefined)
+    // and the branch deletion to avoid destroying a user-defined branch.
+    if (!worktreePath) return
     try {
         await cleanWorktree(projectDir, worktreePath, worktreesRoot);
     } catch (err) {

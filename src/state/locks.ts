@@ -206,6 +206,48 @@ async function releaseLock(lockPath: string): Promise<void> {
 }
 
 /**
+ * Assert that `target` resolves strictly inside `trustedRoot` AND that no
+ * component of the path between them (or at target itself) is a symbolic link.
+ * Catches the ancestor-symlink attack that `refuseSymlink` (target + parent
+ * only) misses: when an intermediate directory such as `<team>/mailbox` is
+ * replaced with a symlink, the legacy check sees only the immediate parent and
+ * follows the redirect outside the team root.
+ *
+ * Walks every ancestor of `target` from leaf up to (but not including)
+ * `trustedRoot` with `lstat`, refusing any symlink. The trusted root itself is
+ * assumed already verified (team_create confirms the team directory is a real
+ * directory under storageRoot before any state is written to it).
+ *
+ * Note: like all userspace traversal checks this is TOCTOU-vulnerable — an
+ * attacker who can swap a path component between this check and the subsequent
+ * read/write can still escape. The defense targets the documented threat
+ * model (a member with FS write access tampering with `.octeam/` contents
+ * between runs), not a concurrent in-run attacker.
+ */
+export async function assertNoSymlinkTraversal(trustedRoot: string, target: string): Promise<void> {
+    const root = path.resolve(trustedRoot)
+    const resolved = path.resolve(target)
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+        throw new Error(`assertNoSymlinkTraversal: target escapes trusted root: target=${target} root=${trustedRoot}`)
+    }
+    // Walk every ancestor from target up to (not including) the trusted root.
+    // ENOENT for a not-yet-created component is fine — the subsequent write
+    // will create it as a real dir/file.
+    let current = resolved
+    while (current !== root && current !== path.dirname(current)) {
+        try {
+            const stat = await fs.lstat(current)
+            if (stat.isSymbolicLink()) {
+                throw new Error(`assertNoSymlinkTraversal: symlink in path chain: ${current}`)
+            }
+        } catch (err: unknown) {
+            if (!isEnoent(err)) throw err
+        }
+        current = path.dirname(current)
+    }
+}
+
+/**
  * Atomic write: content -> <path>.tmp.<pid>.<rand> then fs.rename to <path>.
  * Prevents partial reads on crash. Ensures the parent directory exists.
  *
@@ -215,9 +257,16 @@ async function releaseLock(lockPath: string): Promise<void> {
  * - st-fsync: tmp data is fsync'd to disk before the rename lands, so an OS
  *   crash after rename cannot leave a zero-byte or stale state file.
  * - st-symlink: a symlink at the target path is refused, so a local attacker
- *   with FS write access cannot silently redirect the write elsewhere.
+ *   with FS write access cannot silently redirect the write elsewhere. When
+ *   `trustedRoot` is supplied, the full ancestor chain is also walked via
+ *   {@link assertNoSymlinkTraversal} so an intermediate-directory symlink
+ *   (e.g. `<team>/mailbox` redirected) cannot escape the team root.
  */
-export async function atomicWrite(filePath: string, content: string): Promise<void> {
+export async function atomicWrite(
+    filePath: string,
+    content: string,
+    trustedRoot?: string,
+): Promise<void> {
     await fs.mkdir(path.dirname(filePath), { recursive: true }).catch((err: unknown) => {
         const code = (err as NodeJS.ErrnoException).code
         if (code !== "EEXIST") throw err
@@ -234,6 +283,13 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
     } catch (err: unknown) {
         if (!isEnoent(err)) throw err
         // Target does not exist yet — safe to proceed.
+    }
+    // st-symlink-ancestor: when a trusted root is supplied, walk the full
+    // ancestor chain so an intermediate-directory symlink (e.g. `<team>/mailbox`
+    // redirected outside the team root) cannot redirect the write. The legacy
+    // leaf-only check above misses this case.
+    if (trustedRoot !== undefined) {
+        await assertNoSymlinkTraversal(trustedRoot, filePath)
     }
 
     // st-tmpname: random suffix prevents same-process tmp collisions.
@@ -278,8 +334,14 @@ export async function atomicWrite(filePath: string, content: string): Promise<vo
  * appendJsonl / truncateFile callers are not exploitable as symlink-following
  * sinks (atomicWrite already refuses symlinks, but fs.appendFile/writeFile
  * follow them by default).
+ *
+ * When `trustedRoot` is supplied, the full ancestor chain is also walked via
+ * {@link assertNoSymlinkTraversal} so an intermediate-directory symlink cannot
+ * redirect the write outside the team root. Without `trustedRoot`, only the
+ * legacy target + immediate-parent check runs (backward-compatible behavior
+ * for callers that do not have a trusted root handy).
  */
-export async function refuseSymlink(filePath: string): Promise<void> {
+export async function refuseSymlink(filePath: string, trustedRoot?: string): Promise<void> {
     // Check both the target file and its immediate parent directory.
     // The parent-dir check prevents the common attack of symlinking the
     // containing directory to redirect writes outside the team root.
@@ -292,6 +354,10 @@ export async function refuseSymlink(filePath: string): Promise<void> {
         } catch (err: unknown) {
             if (!isEnoent(err)) throw err
         }
+    }
+    // Walk the full ancestor chain when a trusted root is supplied.
+    if (trustedRoot !== undefined) {
+        await assertNoSymlinkTraversal(trustedRoot, filePath)
     }
 }
 

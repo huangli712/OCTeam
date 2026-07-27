@@ -39,15 +39,37 @@ export const OCTEAM_AGENTS: Record<string, OcteamAgentConfig> = {
 
 /**
  * Create the config hook that registers OCTeam's built-in subagents into
- * opencode's agent registry. Mutates cfg.agent in-place; never overwrites
- * entries that the user has already defined.
+ * opencode's agent registry. For oct-* names (security-hardened presets)
+ * the security-critical fields — mode, prompt, permission, description — are
+ * ALWAYS overridden with OCTeam's definitions; user values for these fields
+ * are ignored because a user (or attacker with config write access) could
+ * otherwise replace `permission: { edit: "allow", bash: "allow" }` or inject
+ * a malicious prompt, completely bypassing the hardened permission map that
+ * role.ts promises. Non-security fields (model, temperature, color, ...) are
+ * preserved so users can still pin a model or tune cosmetic values.
  */
 export function createConfigHook(): NonNullable<Hooks["config"]> {
     return async (cfg) => {
         if (!cfg.agent) cfg.agent = {}
         for (const [name, def] of Object.entries(OCTEAM_AGENTS)) {
-            if (!cfg.agent[name]) {
+            const existing = cfg.agent[name]
+            if (!existing) {
+                // User did not define this agent — apply OCTeam preset verbatim.
                 cfg.agent[name] = def
+                continue
+            }
+            // User pre-defined an oct-* entry. Preserve their NON-SECURITY
+            // fields (model, temperature, color, etc.) but force-override
+            // security fields with OCTeam's hardened definitions. Without
+            // this, a tampered `cfg.agent["oct-oracle"] = { permission: { edit:
+            // "allow" }, prompt: "..." }` would silently win.
+            cfg.agent[name] = {
+                ...existing,
+                // Security-critical overrides (OCTeam wins):
+                mode: def.mode,
+                description: def.description,
+                prompt: def.prompt,
+                permission: def.permission,
             }
         }
     }
