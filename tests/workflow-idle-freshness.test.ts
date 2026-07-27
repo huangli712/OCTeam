@@ -21,8 +21,6 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test"
-import { writeFileSync, mkdirSync } from "node:fs"
-import path from "node:path"
 
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { cleanupTmpRoots, makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js"

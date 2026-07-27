@@ -586,7 +586,6 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
             // no escalateTo
             responses: { alice: "artifact", bob: V.invalid("cannot align") },
         })
-        const runId = task.runId!
         const team = makeTeam({
             activeTask: task,
             members: [

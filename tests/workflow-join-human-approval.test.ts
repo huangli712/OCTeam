@@ -35,11 +35,11 @@ describe("H-3: fanout join completion respects task-level human_approval", () =>
         // the master is asked to approve before carol dispatches.
         const task = makeWorkflowTask({
             steps: [
-                { kind: "fanout", branches: [{ id: "b1", steps: [] }] }, // placeholder; real branch built below
+                { kind: "fanout", branches: [{ id: "b1", steps: [] }] },
                 { kind: "task", member: "alice", task: "branch work", completed: true, output: "branch output", branch: { fanoutIndex: 0, branchId: "b1" } },
                 { kind: "join", completed: false, join: { fanoutIndex: 0, joinPolicy: "all" } },
                 { kind: "task", member: "carol", task: "downstream", completed: false },
-            ],
+            ] as unknown as WorkflowStep[],
             currentStageIndex: 0,
             humanApproval: true,
         })
@@ -75,7 +75,7 @@ describe("H-3: fanout join completion respects task-level human_approval", () =>
                 { kind: "task", member: "alice", task: "branch work", completed: true, output: "branch output", branch: { fanoutIndex: 0, branchId: "b1" } },
                 { kind: "join", completed: false, join: { fanoutIndex: 0, joinPolicy: "all" } },
                 { kind: "task", member: "carol", task: "downstream", completed: false },
-            ],
+            ] as unknown as WorkflowStep[],
             currentStageIndex: 0,
             // No humanApproval flag.
         })
@@ -91,7 +91,7 @@ describe("H-3: fanout join completion respects task-level human_approval", () =>
         await processIdle(ctx, team, team.members[0], "ses_alice")
 
         // Without human_approval, carol IS dispatched after the join.
-        const carolCall = calls.find(c => c.sessionId === "ses_carol")
+        calls.find(c => c.sessionId === "ses_carol")
         // (If the harness doesn't reach this state due to test fixture limits,
         // we accept either outcome — the control's purpose is to document the
         // expected non-approval behavior.)

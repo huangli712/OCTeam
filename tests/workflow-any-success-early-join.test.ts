@@ -34,7 +34,7 @@ function makeSteps(): WorkflowStep[] {
                 joinPolicy: "any_success",
                 branchTailIndices: [1, 2],
             },
-        } as WorkflowStep,
+        } as unknown as WorkflowStep,
     ]
 }
 
@@ -75,7 +75,7 @@ describe("H-6: any_success join opens on first success", () => {
             {
                 kind: "join",
                 join: { fanoutIndex: 0, joinPolicy: "any_success", branchTailIndices: [1, 2] },
-            } as WorkflowStep,
+            } as unknown as WorkflowStep,
         ]
         const ready = isWorkflowJoinSatisfied(steps, steps[3])
         expect(ready).toBe(false)
@@ -94,7 +94,7 @@ describe("H-6: any_success join opens on first success", () => {
                     branchTailIndices: [1, 2],
                     erroredBranchIds: ["A", "B"],
                 },
-            } as WorkflowStep,
+            } as unknown as WorkflowStep,
         ]
         const ready = isWorkflowJoinSatisfied(steps, steps[3])
         expect(ready).toBe(false)

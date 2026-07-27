@@ -33,8 +33,6 @@ afterAll(cleanupTmpRoots)
 
 const FAIL_VERDICT =
     '<verdict>{"result":"FAIL","rationale":"wrong","diff":"off by one"}</verdict>'
-const PASS_VERDICT =
-    '<verdict>{"result":"PASS","rationale":"ok","diff":""}</verdict>'
 
 describe("H-1: backward jump resets triggering gate retry counters", () => {
     test("triggering gate's attempts/invalidAttempts/malformedAttempts/timeoutAttempts are zeroed after backward jump", async () => {

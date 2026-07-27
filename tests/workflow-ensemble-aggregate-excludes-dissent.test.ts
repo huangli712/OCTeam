@@ -18,7 +18,7 @@ import { aggregateEnsembleVerdict } from "../src/orchestration/workflow/gate.js"
 import type { WorkflowGateStep } from "../src/core/types/workflow.js"
 
 function makeEnsembleGate(
-    results: Array<{ verdict?: string; score?: number; confidence?: number; parseFailed?: boolean }>,
+    results: Array<{ verdict?: string; score?: number; confidence?: number; parseFailed?: boolean; issues?: unknown[] }>,
     policy: "majority" | "quorum" | "unanimous" = "majority",
     quorum?: number,
 ): WorkflowGateStep {

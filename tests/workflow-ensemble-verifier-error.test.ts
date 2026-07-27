@@ -31,7 +31,7 @@ function makeEnsembleFanoutTask(): WorkflowTask {
             criteria: "test",
             branch: { fanoutIndex: 0, branchId: "A", joinIndex: 3 },
             dispatchedActor: "v1",
-        } as WorkflowStep,
+        } as unknown as WorkflowStep,
         // Branch B: simple task
         {
             kind: "task",
@@ -48,7 +48,7 @@ function makeEnsembleFanoutTask(): WorkflowTask {
                 branchTailIndices: [1, 2],
                 maxErrored: 0,
             },
-        } as WorkflowStep,
+        } as unknown as WorkflowStep,
     ]
     return {
         type: "workflow",
@@ -67,7 +67,7 @@ describe("H-7: ensemble verifier error finds already-errored branch via any veri
         // v1 errors out first.
         const result = markWorkflowFanoutBranchErrored(task, "v1")
         // With "all" policy and maxErrored=0, the first error fails the join.
-        expect(result.kind === "failed" || result.kind === "degraded").toBe(true)
+        expect(result.kind === "failed" || result.kind === "within_tolerance").toBe(true)
         // Branch A is recorded as errored.
         const join = task.steps![3]
         if (join.kind === "join") {
