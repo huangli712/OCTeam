@@ -130,7 +130,17 @@ export function formatWorkflowMermaid(
                 for (let index = range.startIndex; index < range.endIndex; index += 1) {
                     const current = steps[index]
                     const next = steps[index + 1]
-                    if (current !== undefined && next !== undefined) lines.push(`  ${mermaidNodeId(current)} --> ${mermaidNodeId(next)}`)
+                    if (current === undefined || next === undefined) continue
+                    // M-1: suppress the default sequential edge when the current
+                    // step is a gate whose PASS verdict jumps elsewhere (mirrors
+                    // the hasPassGoto check on the outer loop at line 162).
+                    // Pre-fix code generated BOTH s2-->s3 (sequential) AND
+                    // s2--PASS-->s4 (goto), making the diagram imply two
+                    // conflicting flows from the same gate.
+                    const suppressSequential = current.kind === "gate" && current.onPassGoto !== undefined
+                    if (!suppressSequential) {
+                        lines.push(`  ${mermaidNodeId(current)} --> ${mermaidNodeId(next)}`)
+                    }
                 }
                 if (tail !== undefined && join !== undefined) lines.push(`  ${mermaidNodeId(tail)} --> ${mermaidNodeId(join)}`)
             }

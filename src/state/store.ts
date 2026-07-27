@@ -119,6 +119,13 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     ) {
         return false
     }
+    // M-8: validate status is a known enum value. Pre-fix code accepted any
+    // string, so a tampered state.json with status:"HACKED" would load and
+    // propagate to handlers that switch on status.
+    const VALID_STATUSES = new Set(["idle", "busy", "failed", "live"])
+    if (!VALID_STATUSES.has(s.status)) return false
+    // M-8: validate version is a positive integer.
+    if (!Number.isInteger(s.version) || s.version < 1) return false
     // leadSessionId is a directory locator (used to construct the team path),
     // NOT an authorization credential. Authorization is derived from the
     // session index (rebuilt from disk structure at startup). When present,

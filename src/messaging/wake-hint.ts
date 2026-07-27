@@ -46,6 +46,9 @@ export async function sendWakeHint(
     const now = Date.now()
     const last = wakeHintLastSent.get(sessionID) ?? 0
     if (now - last < WAKE_HINT_THROTTLE_MS) return
+    // M-10: write the throttle entry BEFORE the send for dedup, but on
+    // failure DELETE it so the next call can retry immediately. Pre-fix code
+    // wrote the throttle and never cleared it on failure, blocking retries.
     wakeHintLastSent.set(sessionID, now)
     evictStaleWakeHints()
     await ctx.client.session
@@ -65,6 +68,8 @@ export async function sendWakeHint(
             },
         })
         .catch((err) => {
+            // M-10: clear the throttle on failure so retries are not blocked.
+            wakeHintLastSent.delete(sessionID)
             logger.debug("wake-hint promptAsync failed (best-effort)", { sessionID, error: String(err) })
         })
 }

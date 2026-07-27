@@ -24,10 +24,20 @@ export async function summarizeDelegate(team: Team, task: ActiveTask, head: stri
     const lines = tasks.map(
         t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
     )
-    const outputs = Object.entries(task.responses)
+    // M-3: include each completed task's persisted `result` field, not just
+    // task.responses. Pre-fix code only rendered task.responses (the live
+    // member output map), losing the durable per-task result that was written
+    // at completion time. This is especially important for delegate runs where
+    // the task result is the canonical deliverable.
+    const taskResults = tasks
+        .filter(t => t.status === "completed" && t.result && t.result.trim().length > 0)
+        .map(t => `by ${t.owner ?? "unknown"} (task: ${t.subject}):\n${truncateOutput(t.result!)}`)
+        .join("\n\n")
+    const memberOutputs = Object.entries(task.responses)
         .filter(([, out]) => out.trim().length > 0)
         .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
         .join("\n\n")
+    const outputs = [taskResults, memberOutputs].filter(s => s.length > 0).join("\n\n")
     return outputs
         ? `${head}\n${lines.join("\n")}\n\n${outputs}`
         : `${head}\n${lines.join("\n")}`
@@ -125,8 +135,17 @@ export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }
     const rows = stages.map((s, i) =>
         `${i + 1}. [${s.verdict ?? "pending"}] ${s.member} -> verified by ${s.verifier}`
         + (s.attempts > 0 ? ` (${s.attempts} retries)` : ""))
+    // M-3: de-duplicate outputs when multiple stages share the same producer
+    // member. Pre-fix code emitted task.responses[s.member] once per stage,
+    // so a producer running stages 1+3 would appear twice with the same text.
+    const seen = new Set<string>()
     const outputs = stages
         .filter(s => s.completed)
+        .filter(s => {
+            if (seen.has(s.member)) return false
+            seen.add(s.member)
+            return true
+        })
         .map(s => `by ${s.member}:\n${truncateOutput(task.responses[s.member] ?? "")}`)
         .join("\n\n")
     return outputs

@@ -22,25 +22,31 @@ import { logger } from "../../core/log.js"
 
 /** Fire-and-forget: append one RunEvent to the run's events.jsonl timeline. */
 export function recordEvent(team: Team, event: RunEvent): void {
-    // Tombstone guard: skip the fire-and-forget appendJsonl when the team has
-    // been deleted. appendJsonl's mkdir({recursive:true}) would otherwise
-    // recreate runs/<runId>/ as an orphan directory after handleSessionDeleted
-    // / team_delete's recursive fs.rm — the same directory-resurrection class, but
-    // via the one write path here that is NOT awaited and does NOT re-check
-    // team.deleted. The tombstone flag is set under the team mutex before
-    // fs.rm runs (delete.ts:60 / handleSessionDeleted), so this read is
-    // consistent with the deletion when recordEvent is called from a path
-    // that holds the mutex (every call site in idle.ts/status.ts/summary.ts does).
+    // M-2: tombstone guard checked at BOTH the synchronous entry point AND
+    // inside the async append. The pre-fix code checked team.deleted only
+    // synchronously (line below), but the fire-and-forget appendJsonl at
+    // line 37 resolved AFTER other code paths could set team.deleted=true
+    // and run fs.rm — the late append would then recreate the deleted
+    // directory via appendJsonl's mkdir({recursive:true}). Re-checking inside
+    // the async callback closes the window.
     if (team.deleted) return
     const runId = team.activeTask?.runId
     if (!runId) return
-    void appendJsonl(runEventsPath(team.directory, runId), JSON.stringify(event) + "\n").catch((err: unknown) => {
-        // best-effort telemetry; a write failure must never affect orchestration,
-        // but surface it so operators can diagnose missing timeline events.
-        logger.warn("recordEvent append failed", {
-            runId,
-            eventKind: event.kind,
-            error: err instanceof Error ? err.message : String(err),
-        })
-    })
+    void (async () => {
+        // M-2: re-check the tombstone inside the async path so a concurrent
+        // team_delete that set team.deleted after the synchronous guard above
+        // is visible by the time the microtask resolves.
+        if (team.deleted) return
+        try {
+            await appendJsonl(runEventsPath(team.directory, runId), JSON.stringify(event) + "\n")
+        } catch (err: unknown) {
+            // best-effort telemetry; a write failure must never affect orchestration,
+            // but surface it so operators can diagnose missing timeline events.
+            logger.warn("recordEvent append failed", {
+                runId,
+                eventKind: event.kind,
+                error: err instanceof Error ? err.message : String(err),
+            })
+        }
+    })()
 }

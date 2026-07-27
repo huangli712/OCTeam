@@ -16,6 +16,9 @@ export interface OcteamAgentPermission {
     task?: OcteamPermissionAction
     bash?: OcteamPermissionAction
     webfetch?: OcteamPermissionAction
+    read?: OcteamPermissionAction
+    glob?: OcteamPermissionAction
+    grep?: OcteamPermissionAction
 }
 
 /**

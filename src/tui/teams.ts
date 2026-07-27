@@ -100,16 +100,19 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                 members: await Promise.all((state.members ?? []).map(async (m) => {
                     const mailbox = await countMailbox(dir, m.name)
                     return {
-                        name: m.name,
+                        name: typeof m.name === "string" ? m.name : "?",
                         role: roleMap[m.name],
-                        status: m.status,
-                        agent: m.agent,
-                        model: m.model,
-                        sessionId: m.sessionId,
-                        worktreePath: m.worktreePath,
+                        status: typeof m.status === "string" ? m.status : "unknown",
+                        agent: typeof m.agent === "string" ? m.agent : undefined,
+                        // M-5: validate model is a string — disk tampering can
+                        // set it to a number/object, and sidebar.tsx calls
+                        // member.model.split() which would throw on non-strings.
+                        model: typeof m.model === "string" ? m.model : undefined,
+                        sessionId: typeof m.sessionId === "string" ? m.sessionId : undefined,
+                        worktreePath: typeof m.worktreePath === "string" ? m.worktreePath : undefined,
                         unread: mailbox.unread,
                         totalMessages: mailbox.total,
-                        turnCount: m.turnCount,
+                        turnCount: typeof m.turnCount === "number" ? m.turnCount : undefined,
                         tokens: state.activeTask?.tokensByMember?.[m.name] ?? state.lastMode?.tokensByMember?.[m.name],
                     }
                 })),

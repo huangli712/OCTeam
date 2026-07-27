@@ -490,6 +490,12 @@ function validateLoweredTaskStep(
     const inputsError = validateTaskInputs(steps, task, index, displayStep)
     if (inputsError !== null) return inputsError
     if (task.retry_on !== undefined) {
+        // M-6: guard against retry_on being null or non-object (disk tampering
+        // or LLM tool-call oddity). Pre-fix code accessed task.retry_on.empty
+        // directly, which would throw on null.
+        if (typeof task.retry_on !== "object" || task.retry_on === null || Array.isArray(task.retry_on)) {
+            return `Error: ${location} retry_on must be an object`
+        }
         const condCount = [
             task.retry_on.empty,
             task.retry_on.output_contains,
@@ -676,6 +682,15 @@ function validateLoweredGateStep(
         return `Error: ${location} fallback_verifier "${gate.fallback_verifier}" is not a team member`
     }
     if (gate.verifiers !== undefined) {
+        // M-6: verify verifiers is an array before iterating. A non-array
+        // value (e.g. verifiers: 5 from a malformed workflow_file) would
+        // crash the for...of loop.
+        if (!Array.isArray(gate.verifiers)) {
+            return `Error: ${location} verifiers must be an array of strings`
+        }
+        if (gate.verifiers.length < 2) {
+            return `Error: ${location} verifiers must have at least 2 entries for an ensemble`
+        }
         if (gate.verifier !== undefined) return `Error: ${location} verifiers is mutually exclusive with verifier`
         if (gate.fallback_verifier !== undefined) {
             return `Error: ${location} verifiers is mutually exclusive with fallback_verifier`
@@ -800,9 +815,11 @@ export function validateWorkflowStepsAgainstMembers(
         mutex: new AsyncMutex(),
         directory: "",
     }
+    const expanded = safeExpandMatrixForeach(steps)
+    if (typeof expanded === "string") return expanded
     const resolvedArgs: ResolvedWorkflowToolArgs = {
         team_id: teamName,
-        steps: expandMatrixForeachFanout(steps),
+        steps: expanded,
     }
     return validateWorkflowArgs(resolvedArgs, team)
 }
@@ -823,6 +840,20 @@ export function hasInlineSteps(args: WorkflowToolArgs): boolean {
     return args.steps !== undefined
 }
 
+/**
+ * M-7: wrap expandMatrixForeachFanout so its internal throws (matrix/foreach
+ * branch-limit exceeded) are converted to user-facing error strings instead
+ * of unhandled exceptions. Returns the expanded steps on success, or an error
+ * string on failure.
+ */
+function safeExpandMatrixForeach(steps: readonly WorkflowToolStep[]): WorkflowToolStep[] | string {
+    try {
+        return expandMatrixForeachFanout(steps)
+    } catch (err) {
+        return `Error: ${err instanceof Error ? err.message : String(err)}`
+    }
+}
+
 /** Resolve workflow args: load loader if needed, expand matrix/foreach, validate source. */
 export async function resolveWorkflowArgs(
     ctx: PluginContext, args: WorkflowToolArgs,
@@ -832,7 +863,9 @@ export async function resolveWorkflowArgs(
     if (args.steps !== undefined) {
         const shapeError = validateMatrixForeachShapeInSteps(args.steps)
         if (shapeError !== null) return shapeError
-        return { ...args, steps: expandMatrixForeachFanout(args.steps) }
+        const expanded = safeExpandMatrixForeach(args.steps)
+        if (typeof expanded === "string") return expanded
+        return { ...args, steps: expanded }
     }
     if (!args.workflow_file) {
         return "Error: either steps or workflow_file is required"
@@ -841,5 +874,7 @@ export async function resolveWorkflowArgs(
     if ("error" in loaded) return loaded.error
     const shapeError = validateMatrixForeachShapeInSteps(loaded.steps)
     if (shapeError !== null) return shapeError
-    return { ...args, steps: expandMatrixForeachFanout(loaded.steps) }
+    const expanded = safeExpandMatrixForeach(loaded.steps)
+    if (typeof expanded === "string") return expanded
+    return { ...args, steps: expanded }
 }

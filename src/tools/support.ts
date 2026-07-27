@@ -63,6 +63,12 @@ export function findMember(team: Team, name: string): MemberState | undefined {
  */
 export async function abortAndResetMembers(ctx: PluginContext, team: Team): Promise<void> {
     // Abort running member turns (best-effort).
+    // M-10: track which members failed to abort so they are marked errored
+    // (not idle) in the reset loop below. Pre-fix code reset ALL members to
+    // idle regardless of abort outcome, so a still-running member whose abort
+    // failed would be marked idle — its next idle event would be processed
+    // as if it were a fresh turn.
+    const abortFailed = new Set<string>()
     for (const m of team.members) {
         if (!m.isMaster && m.sessionId && m.status === "running") {
             await ctx.client.session
@@ -73,13 +79,19 @@ export async function abortAndResetMembers(ctx: PluginContext, team: Team): Prom
                 .catch((err) => {
                     // best-effort: a failed abort must not block teardown
                     logSwallowed(ctx, "session.abort failed during teardown", err, { member: m.name, session: m.sessionId })
+                    abortFailed.add(m.name)
                 })
         }
     }
     // Reset every non-master member to a clean idle state.
     for (const m of team.members) {
         if (m.isMaster) continue
-        m.status = "idle"
+        // M-10: members whose abort failed are marked errored, not idle.
+        if (abortFailed.has(m.name)) {
+            m.status = "errored"
+        } else {
+            m.status = "idle"
+        }
         m.declaredDone = false
         m.retryingSince = undefined
     }

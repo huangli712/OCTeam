@@ -155,7 +155,7 @@ export function baseTaskFields(
 // ============================================================
 
 /**
- * Shared three-phase orchestration startup. All eleven workflow tools
+ * Shared three-phase orchestration startup. All twelve workflow tools
  * follow the same spine — the per-tool boilerplate has been collapsed into
  * this helper. Phases:
  *   1. master-only auth (resolveCallerInTeam + isMaster), auth-first
