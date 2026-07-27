@@ -268,6 +268,7 @@ export async function handleWorkflowIdle(
     ctx: PluginContext,
     team: Team,
     member: MemberState,
+    capturedNew?: boolean,
 ): Promise<void> {
     const task = team.activeTask;
     if (!task || task.type !== "workflow") return;
@@ -279,6 +280,18 @@ export async function handleWorkflowIdle(
     if (activeStepIndex === null) return;
     const step = steps[activeStepIndex];
     if (!step) return;
+
+    // H-8: stale idle guard for TASK steps only. When capturedNew is false
+    // (the member's message history hasn't grown since its last capture) and
+    // the task step ALREADY has output set, advancing on the stale idle would
+    // re-read already-consumed output and falsely complete the step a second
+    // time. Gate steps are NOT guarded — they have their own attempt-counter
+    // protection (attempts/invalidAttempts/etc.) that prevents
+    // double-processing regardless of the capture signal. Join and fanout
+    // steps are structural (no actor output).
+    if (capturedNew === false && step.kind === "task" && step.output !== undefined) {
+        return;
+    }
 
     switch (step.kind) {
         case "task":

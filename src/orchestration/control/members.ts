@@ -257,12 +257,25 @@ export async function ensureMembersReady(
     const peerNames = (spec?.members ?? []).map((member) => member.name)
 
     // Phase 2: spawn missing members in bounded parallel batches.
+    // H-10: use Promise.allSettled (not Promise.all) so a single spawn failure
+    // does NOT leave the rest of the batch running in the background. With
+    // Promise.all, the first rejection aborts the caller's await but the
+    // other in-flight spawns keep running — they create sessions/worktrees
+    // that team.spawning=false then allows a concurrent retry to collide
+    // with (duplicate sessions, orphan worktrees). Promise.allSettled waits
+    // for the entire batch to converge, then we surface the first rejection.
     for (const batch of chunk(toSpawn, team.bounds.maxParallelMembers)) {
-        await Promise.all(
+        const results = await Promise.allSettled(
             batch.map((member) =>
                 spawnMemberSafely(ctx, team, member, specByName, peerNames),
             ),
         )
+        const firstFailure = results.find(
+            (r): r is PromiseRejectedResult => r.status === "rejected",
+        )
+        if (firstFailure) {
+            throw firstFailure.reason
+        }
     }
 
     // Phase 3: wait outside the mutex for role-setup idle acknowledgements.

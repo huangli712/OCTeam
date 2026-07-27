@@ -60,7 +60,7 @@ mock.module("node:fs/promises", () => ({ ...mockedFs, default: mockedFs }))
 // Dynamic import AFTER mock.module so mailbox.ts resolves the MOCKED fs.
 const { releaseStaleReservations, pollMailbox, writeMailboxMessage } =
     await import("../src/messaging/mailbox.js")
-import { inboxPath, reservedPath } from "../src/state/paths.js"
+import { reservedPath } from "../src/state/paths.js"
 
 import type { Message } from "../src/core/types.js"
 import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
@@ -77,27 +77,6 @@ function makeMsg(id: string, body: string): Message {
         timestamp: Date.now(),
         deliveryStatus: "pending",
     }
-}
-
-/** Count inbox lines matching a message id (0 if inbox absent). */
-async function countInboxOccurrences(matchId: string, inbox: string): Promise<number> {
-    let raw: string
-    try {
-        raw = await realFs.readFile(inbox, "utf8")
-    } catch (err: unknown) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0
-        throw err
-    }
-    let count = 0
-    for (const line of raw.split("\n")) {
-        if (line.length === 0) continue
-        try {
-            if ((JSON.parse(line) as { id?: string }).id === matchId) count++
-        } catch {
-            // malformed line
-        }
-    }
-    return count
 }
 
 afterEach(() => {

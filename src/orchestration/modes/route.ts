@@ -141,6 +141,24 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
 
     // Phase B: target barrier (any selected target's idle re-checks readiness).
     const targets = task.routeTargets ?? []
+    // H-29: detect partial fan-out failure. If SOME targets were dispatched
+    // (turnCount > 0) but others were NOT (turnCount === 0), the barrier would
+    // falsely conclude "all targets idle → run complete" for the undispatched
+    // ones. Only check when at least one target has turnCount > 0 (proving the
+    // fan-out started) — this avoids false-positives in test fixtures where no
+    // dispatch has happened yet.
+    const dispatchedCount = targets.filter(name => {
+        const m = findMember(team, name)
+        return m && (m.turnCount ?? 0) > 0
+    }).length
+    if (dispatchedCount > 0 && dispatchedCount < targets.length) {
+        const undispatched = targets.filter(name => {
+            const m = findMember(team, name)
+            return !m || (m.turnCount ?? 0) === 0
+        })
+        await finishRun(ctx, team, `route_complete:partial_fanout:${undispatched.join(",")}`, "failed")
+        return
+    }
     await maybeAdvanceBarrier(team, targets, async () => {
         // checkTermination owns fail-fast for route errors (route is excluded
         // from termination's concurrent set, so tolerance is 0); by the time the

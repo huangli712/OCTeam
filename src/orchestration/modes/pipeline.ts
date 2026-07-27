@@ -12,10 +12,8 @@ import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
 import type { MemberState } from "../../core/types.js"
 import { buildUpstreamContext } from "./stages.js"
-import { prependStandingInstruction } from "../control/dispatch.js"
-import { safeMemberAgent } from "../../core/role.js"
+import { dispatchToMember } from "../control/dispatch.js"
 import { finishRun } from "../control/completion.js"
-import { recordEvent } from "../records/events.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/approval.js"
 
@@ -48,31 +46,16 @@ export async function advancePipelineAfterStage(ctx: PluginContext, team: Team):
     const stageTask = upstream
         ? `${upstream}\n\n[Your task]\n${nextStage.task}`
         : nextStage.task
-    const fullTask = prependStandingInstruction(nextMember, stageTask)
 
-    await ctx.client.session.promptAsync({
-        path: { id: nextMember.sessionId },
-        body: {
-            parts: [
-                {
-                    type: "text",
-                    text: `${fullTask}\n<!-- OMO_INTERNAL_INITIATOR -->`,
-                    synthetic: false,
-                }
-            ],
-            agent: safeMemberAgent(nextMember.agent),
-        },
-        query: { directory: nextMember.worktreePath ?? ctx.directory },
-    })
-    nextMember.promptDelivered = true
-    nextMember.status = "running"
-    nextMember.turnCount++
-    recordEvent(team, {
-        timestamp: Date.now(),
-        kind: "stage_advanced",
-        member: nextMember.name,
-        stage: nextIndex,
-    })
+    // H-11: route through the canonical dispatch primitive so promptAsync +
+    // member state transition + saveTeamState + event recording are atomic.
+    await dispatchToMember(
+        ctx,
+        nextMember,
+        stageTask,
+        nextMember.worktreePath ?? ctx.directory,
+        team,
+    )
 }
 
 /** Handle a pipeline member's idle: mark the current stage complete and advance to the next stage. */

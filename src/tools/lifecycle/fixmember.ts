@@ -142,6 +142,13 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
 
+                // --- H-23: snapshot all fields that will be mutated, for complete rollback ---
+                const savedAgent = member.agent
+                const savedModel = member.model
+                const savedRole = specMember?.role
+                const savedPrompt = specMember?.prompt
+                const savedSpecModel = specMember?.model
+
                 // --- new_name: rename member across state, spec, index, mailbox ---
                 if (renaming) {
                     const newName = args.new_name!
@@ -221,8 +228,12 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 })().catch(e => e as Error)
 
                 if (writeErr) {
-                    // Rollback all in-memory mutations so the team object stays
-                    // consistent with the un-persisted disk state.
+                    // Rollback snapshot — capture ALL mutated fields BEFORE any
+                    // write attempt so we can restore them atomically on failure.
+                    // H-23: the pre-fix code restored rename-related fields but
+                    // left agent/role/model mutations in place, so a saveTeamState
+                    // failure left the in-memory object with agent/model changes
+                    // that the next unrelated save would silently persist.
                     if (renaming) {
                         const newName = args.new_name!
                         const oldName = member.name === newName ? args.member_name : newName
@@ -263,9 +274,18 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             // Mailbox may not exist or rename fails; not critical
                         }
                     }
-                    // Restore agent/role/model mutations are left as-is —
-                    // they only affect the in-memory object, and the next save
-                    // (e.g. startOrchestration) will overwrite them.
+                    // H-23: restore agent/model mutations too. Pre-fix code left
+                    // these as-is, so the in-memory object diverged from disk
+                    // after a save failure, and a subsequent unrelated save
+                    // would persist the unwanted agent/model change.
+                    if (savedAgent !== undefined) member.agent = savedAgent
+                    if (savedModel !== undefined) member.model = savedModel
+                    if (specMember) {
+                        if (savedAgent !== undefined) specMember.agent = savedAgent
+                        if (savedRole !== undefined) specMember.role = savedRole
+                        if (savedPrompt !== undefined) specMember.prompt = savedPrompt
+                        if (savedSpecModel !== undefined) specMember.model = savedSpecModel
+                    }
                     throw writeErr
                 }
             })

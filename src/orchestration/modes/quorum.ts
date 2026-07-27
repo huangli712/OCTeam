@@ -30,9 +30,14 @@ function parseBallot(
     voteOptions: string[] | undefined,
 ): QuorumBallot {
     if (!output) return { vote: "", status: "invalid" }
-    // Tolerate <vote> or <投票>; extract first {...} JSON payload inside the tag.
-    const match = output.match(/<(?:vote|投票)>\s*(\{[\s\S]*?\})\s*<\/(?:vote|投票)>/)
-    if (!match) return { vote: "", status: "invalid" }
+    // Tolerate <vote> or <投票>; extract LAST {...} JSON payload inside the tag.
+    // H-17: use matchAll + last, not match (which returns first). When a member
+    // restates an old vote before giving the final one, the stale FIRST match
+    // would win — the LAST match is the authoritative ballot.
+    const re = /<(?:vote|投票)>\s*(\{[\s\S]*?\})\s*<\/(?:vote|投票)>/g
+    const matches = [...output.matchAll(re)]
+    if (matches.length === 0) return { vote: "", status: "invalid" }
+    const match = matches[matches.length - 1]
     try {
         const obj = JSON.parse(match[1]) as Record<string, unknown>
         const raw = obj[voteKey]

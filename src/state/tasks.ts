@@ -228,7 +228,7 @@ export async function updateTask(
     teamDirectory: string,
     taskId: string,
     patch: Partial<Pick<Task, "status" | "owner" | "blockedBy" | "claimedAt" | "result">>,
-    opts: { expectedOwner?: string; expectedStatus?: TaskStatus } = {},
+    opts: { expectedOwner?: string; expectedStatus?: TaskStatus; expectedClaimedAt?: number } = {},
 ): Promise<Task> {
     assertValidTaskId(taskId)
     // Serialize the read-modify-write against concurrent updateTask calls (e.g.
@@ -248,6 +248,33 @@ export async function updateTask(
         // a terminal task as "claimed".
         if (opts.expectedStatus !== undefined && task.status !== opts.expectedStatus) {
             throw new TaskStatusError(taskId, opts.expectedStatus, task.status)
+        }
+        // H-21: TOCTOU-safe claimedAt check. The stale-claim reaper reads a
+        // task's claimedAt, determines it is stale, then calls updateTask to
+        // reset it. Between the read and the write, the original owner may
+        // have re-claimed with a NEW claimedAt (the old lock was reaped
+        // inline by claimTask, the member re-claimed with a fresh lock).
+        // Without this check, the reaper's expectedStatus:"claimed" CAS would
+        // match the NEW claim and destroy it. Comparing claimedAt ensures the
+        // reaper only resets the EXACT claim it determined was stale.
+        if (opts.expectedClaimedAt !== undefined && task.claimedAt !== opts.expectedClaimedAt) {
+            throw new TaskStatusError(taskId, "claimed (same claimedAt)", `claimed (different claimedAt: ${task.claimedAt})`)
+        }
+        // H-18: status transition matrix. Terminal statuses (completed, deleted)
+        // cannot be revived to active statuses (pending, claimed, in_progress).
+        // Pre-fix code used Object.assign which allowed any transition — a
+        // caller could flip a completed task back to in_progress, bypassing
+        // the live-task limit and confusing dependents that already saw it as
+        // done. The recurse internal path (claimed→pending for re-aggregation)
+        // is allowed via the explicit `pending` target.
+        if (patch.status !== undefined && patch.status !== task.status) {
+            const TERMINAL = new Set<TaskStatus>(["completed", "deleted"])
+            const ACTIVE = new Set<TaskStatus>(["pending", "claimed", "in_progress"])
+            if (TERMINAL.has(task.status) && ACTIVE.has(patch.status)) {
+                throw new Error(
+                    `updateTask: cannot revive terminal task ${taskId} from "${task.status}" to "${patch.status}"`,
+                )
+            }
         }
         Object.assign(task, patch, { updatedAt: Date.now() })
         await atomicWrite(taskPath(teamDirectory, taskId), JSON.stringify(task, null, 2))
@@ -363,9 +390,13 @@ export async function claimTask(
                 // claim — we cannot verify it completed. A deleted blocker is
                 // treated as resolved (no longer relevant).
                 const incomplete = blockers.find(b =>
-                    b === null || (b.status !== "completed" && b.status !== "deleted"),
+                    b === null || (b !== null && b.status !== "completed" && b.status !== "deleted"),
                 )
-                if (incomplete) {
+                // H-20: use `!== undefined` (not truthy) because find() returns
+                // `null` when a missing blocker matched — `if (null)` is falsy
+                // and would silently skip the guard, letting a member claim a
+                // task whose dependency file is missing/corrupt.
+                if (incomplete !== undefined) {
                     await fs.unlink(lockPath).catch(() => {
                         // release our lock since we are not claiming
                     })
@@ -424,7 +455,7 @@ export async function reapStaleClaims(teamDirectory: string): Promise<void> {
                 await updateTask(teamDirectory, task.id, {
                     status: "pending",
                     owner: undefined,
-                }, { expectedStatus: "claimed" })
+                }, { expectedStatus: "claimed", expectedClaimedAt: task.claimedAt })
             } catch (err) {
                 // Task transitioned out of "claimed" (e.g. owner moved to "in_progress")
                 // between our stale check and the update — do NOT clobber the new status.

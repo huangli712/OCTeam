@@ -23,7 +23,6 @@
 
 import { afterAll, describe, expect, test } from "bun:test"
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs"
-import path from "node:path"
 
 import { releaseStaleReservations } from "../src/messaging/mailbox.js"
 import { reservedDir, reservedPath, inboxPath } from "../src/state/paths.js"

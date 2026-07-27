@@ -112,7 +112,23 @@ async function createApprovalPause(
         round: request.round,
         detail: request.kind,
     })
-    await notifyLeader(ctx, team, request)
+    // H-30: notification failure must not strand the run in a silent paused
+    // state. If the leader notification throws (session unavailable, network
+    // error), log and continue — the pause IS persisted on disk, so the sweep
+    // timer's approval re-notify path will retry. Pre-fix code let the
+    // exception propagate, leaving the team permanently paused with the leader
+    // never informed.
+    try {
+        await notifyLeader(ctx, team, request)
+    } catch (err) {
+        // Best-effort: log so the operator knows the initial notification
+        // failed. The sweep timer (or team_resume) will re-notify.
+        const { logSwallowed } = await import("../../core/log.js")
+        logSwallowed(ctx, "approval notification failed (will retry via sweep/resume)", err, {
+            team: team.teamName,
+            approvalId: request.id,
+        })
+    }
     return true
 }
 

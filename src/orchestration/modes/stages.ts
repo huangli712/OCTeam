@@ -4,10 +4,9 @@
  */
 
 import type { PluginContext } from "../../core/context.js";
-import { safeMemberAgent } from "../../core/role.js";
 import type { Stage } from "../../core/types.js";
 import type { Team } from "../../state/store.js";
-import { prependStandingInstruction } from "../control/dispatch.js";
+import { dispatchToMember } from "../control/dispatch.js";
 import { truncateOutput } from "../protocol/output.js";
 import { recordEvent } from "../records/events.js";
 import { finishRun } from "../control/completion.js";
@@ -84,29 +83,13 @@ export async function advanceToStage(
         ? `${upstream}\n\n[Your task]\n${stage.task}${readOnlyContract}`
         : `${stage.task}${readOnlyContract}`;
     const rawText = contextPrefix ? `${contextPrefix}\n\n${base}` : base;
-    const newText = prependStandingInstruction(member, rawText);
-    await ctx.client.session.promptAsync({
-        path: { id: member.sessionId },
-        body: {
-            parts: [
-                {
-                    type: "text",
-                    text: `${newText}\n<!-- OMO_INTERNAL_INITIATOR -->`,
-                    synthetic: false,
-                }
-            ],
-            agent: safeMemberAgent(member.agent),
-        },
-        query: { directory: member.worktreePath ?? ctx.directory },
-    });
-    member.promptDelivered = true;
-    member.status = "running";
-    member.turnCount++;
-    recordEvent(team, {
-        timestamp: Date.now(),
-        kind: "dispatched",
-        member: member.name,
-        stage: task.currentStageIndex,
-        round: task.currentRound,
-    });
+    // H-11: route through the canonical dispatch primitive so promptAsync +
+    // member state transition + saveTeamState + event recording are atomic.
+    await dispatchToMember(
+        ctx,
+        member,
+        rawText,
+        member.worktreePath ?? ctx.directory,
+        team,
+    );
 }

@@ -20,10 +20,12 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test"
-import { chmodSync, writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs"
+import { chmodSync, writeFileSync, readFileSync, existsSync } from "node:fs"
 import path from "node:path"
 
 import { teamPlannerTool } from "../src/tools/workflow/planner.js"
+import type { PluginContext } from "../src/core/context.js"
+import type { Project } from "@opencode-ai/sdk"
 import { cleanupTmpRoots, makeToolContext, tmpRoot } from "./helpers.js"
 
 const PLAN_TEAM_ID = "demo"
@@ -51,15 +53,16 @@ function workflowFilePath(dir: string): string {
 }
 
 // Minimal makeCtx inline (the helper in tests/helpers.ts requires more imports).
-function makeMinimalCtx(directory: string): { ctx: Parameters<ReturnType<typeof teamPlannerTool>>["execute"] extends never ? never : Parameters<Parameters<ReturnType<typeof teamPlannerTool>>["execute"] extends never ? never : any> } {
+function makeMinimalCtx(directory: string): { ctx: PluginContext } {
     return {
         ctx: {
             storageRoot: directory,
             directory,
             scope: "project" as const,
+            project: { id: "test-project" } as Project,
             sessionID: "test-session",
             client: { app: { log: () => {} } },
-        } as any,
+        } as unknown as PluginContext,
     }
 }
 
@@ -80,9 +83,8 @@ describe("C-9: planner overwrite backup failure does NOT delete existing file", 
 
         const { ctx } = makeMinimalCtx(dir)
         const tool = teamPlannerTool(ctx)
-        let result: string
         try {
-            result = await tool.execute(
+            await tool.execute(
                 {
                     op: "write",
                     team_id: PLAN_TEAM_ID,
@@ -92,8 +94,8 @@ describe("C-9: planner overwrite backup failure does NOT delete existing file", 
                 },
                 makeToolContext("ses_c9", { directory: dir }),
             )
-        } catch (err) {
-            result = String(err instanceof Error ? err.message : err)
+        } catch {
+            // Tool threw — that's one acceptable path
         } finally {
             // Restore readability so cleanup and post-checks can read.
             if (process.platform !== "win32") {

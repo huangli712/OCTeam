@@ -20,7 +20,7 @@
  * on user scope.
  */
 
-import { describe, expect, test, mock } from "bun:test"
+import { describe, expect, test } from "bun:test"
 
 describe("C-11: project scope startup warning", () => {
     test("project scope emits a threat-model warning at startup", async () => {

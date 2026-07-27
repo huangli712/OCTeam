@@ -119,10 +119,11 @@ describe("parseDecompose", () => {
         expect(parseDecompose('<decompose>{"foo":1}</decompose>').parseFailed).toBe(true)
     })
 
-    test("filters out items missing a description", () => {
+    test("H-16 strict: items missing a description make the whole decompose fail", () => {
         const text = '<decompose>{"subtasks":[{"subject":"a"},{"subject":"b","description":"y"}]}</decompose>'
-        // Only the well-formed item survives.
-        expect(parseDecompose(text).subtasks).toEqual([{ subject: "b", description: "y" }])
+        // H-16: one invalid entry fails the entire decompose (no lossy filter).
+        expect(parseDecompose(text).parseFailed).toBe(true)
+        expect(parseDecompose(text).subtasks).toEqual([])
     })
 
     test("filters out items with empty-string subject", () => {

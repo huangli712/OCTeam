@@ -45,6 +45,20 @@ export function selectArenaWinner(
         else entriesByMember.set(entry.member, [entry])
     }
 
+    // H-28: verify scoreboard COVERS all candidates. A partial scoreboard
+    // (e.g. only 1 of 3 survivors scored) must NOT silently let the sole
+    // entry win by default — the evaluator's omission could be a contract
+    // violation. Require every candidate to have exactly one entry.
+    for (const name of candidates) {
+        const entries = entriesByMember.get(name)
+        if (!entries || entries.length === 0) {
+            return { winner: undefined, reason: `incomplete_scoreboard:missing_entry_for_${name}` }
+        }
+        if (entries.length > 1) {
+            return { winner: undefined, reason: `incomplete_scoreboard:duplicate_entry_for_${name}` }
+        }
+    }
+
     let winner: string | undefined
     let bestValue: number | undefined
     for (const name of candidates) {

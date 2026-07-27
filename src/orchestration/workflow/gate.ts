@@ -244,7 +244,13 @@ export function buildJumpContext(transition: WorkflowJumpTransition): string {
     return lines.join("\n");
 }
 
-/** Resolve a goto target index, valid only when the gate's where condition matches. */
+/** Resolve a goto target index, valid only when the gate's where condition matches.
+ * Returns:
+ *   >= 0 : the goto target index — jump.
+ *   -1  : no goto defined, or where condition is "does_not_match".
+ *   -2  : where condition is UNEVALUABLE (verifier omitted a required field).
+ *         Callers MUST route this to INVALID rather than silently advancing.
+ */
 export function gatedGotoIndex(
     steps: WorkflowStep[],
     gateIndex: number,
@@ -255,13 +261,13 @@ export function gatedGotoIndex(
     if (gotoIndex === undefined || gotoIndex < 0) return -1;
     if (!canGateGotoStep(steps, gateIndex, gotoIndex)) return -1;
     if (step.where === undefined) return gotoIndex;
-    return matchesWorkflowCondition(step.where, {
+    const evaluation = evaluateWorkflowCondition(step.where, {
         score: step.score,
         confidence: step.confidence,
         issues: step.issues,
     })
-        ? gotoIndex
-        : -1;
+    if (evaluation === "unevaluable") return -2
+    return evaluation === "matches" ? gotoIndex : -1
 }
 
 /** Check whether a gate can jump/goto a given step (same-branch or no branch). */
@@ -337,20 +343,32 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
     if (total === 0) {
         return ensembleResult("INVALID", "No verifier results");
     }
-    // Aggregate score/confidence/issues so `where` conditions on ensemble
-    // gates can evaluate against meaningful values. Score and confidence use
-    // the MAX across verifiers (best-case); issues are merged (worst-case
-    // severity wins for has_issue_severity checks).
-    const scores = results.map(r => r.score).filter((s): s is number => typeof s === "number")
-    const confidences = results.map(r => r.confidence).filter((c): c is number => typeof c === "number")
-    const allIssues = results.flatMap(r => r.issues ?? [])
-    const aggScore = scores.length > 0 ? Math.max(...scores) : undefined
-    const aggConfidence = confidences.length > 0 ? Math.max(...confidences) : undefined
-    const aggIssues = allIssues.length > 0 ? allIssues : undefined
+    // H-5: aggregate score/confidence/issues from ONLY the verifier results
+    // that SUPPORT the final aggregated verdict. A minority verifier voting
+    // INVALID with score=10 (or FAIL when the majority is PASS) must not
+    // contaminate the aggregate and trigger an incorrect `where` jump.
+    // Pre-fix code used Math.max across ALL results including dissenting votes.
+    const aggregateFromVerdict = (finalVerdict: Verdict) => {
+        const supporters = results.filter(r => r.verdict === finalVerdict)
+        const scores = supporters.map(r => r.score).filter((s): s is number => typeof s === "number")
+        const confidences = supporters.map(r => r.confidence).filter((c): c is number => typeof c === "number")
+        const allIssues = supporters.flatMap(r => r.issues ?? [])
+        return {
+            aggScore: scores.length > 0 ? Math.max(...scores) : undefined,
+            aggConfidence: confidences.length > 0 ? Math.max(...confidences) : undefined,
+            aggIssues: allIssues.length > 0 ? allIssues : undefined,
+        }
+    }
     switch (step.ensemblePolicy) {
         case "majority":
-            if (passCount > total / 2) return ensembleResult("PASS", `Majority PASS (${passCount}/${total})`, aggScore, aggConfidence, aggIssues);
-            if (failCount > total / 2) return ensembleResult("FAIL", `Majority FAIL (${failCount}/${total})`, aggScore, aggConfidence, aggIssues);
+            if (passCount > total / 2) {
+                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("PASS")
+                return ensembleResult("PASS", `Majority PASS (${passCount}/${total})`, aggScore, aggConfidence, aggIssues)
+            }
+            if (failCount > total / 2) {
+                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("FAIL")
+                return ensembleResult("FAIL", `Majority FAIL (${failCount}/${total})`, aggScore, aggConfidence, aggIssues)
+            }
             return ensembleResult("INVALID", `No majority (${passCount}P/${failCount}F/${invalidCount}I)`);
         case "quorum": {
             const threshold = step.ensembleQuorum ?? 0.5;
@@ -361,13 +379,25 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
             if (passMeets && failMeets) {
                 return ensembleResult("INVALID", `Tie at quorum threshold (${passCount}P/${failCount}F/${invalidCount}I, threshold ${threshold})`);
             }
-            if (passMeets) return ensembleResult("PASS", `Quorum PASS (${passCount}/${total} >= ${threshold})`, aggScore, aggConfidence, aggIssues);
-            if (failMeets) return ensembleResult("FAIL", `Quorum FAIL (${failCount}/${total} >= ${threshold})`, aggScore, aggConfidence, aggIssues);
+            if (passMeets) {
+                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("PASS")
+                return ensembleResult("PASS", `Quorum PASS (${passCount}/${total} >= ${threshold})`, aggScore, aggConfidence, aggIssues)
+            }
+            if (failMeets) {
+                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("FAIL")
+                return ensembleResult("FAIL", `Quorum FAIL (${failCount}/${total} >= ${threshold})`, aggScore, aggConfidence, aggIssues)
+            }
             return ensembleResult("INVALID", `No quorum (${passCount}P/${failCount}F/${invalidCount}I)`);
         }
         case "unanimous":
-            if (passCount === total) return ensembleResult("PASS", `Unanimous PASS (${passCount}/${total})`, aggScore, aggConfidence, aggIssues);
-            if (failCount === total) return ensembleResult("FAIL", `Unanimous FAIL (${failCount}/${total})`, aggScore, aggConfidence, aggIssues);
+            if (passCount === total) {
+                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("PASS")
+                return ensembleResult("PASS", `Unanimous PASS (${passCount}/${total})`, aggScore, aggConfidence, aggIssues)
+            }
+            if (failCount === total) {
+                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("FAIL")
+                return ensembleResult("FAIL", `Unanimous FAIL (${failCount}/${total})`, aggScore, aggConfidence, aggIssues)
+            }
             return ensembleResult("INVALID", `Not unanimous (${passCount}P/${failCount}F/${invalidCount}I)`);
         default:
             return ensembleResult("INVALID", `Unknown ensemble policy`);
@@ -431,6 +461,46 @@ export function matchesWorkflowCondition(condition: WorkflowCondition, input: Co
         case "confidence_gte": return input.confidence !== undefined && input.confidence >= condition.value
         case "has_issue_severity":
             return (input.issues ?? []).some(issue => severityRank(issue.severity) >= severityRank(condition.value))
+        default:
+            return assertNeverCondition(condition)
+    }
+}
+
+/**
+ * Tri-state evaluation result for a WorkflowCondition.
+ * - "matches": condition is satisfied.
+ * - "does_not_match": condition is not satisfied (verifier provided the
+ *   required field; the threshold simply was not met).
+ * - "unevaluable": the verifier OMITTED a required field, so the condition
+ *   cannot be evaluated. Callers MUST route this to INVALID (a verifier
+ *   contract violation) rather than silently treating it as "did not match".
+ */
+export type WorkflowConditionEvaluation = "matches" | "does_not_match" | "unevaluable"
+
+/**
+ * Tri-state condition evaluator. Distinguishes "verifier omitted required
+ * field" (unevaluable) from "verifier provided the field, condition is false"
+ * (does_not_match). Use this whenever a `where` condition gates a jump — the
+ * boolean helper above cannot express the unevaluable case and silently
+ * mis-routes the gate to the default successor.
+ */
+export function evaluateWorkflowCondition(condition: WorkflowCondition, input: ConditionInput): WorkflowConditionEvaluation {
+    switch (condition.kind) {
+        case "score_gte":
+            if (input.score === undefined) return "unevaluable"
+            return input.score >= condition.value ? "matches" : "does_not_match"
+        case "score_lt":
+            if (input.score === undefined) return "unevaluable"
+            return input.score < condition.value ? "matches" : "does_not_match"
+        case "confidence_gte":
+            if (input.confidence === undefined) return "unevaluable"
+            return input.confidence >= condition.value ? "matches" : "does_not_match"
+        case "has_issue_severity":
+            // No scalar field required — empty issues is a valid "no qualifying
+            // issue" answer, not an unevaluable condition.
+            return (input.issues ?? []).some(issue => severityRank(issue.severity) >= severityRank(condition.value))
+                ? "matches"
+                : "does_not_match"
         default:
             return assertNeverCondition(condition)
     }

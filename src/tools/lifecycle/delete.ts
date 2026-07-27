@@ -134,13 +134,20 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 // state still exists — surface the failure so the caller knows
                 // the deletion was incomplete and the orphaned state may
                 // resurrect on restart.
+                //
+                // H-24: restore the tombstone so the in-memory team object is
+                // still usable. Pre-fix code left team.deleted=true, which made
+                // the team permanently invisible to all handlers (processIdle,
+                // saveTeamState, etc.) even though the directory still existed
+                // on disk. With the tombstone cleared, the team can be retried
+                // on the next team_delete call, and on plugin restart
+                // rebuildSessionIndex re-indexes it from the surviving disk state.
+                team.deleted = false
                 const msg = err instanceof Error ? err.message : String(err)
-                // Still evict the registry cache: team.deleted is set so handlers
-                // no-op, but leaving the stale entry in the registry is a memory
-                // leak for the lifetime of this process.
                 invalidateTeam(team.directory)
 return `Error: failed to fully delete team "${args.team_id}" storage: ${msg}. `
-+ `The team directory may still exist on disk; manual cleanup may be required.`
++ `The team directory may still exist on disk; manual cleanup may be required. `
++ `The team has been restored to a usable state.`
             }
         },
     })

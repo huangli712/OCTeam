@@ -102,9 +102,9 @@ describe("parseRouteDecision", () => {
         expect(parseRouteDecision('<route>{"rationale": "no branch"}</route>').parseFailed).toBe(true)
     })
 
-    test("filters out non-string branch values", () => {
+    test("H-16 strict: non-string branch values make the entire decision parseFailed", () => {
         const text = '<route>{"branches": ["valid", 42, null, "also-valid"]}</route>'
-        expect(parseRouteDecision(text).targets).toEqual(["valid", "also-valid"])
+        expect(parseRouteDecision(text).parseFailed).toBe(true)
     })
 
     test("rationale defaults to empty string when absent", () => {

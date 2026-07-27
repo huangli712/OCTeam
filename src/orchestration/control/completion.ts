@@ -6,7 +6,7 @@
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import type { RunStatus } from "../../core/types.js"
-import { type Team, clearActiveTask } from "../../state/store.js"
+import { type Team, clearActiveTask, saveTeamState } from "../../state/store.js"
 import { recordEvent } from "../records/events.js"
 import { persistRun } from "../records/runs.js"
 import { buildSummary } from "../records/summary.js"
@@ -74,5 +74,17 @@ status: "idle" | "failed",
         // that can never be cleared.
         clearActiveTask(team)
         team.status = status
+        // H-12: persist the terminal state inside finishRun so the disk no
+        // longer shows "busy" after the call returns. Pre-fix code relied on
+        // callers to save — but the hooks.ts idle path returns immediately
+        // after checkTermination without an explicit save, so the team could
+        // stay "busy" on disk indefinitely after a crash or unexpected return.
+        await saveTeamState(team).catch(err =>
+            logSwallowed(ctx, "finishRun: terminal state persist failed", err, {
+                team: team.teamName,
+                reason,
+                status,
+            }),
+        )
     }
 }

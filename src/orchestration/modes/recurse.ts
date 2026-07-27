@@ -164,6 +164,25 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
     const T = tasks.find(
         t => t.owner === member.name && (t.status === "claimed" || t.status === "in_progress"),
     )
+    // H-27: an errored member must NOT have its claimed task finalized as
+    // completed. Pre-fix code processed the errored member's stale output
+    // as if it were a legitimate result, marking the task done even though
+    // the member crashed/errored mid-work. Release the task back to pending
+    // so another member can pick it up.
+    if (T && member.status === "errored") {
+        await updateTask(team.directory, T.id, {
+            status: "pending",
+            owner: undefined,
+            claimedAt: undefined,
+        })
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "errored",
+            member: member.name,
+            detail: `recurse: released claimed task ${T.id} from errored member`,
+        })
+        return
+    }
     if (T) {
         const output = task.responses[member.name] ?? ""
         const depth = T.depth ?? 0

@@ -12,6 +12,26 @@ import { isEnoent } from "../../core/utils.js"
 import { clearActiveTeam, setActiveTeam } from "../../state/resolve.js"
 import { decideActivate, withOrderedLocks } from "../../state/activation.js"
 
+// H-22: process-level activation mutex keyed by sessionID. Prevents two
+// concurrent team_activate calls from the same session from both scanning
+// "no active sibling" outside the lock and then activating different targets
+// simultaneously (which would leave two teams active).
+const activationMutex = new Map<string, Promise<void>>()
+
+/** Serialize a callback per sessionID key. */
+async function withSessionMutex<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const prev = activationMutex.get(key) ?? Promise.resolve()
+    let release!: () => void
+    const gate = new Promise<void>(r => { release = r })
+    activationMutex.set(key, prev.then(() => gate))
+    try {
+        await prev
+        return await fn()
+    } finally {
+        release()
+    }
+}
+
 /** Activate a team for the current session. Only one team may be active at a time. */
 export function teamActivateTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -37,8 +57,12 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                 return "Error: team_activate is master-only (only the team's leader session can activate it)"
             }
 
-            // Find the currently-active sibling (if any) — scan in parallel
-            // since loadTeamState is I/O-bound.
+            // H-22: serialize sibling scan + activation per session so two
+            // concurrent team_activate calls cannot both see "no active
+            // sibling" and proceed to activate different targets.
+            return await withSessionMutex(context.sessionID, async () => {
+            // Find the currently-active sibling (if any) — re-scan INSIDE the
+            // mutex so a concurrent activate that just landed is visible.
             let activeSibling: Team | undefined
             const siblings = await listTeamNames(ctx.storageRoot, leadSessionId)
             const loaded = await Promise.all(
@@ -122,6 +146,7 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                 result = `Team "${args.team_id}" activated.`
             })
             return result
+            }) // withSessionMutex
         },
     })
 }

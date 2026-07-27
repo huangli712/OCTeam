@@ -262,7 +262,10 @@ function pushUniqueWorkflowIndex(indices: number[], index: number): void {
     if (!indices.includes(index)) indices.push(index)
 }
 
-/** Check whether a join step's metadata indicates all branches have reached a terminal state. */
+/** Check whether a join step's metadata indicates all branches have reached a terminal state.
+ * For any_success, an early-open fast path fires as soon as ONE branch is
+ * terminal+successful: the remaining non-terminal branches are marked
+ * skipped+completed so the join opens immediately. */
 function isJoinMetadataSatisfied(
     steps: readonly WorkflowStep[],
     join: WorkflowJoinMetadata,
@@ -270,6 +273,41 @@ function isJoinMetadataSatisfied(
     const erroredBranchIds = new Set(join.erroredBranchIds ?? [])
     const survivorBranchIds: string[] = []
     let errors = 0
+
+    // H-6: any_success fast path. Scan branches once; if at least one has
+    // reached terminal+successful state, mark every remaining non-terminal
+    // branch as skipped+completed and short-circuit. Pre-fix code waited for
+    // ALL branches to be terminal, defeating the policy's purpose.
+    if (join.joinPolicy === "any_success" || join.useSurvivors === true) {
+        let successFound = false
+        for (const tailIndex of join.branchTailIndices) {
+            const tail = steps[tailIndex]
+            if (tail === undefined) return false
+            const branchId = tail.branch?.branchId
+            if (branchId !== undefined && erroredBranchIds.has(branchId)) continue
+            if (isTerminalWorkflowStep(tail)) {
+                successFound = true
+                break
+            }
+        }
+        if (successFound) {
+            // Mark every non-terminal, non-errored branch as skipped so the
+            // join opens immediately and late results are ignored.
+            for (const tailIndex of join.branchTailIndices) {
+                const tail = steps[tailIndex]
+                if (tail === undefined) continue
+                const branchId = tail.branch?.branchId
+                if (branchId !== undefined && erroredBranchIds.has(branchId)) continue
+                if (!isTerminalWorkflowStep(tail)) {
+                    tail.completed = true
+                    tail.skipped = true
+                }
+            }
+            return true
+        }
+        // No success yet — fall through to the standard terminal-required scan
+        // so the function still returns false while no branch has succeeded.
+    }
 
     for (const tailIndex of join.branchTailIndices) {
         const tail = steps[tailIndex]

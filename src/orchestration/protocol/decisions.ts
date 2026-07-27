@@ -26,7 +26,13 @@ import type {
 // Replaces the old English keyword-substring heuristic, which both false-matched
 // negated contexts ("there are no issues with X, but bugs in Y") and never fired
 // for non-English agents.
-const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>/
+//
+// H-15: the tag MUST appear at the END of the output (after trimming trailing
+// whitespace). Pre-fix code matched anywhere in the text, so a negated context
+// like "do not emit <no_issues/>, bugs remain" falsely signaled clean. A
+// trailing-position anchor enforces that the tag is the decider's FINAL
+// declaration, not a mid-text reference.
+const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>\s*$/
 
 /**
  * Extract and JSON.parse a `<tag>{...}</tag>` block from text. Supports an
@@ -34,8 +40,15 @@ const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>/
  *   - the parsed object on success
  *   - `null` when the tag is absent (regex does not match)
  *   - `undefined` when the tag is present but the payload fails to parse
- * Most parsers conflate both failure modes via `!p`; parseDecompose is the
- * exception that distinguishes absent (leaf) from malformed (parseFailed).
+ * 
+ * H-14: the LAST tagged block is authoritative — if it is malformed, the
+ * function returns `undefined` (parseFailed) rather than silently falling
+ * back to an earlier parseable block. The pre-fix loop tried each block from
+ * last to first, returning the first that parsed; this let a decider's final
+ * malformed `<decision>{oops}</decision>` silently revert to a stale earlier
+ * `<decision>{...done...}</decision>`, double-completing or double-advancing.
+ * When a decider restates a prior decision, the LATEST restatement carries the
+ * authoritative payload — if it cannot parse, that is a real failure.
  */
 function extractTaggedJSON(
     text: string,
@@ -43,21 +56,18 @@ function extractTaggedJSON(
     zh?: string,
 ): Record<string, unknown> | null | undefined {
     const tag = zh ? `(?:${en}|${zh})` : en
-    // Lazy quantifier so each tag block captures only its own {...} payload,
-    // not spanning across multiple same-named tags. Match ALL occurrences and
-    // return the LAST parseable one: when a decider restates a prior decision
-    // before issuing a new one, the latest (last) block is authoritative.
+    // Lazy quantifier so each tag block captures only its own {...} payload.
     const re = new RegExp(`<${tag}>\\s*(\\{[\\s\\S]*?\\})\\s*</${tag}>`, "g")
     const matches = [...(text?.matchAll(re) ?? [])]
     if (matches.length === 0) return null
-    for (let i = matches.length - 1; i >= 0; i--) {
-        try {
-            return JSON.parse(matches[i][1]) as Record<string, unknown>
-        } catch {
-            // this block's payload didn't parse — try earlier blocks
-        }
+    // H-14: parse ONLY the last match. If it fails, return undefined (parse
+    // failure). Earlier matches are NOT used as silent fallbacks.
+    const lastMatch = matches[matches.length - 1]
+    try {
+        return JSON.parse(lastMatch[1]) as Record<string, unknown>
+    } catch {
+        return undefined
     }
-    return undefined
 }
 
 /**
@@ -95,6 +105,13 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
  * selected branch names. Pure extraction — branch existence is validated in
  * handleRouteIdle. Returns parseFailed:true when no tag or no names are found.
  * Accepts branch/branches/target/targets aliases for LLM robustness.
+ *
+ * H-16: strict payload validation. If the raw value is an array, EVERY entry
+ * must be a non-empty string — a single invalid entry (typo, number, null)
+ * makes the ENTIRE decision parseFailed, rather than silently filtering out
+ * the bad entry and routing only to the valid subset. Pre-fix code filtered
+ * quietly, so ["known","typo"] became ["known"] — a partial routing that
+ * hid the typo from both the router (no feedback) and the master (no error).
  */
 export function parseRouteDecision(
     rawText: string,
@@ -102,8 +119,17 @@ export function parseRouteDecision(
     const p = extractTaggedJSON(rawText, "route", "路由")
     if (!p) return { targets: [], rationale: "", parseFailed: true }
     const raw = p.branches ?? p.targets ?? p.branch ?? p.target
-    const targets = (Array.isArray(raw) ? raw : raw != null ? [raw] : [])
-        .filter((x: unknown): x is string => typeof x === "string" && x.length > 0)
+    if (raw == null) return { targets: [], rationale: "", parseFailed: true }
+    const arr = Array.isArray(raw) ? raw : [raw]
+    // H-16: strict — every element must be a non-empty string. One bad entry
+    // fails the whole decision.
+    const targets: string[] = []
+    for (const x of arr) {
+        if (typeof x !== "string" || x.length === 0) {
+            return { targets: [], rationale: "", parseFailed: true }
+        }
+        targets.push(x)
+    }
     if (targets.length === 0) return { targets: [], rationale: "", parseFailed: true }
     return {
         targets,
@@ -179,11 +205,12 @@ export function parseSelection(
  * the per-candidate scores. Mirrors parseVerdict/parseSelection's tagged-JSON
  * shape but owns a DISTINCT tag: <scoreboard>/<评分板>. An absent tag or
  * malformed JSON returns parseFailed. `scores` must be a non-empty array; each
- * retained entry needs a string `member`; `score` and each `metrics` value are
- * coerced to FINITE numbers (non-finite values are dropped); `passed` defaults
- * to false when absent; `rationale` is optional. Invalid entries are dropped;
- * duplicate `member` entries are PRESERVED (dedup is a selection concern, not a
- * parse one). Empty or all-invalid `scores` yields parseFailed.
+ * entry MUST be a valid object with a string `member` — a single invalid
+ * entry makes the ENTIRE scoreboard parseFailed (H-16 strict: no lossy
+ * filtering). `score` and each `metrics` value are coerced to FINITE numbers
+ * (non-finite values are dropped); `passed` defaults to false when absent;
+ * `rationale` is optional. Duplicate `member` entries are PRESERVED (dedup is
+ * a selection concern, not a parse one).
  */
 export function parseScoreboard(
     rawText: string,
@@ -192,8 +219,13 @@ export function parseScoreboard(
     if (!p || !Array.isArray(p.scores)) return { scores: [], rationale: "", parseFailed: true }
     const scores: ArenaCandidateScore[] = []
     for (const item of p.scores) {
-        if (typeof item !== "object" || item === null || Array.isArray(item)) continue
-        if (!("member" in item) || typeof item.member !== "string" || item.member.length === 0) continue
+        // H-16 strict: any invalid entry makes the whole scoreboard fail.
+        if (typeof item !== "object" || item === null || Array.isArray(item)) {
+            return { scores: [], rationale: "", parseFailed: true }
+        }
+        if (!("member" in item) || typeof item.member !== "string" || item.member.length === 0) {
+            return { scores: [], rationale: "", parseFailed: true }
+        }
         const entry: ArenaCandidateScore = {
             member: item.member,
             passed: "passed" in item && item.passed === true,
@@ -239,6 +271,12 @@ function parseWorkflowIssues(raw: unknown): WorkflowIssue[] | undefined {
  * proposed subtasks. Unlike parseDecision/parseRouteDecision, parseFailed is
  * NOT a failure signal: an absent tag means "solve directly" (a leaf). Only an
  * explicit tag with no valid subtasks yields parseFailed.
+ *
+ * H-16: strict payload validation. Every entry in the `subtasks` array MUST
+ * have non-empty string `subject` and `description` — a single invalid entry
+ * makes the ENTIRE decomposition parseFailed (rather than silently filtering
+ * it out). Pre-fix code dropped invalid entries quietly, so a malformed
+ * subtask would be lost without feedback to the decomposer.
  */
 export function parseDecompose(
     rawText: string,
@@ -255,6 +293,9 @@ export function parseDecompose(
             && "description" in item && typeof item.description === "string" && item.description.length > 0
         ) {
             subtasks.push({ subject: item.subject, description: item.description })
+        } else {
+            // H-16 strict: one invalid subtask entry fails the whole decompose.
+            return { subtasks: [], parseFailed: true }
         }
     }
     if (subtasks.length === 0) return { subtasks: [], parseFailed: true }

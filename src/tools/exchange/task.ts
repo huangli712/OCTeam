@@ -205,8 +205,17 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                 let team
                 try {
                     team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
-                } catch {
-                    // team not found — no activeTask to guard, proceed
+                } catch (err) {
+                    // H-19: only ENOENT means "team genuinely not found".
+                    // Other errors (EACCES, EIO, corruption) must FAIL CLOSED:
+                    // treating a corrupted/unreadable state as "no active run"
+                    // would let the member bypass the recurse single-writer
+                    // guard and write a resultless completed task.
+                    if (!isEnoent(err)) {
+                        logSwallowed(ctx, "loadTeamState failed during recurse single-writer check; rejecting completion", err, { team: args.team_id })
+                        return `Error: cannot verify team state for recurse single-writer check. Task completion rejected to avoid bypassing orchestrator ownership. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+                    }
+                    // ENOENT: team genuinely not found — no activeTask to guard.
                 }
                 if (team?.activeTask?.type === "recurse") {
                     return (

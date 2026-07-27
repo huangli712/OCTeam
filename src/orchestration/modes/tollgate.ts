@@ -28,7 +28,7 @@ import { recordEvent } from "../records/events.js"
 import { truncateOutput } from "../protocol/output.js"
 import { parseVerdict } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
-import { maybeRequestApproval } from "../control/approval.js"
+import { maybeRequestApproval, forceApprovalRequest } from "../control/approval.js"
 import { findMember } from "../../tools/support.js"
 
 /**
@@ -175,8 +175,21 @@ async function escalateInvalid(
         await saveTeamState(team)
         return
     }
-    // No escalation handler -> hand to the leader (does not penalize producer).
-    await finishRun(ctx, team, `tollgate_invalid:${stage.member}:${reason}`, "failed")
+    // H-26: no escalation handler configured. The pre-fix code called
+    // finishRun("failed") immediately, which contradicts the documented
+    // contract ("hand to the leader for a human decision"). Use
+    // forceApprovalRequest so the leader can approve (retry) or reject
+    // (fail) instead of auto-failing on a potentially recoverable INVALID.
+    const paused = await forceApprovalRequest(ctx, team, {
+        kind: "tollgate_gate",
+        stage: task.currentStageIndex,
+        summary: `Gate INVALID on stage "${stage.member}": ${reason}. No escalateTo handler configured. Approve to retry verification, or reject to fail the run.`,
+    })
+    if (!paused) {
+        // Approval system unavailable (e.g. no leadSessionId). Fall back to
+        // the original fail-closed behavior so the run is not stuck.
+        await finishRun(ctx, team, `tollgate_invalid:${stage.member}:${reason}`, "failed")
+    }
 }
 
 /**

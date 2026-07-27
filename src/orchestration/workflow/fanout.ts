@@ -453,21 +453,37 @@ function removeActiveWorkflowBranch(
     task.currentStageIndex = task.activeStepIndices[0] ?? branch.joinIndex;
 }
 
-/** Find a branch already recorded as errored for a given member name. */
+/** Find a branch already recorded as errored for a given member name.
+ * H-7: for ensemble gates, any verifier in the step.verifiers list counts
+ * as the actor — the pre-fix code only checked workflowStepActorName which
+ * returns the first verifier, so a second verifier's error could not find
+ * the already-errored branch and returned not_fanout. */
 function recordedErroredBranchForMember(
     steps: WorkflowStep[],
     memberName: string,
 ): WorkflowBranchMetadata | null {
     for (const step of steps) {
-        if (
-            step.branch === undefined ||
-            workflowStepActorName(step) !== memberName
-        )
+        if (step.branch === undefined) continue;
+        // Direct actor-name match (task step member, single-verifier gate,
+        // join reducer).
+        if (workflowStepActorName(step) === memberName) {
+            const joinStep = steps[step.branch.joinIndex];
+            const join = joinStep?.kind === "join" ? joinStep.join : undefined;
+            if (join?.erroredBranchIds?.includes(step.branch.branchId) === true)
+                return step.branch;
             continue;
-        const joinStep = steps[step.branch.joinIndex];
-        const join = joinStep?.kind === "join" ? joinStep.join : undefined;
-        if (join?.erroredBranchIds?.includes(step.branch.branchId) === true)
-            return step.branch;
+        }
+        // H-7: ensemble gate — any verifier in the list is a potential actor.
+        // Without this, a second verifier's error cannot rediscover the
+        // already-errored branch (workflowStepActorName returns only the
+        // first verifier) and the caller gets not_fanout, potentially
+        // mishandling the error.
+        if (step.kind === "gate" && step.verifiers?.includes(memberName) === true) {
+            const joinStep = steps[step.branch.joinIndex];
+            const join = joinStep?.kind === "join" ? joinStep.join : undefined;
+            if (join?.erroredBranchIds?.includes(step.branch.branchId) === true)
+                return step.branch;
+        }
     }
     return null;
 }

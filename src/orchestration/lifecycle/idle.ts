@@ -18,7 +18,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { safeMemberAgent } from "../../core/role.js"
+import { dispatchToMember } from "../control/dispatch.js"
 import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../../core/types.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import { countUnreadMessages } from "../../messaging/mailbox.js"
@@ -53,7 +53,7 @@ import { captureMemberOutput } from "../records/capture.js"
  * type error. Wrappers adapt heterogeneous handler signatures (some take
  * member, some don't) to a uniform interface.
  */
-const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, member: MemberState) => Promise<void>> = {
+const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, member: MemberState, capturedNew?: boolean) => Promise<void>> = {
     parallel: async (ctx, team) => handleParallelIdle(ctx, team),
     consensus: async (ctx, team) => handleConsensusIdle(ctx, team),
     pipeline: async (ctx, team, member) => handlePipelineIdle(ctx, team, member),
@@ -63,7 +63,7 @@ const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, m
     arbitrate: async (ctx, team) => handleArbitrateIdle(ctx, team),
     recurse: async (ctx, team, member) => handleRecurseIdle(ctx, team, member),
     tollgate: async (ctx, team, member) => handleTollgateIdle(ctx, team, member),
-    workflow: async (ctx, team, member) => handleWorkflowIdle(ctx, team, member),
+    workflow: async (ctx, team, member, capturedNew) => handleWorkflowIdle(ctx, team, member, capturedNew),
     arena: async (ctx, team, member) => handleArenaIdle(ctx, team, member),
     quorum: async (ctx, team) => handleQuorumIdle(ctx, team),
 }
@@ -203,23 +203,15 @@ async function maybeRepromptPrematureIdle(
         && !member.declaredDone
         && member.sessionId
     ) {
-        await ctx.client.session.promptAsync({
-            path: { id: member.sessionId },
-            body: {
-                parts: [
-                    {
-                        type: "text",
-                        text: buildPrematureIdleReprompt(team.teamName),
-                        synthetic: false,
-                    }
-                ],
-                agent: safeMemberAgent(member.agent),
-            },
-            query: { directory: member.worktreePath ?? ctx.directory },
-        })
-        member.status = "running"
-        member.turnCount++
-        await saveTeamState(team)
+        // H-11: route through the canonical dispatch primitive so promptAsync +
+        // member state transition + saveTeamState + event recording are atomic.
+        await dispatchToMember(
+            ctx,
+            member,
+            buildPrematureIdleReprompt(team.teamName),
+            member.worktreePath ?? ctx.directory,
+            team,
+        )
         await checkTermination(ctx, team)
         return true
     }
@@ -295,7 +287,7 @@ export async function processIdle(
         && capturedNew
         && /<(?:decompose|分解)>/.test(task.responses[member.name] ?? "")
     ) {
-        await idleDispatch[task.type](ctx, team, member)
+        await idleDispatch[task.type](ctx, team, member, capturedNew)
         await checkTermination(ctx, team)
         return
     }
@@ -336,7 +328,7 @@ export async function processIdle(
     // require_done_ack recovery (parallel-only): re-prompt premature idle.
     if (taskType === "parallel" && await maybeRepromptPrematureIdle(ctx, team, member)) return
 
-    await idleDispatch[taskType](ctx, team, member)
+    await idleDispatch[taskType](ctx, team, member, capturedNew)
 
     // Step 9: Termination checks.
     await checkTermination(ctx, team)

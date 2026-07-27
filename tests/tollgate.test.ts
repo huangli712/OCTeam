@@ -577,7 +577,7 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
         expect(team.members.find(m => m.name === "alice")!.turnCount).toBe(producerTurnBefore)
     })
 
-    test("INVALID without escalateTo -> delivered to leader, status=failed (T-4)", async () => {
+    test("H-26: INVALID without escalateTo -> HITL escalation to leader (approval pause), not auto-fail", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
@@ -598,16 +598,13 @@ describe("handleTollgateIdle: INVALID escalation (T-1 regression)", () => {
         await handleTollgateIdle(ctx, team, idle(team, "bob"))
 
         expect(task.gatedStages![0].verdict).toBe("INVALID")
-        expect(team.status).toBe("failed")
-        expect(team.activeTask).toBeUndefined()
-        // Producer NOT penalized (no re-dispatch); leader got the summary.
+        // H-26: the run is now paused for HITL approval, not auto-failed.
+        // The team is still busy (approval pending).
+        expect(team.status).toBe("busy")
+        expect(team.activeTask).toBeDefined()
+        expect(team.activeTask?.approvalStage).toBeTruthy()
+        // Producer NOT penalized (no re-dispatch).
         expect(calls.some(c => c.sessionId === "ses_alice")).toBe(false)
-        expect(calls.some(c => c.sessionId === "ses_lead")).toBe(true)
-
-        // T-4: run record classified as failed with the tollgate_invalid marker.
-        const record = await readRunRecord(team.directory, runId)
-        expect(record!.status).toBe("failed")
-        expect(record!.reason).toContain("tollgate_invalid")
     })
 
     test("parse failure (no verdict tag) is treated as INVALID, not a producer FAIL", async () => {

@@ -284,8 +284,18 @@ export async function startOrchestration(
                 // member flags while the runtime shows them as running.
                 await saveTeamState(team)
             } catch (err) {
-                // Roll back the busy+activeTask commit so a dispatch failure
+                // H-9: Roll back the busy+activeTask commit so a dispatch failure
                 // does not wedge the team requiring external recovery.
+                // Members already dispatched (status="running", turnCount>0) must
+                // be marked errored — without this they keep running but their
+                // idle events are silently dropped (no activeTask to process
+                // them), and the next startup sees them as healthy (re-dispatch
+                // collides with the orphaned turn).
+                for (const m of team.members) {
+                    if (m.status === "running" || (m.turnCount ?? 0) > 0) {
+                        m.status = "errored"
+                    }
+                }
                 team.status = prevStatus
                 team.activeTask = undefined
                 await saveTeamState(team)

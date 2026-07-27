@@ -81,13 +81,13 @@ describe("parseScoreboard", () => {
         expect(parseScoreboard(sb('{"scores":"nope"}')).parseFailed).toBe(true)
     })
 
-    test("drops an entry missing a string member but keeps the valid one", () => {
+    test("H-16 strict: an entry missing a string member makes the whole scoreboard parseFailed", () => {
         const r = parseScoreboard(
             sb('{"scores":[{"member":"alice","score":1,"passed":true},{"score":2,"passed":true}]}'),
         )
-        expect(r.parseFailed).toBeUndefined()
-        expect(r.scores).toHaveLength(1)
-        expect(r.scores[0].member).toBe("alice")
+        // H-16: one invalid entry fails the entire scoreboard (no lossy filter).
+        expect(r.parseFailed).toBe(true)
+        expect(r.scores).toEqual([])
     })
 
     test("returns parseFailed when no valid entries remain after dropping", () => {
@@ -235,19 +235,22 @@ describe("selectArenaWinner", () => {
         expect(sel.winner).toBe("alice")
     })
 
-    test("an unknown member not in candidates is ignored", () => {
+    test("H-28: unknown member not in candidates is ignored when all candidates ARE covered", () => {
+        // All candidates (alice, bob) have entries. Mallory is an extra unknown
+        // entry — she is ignored because she is not in the candidate list.
         const sel = selectArenaWinner(
             ["alice", "bob"],
             {
                 scores: [
                     { member: "alice", score: 3, passed: true },
+                    { member: "bob", score: 5, passed: true },
                     { member: "mallory", score: 99, passed: true },
                 ],
             },
             "max",
             "score",
         )
-        expect(sel.winner).toBe("alice")
+        expect(sel.winner).toBe("bob")
     })
 
     test("a scored non-survivor absent from candidates cannot win", () => {
@@ -268,7 +271,10 @@ describe("selectArenaWinner", () => {
         expect(sel.winner).toBe("bob")
     })
 
-    test("duplicate scoreboard entries make that member ineligible", () => {
+    test("H-28: a candidate with duplicate scoreboard entries fails the whole scoreboard", () => {
+        // alice has 2 entries — this is now a hard failure for the entire
+        // scoreboard (not just alice becoming ineligible). The evaluator's
+        // contract was violated.
         const sel = selectArenaWinner(
             ["alice", "bob"],
             {
@@ -281,7 +287,8 @@ describe("selectArenaWinner", () => {
             "max",
             "score",
         )
-        expect(sel.winner).toBe("bob")
+        expect(sel.winner).toBeUndefined()
+        expect(sel.reason).toContain("incomplete_scoreboard")
     })
 
     test("a member missing the winner metric is ineligible", () => {

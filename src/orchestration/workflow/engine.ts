@@ -53,7 +53,7 @@ import {
     sortedWorkflowIndices,
 } from "./dag.js";
 import { maybeTriggerSignoff } from "../control/signoff.js";
-import { forceApprovalRequest } from "../control/approval.js";
+import { forceApprovalRequest, maybeRequestApproval } from "../control/approval.js";
 import {
     completeWorkflowJoinStep,
     dispatchWorkflowJoinReducer,
@@ -108,6 +108,26 @@ export async function dispatchTaskStep(
         return false;
     const member = liveWorkflowActor(team, step.member, step.fallbackMember);
     if (member === undefined) return false;
+    // H-2: when the task declares explicit `inputs`, verify every referenced
+    // step completed NON-SKIPPED. A forward goto can mark intermediate steps
+    // as completed+skipped; without this guard the task would dispatch with
+    // an empty upstream (buildWorkflowUpstream silently drops !completed and
+    // skipped-only entries) and produce work product missing its declared
+    // dependencies. Surface the violation as a deterministic run failure.
+    if (step.inputs !== undefined) {
+        const missing: string[] = []
+        for (const inputIdx of step.inputs) {
+            const inputStep = task.steps?.[inputIdx]
+            if (!inputStep || !inputStep.completed || inputStep.skipped) {
+                missing.push(String(inputIdx + 1))
+            }
+        }
+        if (missing.length > 0) {
+            const reason = `workflow_input_skipped: step ${index + 1} declares inputs [${missing.join(", ")}] but at least one was skipped (likely by a forward goto). Refusing to dispatch a task without its declared dependencies.`
+            await finishRun(ctx, team, reason, "failed")
+            return false
+        }
+    }
     // Consume the per-step approval_before grant now that dispatch is actually
     // happening (re-entry via retry/goto re-requests approval because the reset
     // loops clear approvalBeforeGranted).
@@ -497,12 +517,18 @@ export async function gotoWorkflowStep(
                 // Clear cached per-verifier results so the ensemble gate
                 // re-dispatches every verifier when the body re-runs.
                 s.ensembleResults = undefined;
-                if (i !== gateIndex) {
-                    s.attempts = 0;
-                    s.invalidAttempts = 0;
-                    s.malformedAttempts = 0;
-                    s.timeoutAttempts = 0;
-                }
+                // H-1: reset retry counters on EVERY re-entered gate, including
+                // the triggering gate. The prior `i !== gateIndex` guard left
+                // the triggering gate with its exhausted budget, so a gate
+                // configured with `on_fail: retry, max_retries: 1` that already
+                // used its retry on the previous pass would fail immediately
+                // on the re-run — defeating the purpose of the backward jump.
+                // The outer loop bound (jumpCount, incremented above) is still
+                // respected, so infinite loops are still prevented.
+                s.attempts = 0;
+                s.invalidAttempts = 0;
+                s.malformedAttempts = 0;
+                s.timeoutAttempts = 0;
             }
             // Reset join runtime tracking so a re-run fanout/join pair
             // starts with a clean branch state (no stale errored/survivor
@@ -659,6 +685,21 @@ export async function advanceWorkflowStep(
                         if (result === "failed") return;
                         if (result === "dispatched" || result === "waiting")
                             dispatched = true;
+                        // H-3: when a join completes and the workflow task has
+                        // human_approval set, pause for master approval before
+                        // the loop dispatches the next ready step. Mirrors the
+                        // linear advance path's maybeRequestApproval call
+                        // (handler.ts) so fanout→downstream transitions respect
+                        // the same boundary as task→task transitions.
+                        if (result === "completed" && task.humanApproval === true) {
+                            const paused = await maybeRequestApproval(ctx, team, {
+                                kind: "workflow_step",
+                                stage: index,
+                                summary: `Completed ${describeStep(step, index)} (join fired).`
+                                    + ` Review before continuing to downstream step.`,
+                            })
+                            if (paused) return
+                        }
                         break;
                     }
                     default:

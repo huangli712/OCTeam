@@ -79,7 +79,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
             let restored: ActiveTask | undefined
             let resumeRaced = false
             // Snapshot of errored members reset in Phase 1, for rollback if Phase 2/3 fails.
-            const memberSnapshot: Array<{ name: string; error?: string; declaredDone?: boolean; retryingSince?: number }> = []
+            const memberSnapshot: Array<{ name: string; error?: string; declaredDone?: boolean; retryingSince?: number; turnCount?: number }> = []
 
             try {
                 // --- Phase 1 (mutex): snapshot + reset, DO NOT commit activeTask. ---
@@ -114,7 +114,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                                 continue
                             }
                             // Snapshot before reset so Phase 2/3 failure can rollback.
-                            memberSnapshot.push({ name: m.name, error: m.error, declaredDone: m.declaredDone, retryingSince: m.retryingSince })
+                            memberSnapshot.push({ name: m.name, error: m.error, declaredDone: m.declaredDone, retryingSince: m.retryingSince, turnCount: m.turnCount })
                             m.status = "idle"
                             m.error = undefined
                             m.declaredDone = false
@@ -170,6 +170,12 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                 // --- Rollback (ACTIVE reset, not passive). ---
                 // A post-commit throw (e.g. dispatchToMember rejecting on a dead
                 // session) leaves activeTask set + status busy. Actively reset.
+                // H-31: mark already-dispatched members (status="running",
+                // turnCount>0) as errored. Pre-fix code restored them to their
+                // pre-resume errored/idle state but did NOT account for members
+                // that were successfully dispatched during the partial resume —
+                // those kept running with no activeTask to process their idle,
+                // silently dropping their output.
                 await team.mutex.runExclusive(async () => {
                     team.activeTask = undefined
                     team.status = "failed"
@@ -178,8 +184,17 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     for (const saved of memberSnapshot) {
                         const m = team.members.find(mm => mm.name === saved.name)
                         if (m) {
-                            m.status = "errored"
-                            m.error = saved.error
+                            // H-31: if this member was dispatched during the
+                            // partial resume (status is now "running" or
+                            // turnCount increased), mark it errored — its idle
+                            // event would otherwise be silently dropped.
+                            if (m.status === "running" || (m.turnCount ?? 0) > (saved.turnCount ?? 0)) {
+                                m.status = "errored"
+                                m.error = `resume dispatch failed: ${e instanceof Error ? e.message : String(e)}`
+                            } else {
+                                m.status = "errored"
+                                m.error = saved.error
+                            }
                             m.declaredDone = saved.declaredDone
                             m.retryingSince = saved.retryingSince
                         }

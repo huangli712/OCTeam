@@ -79,6 +79,15 @@ export async function applyApprovalDecision(
         round: request.round,
         detail: `${request.kind}:${decision.approved ? "approved" : "rejected"}`,
     })
+    // H-13: persist the approval resolution BEFORE dispatch/advance so it is
+    // durable regardless of dispatch outcome. Pre-fix code saved only at the
+    // end (after dispatch), so a dispatch throw left the disk showing the
+    // approval as still pending — the master could re-approve, producing a
+    // duplicate event and a second dispatch while the first was still in
+    // flight. This save also makes the catch block's in-memory rollback
+    // meaningful (the disk already has the resolution; the rollback only
+    // affects the in-memory state that will be re-saved on the next call).
+    await saveTeamState(team)
 
     try {
     if (!decision.approved) {

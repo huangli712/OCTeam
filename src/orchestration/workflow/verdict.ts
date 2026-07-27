@@ -348,6 +348,18 @@ async function handleGatePass(
     if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
         return;
     const gotoIdx = gatedGotoIndex(steps, gateIndex, step.onPassGoto);
+    if (gotoIdx === -2) {
+        // H-4: the where condition was unevaluable (verifier omitted a
+        // required field). Route to INVALID instead of silently advancing
+        // to the default successor — the verifier's contract was violated.
+        await handleInvalidVerdict(ctx, team, {
+            step, gateIndex, verifierName,
+            reason: "INVALID",
+            rationale: "where condition unevaluable: required score/confidence field missing from verdict",
+            diff: "",
+        });
+        return;
+    }
     const nextIndex =
         gotoIdx >= 0 ? gotoIdx : steps.findIndex((s) => !s.completed);
     // Skip the task-global approval when on_pass_goto is set: the approval
@@ -422,6 +434,16 @@ async function handleGateFail(
         gateIndex,
         step.onFailGoto,
     );
+    if (failGoto === -2) {
+        // H-4: where condition unevaluable → route to INVALID.
+        await handleInvalidVerdict(ctx, team, {
+            step, gateIndex, verifierName,
+            reason: "INVALID",
+            rationale: "where condition unevaluable: required score/confidence field missing from verdict",
+            diff: "",
+        });
+        return;
+    }
     if (failGoto >= 0) {
         if (step.loop !== undefined) {
             step.loopIterations = (step.loopIterations ?? 0) + 1;
@@ -491,6 +513,16 @@ async function handleGateRetry(
             gateIndex,
             step.onFailGoto,
         );
+        if (failGoto === -2) {
+            // H-4: where condition unevaluable → route to INVALID.
+            await handleInvalidVerdict(ctx, team, {
+                step, gateIndex, verifierName,
+                reason: "INVALID",
+                rationale: "where condition unevaluable: required score/confidence field missing from verdict",
+                diff: "",
+            });
+            return;
+        }
         if (failGoto >= 0) {
             await gotoWorkflowStep(ctx, team, gateIndex, failGoto, {
                 reason: whereReason(step, "on_fail_retry_exhausted"),
