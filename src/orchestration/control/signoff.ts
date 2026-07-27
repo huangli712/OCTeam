@@ -75,7 +75,19 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     // dispatch does not leave reviewers prompted without signoffStage
     // persisted. On resume, signoffStage=true ensures reviewer responses
     // are routed to handleSignoffIdle instead of being treated as stray.
-    await saveTeamState(team)
+    //
+    // HIGH-A: rollback the in-memory signoffStage on save failure. Pre-fix
+    // code let saveTeamState throw with signoffStage=true still set in memory,
+    // stranding the team in a "signoff paused but reviewers never dispatched"
+    // state — the next idle would route to handleSignoffIdle on a stage that
+    // had no reviewers in flight.
+    try {
+        await saveTeamState(team)
+    } catch (err) {
+        task.signoffStage = false
+        task.signoffApprovals = undefined
+        throw err
+    }
     for (const reviewer of reviewers) {
         await dispatchToMember(
             ctx,

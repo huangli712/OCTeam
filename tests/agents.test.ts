@@ -150,8 +150,10 @@ describe("createConfigHook", () => {
         await hook(cfg as Parameters<typeof hook>[0])
         expect(cfg.agent).toBeDefined()
         expect(Object.keys(cfg.agent!)).toHaveLength(9)
+        // HIGH-G: hook now CLONES the preset (so later mutations do not leak
+        // back into OCTEAM_AGENTS); use toEqual for deep equality.
         for (const key of ALL_AGENT_KEYS) {
-            expect(cfg.agent![key]).toBe(OCTEAM_AGENTS[key])
+            expect(cfg.agent![key]).toEqual(OCTEAM_AGENTS[key])
         }
     })
 

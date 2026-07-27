@@ -92,7 +92,17 @@ export function teamDoneTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 member.declaredDone = true
-                await saveTeamState(team)
+                // HIGH-A: rollback declaredDone on save failure. Pre-fix code
+                // set declaredDone then called saveTeamState; a throw left
+                // the in-memory flag set while disk stayed cleared. On the
+                // next call, alreadyAcked short-circuited the persist path,
+                // so the ack was silently lost on crash recovery.
+                try {
+                    await saveTeamState(team)
+                } catch (err) {
+                    member.declaredDone = false
+                    throw err
+                }
             })
 
             if (staleRun) {

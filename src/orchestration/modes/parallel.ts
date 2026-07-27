@@ -36,6 +36,14 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
             await finishRun(ctx, team, `member_error:${e?.name}:${e?.error ?? "unknown"}`, "failed")
             return
         }
+        // HIGH-D: clear stale responses from errored members BEFORE reduce / signoff.
+        // Pre-fix code cleared them only just before final delivery, AFTER
+        // reduce / signoff had already read them. A reducer or signoff
+        // reviewer then received errored members' (possibly stale) outputs as
+        // legitimate inputs, corrupting the reduced artifact or the verdict.
+        for (const name of errored) {
+            delete task.responses[name]
+        }
         // Reduce (real map-reduce) BEFORE signoff: signoff then reviews the single
         // reduced artifact, not the N raw outputs. Re-entry while reduceStage is
         // still set means the reducer reached a terminal state without idling
@@ -45,11 +53,6 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
             task.reduceStage = false
         } else if (await maybeTriggerReduce(ctx, team)) {
             return  // reducer dispatched; handleReduceIdle finishes the run
-        }
-        // Clear stale responses from errored members before delivery so they do
-        // not leak into the summary as if those members had produced deliverables.
-        for (const name of errored) {
-            delete task.responses[name]
         }
         // Maybe trigger signoff before delivering.
         if (await maybeTriggerSignoff(ctx, team)) {

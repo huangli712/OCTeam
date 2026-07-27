@@ -115,6 +115,15 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
             // Increment round AFTER the dispatch loop (not before) so a partial
             // dispatch failure followed by a barrier re-fire does not skip a round.
             const nextRound = (task.currentRound ?? 1) + 1
+            // HIGH-D: clear prior-round disputant responses before re-dispatch.
+            // Pre-fix code left them populated, so a disputant whose new round
+            // produced no output (or crashed mid-turn) would have its stale
+            // position counted toward the barrier AND read by the arbiter as
+            // the disputant's final stance. Arbiter's response (if any from
+            // a prior phase B retry) is preserved — phase B reads it directly.
+            for (const name of disputants) {
+                delete task.responses[name]
+            }
             for (const name of disputants) {
                 const m = team.members.find(x => x.name === name)
                 if (!m?.sessionId) continue

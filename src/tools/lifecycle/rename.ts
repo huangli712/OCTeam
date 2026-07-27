@@ -92,7 +92,16 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 let spec: TeamSpec | null = null
                 try {
                     spec = await readTeamSpec(ctx.storageRoot, args.team_id, pathLeadSessionId)
-                } catch { /* best-effort; spec may be absent for old teams */ }
+                } catch (err) {
+                    // HIGH-A: do not silently swallow spec read errors. A
+                    // corrupt config.json would lead to a rename that loses
+                    // the spec entirely (spec=null branch skips writeTeamSpec
+                    // in the new directory, so the renamed team has no config).
+                    // Treat as a fatal precondition and refuse the rename.
+                    return `Error: team "${args.team_id}" config is unreadable — refusing to rename (${err instanceof Error ? err.message : String(err)})`
+                }
+                // Capture the original spec name so the rollback can restore it.
+                const originalSpecName = spec?.name
                 // Rename directory on disk.
                 await fs.rename(oldDir, newDir)
 
@@ -124,6 +133,20 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // Rollback: restore the old directory and in-memory state.
                     team.teamName = args.team_id
                     team.directory = oldDir
+                    // HIGH-A: if the spec was written to the new directory with
+                    // the new name, restore the original spec.name and re-write
+                    // it BEFORE moving the directory back. Without this, the
+                    // moved-back directory's config.json would still carry the
+                    // new name, leaving an inconsistent state.json (name=A) /
+                    // config.json (name=B) pair.
+                    if (spec && originalSpecName !== undefined && spec.name !== originalSpecName) {
+                        try {
+                            const restoredSpec = { ...spec, name: originalSpecName }
+                            await writeTeamSpec(ctx.storageRoot, restoredSpec, pathLeadSessionId)
+                        } catch (specRollbackErr) {
+                            logSwallowed(ctx, "rename rollback: writeTeamSpec restore failed", specRollbackErr, { oldDir, newDir })
+                        }
+                    }
                     await fs.rename(newDir, oldDir).catch((rollbackErr) => {
                         logSwallowed(ctx, "rename rollback: fs.rename failed", rollbackErr, { oldDir, newDir })
                     })

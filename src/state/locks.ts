@@ -396,7 +396,16 @@ export async function lockFresh(
     try {
         const stat = await fs.stat(lockPath)
         return Date.now() - stat.mtimeMs <= ttlMs
-    } catch {
-        return false
+    } catch (err) {
+        // HIGH-A: distinguish ENOENT (lock genuinely absent → not fresh) from
+        // other stat errors (EACCES, EBUSY, EIO, ...). Pre-fix code caught
+        // everything and returned false, which let the stale-claim reaper
+        // reclaim a claim whose lock file was temporarily unreadable — a
+        // transient permission or IO error would silently release an active
+        // claim, leading to double-claim races. Treat non-ENOENT errors as
+        // "lock may still be fresh" so the reaper leaves it alone; the next
+        // sweep will re-check.
+        if (isEnoent(err)) return false
+        return true
     }
 }

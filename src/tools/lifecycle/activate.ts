@@ -71,7 +71,19 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                     .map(name =>
                         loadTeamState(ctx.storageRoot, name, leadSessionId)
                             .then(t => ({ t, ok: true as const }))
-                            .catch(() => ({ ok: false as const })),
+                            .catch(err => {
+                                // HIGH-B: surface sibling-load failures so an
+                                // operator can diagnose a transient IO/permission
+                                // error. Pre-fix code silently treated the
+                                // sibling as non-existent, which could let two
+                                // teams activate concurrently if the active
+                                // sibling's state was momentarily unreadable.
+                                logSwallowed(ctx, "team_activate: sibling load failed (treating as inactive)", err, {
+                                    siblingTeam: name,
+                                    leadSessionId,
+                                })
+                                return { ok: false as const }
+                            }),
                     ),
             )
             for (const r of loaded) {

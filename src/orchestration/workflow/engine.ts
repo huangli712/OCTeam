@@ -164,6 +164,26 @@ export async function dispatchEnsembleGate(
     if (!step || step.kind !== "gate" || !step.verifiers) return false;
     const targetIndices = gateTargetIndices(task.steps ?? [], index);
     if (targetIndices.length === 0) return false;
+    // HIGH-C: refuse to verify a target that is incomplete or skipped. Same
+    // contract as the single-verifier path — without this, an ensemble gate
+    // reached by a forward goto would receive empty producer output and emit
+    // a spurious PASS.
+    const skippedTargets: string[] = []
+    for (const targetIdx of targetIndices) {
+        const target = task.steps?.[targetIdx]
+        if (!target || !target.completed || target.skipped === true) {
+            skippedTargets.push(String(targetIdx + 1))
+        }
+    }
+    if (skippedTargets.length > 0) {
+        await finishRun(
+            ctx,
+            team,
+            `workflow_input_skipped: ensemble gate step ${index + 1} verifies target(s) [${skippedTargets.join(", ")}] but at least one was skipped (likely by a forward goto). Refusing to verify with missing producer output.`,
+            "failed",
+        )
+        return false
+    }
     step.approvalBeforeGranted = undefined;
     step.output = undefined;
     const producerOutput = buildGateProducerOutput(task.steps ?? [], targetIndices);
@@ -249,6 +269,30 @@ export async function dispatchGateStep(
     if (verifier === undefined) return false;
     const targetIndices = gateTargetIndices(task.steps ?? [], index);
     if (targetIndices.length === 0) return false;
+    // HIGH-C: refuse to verify a target that is incomplete or skipped. A
+    // forward goto can jump past a producer task and land on a gate that
+    // verifies it; without this guard the verifier is dispatched with an
+    // empty producer output (buildGateProducerOutput drops !completed /
+    // skipped entries), and may emit a spurious PASS. Mirror the input-guard
+    // contract from dispatchTaskStep (H-2): finishRun with
+    // workflow_input_skipped so the run fails deterministically rather than
+    // passing a gate on missing inputs.
+    const skippedTargets: string[] = []
+    for (const targetIdx of targetIndices) {
+        const target = task.steps?.[targetIdx]
+        if (!target || !target.completed || target.skipped === true) {
+            skippedTargets.push(String(targetIdx + 1))
+        }
+    }
+    if (skippedTargets.length > 0) {
+        await finishRun(
+            ctx,
+            team,
+            `workflow_input_skipped: gate step ${index + 1} verifies target(s) [${skippedTargets.join(", ")}] but at least one was skipped (likely by a forward goto). Refusing to verify with missing producer output.`,
+            "failed",
+        )
+        return false
+    }
     step.approvalBeforeGranted = undefined;
     step.output = undefined;
     delete task.responses[verifier.name];

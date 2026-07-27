@@ -63,6 +63,42 @@ export async function handleReduceIdle(
     if (member.name !== task.reducerMember) return
 
     const reduced = task.responses[member.name]
+    // HIGH-D: if the reducer itself is errored, neither retry nor empty-
+    // output fail is correct — the reducer cannot produce. Pre-fix code
+    // fell through to the retry path: dispatchToMember silently no-ops on an
+    // errored member (its `if (member.status === "errored") return`), so
+    // the reducer was never re-dispatched, no idle ever fired, and the run
+    // hung until wall-clock timeout. Clear reduceStage and fall back to the
+    // parallel non-reduce delivery path so successful mappers' work is not
+    // wasted.
+    if (member.status === "errored") {
+        task.reduceStage = false
+        task.reducedResult = undefined
+        // Continue to the normal parallel completion path; the next idle
+        // (or sweep) will deliver survivors' outputs without reduction.
+        const { maybeAdvanceBarrier } = await import("../control/barriers.js")
+        const participants = team.members
+            .filter(m => !m.isMaster && m.sessionId)
+            .map(m => m.name)
+        await maybeAdvanceBarrier(team, participants, async () => {
+            // Reuse the same delivery logic from handleParallelIdle. The
+            // reducer is already errored; clear its response so it does not
+            // leak into the summary.
+            delete task.responses[member.name]
+            const errored = participants.filter(
+                n => team.members.find(m => m.name === n)?.status === "errored",
+            )
+            const tolerance = task.maxErroredMembers ?? 0
+            const survivors = participants.length - errored.length
+            if (survivors === 0 || errored.length > tolerance) {
+                await finishRun(ctx, team, `member_error:${member.name}:${member.error ?? "unknown"}`, "failed")
+                return
+            }
+            for (const name of errored) delete task.responses[name]
+            await finishRun(ctx, team, `parallel_${task.mode}_partial:${errored.length}_errored`, "idle")
+        })
+        return
+    }
     if (reduced === undefined) {
         // No new output was captured for the reducer this turn (stale idle or
         // empty extraction). Re-dispatch the reducer instead of silently

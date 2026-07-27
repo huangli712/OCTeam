@@ -20,10 +20,18 @@ export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: 
 }
 
 /**
- * Minimal top-level schema check for a mailbox Message. Each jsonl line is
- * parsed and cast to Message; a corrupt or tampered line can be valid JSON yet
- * miss the fields delivery/formatting dereference. Validate just id/from/body so
- * wrong-shape entries are skipped alongside the already-skipped malformed lines.
+ * Schema check for a mailbox Message. Each jsonl line is parsed and cast
+ * to Message; a corrupt or tampered line can be valid JSON yet miss the
+ * fields delivery/formatting dereference. Validate the required fields so
+ * wrong-shape entries are skipped alongside the already-skipped malformed
+ * lines.
+ *
+ * HIGH-E: pre-fix code only validated id/from/body, leaving to/kind/timestamp
+ * unverified. A line with a non-string `to` crashed downstream path
+ * operations, a non-string `kind` broke switch statements, and a non-string
+ * `correlationId` (when present) crashed formatMailboxInjection's
+ * String.replace call. One maliciously crafted line could block an entire
+ * mailbox batch (never acked, retried forever).
  *
  * NOTE: this is a SHAPE check only, NOT an authenticity check — see mailbox.ts
  * "TRUST BOUNDARY" header comment.
@@ -31,12 +39,24 @@ export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: 
 function isValidMessage(value: unknown): value is Message {
     if (typeof value !== "object" || value === null) return false
     const m = value as Record<string, unknown>
-    return (
-        typeof m.id === "string"
-        && isSafePathSegment(m.id)
-        && typeof m.from === "string"
-        && typeof m.body === "string"
-    )
+    if (typeof m.id !== "string" || !isSafePathSegment(m.id)) return false
+    if (typeof m.from !== "string") return false
+    if (typeof m.body !== "string") return false
+    if (typeof m.to !== "string") return false
+    if (m.kind !== "message" && m.kind !== "announcement" && m.kind !== "directive") return false
+    if (typeof m.timestamp !== "number" || !Number.isFinite(m.timestamp)) return false
+    if (m.summary !== undefined && typeof m.summary !== "string") return false
+    if (m.correlationId !== undefined && typeof m.correlationId !== "string") return false
+    if (m.runId !== undefined && typeof m.runId !== "string") return false
+    if (
+        m.deliveryStatus !== undefined
+        && m.deliveryStatus !== "pending"
+        && m.deliveryStatus !== "delivered"
+        && m.deliveryStatus !== "processed"
+    ) {
+        return false
+    }
+    return true
 }
 
 /** Read and parse all message lines from filePath. Returns [] on ENOENT. */

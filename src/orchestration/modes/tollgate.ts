@@ -106,6 +106,11 @@ export async function advanceToGatedStage(
     const upstream = buildUpstreamContext(
         task.gatedStages ?? [], task.responses, task.currentStageIndex)
     const text = upstream ? `${upstream}\n\n[Your task]\n${stage.task}` : stage.task
+    // HIGH-D: clear stale producer response before re-dispatch. Same reason
+    // as the verifier clear above — a producer reused across gates (or
+    // retried after a timeout) would otherwise have its prior artifact
+    // counted as the new one.
+    delete task.responses[stage.member]
     await dispatchToMember(ctx, producer, text, producer.worktreePath ?? ctx.directory, team)
 }
 

@@ -116,9 +116,22 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                         clearWakeHint(m.sessionId)
                     }
                 }
+                // HIGH-A: order cleanup so an fs.rm failure leaves indexes intact.
+                // Pre-fix code ran unindexMasterTeam + clearWakeHint BEFORE
+                // deleteTeamStorage, so a storage-delete failure left the
+                // team un-indexed in memory but still present on disk. On
+                // restart rebuildSessionIndex would reindex from disk, but in
+                // the live process the master could not see this team until
+                // restart. The fix moves deleteTeamStorage first; only on
+                // successful removal do we unindex.
+                try {
+                    await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
+                } catch (err) {
+                    // Re-raise to the outer catch (H-24 tombstone restore).
+                    throw err
+                }
                     unindexMasterTeam(team.leadSessionId, team.directory)
                     clearWakeHint(team.leadSessionId)
-                    await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
                     invalidateTeam(team.directory)
                 })
                 if (staleBusy) {

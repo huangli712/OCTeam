@@ -138,6 +138,25 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
             try {
                 await deliverToRecipients(ctx, team, recipients, base, team.bounds.messageUnreadMaxBytes)
             } catch (err) {
+                // HIGH-F: roll back the messagesSent increment when delivery fails.
+                // Pre-fix code persisted the increment before dispatch; a delivery
+                // failure (backpressure, IO error, or partial broadcast) left the
+                // count ahead of actual deliveries, silently consuming quota for
+                // messages that were never sent. Broadcast retries then double-
+                // counted the recipients that succeeded.
+                if (team.activeTask) {
+                    await team.mutex.runExclusive(async () => {
+                        const task = team.activeTask
+                        if (task) {
+                            task.messagesSent = Math.max(0, task.messagesSent - recipients.length)
+                            try {
+                                await saveTeamState(team)
+                            } catch (rollbackErr) {
+                                logSwallowed(ctx, "send_message: rollback save failed after delivery error", rollbackErr, { team: team.teamName })
+                            }
+                        }
+                    })
+                }
                 if (err instanceof BackpressureError) {
                     return `Error: recipient "${err.recipient}" mailbox is full (backpressure). Try later.`
                 }

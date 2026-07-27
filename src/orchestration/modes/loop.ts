@@ -47,6 +47,15 @@ async function continueLoopRound(
     recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
     task.currentStageIndex = 0
     for (const s of task.stages) s.completed = false
+    // HIGH-D: clear stale per-member responses from the prior round. Pre-fix
+    // code reset only stages, leaving task.responses populated. On the new
+    // round, if a member's dispatch landed but the member produced no output
+    // (or crashed), resume treated the OLD round's response as the new one,
+    // either falsely advancing the stage or letting a stale <no_issues/>
+    // skip the entire round.
+    for (const name of Object.keys(task.responses)) {
+        delete task.responses[name]
+    }
     const feedback =
         `[Round ${task.currentRound} — decider feedback]\n${rationale}`
         + (nextActions.length > 0

@@ -300,12 +300,19 @@ function activeBranchActorConflict(task: WorkflowTask, candidateMember: string, 
     for (const activeIndex of getActiveWorkflowStepIndices(task)) {
         if (activeIndex === excludeIndex) continue
         const step = task.steps?.[activeIndex]
-        const actor = step?.kind === "task"
-            ? step.member
-            : step?.kind === "gate"
-                ? step.verifier
-                : undefined
-        if (actor === candidateMember && step?.branch !== undefined) return step.branch.branchId
+        // HIGH-B: check both single-verifier and ensemble verifiers[].
+        // Pre-fix code only read step.verifier, missing ensemble gates whose
+        // verifier list could contain the candidate — reassign would then put
+        // the same member in two roles in the same ensemble, breaking vote
+        // weight and response attribution.
+        let actorMatches = false
+        if (step?.kind === "task") {
+            actorMatches = step.member === candidateMember
+        } else if (step?.kind === "gate") {
+            actorMatches = step.verifier === candidateMember
+                || (step.verifiers?.includes(candidateMember) ?? false)
+        }
+        if (actorMatches && step?.branch !== undefined) return step.branch.branchId
     }
     return null
 }

@@ -55,21 +55,33 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
             const existing = cfg.agent[name]
             if (!existing) {
                 // User did not define this agent — apply OCTeam preset verbatim.
-                cfg.agent[name] = def
+                // HIGH-G: clone the preset so a later mutation by another config
+                // hook (or by reference to cfg.agent[...]) does not leak back
+                // into OCTEAM_AGENTS (shared reference bug).
+                cfg.agent[name] = { ...def, permission: { ...def.permission } }
                 continue
             }
-            // User pre-defined an oct-* entry. Preserve their NON-SECURITY
-            // fields (model, temperature, color, etc.) but force-override
-            // security fields with OCTeam's hardened definitions. Without
-            // this, a tampered `cfg.agent["oct-oracle"] = { permission: { edit:
-            // "allow" }, prompt: "..." }` would silently win.
+            // User pre-defined an oct-* entry. Preserve ONLY the non-security
+            // fields users may legitimately tune (model, temperature, color).
+            // HIGH-G: pre-fix code spread `...existing`, which kept arbitrary
+            // user-defined fields like `tools`, `top_p`, `maxSteps`, `disable` —
+            // any of these could weaken the hardened preset (e.g. extra tools
+            // bypass the permission map; disable:false resurrects a deprecated
+            // preset). Explicit allowlist closes the gap.
+            const allowed: Record<string, unknown> = {}
+            if (typeof existing.model === "string") allowed.model = existing.model
+            if (typeof existing.temperature === "number") allowed.temperature = existing.temperature
+            if (typeof existing.color === "string") allowed.color = existing.color
             cfg.agent[name] = {
-                ...existing,
-                // Security-critical overrides (OCTeam wins):
+                ...def,
+                permission: { ...def.permission },
+                ...allowed,
+                // Security-critical overrides (OCTeam wins) — re-asserted AFTER
+                // the allowed merge above so a stray `mode` in `existing` (which
+                // we did not copy) cannot sneak in via the spread of `def`.
                 mode: def.mode,
                 description: def.description,
                 prompt: def.prompt,
-                permission: def.permission,
             }
         }
     }

@@ -94,6 +94,12 @@ export async function startArenaEvaluation(ctx: PluginContext, team: Team): Prom
         await finishRun(ctx, team, "arena_failed:evaluator_unavailable", "failed")
         return
     }
+    // HIGH-D: set arenaPhase BEFORE dispatch so the dispatch's immediate
+    // saveTeamState persists the correct phase. Pre-fix order persisted
+    // "evaluator running + phase=implement"; if the subsequent saveTeamState
+    // failed or the process crashed, resume would see phase=implement and
+    // re-trigger the implementation barrier, double-dispatching the evaluator.
+    task.arenaPhase = "evaluate"
     await dispatchToMember(
         ctx,
         evaluator,
@@ -101,7 +107,6 @@ export async function startArenaEvaluation(ctx: PluginContext, team: Team): Prom
         evaluator.worktreePath ?? ctx.directory,
         team,
     )
-    task.arenaPhase = "evaluate"
     await saveTeamState(team)
 }
 
