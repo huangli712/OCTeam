@@ -230,6 +230,19 @@ export async function assertNoSymlinkTraversal(trustedRoot: string, target: stri
     if (resolved !== root && !resolved.startsWith(root + path.sep)) {
         throw new Error(`assertNoSymlinkTraversal: target escapes trusted root: target=${target} root=${trustedRoot}`)
     }
+    // H-S2: check the trusted root ITSELF for symlink. Pre-fix code assumed
+    // root was always verified, but callers pass team.directory (mutable) or
+    // worktreesRoot (disk-replaceable). A symlinked root would redirect all
+    // writes outside the intended location.
+    try {
+        const rootStat = await fs.lstat(root)
+        if (rootStat.isSymbolicLink()) {
+            throw new Error(`assertNoSymlinkTraversal: trusted root is a symlink: ${root}`)
+        }
+    } catch (err) {
+        if (!isEnoent(err)) throw err
+        // root doesn't exist yet (mkdir will create it) — safe
+    }
     // Walk every ancestor from target up to (not including) the trusted root.
     // ENOENT for a not-yet-created component is fine — the subsequent write
     // will create it as a real dir/file.

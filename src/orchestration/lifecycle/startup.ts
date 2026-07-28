@@ -289,8 +289,13 @@ export async function startOrchestration(
             }
             // Persist AFTER flag resets so a crash between saveTeamState and
             // the reset loop does not leave stale member flags on disk.
-            await saveTeamState(team)
+            // H-L4: persist INSIDE the dispatch try/catch so a save failure
+            // triggers the same rollback as a dispatch failure (members →
+            // errored, status restored, activeTask cleared). Pre-fix code
+            // had saveTeamState outside the try, so a persistence failure
+            // left the team wedged in busy+activeTask with no rollback.
             try {
+                await saveTeamState(team)
                 await dispatch(team, built)
                 // Persist post-dispatch member states (status="running",
                 // turnCount=1) so a crash between dispatch and the first

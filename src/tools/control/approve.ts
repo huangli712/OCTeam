@@ -18,6 +18,7 @@ import { approveLoopDone, rejectLoopDone } from "../../orchestration/modes/loop.
 import { advanceRouteAfterDecision } from "../../orchestration/modes/route.js"
 import { approveRecurseDecompose, rejectRecurseDecompose } from "../../orchestration/modes/recurse.js"
 import { advanceWorkflowStep } from "../../orchestration/workflow/engine.js"
+import { maybeTriggerSignoff } from "../../orchestration/control/signoff.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { dispatchToMember } from "../../orchestration/control/dispatch.js"
@@ -215,6 +216,11 @@ export async function applyApprovalDecision(
                 }
             } else {
                 // Post-ruling pause approved: deliver the ruling.
+                // H-M1: honor signoff before finishRun, matching the
+                // non-HITL path in handleArbitrateIdle (line 191).
+                if (await maybeTriggerSignoff(ctx, team)) {
+                    return `Approved ${request.kind} for team "${team.teamName}"; signoff in progress.`
+                }
                 await finishRun(ctx, team, "arbitrate_complete:ruled", "idle")
             }
             return `Approved ${request.kind} for team "${team.teamName}"; resuming.`

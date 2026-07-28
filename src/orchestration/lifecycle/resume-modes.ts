@@ -297,7 +297,7 @@ export async function resumeRouteMode(
             const router = team.members.find(
                 (m) => m.name === task.routerMember && !m.isMaster,
             );
-            if (router) {
+            if (router?.sessionId) {
                 const prompt = buildRouterPrompt(
                     team.teamName,
                     task.task ?? "",

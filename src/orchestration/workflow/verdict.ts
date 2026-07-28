@@ -523,6 +523,23 @@ async function handleGateFail(
                             + ` after ${step.loop.maxIterations} iterations;`
                             + ` on_exhaust=continue`,
                     });
+                    // H-LOOP-EXHAUST: honor task-level human approval before
+                    // advancing (parity with handleGatePass / handleGateFail
+                    // skip paths, H52). Without this, on_exhaust=continue would
+                    // immediately advance to the next step without the review
+                    // pause that human_approval promises.
+                    const exhaustNextIndex = steps.findIndex((s) => !s.completed);
+                    if (
+                        step.branch === undefined
+                        && exhaustNextIndex !== -1
+                        && (await maybeRequestApproval(ctx, team, {
+                            kind: "workflow_step",
+                            stage: gateIndex,
+                            summary: `Loop gate step ${gateIndex + 1} exhausted after ${step.loop.maxIterations} iterations (on_exhaust=continue). Next: ${describeStep(steps[exhaustNextIndex], exhaustNextIndex)}. Review before continuing.`,
+                        }))
+                    ) {
+                        return;
+                    }
                     await advanceWorkflowStep(ctx, team);
                     return;
                 }

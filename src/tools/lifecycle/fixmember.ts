@@ -13,7 +13,8 @@ import type { PluginContext } from "../../core/context.js"
 import { logger } from "../../core/log.js"
 import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
 import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
-import { inboxPath } from "../../state/paths.js"
+import { inboxPath, worktreesDir } from "../../state/paths.js"
+import { destroyWorktree } from "../../state/worktrees.js"
 import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../../core/role.js"
 import type { TeamSpec } from "../../core/types.js"
 import { MEMBER_NAME_POOL } from "../../state/naming.js"
@@ -153,8 +154,8 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 }
 
                 // --- H-23: snapshot all fields that will be mutated, for complete rollback ---
-                const savedAgent = member.agent
-                const savedModel = member.model
+                const savedAgent = liveMember.agent
+                const savedModel = liveMember.model
                 const savedRole = specMember?.role
                 const savedPrompt = specMember?.prompt
                 const savedSpecModel = specMember?.model
@@ -162,15 +163,39 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 // --- new_name: rename member across state, spec, index, mailbox ---
                 if (renaming) {
                     const newName = args.new_name!
-                    const oldName = member.name
-                    member.name = newName
+                    const oldName = liveMember.name
+                    liveMember.name = newName
                     if (specMember) specMember.name = newName
-                    if (member.sessionId) {
-                        unindexSession(member.sessionId)
+                    if (liveMember.sessionId) {
+                        unindexSession(liveMember.sessionId)
                         indexMember(
-                            member.sessionId, team.teamName, newName,
+                            liveMember.sessionId, team.teamName, newName,
                             caller.leadSessionId, ctx.storageRoot,
                         )
+                    }
+                    // H-T2: if the member has a worktree, its path is keyed
+                    // by member name. After rename the old worktree path is
+                    // stale. Destroy the old worktree and clear sessionId so
+                    // the next orchestration re-creates it at the new path.
+                    // Without this, ensureMembersReady sees an existing
+                    // sessionId and skips re-spawning — the member works in
+                    // the old (deleted) worktree path forever.
+                    if (liveMember.worktreePath) {
+                        try {
+                            await destroyWorktree(
+                                ctx.directory,
+                                liveMember.worktreePath,
+                                worktreesDir(team.directory),
+                                team.teamName,
+                                oldName,
+                            )
+                        } catch {
+                            // best-effort: old worktree may already be gone
+                        }
+                        liveMember.worktreePath = undefined
+                        liveMember.sessionId = undefined
+                        liveMember.initialized = false
+                        changes.push(`worktree: destroyed old (will re-create on next start)`)
                     }
                     try {
                         await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, newName))
@@ -212,12 +237,12 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 // --- agent: explicit new_agent wins; otherwise a changed role
                 // re-derives the agent. The agent registry was pre-fetched outside the mutex.
                 if (targetAgent) {
-                    member.agent = targetAgent
+                    liveMember.agent = targetAgent
                     if (specMember) specMember.agent = targetAgent
                     const entry = agentsList.find(a => a.name === targetAgent)
                     if (entry?.model) {
                         const m = `${entry.model.providerID}/${entry.model.modelID}`
-                        member.model = m
+                        liveMember.model = m
                         if (specMember) specMember.model = m
                         changes.push(`agent: ${targetAgent}, model: ${m}`)
                     } else if (agentsList.length > 0) {
@@ -252,13 +277,13 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         const newName = args.new_name!
                         const oldName = member.name === newName ? args.member_name : newName
                         // Restore member name
-                        member.name = args.member_name
+                        liveMember.name = args.member_name
                         if (specMember) specMember.name = args.member_name
                         // Restore index
-                        if (member.sessionId) {
-                            unindexSession(member.sessionId)
+                        if (liveMember.sessionId) {
+                            unindexSession(liveMember.sessionId)
                             indexMember(
-                                member.sessionId, team.teamName, args.member_name,
+                                liveMember.sessionId, team.teamName, args.member_name,
                                 caller.leadSessionId, ctx.storageRoot,
                             )
                         }
@@ -299,8 +324,8 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     // (when specMember exists, savedRole/savedPrompt are
                     // always strings, but TS cannot infer that across the
                     // earlier nullish-coalesce snapshot).
-                    member.agent = savedAgent
-                    member.model = savedModel
+                    liveMember.agent = savedAgent
+                    liveMember.model = savedModel
                     if (specMember) {
                         specMember.agent = savedAgent
                         specMember.model = savedSpecModel
