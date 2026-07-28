@@ -21,11 +21,18 @@ export function isEnoent(err: unknown): boolean {
 
 // --- polling primitive ---
 
-/** Resolve when predicate is true; reject on timeout. Polls every pollMs. */
+/** Resolve when predicate is true; reject on timeout. Polls every pollMs.
+ * M6: validates timeoutMs is a finite positive number. NaN/Infinity/
+ * negative values would cause an infinite loop (NaN comparison is always
+ * false) or immediate spurious rejection. */
 export function waitUntil(
     predicate: () => boolean,
     opts: { timeoutMs: number; pollMs?: number },
 ): Promise<void> {
+    // M6: reject invalid timeoutMs early instead of looping forever.
+    if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs < 0) {
+        return Promise.reject(new Error(`waitUntil: invalid timeoutMs ${opts.timeoutMs} (must be finite and >= 0)`))
+    }
     const pollMs = opts.pollMs ?? 250
     return new Promise<void>((resolve, reject) => {
         const start = Date.now()
@@ -49,9 +56,11 @@ export function waitUntil(
     })
 }
 
-/** Split the array into batches of size n. */
+/** Split the array into batches of size n.
+ * M6: validates n is a finite positive integer. NaN (n <= 0 is false for NaN)
+ * would cause i += NaN → infinite loop. */
 export function chunk<T>(arr: T[], n: number): T[][] {
-    if (n <= 0) return []
+    if (!Number.isFinite(n) || n <= 0) return []
     const out: T[][] = []
     for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
     return out

@@ -448,8 +448,8 @@ export const ROLES: Record<string, RoleDef> = {
  * Role assigned when a member's role does not match any preset. This is a
  * read-only role ("reviewer" -> oracle agent) on purpose: an unrecognized role
  * (e.g. a typo) must fail safe to least privilege, never silently escalate to a
- * full write-capable agent ("almighty" -> build). "almighty" stays available as
- * an explicit opt-in role, but is no longer the silent fallback.
+ * full write-capable agent. "almighty" stays available as an explicit opt-in
+ * role (mapped to oct-junior), but is no longer the silent fallback.
  */
 export const DEFAULT_ROLE = "reviewer"
 

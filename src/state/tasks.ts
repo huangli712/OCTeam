@@ -285,8 +285,15 @@ export async function updateTask(
             || patch.status === "deleted"
             || patch.status === "pending"
         ) {
-            await fs.unlink(claimLockPath(teamDirectory, taskId)).catch(() => {
-                // no lock to clean
+            await fs.unlink(claimLockPath(teamDirectory, taskId)).catch((err: unknown) => {
+                // M13: ENOENT is benign (no lock to clean). Non-ENOENT errors
+                // leave an orphaned claim lock that the stale-claim reaper will
+                // eventually clean up, but log so the orphan is observable.
+                if (!isEnoent(err)) {
+                    logger.warn("updateTask: claim lock unlink failed (orphan; reaper will clean)", {
+                        taskId, error: err instanceof Error ? err.message : String(err),
+                    })
+                }
             })
         }
         return task

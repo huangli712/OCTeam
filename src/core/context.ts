@@ -26,19 +26,19 @@ export type StorageScope = "user" | "project"
  * of client + directory + the resolved storage roots.
  */
 export type PluginContext = {
-    client: OpencodeClient
+    readonly client: OpencodeClient
     /** Current project working directory (from PluginInput.directory). */
-    directory: string
+    readonly directory: string
     /** Project metadata (from PluginInput.project). */
-    project: Project
+    readonly project: Project
     /** Active scope root: <directory>/.octeam (project) or ~/.octeam (user). */
-    storageRoot: string
+    readonly storageRoot: string
     /** ~/.octeam — always available regardless of active scope. */
-    userStorageRoot: string
+    readonly userStorageRoot: string
     /** <directory>/.octeam — always available regardless of active scope. */
-    projectStorageRoot: string
+    readonly projectStorageRoot: string
     /** Which scope is active for new teams. */
-    scope: StorageScope
+    readonly scope: StorageScope
 }
 
 /**
