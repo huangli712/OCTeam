@@ -112,7 +112,20 @@ export async function pollMailbox(
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
         const inbox = await readJsonl(inboxPath(teamDirectory, recipient))
         if (inbox.length === 0) return []
-        for (const msg of inbox) {
+        // HIGH-E: dedup by message ID within this batch. A crash during
+        // pollMailbox's truncate-rollback can leave the same message in BOTH
+        // inbox and reserved; the stale-reaper then re-appends the reserved
+        // copy to inbox → two lines with the same ID. Without this dedup,
+        // the caller would inject the same message twice. Keep the first
+        // occurrence (original write order).
+        const seenIds = new Set<string>()
+        const deduped = inbox.filter(msg => {
+            if (seenIds.has(msg.id)) return false
+            seenIds.add(msg.id)
+            return true
+        })
+        if (deduped.length === 0) return []
+        for (const msg of deduped) {
             try {
                 await atomicWrite(
                     reservedPath(teamDirectory, recipient, msg.id),
@@ -126,7 +139,7 @@ export async function pollMailbox(
                 // and releaseStaleReservations (TTL 30s) would re-append the
                 // reserved copy → duplicate injection. Unlink the reserved
                 // copies written so far so the inbox remains authoritative.
-                for (const done of inbox) {
+                for (const done of deduped) {
                     if (done.id === msg.id) break
                     await fs.unlink(reservedPath(teamDirectory, recipient, done.id)).catch(() => {
                         // already removed or never written
@@ -146,14 +159,14 @@ export async function pollMailbox(
             // copies so the original inbox entries remain authoritative for
             // the next poll attempt. Best-effort: an unlink failure leaves a
             // stranded reserved file that the stale-reaper eventually clears.
-            for (const msg of inbox) {
+            for (const msg of deduped) {
                 await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch(() => {
                     // already removed or never written
                 })
             }
             throw err
         }
-        return inbox
+        return deduped
     })
 }
 

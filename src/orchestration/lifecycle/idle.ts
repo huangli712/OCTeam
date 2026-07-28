@@ -293,8 +293,14 @@ export async function processIdle(
     }
 
     // Step 7: Unread messages — wake hint only (Transform hook injects content).
+    // HIGH-B: only short-circuit on stale idle (!capturedNew). When this turn
+    // produced fresh output, the handler MUST run first (step 8) — otherwise
+    // the next turn's capture overwrites task.responses[member] with mailbox
+    // reply content, losing the original verdict / reduce output / work.
+    // After step 8, if the task is still active, we wake-hint so the member
+    // drains its mailbox on the next turn.
     const unread = await countUnreadMessages(team.directory, member.name)
-    if (unread > 0) {
+    if (unread > 0 && !capturedNew) {
         await sendWakeHint(ctx, sessionID, unread)
         return
     }
@@ -332,4 +338,12 @@ export async function processIdle(
 
     // Step 9: Termination checks.
     await checkTermination(ctx, team)
+
+    // HIGH-B: after dispatch, if the task is still active and there are unread
+    // messages, wake-hint so the member drains its mailbox on the next turn.
+    // This runs only when capturedNew=true caused us to skip the step 7
+    // short-circuit above.
+    if (capturedNew && team.activeTask && unread > 0) {
+        await sendWakeHint(ctx, sessionID, unread)
+    }
 }

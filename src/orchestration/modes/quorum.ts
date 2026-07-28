@@ -91,7 +91,12 @@ export async function handleQuorumIdle(ctx: PluginContext, team: Team): Promise<
         task.nEff = nEff
         task.threshold = threshold
 
-        const counts: Record<string, number> = {}
+        // HIGH-D: use a null-prototype object for vote counts so a ballot
+        // with value "__proto__" or "constructor" cannot pollute Object.prototype
+        // or shadow inherited properties. Pre-fix code used `{}` which inherits
+        // from Object.prototype — `counts["__proto__"]` would set the prototype,
+        // and `counts["constructor"]` would shadow the constructor property.
+        const counts: Record<string, number> = Object.create(null)
         for (const name of participants) {
             const b = ballots[name]
             if (b.status === "valid") {

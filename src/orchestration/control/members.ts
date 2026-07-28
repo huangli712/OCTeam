@@ -37,46 +37,48 @@ async function waitForRoleSetupBarrier(
             ),
         { timeoutMs: ROLE_SETUP_BARRIER_TIMEOUT_MS },
     ).catch(async () => {
-        // Synchronous cleanup: delete sessions and destroy worktrees for
-        // members that were spawned but did not initialize. This MUST happen
-        // here (inside the failure path), not deferred to sweep — sweep only
-        // runs for teams with activeTask, which is not yet set at this point.
-        for (const name of waitNames) {
-            const current = team.members.find(member => member.name === name)
-            if (current && !current.initialized && current.sessionId) {
-                const sid = current.sessionId
-                const dir = current.worktreePath ?? ctx.directory
-                try {
-                    await ctx.client.session.delete({
-                        path: { id: sid },
-                        query: { directory: dir },
-                    })
-                } catch (err) {
-                    logSwallowed(ctx, "barrier timeout: session.delete failed", err, {
-                        team: team.teamName, member: name, sessionId: sid,
-                    })
-                }
-                unindexSession(sid)
-                current.sessionId = undefined
-                if (current.worktreePath) {
-                    await destroyWorktree(
-                        ctx.directory, current.worktreePath,
-                        worktreesDir(team.directory), team.teamName, name,
-                    ).catch(err =>
-                        logSwallowed(ctx, "barrier timeout: destroyWorktree failed", err, {
-                            team: team.teamName, member: name,
-                        }),
-                    )
-                    current.worktreePath = undefined
-                }
-            }
-            if (current && !current.initialized) {
-                current.status = "errored"
-                current.error = "role-setup barrier timed out"
-            }
-        }
-        // Timeout state is persisted under the mutex before aborting startup.
+        // HIGH-B: run the entire cleanup under team.mutex so a concurrent idle
+        // event from a spawned-but-not-initialized member cannot race with the
+        // session.delete / unindexSession / status=errored mutations. Pre-fix
+        // code ran cleanup outside the mutex; an idle event firing between the
+        // barrier timeout and the mutex acquisition would see the member as
+        // still having a sessionId and try to process its (non-existent) output.
         await team.mutex.runExclusive(async () => {
+            for (const name of waitNames) {
+                const current = team.members.find(member => member.name === name)
+                if (current && !current.initialized && current.sessionId) {
+                    const sid = current.sessionId
+                    const dir = current.worktreePath ?? ctx.directory
+                    try {
+                        await ctx.client.session.delete({
+                            path: { id: sid },
+                            query: { directory: dir },
+                        })
+                    } catch (err) {
+                        logSwallowed(ctx, "barrier timeout: session.delete failed", err, {
+                            team: team.teamName, member: name, sessionId: sid,
+                        })
+                    }
+                    unindexSession(sid)
+                    current.sessionId = undefined
+                    if (current.worktreePath) {
+                        await destroyWorktree(
+                            ctx.directory, current.worktreePath,
+                            worktreesDir(team.directory), team.teamName, name,
+                        ).catch(err =>
+                            logSwallowed(ctx, "barrier timeout: destroyWorktree failed", err, {
+                                team: team.teamName, member: name,
+                            }),
+                        )
+                        current.worktreePath = undefined
+                    }
+                }
+                if (current && !current.initialized) {
+                    current.status = "errored"
+                    current.error = "role-setup barrier timed out"
+                }
+            }
+            // Timeout state persisted in the same critical section.
             await saveTeamState(team).catch(err =>
                 logSwallowed(
                     ctx,

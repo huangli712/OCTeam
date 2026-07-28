@@ -70,33 +70,37 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     + `parses it, creates the subtasks, and re-queues the root as their aggregator.`
                 )
             }
-            // Validate blocked_by entries: each must be a well-formed task ID
-            // (UUID) referencing an existing non-deleted task. A bogus blocker
-            // (typo) would make the task permanently unclaimable in delegate
-            // mode (delegate.ts:62 never resolves a non-existent blocker to
-            // "completed"), wedging the team in a deadlock.
-            if (args.blocked_by && args.blocked_by.length > 0) {
-                const existing = await listAllTasks(caller.directory)
-                const existingIds = new Set(
-                    existing.filter(t => t.status !== "deleted").map(t => t.id),
-                )
-                for (const id of args.blocked_by) {
-                    if (!TASK_ID_PATTERN.test(id)) {
-                        return `Error: blocked_by entry "${id}" is not a valid task ID.`
-                    }
-                    if (!existingIds.has(id)) {
-                        return `Error: blocked_by entry "${id}" does not match an existing task.`
-                    }
-                }
-            }
-            // Wrap the count-check + create in team.mutex so concurrent
-            // team_task_create calls cannot both read the same live-task count
-            // and both bypass maxTasks. Without this, the check-then-act race
-            // lets two callers both pass the limit and both create.
+            // blocked_by validation moved INSIDE team.mutex below (HIGH-F:
+            // TOCTOU — concurrent team_task_delete could remove the referenced
+            // task between this check and the create).
+            // Wrap the count-check + blocked_by-check + create in team.mutex so
+            // concurrent team_task_create / team_task_delete calls cannot race.
+            // HIGH-F: pre-fix code ran the blocked_by existence check OUTSIDE the
+            // mutex; a concurrent team_task_delete could remove the referenced
+            // task between the check and the create, leaving the new task
+            // permanently unclaimable in delegate mode.
             let task: Task | undefined
             let limitError = false
+            let blockedByError: string | undefined
             await team.mutex.runExclusive(async () => {
-                const liveTasks = (await listAllTasks(caller.directory)).filter(
+                const allTasks = await listAllTasks(caller.directory)
+                // blocked_by validation (moved inside mutex for TOCTOU safety).
+                if (args.blocked_by && args.blocked_by.length > 0) {
+                    const existingIds = new Set(
+                        allTasks.filter(t => t.status !== "deleted").map(t => t.id),
+                    )
+                    for (const id of args.blocked_by) {
+                        if (!TASK_ID_PATTERN.test(id)) {
+                            blockedByError = `Error: blocked_by entry "${id}" is not a valid task ID.`
+                            return
+                        }
+                        if (!existingIds.has(id)) {
+                            blockedByError = `Error: blocked_by entry "${id}" does not match an existing task.`
+                            return
+                        }
+                    }
+                }
+                const liveTasks = allTasks.filter(
                     t => t.status !== "deleted",
                 ).length
                 if (liveTasks >= team.bounds.maxTasks) {
@@ -109,6 +113,7 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     blockedBy: args.blocked_by,
                 })
             })
+            if (blockedByError) return blockedByError
             if (limitError) {
                 return (
                     `Error: team task limit reached (${team.bounds.maxTasks}). `

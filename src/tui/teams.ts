@@ -14,6 +14,7 @@ import path from "node:path"
 // for the teams/<name>/{state.json,config.json,mailbox/...} layout.
 import { configPath, inboxPath, processedPath, statePath, teamDir, teamsDir } from "../state/paths.js"
 import { isValidTeamState } from "../state/store.js"
+import { assertNoSymlinkTraversal } from "../state/locks.js"
 
 /** Flat member row for sidebar rendering from on-disk team state. */
 export type TeamMemberRow = {
@@ -95,6 +96,11 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
         if (!e.isDirectory()) continue
         try {
             const dir = teamDir(storageRoot, e.name, leadSessionId)
+            // HIGH-G: refuse to read state/config/mailbox through a symlinked
+            // team directory. A member with FS write access could symlink the
+            // team dir to /etc or an arbitrary large file, causing the TUI to
+            // read or OOM on attacker-controlled content.
+            await assertNoSymlinkTraversal(storageRoot, dir)
             const raw = await fs.readFile(statePath(dir), "utf8")
             const state = JSON.parse(raw)
             if (!isValidTeamState(state, dir)) continue
