@@ -171,7 +171,7 @@ export async function createTask(
         updatedAt: now,
         depth: input.depth ?? 0,
     }
-    await atomicWrite(taskPath(teamDirectory, task.id), JSON.stringify(task, null, 2))
+    await atomicWrite(taskPath(teamDirectory, task.id), JSON.stringify(task, null, 2), teamDirectory)
     return task
 }
 
@@ -277,7 +277,7 @@ export async function updateTask(
             }
         }
         Object.assign(task, patch, { updatedAt: Date.now() })
-        await atomicWrite(taskPath(teamDirectory, taskId), JSON.stringify(task, null, 2))
+        await atomicWrite(taskPath(teamDirectory, taskId), JSON.stringify(task, null, 2), teamDirectory)
         // Clean up the persistent claim lock once the task leaves the claim window.
         if (
             patch.status === "in_progress"

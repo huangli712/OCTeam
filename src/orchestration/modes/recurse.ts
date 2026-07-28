@@ -194,9 +194,11 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             member: member.name,
             detail: `recurse: released claimed task ${T.id} from errored member`,
         })
-        return
-    }
-    if (T) {
+        // H-M3: fall through to runDelegateStyleTail instead of returning.
+        // The released task is now claimable; the tail will dispatch idle
+        // members toward it. Pre-fix code returned here, stranding the task
+        // until wall-clock timeout.
+    } else if (T) {
         const output = task.responses[member.name] ?? ""
         const depth = T.depth ?? 0
         const dec = parseDecompose(output)

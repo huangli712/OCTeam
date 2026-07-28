@@ -99,6 +99,18 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                             return `Error: stage verifier "${s.verifier}" must not equal its producer "${s.member}"`
                         }
                     }
+                    // H-M5: escalate_to must not be any stage's producer. If the
+                    // escalation handler IS the producer, their escalate-phase
+                    // response overwrites the original artifact in
+                    // task.responses[stage.member], and the next verification
+                    // evaluates the "fix" response instead of the original work.
+                    if (args.escalate_to) {
+                        for (const s of args.stages) {
+                            if (args.escalate_to === s.member) {
+                                return `Error: escalate_to "${args.escalate_to}" must not equal stage producer "${s.member}" — the escalation response would overwrite the producer's original artifact`
+                            }
+                        }
+                    }
                     // Validate members: every stage's producer + verifier,
                     // plus the optional escalation target.
                     const namedMembers = new Set<string>()

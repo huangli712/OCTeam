@@ -345,10 +345,14 @@ function isJoinMetadataSatisfied(
                         for (let r = rangeEntry.startIndex; r <= rangeEntry.endIndex; r++) {
                             const rs = steps[r]
                             if (rs === undefined) continue
-                            if (!isTerminalWorkflowStep(rs)) {
-                                rs.completed = true
-                                rs.skipped = true
-                            }
+                            // H-W5: mark ALL non-winning branch steps as skipped,
+                            // INCLUDING completed intermediate steps. Pre-fix
+                            // code only skipped non-terminal steps, leaving
+                            // completed intermediate steps' outputs visible to
+                            // buildBranchWorkflowOutput, which leaks losing-
+                            // branch content into the joined output.
+                            rs.completed = true
+                            rs.skipped = true
                         }
                         continue
                     }

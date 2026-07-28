@@ -203,13 +203,13 @@ async function resolveMemberFromIndex(sessionID: string): Promise<ResolvedMember
     const team = await loadTeamState(m.storageRoot, m.teamName, m.leadSessionId)
     const member = team.members.find(x => x.name === m.memberName)
     if (!member) return null
-    // H22: verify 1:1 identity binding. The member's on-disk sessionId MUST
-    // match the sessionID used to look it up. A stale index entry (session
-    // replaced, hot reload, crash recovery) could resolve the OLD sessionID
-    // to a member whose on-disk sessionId has changed — granting the old
-    // session the new member's authorization. Without this check, index
-    // collisions (Map.set overwrites) silently grant cross-session access.
-    if (member.sessionId !== undefined && member.sessionId !== sessionID) {
+    // H22/R4: verify 1:1 identity binding. The member's on-disk sessionId
+    // MUST strictly match the sessionID used to look it up. Pre-fix code only
+    // rejected when sessionId was defined AND different — clearing sessionId
+    // (e.g. session deleted, member reset) still authorized the old index
+    // entry. Strict equality closes this gap: undefined sessionId means the
+    // member has no active session, so no sessionID should resolve to them.
+    if (member.sessionId !== sessionID) {
         logger.warn("resolveMemberFromIndex: sessionID mismatch (stale index entry)", {
             indexedSessionID: sessionID,
             diskSessionId: member.sessionId,
@@ -295,31 +295,29 @@ export async function resolveCallerInTeam(
     // Master path (1:many) — find the team by explicit teamId.
     const master = masterIndex.get(sessionID)
     if (!master) return null
-    // H23: scope-aware lookup. Pre-fix code ignored the storageRoot parameter
-    // and matched by teamName alone. Two teams with the same name but different
-    // scopes (project vs user) could resolve to the wrong one. Now filter by
-    // scope: only match teams whose storageRoot matches the caller's scope.
-    const entry = Array.from(master.teams.values()).find(
-        t => t.teamName === teamId && t.storageRoot === storageRoot,
-    )
-    // H23 fallback: if no exact scope match, try matching by teamName only.
-    // This preserves backward compat for tools that pass ctx.storageRoot as
-    // the scope but the team lives in the other scope (rare but possible
-    // when a user-scope master interacts with a project-scope team).
-    const resolvedEntry = entry
-        ?? Array.from(master.teams.values()).find(t => t.teamName === teamId)
-    if (!resolvedEntry) return null
+    // H23/R3: scope-aware disambiguation. When multiple teams share the
+    // same teamName across different scopes, prefer the one matching the
+    // caller's storageRoot. When only one team matches by name, use it
+    // regardless of scope (the index already knows its correct storageRoot).
+    // R3 removed the original strict-only match (broke tools that pass a
+    // different storageRoot than the team's actual scope) and the broad
+    // teamName fallback (defeated scope disambiguation entirely).
+    const nameMatches = Array.from(master.teams.values()).filter(t => t.teamName === teamId)
+    if (nameMatches.length === 0) return null
+    const entry = nameMatches.length === 1
+        ? nameMatches[0]
+        : nameMatches.find(t => t.storageRoot === storageRoot) ?? nameMatches[0]
     let team
     try {
-        team = await loadTeamState(resolvedEntry.storageRoot, resolvedEntry.teamName, resolvedEntry.leadSessionId)
+        team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
     } catch (err) {
         logger.warn("resolveCallerInTeam: failed to load team state for master caller", {
-            team: resolvedEntry.teamName, error: err instanceof Error ? err.message : String(err),
+            team: entry.teamName, error: err instanceof Error ? err.message : String(err),
         })
         return null
     }
     if (requireActive && isInteractionForbidden(true, team.activatedAt)) return null
-    return syntheticMaster(team, resolvedEntry.leadSessionId, resolvedEntry.storageRoot)
+    return syntheticMaster(team, entry.leadSessionId, entry.storageRoot)
 }
 
 /**

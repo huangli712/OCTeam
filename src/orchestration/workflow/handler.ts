@@ -269,7 +269,12 @@ async function handleJoinIdle(
     if (joinPolicy === "select") {
         const selection = parseSelection(response);
         const branchIds = branchIdsForJoin(steps, join);
-        if (selection.parseFailed || !branchIds.includes(selection.winner)) {
+        // H-W2: reject selection of errored branches. The selector prompt
+        // lists all branch IDs, but a branch that errored should not be
+        // selectable as the final result. Pre-fix code validated only that
+        // the winner was a known branch ID, not that it was a survivor.
+        const erroredBranchIds = new Set(join.erroredBranchIds ?? []);
+        if (selection.parseFailed || !branchIds.includes(selection.winner) || erroredBranchIds.has(selection.winner)) {
             await finishRun(ctx, team, workflowInvalidReason("parse_failure", member.name), "failed");
             return;
         }
@@ -346,6 +351,13 @@ export async function handleWorkflowIdle(
     // join has no retry_on='empty' path — a reducer that produced no output
     // has nothing to reduce.
     if (capturedNew === false) {
+        // H-W1/H49: stale idle (no new output) guard.
+        // task: skip when output already set (double-complete). Do NOT skip
+        // when output is undefined — retry_on='empty' relies on processing
+        // a turn that produced no extractable text (capturedNew=false but
+        // the turn genuinely fired).
+        // gate: skip when output already set (double-count ensemble verdict).
+        // join: always skip (no retry_on='empty' path for reducers).
         if ((step.kind === "task" || step.kind === "gate") && step.output !== undefined) {
             return;
         }

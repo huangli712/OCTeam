@@ -271,7 +271,12 @@ function parseWorkflowIssues(raw: unknown): WorkflowIssue[] | undefined {
         if ("message" in item && typeof item.message === "string") issue.message = item.message
         issues.push(issue)
     }
-    return issues.length > 0 ? issues : undefined
+    // R2: return the array even when empty. Pre-fix code returned undefined for
+    // empty arrays, which H54's has_issue_severity fail-closed logic treated
+    // as "verifier omitted issues field" (unevaluable). A legitimate
+    // `issues:[]` means "no issues found" (does_not_match), NOT unevaluable.
+    // Only a non-array input (field omitted) should return undefined.
+    return issues
 }
 
 /**

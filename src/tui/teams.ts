@@ -60,12 +60,18 @@ export async function countMailbox(teamDirectory: string, recipient: string): Pr
             // placed large file (or /dev/zero via symlink) cannot OOM the
             // sidebar process. 1 MiB is far above any legitimate processed.jsonl
             // (the retention cap is 1000 lines, ~100 KB typical).
-            // H27: use lstat (no follow) so /dev/zero or a symlinked large
-            // file's TRUE size is checked. fs.stat follows symlinks and
-            // reports the target's size — for /dev/zero that is 0, bypassing
-            // the cap.
-            const stat = await fs.lstat(file)
-            if (stat.size > 1_048_576) {
+            // H27/R1: use lstat (no follow) to detect symlinks AND check size.
+            // lstat on a symlink returns the symlink's own small size, NOT the
+            // target's — so the size check alone is insufficient. A symlink to
+            // /dev/zero passes the cap, then readFile follows it → infinite
+            // read → OOM. Fix: refuse ALL symlinks (mailbox files are regular
+            // files written by appendJsonl; a symlink here is tampering).
+            const lstat = await fs.lstat(file)
+            if (lstat.isSymbolicLink()) {
+                console.warn(`[octeam] countMailbox: refusing symlinked mailbox file`)
+                return 0
+            }
+            if (lstat.size > 1_048_576) {
                 console.warn(`[octeam] countMailbox: ${file} exceeds 1 MiB cap, refusing to read`)
                 return 0
             }

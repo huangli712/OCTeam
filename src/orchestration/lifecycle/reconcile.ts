@@ -42,6 +42,13 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             logSwallowed(ctx, "release stale reservations failed (master)", err, { team: team.teamName })
         )
         for (const m of team.members) {
+            // H-L8: skip running members, matching H13 in sweepTeamOnce. This
+            // team may belong to a live sibling process (see comment below);
+            // reclaiming a running member's reservations mid-processing would
+            // cause duplicate delivery on the next poll. If the process truly
+            // crashed, the member's status will be stale and the next sweep
+            // tick's missed-idle reconciliation will handle it.
+            if (m.status === "running") continue
             await releaseStaleReservations(team.directory, m.name).catch(err =>
                 logSwallowed(ctx, "release stale reservations failed", err, { team: team.teamName, member: m.name })
             )
