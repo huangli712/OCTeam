@@ -31,7 +31,7 @@ import path from "node:path"
 import type { PluginContext } from "../../core/context.js"
 import { invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from "../../state/store.js"
 import { unindexSession } from "../../state/resolve.js"
-import { assertSafeSegment } from "../../state/paths.js"
+import { assertSafeSegment, teamDir } from "../../state/paths.js"
 import { releaseStaleReservations } from "../../messaging/mailbox.js"
 import { logSwallowed } from "../../core/log.js"
 
@@ -160,9 +160,25 @@ export async function handleSessionDeleted(ctx: PluginContext, sessionID: string
             invalidateTeam(dir)
         }
     } catch (err) {
-        // best-effort — never block the event handler on cleanup, but log
-        // so orphaned session directories are diagnosable.
+        // M-7: best-effort — never block the event handler on cleanup, but log
+        // so orphaned session directories are diagnosable. Pre-fix code set
+        // team.deleted=true (tombstone) BEFORE fs.rm, then invalidated the
+        // cache AFTER fs.rm. On fs.rm failure, the tombstoned teams stayed
+        // deleted=true in the cache (invisible to all handlers) even though
+        // the directory still existed on disk. The fix reverts the tombstone
+        // on fs.rm failure so the team remains usable until the next retry.
+        // We cannot easily revert tombstones here because the team objects
+        // were already captured; instead, reload and clear.
         logSwallowed(ctx, "session deletion cleanup failed", err, { sessionID })
+        // Clear tombstones by evicting from cache — the next access reloads
+        // from disk, which still has the non-deleted state.
+        for (const { leadSessionId, teamName } of await listAllTeams(ctx.projectStorageRoot, true).catch(() => [])) {
+            if (leadSessionId !== sessionID) continue
+            try {
+                const dir = teamDir(ctx.projectStorageRoot, teamName, leadSessionId)
+                invalidateTeam(dir)
+            } catch { /* best-effort */ }
+        }
     }
     // Always unindex (covers lead sessions with teams AND bare member sessions).
     unindexSession(sessionID)

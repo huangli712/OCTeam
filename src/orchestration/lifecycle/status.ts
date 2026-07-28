@@ -40,13 +40,13 @@ async function escalateMemberToErrored(
     ctx: PluginContext,
     team: Team,
     live: MemberState,
-    entry: { type: string; message?: string },
+    entry: { type: string; message?: string } | undefined,
 ): Promise<void> {
     live.status = "errored"
     live.error =
         `sustained retry > ${RETRY_ESCALATION_MS}ms`
         + ((live.retryCount ?? 0) > 0 ? ` after ${live.retryCount} retries` : "")
-        + `: ${entry.message ?? "unknown"}`
+        + `: ${entry?.message ?? "unknown"}`
     await saveTeamState(team)
     recordEvent(team, {
         timestamp: Date.now(),
@@ -128,27 +128,7 @@ export async function handleStatusEvent(
             // the escalation timer (otherwise a restart resets it and the
             // 60s escalation window starts over).
             if (wasUnset) await saveTeamState(team)
-            if (Date.now() - live.retryingSince > RETRY_ESCALATION_MS) {
-                const maxRetries = team.activeTask?.maxRetries ?? 0
-                // Within grace (max_retries not exhausted): consume one grace retry
-                // and reset the window so the next escalation check starts fresh.
-                if ((live.retryCount ?? 0) < maxRetries) {
-                    live.retryCount = (live.retryCount ?? 0) + 1
-                    live.retryingSince = Date.now()
-                    recordEvent(team, {
-                        timestamp: Date.now(),
-                        kind: "retry",
-                        member: live.name,
-                        detail: `grace ${live.retryCount}/${maxRetries}`,
-                    })
-                    await saveTeamState(team)
-                    return
-                }
-                // Grace exhausted: escalate the member to errored, then
-                // re-drive the state machine if the run survived.
-                await escalateMemberToErrored(ctx, team, live, entry)
-                return
-            }
+            await maybeEscalateRetry(ctx, team, live)
         } else if (entry?.type === "idle") {
             // Member returned to idle: the retry storm ended, so clear tracking.
             live.retryingSince = undefined
@@ -161,4 +141,39 @@ export async function handleStatusEvent(
             }
         }
     })
+}
+
+/**
+ * M-8: shared retry-escalation check. Called from BOTH handleStatusEvent (on
+ * new session.status events) AND sweepTeamOnce (periodically). Pre-fix code
+ * only checked the escalation window inside handleStatusEvent, so a long retry
+ * storm with no new status events would never escalate — the member stayed in
+ * retry forever, consuming wall-clock until the global timeout.
+ *
+ * Must be called inside team.mutex.runExclusive.
+ */
+export async function maybeEscalateRetry(
+    ctx: PluginContext,
+    team: Team,
+    live: MemberState,
+): Promise<void> {
+    if (live.retryingSince === undefined) return
+    if (Date.now() - live.retryingSince <= RETRY_ESCALATION_MS) return
+    const maxRetries = team.activeTask?.maxRetries ?? 0
+    // Within grace (max_retries not exhausted): consume one grace retry
+    // and reset the window so the next escalation check starts fresh.
+    if ((live.retryCount ?? 0) < maxRetries) {
+        live.retryCount = (live.retryCount ?? 0) + 1
+        live.retryingSince = Date.now()
+        recordEvent(team, {
+            timestamp: Date.now(),
+            kind: "retry",
+            member: live.name,
+            detail: `grace ${live.retryCount}/${maxRetries}`,
+        })
+        await saveTeamState(team)
+        return
+    }
+    // Grace exhausted: escalate the member to errored, then re-drive.
+    await escalateMemberToErrored(ctx, team, live, undefined)
 }

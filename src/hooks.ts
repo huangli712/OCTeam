@@ -16,7 +16,7 @@ import { resolveMasterTeams, resolveTeamMember, isMasterSession } from "./state/
 import { ackMessages, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
 import { formatMailboxInjection } from "./messaging/format.js"
 import { reapStaleClaims } from "./state/tasks.js"
-import { handleStatusEvent } from "./orchestration/lifecycle/status.js"
+import { handleStatusEvent, maybeEscalateRetry } from "./orchestration/lifecycle/status.js"
 import { processIdle } from "./orchestration/lifecycle/idle.js"
 import { checkTermination } from "./orchestration/lifecycle/termination.js"
 import type { MemberState } from "./core/types.js"
@@ -413,6 +413,15 @@ export async function sweepTeamOnce(
         // 2. Termination checks run even if no idle arrives.
         await checkTermination(ctx, team)
         if (!team.activeTask) return
+        // M-8: check retry escalation for all members with retryingSince set.
+        // Pre-fix code only checked the escalation window inside handleStatusEvent,
+        // so a long retry storm with no new status events would never escalate.
+        for (const member of team.members) {
+            if (member.retryingSince !== undefined) {
+                await maybeEscalateRetry(ctx, team, member)
+            }
+        }
+        if (!team.activeTask) return
         // 3. Missed-idle reconciliation.
         for (const member of team.members) {
             if (!member.sessionId || member.status !== "running") continue
@@ -425,9 +434,13 @@ export async function sweepTeamOnce(
     })
 }
 
-/** Start the periodic sweep timer that babysits busy teams for missed-idle reconciliation. */
+/** Start the periodic sweep timer that babysits busy teams for missed-idle reconciliation.
+ * M-15: uses a recursive setTimeout pattern (not setInterval) so a slow
+ * sweep iteration cannot overlap with the next one. Pre-fix code used
+ * setInterval(async ...) which allowed overlapping sweeps when a single
+ * iteration took longer than SWEEP_INTERVAL_MS. */
 export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
-    const handle = setInterval(async () => {
+    const scheduleSweep = (): NodeJS.Timeout => setTimeout(async () => {
         try {
             // Periodic cleanup of expired compacting flags so sessions
             // deleted without a transform do not leak entries.
@@ -453,11 +466,16 @@ export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
         } catch (err) {
             logEvent(ctx, "error", "sweep iteration failed", { error: err instanceof Error ? err.message : String(err) })
         }
+        // M-15: schedule the next sweep AFTER this one completes, preventing
+        // overlapping intervals.
+        sweepHandle = scheduleSweep()
+        sweepHandle.unref()
     }, SWEEP_INTERVAL_MS)
+    let sweepHandle = scheduleSweep()
     // .unref() so the sweep timer does not keep the host event loop alive on
     // graceful shutdown — mirrors the lock heartbeat (locks.ts:110). Retained
     // via `handle` so a future teardown could clearInterval(handle) if the
     // plugin lifecycle ever grows a reload path.
-    handle.unref()
-    return handle
+    sweepHandle.unref()
+    return sweepHandle
 }

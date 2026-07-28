@@ -112,12 +112,15 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 .max(12),
             bounds: tool.schema
                 .object({
-                    maxMembers: tool.schema.number().int().min(1).optional(),
-                    maxParallelMembers: tool.schema.number().int().min(1).optional(),
-                    maxMessagesPerRun: tool.schema.number().int().min(1).optional(),
-                    maxWallClockMinutes: tool.schema.number().int().min(1).optional(),
-                    maxMemberTurns: tool.schema.number().int().min(1).optional(),
-                    maxTasks: tool.schema.number().int().min(1).optional(),
+                    // M-11: each bound has BOTH a minimum (>=1, prevents zero/negative)
+                    // AND a maximum (prevents LLM from setting absurdly large values
+                    // that would disable the "hard limit" semantics).
+                    maxMembers: tool.schema.number().int().min(1).max(50).optional(),
+                    maxParallelMembers: tool.schema.number().int().min(1).max(50).optional(),
+                    maxMessagesPerRun: tool.schema.number().int().min(1).max(100_000).optional(),
+                    maxWallClockMinutes: tool.schema.number().int().min(1).max(10_080).optional(), // 1 week
+                    maxMemberTurns: tool.schema.number().int().min(1).max(10_000).optional(),
+                    maxTasks: tool.schema.number().int().min(1).max(10_000).optional(),
                 })
                 .optional(),
         },

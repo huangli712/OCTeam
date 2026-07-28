@@ -142,7 +142,17 @@ export function formatWorkflowMermaid(
                         lines.push(`  ${mermaidNodeId(current)} --> ${mermaidNodeId(next)}`)
                     }
                 }
-                if (tail !== undefined && join !== undefined) lines.push(`  ${mermaidNodeId(tail)} --> ${mermaidNodeId(join)}`)
+                // M-1 boundary: suppress the tail→join edge when the tail is a
+                // gate whose PASS verdict jumps elsewhere — same contract as the
+                // inner sequential-edge suppression above. Pre-fix code
+                // unconditionally drew tail-->join even when the tail gate had
+                // an onPassGoto, producing two conflicting flows from the tail.
+                const suppressTailJoin = tail !== undefined
+                    && tail.kind === "gate"
+                    && tail.onPassGoto !== undefined
+                if (tail !== undefined && join !== undefined && !suppressTailJoin) {
+                    lines.push(`  ${mermaidNodeId(tail)} --> ${mermaidNodeId(join)}`)
+                }
             }
             continue
         }

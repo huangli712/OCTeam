@@ -25,7 +25,13 @@ export async function deliverSummaryToLeader(
     status?: RunStatus,
 ): Promise<void> {
     if (!team.activeTask) return
-    const summary = await buildSummary(team, team.activeTask, reason)
+    // M-6: persist the run record FIRST (before building the summary), so a
+    // summary-build or prompt-throw does not lose the run entirely. Pre-fix
+    // code built the summary first; if buildSummary threw (e.g. a transient
+    // task-list IO error), persistRun never ran and the run record was
+    // permanently lost. The persisted record carries the minimal metadata
+    // (runId, tokens, members, steps) without the formatted summary, so even
+    // a failed summary leaves a queryable run entry.
     recordEvent(team, { timestamp: Date.now(), kind: "terminated", reason })
     await persistRun(team, reason, status).catch(err =>
         logSwallowed(ctx, "persist run record failed", err, {
@@ -33,6 +39,9 @@ export async function deliverSummaryToLeader(
             reason,
         }),
     )
+    // Build and deliver the summary. A throw here is caught by finishRun's
+    // finally block; the run record is already persisted.
+    const summary = await buildSummary(team, team.activeTask, reason)
     await ctx.client.session.promptAsync({
         path: { id: team.leadSessionId },
         body: {

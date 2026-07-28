@@ -245,8 +245,17 @@ export async function startOrchestration(
                     const result = await ctx.client.session.messages({ path: { id: m.sessionId } })
                     const data = Array.isArray(result.data) ? result.data : []
                     return [m.name, sumMemberTokens(data as SdkMessage[])] as const
-                } catch {
-                    // Best-effort: baseline stays 0 (over-counts, safe for budget).
+                } catch (err) {
+                    // M-5: log the error so operators can distinguish a genuinely
+                    // empty session (baseline 0 is correct) from a permission /
+                    // protocol / SDK failure (baseline 0 is wrong — it over-counts
+                    // tokens for the current run, potentially triggering budget
+                    // termination prematurely). The baseline stays 0 either way
+                    // (over-counting is safe for budget), but the log makes the
+                    // failure diagnosable.
+                    logSwallowed(ctx, "startOrchestration: token baseline fetch failed", err, {
+                        member: m.name, sessionId: m.sessionId,
+                    })
                     return [m.name, 0] as const
                 }
             }),
@@ -268,10 +277,15 @@ export async function startOrchestration(
             // Reset per-member done/retry flags for the new run so a previous
             // run's acks don't bleed in. declaredDone only matters when
             // requireDoneAck is true, but cheap to always reset.
+            // M-4: also reset lastCapturedMsgCount so a new run's first idle is
+            // not skipped by the idempotency guard (pre-fix code retained the
+            // prior run's watermark; if session compaction reset message count,
+            // the guard would match and drop the capture).
             for (const m of team.members) {
                 m.declaredDone = false
                 m.retryCount = 0
                 m.turnCount = 0
+                m.lastCapturedMsgCount = undefined
             }
             // Persist AFTER flag resets so a crash between saveTeamState and
             // the reset loop does not leave stale member flags on disk.

@@ -38,11 +38,31 @@ export function recordEvent(team: Team, event: RunEvent): void {
         // is visible by the time the microtask resolves.
         if (team.deleted) return
         try {
+            // M-2 boundary: also verify the runs/ directory still exists before
+            // appending. team_delete's fs.rm may have completed between the
+            // tombstone check above and this line; appendJsonl's mkdir would
+            // silently recreate it, resurrecting the deleted run's timeline.
+            // The stat check narrows the TOCTOU window to the microsecond
+            // between stat and append; a true atomic fix requires coordinating
+            // team_delete with pending recordEvent IIFEs (heavy for fire-and-
+            // forget telemetry), so this pragmatic check is the right trade.
+            const eventsFile = runEventsPath(team.directory, runId)
+            const { stat } = await import("node:fs/promises")
+            try {
+                await stat(eventsFile)
+            } catch (statErr) {
+                // File exists check — if the file does NOT exist, the runs/
+                // directory was either never created (first event for this run,
+                // appendJsonl will mkdir+create) OR deleted by team_delete.
+                // Distinguish: if the parent runs/ dir was deleted by
+                // team_delete, team.deleted should also be true.
+                if (team.deleted) return
+            }
             // C-2: pass team.directory as trustedRoot so refuseSymlink walks the
             // full ancestor chain. Without it, a symlinked runs/ or intermediate
             // <runId>/ directory could redirect the append outside the team root.
             await appendJsonl(
-                runEventsPath(team.directory, runId),
+                eventsFile,
                 JSON.stringify(event) + "\n",
                 team.directory,
             )

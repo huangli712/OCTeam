@@ -149,6 +149,14 @@ const WorkflowRunStepSchema = z.object({
     id: z.string().optional(),
     member: z.string().optional(),
     verifier: z.string().optional(),
+    // M-3: ensemble gate fields — pre-fix schema omitted these, so Zod
+    // parsing would STRIP them from the parsed record, losing the verifier
+    // list, ensemble policy, and quorum from the persisted run record.
+    verifiers: z.array(z.string()).optional(),
+    fallbackVerifier: z.string().optional(),
+    ensemblePolicy: z.enum(["majority", "quorum", "unanimous"]).optional(),
+    ensembleQuorum: z.number().optional(),
+    ensembleResults: z.record(z.string(), z.unknown()).optional(),
     dispatchedActor: z.string().optional(),
     targetStep: z.number().int().nonnegative().optional(),
     targetSteps: z.array(z.number().int().nonnegative()).optional(),
@@ -159,6 +167,10 @@ const WorkflowRunStepSchema = z.object({
     attempts: z.number().int().nonnegative().optional(),
     onInvalid: WorkflowOnInvalidSchema.optional(),
     invalidAttempts: z.number().int().nonnegative().optional(),
+    // M-3: on_malformed + max_malformed_retries — pre-fix schema omitted these.
+    onMalformed: z.enum(["fail", "retry_verifier", "skip", "escalate"]).optional(),
+    maxMalformedRetries: z.number().int().nonnegative().optional(),
+    malformedAttempts: z.number().int().nonnegative().optional(),
     onFail: WorkflowOnFailSchema.optional(),
     maxRetries: z.number().int().nonnegative().optional(),
     maxInvalidRetries: z.number().int().nonnegative().optional(),
@@ -167,6 +179,16 @@ const WorkflowRunStepSchema = z.object({
     onInvalidGoto: z.number().int().positive().optional(),
     maxJumps: z.number().int().nonnegative().optional(),
     criteria: z.string().optional(),
+    // M-3: where condition — pre-fix schema omitted it. Stored as a raw
+    // object (the condition shape is validated at validate-time; the record
+    // reader just needs to preserve it for display/audit).
+    where: z.unknown().optional(),
+    // M-3: loop config — pre-fix schema omitted it.
+    loop: z.object({
+        maxIterations: z.number(),
+        onExhaust: z.enum(["fail", "continue"]).optional(),
+    }).optional(),
+    loopIterations: z.number().int().nonnegative().optional(),
     timeoutMs: z.number().optional(),
     onTimeout: WorkflowOnTimeoutSchema.optional(),
     maxTimeoutRetries: z.number().int().nonnegative().optional(),
@@ -191,6 +213,7 @@ const WorkflowRunStepSchema = z.object({
     approvalBefore: z.boolean().optional(),
     approvalAfter: z.boolean().optional(),
     maxOutputBytes: z.number().optional(),
+    humanApproval: z.boolean().optional(),
 })
 
 /**

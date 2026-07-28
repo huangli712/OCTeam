@@ -123,7 +123,7 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                     const mailbox = await countMailbox(dir, m.name)
                     return {
                         name: typeof m.name === "string" ? m.name : "?",
-                        role: roleMap[m.name],
+                        role: typeof roleMap[m.name] === "string" ? roleMap[m.name] : undefined,
                         status: typeof m.status === "string" ? m.status : "unknown",
                         agent: typeof m.agent === "string" ? m.agent : undefined,
                         // M-5: validate model is a string — disk tampering can
@@ -135,23 +135,34 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                         unread: mailbox.unread,
                         totalMessages: mailbox.total,
                         turnCount: typeof m.turnCount === "number" ? m.turnCount : undefined,
-                        tokens: state.activeTask?.tokensByMember?.[m.name] ?? state.lastMode?.tokensByMember?.[m.name],
+                        // M-12: validate tokensByMember entries are numbers — a
+                        // tampered state.json can set them to objects/strings,
+                        // and the sidebar would crash on arithmetic or display.
+                        tokens: typeof (state.activeTask?.tokensByMember?.[m.name] ?? state.lastMode?.tokensByMember?.[m.name]) === "number"
+                            ? (state.activeTask?.tokensByMember?.[m.name] ?? state.lastMode?.tokensByMember?.[m.name])
+                            : undefined,
                     }
                 })),
-                active: state.activeTask
+                active: state.activeTask && typeof state.activeTask === "object"
                     ? {
-                          type: state.activeTask.type,
-                          mode: state.activeTask.mode,
-                          round: state.activeTask.currentRound,
-                          maxRounds: state.activeTask.maxRounds,
+                          // M-12: validate activeTask fields before passing to the
+                          // sidebar — a tampered state.json can set type/mode to
+                          // objects or numbers, crashing the sidebar renderer.
+                          type: typeof state.activeTask.type === "string" ? state.activeTask.type : "unknown",
+                          mode: typeof state.activeTask.mode === "string" ? state.activeTask.mode : undefined,
+                          round: typeof state.activeTask.currentRound === "number" ? state.activeTask.currentRound : undefined,
+                          maxRounds: typeof state.activeTask.maxRounds === "number" ? state.activeTask.maxRounds : undefined,
                       }
-                    : state.lastMode
+                    : state.lastMode && typeof state.lastMode === "object"
                       ? {
-                            type: state.lastMode.type,
-                            mode: state.lastMode.mode,
+                            type: typeof state.lastMode.type === "string" ? state.lastMode.type : "unknown",
+                            mode: typeof state.lastMode.mode === "string" ? state.lastMode.mode : undefined,
                         }
                       : undefined,
-                tokensUsed: state.activeTask?.tokensUsed ?? state.lastMode?.tokensUsed,
+                // M-12: validate tokensUsed is a number.
+                tokensUsed: typeof (state.activeTask?.tokensUsed ?? state.lastMode?.tokensUsed) === "number"
+                    ? (state.activeTask?.tokensUsed ?? state.lastMode?.tokensUsed)
+                    : undefined,
             })
         } catch (err: unknown) {
             // M-22: ENOENT means the team dir was removed between readdir and

@@ -23,6 +23,7 @@ import { runDelegateStyleTail, NOTIFY_COOLDOWN_MS } from "./delegate.js"
 import { DEFAULT_RECURSE_DEPTH, DEFAULT_RECURSE_SUBTASKS } from "./defaults.js"
 import { finishRun } from "../control/completion.js"
 import { dispatchToMember } from "../control/dispatch.js"
+import { logSwallowed } from "../../core/log.js"
 import { maybeRequestApproval } from "../control/approval.js"
 
 /** Cap on root re-dispatch attempts before declaring the run stalled. */
@@ -94,6 +95,13 @@ export async function approveRecurseDecompose(
     if (!parent) return
     const childDepth = (parent.depth ?? 0) + 1
     const ids: string[] = []
+    // M-9: wrap child creation + parent blockedBy update in a transactional
+    // try/catch. Pre-fix code only cleaned up orphaned children on create
+    // failure (line 106-113) but NOT on parent update failure (line 115).
+    // If updateTask(parent, blockedBy) threw, the children existed as
+    // claimable tasks but the parent was never linked — delegate mode would
+    // pick them up and they'd be aggregated into nothing, consuming tokens.
+    let parentUpdated = false
     try {
         for (const subtask of request.subtasks) {
             const child = await createTask(team.directory, {
@@ -103,20 +111,24 @@ export async function approveRecurseDecompose(
             })
             ids.push(child.id)
         }
+        await updateTask(team.directory, parent.id, {
+            status: "pending",
+            owner: undefined,
+            blockedBy: ids,
+        })
+        parentUpdated = true
     } catch (err) {
-        // Clean up any orphaned children created before the failure so they
-        // don't linger unlinked in the task list (parent.blockedBy was never
-        // set, so they'd be claimable but never aggregated).
+        // M-9: clean up ALL created children regardless of which step failed.
+        // Pre-fix only cleaned on create failure; parent-update failure left
+        // orphans. Also log the cleanup so operators can diagnose.
         for (const id of ids) {
-            await updateTask(team.directory, id, { status: "deleted" }).catch(() => { /* best-effort */ })
+            await updateTask(team.directory, id, { status: "deleted" }).catch(cleanupErr => {
+                logSwallowed(ctx, "recurse decompose: failed to delete orphaned child task", cleanupErr, { taskId: id })
+            })
         }
         throw err
     }
-    await updateTask(team.directory, parent.id, {
-        status: "pending",
-        owner: undefined,
-        blockedBy: ids,
-    })
+    if (!parentUpdated) return // TS narrowing — parentUpdated is always true here
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "decomposed",

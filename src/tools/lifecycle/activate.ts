@@ -23,12 +23,19 @@ async function withSessionMutex<T>(key: string, fn: () => Promise<T>): Promise<T
     const prev = activationMutex.get(key) ?? Promise.resolve()
     let release!: () => void
     const gate = new Promise<void>(r => { release = r })
-    activationMutex.set(key, prev.then(() => gate))
+    const next = prev.then(() => gate)
+    activationMutex.set(key, next)
     try {
         await prev
         return await fn()
     } finally {
         release()
+        // LOW: evict the Map entry once the chain settles so long-lived hosts
+        // don't accumulate stale session keys. If another caller queued behind
+        // us, they've already replaced the value; our delete is a no-op.
+        if (activationMutex.get(key) === next) {
+            activationMutex.delete(key)
+        }
     }
 }
 

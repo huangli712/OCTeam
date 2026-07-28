@@ -663,16 +663,31 @@ function substituteVarsInStep(step: WorkflowToolStep, vars: Record<string, strin
     const f = step as Record<string, unknown>
     const out: Record<string, unknown> = { ...step }
     // Substitute EVERY string field on the step object, regardless of kind.
+    // M-10: also recurse into plain objects (e.g. retry_on: { output_contains:
+    // "${item}" } or where: { value: "${threshold}" }) so nested control fields
+    // are expanded alongside top-level strings and arrays.
     for (const [key, value] of Object.entries(f)) {
-        if (typeof value === "string") {
-            out[key] = substituteVars(value, vars)
-        } else if (Array.isArray(value)) {
-            out[key] = value.map(item =>
-                typeof item === "string" ? substituteVars(item, vars) : item,
-            )
-        }
+        out[key] = substituteVarsDeep(value, vars)
     }
     return out as WorkflowToolStep
+}
+
+/** Deep substitution: strings, arrays of strings/objects, plain objects. */
+function substituteVarsDeep(value: unknown, vars: Record<string, string>): unknown {
+    if (typeof value === "string") {
+        return substituteVars(value, vars)
+    }
+    if (Array.isArray(value)) {
+        return value.map(item => substituteVarsDeep(item, vars))
+    }
+    if (typeof value === "object" && value !== null && !(value instanceof Date)) {
+        const result: Record<string, unknown> = {}
+        for (const [k, v] of Object.entries(value)) {
+            result[k] = substituteVarsDeep(v, vars)
+        }
+        return result
+    }
+    return value
 }
 
 /** Replace ${name} placeholders with variable values. */
