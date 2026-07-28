@@ -521,9 +521,15 @@ export function safeMemberAgent(agent: string | undefined): string {
     return agent !== undefined && isOCTeamAgent(agent) ? agent : SAFE_FALLBACK_AGENT
 }
 
-/** The full role definition for a label (normalized, always resolves). */
+/** The full role definition for a label (normalized, always resolves).
+ *
+ * H5: returns a defensive copy so callers cannot mutate the shared ROLES
+ * catalog. The fields (agent, instruction) are immutable string primitives,
+ * so a shallow clone is sufficient.
+ */
 export function roleDef(role: string): RoleDef {
-    return ROLES[normalizeRole(role)]
+    const def = ROLES[normalizeRole(role)]
+    return { agent: def.agent, instruction: def.instruction }
 }
 
 /** The fixed agent for a role label (normalized, always resolves). */

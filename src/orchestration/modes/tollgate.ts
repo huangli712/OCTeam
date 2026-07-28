@@ -76,6 +76,12 @@ export async function startVerification(
         return
     }
     task.tollgatePhase = "verify"
+    // C17: clear stale verifier response before dispatch. Mirrors the
+    // producer-side clearing in advanceToGatedStage:113 (HIGH-D). Without
+    // this, a verifier reused across gates (or re-verified after INVALID)
+    // would have its previous verdict parsed as the new gate's verdict —
+    // a stale PASS would let a gate pass without actual verification.
+    delete task.responses[stage.verifier]
     await dispatchToMember(
         ctx,
         verifier,
@@ -291,6 +297,11 @@ export async function handleTollgateIdle(
         }
         // Within retries -> return to produce with the diff diagnostic.
         task.tollgatePhase = "produce"
+        // H43: clear the stale producer artifact before re-dispatch, mirroring
+        // advanceToGatedStage:113 (HIGH-D). Without this, a subsequent stale
+        // idle or verifier re-read could evaluate the OLD failed artifact,
+        // incorrectly consuming a retry attempt.
+        delete task.responses[stage.member]
         const producer = team.members.find(m => m.name === stage.member)
         if (producer?.sessionId) {
             const feedback =

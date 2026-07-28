@@ -159,6 +159,7 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
     if (policy === undefined) return null
     const branchIds = (step.branches ?? []).map(branch => branch.id)
     switch (policy) {
+        case "tolerance":
         case "all":
         case "any_success":
         case "reduce":

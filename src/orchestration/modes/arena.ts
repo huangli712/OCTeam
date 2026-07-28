@@ -100,6 +100,11 @@ export async function startArenaEvaluation(ctx: PluginContext, team: Team): Prom
     // failed or the process crashed, resume would see phase=implement and
     // re-trigger the implementation barrier, double-dispatching the evaluator.
     task.arenaPhase = "evaluate"
+    // H56: clear the evaluator's stale response before re-dispatch, mirroring
+    // tollgate.ts startVerification (C17). Without this, a reused evaluator
+    // (or one re-dispatched after a stale idle) would have its previous
+    // scoreboard read as the new gate's result.
+    if (task.evaluatorMember) delete task.responses[task.evaluatorMember]
     await dispatchToMember(
         ctx,
         evaluator,

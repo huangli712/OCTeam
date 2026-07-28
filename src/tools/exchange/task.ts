@@ -55,34 +55,28 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            // Recurse mode guard: subtasks are created AUTOMATICALLY by the
-            // orchestrator from the decomposer's <decompose> block. A member
-            // calling team_task_create manually produces duplicate tasks that
-            // siblings then claim and work in parallel with the real ones,
-            // doubling token spend and confusing aggregation. Reject at the
-            // source so the LLM cannot create duplicates even when its scene
-            // prompt is ignored. The decomposer never needs team_task_create.
-            if (team.activeTask?.type === "recurse") {
-                return (
-                    `Error: team_task_create is disabled in recurse mode. Subtasks are created `
-                    + `automatically by the orchestrator from the decomposer's <decompose> block. `
-                    + `Emit a <decompose>{"subtasks":[...]}</decompose> block instead — the orchestrator `
-                    + `parses it, creates the subtasks, and re-queues the root as their aggregator.`
-                )
-            }
-            // blocked_by validation moved INSIDE team.mutex below (HIGH-F:
-            // TOCTOU — concurrent team_task_delete could remove the referenced
-            // task between this check and the create).
+            // H60: recurse mode guard moved INSIDE team.mutex (below) so a
+            // concurrent startOrchestration cannot flip activeTask to recurse
+            // between this check and the create. Pre-fix code checked at line
+            // 65 outside the lock, allowing a race where recurse starts mid-
+            // create and the member's manually-created task duplicates the
+            // orchestrator's automatic subtask.
             // Wrap the count-check + blocked_by-check + create in team.mutex so
             // concurrent team_task_create / team_task_delete calls cannot race.
-            // HIGH-F: pre-fix code ran the blocked_by existence check OUTSIDE the
-            // mutex; a concurrent team_task_delete could remove the referenced
-            // task between the check and the create, leaving the new task
-            // permanently unclaimable in delegate mode.
             let task: Task | undefined
             let limitError = false
             let blockedByError: string | undefined
             await team.mutex.runExclusive(async () => {
+                // H60: re-check recurse mode INSIDE the mutex. A concurrent
+                // startOrchestration may have started a recurse run between the
+                // loadTeamState above and here.
+                if (team.activeTask?.type === "recurse") {
+                    blockedByError = (
+                        `Error: team_task_create is disabled in recurse mode. Subtasks are created `
+                        + `automatically by the orchestrator from the decomposer's <decompose> block.`
+                    )
+                    return
+                }
                 const allTasks = await listAllTasks(caller.directory)
                 // blocked_by validation (moved inside mutex for TOCTOU safety).
                 if (args.blocked_by && args.blocked_by.length > 0) {

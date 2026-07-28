@@ -39,9 +39,17 @@ export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: 
 function isValidMessage(value: unknown): value is Message {
     if (typeof value !== "object" || value === null) return false
     const m = value as Record<string, unknown>
+    // H10: version MUST be 1 (the only defined schema). A missing or
+    // mismatched version indicates a tampered or forward-incompatible line.
+    if (m.version !== 1) return false
     if (typeof m.id !== "string" || !isSafePathSegment(m.id)) return false
     if (typeof m.from !== "string") return false
+    // H10: body length cap (32 KiB, matching the Message type contract and
+    // the tool schema .max(32768)). Without this, a raw mailbox write
+    // bypassing writeMailboxMessage could inject an unbounded body,
+    // causing memory/context exhaustion on read.
     if (typeof m.body !== "string") return false
+    if (Buffer.byteLength(m.body, "utf8") > 32768) return false
     if (typeof m.to !== "string") return false
     if (m.kind !== "message" && m.kind !== "announcement" && m.kind !== "directive") return false
     if (typeof m.timestamp !== "number" || !Number.isFinite(m.timestamp)) return false

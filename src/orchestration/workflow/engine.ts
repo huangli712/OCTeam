@@ -571,6 +571,12 @@ export async function gotoWorkflowStep(
             if (s.kind === "task") {
                 s.output = undefined;
                 s.taskAttempts = 0;
+                // H51: reset task timeoutAttempts too. The base-class field
+                // (WorkflowStepRuntime.timeoutAttempts) is shared by task
+                // and gate, but only the gate branch reset it. A task with
+                // exhausted timeoutAttempts from a previous pass would fail
+                // immediately on timeout in the re-run.
+                s.timeoutAttempts = 0;
             }
             if (s.kind === "gate") {
                 s.verdict = undefined;

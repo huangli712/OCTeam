@@ -14,7 +14,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { type Team } from "../../state/store.js"
+import { type Team, saveTeamState } from "../../state/store.js"
 import type { ApprovalRequest, MemberState } from "../../core/types.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../../state/tasks.js"
 import { recordEvent } from "../records/events.js"
@@ -25,6 +25,7 @@ import { finishRun } from "../control/completion.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { logSwallowed } from "../../core/log.js"
 import { maybeRequestApproval } from "../control/approval.js"
+import { findMember } from "../../tools/support.js"
 
 /** Cap on root re-dispatch attempts before declaring the run stalled. */
 const MAX_AGGREGATION_DISPATCHES = 3
@@ -239,6 +240,28 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 member: member.name,
                 detail: `${T.subject} -> ${ids.length} @d${depth + 1}`,
             })
+        } else if (dec.parseFailed) {
+            // H46: a malformed <decompose> block is NOT a leaf — the member
+            // explicitly tried to decompose but formatted it wrong. Marking
+            // the task completed with the raw output would be a false success.
+            // Re-dispatch the member with feedback so it can retry.
+            const member2 = findMember(team, member.name)
+            if (member2?.sessionId) {
+                await dispatchToMember(
+                    ctx, member2,
+                    `[Decompose parse failed — your <decompose> block was malformed.\n`
+                    + `Either solve the task directly (no tag), or emit a valid:\n`
+                    + `<decompose>{"subtasks":[{"subject":"...","description":"..."}]}</decompose>\n\n[Your task]\n${T.subject}`,
+                    member2.worktreePath ?? ctx.directory, team,
+                )
+                await saveTeamState(team)
+            }
+            recordEvent(team, {
+                timestamp: Date.now(),
+                kind: "errored",
+                member: member.name,
+                detail: `recurse: malformed <decompose> on task ${T.id}, re-dispatched`,
+            })
         } else {
             // Leaf (or capped/aggregator): finalize with the member's output,
             // or a placeholder when the member produced nothing (so an aggregating
@@ -293,12 +316,14 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                     // looping to wall-clock. Reset to 0 when the decomposer
                     // claims the root (see leaf branch above).
                     task.aggregationDispatchCount = (task.aggregationDispatchCount ?? 0) + 1
-                    if (task.aggregationDispatchCount > MAX_AGGREGATION_DISPATCHES) {
+                    // H42: allow task-level override of the aggregation stall threshold.
+                    const maxDispatches = task.maxAggregationDispatches ?? MAX_AGGREGATION_DISPATCHES
+                    if (task.aggregationDispatchCount > maxDispatches) {
                         recordEvent(team, {
                             timestamp: Date.now(),
                             kind: "aggregation_stalled",
                             member: task.decomposerMember,
-                            detail: `root still pending after ${MAX_AGGREGATION_DISPATCHES} aggregation dispatches`,
+                            detail: `root still pending after ${maxDispatches} aggregation dispatches`,
                         })
                         await finishRun(ctx, team, "recurse_aggregation_stalled", "failed")
                         return

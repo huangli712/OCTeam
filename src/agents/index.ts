@@ -58,7 +58,12 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
                 // HIGH-G: clone the preset so a later mutation by another config
                 // hook (or by reference to cfg.agent[...]) does not leak back
                 // into OCTEAM_AGENTS (shared reference bug).
-                cfg.agent[name] = { ...def, permission: { ...def.permission } }
+                // H1: freeze the permission object so a LATER plugin's config
+                // hook cannot in-place weaken it (e.g. flip edit to "allow").
+                // A later hook that REPLACES the whole permission object still
+                // can (visible operation), but silent field mutation is blocked.
+                const perm = Object.freeze({ ...def.permission })
+                cfg.agent[name] = { ...def, permission: perm }
                 continue
             }
             // User pre-defined an oct-* entry. Preserve ONLY the non-security
@@ -72,9 +77,16 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
             if (typeof existing.model === "string") allowed.model = existing.model
             if (typeof existing.temperature === "number") allowed.temperature = existing.temperature
             if (typeof existing.color === "string") allowed.color = existing.color
+            // H2: preserve `variant` (OpenCode model reasoning variant, e.g.
+            // "max"). Pre-fix allowlist omitted it, silently dropping the
+            // user's chosen reasoning variant on every config hook pass.
+            if (typeof existing.variant === "string") allowed.variant = existing.variant
             cfg.agent[name] = {
                 ...def,
-                permission: { ...def.permission },
+                // H1: freeze the permission object so later hooks cannot mutate
+                // it in-place. Re-asserted after the allowed merge for the same
+                // reason as mode/description/prompt below.
+                permission: Object.freeze({ ...def.permission }),
                 ...allowed,
                 // Security-critical overrides (OCTeam wins) — re-asserted AFTER
                 // the allowed merge above so a stray `mode` in `existing` (which

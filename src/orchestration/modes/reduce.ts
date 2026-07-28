@@ -95,6 +95,11 @@ export async function handleReduceIdle(
                 return
             }
             for (const name of errored) delete task.responses[name]
+            // H41: honor signoff on the fallback path, matching the normal
+            // reduce completion path (line 125). Without this, a parallel
+            // task configured with signoffPolicy + a reducer could deliver
+            // unreviewed raw mapper outputs when the reducer errors.
+            if (await maybeTriggerSignoff(ctx, team)) return
             await finishRun(ctx, team, `parallel_${task.mode}_partial:${errored.length}_errored`, "idle")
         })
         return

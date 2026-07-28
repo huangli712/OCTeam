@@ -114,7 +114,12 @@ export function readyWorkflowStepIndices(
     const ready: number[] = []
 
     for (const index of getActiveWorkflowStepIndices(task)) {
-        collectReadyWorkflowStepIndices(steps, index, ready)
+        // H53: visited set guards against corrupted branch metadata forming
+        // a cycle. collectReadyWorkflowStepIndices and collectWorkflowSuccessors
+        // recurse into each other; without this guard a tampered joinIndex or
+        // branch range that loops back could cause a stack overflow.
+        const visited = new Set<number>()
+        collectReadyWorkflowStepIndices(steps, index, ready, visited)
     }
 
     return ready
@@ -171,7 +176,12 @@ function collectReadyWorkflowStepIndices(
     steps: readonly WorkflowStep[],
     index: number,
     ready: number[],
+    visited: Set<number>,
 ): void {
+    // H53: cycle guard. If this index was already visited in this traversal,
+    // corrupted metadata is making us loop — stop recursing.
+    if (visited.has(index)) return
+    visited.add(index)
     const step = steps[index]
     if (step === undefined) return
 
@@ -182,11 +192,11 @@ function collectReadyWorkflowStepIndices(
                 pushUniqueWorkflowIndex(ready, index)
                 return
             }
-            collectWorkflowSuccessors(steps, index, ready)
+            collectWorkflowSuccessors(steps, index, ready, visited)
             return
         case "fanout":
             for (const branchHeadIndex of fanoutBranchHeadIndices(step)) {
-                collectReadyWorkflowStepIndices(steps, branchHeadIndex, ready)
+                collectReadyWorkflowStepIndices(steps, branchHeadIndex, ready, visited)
             }
             return
         case "join":
@@ -194,7 +204,7 @@ function collectReadyWorkflowStepIndices(
                 if (isWorkflowJoinSatisfied(steps, step)) pushUniqueWorkflowIndex(ready, index)
                 return
             }
-            collectWorkflowSuccessors(steps, index, ready)
+            collectWorkflowSuccessors(steps, index, ready, visited)
             return
         default:
             assertNeverWorkflowStepKind(step)
@@ -206,6 +216,7 @@ function collectWorkflowSuccessors(
     steps: readonly WorkflowStep[],
     index: number,
     ready: number[],
+    visited: Set<number>,
 ): void {
     const step = steps[index]
     if (step === undefined) return
@@ -215,14 +226,14 @@ function collectWorkflowSuccessors(
         const nextBranchIndex = index + 1
         const nextBranchStep = steps[nextBranchIndex]
         if (nextBranchStep !== undefined && isSameWorkflowBranch(nextBranchStep, branch)) {
-            collectReadyWorkflowStepIndices(steps, nextBranchIndex, ready)
+            collectReadyWorkflowStepIndices(steps, nextBranchIndex, ready, visited)
             return
         }
-        collectReadyWorkflowStepIndices(steps, branch.joinIndex, ready)
+        collectReadyWorkflowStepIndices(steps, branch.joinIndex, ready, visited)
         return
     }
 
-    collectReadyWorkflowStepIndices(steps, index + 1, ready)
+    collectReadyWorkflowStepIndices(steps, index + 1, ready, visited)
 }
 
 /** Check whether a step belongs to the same fanout branch as the given metadata. */
@@ -278,7 +289,14 @@ function isJoinMetadataSatisfied(
     // reached terminal+successful state, mark every remaining non-terminal
     // branch as skipped+completed and short-circuit. Pre-fix code waited for
     // ALL branches to be terminal, defeating the policy's purpose.
-    if (join.joinPolicy === "any_success" || join.useSurvivors === true) {
+    //
+    // H55: use_survivors MUST NOT enable the any_success fast path.
+    // use_survivors means "tolerate errored branches and join the survivors",
+    // NOT "cancel remaining branches on first success". Pre-fix code had
+    // `join.joinPolicy === "any_success" || join.useSurvivors === true`,
+    // which made all/reduce/select + use_survivors cancel healthy branches
+    // the moment the first one succeeded — losing their outputs.
+    if (join.joinPolicy === "any_success") {
         let successFound = false
         for (const tailIndex of join.branchTailIndices) {
             const tail = steps[tailIndex]

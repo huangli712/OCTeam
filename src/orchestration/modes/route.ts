@@ -95,7 +95,9 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
             // Uses the shared decisionParseFailures counter (ActiveTask base
             // field, same as loop's parse-failure handling).
             task.decisionParseFailures++
-            if (task.decisionParseFailures >= MAX_ROUTE_PARSE_FAILURES) {
+            // H42: allow task-level override of the parse-failure threshold.
+            const maxFailures = task.maxRouteParseFailures ?? MAX_ROUTE_PARSE_FAILURES
+            if (task.decisionParseFailures >= maxFailures) {
                 await finishRun(ctx, team, "route_complete:decision_parse_failure", "failed")
                 return
             }
@@ -111,6 +113,17 @@ export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<v
                 buildRouterPrompt(team.teamName, task.task ?? "", task.routeBranches ?? []),
                 router.worktreePath ?? ctx.directory, team)
             await saveTeamState(team)
+            return
+        }
+        // H47: detect unknown target names BEFORE partial dispatch. Without
+        // this, decision.targets = ["known", "typo"] silently drops "typo"
+        // and only dispatches "known" — the router's required work is lost
+        // without feedback. Now fail the run when any target is unknown so
+        // the operator sees the invalid branch name.
+        const knownNames = new Set(branches.map(b => b.name))
+        const unknown = decision.targets.filter(t => !knownNames.has(t))
+        if (unknown.length > 0) {
+            await finishRun(ctx, team, `route_complete:unknown_branch:${unknown.join(",")}`, "failed")
             return
         }
         if (selected.length === 0) {

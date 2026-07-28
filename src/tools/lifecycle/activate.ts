@@ -9,7 +9,7 @@ import type { PluginContext } from "../../core/context.js"
 import { listTeamNames, loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
-import { clearActiveTeam, setActiveTeam } from "../../state/resolve.js"
+import { clearActiveTeam, isIndexedMasterOf, setActiveTeam } from "../../state/resolve.js"
 import { decideActivate, withOrderedLocks } from "../../state/activation.js"
 
 // H-22: process-level activation mutex keyed by sessionID. Prevents two
@@ -60,7 +60,7 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            if (target.leadSessionId !== context.sessionID) {
+            if (target.leadSessionId !== context.sessionID || !isIndexedMasterOf(context.sessionID, target.directory)) {
                 return "Error: team_activate is master-only (only the team's leader session can activate it)"
             }
 

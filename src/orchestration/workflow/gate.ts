@@ -496,9 +496,13 @@ export function evaluateWorkflowCondition(condition: WorkflowCondition, input: C
             if (input.confidence === undefined) return "unevaluable"
             return input.confidence >= condition.value ? "matches" : "does_not_match"
         case "has_issue_severity":
-            // No scalar field required — empty issues is a valid "no qualifying
-            // issue" answer, not an unevaluable condition.
-            return (input.issues ?? []).some(issue => severityRank(issue.severity) >= severityRank(condition.value))
+            // H54: when the verifier omits the issues field entirely, the
+            // condition is unevaluable — the verifier may have neglected to
+            // report issues (a contract violation), not confirmed their
+            // absence. Returning does_not_match here would fail-open,
+            // routing to the default successor without verification.
+            if (input.issues === undefined) return "unevaluable"
+            return input.issues.some(issue => severityRank(issue.severity) >= severityRank(condition.value))
                 ? "matches"
                 : "does_not_match"
         default:

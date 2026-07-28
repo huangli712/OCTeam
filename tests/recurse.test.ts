@@ -247,7 +247,12 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
         expect(all).toHaveLength(1)
     })
 
-    test("parseFailed (empty array tag): finalizes as completed (not an error)", async () => {
+    test("parseFailed (empty array tag): re-dispatches member, NOT completed (H46)", async () => {
+        // H46: a malformed <decompose> block is NOT a leaf. The member
+        // explicitly tried to decompose but the format was wrong. Marking
+        // the task completed with the raw output would be a false success.
+        // The member is re-dispatched with feedback to retry.
+        const calls: DispatchCall[] = []
         const team = makeTeam({
             activeTask: makeRecurseTask(),
             members: [{ name: "alice", sessionId: "ses_alice" }],
@@ -258,14 +263,17 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
         })
 
         await processIdle(
-            makeCtx({ outputs: { ses_alice: '<decompose>{"subtasks":[]}</decompose>' }, calls: [], status: statusIdleFrom({ ses_alice: '<decompose>{"subtasks":[]}</decompose>' }) }),
+            makeCtx({ outputs: { ses_alice: '<decompose>{"subtasks":[]}</decompose>' }, calls, status: statusIdleFrom({ ses_alice: '<decompose>{"subtasks":[]}</decompose>' }) }),
             team,
             team.members[0],
             "ses_alice",
         )
 
         const t = await getTask(team.directory, root.id)
-        expect(t!.status).toBe("completed")
+        // Task must NOT be completed — it stays claimed for re-dispatch.
+        expect(t!.status).not.toBe("completed")
+        // Member was re-dispatched with feedback.
+        expect(calls.some(c => c.sessionId === "ses_alice")).toBe(true)
     })
 
     test("depth capped (depth >= maxDepth): finalizes as completed", async () => {

@@ -9,7 +9,7 @@ import type { PluginContext } from "../src/core/context.js"
 import { afterAll, afterEach } from 'bun:test'
 
 import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
+import { indexMasterTeam, rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { AsyncMutex } from "../src/state/locks.js"
 import { waitUntil } from "../src/core/utils.js"
 import { inboxPath, runEventsPath } from "../src/state/paths.js"
@@ -369,7 +369,7 @@ export function makeTeam(opts: MakeTeamOptions = {}): Team {
         error: m.error,
         declaredDone: m.declaredDone,
     }))
-    return {
+    const team: Team = {
         version: 1,
         teamRunId: opts.teamRunId ?? "test-run",
         teamName: opts.teamName ?? "test-team",
@@ -391,6 +391,16 @@ export function makeTeam(opts: MakeTeamOptions = {}): Team {
         mutex: new AsyncMutex(),
         directory: opts.directory ?? tmpRoot("team"),
     } as unknown as Team
+    // C9: register the master session in the in-memory index so tools that
+    // verify master authorization via isIndexedMasterOf find the team. Test
+    // fixtures built with makeTeam are in-memory only (no disk scan via
+    // rebuildSessionIndex), so without this registration the C9 hardening
+    // check would reject every fixture-driven master call.
+    if (team.leadSessionId) {
+        indexMasterTeam(team.leadSessionId, team.teamName, team.leadSessionId,
+            path.dirname(team.directory), team.directory)
+    }
+    return team
 }
 
 /**

@@ -60,6 +60,13 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             // team_resume. A genuinely crashed process's busy team stays busy on
             // disk; the user resolves it via team_cancel or team_resume. Releasing
             // stale reservations above is safe and reversible.
+            //
+            // H38 (known limitation): team_resume requires status === "failed",
+            // so a genuinely crashed busy team cannot be resumed — only cancelled.
+            // Changing status to "failed" here would break concurrent-instance
+            // safety (tested in reconcile-extra.test.ts and fixflow.test.ts).
+            // A fencing-epoch infrastructure is needed to distinguish "crashed"
+            // from "owned by a live sibling" — deferred.
             if (team.activeTask) {
                 team.lastInterruptedTask = team.activeTask
                 await saveTeamState(team)

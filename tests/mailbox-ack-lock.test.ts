@@ -74,8 +74,11 @@ describe("C2 T2: ackMessages with prune does NOT self-deadlock", () => {
         // Pre-fill processed.jsonl beyond PROCESSED_MAX_LINES (1000) so ack's
         // prune step runs. Pre-fix (naive lock-wrap calling the locked
         // pruneProcessedLog), this would hang 30s on the non-reentrant lock.
+        // H14: entries now carry a timestamp so the time-based pruner can age
+        // them out. Use an expired timestamp so they get pruned on ack.
+        const expiredTs = Date.now() - RESERVATION_TTL_MS * 3
         const filler = Array.from({ length: 1001 }, (_, i) =>
-            JSON.stringify({ id: `old-${i}`, deliveryStatus: "processed" }),
+            JSON.stringify({ id: `old-${i}`, deliveryStatus: "processed", timestamp: expiredTs }),
         ).join("\n") + "\n"
         await mkdir(path.dirname(pp), { recursive: true })
         await writeFile(pp, filler)
@@ -155,8 +158,11 @@ describe("C2 T5: prune during ack keeps most recent entries", () => {
         const recipient = "alice"
         const pp = processedPath(teamDir, recipient)
 
+        // H14: old entries carry an expired timestamp so the time-based
+        // pruner removes them. New messages (m1, m2) have a current timestamp.
+        const expiredTs = Date.now() - RESERVATION_TTL_MS * 3
         const filler = Array.from({ length: 1000 }, (_, i) =>
-            JSON.stringify({ id: `old-${i}`, deliveryStatus: "processed" }),
+            JSON.stringify({ id: `old-${i}`, deliveryStatus: "processed", timestamp: expiredTs }),
         ).join("\n") + "\n"
         await mkdir(path.dirname(pp), { recursive: true })
         await writeFile(pp, filler)
@@ -170,8 +176,11 @@ describe("C2 T5: prune during ack keeps most recent entries", () => {
         await ackMessages(teamDir, recipient, reserved)
 
         const processed = await readJsonl(pp)
-        expect(processed).toHaveLength(1000)
-        // The two newest (m1, m2) were appended after the 1000 old entries.
+        // H14: prune is now time-based, not line-based. The 1000 old entries
+        // (expired timestamp) are pruned; the 2 new entries survive.
+        expect(processed.some(m => m.id === "m1")).toBe(true)
+        expect(processed.some(m => m.id === "m2")).toBe(true)
+        expect(processed.every(m => m.id !== "old-0")).toBe(true)
         const ids = processed.slice(-2).map(m => m.id)
         expect(ids).toEqual(["m1", "m2"])
     })

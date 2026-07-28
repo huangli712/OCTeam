@@ -22,6 +22,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
+import { isEnoent } from "../../core/utils.js"
 import { isIndexedMember } from "../../state/resolve.js"
 import { atomicWrite } from "../../state/locks.js"
 import { validateMemberAgent, validateMemberName } from "../support.js"
@@ -588,12 +589,22 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
             if (teamBackup !== null) {
                 await atomicWrite(teamPath, teamBackup, ctx.directory)
             } else {
-                await unlink(teamPath).catch(() => { /* best-effort */ })
+                await unlink(teamPath).catch((err: unknown) => {
+                    // H62: log non-ENOENT unlink failures so the orphaned file
+                    // is observable. Pre-fix code silently swallowed ALL errors.
+                    if (!isEnoent(err)) {
+                        logSwallowed(ctx, "planner: rollback unlink failed for teamPath", err, { teamId: args.team_id, path: teamPath })
+                    }
+                })
             }
             if (workflowBackup !== null) {
                 await atomicWrite(workflowPath, workflowBackup, ctx.directory)
             } else {
-                await unlink(workflowPath).catch(() => { /* best-effort */ })
+                await unlink(workflowPath).catch((err: unknown) => {
+                    if (!isEnoent(err)) {
+                        logSwallowed(ctx, "planner: rollback unlink failed for workflowPath", err, { teamId: args.team_id, path: workflowPath })
+                    }
+                })
             }
         } catch (rollbackErr) {
             logSwallowed(ctx, "planner: rollback failed after workflow write failure", rollbackErr, { teamId: args.team_id })

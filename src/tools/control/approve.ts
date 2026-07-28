@@ -41,6 +41,38 @@ function validateApproval(team: Team, approvalId: string | undefined): ApprovalR
     return task.approvalRequest
 }
 
+/**
+ * H4: validate that an ApprovalRequest carries the payload its kind requires.
+ * Returns null when valid, or an error message string describing the gap.
+ * Prevents malformed/tampered requests from reaching the resume handler and
+ * silently no-oping, leaving the run stuck in approval limbo.
+ */
+function validateApprovalPayload(req: ApprovalRequest): string | null {
+    switch (req.kind) {
+        case "recurse_decompose":
+            if (!req.taskId) return "missing required field 'taskId'"
+            if (!req.member) return "missing required field 'member'"
+            if (!Array.isArray(req.subtasks) || req.subtasks.length === 0) return "missing or empty required field 'subtasks'"
+            return null
+        case "tollgate_gate":
+            if (req.stage === undefined) return "missing required field 'stage'"
+            return null
+        case "workflow_step":
+            if (req.stage === undefined) return "missing required field 'stage'"
+            return null
+        case "pipeline_stage":
+            if (req.stage === undefined) return "missing required field 'stage'"
+            return null
+        case "loop_done":
+            if (req.round === undefined) return "missing required field 'round'"
+            return null
+        // route_decision, arbitrate_ruling, consensus_deadlock have no
+        // kind-specific required fields beyond summary/id (always present).
+        default:
+            return null
+    }
+}
+
 /** Apply an approval decision to the active task, advancing or failing the orchestration. */
 export async function applyApprovalDecision(
     ctx: PluginContext,
@@ -52,6 +84,15 @@ export async function applyApprovalDecision(
         return `Error: team "${team.teamName}" has no pending human approval.`
     }
     const request = task.approvalRequest
+    // H4: validate that the request carries the payload its kind requires.
+    // ApprovalRequest is a flat type — kind is an enum but the payload fields
+    // are all optional, so a malformed/tampered request (e.g. recurse_decompose
+    // with no subtasks) would reach the resume handler and silently no-op,
+    // leaving the run stuck in approval limbo. Reject early with a clear error.
+    const payloadErr = validateApprovalPayload(request)
+    if (payloadErr) {
+        return `Error: approval request ${request.id} has an incomplete payload for kind "${request.kind}": ${payloadErr}`
+    }
     const resolvedAt = Date.now()
     const pausedMs = Math.max(0, resolvedAt - request.requestedAt)
     // Shift startedAt by the paused duration so wall-clock timeout
@@ -128,6 +169,21 @@ export async function applyApprovalDecision(
         case "tollgate_gate":
             if (task.type === "tollgate" && task.tollgatePhase === "produce") {
                 // Pre-verify pause: dispatch the verifier for the current gate.
+                const stage = task.gatedStages?.[task.currentStageIndex]
+                if (stage) {
+                    await startVerification(ctx, team, stage)
+                } else {
+                    await advanceTollgateAfterPass(ctx, team)
+                }
+            } else if (task.type === "tollgate" && task.tollgatePhase === "verify"
+                       && task.gatedStages?.[task.currentStageIndex]?.completed !== true) {
+                // H44: INVALID-retry pause (no escalateTo handler). The stage
+                // is NOT completed (INVALID never completes), and the approval
+                // summary said "Approve to retry verification" — re-dispatch
+                // the verifier for the current gate, NOT advance to the next.
+                // Pre-fix code fell through to advanceTollgateAfterPass.
+                // Discriminator: PASS approvals also pause in verify phase,
+                // but stage.completed === true there, so they advance.
                 const stage = task.gatedStages?.[task.currentStageIndex]
                 if (stage) {
                     await startVerification(ctx, team, stage)

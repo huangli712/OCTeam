@@ -120,7 +120,9 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
     if (decision.parseFailed) {
         logEvent(ctx, "warn", "decision parse failed", { team: team.teamName, member: member.name })
         task.decisionParseFailures++
-        if (task.decisionParseFailures >= MAX_DECISION_PARSE_FAILURES) {
+        // H42: allow task-level override of the parse-failure threshold.
+        const maxFailures = task.maxDecisionParseFailures ?? MAX_DECISION_PARSE_FAILURES
+        if (task.decisionParseFailures >= maxFailures) {
             await finishRun(ctx, team, "loop_complete:decision_parse_failure", "failed")
             return
         }
@@ -135,7 +137,7 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
             const deciderStage = task.stages[task.currentStageIndex]
             if (deciderStage) deciderStage.completed = false
             const reformatPrompt =
-                `[Decision parse failed — attempt ${task.decisionParseFailures}/${MAX_DECISION_PARSE_FAILURES}]\n`
+                `[Decision parse failed — attempt ${task.decisionParseFailures}/${maxFailures}]\n`
                 + `Your previous response could not be parsed as a valid <decision> or <决策> JSON block.\n`
                 + `Please re-emit your decision in the correct format:\n`
                 + `<decision>{"decision":"done"|"continue","rationale":"...","nextActions":[...]}</decision>\n`

@@ -19,6 +19,7 @@ import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent, maybeEscalateRetry } from "./orchestration/lifecycle/status.js"
 import { processIdle } from "./orchestration/lifecycle/idle.js"
 import { checkTermination } from "./orchestration/lifecycle/termination.js"
+import { recordEvent } from "./orchestration/records/events.js"
 import type { MemberState } from "./core/types.js"
 import { asSdkMessages, extractSessionStatusEntry } from "./orchestration/protocol/output.js"
 import { logEvent, logSwallowed } from "./core/log.js"
@@ -172,6 +173,42 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
             return
         }
 
+        // H24: session.error fires on abort, auth failure, or unrecoverable
+        // provider error. Without handling it the member stays "running" in
+        // the in-memory index, blocking barrier completion until wall-clock
+        // timeout. Map the error to a member escalation so checkTermination
+        // can fail the run (tolerance-0) or mark a branch errored (fanout).
+        if (type === "session.error") {
+            const sessionID = (() => {
+                const fromProps = props?.sessionID
+                return typeof fromProps === "string" && fromProps ? fromProps : undefined
+            })()
+            if (!sessionID) return
+            try {
+                const member = await resolveTeamMember(ctx.storageRoot, sessionID)
+                if (!member) return
+                const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
+                await team.mutex.runExclusive(async () => {
+                    const live = team.members.find(m => m.name === member.name)
+                    if (!live || live.status === "errored") return
+                    live.status = "errored"
+                    const errInfo = narrowed?.properties as { error?: string; message?: string } | undefined
+                    live.error = `session.error: ${errInfo?.error ?? errInfo?.message ?? "unknown"}`
+                    recordEvent(team, {
+                        timestamp: Date.now(),
+                        kind: "errored",
+                        member: live.name,
+                        reason: live.error,
+                    })
+                    await checkTermination(ctx, team)
+                    await persistTeamState(ctx, team, "persist team state failed (session.error)", { team: team.teamName, member: live.name })
+                })
+            } catch (err) {
+                logSwallowed(ctx, "session.error handler failed", err, { sessionID })
+            }
+            return
+        }
+
         if (type !== "session.idle") return
 
         const sessionID = (() => {
@@ -223,6 +260,25 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                 await persistTeamState(ctx, team, "persist team state failed (member idle)", { team: team.teamName, member: live.name })
             })
         } catch (err) {
+            // H26: processIdle may have partially mutated state (e.g. flipped
+            // member to idle in Step 1) before throwing. Without persisting,
+            // the in-memory state diverges from disk. The sweep timer only
+            // re-checks status === "running" members, so a member stuck in
+            // idle after a failed processIdle is not retried until wall-clock
+            // timeout. Best-effort persist so at least disk matches memory.
+            try {
+                const member = await resolveTeamMember(ctx.storageRoot, sessionID)
+                if (member) {
+                    const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
+                    await team.mutex.runExclusive(async () => {
+                        await persistTeamState(ctx, team, "persist team state failed (member idle error recovery)", { team: team.teamName, member: member.name })
+                    })
+                }
+            } catch (recoveryErr) {
+                // Recovery itself failed — nothing more we can do. The original
+                // error is already logged; log the recovery failure too.
+                logSwallowed(ctx, "member-idle error recovery persist failed", recoveryErr, { sessionID })
+            }
             logSwallowed(ctx, "member-idle handler failed", err, { sessionID })
         }
     }
@@ -405,6 +461,12 @@ export async function sweepTeamOnce(
         // 1. Reclaim stale resources.
         await releaseStaleReservations(team.directory, "master")
         for (const m of team.members) {
+            // H13: skip reclaim for members that are currently running. A
+            // running member may be actively processing its reserved messages;
+            // reclaiming them mid-processing returns them to the inbox, causing
+            // duplicate delivery on the next poll. The member will idle (or
+            // crash) and the next sweep tick will reclaim safely.
+            if (m.status === "running") continue
             await releaseStaleReservations(team.directory, m.name)
         }
         if (team.activeTask?.type === "delegate") {
@@ -449,8 +511,20 @@ export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
                 if (now >= exp) compacting.delete(sid)
             }
             // No directory filter — include sessions in member worktrees too.
-            const statusResult = await ctx.client.session.status({})
-            const statusMap = statusResult.data
+            // H32a: isolate the status API call so its failure does NOT disable
+            // reservation reclaim, stale-claim reap, and termination checks.
+            // Pre-fix code let a status API throw skip the entire per-team
+            // loop, leaving busy teams, reservations, and claims stranded.
+            // On failure, proceed with an empty statusMap (missed-idle is
+            // skipped, but reclaim/termination still run).
+            let statusMap: unknown = undefined
+            try {
+                statusMap = (await ctx.client.session.status({})).data
+            } catch (err) {
+                logEvent(ctx, "warn", "sweep: session.status API failed; proceeding without missed-idle reconciliation", {
+                    error: err instanceof Error ? err.message : String(err),
+                })
+            }
             for (const team of activeTeams()) {
                 // M-29: isolate per-team sweep failures so one bad team does
                 // not prevent the sweep from processing the remaining teams.

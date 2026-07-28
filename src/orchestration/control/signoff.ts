@@ -133,8 +133,15 @@ export async function handleSignoffIdle(
     task.signoffApprovals[member.name] = signoff?.approved === true
 
     if (task.signoffPolicy === "decider") {
-        const reason = signoff?.approved === true ? "signoff_approved" : "signoff_rejected"
-        await finishRun(ctx, team, reason, "idle")
+        const approved = signoff?.approved === true
+        const reason = approved ? "signoff_approved" : "signoff_rejected"
+        // H36: a signoff rejection is a QUALITY GATE FAILURE, not a successful
+        // completion. Pre-fix code passed status="idle" for both approved and
+        // rejected, which completion.ts mapped to run status "completed".
+        // Run records, metrics, and result queries then showed the rejected
+        // run as successful. Pass "failed" for rejections so the run record
+        // correctly reflects the gate failure.
+        await finishRun(ctx, team, reason, approved ? "idle" : "failed")
     } else if (task.signoffPolicy === "peer-quorum") {
         // Reviewer list: use current live members. An errored reviewer
         // is excluded from the denominator, but their dispatch already
@@ -158,6 +165,8 @@ export async function handleSignoffIdle(
         )
         if (!allResponded) return
         const reason = reached ? "signoff_quorum_reached" : "signoff_quorum_not_reached"
-        await finishRun(ctx, team, reason, "idle")
+        // H36: quorum not reached is a quality gate failure (same as decider
+        // rejection above). Pass "failed" so the run record is correct.
+        await finishRun(ctx, team, reason, reached ? "idle" : "failed")
     }
 }

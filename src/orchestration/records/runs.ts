@@ -137,7 +137,16 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     let entries: string[] = []
     try {
         entries = await fs.readdir(dir)
-    } catch {
+    } catch (err) {
+        // H37: distinguish ENOENT (expected — no member turns yet) from real
+        // I/O errors (EACCES, EIO). Pre-fix code silently swallowed ALL errors,
+        // so a permission or disk failure would persist a run record with an
+        // empty memberOutputs — silently losing member output metadata.
+        if (!isEnoent(err)) {
+            logger.warn("persistRun: readdir failed for run output dir", {
+                dir, error: err instanceof Error ? err.message : String(err),
+            })
+        }
         // dir may not exist (e.g. a run with no member turns yet) — that's fine
     }
     for (const file of entries) {
@@ -146,7 +155,13 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         try {
             const stat = await fs.stat(`${dir}/${file}`)
             memberOutputs[member] = { bytes: stat.size, file }
-        } catch {
+        } catch (err) {
+            // H37: log non-ENOENT errors so output metadata loss is observable.
+            if (!isEnoent(err)) {
+                logger.warn("persistRun: stat failed for member output", {
+                    file, error: err instanceof Error ? err.message : String(err),
+                })
+            }
             // raced/removed — skip
         }
     }

@@ -8,6 +8,7 @@ import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
+import { isIndexedMasterOf } from "../../state/resolve.js"
 import { normalizeRole, roleAgent } from "../../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../../core/types.js"
 import { MEMBER_NAME_POOL } from "../../state/naming.js"
@@ -43,7 +44,7 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            if (team.leadSessionId !== context.sessionID) {
+            if (team.leadSessionId !== context.sessionID || !isIndexedMasterOf(context.sessionID, team.directory)) {
                 return "Error: team_add_member is master-only (only the team's leader can add members)"
             }
             if (team.status !== "live") {
@@ -145,7 +146,7 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 team.members.push(newState)
 
                 try {
-                    await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
+                    await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId, ctx.storageRoot)
                 } catch (err) {
                     // Config write failed — nothing on disk, full rollback.
                     spec.members.pop()
@@ -161,7 +162,7 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                     spec.members.pop()
                     team.members.pop()
                     try {
-                        await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
+                        await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId, ctx.storageRoot)
                     } catch (compensateErr) {
                         logSwallowed(ctx, "add: compensating spec revert failed after state save failure", compensateErr, { team: args.team_id })
                     }

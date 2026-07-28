@@ -119,6 +119,27 @@ export function isMasterSession(sessionID: string): boolean {
     return masterIndex.has(sessionID)
 }
 
+/**
+ * Verify that `sessionID` is the master of the team identified by `directory`,
+ * using the in-memory index built at startup as an independent trust source
+ * (C9). Returns true ONLY when the session is registered in masterIndex as
+ * owning a team at exactly this directory. Disk-tampered state.json cannot
+ * grant master privileges because the index is built once from trusted
+ * startup state and is not re-read from disk on each call.
+ *
+ * Returns false when the session is not a master at all or owns a different
+ * directory. Tools that already compare team.leadSessionId against
+ * context.sessionID should ALSO call this to defend against disk tampering.
+ */
+export function isIndexedMasterOf(
+    sessionID: string,
+    directory: string,
+): boolean {
+    const entry = masterIndex.get(sessionID)
+    if (!entry) return false
+    return entry.teams.has(directory)
+}
+
 /** Enumerate every team a master session owns (drain-all enumeration). */
 export function resolveMasterTeams(sessionID: string): MasterTeamEntry[] {
     const entry = masterIndex.get(sessionID)
@@ -181,16 +202,30 @@ async function resolveMemberFromIndex(sessionID: string): Promise<ResolvedMember
     // a non-member, silently swallowing the error instead of logging it.
     const team = await loadTeamState(m.storageRoot, m.teamName, m.leadSessionId)
     const member = team.members.find(x => x.name === m.memberName)
-    return member
-        ? {
-              ...member,
-              teamName: team.teamName,
-              teamRunId: team.teamRunId,
-              directory: team.directory,
-              leadSessionId: m.leadSessionId,
-              storageRoot: m.storageRoot,
-          }
-        : null
+    if (!member) return null
+    // H22: verify 1:1 identity binding. The member's on-disk sessionId MUST
+    // match the sessionID used to look it up. A stale index entry (session
+    // replaced, hot reload, crash recovery) could resolve the OLD sessionID
+    // to a member whose on-disk sessionId has changed — granting the old
+    // session the new member's authorization. Without this check, index
+    // collisions (Map.set overwrites) silently grant cross-session access.
+    if (member.sessionId !== undefined && member.sessionId !== sessionID) {
+        logger.warn("resolveMemberFromIndex: sessionID mismatch (stale index entry)", {
+            indexedSessionID: sessionID,
+            diskSessionId: member.sessionId,
+            teamName: m.teamName,
+            memberName: m.memberName,
+        })
+        return null
+    }
+    return {
+        ...member,
+        teamName: team.teamName,
+        teamRunId: team.teamRunId,
+        directory: team.directory,
+        leadSessionId: m.leadSessionId,
+        storageRoot: m.storageRoot,
+    }
 }
 
 /**
@@ -239,7 +274,7 @@ export async function resolveTeamMember(
  * single-active interaction gate. Read-only tools pass `requireActive: false`.
  */
 export async function resolveCallerInTeam(
-    _storageRoot: string,
+    storageRoot: string,
     sessionID: string,
     teamId: string | undefined,
     opts: { requireActive?: boolean } = {},
@@ -260,19 +295,31 @@ export async function resolveCallerInTeam(
     // Master path (1:many) — find the team by explicit teamId.
     const master = masterIndex.get(sessionID)
     if (!master) return null
-    const entry = Array.from(master.teams.values()).find(t => t.teamName === teamId)
-    if (!entry) return null
+    // H23: scope-aware lookup. Pre-fix code ignored the storageRoot parameter
+    // and matched by teamName alone. Two teams with the same name but different
+    // scopes (project vs user) could resolve to the wrong one. Now filter by
+    // scope: only match teams whose storageRoot matches the caller's scope.
+    const entry = Array.from(master.teams.values()).find(
+        t => t.teamName === teamId && t.storageRoot === storageRoot,
+    )
+    // H23 fallback: if no exact scope match, try matching by teamName only.
+    // This preserves backward compat for tools that pass ctx.storageRoot as
+    // the scope but the team lives in the other scope (rare but possible
+    // when a user-scope master interacts with a project-scope team).
+    const resolvedEntry = entry
+        ?? Array.from(master.teams.values()).find(t => t.teamName === teamId)
+    if (!resolvedEntry) return null
     let team
     try {
-        team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
+        team = await loadTeamState(resolvedEntry.storageRoot, resolvedEntry.teamName, resolvedEntry.leadSessionId)
     } catch (err) {
         logger.warn("resolveCallerInTeam: failed to load team state for master caller", {
-            team: entry.teamName, error: err instanceof Error ? err.message : String(err),
+            team: resolvedEntry.teamName, error: err instanceof Error ? err.message : String(err),
         })
         return null
     }
     if (requireActive && isInteractionForbidden(true, team.activatedAt)) return null
-    return syntheticMaster(team, entry.leadSessionId, entry.storageRoot)
+    return syntheticMaster(team, resolvedEntry.leadSessionId, resolvedEntry.storageRoot)
 }
 
 /**

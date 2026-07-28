@@ -10,6 +10,7 @@ import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
+import { isIndexedMasterOf } from "../../state/resolve.js"
 import { finishRun } from "../../orchestration/control/completion.js"
 import { abortAndResetMembers } from "../support.js"
 
@@ -35,7 +36,7 @@ export function teamCancelTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            if (team.leadSessionId !== context.sessionID) {
+            if (team.leadSessionId !== context.sessionID || !isIndexedMasterOf(context.sessionID, team.directory)) {
                 return "Error: team_cancel is master-only (only the team's leader session can cancel it)"
             }
             if (team.status !== "busy" || team.activeTask === undefined) {

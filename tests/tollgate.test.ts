@@ -475,6 +475,9 @@ describe("handleTollgateIdle: FAIL retry semantics", () => {
         await handleTollgateIdle(ctx, team, idle(team, "alice"))
         expect(task.tollgatePhase).toBe("verify")
         expect(calls.some(c => c.sessionId === "ses_bob")).toBe(true)
+        // C17: startVerification clears responses[verifier] before dispatch.
+        // Simulate bob (verifier) actually producing output after dispatch.
+        task.responses["bob"] = V.fail()
 
         // FAIL #2: attempts 2, within 2 -> retry.
         calls.length = 0
@@ -487,6 +490,8 @@ describe("handleTollgateIdle: FAIL retry semantics", () => {
         // Producer resubmits -> produce idle -> re-verify.
         await handleTollgateIdle(ctx, team, idle(team, "alice"))
         expect(task.tollgatePhase).toBe("verify")
+        // C17: re-populate verifier output after dispatch clears it.
+        task.responses["bob"] = V.fail()
 
         // FAIL #3: attempts 3, exceeds 2 -> fail.
         await handleTollgateIdle(ctx, team, idle(team, "bob"))

@@ -101,6 +101,12 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
                     await finishRun(ctx, team, "arbitrate_complete:arbiter_unavailable", "failed")
                     return
                 }
+                // H56: clear the arbiter's stale response before dispatch,
+                // mirroring tollgate.ts startVerification (C17). The comment
+                // below about "Arbiter's response preserved" was correct for
+                // the round-re-dispatch path (line 124 clears disputants only),
+                // but the FIRST dispatch into phase B must start clean.
+                delete task.responses[task.arbiterMember ?? ""]
                 await dispatchToMember(
                     ctx,
                     arbiter,
@@ -143,7 +149,9 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
         // it would discard all prior debate-round tokens. Uses the shared
         // decisionParseFailures counter (ActiveTask base field).
         task.decisionParseFailures++
-        if (task.decisionParseFailures >= MAX_RULING_PARSE_FAILURES) {
+        // H42: allow task-level override of the ruling parse-failure threshold.
+        const maxFailures = task.maxRulingParseFailures ?? MAX_RULING_PARSE_FAILURES
+        if (task.decisionParseFailures >= maxFailures) {
             await finishRun(ctx, team, "arbitrate_complete:decision_parse_failure", "failed")
             return
         }

@@ -134,6 +134,16 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     renameCollision = true
                     return
                 }
+                // H59: re-find the member INSIDE the mutex. The `member` reference
+                // at line 65 was obtained outside the lock; a concurrent
+                // team_remove_member could have removed it since. Operating on the
+                // stale reference would mutate a member that no longer belongs to
+                // the team, and the subsequent save would silently drop the change.
+                const liveMember = team.members.find(m => m.name === args.member_name)
+                if (!liveMember) {
+                    staleState = true
+                    return
+                }
                 // If renaming, the spec must be readable and contain the
                 // member — otherwise config.json would retain the old name
                 // after rename, creating a state/spec inconsistency.
@@ -224,7 +234,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 let specWritten = false
                 const writeErr = await (async () => {
                     if (spec) {
-                        await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
+                        await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId, ctx.storageRoot)
                         specWritten = true
                     }
                     await saveTeamState(team)
@@ -305,7 +315,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     // but does not mask the original writeErr.
                     if (specWritten && spec) {
                         try {
-                            await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId)
+                            await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId, ctx.storageRoot)
                         } catch (specRollbackErr) {
                             logger.warn("fixmember: failed to compensate-rewrite config.json after saveTeamState failure", {
                                 teamName: caller.teamName,

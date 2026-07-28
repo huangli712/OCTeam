@@ -9,7 +9,7 @@ import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
-import { clearActiveTeam, setActiveTeam } from "../../state/resolve.js"
+import { clearActiveTeam, isIndexedMasterOf, setActiveTeam } from "../../state/resolve.js"
 
 /** Deactivate the currently active team for this session. */
 export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
@@ -32,7 +32,7 @@ export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            if (team.leadSessionId !== context.sessionID) {
+            if (team.leadSessionId !== context.sessionID || !isIndexedMasterOf(context.sessionID, team.directory)) {
                 return "Error: team_deactivate is master-only (only the team's leader session can deactivate it)"
             }
             if (team.status === "busy" || team.activeTask !== undefined) {

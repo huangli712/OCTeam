@@ -15,12 +15,13 @@
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
 import type { MemberState } from "../../core/types.js"
-import { listAllTasks } from "../../state/tasks.js"
+import { listAllTasks, updateTask } from "../../state/tasks.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { extractSessionStatusEntry, asSdkMessages } from "../protocol/output.js"
 import { finishRun } from "../control/completion.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { captureMemberOutput } from "../records/capture.js"
+import { recordEvent } from "../records/events.js"
 
 /** Minimum cooldown (ms) between re-prompt notifications in delegate/recurse. */
 export const NOTIFY_COOLDOWN_MS = 10_000
@@ -72,11 +73,50 @@ export async function runDelegateStyleTail(
         return
     }
 
+    // H40: reset errored members' claimed/in_progress tasks to pending
+    // BEFORE the claimable filter. Without this, an errored member's task
+    // stays at "claimed"/"in_progress" — excluded from claimable — so the
+    // deadlock check sees claimable.length === 0 AND all members
+    // idle/errored → false deadlock. recurse.ts:184-197 already does this;
+    // the shared tail now matches.
+    let erroredResetHappened = false
+    for (const m of team.members) {
+        if (m.status !== "errored" || !m.sessionId) continue
+        const erroredTask = incomplete.find(
+            t => (t.status === "claimed" || t.status === "in_progress") && t.owner === m.name,
+        )
+        if (erroredTask) {
+            try {
+                await updateTask(team.directory, erroredTask.id, {
+                    status: "pending",
+                    owner: undefined,
+                    claimedAt: undefined,
+                })
+                recordEvent(team, {
+                    timestamp: Date.now(),
+                    kind: "errored",
+                    member: m.name,
+                    detail: `${label}: released ${erroredTask.status} task ${erroredTask.id} from errored member`,
+                })
+                erroredResetHappened = true
+            } catch {
+                // Task transitioned out between our read and update — do NOT clobber.
+            }
+        }
+    }
+    // Re-read tasks after the reset so claimable reflects the updated statuses.
+    const tasksForClaimable = erroredResetHappened
+        ? await listAllTasks(team.directory)
+        : tasks
+    const incompleteForClaimable = erroredResetHappened
+        ? tasksForClaimable.filter(t => t.status !== "completed" && t.status !== "deleted")
+        : incomplete
+
     // Claimable tasks: pending AND all blockers completed.
-    const claimable = incomplete.filter(
+    const claimable = incompleteForClaimable.filter(
         t =>
             t.status === "pending"
-            && t.blockedBy.every(id => tasks.find(x => x.id === id)?.status === "completed"),
+            && t.blockedBy.every(id => tasksForClaimable.find(x => x.id === id)?.status === "completed"),
     )
 
     // Deadlock: no claimable tasks and all members idle.
@@ -125,14 +165,30 @@ export async function runDelegateStyleTail(
     // went back to idle) never get a second chance to claim tasks created
     // later in the same run.
     const now = Date.now()
-    const idleMembers = team.members.filter(
-        m => !m.isMaster && m.sessionId && m.status === "idle"
-            && (!m.lastNotifiedAt || now - m.lastNotifiedAt >= NOTIFY_COOLDOWN_MS),
+    const allIdle = team.members.filter(
+        m => !m.isMaster && m.sessionId && m.status === "idle",
     )
-    // Sort so the current member is first (it just produced output / has the
-    // freshest context), then the rest.
-    idleMembers.sort((a, b) => (a.name === member.name ? -1 : b.name === member.name ? 1 : 0))
-    for (const m of idleMembers) {
+    const eligible = allIdle.filter(
+        m => !m.lastNotifiedAt || now - m.lastNotifiedAt >= NOTIFY_COOLDOWN_MS,
+    )
+    // C16: when every idle member is in cooldown, claimable tasks would be
+    // permanently stranded — no event re-invokes this handler after cooldown
+    // expires (all members are already idle, no new idle event fires). In
+    // that case, bypass the cooldown filter and dispatch the member notified
+    // longest ago (its cooldown is closest to expiry). This is rare (requires
+    // all members notified within the cooldown window), so the rate-limiting
+    // purpose of the cooldown is preserved in the common case.
+    let dispatchPool = eligible
+    if (eligible.length === 0 && allIdle.length > 0) {
+        dispatchPool = allIdle
+        // Dispatch the member notified longest ago (closest to cooldown expiry).
+        dispatchPool.sort((a, b) => (a.lastNotifiedAt ?? 0) - (b.lastNotifiedAt ?? 0))
+    } else {
+        // Normal: sort so the current member is first (it just produced
+        // output / has the freshest context), then the rest.
+        dispatchPool.sort((a, b) => (a.name === member.name ? -1 : b.name === member.name ? 1 : 0))
+    }
+    for (const m of dispatchPool) {
         const curRunning = team.members.filter(mm => mm.status === "running" && !mm.isMaster).length
         if (claimable.length <= curRunning) break // enough dispatched
         m.lastNotifiedAt = now

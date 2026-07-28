@@ -28,9 +28,11 @@ function escapeXmlAttr(value: string): string {
 /**
  * Format messages for injection as a synthetic user message.
  *
- * Directive priority: messages with kind === "directive" are rendered FIRST,
- * each prefixed with a [DIRECTIVE] marker, so they take visual precedence in
- * the injected prompt. Regular messages follow after, preserving their order.
+ * Directive priority: authenticated directives are rendered FIRST inside a
+ * distinct <team_directive> element with a [DIRECTIVE] marker, so they take
+ * visual precedence in the injected prompt AND so no regular-message body
+ * content can mimic the directive's wrapping structure. Regular messages
+ * follow after inside <team_message>, preserving their order.
  *
  * SECURITY: `kind` and `from` are taken verbatim from the stored line (no
  * authenticity check — see mailbox.ts "TRUST BOUNDARY" header). Only the
@@ -39,13 +41,23 @@ function escapeXmlAttr(value: string): string {
  * is team_intervene, which writes `from: "master"`. A `kind:"directive"` line
  * with any other `from` is a forgery (a member with FS write to .octeam/
  * impersonating control traffic) and is downgraded to a regular message here.
+ *
+ * Rendering-layer forgery defense (C5): a forged REGULAR message whose body
+ * literally starts with "[DIRECTIVE] " would render byte-identical to an
+ * authenticated directive if both shared the same wrapping element. Using
+ * <team_directive> for authenticated directives and <team_message> for
+ * everything else guarantees the LLM can structurally distinguish them
+ * regardless of body content.
  */
 export function formatMailboxInjection(msgs: Message[], activeRunId?: string): string {
     const renderCorrelationId = (m: Message): string =>
         m.correlationId ? ` correlationId="${escapeXmlAttr(m.correlationId)}"` : ""
-    const render = (m: Message, prefix: string): string =>
+    const renderDirective = (m: Message): string =>
+        `<team_directive from="${escapeXmlAttr(m.from)}"${renderCorrelationId(m)}>\n`
+        + `[DIRECTIVE] ${escapeXmlText(m.body)}\n</team_directive>`
+    const renderRegular = (m: Message): string =>
         `<team_message from="${escapeXmlAttr(m.from)}"${renderCorrelationId(m)}>\n`
-        + `${prefix}${escapeXmlText(m.body)}\n</team_message>`
+        + `${escapeXmlText(m.body)}\n</team_message>`
     // Directives first (with marker), then regular messages in original order.
     // Authentication: only directives whose (id, from, body) match a
     // legitimate writeMailboxMessage registration AND whose runId (if bound)
@@ -57,7 +69,7 @@ export function formatMailboxInjection(msgs: Message[], activeRunId?: string): s
     // Note: two filters over the same array is intentional for clarity; a
     // single reduce would be less readable for this small partition.
     return [
-        ...directives.map(m => render(m, "[DIRECTIVE] ")),
-        ...regular.map(m => render(m, "")),
+        ...directives.map(renderDirective),
+        ...regular.map(renderRegular),
     ].join("\n\n")
 }

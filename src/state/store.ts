@@ -11,7 +11,7 @@ import { logger } from '../core/log.js';
 import type { TeamState, TeamSpec } from "../core/types.js"
 import { isOCTeamAgent } from "../core/role.js"
 import { isEnoent } from '../core/utils.js';
-import { atomicWrite, AsyncMutex, withLock } from "./locks.js"
+import { assertNoSymlinkTraversal, atomicWrite, AsyncMutex, withLock } from "./locks.js"
 import {
     configPath,
     isSafePathSegment,
@@ -21,6 +21,13 @@ import {
     teamsDir,
     worktreesDir,
 } from "./paths.js"
+// C9: indexMasterTeam is called from initTeamState so the in-memory master
+// index is populated for ALL init paths (not just team_create). This forms
+// a module cycle (resolve.ts imports listAllTeams/loadTeamState from store.ts,
+// store.ts imports indexMasterTeam from resolve.ts), which is safe in ESM
+// because indexMasterTeam is only called at runtime (inside initTeamState),
+// never at module-load time — by then resolve.ts has fully loaded.
+import { indexMasterTeam } from "./resolve.js"
 /**
  * Runtime team object: TeamState plus non-persisted handles.
  *
@@ -90,6 +97,20 @@ function stripRuntimeFields(team: Team): TeamState {
         _diskSnapshot: _snap,
         ...state
     } = team
+    // H3: proactively strip isMaster from every member before serialization.
+    // isMaster is a RUNTIME-ONLY flag on the synthetic master pseudo-member
+    // (resolve.ts syntheticMaster), never on regular team.members. If a bug
+    // or future code change accidentally sets it on a regular member,
+    // isValidTeamState would reject the next load (defense-in-depth), but
+    // the write would succeed first — causing a confusing "save works, load
+    // fails" cycle. Stripping here prevents the bad write entirely.
+    if (state.members) {
+        state.members = state.members.map(m => {
+            if (m.isMaster === undefined) return m
+            const { isMaster: _im, ...rest } = m
+            return rest
+        })
+    }
     return state
 }
 
@@ -495,6 +516,7 @@ export async function saveTeamState(team: Team): Promise<void> {
                 if (!liveNames.has(m.name)) team.members.push(m)
             }
         }
+
     })
 }
 
@@ -548,16 +570,40 @@ export async function initTeamState(
     const dir = teamDir(storageRoot, state.teamName, leadSessionId)
     await atomicWrite(statePath(dir), JSON.stringify(state, null, 2), trustedRoot)
     // Register a fresh Team entry; loadTeamState will read what we just wrote.
-    return loadTeamState(storageRoot, state.teamName, leadSessionId)
+    const team = await loadTeamState(storageRoot, state.teamName, leadSessionId)
+    // C9: register the master session in the in-memory index so tools that
+    // verify master authorization via isIndexedMasterOf find the team.
+    // Production callers (team_create) already call indexMasterTeam after
+    // initTeamState, and startup calls rebuildSessionIndex; doing it here
+    // too makes the index consistent for ALL init paths (including tests
+    // and any future caller) without relying on each caller remembering it.
+    if (state.leadSessionId) {
+        indexMasterTeam(
+            state.leadSessionId,
+            state.teamName,
+            leadSessionId,
+            storageRoot,
+            dir,
+        )
+    }
+    return team
 }
 
-/** Recursively remove a team's on-disk directory. Used at team_delete(force). */
+/** Recursively remove a team's on-disk directory. Used at team_delete(force).
+ *
+ * C14: asserts no symlink traversal BEFORE the recursive remove. Without
+ * this, an attacker who replaces the team directory (or an intermediate
+ * ancestor) with a symlink could redirect fs.rm to an arbitrary location
+ * outside the storage root.
+ */
 export async function deleteTeamStorage(
     storageRoot: string,
     teamName: string,
     leadSessionId?: string,
 ): Promise<void> {
-    await fs.rm(teamDir(storageRoot, teamName, leadSessionId), {
+    const dir = teamDir(storageRoot, teamName, leadSessionId)
+    await assertNoSymlinkTraversal(storageRoot, dir)
+    await fs.rm(dir, {
         recursive: true,
         force: true, // force:true already swallows ENOENT (dir already gone).
     })

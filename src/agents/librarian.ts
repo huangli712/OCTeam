@@ -41,6 +41,12 @@ export const librarianAgent: OcteamAgentConfig = {
     description: "OCTeam external reference researcher",
     temperature: 0.1,
     color: "#4169e1",
-    permission: { edit: "deny", task: "deny", bash: "deny", webfetch: "allow", read: "allow", glob: "allow", grep: "allow" },
+    // C4: prompt says "Do NOT search the codebase — that's explore's job",
+    // so local read tools (read/glob/grep) are removed to match. Keeping them
+    // would let a prompt-injected task (from webfetch'd content) read local
+    // source files and exfiltrate them via webfetch — the prompt instruction
+    // is not an authorization boundary. webfetch remains (external reference
+    // research); context7 is provided by the host, not by this permission map.
+    permission: { edit: "deny", task: "deny", bash: "deny", webfetch: "allow" },
     prompt: LIBRARIAN_PROMPT,
 }

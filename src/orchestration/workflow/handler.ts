@@ -339,8 +339,19 @@ export async function handleWorkflowIdle(
     // attempt counters protect against double-processing of the same response
     // but do not protect against an empty-response stale idle routing to
     // on_malformed/parse_failure.
-    if (capturedNew === false && (step.kind === "task" || step.kind === "gate") && step.output !== undefined) {
-        return;
+    //
+    // join step (H49): skip when capturedNew is false — a stale reducer idle
+    // would read task.responses[member.name] ?? "" and complete the join with
+    // an empty string, producing a fake reduced result. Unlike task/gate,
+    // join has no retry_on='empty' path — a reducer that produced no output
+    // has nothing to reduce.
+    if (capturedNew === false) {
+        if ((step.kind === "task" || step.kind === "gate") && step.output !== undefined) {
+            return;
+        }
+        if (step.kind === "join") {
+            return;
+        }
     }
 
     switch (step.kind) {

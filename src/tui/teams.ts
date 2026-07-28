@@ -60,7 +60,11 @@ export async function countMailbox(teamDirectory: string, recipient: string): Pr
             // placed large file (or /dev/zero via symlink) cannot OOM the
             // sidebar process. 1 MiB is far above any legitimate processed.jsonl
             // (the retention cap is 1000 lines, ~100 KB typical).
-            const stat = await fs.stat(file)
+            // H27: use lstat (no follow) so /dev/zero or a symlinked large
+            // file's TRUE size is checked. fs.stat follows symlinks and
+            // reports the target's size — for /dev/zero that is 0, bypassing
+            // the cap.
+            const stat = await fs.lstat(file)
             if (stat.size > 1_048_576) {
                 console.warn(`[octeam] countMailbox: ${file} exceeds 1 MiB cap, refusing to read`)
                 return 0
@@ -101,13 +105,21 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
             // team dir to /etc or an arbitrary large file, causing the TUI to
             // read or OOM on attacker-controlled content.
             await assertNoSymlinkTraversal(storageRoot, dir)
-            const raw = await fs.readFile(statePath(dir), "utf8")
+            // H27: validate the descendant files (state.json, config.json,
+            // mailbox) are not symlinks. assertNoSymlinkTraversal above
+            // only checks the team DIRECTORY, not its contents. A symlinked
+            // state.json could read arbitrary content; /dev/zero could OOM.
+            const stateP = statePath(dir)
+            await assertNoSymlinkTraversal(dir, stateP)
+            const raw = await fs.readFile(stateP, "utf8")
             const state = JSON.parse(raw)
             if (!isValidTeamState(state, dir)) continue
             // Also read config.json for member roles (role lives in MemberSpec, not MemberState).
             const roleMap: Record<string, string> = {}
             try {
-                const configRaw = await fs.readFile(configPath(dir), "utf8")
+                const configP = configPath(dir)
+                await assertNoSymlinkTraversal(dir, configP)
+                const configRaw = await fs.readFile(configP, "utf8")
                 const config = JSON.parse(configRaw)
                 for (const m of (config.members ?? [])) {
                     roleMap[m.name] = m.role

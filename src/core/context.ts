@@ -11,6 +11,8 @@ import path from "node:path"
 import type { PluginInput } from "@opencode-ai/plugin"
 import type { OpencodeClient, Project } from "@opencode-ai/sdk"
 
+import { logEvent } from "./log.js"
+
 /** Storage scope for team state: user (~/.octeam) or project (<dir>/.octeam). */
 export type StorageScope = "user" | "project"
 
@@ -93,7 +95,6 @@ export function warnIfProjectScopeLacksIsolation(
     projectStorageRoot: string,
 ): void {
     if (scope !== "project") return
-    const { logEvent } = require("./log.js") as typeof import("./log.js")
     logEvent(ctx, "warn", "C-11 project scope: control state lives inside the member-writable project directory", {
         projectStorageRoot,
         threatModel: "Member agents (oct-junior, oct-deep) with edit/bash tools can write to .octeam/. "

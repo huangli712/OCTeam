@@ -47,11 +47,6 @@ import { authenticateDirective, consumeDirectiveAuth } from "./auth.js"
 import { appendJsonl, readJsonl, truncateFile } from "./jsonl.js"
 import { logger } from "../core/log.js"
 
-// Max lines retained in mailbox/{recipient}.processed.jsonl (audit log). The
-// log is append-only by nature; without a cap it grows unbounded across a
-// long-lived team. Pruning keeps the most recent entries (see ackMessages).
-const PROCESSED_MAX_LINES = 1000
-
 /**
  * Append a single message to a recipient's inbox. Caller handles broadcast by
  * invoking this once per recipient. Enforces payload size before writing.
@@ -72,18 +67,13 @@ export async function writeMailboxMessage(
     backpressureMaxBytes?: number,
     authContext?: { teamName?: string; runId?: string },
 ): Promise<void> {
-    // Authenticate directives at the legitimate write-API boundary, binding
-    // the id to the actual (from, body) content. A member forging a line via
-    // direct FS append bypasses this function → unregistered → downgraded at
-    // render. A replay (same id, different body) fails the content check.
-    // The runId binding prevents cross-run replay of directives.
-    if (message.kind === "directive") {
-        authenticateDirective(message, authContext?.teamName, authContext?.runId)
-    }
-    // Hold the mailbox lock so this append is mutually exclusive with
-    // pollMailbox's read-reserve-truncate. Without it, an append landing
-    // between pollMailbox's read and truncate is silently destroyed
-    // (read-truncate race). O_APPEND still applies inside the lock.
+    // H8: authenticate directives INSIDE the lock so the auth record and the
+    // mailbox write are transactionally consistent. Pre-fix code registered
+    // auth BEFORE acquiring the lock; if the write then failed (backpressure,
+    // I/O error), the auth record was orphaned — a forger using the same id
+    // could authenticate against it even though no legitimate message was
+    // written. Moving auth inside the lock means a failed write never
+    // registers auth.
     await withLock(mailboxLockPath(teamDirectory, recipient), async () => {
         // Backpressure check INSIDE the lock so concurrent senders cannot
         // both pass the check and collectively exceed the cap.
@@ -93,6 +83,13 @@ export async function writeMailboxMessage(
             if (currentBytes + lineBytes > backpressureMaxBytes) {
                 throw new BackpressureError(recipient, `recipient "${recipient}" mailbox is full (backpressure)`)
             }
+        }
+        // C8: fall back to message.runId when authContext.runId is absent.
+        // Register auth AFTER backpressure check passes — a BackpressureError
+        // throw here skips auth registration entirely.
+        if (message.kind === "directive") {
+            const runId = authContext?.runId ?? message.runId
+            authenticateDirective(message, authContext?.teamName, runId)
         }
         await appendJsonl(inboxPath(teamDirectory, recipient), message, teamDirectory)
     })
@@ -125,7 +122,18 @@ export async function pollMailbox(
             return true
         })
         if (deduped.length === 0) return []
-        for (const msg of deduped) {
+        // C6: drop forged cross-mailbox directives. A directive whose `to`
+        // does not match this mailbox's recipient was copied here by a member
+        // with FS write access (the directive was authenticated for a
+        // DIFFERENT recipient's mailbox). Without this filter the auth
+        // registry (keyed by msg.to|id) would authenticate the forged copy,
+        // letting a directive meant for Alice execute in Bob's session AND
+        // consuming Alice's auth record via Bob's ACK. Only directives are
+        // filtered — regular-message cross-mailbox copies are lower-impact
+        // (the LLM can see the from/to mismatch) and filtering them would
+        // change pollMailbox's contract for non-directive traffic.
+        const safe = deduped.filter(msg => msg.kind !== "directive" || msg.to === recipient)
+        for (const msg of safe) {
             try {
                 await atomicWrite(
                     reservedPath(teamDirectory, recipient, msg.id),
@@ -139,15 +147,28 @@ export async function pollMailbox(
                 // and releaseStaleReservations (TTL 30s) would re-append the
                 // reserved copy → duplicate injection. Unlink the reserved
                 // copies written so far so the inbox remains authoritative.
-                for (const done of deduped) {
+                for (const done of safe) {
                     if (done.id === msg.id) break
-                    await fs.unlink(reservedPath(teamDirectory, recipient, done.id)).catch(() => {
-                        // already removed or never written
+                    await fs.unlink(reservedPath(teamDirectory, recipient, done.id)).catch((err: unknown) => {
+                        // H15: ENOENT is the benign race (already removed). Any
+                        // other errno (EPERM, EBUSY) leaves an orphaned
+                        // reservation that the stale-reaper eventually clears,
+                        // but logging it makes the failure observable.
+                        if (!isEnoent(err)) {
+                            logger.debug("pollMailbox: rollback unlink failed (orphan; benign)", {
+                                recipient, entry: done.id,
+                                error: err instanceof Error ? err.message : String(err),
+                            })
+                        }
                     })
                 }
                 throw err
             }
         }
+        // Even when all messages were filtered as forged directives (safe is
+        // empty but deduped was not), still truncate the inbox so the
+        // forgeries are durably discarded — otherwise they remain in the
+        // inbox and reappear on every subsequent poll.
         try {
             await truncateFile(inboxPath(teamDirectory, recipient), teamDirectory)
         } catch (err) {
@@ -159,14 +180,23 @@ export async function pollMailbox(
             // copies so the original inbox entries remain authoritative for
             // the next poll attempt. Best-effort: an unlink failure leaves a
             // stranded reserved file that the stale-reaper eventually clears.
-            for (const msg of deduped) {
-                await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch(() => {
-                    // already removed or never written
+            for (const msg of safe) {
+                await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
+                    // H15: ENOENT is the benign race (already removed). Any
+                    // other errno leaves an orphaned reservation that the
+                    // stale-reaper eventually clears, but logging makes it
+                    // observable.
+                    if (!isEnoent(err)) {
+                        logger.debug("pollMailbox: truncate-rollback unlink failed (orphan; benign)", {
+                            recipient, entry: msg.id,
+                            error: err instanceof Error ? err.message : String(err),
+                        })
+                    }
                 })
             }
             throw err
         }
-        return deduped
+        return safe
     })
 }
 
@@ -196,14 +226,15 @@ export async function ackMessages(
             // reserved-file resurrection) no longer matches the registry and
             // is downgraded to a regular message.
             //
-            // C-5: pass msg.runId as activeRunId. The fail-closed runId check
-            // inside consumeDirectiveAuth requires the active run to match
-            // when the registered directive has a runId; omitting it leaves
-            // scoped directives forever unconsumed, enabling replay attacks
-            // after ack. The msg's runId is the same one bound at write time
-            // (intervene.ts), so it is the correct scope to consume.
+            // C7: consumeDirectiveAuth no longer takes activeRunId. ACK is
+            // called after successful delivery — the directive was already
+            // authenticated by formatMailboxInjection with the active run's
+            // runId. Consumption only needs (to, id, from, body, correlationId)
+            // to match. The previous code passed msg.runId, which meant an
+            // attacker who deleted msg.runId could prevent consumption and
+            // replay the directive indefinitely within the same run.
             if (msg.kind === "directive") {
-                consumeDirectiveAuth(msg, msg.runId)
+                consumeDirectiveAuth(msg)
             }
             await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
                 // ENOENT is the benign race (reservation already removed) —
@@ -220,12 +251,16 @@ export async function ackMessages(
 }
 
 /**
- * Cap mailbox/{recipient}.processed.jsonl at PROCESSED_MAX_LINES entries,
- * keeping the most recent. Caller MUST hold the mailbox lock — runs under
- * the same lock as ackMessages and the stale-reservation reaper so concurrent
- * acks can't race the truncate-and-rewrite. Best-effort on read errors
- * (a malformed/missing log is left untouched).
+ * Cap mailbox/{recipient}.processed.jsonl by AGE, not line count. Keeps
+ * entries younger than PROCESSED_RETENTION_MS so the dedup window in
+ * releaseStaleReservations always covers any in-flight reservation (whose
+ * TTL is RESERVATION_TTL_MS = 30s). Pre-fix code capped at 1000 lines,
+ * which under high message volume could prune the processed record of a
+ * message whose reservation file was still pending → duplicate delivery.
+ * Caller MUST hold the mailbox lock.
  */
+const PROCESSED_RETENTION_MS = RESERVATION_TTL_MS * 2
+
 async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: string): Promise<void> {
     const p = processedPath(teamDirectory, recipient)
     let raw: string
@@ -236,8 +271,28 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
         throw err
     }
     const lines = raw.split("\n").filter(l => l.length > 0)
-    if (lines.length <= PROCESSED_MAX_LINES) return
-    const kept = lines.slice(lines.length - PROCESSED_MAX_LINES)
+    // H14: prune by timestamp, not line count. Each processed entry has a
+    // `timestamp` field (the original Message.timestamp). Keep entries whose
+    // timestamp is within PROCESSED_RETENTION_MS of now. Entries without a
+    // parseable timestamp are kept (conservative — never prune what we
+    // can't age-check).
+    const now = Date.now()
+    const kept: string[] = []
+    let pruned = 0
+    for (const line of lines) {
+        try {
+            const entry = JSON.parse(line) as { timestamp?: unknown }
+            if (typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp)
+                && now - entry.timestamp > PROCESSED_RETENTION_MS) {
+                pruned++
+                continue
+            }
+        } catch {
+            // malformed line — keep it (conservative)
+        }
+        kept.push(line)
+    }
+    if (pruned === 0) return
     await atomicWrite(p, kept.join("\n") + "\n", teamDirectory)
 }
 
@@ -300,9 +355,22 @@ export async function releaseStaleReservations(
             let parsed: Message & { reservedAt?: number } | undefined
             try {
                 parsed = JSON.parse(await fs.readFile(p, "utf8")) as Message & { reservedAt?: number }
-                reservedAt = parsed.reservedAt
-            } catch {
-                // unreadable reservation file — best-effort skip
+                const raw = (parsed as { reservedAt?: unknown }).reservedAt
+                // H15: reservedAt MUST be a finite number. A tampered or corrupt
+                // reservation file could carry reservedAt: "invalid" (string),
+                // which would make age = Date.now() - "invalid" = NaN, and
+                // NaN > TTL is always false → the message is stranded in
+                // reserved/ forever (permanent message loss). Coerce non-finite
+                // values to undefined so the mtime fallback below applies.
+                reservedAt = typeof raw === "number" && Number.isFinite(raw) ? raw : undefined
+            } catch (err) {
+                // H15: log instead of silently skipping, so unreadable/corrupt
+                // reservation files are observable. The skip itself is correct
+                // (we cannot parse the message to requeue it).
+                logger.warn("releaseStaleReservations: unreadable reservation file; skipping", {
+                    recipient, entry: f,
+                    error: err instanceof Error ? err.message : String(err),
+                })
                 continue
             }
             let mtime: number | undefined
@@ -317,8 +385,16 @@ export async function releaseStaleReservations(
                 // ack succeeded but the reservation unlink failed, leaving an
                 // orphan). Just clean up the stale reservation file.
                 if (typeof parsed.id === "string" && processedIds.has(parsed.id)) {
-                    await fs.unlink(p).catch(() => {
-                        // already gone
+                    await fs.unlink(p).catch((err: unknown) => {
+                        // H15: ENOENT is benign. Non-ENOENT leaves the orphaned
+                        // reservation (processedIds dedup prevents re-delivery,
+                        // so it's harmless but observable).
+                        if (!isEnoent(err)) {
+                            logger.debug("releaseStaleReservations: processed-dedup unlink failed", {
+                                recipient, entry: parsed!.id,
+                                error: err instanceof Error ? err.message : String(err),
+                            })
+                        }
                     })
                     continue
                 }

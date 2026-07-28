@@ -63,6 +63,11 @@ function shouldLog(level: LogLevel): boolean {
  * Fire-and-forget dispatch to the host's app.log sink. Never awaits and
  * swallows all errors so logging never adds latency, backpressure, or
  * thrown exceptions to the calling handler.
+ *
+ * H6: the pre-fix code used `void sinkFn(...).catch(...)` which only caught
+ * async rejections. A SYNCHRONOUS throw from sinkFn() (e.g. a host bug or
+ * a sink that validates args eagerly) would escape and crash the calling
+ * handler. The try/catch now wraps both the sync call and its Promise.
  */
 function sendToSink(
     sinkFn: PluginContext["client"]["app"]["log"],
@@ -71,9 +76,16 @@ function sendToSink(
     extra?: Record<string, unknown>,
 ): void {
     // Do not await: logging must not add latency or backpressure to handlers.
-    void sinkFn({ body: { service: "octeam", level, message, extra } }).catch(() => {
-        // Never throw from the logger — the call sites are best-effort.
-    })
+    // H6: try/catch guards synchronous throws from sinkFn; .catch guards async
+    // rejections from the returned Promise.
+    try {
+        void sinkFn({ body: { service: "octeam", level, message, extra } }).catch(() => {
+            // Never throw from the logger — the call sites are best-effort.
+        })
+    } catch {
+        // Synchronous throw from sinkFn (host bug, eager validation, etc).
+        // Swallow so the calling handler is never disrupted by logging.
+    }
 }
 
 /**

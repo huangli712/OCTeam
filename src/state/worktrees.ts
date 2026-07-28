@@ -83,7 +83,13 @@ export async function cleanWorktree(
         logger.warn("cleanWorktree: refusing out-of-bounds worktreePath", { path: worktreePath })
         return
     }
-    await execFileP("git", ["worktree", "remove", worktreePath, "--force"], {
+    // C15: pass the validated `resolved` (absolute) path to git, not the
+    // original `worktreePath`. The validation above checks `resolved` =
+    // path.resolve(worktreesRoot, worktreePath), but git resolves a relative
+    // worktreePath against its cwd (projectDir). When projectDir !=
+    // worktreesRoot, the two resolutions diverge. Passing the already-
+    // validated absolute path eliminates the divergence.
+    await execFileP("git", ["worktree", "remove", resolved, "--force"], {
         cwd: projectDir,
     })
 }

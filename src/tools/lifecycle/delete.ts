@@ -10,7 +10,7 @@ import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
 import { clearActiveTask, deleteTeamStorage, invalidateTeam, loadTeamState, type Team } from "../../state/store.js"
-import { unindexMasterTeam, unindexSession } from "../../state/resolve.js"
+import { unindexMasterTeam, unindexSession, isIndexedMasterOf } from "../../state/resolve.js"
 import { clearWakeHint } from "../../messaging/wake-hint.js"
 import { abortAndResetMembers } from "../support.js"
 import { hasUncommittedChanges, destroyWorktree } from "../../state/worktrees.js"
@@ -38,7 +38,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            if (team.leadSessionId !== context.sessionID) {
+            if (team.leadSessionId !== context.sessionID || !isIndexedMasterOf(context.sessionID, team.directory)) {
                 return "Error: team_delete is master-only (only the team's leader session can delete it)"
             }
             const force = args.force ?? false
@@ -93,12 +93,12 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     clearActiveTask(team)
                     team.status = "idle"
                 }
-                // Clean up worktrees, then unindex the team. Worktree teardown must
-                // precede deleteTeamStorage so git can remove the still-present
-                // worktree files. Member sessions are 1:1 (full unindex); the master
-                // owns this team in a 1:many index, so remove ONLY this team from the
-                // master's map (unindexSession on the leader would wipe the session's
-                // OTHER teams).
+                // Clean up worktrees BEFORE deleteTeamStorage (git needs the
+                // files present). Member sessions are un-indexed ONLY after
+                // deleteTeamStorage succeeds (H58: pre-fix code ran unindex
+                // before the storage delete, so a failure left members
+                // un-indexed but the team still on disk — "restored to usable
+                // state" was a lie since sessions were gone).
                 for (const m of team.members) {
                     try {
                         await destroyWorktree(
@@ -110,10 +110,6 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                         )
                     } catch (err) {
                         worktreeErrors.push(`${m.name}: ${err instanceof Error ? err.message : String(err)}`)
-                    }
-                    if (m.sessionId) {
-                        unindexSession(m.sessionId)
-                        clearWakeHint(m.sessionId)
                     }
                 }
                 // HIGH-A: order cleanup so an fs.rm failure leaves indexes intact.
@@ -130,6 +126,16 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     // Re-raise to the outer catch (H-24 tombstone restore).
                     throw err
                 }
+                    // H58: unindex member sessions + master team ONLY after
+                    // deleteTeamStorage succeeds. Worktree destruction above
+                    // is best-effort (errors collected); if it fails the team
+                    // is still deleted but worktree branches may linger.
+                    for (const m of team.members) {
+                        if (m.sessionId) {
+                            unindexSession(m.sessionId)
+                            clearWakeHint(m.sessionId)
+                        }
+                    }
                     unindexMasterTeam(team.leadSessionId, team.directory)
                     clearWakeHint(team.leadSessionId)
                     invalidateTeam(team.directory)

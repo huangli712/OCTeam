@@ -290,6 +290,7 @@ export interface PipelineTask extends ActiveTaskBase {
 export interface LoopTask extends ActiveTaskBase {
     type: "loop"
     deciderMember?: string                   // member name of decider (NOT "master")
+    maxDecisionParseFailures?: number       // H42: override default parse-failure threshold (default 3)
 }
 
 // delegate: shared tasklist, members self-claim.
@@ -315,6 +316,7 @@ export interface RouteTask extends ActiveTaskBase {
     routeTargets?: string[]                  // resolved target member names after the router's decision
     routeStage?: boolean                     // false/undefined = router phase; true = target fan-out phase
     routeDecisionRationale?: string          // router's stated rationale (observability)
+    maxRouteParseFailures?: number           // H42: override default parse-failure threshold (default 2)
 }
 
 // arbitrate: debate then authoritative ruling.
@@ -327,6 +329,7 @@ export interface ArbitrateTask extends ActiveTaskBase {
     arbitrationRuling?: string               // arbiter's binding ruling (set at ruling)
     arbitrationRationale?: string            // arbiter's stated rationale for the ruling
     hitlPhase?: "pre" | "post" | "both"      // HITL pause point(s); default "pre" when humanApproval is true
+    maxRulingParseFailures?: number          // H42: override default ruling parse-failure threshold (default 2)
 }
 
 // recurse: hierarchical recursive decomposition.
@@ -338,6 +341,7 @@ export interface RecurseTask extends ActiveTaskBase {
     maxSubtasks?: number                     // per-decomposition subtask upper bound (default 5)
     rootTaskId?: string                      // the root task id; its result is the final deliverable
     aggregationDispatchCount?: number        // decomposer dispatches that failed to produce a root claim (stall detection; recurse mode)
+    maxAggregationDispatches?: number        // H42: override default aggregation stall threshold (default 3)
 }
 
 // tollgate: verdict-gated pipeline (produce -> verify -> escalate). A gated

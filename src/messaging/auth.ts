@@ -31,7 +31,7 @@ import type { Message } from "../core/types.js"
 // Directives are authenticated at write time and checked at poll time
 // (typically seconds later); 64 is far above any realistic in-flight count.
 const AUTH_DIRECTIVE_MAP_CAP = 64
-const authenticatedDirectives = new Map<string, { from: string; to: string; body: string; teamName?: string; runId?: string; ts: number }>()
+const authenticatedDirectives = new Map<string, { from: string; to: string; body: string; correlationId: string | undefined; teamName?: string; runId?: string; ts: number }>()
 
 /** Registry key combines recipient + id so broadcast (same id, many recipients) authenticates each recipient independently. */
 function authKey(to: string, id: string): string {
@@ -64,6 +64,7 @@ export function authenticateDirective(
         from: msg.from,
         to: msg.to,
         body: msg.body,
+        correlationId: msg.correlationId,
         teamName,
         runId,
         ts: Date.now(),
@@ -72,13 +73,24 @@ export function authenticateDirective(
 }
 
 /**
- * True iff `msg` is a directive whose (id, from, body) match a registered
- * legitimate write. Rejects forged lines (unregistered id OR same id with
+ * True iff `msg` is a directive whose (id, from, body, correlationId) match
+ * a registered legitimate write. Rejects forged lines (unregistered id OR same id with
  * different content). When the registered directive has a runId, the active
  * runId MUST be provided AND match — this prevents cross-run replay and FAILS
  * CLOSED when the active run is unknown (e.g. team state unreadable in the
- * Transform hook). A directive without a registered runId (legacy/unscoped)
- * passes regardless of activeRunId for backward compatibility.
+ * Transform hook).
+ *
+ * Fail-closed for unscoped directives (C8): a directive registered WITHOUT
+ * a runId is accepted ONLY when there is no active run (activeRunId ===
+ * undefined), preserving backward compat for the pre-capture edge. When
+ * there IS an active run, an unscoped directive is rejected — it cannot be
+ * verified as belonging to the current run, and accepting it would allow
+ * cross-run replay.
+ *
+ * correlationId binding (C7): without it, an attacker who knows a
+ * directive's (id, from, body) can modify the correlationId to inject
+ * additional text into the rendered attribute, bypassing the content
+ * binding. The correlationId is now part of the authenticated content.
  */
 export function isAuthenticatedDirective(
     msg: Message,
@@ -90,12 +102,18 @@ export function isAuthenticatedDirective(
     if (registered.from !== msg.from) return false
     if (registered.to !== msg.to) return false
     if (registered.body !== msg.body) return false
-    // Fail-closed runId binding: if the registered directive has a runId, the
-    // activeRunId MUST be defined AND match. Returning true when activeRunId
-    // is undefined would let a directive authenticated for run A receive
-    // [DIRECTIVE] priority during run B (or no run at all), which is the
-    // cross-run replay attack the binding exists to prevent.
-    if (registered.runId !== undefined && registered.runId !== activeRunId) {
+    if (registered.correlationId !== msg.correlationId) return false
+    // Fail-closed runId binding (C8): a directive without a registered
+    // runId is accepted ONLY when there is no active run (activeRunId ===
+    // undefined). This preserves backward compat for the pre-capture edge
+    // (activeTask.runId still undefined). When there IS an active run,
+    // an unscoped directive is rejected — it cannot be verified as
+    // belonging to the current run, and accepting it would allow cross-run
+    // replay (an attacker who copied the directive line before ACK could
+    // replay it in a subsequent run).
+    if (registered.runId === undefined) {
+        if (activeRunId !== undefined) return false
+    } else if (registered.runId !== activeRunId) {
         return false
     }
     return true
@@ -109,12 +127,26 @@ export function isAuthenticatedDirective(
  *
  * Called from mailbox.ackMessages so consumption is tied to the durable
  * delivery confirmation (reserved file unlink), not to the in-memory render.
+ *
+ * runId independence (C7): consumption intentionally does NOT re-check the
+ * runId binding. ACK is called after successful delivery — the directive
+ * was already authenticated by formatMailboxInjection with the active run's
+ * runId. The previous code passed msg.runId as activeRunId to
+ * isAuthenticatedDirective, which meant an attacker who deleted msg.runId
+ * could prevent ACK consumption and replay the directive indefinitely
+ * within the same run. Only (to, id, from, body, correlationId) need to
+ * match to consume the record.
  */
 export function consumeDirectiveAuth(
     msg: Message,
-    activeRunId?: string,
 ): boolean {
-    if (!isAuthenticatedDirective(msg, activeRunId)) return false
+    if (msg.kind !== "directive") return false
+    const registered = authenticatedDirectives.get(authKey(msg.to, msg.id))
+    if (registered === undefined) return false
+    if (registered.from !== msg.from) return false
+    if (registered.to !== msg.to) return false
+    if (registered.body !== msg.body) return false
+    if (registered.correlationId !== msg.correlationId) return false
     authenticatedDirectives.delete(authKey(msg.to, msg.id))
     return true
 }

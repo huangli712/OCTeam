@@ -502,8 +502,15 @@ export function markWorkflowFanoutBranchErrored(
     const activeIndex = findActiveWorkflowStepIndexForMember(task, memberName);
     const activeBranch =
         activeIndex === null ? null : (steps[activeIndex]?.branch ?? null);
-    const branch =
-        activeBranch ?? recordedErroredBranchForMember(steps, memberName);
+    // H50: only use the recorded-errored-branch fallback when the member has
+    // NO active step at all (activeIndex === null). This covers the H-7 case
+    // where a second ensemble verifier errors after the branch was removed
+    // from activeStepIndices. When the member DOES have an active step but it
+    // is a top-level (non-branch) step, the error is a top-level error — the
+    // pre-fix code would fall back to a PAST errored branch (already marked
+    // within_tolerance), swallowing the current error.
+    const branch = activeBranch
+        ?? (activeIndex === null ? recordedErroredBranchForMember(steps, memberName) : null);
     if (branch === null) return { kind: "not_fanout" };
 
     const joinStep = steps[branch.joinIndex];

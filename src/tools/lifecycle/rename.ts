@@ -13,7 +13,7 @@ import { isEnoent } from "../../core/utils.js"
 import {
     invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec,
 } from "../../state/store.js"
-import { indexMasterTeam, setActiveTeam, unindexMasterTeam } from "../../state/resolve.js"
+import { indexMasterTeam, isIndexedMasterOf, setActiveTeam, unindexMasterTeam } from "../../state/resolve.js"
 import { teamDir } from "../../state/paths.js"
 import type { TeamSpec } from "../../core/types.js"
 
@@ -43,7 +43,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            if (team.leadSessionId !== context.sessionID) {
+            if (team.leadSessionId !== context.sessionID || !isIndexedMasterOf(context.sessionID, team.directory)) {
                 return "Error: team_rename is master-only (only the team's leader can rename it)"
             }
             if (team.status !== "live") {
@@ -66,6 +66,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
 
             let staleState = false
             let collision = false
+            let specError: string | undefined = undefined
             await team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status live→busy since
@@ -98,7 +99,11 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // the spec entirely (spec=null branch skips writeTeamSpec
                     // in the new directory, so the renamed team has no config).
                     // Treat as a fatal precondition and refuse the rename.
-                    return `Error: team "${args.team_id}" config is unreadable — refusing to rename (${err instanceof Error ? err.message : String(err)})`
+                    // H57: set a flag instead of returning a string — the outer
+                    // code checks flags, not the callback return value, so a
+                    // returned string was silently dropped.
+                    specError = `Error: team "${args.team_id}" config is unreadable — refusing to rename (${err instanceof Error ? err.message : String(err)})`
+                    return
                 }
                 // Capture the original spec name so the rollback can restore it.
                 const originalSpecName = spec?.name
@@ -116,7 +121,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // — no index/registry cleanup needed.
                     if (spec) {
                         spec = { ...spec, name: args.new_name }
-                        await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId)
+                        await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId, ctx.storageRoot)
                     }
                     await saveTeamState(team)
 
@@ -142,7 +147,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     if (spec && originalSpecName !== undefined && spec.name !== originalSpecName) {
                         try {
                             const restoredSpec = { ...spec, name: originalSpecName }
-                            await writeTeamSpec(ctx.storageRoot, restoredSpec, pathLeadSessionId)
+                            await writeTeamSpec(ctx.storageRoot, restoredSpec, pathLeadSessionId, ctx.storageRoot)
                         } catch (specRollbackErr) {
                             logSwallowed(ctx, "rename rollback: writeTeamSpec restore failed", specRollbackErr, { oldDir, newDir })
                         }
@@ -155,6 +160,9 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
             })
 
 
+            if (specError) {
+                return specError
+            }
             if (staleState) {
                 return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
                     + `Teams can only be renamed before sessions are spawned.`

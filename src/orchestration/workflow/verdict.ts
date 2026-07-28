@@ -213,6 +213,24 @@ export async function handleInvalidVerdict(
         });
         if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
             return;
+        // H52: honor task-level human approval before advancing (parity with
+        // handleGatePass). Without this, a malformed+skip would advance to the
+        // next step without the human review pause that human_approval promises.
+        const wfSteps = task.steps ?? [];
+        const malformedNextIndex = wfSteps.findIndex((s) => !s.completed);
+        if (
+            step.branch === undefined
+            && malformedNextIndex !== -1
+            && (await maybeRequestApproval(ctx, team, {
+                kind: "workflow_step",
+                stage: gateIndex,
+                summary: `Gate step ${gateIndex + 1} skipped after malformed verdict`
+                    + ` from ${verifierName}. Next: ${describeStep(wfSteps[malformedNextIndex], malformedNextIndex)}.`
+                    + ` Review before continuing.`,
+            }))
+        ) {
+            return;
+        }
         await advanceWorkflowStep(ctx, team);
         return;
     }
@@ -342,6 +360,22 @@ async function handleGatePass(
     // a stale verdict (parity with FAIL/INVALID paths and ensemble gates).
     const task = team.activeTask;
     if (task) delete task.responses[verifierName];
+    // C18: when approval_after is configured, mark the gate completed BEFORE
+    // pausing. Without this, the pause returns early and the gate remains
+    // un-completed; after approval, applyApprovalDecision calls
+    // advanceWorkflowStep, which re-processes the still-active gate
+    // (re-dispatching the verifier in linear workflows, or waiting forever
+    // on stale dispatchedAt in DAG workflows).
+    //
+    // This is safe because approval_after is validator-guaranteed
+    // incompatible with on_*_goto (so the gotoIdx === -2 branch below is
+    // unreachable when approvalAfter is set). H-4's constraint (gate must
+    // NOT be marked completed before the unevaluable-where check) only
+    // applies to gates WITHOUT approvalAfter — those gates still defer
+    // resetStepAfterCompletion past the gotoIdx check (line 373 below).
+    if (step.approvalAfter) {
+        resetStepAfterCompletion(step, { completed: true });
+    }
     // approval_after on a gate is validator-guaranteed incompatible with
     // on_*_goto, so pausing here cannot be bypassed by a goto jump.
     if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
@@ -436,6 +470,23 @@ async function handleGateFail(
         // Honor approval_after before advancing (parity with handleGatePass).
         if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
             return;
+        // H52: honor task-level human approval before advancing (parity with
+        // handleGatePass). Without this, a FAIL+skip would advance without
+        // the human review pause that human_approval promises.
+        const failSkipNextIndex = steps.findIndex((s) => !s.completed);
+        if (
+            step.branch === undefined
+            && failSkipNextIndex !== -1
+            && (await maybeRequestApproval(ctx, team, {
+                kind: "workflow_step",
+                stage: gateIndex,
+                summary: `Gate step ${gateIndex + 1} skipped after FAIL verdict`
+                    + ` from ${verifierName}. Next: ${describeStep(steps[failSkipNextIndex], failSkipNextIndex)}.`
+                    + ` Review before continuing.`,
+            }))
+        ) {
+            return;
+        }
         await advanceWorkflowStep(ctx, team);
         return;
     }
@@ -572,6 +623,9 @@ async function handleGateRetry(
         if (retryStep.kind === "task") {
             retryStep.output = undefined;
             retryStep.taskAttempts = 0;
+            // H51: reset task timeoutAttempts (parity with the gate branch
+            // below and the backward-jump reset in engine.ts).
+            retryStep.timeoutAttempts = 0;
         }
         if (retryStep.kind === "gate") {
             retryStep.verdict = undefined;
