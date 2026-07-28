@@ -426,10 +426,14 @@ export async function claimTask(
             }, { expectedStatus: "pending" })
             return updated
         } catch (err) {
+            // M-CLAIM: release the claim lock on ANY failure, not just
+            // TaskStatusError. Pre-fix code only unlinked on
+            // TaskStatusError; a non-TaskStatusError (I/O, ENOSPC) would
+            // leave an orphaned claim lock blocking future claims until TTL.
+            await fs.unlink(lockPath).catch(() => {
+                // best-effort: stale-claim reaper will eventually clean
+            })
             if (err instanceof TaskStatusError) {
-                await fs.unlink(lockPath).catch(() => {
-                    // release our lock since we are not claiming
-                })
                 throw new TaskAlreadyClaimedError(taskId)
             }
             throw err

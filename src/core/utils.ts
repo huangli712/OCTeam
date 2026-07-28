@@ -33,7 +33,10 @@ export function waitUntil(
     if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs < 0) {
         return Promise.reject(new Error(`waitUntil: invalid timeoutMs ${opts.timeoutMs} (must be finite and >= 0)`))
     }
-    const pollMs = opts.pollMs ?? 250
+    // M-POLLMS: validate pollMs is a finite positive number. NaN/Infinity/
+    // negative would cause tight polling or setTimeout warnings.
+    const rawPollMs = opts.pollMs ?? 250
+    const pollMs = Number.isFinite(rawPollMs) && rawPollMs > 0 ? rawPollMs : 250
     return new Promise<void>((resolve, reject) => {
         const start = Date.now()
         const tick = () => {
@@ -60,7 +63,7 @@ export function waitUntil(
  * M6: validates n is a finite positive integer. NaN (n <= 0 is false for NaN)
  * would cause i += NaN → infinite loop. */
 export function chunk<T>(arr: T[], n: number): T[][] {
-    if (!Number.isFinite(n) || n <= 0) return []
+    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return []
     const out: T[][] = []
     for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
     return out

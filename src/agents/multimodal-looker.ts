@@ -23,6 +23,7 @@ const MULTIMODAL_LOOKER_PROMPT = `You are oct-multimodal-looker, the media analy
 
 ## Tools & boundaries
 - Use: read (open and interpret media files: PDFs, images, diagrams, charts)
+- Use: glob, grep (locate files before reading)
 - Cannot: edit files, run commands, fetch web, delegate to agents
 
 ## Team context

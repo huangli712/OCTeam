@@ -274,6 +274,13 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                             loop: step.loop,
                             criteria: step.criteria,
                             jumpCount: step.jumpCount,
+                            // M-RUNREC: persist runtime ensemble + loop audit
+                            // fields so run records can reconstruct the actual
+                            // decision process (which verifier ran, how many
+                            // loop iterations executed).
+                            fallbackVerifier: step.fallbackVerifier,
+                            ensembleResults: step.ensembleResults,
+                            loopIterations: step.loopIterations,
                         }
                     case "fanout":
                         return { ...base, fanout: step.fanout }
@@ -332,8 +339,12 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     let runIds: string[] = []
     try {
         runIds = await fs.readdir(root)
-    } catch {
-        return // no runs/ yet
+    } catch (err) {
+        // M-PRUNE: distinguish ENOENT (no runs/ yet) from real errors.
+        if (!isEnoent(err)) {
+            logger.warn("pruneRuns: readdir failed", { dir: root, error: err instanceof Error ? err.message : String(err) })
+        }
+        return // no runs/ yet or unreadable
     }
 
     const dated: Array<{ runId: string; finishedAt: number }> = []

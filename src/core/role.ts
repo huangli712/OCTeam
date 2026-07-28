@@ -38,8 +38,10 @@
 /** A role's fixed agent and preset instruction text. */
 export type RoleDef = { agent: string; instruction: string }
 
-/** The complete role catalogue — maps role labels to agent and instruction. */
-export const ROLES: Record<string, RoleDef> = {
+/** The complete role catalogue — maps role labels to agent and instruction.
+ * M-ROLES: frozen so callers cannot mutate the shared catalogue in-place.
+ * Use roleDef() for a defensive copy when mutation of individual entries is needed. */
+export const ROLES: Readonly<Record<string, RoleDef>> = Object.freeze({
     // --- software ---
     coder: {
         agent: "oct-deep",
@@ -442,7 +444,7 @@ export const ROLES: Record<string, RoleDef> = {
             "- When a task falls outside your capability, flag it for the master to route to a specialist",
         ].join("\n"),
     },
-}
+})
 
 /**
  * Role assigned when a member's role does not match any preset. This is a

@@ -15,7 +15,7 @@
  *   - workflow.ts         (Layer 0) WorkflowStep, Verdict, fanout/join metadata, WorkflowToolStep (external tool API)
  *   - messaging.ts        (Layer 0) Message, SdkMessage
  *   - task.ts             (Layer 0) Task/TaskStatus (shared cooperative tasklist)
- *   - orchestration.ts    (Layer 1) ActiveTask union + 11 variants + enums + Stage/GatedStage/Approval/RouteBranch/Arena
+ *   - orchestration.ts    (Layer 1) ActiveTask union + 12 variants + enums + Stage/GatedStage/Approval/RouteBranch/Arena
  *   - team.ts             (Layer 2) TeamSpec, TeamState, MemberState, Bounds, LastModeRecord
  *   - runs.ts             (Layer 2) RunRecord, RunEvent, WorkflowRunStep
  */

@@ -30,7 +30,11 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
         })
         return stdout.trim().length > 0
     } catch (err) {
-        // Distinguish "not a git path" (safe) from "git failed" (unsafe).
+        // Distinguish "not a git path" (safe — worktree: false members have
+        // no git worktree) from "git failed" (unsafe).
+        // M-WORKTREE: a corrupted .git in a formerly-valid worktree could
+        // also produce "not a git repository". Log the path so operators
+        // can diagnose if uncommitted work is lost after team_delete.
         // A non-existent path or non-repo has no work to lose → return false.
         // Any other error means we CANNOT verify cleanliness → fail closed.
         const msg = err instanceof Error ? err.message : String(err)
@@ -38,6 +42,7 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
             /not a git repository|does not exist|no such file/i.test(msg)
             || (err as NodeJS.ErrnoException).code === "ENOENT"
         ) {
+            logger.debug("hasUncommittedChanges: path is not a git repo (no work to lose)", { worktreePath })
             return false
         }
         logger.warn("hasUncommittedChanges: git status failed, treating as dirty (fail-closed)", {
