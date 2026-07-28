@@ -14,7 +14,7 @@ import { describe, expect, test } from "bun:test"
 
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { writeRawInboxLine } from "./helpers.js"
-import type { ActiveTask } from "../src/core/types.js"
+import type { ActiveTask, WorkflowTask } from "../src/core/types.js"
 import { makeCtx, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js"
 
 describe("HIGH-B: handler runs before wake-hint when capturedNew=true", () => {
@@ -27,7 +27,7 @@ describe("HIGH-B: handler runs before wake-hint when capturedNew=true", () => {
             reducerMember: "alice",
             reducePolicy: "summary",
             responses: { bob: "bob work", carol: "carol work" },
-        } as unknown as ActiveTask)
+        } as unknown as Partial<WorkflowTask>) as unknown as ActiveTask
         const team = makeTeam({
             activeTask: task,
             members: [
