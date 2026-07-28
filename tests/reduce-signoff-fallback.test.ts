@@ -47,7 +47,7 @@ describe("H41: reducer-errored fallback honors signoff", () => {
             reduceStage: true,
             reducerMember: "alice",
             reducePolicy: "summarize",
-            signoffPolicy: "all", // require signoff
+            signoffPolicy: "peer-quorum", // require signoff
             responses: { alice: "ALICE_RAW", bob: "BOB_RAW" },
             maxErroredMembers: 1,
         })

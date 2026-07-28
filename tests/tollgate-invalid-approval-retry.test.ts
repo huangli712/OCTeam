@@ -17,9 +17,8 @@
 import { afterEach, describe, expect, test } from "bun:test"
 
 import { applyApprovalDecision } from "../src/tools/control/approve.js"
-import { startVerification } from "../src/orchestration/modes/tollgate.js"
 import type { GatedStage, TollgateTask } from "../src/core/types.js"
-import { initTeamState, saveTeamState, type Team } from "../src/state/store.js"
+import { initTeamState, saveTeamState } from "../src/state/store.js"
 import { type DispatchCall, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 import { unindexSession } from "../src/state/resolve.js"
 

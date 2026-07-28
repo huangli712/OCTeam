@@ -18,7 +18,7 @@
 import { afterAll, describe, expect, mock, test } from "bun:test"
 
 import type { PluginContext } from "../src/core/context.js"
-import { NOTIFY_COOLDOWN_MS, runDelegateStyleTail } from "../src/orchestration/modes/delegate.js"
+import { runDelegateStyleTail } from "../src/orchestration/modes/delegate.js"
 import { initTeamState } from "../src/state/store.js"
 import { createTask } from "../src/state/tasks.js"
 import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
@@ -36,6 +36,8 @@ function delegateTask(runId: string): ActiveTask {
         tokensByMember: {},
         messagesSent: 0,
         responses: {},
+        stages: [],
+        currentStageIndex: 0,
         decisionHistory: [],
         decisionParseFailures: 0,
         runId,

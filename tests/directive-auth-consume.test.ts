@@ -42,7 +42,7 @@ describe("consumeDirectiveAuth runId binding (C-5)", () => {
         expect(isAuthenticatedDirective(msg, "r1")).toBe(true)
 
         // ack-time consumption with msg.runId must succeed.
-        expect(consumeDirectiveAuth(msg, msg.runId)).toBe(true)
+        expect(consumeDirectiveAuth(msg)).toBe(true)
 
         // After ack: replay is no longer authenticated.
         expect(isAuthenticatedDirective(msg, "r1")).toBe(false)

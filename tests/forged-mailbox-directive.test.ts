@@ -413,7 +413,7 @@ describe("C7: auth field binding gaps", () => {
         // ACK should still consume the auth record — the directive was
         // already rendered with the active run's runId (not msg.runId),
         // so consuming based on (to, id, from, body) is sufficient.
-        const consumed = consumeDirectiveAuth(forged, undefined)
+        const consumed = consumeDirectiveAuth(forged)
         expect(consumed).toBe(true)
 
         const sizeAfter = authTest.authDirectiveMapSize()

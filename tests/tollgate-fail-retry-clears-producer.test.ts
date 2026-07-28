@@ -21,9 +21,9 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import { handleTollgateIdle } from "../src/orchestration/modes/tollgate.js"
 import type { GatedStage, MemberState, TollgateTask } from "../src/core/types.js"
-import { initTeamState, saveTeamState, type Team } from "../src/state/store.js"
-import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, tmpRoot } from './helpers.js'
-import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
+import { saveTeamState, type Team } from "../src/state/store.js"
+import { type DispatchCall, makeCtx, makeTeam, tmpRoot } from './helpers.js'
+import { unindexSession } from "../src/state/resolve.js"
 
 function gate(opts: Partial<GatedStage> & Pick<GatedStage, "member" | "verifier">): GatedStage {
     return {
@@ -81,9 +81,7 @@ describe("H43: tollgate FAIL retry clears stale producer artifact", () => {
     })
 
     test("FAIL retry deletes responses[stage.member] before re-dispatch", async () => {
-        const root = tmpRoot("h43-stale-producer")
-        const alice = makeMember("alice", "ses_a")
-        const bob = makeMember("bob", "ses_b")
+        tmpRoot("h43-stale-producer")
         const stage = gate({ member: "alice", verifier: "bob" })
         const task = makeTollgateTask({
             gatedStages: [stage],

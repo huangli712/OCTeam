@@ -15,8 +15,8 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test"
 import { handleRouteIdle } from "../src/orchestration/modes/route.js"
 import type { MemberState, RouteBranch, RouteTask } from "../src/core/types.js"
 import { initTeamState } from "../src/state/store.js"
-import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { unindexSession } from "../src/state/resolve.js"
+import { type DispatchCall, cleanupTmpRoots, makeCtx, makeState, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
@@ -86,7 +86,8 @@ describe("H47: route rejects partial unknown branch names", () => {
         // run proceeds (routeStage=true). The router's partial work is lost.
         // On FIXED code: run fails with a descriptive reason naming the
         // unknown target.
-        expect(team.status).toBe("failed")
+        const status: string = team.status
+        expect(status).toBe("failed")
         expect(team.activeTask).toBeUndefined()
     })
 

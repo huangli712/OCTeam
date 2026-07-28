@@ -39,6 +39,8 @@ function delegateTask(runId: string): ActiveTask {
         tokensByMember: {},
         messagesSent: 0,
         responses: {},
+        stages: [],
+        currentStageIndex: 0,
         decisionHistory: [],
         decisionParseFailures: 0,
         runId,

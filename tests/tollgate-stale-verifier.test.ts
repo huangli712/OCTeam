@@ -20,14 +20,13 @@
  */
 import { afterEach, describe, expect, test } from "bun:test"
 
-import { getExpectedMember } from "../src/orchestration/lifecycle/idle.js"
-import { advanceToGatedStage, handleTollgateIdle, startVerification } from "../src/orchestration/modes/tollgate.js"
-import type { GatedStage, MemberState, TollgateTask } from "../src/core/types.js"
-import { initTeamState, loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
+import { startVerification } from "../src/orchestration/modes/tollgate.js"
+import type { GatedStage, TollgateTask } from "../src/core/types.js"
+import { initTeamState, saveTeamState } from "../src/state/store.js"
 
 import type { PluginContext } from "../src/core/context.js"
-import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
-import { type DispatchCall, makeCtx, makeMember, makeState, makeTeam, makeToolContext, tmpRoot } from './helpers.js'
+import { unindexSession } from "../src/state/resolve.js"
+import { type DispatchCall, makeCtx, makeMember, makeState, tmpRoot } from './helpers.js'
 
 function gate(opts: Partial<GatedStage> & Pick<GatedStage, "member" | "verifier">): GatedStage {
     return {
