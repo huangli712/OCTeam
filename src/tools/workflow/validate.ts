@@ -700,6 +700,15 @@ function validateLoweredGateStep(
         if (targetStep && targetStep.kind !== "task" && targetStep.kind !== "gate") {
             return `Error: ${location} ${field} "${String(ref)}" must reference a task or gate step, not ${targetStep.kind}`
         }
+        // M18: a top-level gate must not reference a branch-internal target.
+        // Pre-fix code allowed this — validation passed (target exists and is
+        // task/gate), but runtime canGateGotoStep rejects cross-branch jumps
+        // silently (returns -1). The gate then falls through to sequential
+        // advance, skipping the intended goto target.
+        const gateStep = steps[index]
+        if (targetStep && gateStep?.kind === "gate" && gateStep.branch === undefined && targetStep.branch !== undefined) {
+            return `Error: ${location} ${field} "${String(ref)}" references a branch-internal step from a top-level gate — gotos cannot cross branch boundaries`
+        }
         if (gate.on_invalid === "escalate" && field === "on_invalid_goto") {
             return (`Error: ${location} on_invalid_goto is incompatible with on_invalid='escalate'`
                 + ` (escalate uses approve/reject)`)

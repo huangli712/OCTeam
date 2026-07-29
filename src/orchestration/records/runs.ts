@@ -238,7 +238,19 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                 }
                 switch (step.kind) {
                     case "task":
-                        return { ...base, member: step.member }
+                        return {
+                            ...base,
+                            member: step.member,
+                            // M9: include task retry audit fields so run records
+                            // capture the actual retry configuration and execution
+                            // history (attempts consumed, retry_on condition used).
+                            // Pre-fix code only included `member`.
+                            fallbackMember: step.fallbackMember,
+                            retryOn: step.retryOn,
+                            maxTaskRetries: step.maxTaskRetries,
+                            taskAttempts: step.taskAttempts,
+                            timeoutAttempts: step.timeoutAttempts,
+                        }
                     case "gate":
                         return {
                             ...base,
