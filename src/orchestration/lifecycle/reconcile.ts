@@ -163,6 +163,14 @@ export async function handleSessionDeleted(ctx: PluginContext, sessionID: string
             try {
                 const team = await loadTeamState(ctx.projectStorageRoot, teamName, leadSessionId)
                 team.deleted = true  // tombstone: prevent racing handlers from resurrecting
+                // H-L12: persist the tombstone BEFORE removing the directory.
+                // Pre-fix code only set deleted in memory and invalidated the
+                // cache — a process crash between here and fs.rm would leave
+                // the state.json on disk without the tombstone, and the next
+                // startup would see the team as alive with stale sessionIds.
+                try { await saveTeamState(team) } catch (e) {
+                    logSwallowed(ctx, "saveTeamState failed during session deletion", e, { team: teamName })
+                }
                 dirsToInvalidate.push(team.directory)
             } catch (err) {
                 logSwallowed(ctx, "team state unreadable during session deletion", err, { team: teamName })
