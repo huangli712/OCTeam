@@ -19,6 +19,7 @@ import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent, maybeEscalateRetry } from "./orchestration/lifecycle/status.js"
 import { processIdle } from "./orchestration/lifecycle/idle.js"
 import { checkTermination } from "./orchestration/lifecycle/termination.js"
+import { finishRun } from "./orchestration/control/completion.js"
 import { recordEvent } from "./orchestration/records/events.js"
 import type { MemberState } from "./core/types.js"
 import { asSdkMessages, extractSessionStatusEntry } from "./orchestration/protocol/output.js"
@@ -495,7 +496,19 @@ export async function sweepTeamOnce(
                 team: team.teamName,
             })
         }
-        // 2. Termination checks run even if no idle arrives.
+        // 2. Approval timeout: fail the run if approval has been pending
+        // longer than the configured limit. Pre-fix code had the types defined
+        // but no execution path — a hung approval would deadlock the team
+        // until wall-clock timeout.
+        const task = team.activeTask
+        if (task && task.approvalRequest && task.approvalTimeoutMs !== undefined) {
+            const elapsed = Date.now() - task.approvalRequest.requestedAt
+            if (elapsed > task.approvalTimeoutMs) {
+                await finishRun(ctx, team, "approval_timeout", "failed")
+                return
+            }
+        }
+        // 3. Termination checks run even if no idle arrives.
         await checkTermination(ctx, team)
         if (!team.activeTask) return
         // M-8: check retry escalation for all members with retryingSince set.
