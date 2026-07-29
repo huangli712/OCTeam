@@ -72,7 +72,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 // startOrchestration may have flipped status live→busy since
                 // the outside-mutex check at line 42. Refuse rather than
                 // renaming during an active run.
-                if (team.status !== "live") {
+                if (team.status !== "live" || team.spawning) {
                     staleState = true
                     return
                 }

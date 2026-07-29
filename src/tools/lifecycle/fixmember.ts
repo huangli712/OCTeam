@@ -114,7 +114,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 // startOrchestration may have flipped status to "busy" since
                 // the outside-mutex check at line 43. Refuse rather than
                 // modifying members during an active run.
-                if (team.status === "busy") {
+                if (team.status === "busy" || team.spawning) {
                     staleState = true
                     return
                 }

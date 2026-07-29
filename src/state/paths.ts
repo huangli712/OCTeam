@@ -50,6 +50,13 @@ export function stateLockPath(teamDirectory: string): string {
     return path.join(teamDirectory, "state.json.lock")
 }
 
+/** team.lifecycle.lock — cross-process lock guarding team lifecycle operations
+ *  (startup spawning, rename, fixmember, delete). Prevents cross-process races
+ *  where sibling OpenCode instances concurrently modify the same team. */
+export function teamLifecycleLockPath(teamDirectory: string): string {
+    return path.join(teamDirectory, "team.lifecycle.lock")
+}
+
 // --- mailbox/ ---
 
 /** Mailbox directory path for a team: `<teamDirectory>/mailbox`. */

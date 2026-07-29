@@ -85,7 +85,10 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 // that acquires the mutex after us sees a consistent, finished state
                 // and does not write. This idle state is intentionally NOT persisted --
                 // the storage is removed below instead.
-                if (team.status === "busy") {
+                if (team.status === "busy" || team.spawning) {
+                    if (team.spawning) {
+                        return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). Retry in a few seconds.`
+                    }
                     // Abort running members + reset to idle (shared helper,
                     // mirrors team_cancel). This idle state is intentionally
                     // NOT persisted — the storage is removed below instead.
