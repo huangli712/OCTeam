@@ -81,6 +81,10 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
             // "max"). Pre-fix allowlist omitted it, silently dropping the
             // user's chosen reasoning variant on every config hook pass.
             if (typeof existing.variant === "string") allowed.variant = existing.variant
+            // L1: preserve top_p (sampling parameter, same category as
+            // temperature). Pre-fix allowlist omitted it, silently dropping
+            // the user's top_p on every config hook pass.
+            if (typeof existing.top_p === "number") allowed.top_p = existing.top_p
             cfg.agent[name] = {
                 ...def,
                 // H1: freeze the permission object so later hooks cannot mutate

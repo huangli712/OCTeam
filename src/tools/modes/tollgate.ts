@@ -118,6 +118,17 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                     if (overlap.length > 0) {
                         return `Error: member "${overlap[0]}" appears as both producer and verifier across different gates — shared response slots would cause artifact overwrite. Use distinct members for each role.`
                     }
+                    // H3: prohibit the same producer across multiple stages.
+                    // task.responses[member] is a single slot; a second stage
+                    // with the same producer would overwrite the first stage's
+                    // artifact, corrupting upstream context and summary.
+                    const seenProducers = new Set<string>()
+                    for (const s of args.stages) {
+                        if (seenProducers.has(s.member)) {
+                            return `Error: producer "${s.member}" appears in multiple stages — shared response slots would cause artifact overwrite. Use a distinct producer for each stage.`
+                        }
+                        seenProducers.add(s.member)
+                    }
                     // Validate members: every stage's producer + verifier,
                     // plus the optional escalation target.
                     const namedMembers = new Set<string>()

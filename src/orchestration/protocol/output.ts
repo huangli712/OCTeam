@@ -61,14 +61,27 @@ export function extractOutputFromParts(parts: unknown): string {
                 segments.push(`[Patch]\n${input.patchText}`)
             } else if (typeof input.newString === "string" && input.newString.trim()) {
                 // M-OUTPUT: capture edit tool's oldString→newString format.
-                // Pre-fix code only checked content/command/patchText, missing
-                // the common edit(aft_edit) input shape. Without this, a turn
-                // that only used edit would be captured as "no new output".
                 const fp = typeof input.filePath === "string" ? input.filePath : ""
                 const oldStr = typeof input.oldString === "string" ? input.oldString : ""
                 segments.push(fp
                     ? `[Edit: ${fp}]\n- ${oldStr}\n+ ${input.newString}`
                     : `[Edit]\n- ${oldStr}\n+ ${input.newString}`)
+            } else if (typeof input.oldString === "string" && input.oldString.trim() && input.newString === "") {
+                // M15: capture deletion-only edits (newString is empty string).
+                // Pre-fix code's newString.trim() check skipped deletions.
+                const fp = typeof input.filePath === "string" ? input.filePath : ""
+                segments.push(fp
+                    ? `[Delete: ${fp}]\n- ${input.oldString}`
+                    : `[Delete]\n- ${input.oldString}`)
+            } else if (Array.isArray(input.edits) && input.edits.length > 0) {
+                // M15: capture batch edits (aft_edit edits[] input shape).
+                const fp = typeof input.filePath === "string" ? input.filePath : ""
+                const summary = input.edits.map((e: Record<string, unknown>) => {
+                    const o = typeof e.oldString === "string" ? e.oldString : ""
+                    const n = typeof e.newString === "string" ? e.newString : ""
+                    return `- ${o}\n+ ${n}`
+                }).join("\n")
+                segments.push(fp ? `[Batch Edit: ${fp}]\n${summary}` : `[Batch Edit]\n${summary}`)
             }
         }
     }

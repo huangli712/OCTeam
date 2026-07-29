@@ -356,10 +356,18 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         // best-effort: old worktree may already be gone
                     }
                     liveMember.worktreePath = undefined
+                    if (liveMember.sessionId) {
+                        unindexSession(liveMember.sessionId)
+                    }
                     liveMember.sessionId = undefined
                     liveMember.initialized = false
+                    // H5: unindex the old session and persist the cleared state.
+                    // Pre-fix code cleared fields in memory but didn't save —
+                    // a process restart would reload the old sessionId from
+                    // disk, making the destroyed worktree appear active.
                     changes.push(`worktree: destroyed old (will re-create on next start)`)
                 }
+                await saveTeamState(team)
             })
 
             if (staleState) {

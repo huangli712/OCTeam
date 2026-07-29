@@ -200,7 +200,12 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                                 m.status = "errored"
                                 m.error = `resume dispatch failed: ${e instanceof Error ? e.message : String(e)}`
                             } else {
-                                m.status = "errored"
+                                // M16: restore the member's original status. Pre-fix
+                                // code unconditionally set errored — even for
+                                // members that were NOT dispatched during the
+                                // partial resume. Those members should go back to
+                                // their pre-resume state (typically idle).
+                                m.status = saved.status
                                 m.error = saved.error
                             }
                             m.declaredDone = saved.declaredDone

@@ -67,12 +67,28 @@ function extractTaggedJSON(
     const matches = [...(text?.matchAll(re) ?? [])]
     if (matches.length === 0) return null
     const lastPayload = matches[matches.length - 1][1]
-    // Extract the LAST {...} block in the payload (LLMs sometimes wrap JSON
-    // in prose). If there is no brace block at all, this is a parse failure.
-    const braceMatch = lastPayload.match(/\{[\s\S]*\}/)
-    if (braceMatch === null) return undefined
+    // M14: extract the LAST valid JSON object from the payload. Pre-fix code
+    // used a greedy /\{[\s\S]*\}/ that spanned from the first `{` to the
+    // last `}`, concatenating multiple objects into invalid JSON. Now scan
+    // from the last `}` backward to find the matching `{` via brace counting,
+    // then JSON.parse the result. If that fails, fall back to the greedy
+    // match for single-object payloads (backward compat).
+    const lastClose = lastPayload.lastIndexOf("}")
+    if (lastClose === -1) return undefined
+    // Scan backward to find the matching open brace.
+    let depth = 0
+    let openIdx = -1
+    for (let i = lastClose; i >= 0; i--) {
+        if (lastPayload[i] === "}") depth++
+        else if (lastPayload[i] === "{") {
+            depth--
+            if (depth === 0) { openIdx = i; break }
+        }
+    }
+    if (openIdx === -1) return undefined
+    const candidate = lastPayload.slice(openIdx, lastClose + 1)
     try {
-        return JSON.parse(braceMatch[0]) as Record<string, unknown>
+        return JSON.parse(candidate) as Record<string, unknown>
     } catch {
         return undefined
     }

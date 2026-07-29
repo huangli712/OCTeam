@@ -43,6 +43,11 @@ function isValidMessage(value: unknown): value is Message {
     // mismatched version indicates a tampered or forward-incompatible line.
     if (m.version !== 1) return false
     if (typeof m.id !== "string" || !isSafePathSegment(m.id)) return false
+    // H2: cap id length. The id is used as a filename component (reservation
+    // files, processed entries). An id longer than NAME_MAX (255 on Linux)
+    // triggers ENAMETOOLONG on every file operation, permanently wedging the
+    // mailbox. 128 is far above any legitimate UUID-based id.
+    if (Buffer.byteLength(m.id, "utf8") > 128) return false
     if (typeof m.from !== "string") return false
     // M-JSONL: cap string field lengths to prevent DoS. from/to/summary are
     // short identifiers or one-line text; correlationId/runId are UUIDs. A

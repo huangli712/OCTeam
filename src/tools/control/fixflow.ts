@@ -117,7 +117,14 @@ function restoreSnapshot(team: Team, snapshot: RepairSnapshot): void {
  * (promotes it to busy and resets errored members to idle).
  */
 function workflowRepairTarget(team: Team): WorkflowRepairTarget | null {
-    if (team.status === "busy" && isWorkflowTask(team.activeTask)) return { task: team.activeTask }
+    if (team.status === "busy" && isWorkflowTask(team.activeTask)) {
+        // H7: refuse fixflow when an approval is pending. Pre-fix code allowed
+        // redispatch/skip/advance/reassign while a HITL gate was paused,
+        // bypassing the leader's review. The old approval request would remain
+        // and could later approve/reject a step that has already been replaced.
+        if (team.activeTask.approvalStage !== undefined) return null
+        return { task: team.activeTask }
+    }
     if (team.status === "failed" && isWorkflowTask(team.lastInterruptedTask)) {
         team.activeTask = team.lastInterruptedTask
         team.status = "busy"
@@ -285,6 +292,14 @@ async function applyReassign(
             const remaining = workflowStep.verifiers.slice(1)
             if (remaining.includes(toMember)) {
                 return `Error: "${toMember}" is already a verifier in this ensemble gate — reassignment would create a duplicate`
+            }
+            // H6: clear the OLD verifier's ensemble result so its stale verdict
+            // is not counted in the next aggregation. Pre-fix code kept the old
+            // result, causing a re-assigned gate to count the replaced verifier's
+            // vote alongside the new one.
+            const oldVerifier = workflowStep.verifiers[0]
+            if (oldVerifier && workflowStep.ensembleResults) {
+                delete workflowStep.ensembleResults[oldVerifier]
             }
             workflowStep.verifiers = [toMember, ...remaining]
         } else {

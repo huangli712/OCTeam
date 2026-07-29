@@ -362,7 +362,13 @@ export async function releaseStaleReservations(
                 // NaN > TTL is always false → the message is stranded in
                 // reserved/ forever (permanent message loss). Coerce non-finite
                 // values to undefined so the mtime fallback below applies.
-                reservedAt = typeof raw === "number" && Number.isFinite(raw) ? raw : undefined
+                // M5: reject future timestamps (clock skew, tampering). A
+                // reservedAt far in the future produces negative age, so
+                // age > TTL is always false → message stranded forever.
+                // Allow a small tolerance (30s) for clock drift.
+                const now = Date.now()
+                reservedAt = typeof raw === "number" && Number.isFinite(raw) && raw <= now + 30_000
+                    ? raw : undefined
             } catch (err) {
                 // H15: log instead of silently skipping, so unreadable/corrupt
                 // reservation files are observable. The skip itself is correct

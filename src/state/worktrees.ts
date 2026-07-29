@@ -10,7 +10,7 @@ import { promisify } from "node:util"
 
 import { logger } from '../core/log.js';
 import { assertNoSymlinkTraversal } from "./locks.js";
-import { worktreePath } from "./paths.js";
+import { worktreePath, worktreesDir } from "./paths.js";
 
 /** Promisified child_process.execFile for git operations. */
 const execFileP = promisify(execFile)
@@ -111,6 +111,11 @@ export async function createWorktree(
     memberName: string,
 ): Promise<string> {
     const dest = worktreePath(teamDirectory, memberName);
+    // H12: verify the worktrees/ path chain is not symlink-redirected before
+    // handing it to git. A symlinked worktrees/ dir would let git check out the
+    // full repository outside the trusted team root.
+    await assertNoSymlinkTraversal(teamDirectory, dest);
+    await assertNoSymlinkTraversal(teamDirectory, worktreesDir(teamDirectory));
     const branch = `team/${teamName}/${memberName}`;
     // Fail fast if branch/worktree already exists; team_create idempotency is
     // handled by the caller checking member.worktreePath.

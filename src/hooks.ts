@@ -200,8 +200,16 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                     if (!team.activeTask) return
                     if (team.deleted) return
                     live.status = "errored"
-                    const errInfo = narrowed?.properties as { error?: string; message?: string } | undefined
-                    live.error = `session.error: ${errInfo?.error ?? errInfo?.message ?? "unknown"}`
+                    // L5: serialize the full error info instead of relying on
+                    // SDK properties.error being a string (it may be an object).
+                    const errProps = narrowed?.properties
+                    const errMsg = errProps?.error !== undefined
+                        ? (typeof errProps.error === "string" ? errProps.error : JSON.stringify(errProps.error))
+                        : errProps?.message !== undefined
+                            ? String(errProps.message)
+                            : "unknown"
+                    const errSession = typeof errProps?.sessionID === "string" ? errProps.sessionID : undefined
+                    live.error = `session.error: ${errMsg}${errSession ? ` (session: ${errSession})` : ""}`
                     recordEvent(team, {
                         timestamp: Date.now(),
                         kind: "errored",
@@ -477,7 +485,12 @@ export async function sweepTeamOnce(
             if (m.status === "running") continue
             await releaseStaleReservations(team.directory, m.name)
         }
-        if (team.activeTask?.type === "delegate") {
+        // M10: reap stale claims for both delegate and recurse modes.
+        // Pre-fix code only reaped for delegate; recurse uses the same claim
+        // protocol, so a member that crashes after claiming leaves the task
+        // permanently claimed until wall-clock timeout.
+        const taskType = team.activeTask?.type
+        if (taskType === "delegate" || taskType === "recurse") {
             await reapStaleClaims(team.directory)
         }
         // 2. Termination checks run even if no idle arrives.

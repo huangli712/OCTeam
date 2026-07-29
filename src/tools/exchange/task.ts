@@ -67,13 +67,22 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
             let limitError = false
             let blockedByError: string | undefined
             await team.mutex.runExclusive(async () => {
-                // H60: re-check recurse mode INSIDE the mutex. A concurrent
-                // startOrchestration may have started a recurse run between the
-                // loadTeamState above and here.
+                // H60: re-check recurse mode INSIDE the mutex.
                 if (team.activeTask?.type === "recurse") {
                     blockedByError = (
                         `Error: team_task_create is disabled in recurse mode. Subtasks are created `
                         + `automatically by the orchestrator from the decomposer's <decompose> block.`
+                    )
+                    return
+                }
+                // H8: parallel isolated mode prohibits task creation.
+                // Isolated members must not communicate via shared task list.
+                // isolated = no per-member tasks assigned (cooperative has `tasks`).
+                const at = team.activeTask
+                if (at?.type === "parallel" && !at.tasks) {
+                    blockedByError = (
+                        `Error: team_task_create is disabled in parallel isolated mode. `
+                        + `Isolated members cannot share a task list.`
                     )
                     return
                 }

@@ -126,9 +126,13 @@ export async function applyApprovalDecision(
     // flight. This save also makes the catch block's in-memory rollback
     // meaningful (the disk already has the resolution; the rollback only
     // affects the in-memory state that will be re-saved on the next call).
+    // M20: save INSIDE the try block so a save failure triggers the
+    // rollback in the catch block. Pre-fix code had save outside the try —
+    // a save throw left the in-memory approvalStage cleared but disk still
+    // showing the old request, with no rollback.
+    try {
     await saveTeamState(team)
 
-    try {
     if (!decision.approved) {
         switch (request.kind) {
             case "pipeline_stage":

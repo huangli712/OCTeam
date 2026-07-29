@@ -381,8 +381,16 @@ export type WorkflowToolArgs = {
     workflow_file?: string
     vars?: Record<string, string>
     dry_run?: boolean
+    // L3: include the 5 tool-level fields that the runtime accepts but the
+    // type omitted. Without these, direct callers using WorkflowToolArgs get
+    // excess-property errors and ResolvedWorkflowToolArgs loses them.
     signoff_policy?: "none" | "decider" | "peer-quorum"
     signoff_decider?: string
+    signoff_quorum?: number
+    human_approval?: boolean
+    timeout_ms?: number
+    token_budget?: number
+    max_retries?: number
 }
 
 /** Resolved workflow args after loading steps from file and expanding matrix/foreach. */

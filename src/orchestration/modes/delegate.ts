@@ -130,6 +130,26 @@ export async function runDelegateStyleTail(
     // the deadlock check -- its claimed tasks are reaped by the sweep and a
     // survivor reclaims them.
     if (claimable.length === 0) {
+        // H4: before declaring deadlock, check if any member holds a
+        // claimed/in_progress task. Pre-fix code only checked pending tasks;
+        // a member that went idle while holding a claimed task would be
+        // counted as "all idle with nothing to do" → false deadlock. The
+        // member may have produced output but not yet finalized, or been
+        // woken by a wake-hint. Re-prompt the oldest such member instead.
+        const membersWithTasks = incompleteForClaimable.filter(
+            t => (t.status === "claimed" || t.status === "in_progress") && t.owner,
+        )
+        if (membersWithTasks.length > 0) {
+            // Re-dispatch owners of claimed/in_progress tasks instead of
+            // declaring deadlock. The task is still in flight.
+            for (const t of membersWithTasks) {
+                const owner = team.members.find(m => m.name === t.owner)
+                if (owner?.sessionId && owner.status !== "running") {
+                    await dispatchToMember(ctx, owner, t.subject, owner.worktreePath ?? ctx.directory, team)
+                }
+            }
+            return
+        }
         // Fast path: use cached member.status.
         const prelimAllIdle = team.members.every(
             m => m.status === "idle" || m.status === "errored" || !m.sessionId,

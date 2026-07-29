@@ -141,6 +141,11 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     ) {
         return false
     }
+    // M12: verify teamName matches the directory's last path segment.
+    // A tampered state.json moved to another team's directory would otherwise
+    // load and bind the session to the wrong team.
+    const expectedName = teamDirectory.split(/[\/]/).pop()
+    if (expectedName && s.teamName !== expectedName) return false
     // M-8: validate status is a known enum value. Pre-fix code accepted any
     // string, so a tampered state.json with status:"HACKED" would load and
     // propagate to handlers that switch on status.
@@ -225,6 +230,16 @@ async function readJsonOrNull<T>(
     validate?: (value: unknown) => value is T,
 ): Promise<T | null> {
     try {
+        // H11: cap file size before reading. A symlinked or tampered state
+        // file can be unbounded (/dev/zero, FIFO, huge sparse file). 1 MiB
+        // is far above any legitimate state.json/config.json.
+        const stat = await fs.lstat(filePath)
+        if (stat.isSymbolicLink()) return null
+        if (!stat.isFile()) return null
+        if (stat.size > 1_048_576) {
+            logger.warn("readJsonOrNull: file exceeds 1 MiB cap", { file: filePath, size: stat.size })
+            return null
+        }
         const raw = await fs.readFile(filePath, "utf8")
         const parsed: unknown = JSON.parse(raw)
         if (validate && !validate(parsed)) {
