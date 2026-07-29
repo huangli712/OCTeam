@@ -89,6 +89,12 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         throw err
     }
     for (const reviewer of reviewers) {
+        // Record the reviewer as pending BEFORE dispatch so a crash between
+        // dispatches doesn't re-prompt reviewers that were already sent.
+        // Pre-fix code saved only before the loop; all reviewers would be
+        // re-dispatched on resume regardless of which had already been sent.
+        task.signoffApprovals = { ...task.signoffApprovals, [reviewer.name]: "pending" }
+        await saveTeamState(team)  // commit the pending flag before dispatch
         await dispatchToMember(
             ctx,
             reviewer,
