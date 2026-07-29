@@ -38,7 +38,7 @@ describe("team_fix_member constraint (1)", () => {
         tracked.push(masterSid)
         // inactive team (no activatedAt)
         await initTeamState(root, makeState("alpha", masterSid, [makeMember("alice")]), masterSid)
-        await writeTeamSpec(root, { name: "alpha", members: [{ name: "alice", role: "coder", prompt: "old" }] }, masterSid, root)
+        await writeTeamSpec(root, { name: "alpha", version: 1 as const, createdAt: Date.now(), members: [{ name: "alice", role: "coder", prompt: "old" }] }, masterSid, root)
         await rebuildSessionIndex(root, `${root}__unused`)
 
         const result = await teamFixMemberTool(makeCtx({ storageRoot: root })).execute(
