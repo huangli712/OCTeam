@@ -242,7 +242,7 @@ export async function processIdle(
     // idle event (from a turn that was already aborted/failed) must not
     // resurrect the member to idle and re-enter the mode handler.
     if (member.status === "errored") {
-        logger.warn("processIdle: skipping stale idle for errored member", {
+        console.warn("processIdle: skipping stale idle for errored member", {
             team: team.teamName, member: member.name,
         })
         return
