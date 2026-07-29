@@ -543,7 +543,24 @@ export async function readTeamSpec(
     teamName: string,
     leadSessionId?: string,
 ): Promise<TeamSpec | null> {
-    return readJsonOrNull<TeamSpec>(configPath(teamDir(storageRoot, teamName, leadSessionId)))
+    return readJsonOrNull<TeamSpec>(
+        configPath(teamDir(storageRoot, teamName, leadSessionId)),
+        isValidTeamSpec,
+    )
+}
+
+/** M14: minimal structural validation for TeamSpec. */
+function isValidTeamSpec(value: unknown): value is TeamSpec {
+    if (typeof value !== "object" || value === null) return false
+    const s = value as Record<string, unknown>
+    if (typeof s.name !== "string" || !s.name) return false
+    if (!Array.isArray(s.members)) return false
+    for (const m of s.members) {
+        if (typeof m !== "object" || m === null) return false
+        const mb = m as Record<string, unknown>
+        if (typeof mb.name !== "string" || !mb.name) return false
+    }
+    return true
 }
 
 /** Read TeamSpec from a known team directory (scope-independent). */
