@@ -339,7 +339,7 @@ export type WorkflowFanoutToolStep = WorkflowToolStepBase & {
     readonly kind: "fanout"
     readonly branches?: readonly WorkflowFanoutBranch[]
     readonly max_errored?: number
-    readonly join_policy?: "tolerance" | "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
+    readonly join_policy?: "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
     readonly quorum?: number
     readonly required_branches?: readonly string[]
     readonly reducer_member?: string
@@ -353,7 +353,7 @@ export type WorkflowFanoutToolStep = WorkflowToolStepBase & {
 /** Tool API join step — companion marker for the preceding fanout. */
 export type WorkflowJoinToolStep = WorkflowToolStepBase & {
     readonly kind: "join"
-    readonly join_policy?: "tolerance" | "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
+    readonly join_policy?: "all" | "quorum" | "any_success" | "required_branches" | "reduce" | "select"
     readonly quorum?: number
     readonly required_branches?: readonly string[]
     readonly reducer_member?: string

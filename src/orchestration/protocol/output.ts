@@ -86,9 +86,23 @@ export function extractOutputFromParts(parts: unknown): string {
                 const summary = input.edits.map((e: Record<string, unknown>) => {
                     const o = typeof e.oldString === "string" ? e.oldString : ""
                     const n = typeof e.newString === "string" ? e.newString : ""
+                    // M11: also capture line-range edits (content field).
+                    if (!o && !n && typeof e.content === "string") {
+                        const sl = typeof e.startLine === "number" ? e.startLine : "?"
+                        const el = typeof e.endLine === "number" ? e.endLine : "?"
+                        return `L${sl}-${el}: ${e.content}`
+                    }
                     return `- ${o}\n+ ${n}`
                 }).join("\n")
                 segments.push(fp ? `[Batch Edit: ${fp}]\n${summary}` : `[Batch Edit]\n${summary}`)
+            } else if (typeof input.appendContent === "string" && input.appendContent.trim()) {
+                // M11: capture appendContent tool calls. These produce no
+                // oldString/newString — just a content append. Without this,
+                // an append-only turn is captured as "no new output".
+                const fp = typeof input.filePath === "string" ? input.filePath : ""
+                segments.push(fp
+                    ? `[Append: ${fp}]\n+ ${input.appendContent}`
+                    : `[Append]\n+ ${input.appendContent}`)
             }
         }
     }
