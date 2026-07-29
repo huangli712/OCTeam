@@ -15,6 +15,15 @@ import type { Message } from "../core/types.js"
 /** Append a JSON object as a single line to filePath. */
 export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: string): Promise<void> {
     await refuseSymlink(filePath, trustedRoot)
+    // H1: refuse non-regular files (FIFO, device). A FIFO at the mailbox
+    // path would hang appendFile indefinitely, holding the mailbox lock.
+    try {
+        const stat = await fs.lstat(filePath)
+        if (!stat.isFile()) throw new Error(`appendJsonl: not a regular file: ${filePath}`)
+    } catch (err) {
+        if (!isEnoent(err) && err instanceof Error && !err.message.startsWith("appendJsonl:")) throw err
+        // ENOENT is fine — appendFile will create the file.
+    }
     await fs.mkdir(path.dirname(filePath), { recursive: true })
     await fs.appendFile(filePath, JSON.stringify(obj) + "\n", "utf8")
 }
@@ -85,7 +94,10 @@ export async function readJsonl(filePath: string): Promise<Message[]> {
         // would OOM the process during readFile. 10 MiB matches the mailbox
         // backpressure cap; any legitimate file exceeding this is a red flag.
         const stat = await fs.lstat(filePath)
-        if (stat.isSymbolicLink()) return []
+        // H1: reject non-regular files (symlinks, FIFOs, device files).
+        // Pre-fix code only rejected symlinks; a FIFO or /dev/zero would
+        // hang readFile forever or produce infinite output.
+        if (!stat.isFile()) return []
         if (stat.size > 10_485_760) {
             logger.warn("readJsonl: file exceeds 10 MiB cap, refusing to read", { file: filePath, size: stat.size })
             return []

@@ -22,6 +22,7 @@ import { finishRun } from "../control/completion.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { captureMemberOutput } from "../records/capture.js"
 import { recordEvent } from "../records/events.js"
+import { logSwallowed } from "../../core/log.js"
 
 /** Minimum cooldown (ms) between re-prompt notifications in delegate/recurse. */
 export const NOTIFY_COOLDOWN_MS = 10_000
@@ -56,14 +57,16 @@ export async function runDelegateStyleTail(
         // Idempotent: already-captured members yield empty outputs and return early.
         for (const m of team.members) {
             if (m.isMaster || !m.sessionId) continue
+            // H4: log capture failures so operators can diagnose incomplete
+            // output in run summaries. Pre-fix code silently swallowed all
+            // errors — a transient session.messages failure or persistent I/O
+            // error was indistinguishable from a member with zero output.
             try {
                 const res = await ctx.client.session.messages({ path: { id: m.sessionId } })
                 const msgs = asSdkMessages(res.data)
                 await captureMemberOutput(team, m, msgs)
-            } catch {
-                // Best-effort capture: a transient session.messages failure must
-                // not crash the delegate barrier — the member's last captured
-                // output (if any) will be used in the summary.
+            } catch (err) {
+                logSwallowed(ctx, "delegate tail: captureMemberOutput failed", err, { member: m.name })
             }
         }
         if (await maybeTriggerSignoff(ctx, team)) {

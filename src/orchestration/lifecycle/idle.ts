@@ -238,6 +238,15 @@ export async function processIdle(
     }
 
     // Step 2: member is now idle.
+    // H6: refuse stale idle for errored members. An errored member's late
+    // idle event (from a turn that was already aborted/failed) must not
+    // resurrect the member to idle and re-enter the mode handler.
+    if (member.status === "errored") {
+        logger.warn("processIdle: skipping stale idle for errored member", {
+            team: team.teamName, member: member.name,
+        })
+        return
+    }
     member.status = "idle"
     member.retryingSince = undefined // idle clears retry tracking
 

@@ -280,19 +280,28 @@ export function parseScoreboard(
 function parseWorkflowIssues(raw: unknown): WorkflowIssue[] | undefined {
     if (!Array.isArray(raw)) return undefined
     const issues: WorkflowIssue[] = []
+    let hadInvalidSeverity = false
     for (const item of raw) {
         if (typeof item !== "object" || item === null || Array.isArray(item)) continue
-        if (!("severity" in item) || !isWorkflowIssueSeverity(item.severity)) continue
+        if (!("severity" in item)) continue
+        if (!isWorkflowIssueSeverity(item.severity)) {
+            // H9: track entries with invalid severity labels. If ALL entries
+            // are malformed, the verifier attempted to report issues but used
+            // unknown labels — treat as unevaluable (undefined), not "no
+            // qualifying issues" ([]). Pre-fix code silently skipped these.
+            hadInvalidSeverity = true
+            continue
+        }
         const issue: WorkflowIssue = { severity: item.severity }
         if ("message" in item && typeof item.message === "string") issue.message = item.message
         issues.push(issue)
     }
-    // R2: return the array even when empty. Pre-fix code returned undefined for
-    // empty arrays, which H54's has_issue_severity fail-closed logic treated
-    // as "verifier omitted issues field" (unevaluable). A legitimate
-    // `issues:[]` means "no issues found" (does_not_match), NOT unevaluable.
-    // Only a non-array input (field omitted) should return undefined.
-    return issues
+    // R2: return the array even when empty for legit `issues:[]`.
+    // H9: BUT return undefined when the verifier reported issues with
+    // invalid severity labels (all entries malformed). An empty array
+    // means "no qualifying issues" (does_not_match); undefined means
+    // "verifier couldn't properly report issues" (unevaluable).
+    return issues.length > 0 ? issues : (hadInvalidSeverity ? undefined : [])
 }
 
 /**

@@ -38,6 +38,12 @@ function parseBallot(
     const matches = [...output.matchAll(re)]
     if (matches.length === 0) return { vote: "", status: "invalid" }
     const match = matches[matches.length - 1]
+    // H5: if there are more raw <vote> tags than matched ones, the LAST tag
+    // was malformed (no parseable JSON). The member attempted to change their
+    // vote but the final expression is broken — treat as invalid rather than
+    // falling back to an earlier valid vote.
+    const rawTagCount = (output.match(/<(?:vote|投票)>/g) ?? []).length
+    if (rawTagCount > matches.length) return { vote: "", status: "invalid" }
     try {
         const obj = JSON.parse(match[1]) as Record<string, unknown>
         const raw = obj[voteKey]

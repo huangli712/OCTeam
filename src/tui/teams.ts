@@ -62,13 +62,12 @@ export async function countMailbox(teamDirectory: string, recipient: string): Pr
             // (the retention cap is 1000 lines, ~100 KB typical).
             // H27/R1: use lstat (no follow) to detect symlinks AND check size.
             // lstat on a symlink returns the symlink's own small size, NOT the
-            // target's — so the size check alone is insufficient. A symlink to
-            // /dev/zero passes the cap, then readFile follows it → infinite
-            // read → OOM. Fix: refuse ALL symlinks (mailbox files are regular
-            // files written by appendJsonl; a symlink here is tampering).
+            // H13: also reject non-regular files (FIFO, device) which would
+            // hang readFile or produce infinite output. Pre-fix code only
+            // rejected symlinks (R1).
             const lstat = await fs.lstat(file)
-            if (lstat.isSymbolicLink()) {
-                console.warn(`[octeam] countMailbox: refusing symlinked mailbox file`)
+            if (lstat.isSymbolicLink() || !lstat.isFile()) {
+                console.warn(`[octeam] countMailbox: refusing non-regular mailbox file`)
                 return 0
             }
             if (lstat.size > 1_048_576) {
