@@ -113,14 +113,17 @@ function assertValidTaskId(taskId: string): void {
 function isValidTask(value: unknown): value is Task {
     if (typeof value !== "object" || value === null) return false
     const t = value as Record<string, unknown>
+    // M16: normalize missing blockedBy to [] instead of accepting undefined.
+    // Pre-fix code accepted undefined, but many code paths (delegate,
+    // recurse, task list) unconditionally access .length and .every() —
+    // a legacy or corrupted task file without blockedBy would crash.
+    if (t.blockedBy === undefined) t.blockedBy = []
     return (
         typeof t.id === "string"
         && typeof t.subject === "string"
         && typeof t.status === "string"
-        && (t.blockedBy === undefined || (
-            Array.isArray(t.blockedBy)
-            && t.blockedBy.every(v => typeof v === "string")
-        ))
+        && Array.isArray(t.blockedBy)
+        && t.blockedBy.every(v => typeof v === "string")
     )
 }
 
@@ -321,11 +324,21 @@ async function tryCreateClaimLock(lockPath: string, owner: string): Promise<bool
         const fh = await fs.open(lockPath, "wx")
         try {
             await fh.writeFile(owner)
-        } catch (err) {
+        } catch (writeErr) {
+            // Write failed: close handle, unlink the incomplete lock.
+            try { await fh.close() } catch { /* best-effort */ }
             await fs.unlink(lockPath).catch(() => { /* best-effort rollback */ })
-            throw err
-        } finally {
+            throw writeErr
+        }
+        // M17: close after successful write. If close fails, the lock
+        // file is on disk without a live fd → permanent orphan. Unlink
+        // and re-throw. Pre-fix code had close() in finally without error
+        // handling, silently leaving the orphan.
+        try {
             await fh.close()
+        } catch (closeErr) {
+            await fs.unlink(lockPath).catch(() => { /* best-effort */ })
+            throw closeErr
         }
         return true
     } catch (err: unknown) {

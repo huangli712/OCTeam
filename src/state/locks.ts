@@ -157,13 +157,18 @@ async function acquireLock(lockPath: string): Promise<void> {
             const fh = await fs.open(lockPath, "wx")
             try {
                 await fh.writeFile(String(process.pid))
-            } catch (err) {
-                // The creator removes its incomplete lock so later callers do
-                // not wait until the acquisition timeout.
+            } catch (writeErr) {
+                try { await fh.close() } catch { /* best-effort */ }
                 await fs.unlink(lockPath).catch(() => { /* best-effort */ })
-                throw err
-            } finally {
+                throw writeErr
+            }
+            // M17: close after successful write. If close fails, the lock
+            // is on disk without a live fd → permanent orphan.
+            try {
                 await fh.close()
+            } catch (closeErr) {
+                await fs.unlink(lockPath).catch(() => { /* best-effort */ })
+                throw closeErr
             }
             return
         } catch (err: unknown) {

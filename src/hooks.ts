@@ -475,23 +475,25 @@ export async function sweepTeamOnce(
         // handleStatusEvent (status.ts) tombstone guards.
         if (team.deleted) return
         // 1. Reclaim stale resources.
-        await releaseStaleReservations(team.directory, "master")
-        for (const m of team.members) {
-            // H13: skip reclaim for members that are currently running. A
-            // running member may be actively processing its reserved messages;
-            // reclaiming them mid-processing returns them to the inbox, causing
-            // duplicate delivery on the next poll. The member will idle (or
-            // crash) and the next sweep tick will reclaim safely.
-            if (m.status === "running") continue
-            await releaseStaleReservations(team.directory, m.name)
-        }
-        // M10: reap stale claims for both delegate and recurse modes.
-        // Pre-fix code only reaped for delegate; recurse uses the same claim
-        // protocol, so a member that crashes after claiming leaves the task
-        // permanently claimed until wall-clock timeout.
-        const taskType = team.activeTask?.type
-        if (taskType === "delegate" || taskType === "recurse") {
-            await reapStaleClaims(team.directory)
+        // M12: wrap cleanup in try-catch so a single corrupt mailbox/task
+        // doesn't block termination checks for this team. Pre-fix code ran
+        // cleanup sequentially before checkTermination; any thrown error
+        // would skip timeout/budget enforcement entirely.
+        try {
+            await releaseStaleReservations(team.directory, "master")
+            for (const m of team.members) {
+                if (m.status === "running") continue
+                await releaseStaleReservations(team.directory, m.name)
+            }
+            // M10: reap stale claims for both delegate and recurse modes.
+            const taskType = team.activeTask?.type
+            if (taskType === "delegate" || taskType === "recurse") {
+                await reapStaleClaims(team.directory)
+            }
+        } catch (err) {
+            logSwallowed(ctx, "sweepTeamOnce: cleanup error (continuing to termination checks)", err, {
+                team: team.teamName,
+            })
         }
         // 2. Termination checks run even if no idle arrives.
         await checkTermination(ctx, team)
@@ -502,6 +504,11 @@ export async function sweepTeamOnce(
         for (const member of team.members) {
             if (member.retryingSince !== undefined) {
                 await maybeEscalateRetry(ctx, team, member)
+                // M13: after each escalation, check if the run ended. Pre-fix
+                // code only checked after the entire loop — the first member's
+                // escalation could finishRun, but remaining members would still
+                // be processed and marked errored.
+                if (!team.activeTask) return
             }
         }
         if (!team.activeTask) return
