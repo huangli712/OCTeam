@@ -93,7 +93,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         // dispatches doesn't re-prompt reviewers that were already sent.
         // Pre-fix code saved only before the loop; all reviewers would be
         // re-dispatched on resume regardless of which had already been sent.
-        task.signoffApprovals = { ...task.signoffApprovals, [reviewer.name]: "pending" }
+        task.signoffApprovals = { ...task.signoffApprovals, [reviewer.name]: false }
         await saveTeamState(team)  // commit the pending flag before dispatch
         await dispatchToMember(
             ctx,
