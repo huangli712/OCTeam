@@ -337,6 +337,12 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
     for (const key of Object.keys(current) as (keyof TeamState)[]) {
         if (key === "members" || key === "activeTask") continue
         if (!jsonEqual(current[key], ancestor[key])) {
+            // H#5: runnerPid is a fencing token set by whichever process
+            // starts/resumes a run. If current cleared it (undefined) but
+            // another process set it, clearing would falsely mark the run as
+            // ownerless — letting reconcile fail it. Keep the disk value when
+            // current has no PID (the other process's run is still active).
+            if (key === "runnerPid" && current[key] === undefined && disk[key] !== undefined) continue
             ;(merged as Record<string, unknown>)[key] = current[key]
         }
     }
