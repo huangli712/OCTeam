@@ -113,9 +113,33 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
     // nextActions parse correctly (L2).
     const parsed = extractTaggedJSON(rawText, "decision", "决策")
     if (!parsed) return fail()
+    // L3: strictly validate the decision value. Pre-fix code normalized any
+    // non-"done" value (including misspellings like "dnoe" and missing keys)
+    // to "continue" silently, and never set parseFailed. Now: "done" explicit,
+    // "continue" explicit, or boolean done:true are the only accepted values.
+    // Anything else sets parseFailed so the retry/reformat path can fire.
+    const decision = parsed.decision
+    if (decision === "done" || parsed.done === true) {
+        return {
+            round: 0,
+            decision: "done",
+            rationale: typeof parsed.rationale === "string" ? parsed.rationale : "No rationale provided",
+            nextActions: Array.isArray(parsed.nextActions)
+                ? parsed.nextActions.filter((a): a is string => typeof a === "string")
+                : [],
+            timestamp: Date.now(),
+        }
+    }
+    // L3: if `decision` is undefined (key absent) with no `done:true`,
+    // treat as "continue" (LLM may restate the tag without a decision).
+    // If `decision` is present but has an INVALID value (misspelling),
+    // that IS parseFailed — the LLM tried to express a decision but used
+    // a non-standard label. Pre-fix code normalized ALL non-"done" values
+    // to "continue" silently, even misspellings.
+    if (decision !== undefined && decision !== "continue") return fail()
     return {
         round: 0,
-        decision: parsed.decision === "done" || parsed.done === true ? "done" : "continue",
+        decision: "continue",
         rationale: typeof parsed.rationale === "string" ? parsed.rationale : "No rationale provided",
         nextActions: Array.isArray(parsed.nextActions)
             ? parsed.nextActions.filter((a): a is string => typeof a === "string")

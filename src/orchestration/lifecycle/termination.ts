@@ -62,6 +62,12 @@ export async function checkTermination(
     // (pipeline/loop/consensus) get tolerance 0 — one active member, no survivors.
     const erroredMembers = team.members.filter(m => !m.isMaster && m.status === "errored")
     if (erroredMembers.length > 0) {
+        // H7: if signoff is in progress, the signoff handler owns errored-
+        // reviewer handling (signoff.ts excludes errored reviewers from
+        // quorum). Pre-fix code let the generic task-type handler fire first
+        // — for non-workflow tasks, a single reviewer error would terminate
+        // the ENTIRE run, bypassing signoff's peer-quorum tolerance.
+        if (task.signoffStage) return
         if (task.type === "workflow") {
             const activeActors = new Set(getActiveWorkflowStepActors(task))
             for (const member of erroredMembers) {
