@@ -215,35 +215,25 @@ export async function ackMessages(
     // releaseStaleReservations batch semantics. Calls pruneProcessedLogUnlocked
     // (the unlocked variant) to avoid re-acquiring the same non-reentrant lock.
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
+        const unlinkErrors: string[] = []
         for (const msg of msgs) {
             await appendJsonl(processedPath(teamDirectory, recipient), {
                 ...msg,
                 deliveryStatus: "processed",
             }, teamDirectory)
-            // One-shot directive auth consumption: a successful ack confirms
-            // durable delivery. Delete the in-memory auth record so a later
-            // replay of the same JSONL line (via FS tampering or stale
-            // reserved-file resurrection) no longer matches the registry and
-            // is downgraded to a regular message.
-            //
-            // C7: consumeDirectiveAuth no longer takes activeRunId. ACK is
-            // called after successful delivery — the directive was already
-            // authenticated by formatMailboxInjection with the active run's
-            // runId. Consumption only needs (to, id, from, body, correlationId)
-            // to match. The previous code passed msg.runId, which meant an
-            // attacker who deleted msg.runId could prevent consumption and
-            // replay the directive indefinitely within the same run.
-            if (msg.kind === "directive") {
+            await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
+                if (!isEnoent(err)) {
+                    const errMsg = err instanceof Error ? err.message : String(err)
+                    logger.warn("ackMessages: reservation unlink failed", { msgId: msg.id, error: errMsg })
+                    unlinkErrors.push(errMsg)
+                }
+            })
+            if (msg.kind === "directive" && unlinkErrors.length === 0) {
                 consumeDirectiveAuth(msg)
             }
-            await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
-                // ENOENT is the benign race (reservation already removed) —
-                // swallow. Any other errno (EPERM, EBUSY, EROFS, ...) leaves
-                // the reservation on disk; releaseStaleReservations would then
-                // re-append it to the inbox → duplicate delivery of an already
-                // processed message. Surface the failure instead.
-                if (!isEnoent(err)) throw err
-            })
+        }
+        if (unlinkErrors.length > 0) {
+            throw new Error(unlinkErrors[0])
         }
         // Retention: cap the audit log so it doesn't grow unbounded.
         await pruneProcessedLogUnlocked(teamDirectory, recipient)
@@ -265,6 +255,9 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
     const p = processedPath(teamDirectory, recipient)
     let raw: string
     try {
+        // H2: cap file size and reject non-regular files before reading.
+        const stat = await fs.lstat(p)
+        if (!stat.isFile() || stat.size > 1_048_576) return
         raw = await fs.readFile(p, "utf8")
     } catch (err: unknown) {
         if (isEnoent(err)) return
@@ -320,14 +313,19 @@ export async function releaseStaleReservations(
         // reaped and re-appended to the inbox → duplicate delivery.
         const processedIds = new Set<string>()
         try {
-            const processedRaw = await fs.readFile(processedPath(teamDirectory, recipient), "utf8")
-            for (const line of processedRaw.split("\n")) {
-                if (line.length === 0) continue
-                try {
-                    const p = JSON.parse(line) as { id?: unknown }
-                    if (typeof p.id === "string") processedIds.add(p.id)
-                } catch {
-                    // skip malformed line
+            // H2: cap file size and reject non-regular files before reading.
+            const procPath = processedPath(teamDirectory, recipient)
+            const procStat = await fs.lstat(procPath)
+            if (procStat.isFile() && procStat.size <= 1_048_576) {
+                const processedRaw = await fs.readFile(procPath, "utf8")
+                for (const line of processedRaw.split("\n")) {
+                    if (line.length === 0) continue
+                    try {
+                        const pr = JSON.parse(line) as { id?: unknown }
+                        if (typeof pr.id === "string") processedIds.add(pr.id)
+                    } catch {
+                        // skip malformed line
+                    }
                 }
             }
         } catch (err: unknown) {
@@ -354,6 +352,12 @@ export async function releaseStaleReservations(
             let reservedAt: number | undefined
             let parsed: Message & { reservedAt?: number } | undefined
             try {
+                // H2: cap reservation file size and reject non-regular files.
+                const rstat = await fs.lstat(p)
+                if (!rstat.isFile() || rstat.size > 65_536) {
+                    logger.warn("releaseStaleReservations: skipping non-regular/oversized reservation", { path: p, size: rstat.size })
+                    continue
+                }
                 parsed = JSON.parse(await fs.readFile(p, "utf8")) as Message & { reservedAt?: number }
                 const raw = (parsed as { reservedAt?: unknown }).reservedAt
                 // H15: reservedAt MUST be a finite number. A tampered or corrupt
