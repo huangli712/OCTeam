@@ -75,20 +75,30 @@ function extractTaggedJSON(
     // match for single-object payloads (backward compat).
     const lastClose = lastPayload.lastIndexOf("}")
     if (lastClose === -1) return undefined
-    // M7: scan backward with JSON string awareness. Pre-fix code naively
-    // counted every `{`/`}` — a `}` inside a string literal (e.g. a
-    // rationale value) would corrupt the depth count, causing parse failure
-    // on otherwise valid JSON. Now skip characters inside double-quoted
-    // strings (with backslash escape awareness).
+    // M3: pre-compute unescaped quote positions by scanning FORWARD.
+    // The backward scanner (M7) correctly toggles inString on unescaped
+    // quotes, but got the escape direction wrong for backward traversal —
+    // `\"` seen backward encounters `"` before `\`, toggling inString
+    // prematurely. A forward scan correctly handles escape ordering.
+    const unescapedQuotes = new Set<number>()
+    for (let i = 0; i <= lastClose; i++) {
+        if (lastPayload[i] === '"') {
+            // Count preceding backslashes; odd count → escaped.
+            let bsCount = 0
+            let j = i - 1
+            while (j >= 0 && lastPayload[j] === '\\') { bsCount++; j-- }
+            if (bsCount % 2 === 0) unescapedQuotes.add(i)
+        }
+    }
     let depth = 0
     let openIdx = -1
     let inString = false
-    let escaped = false
     for (let i = lastClose; i >= 0; i--) {
         const ch = lastPayload[i]
-        if (escaped) { escaped = false; continue }
-        if (ch === "\\") { escaped = true; continue }
-        if (ch === '"') { inString = !inString; continue }
+        // M3: toggle inString ONLY on pre-computed unescaped quotes.
+        // Pre-fix code toggled on every `"` and used a broken escape
+        // tracker for backward order.
+        if (unescapedQuotes.has(i)) { inString = !inString; continue }
         if (inString) continue
         if (ch === "}") depth++
         else if (ch === "{") {

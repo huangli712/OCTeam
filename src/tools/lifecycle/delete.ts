@@ -79,16 +79,21 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     staleBusy = true
                     return
                 }
+                // H#3: refuse delete of spawning teams BEFORE setting the
+                // deleted tombstone. Pre-fix code set team.deleted=true at
+                // line 82 then checked spawning at line 88 — the return
+                // skipped staleBusy, so the outer code reported success
+                // while leaving the team in a tombstone state.
+                if (team.spawning) {
+                    return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). Retry in a few seconds.`
+                }
                 team.deleted = true  // tombstone: prevent any racing handler from resurrecting this dir
                 // Force-deleting a busy team: abort running members and clear the
                 // active task in memory FIRST (mirrors team_cancel) so any handler
                 // that acquires the mutex after us sees a consistent, finished state
                 // and does not write. This idle state is intentionally NOT persisted --
                 // the storage is removed below instead.
-                if (team.status === "busy" || team.spawning) {
-                    if (team.spawning) {
-                        return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). Retry in a few seconds.`
-                    }
+                if (team.status === "busy") {
                     // Abort running members + reset to idle (shared helper,
                     // mirrors team_cancel). This idle state is intentionally
                     // NOT persisted — the storage is removed below instead.

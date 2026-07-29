@@ -62,8 +62,13 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             if (team.runnerPid !== undefined) {
                 try {
                     process.kill(team.runnerPid, 0)  // signal 0 checks liveness only
-                } catch {
-                    isCrashed = true  // ESRCH: process not found
+                } catch (err) {
+                    // M#2: only treat ESRCH as "process dead". Pre-fix code
+                    // considered ANY error (including EPERM) as crashed, so a
+                    // process owned by another user would be falsely failed.
+                    if ((err as NodeJS.ErrnoException).code === "ESRCH") {
+                        isCrashed = true
+                    }
                 }
             }
             if (isCrashed) {

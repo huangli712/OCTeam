@@ -20,6 +20,7 @@ import { handleStatusEvent, maybeEscalateRetry } from "./orchestration/lifecycle
 import { processIdle } from "./orchestration/lifecycle/idle.js"
 import { checkTermination } from "./orchestration/lifecycle/termination.js"
 import { finishRun } from "./orchestration/control/completion.js"
+import { handleSignoffIdle } from "./orchestration/control/signoff.js"
 import { recordEvent } from "./orchestration/records/events.js"
 import type { MemberState } from "./core/types.js"
 import { asSdkMessages, extractSessionStatusEntry } from "./orchestration/protocol/output.js"
@@ -218,6 +219,14 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                         reason: live.error,
                     })
                     await checkTermination(ctx, team)
+                    // HIGH#4: if signoff is in progress, drive the signoff
+                    // handler so the errored reviewer/decider is processed
+                    // within the signoff context (decider error → fail run;
+                    // reviewer error → skip and continue with quorum of
+                    // remaining responders).
+                    if (team.activeTask?.signoffStage) {
+                        await handleSignoffIdle(ctx, team, live)
+                    }
                     await persistTeamState(ctx, team, "persist team state failed (session.error)", { team: team.teamName, member: live.name })
                 })
             } catch (err) {

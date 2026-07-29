@@ -89,12 +89,12 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         throw err
     }
     for (const reviewer of reviewers) {
-        // Record the reviewer as pending BEFORE dispatch so a crash between
-        // dispatches doesn't re-prompt reviewers that were already sent.
-        // Pre-fix code saved only before the loop; all reviewers would be
-        // re-dispatched on resume regardless of which had already been sent.
-        task.signoffApprovals = { ...task.signoffApprovals, [reviewer.name]: false }
-        await saveTeamState(team)  // commit the pending flag before dispatch
+        // Do NOT pre-write a false sentinel for pending reviewers — false is
+        // a valid rejection vote and isQuorumReached counts map keys as
+        // "responded". A pending reviewer with false in the map would be
+        // tallied as rejected before they've even seen the prompt. Instead,
+        // just dispatch; the reviewer's name appears in signoffApprovals only
+        // when they actually respond via handleSignoffIdle.
         await dispatchToMember(
             ctx,
             reviewer,
@@ -122,6 +122,21 @@ export async function handleSignoffIdle(
     // signoff decision — doing so terminates the run prematurely with a
     // spurious signoff_rejected before the decider has even idled.
     if (task.signoffPolicy === "decider" && member.name !== task.signoffDecider) {
+        return
+    }
+
+    // HIGH#4: errored reviewers must not be counted as rejections. A
+    // session.error was raised — the reviewer never produced a verdict.
+    // Skip errored members so they don't get signoffApprovals[false].
+    if (member.status === "errored") {
+        // If this is the decider, the signoff cannot reach a verdict without
+        // its decision. Fail the run so it doesn't wait for wall-clock timeout.
+        if (task.signoffPolicy === "decider" && member.name === task.signoffDecider) {
+            await finishRun(ctx, team, "signoff_decider_error", "failed")
+            return
+        }
+        // For peer-quorum, the errored reviewer simply doesn't vote — quorum
+        // is calculated from the remaining responders. Do nothing here.
         return
     }
 

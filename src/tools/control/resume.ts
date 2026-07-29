@@ -157,6 +157,10 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // Commit atomically with dispatch.
                     team.activeTask = task
                     team.status = "busy"
+                    // H38#2: update runnerPid so the reconciler knows THIS
+                    // process now owns the resumed task. Pre-fix code left
+                    // the old crashed PID, causing reconcile to re-fail it.
+                    team.runnerPid = process.pid
                     task.startedAt = Date.now() // full timeout re-granted
                     if (timeout_ms) task.wallClockTimeoutMs = timeout_ms
                     if (token_budget) task.tokenBudget = token_budget

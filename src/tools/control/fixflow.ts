@@ -128,6 +128,9 @@ function workflowRepairTarget(team: Team): WorkflowRepairTarget | null {
     if (team.status === "failed" && isWorkflowTask(team.lastInterruptedTask)) {
         team.activeTask = team.lastInterruptedTask
         team.status = "busy"
+        // H38#2: update runnerPid so reconciler knows this process owns the
+        // resumed workflow. Pre-fix code left the old crashed PID.
+        team.runnerPid = process.pid
         team.lastInterruptedTask = undefined
         for (const member of team.members) {
             if (member.status !== "errored") continue

@@ -479,7 +479,7 @@ function mergeMembers(
  * ancestor) override disk.
  */
 export async function saveTeamState(team: Team): Promise<void> {
-    if (team.deleted) return  // tombstone: do not resurrect deleted team
+    if (team.deleted) return  // tombstone: do not resurrect deleted team directory
     const dir = team.directory
     const currentState = stripRuntimeFields(team)
     await withLock(stateLockPath(dir), async () => {
