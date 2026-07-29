@@ -121,6 +121,17 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
             // Increment round AFTER the dispatch loop (not before) so a partial
             // dispatch failure followed by a barrier re-fire does not skip a round.
             const nextRound = (task.currentRound ?? 1) + 1
+            // H-M7: build the debate prompt BEFORE clearing responses. The prompt
+            // for round > 1 includes prior-round positions via buildRoundSummary,
+            // which reads task.responses. Pre-fix code deleted responses first,
+            // so every round after 1 received an empty summary — debaters could
+            // not see or rebut each other's positions.
+            const prompts = new Map<string, string>()
+            for (const name of disputants) {
+                const m = team.members.find(x => x.name === name)
+                if (!m?.sessionId) continue
+                prompts.set(name, buildDebatePrompt({ ...task, currentRound: nextRound }))
+            }
             // HIGH-D: clear prior-round disputant responses before re-dispatch.
             // Pre-fix code left them populated, so a disputant whose new round
             // produced no output (or crashed mid-turn) would have its stale
@@ -133,7 +144,7 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
             for (const name of disputants) {
                 const m = team.members.find(x => x.name === name)
                 if (!m?.sessionId) continue
-                await dispatchToMember(ctx, m, buildDebatePrompt({ ...task, currentRound: nextRound }), m.worktreePath ?? ctx.directory, team)
+                await dispatchToMember(ctx, m, prompts.get(name)!, m.worktreePath ?? ctx.directory, team)
             }
             task.currentRound = nextRound
             recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })

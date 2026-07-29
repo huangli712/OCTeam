@@ -173,30 +173,11 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             caller.leadSessionId, ctx.storageRoot,
                         )
                     }
-                    // H-T2: if the member has a worktree, its path is keyed
-                    // by member name. After rename the old worktree path is
-                    // stale. Destroy the old worktree and clear sessionId so
-                    // the next orchestration re-creates it at the new path.
-                    // Without this, ensureMembersReady sees an existing
-                    // sessionId and skips re-spawning — the member works in
-                    // the old (deleted) worktree path forever.
-                    if (liveMember.worktreePath) {
-                        try {
-                            await destroyWorktree(
-                                ctx.directory,
-                                liveMember.worktreePath,
-                                worktreesDir(team.directory),
-                                team.teamName,
-                                oldName,
-                            )
-                        } catch {
-                            // best-effort: old worktree may already be gone
-                        }
-                        liveMember.worktreePath = undefined
-                        liveMember.sessionId = undefined
-                        liveMember.initialized = false
-                        changes.push(`worktree: destroyed old (will re-create on next start)`)
-                    }
+                    // H-T2/H-T6: worktree destroy deferred to AFTER successful
+                    // persistence (see below). Pre-fix code destroyed here,
+                    // but a subsequent writeTeamState/saveTeamState failure
+                    // left the member with no worktree and no session, and
+                    // rollback couldn't restore them.
                     try {
                         await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, newName))
                     } catch (err) {
@@ -349,6 +330,27 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         }
                     }
                     throw writeErr
+                }
+                // H-T6: NOW safe to destroy old worktree after successful
+                // persistence. If this fails, the member still has name/index/
+                // spec correctly updated; the stale worktree is a benign orphan
+                // that cleanWorktree will eventually clear on team_delete.
+                if (renaming && liveMember.worktreePath) {
+                    try {
+                        await destroyWorktree(
+                            ctx.directory,
+                            liveMember.worktreePath,
+                            worktreesDir(team.directory),
+                            team.teamName,
+                            args.member_name,
+                        )
+                    } catch {
+                        // best-effort: old worktree may already be gone
+                    }
+                    liveMember.worktreePath = undefined
+                    liveMember.sessionId = undefined
+                    liveMember.initialized = false
+                    changes.push(`worktree: destroyed old (will re-create on next start)`)
                 }
             })
 

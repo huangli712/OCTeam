@@ -145,6 +145,21 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // new name, leaving an inconsistent state.json (name=A) /
                     // config.json (name=B) pair.
                     if (spec && originalSpecName !== undefined && spec.name !== originalSpecName) {
+                        // H-T5: rename FIRST, then write the restored spec. Pre-fix
+                        // code called writeTeamSpec before rename — writeTeamSpec
+                        // writes to the path based on spec.name (now restored to
+                        // the original), which recreates oldDir, causing the
+                        // subsequent fs.rename(newDir, oldDir) to fail with EEXIST.
+                        // The result was a split team: oldDir had only config.json,
+                        // newDir retained state.json, and the index pointed to the
+                        // corrupt oldDir.
+                    }
+                    await fs.rename(newDir, oldDir).catch((rollbackErr) => {
+                        logSwallowed(ctx, "rename rollback: fs.rename failed", rollbackErr, { oldDir, newDir })
+                    })
+                    // Write restored spec AFTER rename so it goes into the
+                    // correct (now-moved-back) directory.
+                    if (spec && originalSpecName !== undefined && spec.name !== originalSpecName) {
                         try {
                             const restoredSpec = { ...spec, name: originalSpecName }
                             await writeTeamSpec(ctx.storageRoot, restoredSpec, pathLeadSessionId, ctx.storageRoot)
@@ -152,9 +167,6 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                             logSwallowed(ctx, "rename rollback: writeTeamSpec restore failed", specRollbackErr, { oldDir, newDir })
                         }
                     }
-                    await fs.rename(newDir, oldDir).catch((rollbackErr) => {
-                        logSwallowed(ctx, "rename rollback: fs.rename failed", rollbackErr, { oldDir, newDir })
-                    })
                     throw writeErr
                 }
             })

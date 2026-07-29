@@ -99,17 +99,24 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                             return `Error: stage verifier "${s.verifier}" must not equal its producer "${s.member}"`
                         }
                     }
-                    // H-M5: escalate_to must not be any stage's producer. If the
-                    // escalation handler IS the producer, their escalate-phase
-                    // response overwrites the original artifact in
-                    // task.responses[stage.member], and the next verification
-                    // evaluates the "fix" response instead of the original work.
+                    // H-M5: escalate_to must not be any stage's producer.
                     if (args.escalate_to) {
                         for (const s of args.stages) {
                             if (args.escalate_to === s.member) {
                                 return `Error: escalate_to "${args.escalate_to}" must not equal stage producer "${s.member}" — the escalation response would overwrite the producer's original artifact`
                             }
                         }
+                    }
+                    // H-M8: a member who is a producer in one gate must not be a
+                    // verifier in another gate (and vice versa). The shared
+                    // task.responses[member] slot means a verifier's verdict
+                    // would overwrite the producer's artifact, causing upstream
+                    // context and summary to read the wrong content.
+                    const allProducers = new Set(args.stages.map(s => s.member))
+                    const allVerifiers = new Set(args.stages.map(s => s.verifier))
+                    const overlap = [...allProducers].filter(p => allVerifiers.has(p))
+                    if (overlap.length > 0) {
+                        return `Error: member "${overlap[0]}" appears as both producer and verifier across different gates — shared response slots would cause artifact overwrite. Use distinct members for each role.`
                     }
                     // Validate members: every stage's producer + verifier,
                     // plus the optional escalation target.

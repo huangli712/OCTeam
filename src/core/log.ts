@@ -111,7 +111,12 @@ function emitGlobal(level: LogLevel, message: string, extra?: Record<string, unk
  * Safe to call multiple times (only the first call captures the sink).
  */
 export function initLogger(ctx: PluginContext): void {
-    if (sink === null) sink = ctx.client.app.log
+    // H-C1: bind the log method to preserve `this` context. The SDK's
+    // App.log() may depend on `this._client`; extracting it as a bare
+    // function reference and calling it without binding causes a
+    // TypeError that H6's catch silently swallows, dropping ALL
+    // structured logs. Binding at capture time is safe and idempotent.
+    if (sink === null) sink = ctx.client.app.log.bind(ctx.client.app)
 }
 
 /** Set the minimum log level at runtime. */
@@ -134,7 +139,8 @@ export function logEvent(
     extra?: Record<string, unknown>,
 ): void {
     if (!shouldLog(level)) return
-    sendToSink(ctx.client.app.log, level, message, extra)
+    // H-C1: bind to preserve `this` for SDK methods that depend on it.
+    sendToSink(ctx.client.app.log.bind(ctx.client.app), level, message, extra)
 }
 
 /**

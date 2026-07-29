@@ -93,6 +93,15 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                             }),
                     ),
             )
+            // H-T7: fail-closed when a sibling's state is unreadable. Pre-fix
+            // code treated unreadable siblings as inactive, which could let
+            // two teams activate concurrently if the active sibling's state
+            // was momentarily unreadable (EACCES, EIO). Now refuse the
+            // activation so the operator can diagnose the IO issue first.
+            const failedSiblings = loaded.filter(r => !r.ok)
+            if (failedSiblings.length > 0) {
+                return `Error: cannot verify sibling team states (unreadable: ${failedSiblings.length}). Refusing to activate to prevent concurrent activation. Check .octeam/ permissions and retry.`
+            }
             for (const r of loaded) {
                 if (
                     r.ok

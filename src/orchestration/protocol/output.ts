@@ -59,6 +59,16 @@ export function extractOutputFromParts(parts: unknown): string {
                 segments.push(`$ ${input.command}`)
             } else if (typeof input.patchText === "string" && input.patchText.trim()) {
                 segments.push(`[Patch]\n${input.patchText}`)
+            } else if (typeof input.newString === "string" && input.newString.trim()) {
+                // M-OUTPUT: capture edit tool's oldString→newString format.
+                // Pre-fix code only checked content/command/patchText, missing
+                // the common edit(aft_edit) input shape. Without this, a turn
+                // that only used edit would be captured as "no new output".
+                const fp = typeof input.filePath === "string" ? input.filePath : ""
+                const oldStr = typeof input.oldString === "string" ? input.oldString : ""
+                segments.push(fp
+                    ? `[Edit: ${fp}]\n- ${oldStr}\n+ ${input.newString}`
+                    : `[Edit]\n- ${oldStr}\n+ ${input.newString}`)
             }
         }
     }

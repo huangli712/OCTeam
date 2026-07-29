@@ -12,7 +12,7 @@ import type { MemberSpec, MemberState } from "../../core/types.js"
 import { chunk, waitUntil } from "../../core/utils.js"
 import { worktreesDir } from "../../state/paths.js"
 import { indexMember, unindexSession } from "../../state/resolve.js"
-import { type Team, readTeamSpec, saveTeamState } from "../../state/store.js"
+import { type Team, readTeamSpecFromDir, saveTeamState } from "../../state/store.js"
 import { createWorktree, destroyWorktree } from "../../state/worktrees.js"
 import { buildRolePrompt } from "../protocol/output.js"
 
@@ -249,8 +249,14 @@ export async function ensureMembersReady(
     const { toSpawn, waitNames } = planMemberSpawn(team)
     if (waitNames.size === 0) return
 
+    // H-L10: read config.json from team.directory directly, not via
+    // readTeamSpec(ctx.storageRoot, team.teamName, team.leadSessionId).
+    // Pre-fix code passed team.leadSessionId as the path segment, which is
+    // correct for project scope (<root>/<sid>/teams/<name>) but WRONG for
+    // user scope (<root>/teams/<name> — no session segment). Using
+    // team.directory avoids the scope mismatch entirely.
     const spec = toSpawn.length > 0
-        ? await readTeamSpec(ctx.storageRoot, team.teamName, team.leadSessionId)
+        ? await readTeamSpecFromDir(team.directory)
         : undefined
     if (toSpawn.length > 0 && !spec) {
         throw new Error(`ensureMembersReady: no config.json for team "${team.teamName}"`)

@@ -44,7 +44,11 @@ function parseBallot(
         if (typeof raw !== "string") return { vote: "", status: "invalid" }
         const vote = raw.trim()
         if (!vote) return { vote: "", status: "invalid" }
-        if (voteOptions && !voteOptions.includes(vote)) {
+        // M-QUORUM: trim voteOptions to match the trimmed vote. Pre-fix code
+        // compared raw voteOptions against trimmed votes, so a legitimate
+        // option like " A " could never produce a valid ballot.
+        const normalizedOptions = voteOptions?.map(o => o.trim())
+        if (normalizedOptions && !normalizedOptions.includes(vote)) {
             return { vote, status: "invalid" }
         }
         const rationale = typeof obj.rationale === "string" ? obj.rationale : undefined

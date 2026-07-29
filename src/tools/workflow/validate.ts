@@ -156,7 +156,16 @@ function validateMatrixForeachShape(step: WorkflowFanoutToolStep, displayStep: n
 /** Validate join_policy on a fanout step: known policy, quorum/required_branches/reducer_member consistency. */
 function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: number): string | null {
     const policy = step.join_policy
-    if (policy === undefined) return null
+    if (policy === undefined) {
+        // M-VALIDATE: warn when policy-specific fields are set without a
+        // join_policy. Without this, required_branches/quorum/reducer_member
+        // silently pass validation but have no effect at runtime (default
+        // policy is tolerance).
+        if (step.required_branches !== undefined || step.quorum !== undefined || step.reducer_member !== undefined) {
+            return `Error: fanout step ${displayStep} has join_policy-specific fields (required_branches/quorum/reducer_member) but no join_policy is set. Set join_policy explicitly.`
+        }
+        return null
+    }
     const branchIds = (step.branches ?? []).map(branch => branch.id)
     switch (policy) {
         case "tolerance":

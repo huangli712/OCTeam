@@ -279,7 +279,14 @@ async function applyReassign(
         workflowStep.member = toMember
     } else if (workflowStep.kind === "gate") {
         if (workflowStep.verifiers !== undefined && workflowStep.verifiers.length > 0) {
-            workflowStep.verifiers = [toMember, ...workflowStep.verifiers.slice(1)]
+            // M-FIXFLOW: check for duplicate verifier after reassignment.
+            // Pre-fix code blindly replaced verifiers[0] with toMember,
+            // producing [bob, bob] if bob was already at index 1.
+            const remaining = workflowStep.verifiers.slice(1)
+            if (remaining.includes(toMember)) {
+                return `Error: "${toMember}" is already a verifier in this ensemble gate — reassignment would create a duplicate`
+            }
+            workflowStep.verifiers = [toMember, ...remaining]
         } else {
             workflowStep.verifier = toMember
         }

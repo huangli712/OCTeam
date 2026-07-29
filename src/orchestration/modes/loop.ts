@@ -171,6 +171,15 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
     // succeed -- even on the final round. Checking max_rounds first would
     // misreport a clean final round as a max_rounds failure.
     if (allReadOnlyStagesReportNoIssues(task)) {
+        // M-LOOP: record the decision so the summary shows the final state.
+        // Pre-fix code skipped this, so the loop summary displayed the
+        // previous round's decision (or "n/a" on round 1).
+        recordLoopDecision(task, {
+            decision: "done",
+            rationale: "all read-only stages report no issues",
+            nextActions: [],
+            timestamp: Date.now(),
+        })
         await finishRun(ctx, team, "loop_complete:no_issues", "idle")
         return
     }

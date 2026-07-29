@@ -529,6 +529,11 @@ export async function readTeamSpec(
     return readJsonOrNull<TeamSpec>(configPath(teamDir(storageRoot, teamName, leadSessionId)))
 }
 
+/** Read TeamSpec from a known team directory (scope-independent). */
+export async function readTeamSpecFromDir(teamDirectory: string): Promise<TeamSpec | null> {
+    return readJsonOrNull<TeamSpec>(configPath(teamDirectory))
+}
+
 /** Write the immutable TeamSpec (config.json) atomically. Used at team_create.
  *
  * `trustedRoot` (optional, recommended) is forwarded to atomicWrite's ancestor

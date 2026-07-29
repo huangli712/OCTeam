@@ -112,11 +112,17 @@ export async function runDelegateStyleTail(
         ? tasksForClaimable.filter(t => t.status !== "completed" && t.status !== "deleted")
         : incomplete
 
-    // Claimable tasks: pending AND all blockers completed.
+    // Claimable tasks: pending AND all blockers completed or deleted.
+    // M-DELEGATE: claimTask treats deleted blockers as resolved (tasks.ts:400);
+    // the tail must match, or a pending task whose only blocker was deleted
+    // is forever unclaimable → false deadlock.
     const claimable = incompleteForClaimable.filter(
         t =>
             t.status === "pending"
-            && t.blockedBy.every(id => tasksForClaimable.find(x => x.id === id)?.status === "completed"),
+            && t.blockedBy.every(id => {
+                const blocker = tasksForClaimable.find(x => x.id === id)
+                return blocker?.status === "completed" || blocker?.status === "deleted"
+            }),
     )
 
     // Deadlock: no claimable tasks and all members idle.

@@ -356,7 +356,12 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
         return {
             aggScore: scores.length > 0 ? Math.max(...scores) : undefined,
             aggConfidence: confidences.length > 0 ? Math.max(...confidences) : undefined,
-            aggIssues: allIssues.length > 0 ? allIssues : undefined,
+            // H-W7: return the array even when empty, matching R2's
+            // parseWorkflowIssues fix. Pre-fix code returned undefined for
+            // empty arrays, which H54's has_issue_severity treated as
+            // unevaluable (verifier omitted issues field). A legitimate
+            // empty issues means "no qualifying issues found".
+            aggIssues: allIssues,
         }
     }
     switch (step.ensemblePolicy) {

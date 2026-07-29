@@ -108,7 +108,11 @@ export async function handleStatusEvent(
 
     let team
     try {
-        team = await loadTeamState(ctx.storageRoot, member.teamName, member.leadSessionId)
+        // M-STATUS: use member.storageRoot (the actual scope the team lives in),
+    // not ctx.storageRoot (the active plugin scope). Pre-fix code used ctx.scope,
+    // which fails for members in the non-active scope (e.g. user-scope member
+    // during a project-scope plugin run).
+    team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
     } catch (err) {
         logger.warn("status handler: failed to load team state", { teamName: member.teamName, error: String(err) })
         return
