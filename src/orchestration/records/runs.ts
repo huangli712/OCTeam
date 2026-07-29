@@ -152,6 +152,12 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     for (const file of entries) {
         if (!file.endsWith(".md")) continue
         const member = file.slice(0, -3)
+        // M10: skip files whose name starts with "master" — a member with
+        // FS write access could plant a master.md to impersonate the leader.
+        // Other non-member files (e.g. attacker.md) are harmless because
+        // memberOutputs is display-only metadata; the real security concern
+        // is output impersonation, not extra metadata.
+        if (member.startsWith("master")) continue
         try {
             const stat = await fs.stat(`${dir}/${file}`)
             memberOutputs[member] = { bytes: stat.size, file }
