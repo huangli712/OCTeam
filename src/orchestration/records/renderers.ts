@@ -108,7 +108,16 @@ export async function summarizeRecurse(team: Team, task: Extract<ActiveTask, { t
     const collectChildren = (parentId: string) => {
         if (visited.has(parentId)) return
         visited.add(parentId)
-        const children = allTasks.filter(t => (t.blockedBy ?? []).includes(parentId))
+        // M-RENDERER: recurse stores child IDs in parent.blockedBy (parent waits
+        // for children). Pre-fix code searched ALL tasks for whose blockedBy
+        // contains parentId — that finds tasks blocked BY parentId, not tasks
+        // that ARE parentId's children. The correct direction: read parentId's
+        // own blockedBy to get its child IDs.
+        const parent = taskById.get(parentId)
+        const childIds = parent?.blockedBy ?? []
+        const children = childIds
+            .map(id => taskById.get(id))
+            .filter((t): t is Task => t !== undefined)
         childrenOf.set(parentId, children)
         for (const c of children) collectChildren(c.id)
     }

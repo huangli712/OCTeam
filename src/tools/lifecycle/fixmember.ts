@@ -203,6 +203,14 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     changes.push(`name: ${oldName} → ${newName}`)
                 }
 
+                // M-FIXMEMBER: if spec is unreadable but the user requested
+                // spec-only changes (new_role/new_prompt), fail explicitly
+                // rather than silently skipping and returning success.
+                if (!spec && (args.new_role || args.new_prompt)) {
+                    specMissing = true
+                    return
+                }
+
                 // --- new_role: normalize to a preset role ---
                 if (args.new_role && specMember) {
                     specMember.role = normalizeRole(args.new_role)
@@ -362,7 +370,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 return `Error: name "${args.new_name}" already exists in this team`
             }
             if (specMissing) {
-                return `Error: cannot rename member — team config (config.json) is unreadable or member absent from spec`
+                return `Error: cannot modify member — team config (config.json) is unreadable or member absent from spec`
             }
 
             return `Member "${args.member_name}" updated — ${changes.join("; ")}`

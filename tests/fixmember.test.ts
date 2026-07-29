@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 import { teamFixMemberTool } from "../src/tools/lifecycle/fixmember.js"
-import { initTeamState } from "../src/state/store.js"
+import { initTeamState, writeTeamSpec } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
@@ -38,6 +38,7 @@ describe("team_fix_member constraint (1)", () => {
         tracked.push(masterSid)
         // inactive team (no activatedAt)
         await initTeamState(root, makeState("alpha", masterSid, [makeMember("alice")]), masterSid)
+        await writeTeamSpec(root, { name: "alpha", members: [{ name: "alice", role: "coder", prompt: "old" }] }, masterSid, root)
         await rebuildSessionIndex(root, `${root}__unused`)
 
         const result = await teamFixMemberTool(makeCtx({ storageRoot: root })).execute(

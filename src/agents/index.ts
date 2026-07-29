@@ -23,7 +23,7 @@ import type { OcteamAgentConfig } from "./types.js"
  * OpenAI-only or local-model users). Model selection is delegated to the user,
  * resolved at team-creation time via MemberSpec.model, then the user's global
  * default config, then the leader session's model (see resolveCreateModel in
- * tools/create.ts).
+ * tools/lifecycle/create.ts).
  */
 export const OCTEAM_AGENTS: Record<string, OcteamAgentConfig> = {
     "oct-oracle": oracleAgent,

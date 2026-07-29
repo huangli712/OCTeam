@@ -635,8 +635,12 @@ describe("buildSummary: recurse case", () => {
         const root = await seedTask(team, { subject: "build app", description: "x", depth: 0, status: "completed" })
         await updateTask(team.directory, root.id, { status: "completed", result: "the final deliverable" })
         task.rootTaskId = root.id
-        await seedTask(team, { subject: "part A", description: "x", depth: 1, status: "completed", blockedBy: [root.id] })
-        await seedTask(team, { subject: "part B", description: "x", depth: 1, status: "completed", blockedBy: [root.id] })
+        const childA = await seedTask(team, { subject: "part A", description: "x", depth: 1, status: "completed" })
+        const childB = await seedTask(team, { subject: "part B", description: "x", depth: 1, status: "completed" })
+        // M-RENDERER: recurse stores child IDs in parent.blockedBy (root waits
+        // for children), NOT child.blockedBy = [root]. The old test had the
+        // direction reversed.
+        await updateTask(team.directory, root.id, { status: "completed", result: "the final deliverable", blockedBy: [childA.id, childB.id] })
 
         const summary = await buildSummary(team, task, "recurse_complete")
 

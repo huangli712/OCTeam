@@ -200,6 +200,12 @@ function validateWorkflowStep(value: unknown, location: StepLocation, budget: Va
         case "join":
             return { step: value as WorkflowToolStep }
         case "fanout": {
+            // M-LOADER: matrix/foreach fanout does not use `branches` — they
+            // define variables that are expanded at runtime. Only validate
+            // branches when neither matrix nor foreach is present.
+            if (value.matrix !== undefined || value.foreach !== undefined) {
+                return { step: { ...value } as WorkflowToolStep }
+            }
             const branches = validateWorkflowBranches(value.branches, location, budget)
             if ("error" in branches) return branches
             return { step: { ...value, branches: branches.branches } as WorkflowToolStep }

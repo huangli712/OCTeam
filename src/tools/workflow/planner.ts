@@ -322,6 +322,12 @@ function validatePlannerTeam(teamId: string, team: unknown): { memberNames: stri
             return { error: `Error: team.members[${i}] role must be a string` }
         }
     }
+    // M-PLANNER: enforce the same member count limit as team_create (max 12).
+    // Pre-fix code allowed unlimited members, which would produce a team.json
+    // that team_create later rejects.
+    if (memberNames.length > 12) {
+        return { error: `Error: team.members must have at most 12 members (got ${memberNames.length})` }
+    }
     const boundsError = validatePlannerBounds(team.bounds, memberNames.length)
     if (boundsError) return { error: boundsError }
     return { memberNames }

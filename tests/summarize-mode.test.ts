@@ -417,12 +417,12 @@ describe("summarizeRecurse", () => {
         const childId = "22222222-2222-2222-2222-222222222222"
         writeFileSync(join(tasksDir, `${rootId}.json`), JSON.stringify({
             version: 1, id: rootId, subject: "root goal", description: "d",
-            status: "completed", blockedBy: [], createdAt: 0, updatedAt: 0,
+            status: "completed", blockedBy: [childId], createdAt: 0, updatedAt: 0,
             depth: 0, result: "FINAL ROOT RESULT",
         }))
         writeFileSync(join(tasksDir, `${childId}.json`), JSON.stringify({
             version: 1, id: childId, subject: "child task", description: "d",
-            status: "completed", blockedBy: [rootId], createdAt: 0, updatedAt: 0,
+            status: "completed", blockedBy: [], createdAt: 0, updatedAt: 0,
             depth: 1, result: "child result",
         }))
         const task = baseTask({
