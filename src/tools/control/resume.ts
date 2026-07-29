@@ -29,7 +29,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import type { ActiveTask } from "../../core/types.js"
+import type { ActiveTask, MemberStatus } from "../../core/types.js"
 import { isEnoent } from "../../core/utils.js"
 import { logSwallowed } from "../../core/log.js"
 import { activationError } from "../../state/activation.js"
@@ -205,7 +205,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                                 // members that were NOT dispatched during the
                                 // partial resume. Those members should go back to
                                 // their pre-resume state (typically idle).
-                                m.status = saved.status
+                                m.status = saved.status as MemberStatus
                                 m.error = saved.error
                             }
                             m.declaredDone = saved.declaredDone
