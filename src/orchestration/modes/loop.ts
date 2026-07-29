@@ -175,6 +175,7 @@ export async function handleLoopIdle(ctx: PluginContext, team: Team, member: Mem
         // Pre-fix code skipped this, so the loop summary displayed the
         // previous round's decision (or "n/a" on round 1).
         recordLoopDecision(task, {
+            round: 0,
             decision: "done",
             rationale: "all read-only stages report no issues",
             nextActions: [],
