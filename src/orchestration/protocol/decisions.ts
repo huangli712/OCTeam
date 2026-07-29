@@ -75,12 +75,23 @@ function extractTaggedJSON(
     // match for single-object payloads (backward compat).
     const lastClose = lastPayload.lastIndexOf("}")
     if (lastClose === -1) return undefined
-    // Scan backward to find the matching open brace.
+    // M7: scan backward with JSON string awareness. Pre-fix code naively
+    // counted every `{`/`}` — a `}` inside a string literal (e.g. a
+    // rationale value) would corrupt the depth count, causing parse failure
+    // on otherwise valid JSON. Now skip characters inside double-quoted
+    // strings (with backslash escape awareness).
     let depth = 0
     let openIdx = -1
+    let inString = false
+    let escaped = false
     for (let i = lastClose; i >= 0; i--) {
-        if (lastPayload[i] === "}") depth++
-        else if (lastPayload[i] === "{") {
+        const ch = lastPayload[i]
+        if (escaped) { escaped = false; continue }
+        if (ch === "\\") { escaped = true; continue }
+        if (ch === '"') { inString = !inString; continue }
+        if (inString) continue
+        if (ch === "}") depth++
+        else if (ch === "{") {
             depth--
             if (depth === 0) { openIdx = i; break }
         }

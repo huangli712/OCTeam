@@ -168,7 +168,6 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
     }
     const branchIds = (step.branches ?? []).map(branch => branch.id)
     switch (policy) {
-        case "tolerance":
         case "all":
         case "any_success":
         case "reduce":
@@ -692,6 +691,14 @@ function validateLoweredGateStep(
         if (gotoIdx < 0) {
             return (`Error: ${location} ${field} "${String(ref)}" must reference an existing step`
                 + `${typeof ref === "string" ? " by id" : ""} and must not self-jump`)
+        }
+        // M19: goto targets must be task or gate steps (runtime canGateGotoStep
+        // rejects join/fanout). Pre-fix code only checked that the target exists;
+        // a join or fanout target would pass validation but silently return -1
+        // at runtime and fall through to sequential advance.
+        const targetStep = steps[gotoIdx]
+        if (targetStep && targetStep.kind !== "task" && targetStep.kind !== "gate") {
+            return `Error: ${location} ${field} "${String(ref)}" must reference a task or gate step, not ${targetStep.kind}`
         }
         if (gate.on_invalid === "escalate" && field === "on_invalid_goto") {
             return (`Error: ${location} on_invalid_goto is incompatible with on_invalid='escalate'`

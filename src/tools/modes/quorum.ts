@@ -156,9 +156,9 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
                         const text = `[Quorum vote]\n` 
                             + `${task.task}\n\n`
                             + `Emit your ballot as: `
-                            + `<vote>{"${task.voteKey}": "<value>"}</vote>\n`
+                            + `<vote>{"${task.voteKey}": "<value>", "rationale": "<reason>"}</vote>\n`
                             + `The vote value${optionsHint} must be a single string.\n`
-                            + `You may include a one-line rationale before the <vote> tag.\n`
+                            + `Include an optional "rationale" key inside the vote JSON.\n`
                             + `Do NOT discuss with other members — vote independently.`
                         await dispatchToMember(
                             ctx, m, text,
