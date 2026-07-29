@@ -80,6 +80,16 @@ function isValidMessage(value: unknown): value is Message {
 /** Read and parse all message lines from filePath. Returns [] on ENOENT. */
 export async function readJsonl(filePath: string): Promise<Message[]> {
     try {
+        // H2: cap file size before reading. A tampered or runaway JSONL file
+        // (e.g. /dev/zero symlink bypassing backpressure, or multi-GB trash)
+        // would OOM the process during readFile. 10 MiB matches the mailbox
+        // backpressure cap; any legitimate file exceeding this is a red flag.
+        const stat = await fs.lstat(filePath)
+        if (stat.isSymbolicLink()) return []
+        if (stat.size > 10_485_760) {
+            logger.warn("readJsonl: file exceeds 10 MiB cap, refusing to read", { file: filePath, size: stat.size })
+            return []
+        }
         const raw = await fs.readFile(filePath, "utf8")
         const lines = raw.split("\n").filter(l => l.length > 0)
         const out: Message[] = []

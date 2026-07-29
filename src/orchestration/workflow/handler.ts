@@ -106,10 +106,17 @@ function hasNestedQuantifier(pattern: string): boolean {
         const nextChar = stripped[j]
         if (nextChar !== undefined && "+*?{".includes(nextChar) && body.includes("|")) {
             const branches = body.split("|").filter(b => b.length > 0)
-            // Skip branches that still contain group/quantifier metacharacters —
-            // the prefix-overlap check is unreliable on them, and the
-            // nested-quantifier check above handles them.
+            // H3: branches containing quantifiers/group metacharacters under
+            // an outer quantifier are inherently susceptible to exponential
+            // backtracking (e.g. (a|a*a)+$). Pre-fix code filtered these
+            // branches out for the prefix-overlap check but did not flag
+            // them as risky. A branch like `a*a` under `(...)+` can silently
+            // bypass both the nested-quantifier heuristic (the group ends with
+            // `a`, not a quantifier) and the overlap check (the branch is
+            // excluded). Now, any branch with quantifier metacharacters
+            // inside an alternation under a quantifier is a red flag.
             const simpleBranches = branches.filter(b => !/[][{}()*+?]/.test(b))
+            if (simpleBranches.length < branches.length) return true
             for (let a = 0; a < simpleBranches.length; a++) {
                 for (let b = a + 1; b < simpleBranches.length; b++) {
                     if (

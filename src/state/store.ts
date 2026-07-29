@@ -141,10 +141,12 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     ) {
         return false
     }
-    // M12: verify teamName matches the directory's last path segment.
+    // M12/H13: verify teamName matches the directory's last path segment.
     // A tampered state.json moved to another team's directory would otherwise
     // load and bind the session to the wrong team.
-    const expectedName = teamDirectory.split(/[\/]/).pop()
+    // H13: use path.basename (cross-platform) instead of split(/[\/]/) which
+    // only matches forward slashes and rejects all teams on Windows.
+    const expectedName = path.basename(teamDirectory)
     if (expectedName && s.teamName !== expectedName) return false
     // M-8: validate status is a known enum value. Pre-fix code accepted any
     // string, so a tampered state.json with status:"HACKED" would load and

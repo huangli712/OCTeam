@@ -141,13 +141,17 @@ export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promi
             for (const name of disputants) {
                 delete task.responses[name]
             }
+            // H6: persist currentRound BEFORE dispatching. dispatchToMember
+            // saves state internally; setting round first ensures disk state
+            // is consistent with dispatched prompts. Pre-fix code set it
+            // after dispatch — a crash would resume with wrong round.
+            task.currentRound = nextRound
+            recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
             for (const name of disputants) {
                 const m = team.members.find(x => x.name === name)
                 if (!m?.sessionId) continue
                 await dispatchToMember(ctx, m, prompts.get(name)!, m.worktreePath ?? ctx.directory, team)
             }
-            task.currentRound = nextRound
-            recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
         })
         return
     }

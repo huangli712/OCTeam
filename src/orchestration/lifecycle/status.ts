@@ -139,10 +139,21 @@ export async function handleStatusEvent(
             await saveTeamState(team)
         } else if (entry?.type === "busy") {
             // A previously-idle member is active again: backfill the running state.
+            // H7: also clear retryingSince — the member is now productively
+            // working (not retrying). Pre-fix code only cleared on idle, so a
+            // member that retried then succeeded would keep the retry timer,
+            // and maybeEscalateRetry would later mark it errored after 60s of
+            // normal work.
+            let changed = false
             if (live.status === "idle") {
                 live.status = "running"
-                await saveTeamState(team)
+                changed = true
             }
+            if (live.retryingSince !== undefined) {
+                live.retryingSince = undefined
+                changed = true
+            }
+            if (changed) await saveTeamState(team)
         }
     })
 }

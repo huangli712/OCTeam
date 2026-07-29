@@ -352,15 +352,22 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
         const supporters = results.filter(r => r.verdict === finalVerdict)
         const scores = supporters.map(r => r.score).filter((s): s is number => typeof s === "number")
         const confidences = supporters.map(r => r.confidence).filter((c): c is number => typeof c === "number")
-        const allIssues = supporters.flatMap(r => r.issues ?? [])
+        // H5: if ALL supporters omitted issues (undefined), the aggregate must
+        // be undefined (unevaluable), NOT []. Pre-fix code used
+        // `r.issues ?? []` which converted undefined to [], making H54's
+        // has_issue_severity treat omitted issues as "no qualifying issues"
+        // (does_not_match) instead of unevaluable. Only flatten issues from
+        // supporters that actually REPORTED issues.
+        const supportersWithIssues = supporters.filter(r => r.issues !== undefined)
+        const allIssues = supportersWithIssues.length > 0
+            ? supportersWithIssues.flatMap(r => r.issues!)
+            : undefined
         return {
             aggScore: scores.length > 0 ? Math.max(...scores) : undefined,
             aggConfidence: confidences.length > 0 ? Math.max(...confidences) : undefined,
-            // H-W7: return the array even when empty, matching R2's
-            // parseWorkflowIssues fix. Pre-fix code returned undefined for
-            // empty arrays, which H54's has_issue_severity treated as
-            // unevaluable (verifier omitted issues field). A legitimate
-            // empty issues means "no qualifying issues found".
+            // H-W7/H5: return the array even when empty (issues:[] from
+            // supporters means "no qualifying issues found"). Only return
+            // undefined when NO supporter reported issues at all (unevaluable).
             aggIssues: allIssues,
         }
     }

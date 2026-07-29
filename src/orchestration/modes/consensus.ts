@@ -61,13 +61,17 @@ export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promi
         for (const name of Object.keys(task.responses)) {
             delete task.responses[name]
         }
+        // H6: persist currentRound BEFORE dispatching. dispatchToMember saves
+        // state internally, so pre-fix code left disk with old round + cleared
+        // responses — a crash would resume with wrong round. Setting it first
+        // ensures the disk state is consistent with the dispatched prompts.
+        task.currentRound = nextRound
+        recordEvent(team, { timestamp: Date.now(), kind: "round", round: nextRound })
         const roundText =
             `[Consensus Round ${nextRound}]\n${summary}\n\n`
             + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`
         for (const m of nonMasterMembers(team)) {
             await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory, team)
         }
-        task.currentRound = nextRound
-        recordEvent(team, { timestamp: Date.now(), kind: "round", round: nextRound })
     })
 }

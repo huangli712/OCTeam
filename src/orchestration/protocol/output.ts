@@ -51,6 +51,13 @@ export function extractOutputFromParts(parts: unknown): string {
             if (p.synthetic) continue
             if (p.text.trim()) segments.push(p.text)
         } else if (p.type === "tool" && WORK_TOOLS.has(p.tool)) {
+            // H8: skip tool calls that did not complete successfully.
+            // Pre-fix code extracted input content regardless of tool status,
+            // so a failed write (status:"error", permission denied) would be
+            // recorded as a successful work product — the broken content would
+            // flow into pipeline/reduce/signoff as if it were real output.
+            const toolStatus = p.state?.status
+            if (toolStatus === "error" || toolStatus === "running" || toolStatus === "pending") continue
             const input = (p.state?.input ?? {}) as Record<string, unknown>
             if (typeof input.content === "string" && input.content.trim()) {
                 const fp = typeof input.filePath === "string" ? input.filePath : ""

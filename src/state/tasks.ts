@@ -127,7 +127,18 @@ function isValidTask(value: unknown): value is Task {
 /** Read a task file from disk, validate its schema, return null if not found or corrupt. */
 async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task | null> {
     try {
-        const raw = await fs.readFile(taskPath(teamDirectory, taskId), "utf8")
+        // H12: cap file size and reject symlinks/non-files before reading,
+        // matching H11 in readJsonOrNull. Task files are small JSON blobs;
+        // a symlinked or tampered file can be unbounded (/dev/zero, FIFO).
+        const filePath = taskPath(teamDirectory, taskId)
+        const stat = await fs.lstat(filePath)
+        if (stat.isSymbolicLink()) return null
+        if (!stat.isFile()) return null
+        if (stat.size > 65_536) {
+            logger.warn("readTaskFile: task file exceeds 64 KiB cap", { taskId, size: stat.size })
+            return null
+        }
+        const raw = await fs.readFile(filePath, "utf8")
         const parsed: unknown = JSON.parse(raw)
         if (!isValidTask(parsed)) {
             // Corrupt / tampered task file: reject so callers take the not-found
