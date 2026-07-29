@@ -74,6 +74,7 @@ const inflightLoads = new Map<string, Promise<Team>>()
  * tokens after completion without an extra file read per refresh.
  */
 export function clearActiveTask(team: Team): void {
+    team.runnerPid = undefined  // H38: clear fencing token when run ends
     if (team.activeTask) {
         team.lastMode = {
             type: team.activeTask.type,

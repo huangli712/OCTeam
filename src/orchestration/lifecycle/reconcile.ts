@@ -54,27 +54,25 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             )
         }
         if (team.status === "busy") {
-            // Do NOT auto-fail a busy team here. The original logic assumed the
-            // current process always owns every team it can see, but project-scope
-            // teams are leadSessionId-segmented and listAllTeams traverses ALL
-            // session directories — a concurrent OpenCode instance (e.g. spawned
-            // for config probing or a sibling session) running server() init will
-            // see another live process's busy team and incorrectly mark it failed,
-            // writing a spurious terminated:interrupted event that fools the leader
-            // into cancelling a healthy in-flight orchestration.
-            //
-            // Instead, only preserve the active task snapshot for an explicit
-            // team_resume. A genuinely crashed process's busy team stays busy on
-            // disk; the user resolves it via team_cancel or team_resume. Releasing
-            // stale reservations above is safe and reversible.
-            //
-            // H38 (known limitation): team_resume requires status === "failed",
-            // so a genuinely crashed busy team cannot be resumed — only cancelled.
-            // Changing status to "failed" here would break concurrent-instance
-            // safety (tested in reconcile-extra.test.ts and fixflow.test.ts).
-            // A fencing-epoch infrastructure is needed to distinguish "crashed"
-            // from "owned by a live sibling" — deferred.
-            if (team.activeTask) {
+            // H38: PID-based fencing. If runnerPid is set and the process is
+            // dead, the team IS crashed → safe to fail (enables team_resume).
+            // Pre-fix code never auto-failed busy teams because without PID
+            // tracking there was no safe way to tell crashed from live sibling.
+            let isCrashed = false
+            if (team.runnerPid !== undefined) {
+                try {
+                    process.kill(team.runnerPid, 0)  // signal 0 checks liveness only
+                } catch {
+                    isCrashed = true  // ESRCH: process not found
+                }
+            }
+            if (isCrashed) {
+                team.status = "failed"
+                if (team.activeTask) team.lastInterruptedTask = team.activeTask
+                await saveTeamState(team)
+            } else if (team.activeTask) {
+                // No PID or process is alive: preserve state for eventual
+                // team_resume but keep status=busy (concurrent-instance safety).
                 team.lastInterruptedTask = team.activeTask
                 await saveTeamState(team)
             }

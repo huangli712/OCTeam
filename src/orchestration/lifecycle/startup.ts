@@ -274,6 +274,9 @@ export async function startOrchestration(
             const prevStatus = team.status
             team.status = "busy"
             team.activeTask = built
+            // H38: record the running process PID so the reconciler can
+            // distinguish a crashed process from a live sibling.
+            team.runnerPid = process.pid
             // Reset per-member done/retry flags for the new run so a previous
             // run's acks don't bleed in. declaredDone only matters when
             // requireDoneAck is true, but cheap to always reset.
