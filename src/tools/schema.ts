@@ -1,4 +1,54 @@
 /**
+ * H42: optional parse-failure threshold fields for modes with bounded
+ * decision/verdict parse recovery. Spread into a mode tool's schema when the
+ * mode handler reads these fields (loop, arbitrate, route, recurse).
+ * Pre-fix code: handlers supported overrides but the tool schemas never
+ * exposed them, so callers could not actually configure them.
+ */
+export const parseThresholdFields = {
+    max_decision_parse_failures: tool.schema
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .optional()
+        .describe(
+            "loop mode: consecutive <decision> parse failures before the run fails. " +
+            "Default 3.",
+        ),
+    max_ruling_parse_failures: tool.schema
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .optional()
+        .describe(
+            "arbitrate mode: consecutive arbiter ruling parse failures before the run fails. " +
+            "Default 3.",
+        ),
+    max_route_parse_failures: tool.schema
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .optional()
+        .describe(
+            "route mode: consecutive router decision parse failures before the run fails. " +
+            "Default 3.",
+        ),
+    max_aggregation_dispatches: tool.schema
+        .number()
+        .int()
+        .min(1)
+        .max(20)
+        .optional()
+        .describe(
+            "recurse mode: max aggregation re-dispatches before declaring the run stalled. " +
+            "Default 3.",
+        ),
+}
+
+/**
  * Shared tool-schema field builders used by the workflow tools.
  *
  * Extracted from orchestration/lifecycle/startup.ts so that the orchestration

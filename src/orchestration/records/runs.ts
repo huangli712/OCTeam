@@ -135,7 +135,11 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     // Collect the full-output files staged at capture time (<member>.md).
     const memberOutputs: RunRecord["memberOutputs"] = {}
     let entries: string[] = []
+    // C-2: runDir is <team>/runs/<runId>; verify the ancestor chain before
+    // readdir so a symlinked intermediate (e.g. <team>/runs) cannot redirect
+    // the enumeration outside the team root.
     try {
+        await assertNoSymlinkTraversal(team.directory, dir)
         entries = await fs.readdir(dir)
     } catch (err) {
         // H37: distinguish ENOENT (expected — no member turns yet) from real
@@ -159,7 +163,12 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         // is output impersonation, not extra metadata.
         if (member.startsWith("master")) continue
         try {
-            const stat = await fs.stat(`${dir}/${file}`)
+            const filePath = `${dir}/${file}`
+            // C-2: verify each <runDir>/<member>.md path before stat so a
+            // symlinked member-named file cannot redirect the stat or later
+            // reads outside the team root.
+            await assertNoSymlinkTraversal(team.directory, filePath)
+            const stat = await fs.stat(filePath)
             memberOutputs[member] = { bytes: stat.size, file }
         } catch (err) {
             // H37: log non-ENOENT errors so output metadata loss is observable.
@@ -368,8 +377,21 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     const dated: Array<{ runId: string; finishedAt: number }> = []
     const orphaned: string[] = []
     const corrupted: string[] = []
+    // C-2: pre-check each runRecordPath before reading so a symlinked
+    // <team>/runs/<runId>/record.json cannot read attacker-controlled content
+    // from outside the team root. Filter out runIds whose path fails the check
+    // (treat as corrupt so quarantine preserves any legitimate outputs).
+    const checked: string[] = []
+    for (const runId of runIds) {
+        try {
+            await assertNoSymlinkTraversal(teamDirectory, runRecordPath(teamDirectory, runId))
+            checked.push(runId)
+        } catch {
+            corrupted.push(runId)
+        }
+    }
     const records = await Promise.all(
-        runIds.map(runId =>
+        checked.map(runId =>
             fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
                 .then(raw => {
                     try { return { kind: "ok" as const, rec: parseRunRecord(raw) } }
@@ -423,7 +445,13 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
     let runIds: string[] = []
     try {
         runIds = await fs.readdir(root)
-    } catch {
+    } catch (err) {
+        // M-12: distinguish ENOENT (no runs/ yet — return []) from real
+        // storage failures (EACCES, EIO). Pre-fix code masked ALL errors as
+        // "no runs," hiding disk problems from operators.
+        if (!isEnoent(err)) {
+            logger.warn("listRunRecords: readdir failed", { dir: root, error: err instanceof Error ? err.message : String(err) })
+        }
         return []
     }
     const records: RunRecord[] = []

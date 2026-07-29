@@ -6,7 +6,7 @@
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import type { RunStatus } from "../../core/types.js"
-import { type Team, clearActiveTask, saveTeamState } from "../../state/store.js"
+import { type Team, clearActiveTask, saveTeamStateBounded } from "../../state/store.js"
 import { recordEvent } from "../records/events.js"
 import { persistRun } from "../records/runs.js"
 import { buildSummary } from "../records/summary.js"
@@ -69,13 +69,15 @@ ctx: PluginContext,
 team: Team,
 reason: string,
 status: "idle" | "failed",
+runStatusOverride?: RunStatus,
 ): Promise<void> {
+    const runStatus: RunStatus = runStatusOverride ?? (status === "failed" ? "failed" : "completed")
     try {
         await deliverSummaryToLeader(
             ctx,
             team,
             reason,
-            status === "failed" ? "failed" : "completed",
+            runStatus,
         )
     } finally {
         // clearActiveTask and terminal status MUST execute even if delivery
@@ -83,17 +85,19 @@ status: "idle" | "failed",
         // that can never be cleared.
         clearActiveTask(team)
         team.status = status
-        // H-12: persist the terminal state inside finishRun so the disk no
-        // longer shows "busy" after the call returns. Pre-fix code relied on
-        // callers to save — but the hooks.ts idle path returns immediately
-        // after checkTermination without an explicit save, so the team could
-        // stay "busy" on disk indefinitely after a crash or unexpected return.
-        await saveTeamState(team).catch(err =>
-            logSwallowed(ctx, "finishRun: terminal state persist failed", err, {
+        // H-12/G: persist the terminal state with bounded retry. Pre-fix code
+        // used `.catch(logSwallowed)` which left disk showing "busy" indefinitely
+        // after a transient I/O error. saveTeamStateBounded retries 3x before
+        // throwing; the catch here logs but cannot rollback (the run IS finished
+        // — restoring activeTask would be incorrect).
+        try {
+            await saveTeamStateBounded(team)
+        } catch (err) {
+            logSwallowed(ctx, "finishRun: terminal state persist failed after retries", err, {
                 team: team.teamName,
                 reason,
                 status,
-            }),
-        )
+            }, "error")
+        }
     }
 }

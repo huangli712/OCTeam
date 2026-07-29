@@ -219,13 +219,20 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                         reason: live.error,
                     })
                     await checkTermination(ctx, team)
-                    // HIGH#4: if signoff is in progress, drive the signoff
-                    // handler so the errored reviewer/decider is processed
-                    // within the signoff context (decider error → fail run;
-                    // reviewer error → skip and continue with quorum of
-                    // remaining responders).
+                    // I-1: re-drive mode-specific barrier handlers after a member
+                    // errors. Pre-fix code only drove signoff; parallel,
+                    // delegate, recurse, quorum, etc. were never notified, so
+                    // if the error was within tolerance the run stalled until
+                    // wall-clock timeout (no more idle events for this member).
+                    // processIdle routes to the correct mode handler which
+                    // checks errored count and advances the barrier if possible.
                     if (team.activeTask?.signoffStage) {
                         await handleSignoffIdle(ctx, team, live)
+                    }
+                    if (team.activeTask && team.status === "busy") {
+                        // Run not terminated — re-drive the barrier so the mode
+                        // handler can process the errored member.
+                        await processIdle(ctx, team, live, sessionID)
                     }
                     await persistTeamState(ctx, team, "persist team state failed (session.error)", { team: team.teamName, member: live.name })
                 })
@@ -377,15 +384,19 @@ export function createTransformHook(
 
             // runId-scoped directive filtering. A directive carrying a runId
             // belongs to one specific orchestration run; once that run ends the
-            // directive is stale and must be dropped (not injected). Only consult
-            // team state when at least one runId-scoped directive is present — this
-            // guards against an unconditional team load on every turn.
+            // directive is stale and must be dropped (not injected).
+            //
+            // C-10: ALWAYS load team state when ANY directive is present
+            // (scoped OR unscoped). Pre-fix code skipped the load when only
+            // unscoped directives were in the batch, leaving activeRunIdForAuth
+            // undefined; isAuthenticatedDirective then interpreted undefined as
+            // "no active run" and accepted unscoped directives registered for
+            // earlier runs (cross-run replay via team_intervene's runId===undefined
+            // path, or via copied JSONL lines).
             let toInject = unread
             let activeRunIdForAuth: string | undefined
-            const hasScopedDirective = unread.some(
-                m => m.kind === "directive" && m.runId !== undefined,
-            )
-            if (hasScopedDirective) {
+            const hasDirective = unread.some(m => m.kind === "directive")
+            if (hasDirective) {
                 let activeRunId: string | undefined
                 let teamStateUnreadable = false
                 try {
@@ -422,7 +433,7 @@ export function createTransformHook(
             // (e.g. all stale directives), inject no text part — but still ack the
             // FULL reserved set below so the stale directives are dropped.
             if (toInject.length > 0) {
-                const injection = formatMailboxInjection(toInject, activeRunIdForAuth)
+                const injection = formatMailboxInjection(toInject, activeRunIdForAuth, member.directory)
 
                 // Append the injection as a synthetic text part to an existing message
                 // (prefer the last user message) rather than fabricating a partial Message
@@ -440,13 +451,27 @@ export function createTransformHook(
                 const target = messages[targetIdx]
                 const parts = (target.parts = target.parts ?? [])
                 parts.push({ type: "text", text: injection, synthetic: true })
-            }
 
-            // ACK the FULL reserved set, inject-or-not. Acking only the
-            // injected subset would strand skipped stale directives in `reserved` →
-            // releaseStaleReservations returns them after the TTL → pollMailbox
-            // re-reserves → infinite loop. Ack-all drops stale directives exactly once.
-            await ackMessages(member.directory, member.name, unread)
+                // H-5/M-hooks: ACK the FULL reserved set INSIDE the injection
+                // block so an ack failure rolls back the injected part. Pre-fix
+                // code acked AFTER the injection block at line 460 unconditionally;
+                // an ack throw (caught at the outer catch) left the injection in
+                // output.messages while reserved messages stayed un-acked, so
+                // releaseStaleReservations re-queued them → duplicate delivery
+                // violating the exactly-once contract.
+                try {
+                    await ackMessages(member.directory, member.name, unread)
+                } catch (ackErr) {
+                    // Rollback the injected part so the next poll re-delivers
+                    // cleanly (no partial injection without ack).
+                    parts.pop()
+                    throw ackErr
+                }
+            } else {
+                // Empty injection (all filtered) — still ack the full set so
+                // stale directives are dropped exactly once.
+                await ackMessages(member.directory, member.name, unread)
+            }
         } catch (err) {
             // The transform hook runs inside the user's interactive turn. An
             // unhandled rejection here crashes that turn. Swallow and log so
@@ -534,11 +559,18 @@ export async function sweepTeamOnce(
             }
         }
         if (!team.activeTask) return
-        // 3. Missed-idle reconciliation.
+        // I-3/H-2: missed-idle reconciliation. Re-check each member's status
+        // INSIDE the loop (not from the stale statusMap snapshot) so a
+        // processIdle dispatch that synchronously changes another member's
+        // status to running is respected. Pre-fix code used the snapshot
+        // entry captured before the loop, so a just-dispatched member could
+        // be re-processed as idle, corrupting the state machine.
         for (const member of team.members) {
             if (!member.sessionId || member.status !== "running") continue
+            // Re-read the live status entry (statusMap may be stale after a
+            // prior processIdle dispatched the next member).
             const entry = extractSessionStatusEntry(statusMap, member.sessionId)
-            if (entry?.type === "idle") {
+            if (entry?.type === "idle" && member.status === "running") {
                 await processIdle(ctx, team, member, member.sessionId)
             }
         }

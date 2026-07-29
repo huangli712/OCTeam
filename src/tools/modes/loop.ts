@@ -13,7 +13,7 @@ import {
     humanApprovalTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { commonOrchestrationFields, humanApprovalSchemaFields } from "../schema.js"
+import { commonOrchestrationFields, humanApprovalSchemaFields, parseThresholdFields } from "../schema.js"
 import { assertMember } from "../support.js"
 import { MASTER_NAME } from "../../state/naming.js"
 
@@ -39,6 +39,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             max_rounds: tool.schema.number().int().min(1).max(50),
             initial_task: tool.schema.string().min(1).max(8192),
             ...commonOrchestrationFields,
+            ...parseThresholdFields,
             ...humanApprovalSchemaFields,
         },
         async execute(args, context) {

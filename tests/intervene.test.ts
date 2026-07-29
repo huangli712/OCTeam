@@ -301,14 +301,17 @@ describe("team_intervene (T6: master-only inject-only directive)", () => {
             activeTask: makeActiveTask(undefined),
         })
 
+        // M-20/C-10: activeTask exists but runId is undefined (pre-capture
+        // edge). The fix now REFUSES to send an unscoped directive (was: sent
+        // with runId=undefined, enabling cross-run replay). The user should
+        // wait for the workflow to fully initialize.
         const result = await teamInterveneTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
             { team_id: TEAM, to: "alice", body: "no runId yet" },
             makeToolContext(masterSid),
         )
-        expect(result).toContain("alice")
+        expect(result).toContain("Error")
+        expect(result).toContain("no runId")
         const inbox = await readInbox(dir, "alice")
-        expect(inbox).toHaveLength(1)
-        expect(inbox[0].kind).toBe("directive")
-        expect(inbox[0].runId).toBeUndefined()
+        expect(inbox).toHaveLength(0)
     })
 })

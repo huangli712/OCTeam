@@ -584,8 +584,12 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
     // Use atomicWrite for symlink-safety (refuses to write through symlinks,
     // walks ancestor chain from ctx.directory when trustedRoot is supplied)
     // and crash-safety (tmp + rename, fsync'd).
-    await atomicWrite(teamPath, `${JSON.stringify(team, null, 4)}\n`, ctx.directory)
+    // G: wrap BOTH writes in one rollback try so a failure of the FIRST
+    // write (e.g. fsync after rename) also restores the original team file.
+    // Pre-fix code had only the second write in the try, so a first-write
+    // throw left the team file corrupted with no restore path.
     try {
+        await atomicWrite(teamPath, `${JSON.stringify(team, null, 4)}\n`, ctx.directory)
         await atomicWrite(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`, ctx.directory)
     } catch (err) {
         // Rollback: restore the ORIGINAL content (or delete if none existed).

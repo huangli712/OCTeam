@@ -201,9 +201,12 @@ describe("transform hook runId-scoped directive filtering (T5 Part B/C)", () => 
         expect(await exists(processedPath(dir, MEMBER_NAME))).toBe(true)
     })
 
-    test("(d) directive WITHOUT runId → injected (backward-compat)", async () => {
+    test("(d) directive WITHOUT runId → injected when NO active run (pre-capture backward-compat)", async () => {
         const root = tmpRoot("t5-norun")
-        const dir = await setupTeam(root, "R1")
+        // C-10: unscoped directives are legitimate only when there is no
+        // active run (pre-capture edge). With an active run they are now
+        // rejected to prevent cross-run replay — see auth.ts fail-closed.
+        const dir = await setupTeam(root, undefined)
         await writeMailboxMessage(dir, MEMBER_NAME, directiveMsg("d-norun", "legacy-directive", undefined))
 
         const transform = createTransformHook(ctxFor(root))

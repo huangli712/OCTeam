@@ -536,6 +536,25 @@ function validateLoweredTaskStep(
                 + ` output_not_contains, or regex`)
         }
         if (condCount > 1) return `Error: ${location} retry_on must set exactly one condition (found ${condCount})`
+        // C-12: type-check each condition field so non-string regex or
+        // empty:false cannot pass validation and later crash lower/runtime.
+        // Pre-fix code only ran `new RegExp(value)` which coerces numbers/
+        // objects to strings without error, then lower.ts called string
+        // methods on the value → TypeError. Also reject empty:false (counted
+        // as a condition by !==undefined but treated as not-configured at
+        // runtime).
+        if (task.retry_on.empty !== undefined && task.retry_on.empty !== true) {
+            return `Error: ${location} retry_on.empty must be true if present`
+        }
+        if (task.retry_on.output_contains !== undefined && typeof task.retry_on.output_contains !== "string") {
+            return `Error: ${location} retry_on.output_contains must be a string`
+        }
+        if (task.retry_on.output_not_contains !== undefined && typeof task.retry_on.output_not_contains !== "string") {
+            return `Error: ${location} retry_on.output_not_contains must be a string`
+        }
+        if (task.retry_on.regex !== undefined && typeof task.retry_on.regex !== "string") {
+            return `Error: ${location} retry_on.regex must be a string`
+        }
         if (task.max_task_retries === undefined) return `Error: ${location} with retry_on requires \`max_task_retries\``
     }
         // C-8: integer + bounded-range check for max_task_retries. Pre-fix

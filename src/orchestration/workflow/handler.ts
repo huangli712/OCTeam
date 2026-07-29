@@ -20,6 +20,7 @@ import {
     describeStep,
     dispatchTaskStep,
     maybePauseAfterWorkflowStep,
+    maybePauseBeforeWorkflowStep,
 } from "./engine.js";
 import { workflowInvalidReason } from "./reasons.js";
 import { finishRun } from "../control/completion.js";
@@ -81,6 +82,18 @@ function hasNestedQuantifier(pattern: string): boolean {
     // A group ending with a quantifier, followed by another quantifier.
     // Matches: (a+)+, (.+)*, ([a-z]+)?, (a{2,3})+, (a+){2}, etc.
     if (/\([^)]*[+*?}]\)[+*?{]/.test(stripped)) return true
+    // C-18: consecutive identical-quantified items at top level. Patterns
+    // like ^a*a*a*a*a*a*a*a*b$ have NO groups or alternation, so the checks
+    // above miss them, yet V8 exhibits polynomial backtracking when the
+    // trailing literal (b) does not match: the engine tries every way to
+    // distribute the input characters among the consecutive quantified items.
+    // Heuristic: flag 3+ consecutive `X*`/`X+` items where X is the same
+    // character (the case that actually backtracks). Different chars
+    // (a*b*c*) are fine — each greedily matches its own character.
+    if (/([a-zA-Z0-9])([*+])(?:\1\2){2,}/.test(stripped)) return true
+    // Also catch the character-class variant: [a][a][a]+ or similar via
+    // repeated single-char classes under quantifiers — rare but possible.
+    // Skip: too rare and complex for a heuristic; the input cap mitigates.
     // C-6: alternation-overlap under quantifier. Patterns like (a|aa)+$,
     // (a|ab)+ have exponential backtracking when two alternation branches
     // share a string-prefix overlap (one is a prefix of the other). For each
@@ -207,6 +220,17 @@ async function handleTaskIdle(
                     + ` auto-retry ${step.taskAttempts}/${maxR};`
                     + ` retry_on condition matched`,
             });
+            // K-1: re-request approval_before on retry re-dispatch. Pre-fix
+            // code called dispatchTaskStep directly, bypassing the approval
+            // gate (engine.ts:131 clears approvalBeforeGranted so the next
+            // dispatch would re-request it, but dispatchTaskStep itself never
+            // calls maybePauseBeforeWorkflowStep). This contradicted the
+            // engine.ts:131 comment "retry/goto re-requests approval".
+            if (step.approvalBefore && !step.approvalBeforeGranted) {
+                if (await maybePauseBeforeWorkflowStep(ctx, team, activeStepIndex)) {
+                    return; // paused for approval
+                }
+            }
             if (!(await dispatchTaskStep(ctx, team, task, activeStepIndex, nudge))) {
                 await handleWorkflowDispatchUnavailable(ctx, team, task, step);
                 return;
@@ -366,7 +390,20 @@ export async function handleWorkflowIdle(
         // gate: skip when output already set (double-count ensemble verdict).
         // join: always skip (no retry_on='empty' path for reducers).
         if ((step.kind === "task" || step.kind === "gate") && step.output !== undefined) {
-            return;
+            // K-3: for ENSEMBLE gates, the first verifier sets step.output,
+            // so the guard would wrongly skip subsequent verifiers whose
+            // empty responses still need to be recorded in ensembleResults.
+            // Only skip if THIS verifier has already contributed.
+            if (step.kind === "gate" && step.verifiers !== undefined) {
+                if (step.ensembleResults?.[member.name] !== undefined) {
+                    return // already recorded
+                }
+                // Fall through — this verifier hasn't contributed yet, even
+                // with empty output. handleGateVerdict will record a
+                // parse_failure so ensemble aggregation can complete.
+            } else {
+                return;
+            }
         }
         if (step.kind === "join") {
             return;

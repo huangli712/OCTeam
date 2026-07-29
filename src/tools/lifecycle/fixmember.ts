@@ -11,13 +11,33 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import { logger } from "../../core/log.js"
-import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
+import { loadTeamState, readTeamSpec, saveTeamState, saveTeamStateBounded, writeTeamSpec } from "../../state/store.js"
 import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
 import { inboxPath, worktreesDir } from "../../state/paths.js"
 import { destroyWorktree } from "../../state/worktrees.js"
 import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../../core/role.js"
-import type { TeamSpec } from "../../core/types.js"
+import type { ActiveTask, TeamSpec } from "../../core/types.js"
 import { MEMBER_NAME_POOL } from "../../state/naming.js"
+
+/**
+ * C-19: migrate all member-name references inside an ActiveTask when a member
+ * is renamed. Used for both activeTask and lastInterruptedTask so a rename on
+ * a failed team does not break the preserved checkpoint.
+ */
+function migrateActiveTaskMemberRefs(task: ActiveTask, oldName: string, newName: string): void {
+    if (task.tokensByMember[oldName] !== undefined) {
+        task.tokensByMember[newName] = task.tokensByMember[oldName]
+        delete task.tokensByMember[oldName]
+    }
+    if (task.responses[oldName] !== undefined) {
+        task.responses[newName] = task.responses[oldName]
+        delete task.responses[oldName]
+    }
+    if (task.type === "loop" && task.deciderMember === oldName) task.deciderMember = newName
+    for (const s of task.stages) {
+        if (s.member === oldName) s.member = newName
+    }
+}
 
 /** Modify a team member's name, role, prompt, or agent. */
 export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
@@ -186,19 +206,17 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         }
                     }
                     if (team.activeTask) {
-                        const at = team.activeTask
-                        if (at.tokensByMember[oldName] !== undefined) {
-                            at.tokensByMember[newName] = at.tokensByMember[oldName]
-                            delete at.tokensByMember[oldName]
-                        }
-                        if (at.responses[oldName] !== undefined) {
-                            at.responses[newName] = at.responses[oldName]
-                            delete at.responses[oldName]
-                        }
-                        if (at.type === "loop" && at.deciderMember === oldName) at.deciderMember = newName
-                        for (const s of at.stages) {
-                            if (s.member === oldName) s.member = newName
-                        }
+                        migrateActiveTaskMemberRefs(team.activeTask, oldName, newName)
+                    }
+                    // C-19: a failed team carries lastInterruptedTask (the
+                    // checkpoint preserved by reconcile.ts for team_resume).
+                    // Pre-fix code only migrated activeTask references, so
+                    // renaming a member on a failed team left the checkpoint
+                    // pointing at the old name → team_resume could not resolve
+                    // the actor/verifier and immediately failed the recovered
+                    // run. Apply the same migration to lastInterruptedTask.
+                    if (team.lastInterruptedTask) {
+                        migrateActiveTaskMemberRefs(team.lastInterruptedTask, oldName, newName)
                     }
                     changes.push(`name: ${oldName} → ${newName}`)
                 }
@@ -367,7 +385,24 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     // disk, making the destroyed worktree appear active.
                     changes.push(`worktree: destroyed old (will re-create on next start)`)
                 }
-                await saveTeamState(team)
+                // G: teardown-save with bounded retry. Pre-fix code used bare
+                // saveTeamState which swallows save failures silently — if
+                // this save fails, the in-memory worktree/session fields are
+                // already cleared but disk still references the destroyed
+                // worktree, so a restart would fail to spawn the member.
+                // saveTeamStateBounded retries 3x before throwing; on throw
+                // we surface the error so the caller knows the member state
+                // may be inconsistent.
+                try {
+                    await saveTeamStateBounded(team)
+                } catch (teardownErr) {
+                    logger.error("fixmember: teardown save failed; disk may still reference destroyed worktree/session", {
+                        teamName: caller.teamName,
+                        member: liveMember.name,
+                        error: teardownErr instanceof Error ? teardownErr.message : String(teardownErr),
+                    })
+                    throw teardownErr
+                }
             })
 
             if (staleState) {

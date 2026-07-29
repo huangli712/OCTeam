@@ -69,6 +69,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             // mkdir({recursive:true}).
             const worktreeErrors: string[] = []
             let staleBusy = false
+            let staleSpawning = false
             try {
                 await team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
@@ -85,7 +86,13 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 // skipped staleBusy, so the outer code reported success
                 // while leaving the team in a tombstone state.
                 if (team.spawning) {
-                    return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). Retry in a few seconds.`
+                    // G: flag the spawning state so the outer code returns the
+                    // error. Pre-fix code returned a string from inside the
+                    // mutex callback, but team.mutex.runExclusive discarded
+                    // the return value — the tool reported success while the
+                    // team was still spawning and nothing was deleted.
+                    staleSpawning = true
+                    return
                 }
                 team.deleted = true  // tombstone: prevent any racing handler from resurrecting this dir
                 // Force-deleting a busy team: abort running members and clear the
@@ -148,6 +155,9 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     clearWakeHint(team.leadSessionId)
                     invalidateTeam(team.directory)
                 })
+                if (staleSpawning) {
+                    return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). Retry in a few seconds.`
+                }
                 if (staleBusy) {
                     return `Error: team "${args.team_id}" is busy with an active orchestration. `
                         + `Wait for it to finish, or re-run with force: true.`

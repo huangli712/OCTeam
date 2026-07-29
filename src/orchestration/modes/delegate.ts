@@ -90,10 +90,17 @@ export async function runDelegateStyleTail(
         )
         if (erroredTask) {
             try {
+                // J-3/CAS: pass expectedOwner + expectedStatus so a concurrent
+                // reaper reset + re-claim by another member is not clobbered.
+                // Pre-fix code called updateTask without CAS — a slow release
+                // here could clear a new owner's claim.
                 await updateTask(team.directory, erroredTask.id, {
                     status: "pending",
                     owner: undefined,
                     claimedAt: undefined,
+                }, {
+                    expectedOwner: m.name,
+                    expectedStatus: erroredTask.status as "claimed" | "in_progress",
                 })
                 recordEvent(team, {
                     timestamp: Date.now(),

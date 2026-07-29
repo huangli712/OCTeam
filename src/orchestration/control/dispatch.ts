@@ -9,7 +9,7 @@
 import type { PluginContext } from "../../core/context.js"
 import { safeMemberAgent } from "../../core/role.js"
 import type { MemberState } from "../../core/types.js"
-import { type Team, saveTeamState } from "../../state/store.js"
+import { type Team, saveTeamStateBounded } from "../../state/store.js"
 import { recordEvent } from "../records/events.js"
 import { logSwallowed } from "../../core/log.js"
 
@@ -75,17 +75,15 @@ export async function dispatchToMember(
             member: member.name,
             ...eventMeta,
         })
-        // C5: persist immediately so the dispatched state survives a crash
-        // before the caller's own saveTeamState call. If this save fails,
-        // log it but do NOT throw — the member is already dispatched on the
-        // host, and throwing would leave the caller unable to recover. The
-        // caller's subsequent saveTeamState (or the sweep's save) will retry.
+        // C5/G: persist immediately with bounded retry so the dispatched state
+        // survives a crash. Pre-fix code used `.catch(logSwallowed)` which left
+        // disk unaware of the dispatch on transient I/O errors.
         try {
-            await saveTeamState(team)
+            await saveTeamStateBounded(team)
         } catch (err) {
-            logSwallowed(ctx, "dispatchToMember: immediate saveTeamState failed after dispatch", err, {
+            logSwallowed(ctx, "dispatchToMember: saveTeamState failed after retries; disk may not reflect dispatch", err, {
                 member: member.name, team: team.teamName,
-            })
+            }, "error")
         }
     }
 }

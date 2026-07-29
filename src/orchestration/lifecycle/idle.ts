@@ -247,13 +247,20 @@ export async function processIdle(
         })
         return
     }
-    member.status = "idle"
+    // M-1: defer the status flip to "idle" until AFTER output capture
+    // succeeds. Pre-fix code set status="idle" at line 250, then called
+    // session.messages/captureMemberOutput which can throw (transient host
+    // error). The sweep's missed-idle reconciliation only retries members
+    // with status==="running", so a read failure permanently stranded the
+    // member as idle with uncaptured output. Now: keep status="running"
+    // until capture succeeds; the sweep will retry on the next tick.
     member.retryingSince = undefined // idle clears retry tracking
 
     // Step 3: Role-setup barrier — first idle of an uninitialized member
     // marks it ready and returns WITHOUT capturing output or advancing.
     if (!member.initialized) {
         member.initialized = true
+        member.status = "idle"
         await saveTeamState(team)
         return
     }
@@ -278,6 +285,10 @@ export async function processIdle(
         capturedNew = await captureMemberOutput(team, member, messages)
     }
 
+    // M-1: now that capture succeeded, flip the status to idle. Pre-fix
+    // code flipped at the start; deferring means a capture throw leaves
+    // the member as "running" so the sweep retries on the next tick.
+    member.status = "idle"
     await saveTeamState(team)
 
     // Step 6.5: recurse mode — the decomposer may broadcast coordination

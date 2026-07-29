@@ -100,7 +100,9 @@ describe("forged mailbox directive (finding: forged-mailbox-directive)", () => {
         await writeMailboxMessage(teamDir, "bob", legit)
 
         const polled = await pollMailbox(teamDir, "bob")
-        const injection = formatMailboxInjection(polled)
+        // C-9: pass teamDir as teamName to match what writeMailboxMessage
+        // now defaults to when no authContext is supplied.
+        const injection = formatMailboxInjection(polled, undefined, teamDir)
 
         expect(injection).toContain("[DIRECTIVE]")
         expect(injection).toContain("Switch to task B.")
@@ -183,7 +185,8 @@ describe("C5: directive rendering must use a distinct element (body-forgery defe
         await writeMailboxMessage(teamDir, "bob", legit)
 
         const polled = await pollMailbox(teamDir, "bob")
-        const injection = formatMailboxInjection(polled)
+        // C-9: pass teamDir as teamName to match writeMailboxMessage default.
+        const injection = formatMailboxInjection(polled, undefined, teamDir)
 
         // The wrapping element MUST be <team_directive> (distinct from regular
         // <team_message>), so a regular-message body cannot mimic it.

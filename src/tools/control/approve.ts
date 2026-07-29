@@ -20,7 +20,7 @@ import { approveRecurseDecompose, rejectRecurseDecompose } from "../../orchestra
 import { advanceWorkflowStep } from "../../orchestration/workflow/engine.js"
 import { maybeTriggerSignoff } from "../../orchestration/control/signoff.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
+import { loadTeamState, saveTeamStateBounded, type Team } from "../../state/store.js"
 import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 import { findMember } from "../support.js"
 
@@ -118,21 +118,33 @@ export async function applyApprovalDecision(
         round: request.round,
         detail: `${request.kind}:${decision.approved ? "approved" : "rejected"}`,
     })
-    // H-13: persist the approval resolution BEFORE dispatch/advance so it is
-    // durable regardless of dispatch outcome. Pre-fix code saved only at the
-    // end (after dispatch), so a dispatch throw left the disk showing the
-    // approval as still pending — the master could re-approve, producing a
-    // duplicate event and a second dispatch while the first was still in
-    // flight. This save also makes the catch block's in-memory rollback
-    // meaningful (the disk already has the resolution; the rollback only
-    // affects the in-memory state that will be re-saved on the next call).
-    // M20: save INSIDE the try block so a save failure triggers the
-    // rollback in the catch block. Pre-fix code had save outside the try —
-    // a save throw left the in-memory approvalStage cleared but disk still
-    // showing the old request, with no rollback.
+    // H-13/G: persist the approval resolution BEFORE dispatch/advance. Pre-fix
+    // code saved only at the end, so a dispatch throw left disk showing the
+    // approval as still pending. M20 moved save inside the try but the catch
+    // only restored startedAt — a SAVE failure left approvalStage/Request
+    // cleared and approvalHistory updated in memory while disk still showed
+    // the old pending request, so a retry could re-approve.
+    // G fix: wrap the save in its own try/catch. On save failure, restore the
+    // FULL approval state (approvalStage, approvalRequest, approvalHistory,
+    // startedAt) and rethrow. On dispatch failure (after successful save),
+    // keep the approval resolved (disk already has it) — only restore
+    // startedAt per H-13.
     try {
-    await saveTeamState(team)
+        await saveTeamStateBounded(team)
+    } catch (saveErr) {
+        // Save failed: disk does NOT have the resolution. Restore all
+        // mutated fields so a retry sees the original pending request.
+        task.startedAt = savedStartedAt
+        task.approvalStage = true
+        task.approvalRequest = request
+        task.approvalHistory = (task.approvalHistory ?? []).slice(0, -1)
+        throw saveErr
+    }
 
+    // Save succeeded — dispatch/advance below. A failure here must NOT
+    // restore the approval (disk already has the resolution; restoring
+    // would let the master re-approve and duplicate the dispatch).
+    try {
     if (!decision.approved) {
         switch (request.kind) {
             case "pipeline_stage":
@@ -297,7 +309,7 @@ function approvalTool(ctx: PluginContext, approved: boolean): ToolDefinition {
                     return
                 }
                 result = await applyApprovalDecision(ctx, team, { approved, feedback: args.feedback })
-                await saveTeamState(team)
+                await saveTeamStateBounded(team)
             })
             return result
         },

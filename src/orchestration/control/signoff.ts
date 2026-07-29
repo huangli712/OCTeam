@@ -7,9 +7,9 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { logEvent } from "../../core/log.js"
+import { logEvent, logSwallowed } from "../../core/log.js"
 import type { MemberState } from "../../core/types.js"
-import { type Team, saveTeamState } from "../../state/store.js"
+import { type Team, saveTeamStateBounded } from "../../state/store.js"
 import { isQuorumReached, parseSignoff } from "../protocol/decisions.js"
 import { recordEvent } from "../records/events.js"
 import { buildSummary } from "../records/summary.js"
@@ -82,12 +82,18 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     // state — the next idle would route to handleSignoffIdle on a stage that
     // had no reviewers in flight.
     try {
-        await saveTeamState(team)
+        await saveTeamStateBounded(team)
     } catch (err) {
         task.signoffStage = false
         task.signoffApprovals = undefined
         throw err
     }
+    // G: track dispatch failures so partial-dispatch does not leave the run
+    // stalled. Pre-fix code had no error handling in the loop; if reviewer
+    // dispatch threw partway, already-dispatched reviewers were prompted but
+    // the run stalled waiting for never-dispatched ones (peer-quorum) or
+    // failed with a misleading error (decider).
+    const dispatchFailures: string[] = []
     for (const reviewer of reviewers) {
         // Do NOT pre-write a false sentinel for pending reviewers — false is
         // a valid rejection vote and isQuorumReached counts map keys as
@@ -95,13 +101,48 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         // tallied as rejected before they've even seen the prompt. Instead,
         // just dispatch; the reviewer's name appears in signoffApprovals only
         // when they actually respond via handleSignoffIdle.
-        await dispatchToMember(
-            ctx,
-            reviewer,
-            reviewPrompt,
-            reviewer.worktreePath ?? ctx.directory,
-            team,
-        )
+        try {
+            await dispatchToMember(
+                ctx,
+                reviewer,
+                reviewPrompt,
+                reviewer.worktreePath ?? ctx.directory,
+                team,
+            )
+        } catch (err) {
+            // Isolate per-reviewer dispatch failures. For decider policy this
+            // is fatal (the single reviewer never got the prompt); for
+            // peer-quorum it's a soft failure (remaining reviewers may still
+            // reach quorum).
+            dispatchFailures.push(reviewer.name)
+            logSwallowed(ctx, "signoff: reviewer dispatch failed", err, {
+                team: team.teamName, reviewer: reviewer.name, policy: task.signoffPolicy,
+            })
+            if (task.signoffPolicy === "decider") {
+                // Decider dispatch failed — the run cannot complete. Rollback
+                // the signoffStage so finishRun(failed) is the explicit outcome.
+                task.signoffStage = false
+                task.signoffApprovals = undefined
+                try {
+                    await saveTeamStateBounded(team)
+                } catch (rollbackErr) {
+                    logSwallowed(ctx, "signoff: rollback save failed after decider dispatch failure", rollbackErr, { team: team.teamName })
+                }
+                throw err
+            }
+        }
+    }
+    // peer-quorum with all-failures: no reviewer was prompted, so the run
+    // would stall. Rollback the stage and fail the run.
+    if (dispatchFailures.length === reviewers.length) {
+        task.signoffStage = false
+        task.signoffApprovals = undefined
+        try {
+            await saveTeamStateBounded(team)
+        } catch (rollbackErr) {
+            logSwallowed(ctx, "signoff: rollback save failed after all-reviewers dispatch failure", rollbackErr, { team: team.teamName })
+        }
+        throw new Error(`signoff: all ${reviewers.length} reviewer dispatch(es) failed: ${dispatchFailures.join(", ")}`)
     }
 
     return true
@@ -144,6 +185,15 @@ export async function handleSignoffIdle(
     const signoff = parseSignoff(memberOutput)
     if (!signoff) {
         logEvent(ctx, "debug", "signoff tag parse failed", {
+            team: team.teamName,
+            member: member.name,
+        })
+    } else if (signoff.parseFailed) {
+        // H-3/N: malformed signoff (missing/non-boolean approved). Log so
+        // operators can distinguish from explicit rejections. The reviewer's
+        // output was parsed but didn't contain a valid boolean — likely an
+        // LLM formatting error.
+        logEvent(ctx, "warn", "signoff payload malformed (approved field missing/non-boolean); treating as rejection", {
             team: team.teamName,
             member: member.name,
         })

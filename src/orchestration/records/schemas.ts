@@ -94,7 +94,7 @@ const WorkflowFanoutMetadataSchema = z.object({
     joinIndex: z.number().int().nonnegative(),
     maxErrored: z.number().int().nonnegative(),
     joinPolicy: WorkflowJoinPolicySchema.optional(),
-    quorum: z.number().optional(),
+    quorum: z.number().refine(v => v > 0 && v <= 1, "quorum must be in (0, 1]").optional(),
     requiredBranchIds: z.array(z.string().min(1)).optional(),
     reducerMember: z.string().min(1).optional(),
     useSurvivors: z.boolean().optional(),
@@ -111,6 +111,13 @@ const WorkflowFanoutMetadataSchema = z.object({
 ).refine(
     fanout => fanout.joinPolicy !== "required_branches" || (fanout.requiredBranchIds ?? []).length > 0,
     "joinPolicy 'required_branches' requires non-empty requiredBranchIds",
+).refine(
+    // C-14: required_branches must reference existing branchIds. A tampered or
+    // corrupt record with requiredBranchIds referencing non-existent branches
+    // would pass the persistence boundary and produce misleading audit data.
+    fanout => fanout.joinPolicy !== "required_branches"
+        || (fanout.requiredBranchIds ?? []).every(id => fanout.branchIds.includes(id)),
+    "joinPolicy 'required_branches' references unknown branchIds",
 )
 
 /** Persisted branch metadata: links a branch step to its containing fanout and join. */
@@ -158,8 +165,8 @@ const WorkflowRunStepSchema = z.object({
     ensembleQuorum: z.number().optional(),
     ensembleResults: z.record(z.string(), z.unknown()).optional(),
     dispatchedActor: z.string().optional(),
-    targetStep: z.number().int().nonnegative().optional(),
-    targetSteps: z.array(z.number().int().nonnegative()).optional(),
+    targetStep: z.number().int().positive().optional(),
+    targetSteps: z.array(z.number().int().positive()).optional(),
     verdict: VerdictSchema.optional(),
     score: z.number().optional(),
     confidence: z.number().optional(),

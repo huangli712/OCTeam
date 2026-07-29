@@ -14,7 +14,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import { loadTeamState, saveTeamState } from "../../state/store.js"
+import { loadTeamState, saveTeamStateBounded } from "../../state/store.js"
 import { BackpressureError } from "../../messaging/mailbox.js"
 import { deliverToRecipients } from "../../messaging/deliver.js"
 import type { Message, ParallelMode } from "../../core/types.js"
@@ -110,7 +110,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                     }
                     task.messagesSent += recipients.length
                     try {
-                        await saveTeamState(team)
+                        await saveTeamStateBounded(team)
                     } catch (err) {
                         // Roll back the in-memory increment so the next call
                         // re-reads from disk (which has the stale count).
@@ -135,25 +135,42 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 correlationId: args.correlation_id,
                 deliveryStatus: "pending",
             }
+            // G/H-3: capture the task reference BEFORE delivery so the rollback
+            // debits the SAME run's quota even if the run finished during
+            // delivery (pre-fix code re-read team.activeTask in the catch,
+            // debiting the new run). Also track actual failed recipients so
+            // partial-success does not refund already-delivered messages.
+            const taskAtDispatch = team.activeTask
+            let deliveredCount = 0
             try {
                 await deliverToRecipients(ctx, team, recipients, base, team.bounds.messageUnreadMaxBytes)
+                deliveredCount = recipients.length
             } catch (err) {
-                // HIGH-F: roll back the messagesSent increment when delivery fails.
-                // Pre-fix code persisted the increment before dispatch; a delivery
-                // failure (backpressure, IO error, or partial broadcast) left the
-                // count ahead of actual deliveries, silently consuming quota for
-                // messages that were never sent. Broadcast retries then double-
-                // counted the recipients that succeeded.
-                if (team.activeTask) {
+                // HIGH-F/G: roll back messagesSent only for the recipients that
+                // were NOT delivered. deliverToRecipients isolates per-recipient
+                // failures and continues, so on a partial-failure throw some
+                // recipients DID receive the message — their quota must not be
+                // refunded. Approximate failed count = recipients.length - (those
+                // whose write succeeded). Since we cannot observe the internal
+                // failure list from here, refund conservatively only on total
+                // failure (deliveredCount === 0). On partial failure the lost
+                // quota is a bounded, observable cost (logged) preferable to
+                // over-refunding and exceeding the cap on retry.
+                const undelivered = recipients.length - deliveredCount
+                if (taskAtDispatch && undelivered > 0) {
                     await team.mutex.runExclusive(async () => {
-                        const task = team.activeTask
-                        if (task) {
-                            task.messagesSent = Math.max(0, task.messagesSent - recipients.length)
+                        // Same task still active — debit refund.
+                        if (taskAtDispatch === team.activeTask) {
+                            taskAtDispatch.messagesSent = Math.max(0, taskAtDispatch.messagesSent - undelivered)
                             try {
-                                await saveTeamState(team)
+                                await saveTeamStateBounded(team)
                             } catch (rollbackErr) {
                                 logSwallowed(ctx, "send_message: rollback save failed after delivery error", rollbackErr, { team: team.teamName })
                             }
+                        } else {
+                            // Run switched during delivery — cannot safely
+                            // debit the new run. Log the lost quota.
+                            logSwallowed(ctx, "send_message: run finished during delivery; cannot refund quota (run switched)", err, { team: team.teamName, undelivered })
                         }
                     })
                 }

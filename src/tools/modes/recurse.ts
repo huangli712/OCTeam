@@ -19,7 +19,7 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
+import { commonOrchestrationFields, humanApprovalSchemaFields, parseThresholdFields, signoffSchemaFields } from "../schema.js"
 import { assertMember, validateSignoff, findMember } from "../support.js"
 import { MASTER_NAME } from "../../state/naming.js"
 
@@ -69,6 +69,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             ...commonOrchestrationFields,
+            ...parseThresholdFields,
             max_errored_members: tool.schema
                 .number()
                 .int()

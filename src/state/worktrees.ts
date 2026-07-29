@@ -32,20 +32,21 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
     } catch (err) {
         // Distinguish "not a git path" (safe — worktree: false members have
         // no git worktree) from "git failed" (unsafe).
-        // M-WORKTREE: a corrupted .git in a formerly-valid worktree could
-        // also produce "not a git repository". Log the path so operators
-        // can diagnose if uncommitted work is lost after team_delete.
-        // A non-existent path or non-repo has no work to lose → return false.
-        // Any other error means we CANNOT verify cleanliness → fail closed.
+        // L-2: a corrupted .git in a formerly-valid worktree also produces
+        // "not a git repository". Pre-fix code returned false (clean) for this
+        // case, which could destroy undetectable staged/unstaged work on a
+        // non-force delete. Now: only "does not exist" / ENOENT returns false
+        // (genuinely no path, no work to lose). "not a git repository" returns
+        // true (fail-closed) so the caller requires force: true to proceed.
         const msg = err instanceof Error ? err.message : String(err)
         if (
-            /not a git repository|does not exist|no such file/i.test(msg)
+            /does not exist|no such file/i.test(msg)
             || (err as NodeJS.ErrnoException).code === "ENOENT"
         ) {
-            logger.debug("hasUncommittedChanges: path is not a git repo (no work to lose)", { worktreePath })
+            logger.debug("hasUncommittedChanges: path does not exist (no work to lose)", { worktreePath })
             return false
         }
-        logger.warn("hasUncommittedChanges: git status failed, treating as dirty (fail-closed)", {
+        logger.warn("hasUncommittedChanges: git status failed (including corrupted .git), treating as dirty (fail-closed)", {
             worktreePath, error: msg,
         })
         return true

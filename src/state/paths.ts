@@ -50,11 +50,34 @@ export function stateLockPath(teamDirectory: string): string {
     return path.join(teamDirectory, "state.json.lock")
 }
 
+/**
+ * master.sentinel — write-once file pinning the team's authoritative
+ * leadSessionId for user-scope teams (C-17). Written at team_create with
+ * read-only permissions; never overwritten by any tool. At restart, user
+ * scope reads this instead of the mutable state.json.leadSessionId so a
+ * member with FS write to state.json cannot escalate to master by changing
+ * the leadSessionId field. Project scope already derives the owner from the
+ * directory segment and does not need the sentinel.
+ */
+export function masterSentinelPath(teamDirectory: string): string {
+    return path.join(teamDirectory, "master.sentinel")
+}
+
 /** team.lifecycle.lock — cross-process lock guarding team lifecycle operations
  *  (startup spawning, rename, fixmember, delete). Prevents cross-process races
  *  where sibling OpenCode instances concurrently modify the same team. */
 export function teamLifecycleLockPath(teamDirectory: string): string {
     return path.join(teamDirectory, "team.lifecycle.lock")
+}
+
+/**
+ * C-16: deletion marker placed in the PARENT of the team directory so it
+ * survives the team dir rm. Another process holding a stale Team reference
+ * checks this marker inside the state lock before writing state.json,
+ * preventing cross-process team resurrection.
+ */
+export function deletedMarkerPath(teamDirectory: string): string {
+    return path.join(path.dirname(teamDirectory), path.basename(teamDirectory) + ".deleted")
 }
 
 // --- mailbox/ ---

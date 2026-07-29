@@ -310,7 +310,17 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             // does not need to call lowerWorkflowSteps a second time.
             const loweredStepCount = lowerWorkflowSteps(resolvedArgs.steps).length
             if (args.dry_run) {
-                const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+                // M-22: wrap loadTeamState in try/catch so a corrupt or
+                // unreadable state file returns a clean tool error instead
+                // of leaking an internal exception. The normal start path
+                // handles this via startOrchestration's error wrapper.
+                let team
+                try {
+                    team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+                } catch (err) {
+                    const msg = err instanceof Error ? err.message : String(err)
+                    return `Error: failed to load team state for dry-run: ${msg}`
+                }
                 const gate = activationError(team.teamName, team.activatedAt)
                 if (gate) return gate
                 const validationError = validateWorkflowArgs(resolvedArgs, team)

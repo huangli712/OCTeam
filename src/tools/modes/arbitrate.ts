@@ -16,7 +16,7 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
+import { commonOrchestrationFields, humanApprovalSchemaFields, parseThresholdFields, signoffSchemaFields } from "../schema.js"
 import { assertMember, validateSignoff, findMember } from "../support.js"
 import { MASTER_NAME } from "../../state/naming.js"
 
@@ -54,6 +54,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             ...commonOrchestrationFields,
+            ...parseThresholdFields,
         },
         async execute(args, context) {
             return startOrchestration(

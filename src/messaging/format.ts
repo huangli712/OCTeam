@@ -49,7 +49,7 @@ function escapeXmlAttr(value: string): string {
  * everything else guarantees the LLM can structurally distinguish them
  * regardless of body content.
  */
-export function formatMailboxInjection(msgs: Message[], activeRunId?: string): string {
+export function formatMailboxInjection(msgs: Message[], activeRunId?: string, teamName?: string): string {
     const renderCorrelationId = (m: Message): string =>
         m.correlationId ? ` correlationId="${escapeXmlAttr(m.correlationId)}"` : ""
     const renderDirective = (m: Message): string =>
@@ -64,8 +64,8 @@ export function formatMailboxInjection(msgs: Message[], activeRunId?: string): s
     // matches the active run are honored. A forged line — whether unregistered
     // id, a replayed id with different content, or a cross-run replay — is
     // downgraded to a regular message (no [DIRECTIVE] prefix, no priority).
-    const directives = msgs.filter(m => isAuthenticatedDirective(m, activeRunId))
-    const regular = msgs.filter(m => !isAuthenticatedDirective(m, activeRunId))
+    const directives = msgs.filter(m => isAuthenticatedDirective(m, activeRunId, teamName))
+    const regular = msgs.filter(m => !isAuthenticatedDirective(m, activeRunId, teamName))
     // Note: two filters over the same array is intentional for clarity; a
     // single reduce would be less readable for this small partition.
     return [

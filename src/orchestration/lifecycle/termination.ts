@@ -75,6 +75,12 @@ export async function checkTermination(
                 const result = markWorkflowFanoutBranchErrored(task, member.name)
                 switch (result.kind) {
                     case "within_tolerance":
+                        // I-2: re-drive the workflow barrier so the surviving
+                        // branches can complete. Pre-fix code `continue`d,
+                        // leaving the run stalled until wall-clock timeout
+                        // when the errored member was the last awaited one
+                        // (no more idle events to re-trigger advance).
+                        await advanceWorkflowStep(ctx, team)
                         continue
                     case "failed":
                         await finishRun(ctx, team, result.reason, "failed")

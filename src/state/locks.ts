@@ -93,7 +93,19 @@ async function fsyncDir(dir: string): Promise<void> {
  * While held, a heartbeat refreshes mtime; release verifies pid ownership before
  * unlinking. Used to guard state.json writes and mailbox reservations.
  */
-export async function withLock<T>(lockPath: string, fn: () => Promise<T>): Promise<T> {
+export async function withLock<T>(
+    lockPath: string,
+    fn: () => Promise<T>,
+    trustedRoot?: string,
+): Promise<T> {
+    // C-4: when a trusted root is supplied, walk the ancestor chain before
+    // any fs operation. Pre-fix code called mkdir/open/utimes/readFile/unlink
+    // directly on lockPath — a symlinked ancestor could redirect the lock
+    // file outside the team root, breaking mutual exclusion. ENOENT for a
+    // not-yet-created lock dir is tolerated by assertNoSymlinkTraversal.
+    if (trustedRoot !== undefined) {
+        await assertNoSymlinkTraversal(trustedRoot, lockPath)
+    }
     await acquireLock(lockPath)
     // Keep the held lock's metadata current for diagnostics and consumers.
     const heartbeat = setInterval(() => {
@@ -193,9 +205,14 @@ async function releaseLock(lockPath: string): Promise<void> {
     let owner: string
     try {
         owner = await fs.readFile(lockPath, "utf8")
-    } catch {
-        // Lock file already gone or unreadable — nothing to release.
-        return
+    } catch (err: unknown) {
+        // L-1: only ENOENT (lock already gone) is a safe no-op. Other errors
+        // (EACCES, EIO) mean the lock is still on disk but unreadable —
+        // pre-fix code silently returned for ALL errors, leaving permanent
+        // locks on permission/I/O failures. Now: re-throw non-ENOENT so the
+        // caller knows the lock wasn't released.
+        if (isEnoent(err)) return
+        throw err
     }
     if (owner.trim() !== String(process.pid)) {
         // Lock now belongs to another process — must not delete it.
@@ -285,14 +302,19 @@ export async function atomicWrite(
     content: string,
     trustedRoot?: string,
 ): Promise<void> {
-    await fs.mkdir(path.dirname(filePath), { recursive: true }).catch((err: unknown) => {
-        const code = (err as NodeJS.ErrnoException).code
-        if (code !== "EEXIST") throw err
-    })
-
+    // C-5: ancestor symlink check must run BEFORE mkdir. Pre-fix order ran
+    // recursive mkdir first, so if an intermediate directory was already a
+    // symlink to an external target, mkdir would create/extend the external
+    // directory before the symlink check had a chance to refuse. Both checks
+    // below tolerate ENOENT (target/ancestor not yet created), so running
+    // them first is safe.
+    // st-symlink-ancestor: when a trusted root is supplied, walk the full
+    // ancestor chain so an intermediate-directory symlink cannot redirect.
+    if (trustedRoot !== undefined) {
+        await assertNoSymlinkTraversal(trustedRoot, filePath)
+    }
     // st-symlink: refuse to overwrite a symlink so the write cannot be
-    // redirected to an unexpected location. lstat does not follow links, so
-    // a symlink is reported as-is rather than its target.
+    // redirected to an unexpected location. lstat does not follow links.
     try {
         const stat = await fs.lstat(filePath)
         if (stat.isSymbolicLink()) {
@@ -302,13 +324,11 @@ export async function atomicWrite(
         if (!isEnoent(err)) throw err
         // Target does not exist yet — safe to proceed.
     }
-    // st-symlink-ancestor: when a trusted root is supplied, walk the full
-    // ancestor chain so an intermediate-directory symlink (e.g. `<team>/mailbox`
-    // redirected outside the team root) cannot redirect the write. The legacy
-    // leaf-only check above misses this case.
-    if (trustedRoot !== undefined) {
-        await assertNoSymlinkTraversal(trustedRoot, filePath)
-    }
+
+    await fs.mkdir(path.dirname(filePath), { recursive: true }).catch((err: unknown) => {
+        const code = (err as NodeJS.ErrnoException).code
+        if (code !== "EEXIST") throw err
+    })
 
     // st-tmpname: random suffix prevents same-process tmp collisions.
     const rand = crypto.randomBytes(4).toString("hex")

@@ -16,7 +16,7 @@ import {
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
-import { commonOrchestrationFields, humanApprovalSchemaFields, signoffSchemaFields } from "../schema.js"
+import { commonOrchestrationFields, humanApprovalSchemaFields, parseThresholdFields, signoffSchemaFields } from "../schema.js"
 import { validateSignoff } from "../support.js"
 import { MASTER_NAME } from "../../state/naming.js"
 /** Content-based routing: a router inspects input and dispatches to matching branches. */
@@ -64,6 +64,7 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             ...commonOrchestrationFields,
+            ...parseThresholdFields,
         },
         async execute(args, context) {
             return startOrchestration(

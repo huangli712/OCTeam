@@ -39,13 +39,13 @@ describe("consumeDirectiveAuth runId binding (C-5)", () => {
         authenticateDirective(msg, "team", "r1")
 
         // Before ack: directive is authenticated.
-        expect(isAuthenticatedDirective(msg, "r1")).toBe(true)
+        expect(isAuthenticatedDirective(msg, "r1", "team")).toBe(true)
 
         // ack-time consumption with msg.runId must succeed.
-        expect(consumeDirectiveAuth(msg)).toBe(true)
+        expect(consumeDirectiveAuth(msg, "team")).toBe(true)
 
         // After ack: replay is no longer authenticated.
-        expect(isAuthenticatedDirective(msg, "r1")).toBe(false)
+        expect(isAuthenticatedDirective(msg, "r1", "team")).toBe(false)
         expect(authTest.authDirectiveMapSize()).toBe(before)
     })
 
@@ -69,8 +69,10 @@ describe("consumeDirectiveAuth runId binding (C-5)", () => {
         }
 
         // Register the directive (mimics writeMailboxMessage during a real run).
-        authenticateDirective(msg, "team", "r-ack")
-        expect(isAuthenticatedDirective(msg, "r-ack")).toBe(true)
+        // C-9: use root as teamName so it matches what ackMessages passes
+        // (teamDirectory) for consumption.
+        authenticateDirective(msg, root, "r-ack")
+        expect(isAuthenticatedDirective(msg, "r-ack", root)).toBe(true)
 
         // ackMessages writes the processed entry, then attempts to consume the
         // directive auth (the unlink fails harmlessly with ENOENT — no
@@ -84,7 +86,7 @@ describe("consumeDirectiveAuth runId binding (C-5)", () => {
             // unlink ENOENT is OK; the consume call already ran.
         }
 
-        expect(isAuthenticatedDirective(msg, "r-ack")).toBe(false)
+        expect(isAuthenticatedDirective(msg, "r-ack", root)).toBe(false)
     })
 
     test("legacy directive without runId is still consumable (backward compat)", () => {
@@ -99,8 +101,8 @@ describe("consumeDirectiveAuth runId binding (C-5)", () => {
             deliveryStatus: "pending" as const,
         }
         authenticateDirective(msg, "team") // no runId
-        expect(isAuthenticatedDirective(msg)).toBe(true)
-        expect(consumeDirectiveAuth(msg)).toBe(true)
-        expect(isAuthenticatedDirective(msg)).toBe(false)
+        expect(isAuthenticatedDirective(msg, undefined, "team")).toBe(true)
+        expect(consumeDirectiveAuth(msg, "team")).toBe(true)
+        expect(isAuthenticatedDirective(msg, undefined, "team")).toBe(false)
     })
 })

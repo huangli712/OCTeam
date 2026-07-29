@@ -17,7 +17,7 @@ import crypto from "node:crypto"
 
 import { logger } from '../core/log.js';
 import { isEnoent } from '../core/utils.js';
-import { CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./locks.js"
+import { assertNoSymlinkTraversal, CLAIM_TTL_MS, atomicWrite, lockFresh, withLock } from "./locks.js"
 import { claimLockPath, claimMutexPath, claimsDir, taskPath, tasksDir, taskUpdateLockPath } from "./paths.js"
 import type { Task, TaskStatus } from "../core/types.js"
 
@@ -122,6 +122,11 @@ function isValidTask(value: unknown): value is Task {
         typeof t.id === "string"
         && typeof t.subject === "string"
         && typeof t.status === "string"
+        // M-21: reject out-of-enum task statuses. The task state machine only
+        // allows pending/claimed/in_progress/completed/deleted. A tampered
+        // task file with status:"blocked" would pass the string check but
+        // break claim/complete transitions.
+        && new Set(["pending", "claimed", "in_progress", "completed", "deleted"]).has(t.status as string)
         && Array.isArray(t.blockedBy)
         && t.blockedBy.every(v => typeof v === "string")
     )
@@ -311,7 +316,7 @@ export async function updateTask(
             })
         }
         return task
-    })
+    }, teamDirectory)
 }
 
 /**
@@ -362,6 +367,11 @@ export async function claimTask(
     owner: string,
 ): Promise<Task> {
     assertValidTaskId(taskId)
+    // C-6: claimsDir mkdir happens before withLock; guard its ancestor chain
+    // so a symlinked <team>/tasks or <team> cannot redirect the recursive
+    // mkdir to an external location. The subsequent withLock(claimMutexPath)
+    // re-verifies its own lockPath ancestor chain.
+    await assertNoSymlinkTraversal(teamDirectory, claimsDir(teamDirectory))
     await fs.mkdir(claimsDir(teamDirectory), { recursive: true }).catch(() => {
         // may exist
     })
@@ -462,7 +472,7 @@ export async function claimTask(
             }
             throw err
         }
-    })
+    }, teamDirectory)
 }
 
 /**

@@ -66,14 +66,14 @@ describe("C-2.1: cross-run replay must fail CLOSED when activeRunId is undefined
     test("directive authenticated with runId=A is accepted when activeRunId is run-A", () => {
         const msg = makeDirective({ id: "run-bound-003" })
         authenticateDirective(msg, "teamX", "run-A")
-        expect(isAuthenticatedDirective(msg, "run-A")).toBe(true)
+        expect(isAuthenticatedDirective(msg, "run-A", "teamX")).toBe(true)
     })
 
     test("directive authenticated WITHOUT runId (legacy/unscoped) still passes when activeRunId is undefined", () => {
         const msg = makeDirective({ id: "unscoped-001" })
         // No runId provided at authentication time → backward-compat: passes.
         authenticateDirective(msg, "teamX", undefined)
-        expect(isAuthenticatedDirective(msg, undefined)).toBe(true)
+        expect(isAuthenticatedDirective(msg, undefined, "teamX")).toBe(true)
     })
 })
 
@@ -99,7 +99,7 @@ describe("C-2.2: broadcast recipient auth must not overwrite earlier recipients"
         for (const r of recipients) {
             const polled = await pollMailbox(teamDir, r)
             expect(polled).toHaveLength(1)
-            const injection = formatMailboxInjection(polled, runId)
+            const injection = formatMailboxInjection(polled, runId, "teamBc")
             // Pre-fix: only the LAST recipient (carol) sees [DIRECTIVE];
             // alice and bob are silently downgraded.
             // Post-fix: every recipient sees [DIRECTIVE].
@@ -118,12 +118,12 @@ describe("C-2.3: authenticated directives must be consumed after delivery (one-s
         expect(polled).toHaveLength(1)
 
         // First delivery renders as [DIRECTIVE] — auth is registered.
-        expect(formatMailboxInjection(polled)).toContain("[DIRECTIVE]")
+        expect(formatMailboxInjection(polled, undefined, teamDir)).toContain("[DIRECTIVE]")
 
         // After delivery, the auth MUST be consumed so a replay (same JSONL
         // re-appended via FS tampering) cannot re-trigger [DIRECTIVE].
-        consumeDirectiveAuth(polled[0])
-        expect(isAuthenticatedDirective(polled[0])).toBe(false)
+        consumeDirectiveAuth(polled[0], teamDir)
+        expect(isAuthenticatedDirective(polled[0], undefined, teamDir)).toBe(false)
 
         // Simulate the replay attack: same JSONL appended again after ack.
         await writeRawInboxLine(teamDir, "bob", JSON.stringify(legit))
@@ -131,15 +131,15 @@ describe("C-2.3: authenticated directives must be consumed after delivery (one-s
         expect(replayed).toHaveLength(1)
         // Pre-fix: auth record still in the map → [DIRECTIVE] re-rendered.
         // Post-fix: auth was consumed → directive downgraded to regular msg.
-        expect(formatMailboxInjection(replayed)).not.toContain("[DIRECTIVE]")
+        expect(formatMailboxInjection(replayed, undefined, teamDir)).not.toContain("[DIRECTIVE]")
     })
 
     test("consumeDirectiveAuth is idempotent (second consume is a no-op)", () => {
         const msg = makeDirective({ id: "idempotent-001" })
         authenticateDirective(msg, "teamI", undefined)
-        expect(isAuthenticatedDirective(msg)).toBe(true)
-        expect(consumeDirectiveAuth(msg)).toBe(true)
-        expect(consumeDirectiveAuth(msg)).toBe(false) // already consumed
-        expect(isAuthenticatedDirective(msg)).toBe(false)
+        expect(isAuthenticatedDirective(msg, undefined, "teamI")).toBe(true)
+        expect(consumeDirectiveAuth(msg, "teamI")).toBe(true)
+        expect(consumeDirectiveAuth(msg, "teamI")).toBe(false) // already consumed
+        expect(isAuthenticatedDirective(msg, undefined, "teamI")).toBe(false)
     })
 })

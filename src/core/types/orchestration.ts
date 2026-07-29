@@ -242,6 +242,10 @@ export interface ActiveTaskBase {
     reducerMember?: string
     reduceStage?: boolean                    // true while the reducer stage is in flight
     reducedResult?: string                   // reducer's combined output; delivered verbatim once set
+    // J-4: snapshot of the reducer's own mapper-stage response, captured
+    // before deletion (line 45 of reduce.ts) so empty-output retries can
+    // rebuild the same input set as the first attempt.
+    _reducerMapperSnapshot?: string
 
     // signoff policy (parallel isolated/cooperative, pipeline, delegate; NOT loop).
     // Read un-narrowed by maybeTriggerSignoff/handleSignoffIdle, so Base.

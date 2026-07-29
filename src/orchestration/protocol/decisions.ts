@@ -327,8 +327,19 @@ function parseWorkflowIssues(raw: unknown): WorkflowIssue[] | undefined {
     const issues: WorkflowIssue[] = []
     let hadInvalidSeverity = false
     for (const item of raw) {
-        if (typeof item !== "object" || item === null || Array.isArray(item)) continue
-        if (!("severity" in item)) continue
+        if (typeof item !== "object" || item === null || Array.isArray(item)) {
+            // H-2/N: flag non-object entries as invalid so an all-malformed
+            // issues array returns undefined (unevaluable), not [] (no issues).
+            hadInvalidSeverity = true
+            continue
+        }
+        if (!("severity" in item)) {
+            // H-2/N: an entry missing severity (e.g. {message:"critical"})
+            // tried to report an issue but forgot the required field. Flag it
+            // so the result is unevaluable, not silently empty.
+            hadInvalidSeverity = true
+            continue
+        }
         if (!isWorkflowIssueSeverity(item.severity)) {
             // H9: track entries with invalid severity labels. If ALL entries
             // are malformed, the verifier attempted to report issues but used
@@ -389,11 +400,25 @@ export function parseDecompose(
  * Parse a <signoff>{"approved": true|false, "rationale": "..."}</signoff> block
  * from a reviewer's output. Returns null if no valid signoff tag found.
  */
-export function parseSignoff(text: string): { approved: boolean; rationale: string } | null {
+export function parseSignoff(text: string): { approved: boolean; rationale: string; parseFailed?: boolean } | null {
     const parsed = extractTaggedJSON(text, "signoff", "签核")
     if (!parsed) return null
+    // H-3/N: distinguish malformed output from explicit rejection. Pre-fix
+    // code returned approved:false for ANY parsed object with missing or
+    // non-boolean approved — the caller couldn't tell a malformed response
+    // (missing approved field) from an explicit rejection (approved:false).
+    // Now: set parseFailed when approved is absent or non-boolean, so the
+    // caller can trigger a parse retry instead of immediately failing the
+    // quality gate.
+    if (typeof parsed.approved !== "boolean") {
+        return {
+            approved: false,
+            rationale: typeof parsed.rationale === "string" ? parsed.rationale : "",
+            parseFailed: true,
+        }
+    }
     return {
-        approved: parsed.approved === true,
+        approved: parsed.approved,
         rationale: typeof parsed.rationale === "string" ? parsed.rationale : "",
     }
 }

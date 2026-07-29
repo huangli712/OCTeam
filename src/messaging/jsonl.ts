@@ -8,7 +8,7 @@ import path from "node:path"
 
 import { logger } from "../core/log.js"
 import { isEnoent } from "../core/utils.js"
-import { refuseSymlink } from "../state/locks.js"
+import { assertNoSymlinkTraversal, refuseSymlink } from "../state/locks.js"
 import { isSafePathSegment } from "../state/paths.js"
 import type { Message } from "../core/types.js"
 
@@ -21,7 +21,12 @@ export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: 
         const stat = await fs.lstat(filePath)
         if (!stat.isFile()) throw new Error(`appendJsonl: not a regular file: ${filePath}`)
     } catch (err) {
-        if (!isEnoent(err) && err instanceof Error && !err.message.startsWith("appendJsonl:")) throw err
+        // C-20: pre-fix condition used `!startsWith("appendJsonl:")` which
+        // INVERTED the intent — our own FIFO/non-regular rejection carries
+        // that prefix, so the old check swallowed it and fell through to
+        // appendFile, which would block forever on a FIFO. Re-throw all
+        // non-ENOENT errors, including our own rejection.
+        if (!isEnoent(err)) throw err
         // ENOENT is fine — appendFile will create the file.
     }
     await fs.mkdir(path.dirname(filePath), { recursive: true })
@@ -87,8 +92,16 @@ function isValidMessage(value: unknown): value is Message {
 }
 
 /** Read and parse all message lines from filePath. Returns [] on ENOENT. */
-export async function readJsonl(filePath: string): Promise<Message[]> {
+export async function readJsonl(filePath: string, trustedRoot?: string): Promise<Message[]> {
     try {
+        // C-1: when a trusted root is supplied, walk the ancestor chain so a
+        // symlinked intermediate (e.g. <team>/mailbox) cannot redirect the
+        // read outside the team root. The leaf-symlink and non-regular file
+        // checks below handle the file itself; ancestor checks need the
+        // explicit helper because lstat on the leaf follows nothing.
+        if (trustedRoot !== undefined) {
+            await assertNoSymlinkTraversal(trustedRoot, filePath)
+        }
         // H2: cap file size before reading. A tampered or runaway JSONL file
         // (e.g. /dev/zero symlink bypassing backpressure, or multi-GB trash)
         // would OOM the process during readFile. 10 MiB matches the mailbox

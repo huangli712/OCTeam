@@ -14,6 +14,7 @@ import { initTeamState, writeTeamSpec } from "../../state/store.js"
 import { indexMasterTeam, isIndexedMember } from "../../state/resolve.js"
 import { teamDir, teamsDir } from "../../state/paths.js"
 import { assertNoSymlinkTraversal } from "../../state/locks.js"
+import { masterSentinelPath } from "../../state/paths.js"
 import { normalizeRole, roleAgent } from "../../core/role.js"
 import { logSwallowed } from "../../core/log.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../../core/types.js"
@@ -246,6 +247,21 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // symlink redirection (assertNoSymlinkTraversal walks the full
                 // ancestor chain on every write).
                 await writeTeamSpec(ctx.storageRoot, spec, leadSessionId, ctx.storageRoot)
+
+                // C-17: write a read-only master.sentinel pinning the creator's
+                // leadSessionId. For user-scope teams (flat layout, no directory
+                // segment), this is the trusted master source at restart instead
+                // of the mutable state.json.leadSessionId. chmod 0444 raises the
+                // bar against tampering (attacker needs explicit chmod first).
+                try {
+                    const sentinelPath = masterSentinelPath(newTeamDir)
+                    await fs.writeFile(sentinelPath, leadSessionId + "\n", "utf8")
+                    await fs.chmod(sentinelPath, 0o444).catch(() => { /* best-effort on platforms without chmod */ })
+                } catch {
+                    // Sentinel is a hardening layer; failure to write it does
+                    // not block team creation. User scope will fall back to the
+                    // less-secure state.json path with a startup warning.
+                }
 
                 const createdTeam = await initTeamState(ctx.storageRoot, {
                     version: 1,

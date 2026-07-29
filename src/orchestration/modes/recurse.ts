@@ -222,20 +222,40 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 return
             }
             // Branch: create subtasks (depth+1), re-queue T as their aggregator.
+            // O-2: wrap in try/catch so a failure mid-creation or during the
+            // parent update rolls back the already-created children. Pre-fix
+            // code had no rollback — a parent-update failure left orphaned
+            // children that would be claimable but belong to no parent.
             const ids: string[] = []
-            for (const s of dec.subtasks) {
-                const child = await createTask(team.directory, {
-                    subject: s.subject,
-                    description: s.description,
-                    depth: depth + 1,
+            try {
+                for (const s of dec.subtasks) {
+                    const child = await createTask(team.directory, {
+                        subject: s.subject,
+                        description: s.description,
+                        depth: depth + 1,
+                    })
+                    ids.push(child.id)
+                }
+                await updateTask(team.directory, T.id, {
+                    status: "pending",
+                    owner: undefined,
+                    blockedBy: ids,
                 })
-                ids.push(child.id)
+            } catch (createErr) {
+                // Rollback: delete any created children so they are not
+                // claimable orphans. No deleteTask API exists; tasks are
+                // just files, so unlink the task file directly.
+                const { taskPath } = await import("../../state/paths.js")
+                const fsMod = await import("node:fs/promises")
+                for (const id of ids) {
+                    try {
+                        await fsMod.unlink(taskPath(team.directory, id))
+                    } catch {
+                        // best-effort — orphaned child is logged via sweep
+                    }
+                }
+                throw createErr
             }
-            await updateTask(team.directory, T.id, {
-                status: "pending",
-                owner: undefined,
-                blockedBy: ids,
-            })
             recordEvent(team, {
                 timestamp: Date.now(),
                 kind: "decomposed",
@@ -243,10 +263,11 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 detail: `${T.subject} -> ${ids.length} @d${depth + 1}`,
             })
         } else if (dec.parseFailed) {
-            // H46: a malformed <decompose> block is NOT a leaf — the member
-            // explicitly tried to decompose but formatted it wrong. Marking
-            // the task completed with the raw output would be a false success.
-            // Re-dispatch the member with feedback so it can retry.
+            // H46/J: a malformed <decompose> block is NOT a leaf — the member
+            // explicitly tried to decompose but formatted it wrong. Re-dispatch
+            // with feedback. Clear the stale response first so the next idle
+            // handler doesn't re-parse the same malformed output.
+            delete task.responses[member.name]
             const member2 = findMember(team, member.name)
             if (member2?.sessionId) {
                 await dispatchToMember(
@@ -331,6 +352,9 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                         return
                     }
                     decomposer.lastNotifiedAt = now
+                    // J: clear stale response before re-dispatch so the next
+                    // idle handler doesn't re-read the old aggregation output.
+                    delete task.responses[decomposer.name]
                     await dispatchToMember(
                         ctx,
                         decomposer,

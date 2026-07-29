@@ -264,7 +264,15 @@ export async function startOrchestration(
 
         // Step 6: Phase 3 — commit activeTask + initial dispatch (UNDER mutex).
         await team.mutex.runExclusive(async () => {
-            if (team.activeTask) { raced = true; return } // Re-check inside mutex (prevents double-commit race)
+            // H-6: re-check activation AND activeTask AND spawning inside the
+            // mutex. Pre-fix code only re-checked activeTask — a concurrent
+            // deactivation between Phase 1 and Phase 3 would leave the team
+            // deactivated but the orchestration would still commit activeTask
+            // and start dispatching on a team that should be inert.
+            if (team.activeTask || !team.spawning) { raced = true; return }
+            // Re-validate activation: team_deactivate sets activatedAt=undefined.
+            const stillActivated = activationError(team.teamName, team.activatedAt)
+            if (stillActivated) { raced = true; return }
             const built = await buildTask(team)
             if ("error" in built) {
                 buildError = built.error

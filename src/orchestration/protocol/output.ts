@@ -82,15 +82,20 @@ export function extractOutputFromParts(parts: unknown): string {
                     : `[Delete]\n- ${input.oldString}`)
             } else if (Array.isArray(input.edits) && input.edits.length > 0) {
                 // M15: capture batch edits (aft_edit edits[] input shape).
+                // M-13: guard against null/non-object edit entries. Pre-fix
+                // code dereferenced e.oldString directly, so a null entry in
+                // the edits array threw and aborted the entire output capture.
                 const fp = typeof input.filePath === "string" ? input.filePath : ""
-                const summary = input.edits.map((e: Record<string, unknown>) => {
-                    const o = typeof e.oldString === "string" ? e.oldString : ""
-                    const n = typeof e.newString === "string" ? e.newString : ""
+                const summary = input.edits.map((e: unknown) => {
+                    if (typeof e !== "object" || e === null) return "[invalid edit]"
+                    const ed = e as Record<string, unknown>
+                    const o = typeof ed.oldString === "string" ? ed.oldString : ""
+                    const n = typeof ed.newString === "string" ? ed.newString : ""
                     // M11: also capture line-range edits (content field).
-                    if (!o && !n && typeof e.content === "string") {
-                        const sl = typeof e.startLine === "number" ? e.startLine : "?"
-                        const el = typeof e.endLine === "number" ? e.endLine : "?"
-                        return `L${sl}-${el}: ${e.content}`
+                    if (!o && !n && typeof ed.content === "string") {
+                        const sl = typeof ed.startLine === "number" ? ed.startLine : "?"
+                        const el = typeof ed.endLine === "number" ? ed.endLine : "?"
+                        return `L${sl}-${el}: ${ed.content}`
                     }
                     return `- ${o}\n+ ${n}`
                 }).join("\n")

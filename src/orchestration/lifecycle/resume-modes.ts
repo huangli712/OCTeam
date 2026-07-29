@@ -401,7 +401,13 @@ export async function resumeTollgateMode(
     task: Extract<ActiveTask, { type: "tollgate" }>,
 ): Promise<void> {
     const stage = task.gatedStages?.[task.currentStageIndex];
-    if (!stage) return;
+    if (!stage) {
+        // H-7: missing required stage means the checkpoint is corrupt or
+        // incomplete. Pre-fix code returned silently, leaving the team busy
+        // with no members dispatched. Now: fail the run explicitly.
+        await finishRun(ctx, team, "tollgate_resume_missing_stage: checkpoint has no stage at currentStageIndex", "failed");
+        return;
+    }
     const phase = task.tollgatePhase ?? "produce";
     if (phase === "verify") {
         // Verifier output already captured -> re-run the verdict parse; else re-dispatch the verifier.

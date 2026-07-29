@@ -18,7 +18,17 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
             if (names.length === 0) return "No teams found."
             const rows = await Promise.all(
                 names.map(async name => {
-                    const spec = await readTeamSpec(ctx.storageRoot, name, leadSessionId)
+                    // M-15: isolate per-team spec read so one corrupt config
+                    // does not abort the entire list. Pre-fix code called
+                    // readTeamSpec outside any try/catch, so a single bad JSON
+                    // or I/O error would reject the whole Promise.all and hide
+                    // all other teams.
+                    let spec = null
+                    try {
+                        spec = await readTeamSpec(ctx.storageRoot, name, leadSessionId)
+                    } catch {
+                        // config unreadable — proceed with defaults
+                    }
                     let status = "unknown"
                     let count = spec?.members.length ?? 0
                     let createdAt = 0

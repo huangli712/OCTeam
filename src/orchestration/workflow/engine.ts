@@ -465,6 +465,14 @@ export async function maybePauseBeforeWorkflowStep(
     const step = task.steps?.[index];
     if (!step || !step.approvalBefore || step.approvalBeforeGranted)
         return false;
+    // K-2: set approvalBeforeGranted BEFORE forceApprovalRequest so the
+    // grant is persisted atomically with the pause inside forceApprovalRequest's
+    // own save. Pre-fix code saved the pause first, then set the grant and
+    // saved again — a crash between the two saves left approval pending
+    // without the grant, causing a duplicate approval request on resume.
+    // If forceApprovalRequest fails to pause (no escalation handler), roll
+    // back the grant flag so the caller falls through to dispatch.
+    step.approvalBeforeGranted = true;
     const paused = await forceApprovalRequest(ctx, team, {
         kind: "workflow_step",
         stage: index,
@@ -472,11 +480,11 @@ export async function maybePauseBeforeWorkflowStep(
             + ` reject to fail the run as workflow_human_rejected.`,
     });
     if (paused) {
-        step.approvalBeforeGranted = true;
-        await saveTeamState(team);
         return true;
     }
-    // No escalation handler available -> fall through to dispatch.
+    // Not paused — roll back the grant flag so dispatch proceeds cleanly.
+    // No save needed here: dispatchTaskStep will save after dispatch.
+    step.approvalBeforeGranted = undefined;
     return false;
 }
 

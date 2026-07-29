@@ -74,6 +74,14 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             if (isCrashed) {
                 team.status = "failed"
                 if (team.activeTask) team.lastInterruptedTask = team.activeTask
+                // H-1: clear activeTask so the team is in a consistent
+                // `failed` state (NOT `failed + activeTask`). Pre-fix code
+                // preserved activeTask, but team_resume and team_cancel both
+                // refuse this combination — the crashed run could never be
+                // recovered or cancelled, stuck until manual state.json edit.
+                // activeTeams() filters on activeTask presence, so leaving it
+                // would also keep the failed team in the sweep loop forever.
+                team.activeTask = undefined
                 await saveTeamState(team)
             } else if (team.activeTask) {
                 // No PID or process is alive: preserve state for eventual

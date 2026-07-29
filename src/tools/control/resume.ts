@@ -85,11 +85,17 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
 
             try {
                 // --- Phase 1 (mutex): snapshot + reset, DO NOT commit activeTask. ---
+                // H-4: set spawning=true inside the mutex so a concurrent resume
+                // cannot pass Phase 1 and duplicate Phase 2's session spawns.
+                // Pre-fix code had no lease between Phase 1 and Phase 3 — two
+                // concurrent resumes could both reset errored→idle and both run
+                // ensureMembersReady, creating duplicate sessions.
                 await team.mutex.runExclusive(async () => {
-                    if (team.status !== "failed" || !team.lastInterruptedTask) {
+                    if (team.status !== "failed" || !team.lastInterruptedTask || team.spawning) {
                         resumeRaced = true
                         return
                     }
+                    team.spawning = true
                     restored = structuredClone(team.lastInterruptedTask)
                     // DO NOT clear lastInterruptedTask here — defer to Phase 3 success
                     // (clearing here loses the checkpoint if Phase 2/3 throws).
@@ -171,6 +177,8 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // handleXxxIdle already cleared activeTask + set status; this only
                     // clears lastInterruptedTask, which is idempotent-safe.)
                     team.lastInterruptedTask = undefined
+                    // H-4: clear the resume lease set in Phase 1.
+                    team.spawning = false
                     await saveTeamState(team)
                 })
                 if (resumeRaced) return "Error: team already resumed or state changed"
@@ -191,6 +199,8 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                 await team.mutex.runExclusive(async () => {
                     team.activeTask = undefined
                     team.status = "failed"
+                    // H-4: clear the resume lease so a retry can proceed.
+                    team.spawning = false
                     if (restored) team.lastInterruptedTask = restored
                     // Restore member states that were reset in Phase 1 (errored→idle).
                     for (const saved of memberSnapshot) {

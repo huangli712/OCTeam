@@ -270,15 +270,25 @@ export function branchIdsForJoin(
     return branchIds;
 }
 
-/** Collect branch ids that have not yet errored for a given join. */
+/** Collect branch ids that have not yet errored or been skipped (any_success cancel) for a given join. */
 function survivorBranchIdsForJoin(
     steps: WorkflowStep[],
     join: WorkflowJoinMetadata,
 ): readonly string[] {
     const erroredBranchIds = new Set(join.erroredBranchIds ?? []);
+    // M-22: also exclude branches whose tail step is skipped (any_success
+    // marks losing branches as skipped via dag.ts). Pre-fix code only excluded
+    // errored branches, so cancelled branches appeared as survivors in run
+    // records and join metadata.
     return branchIdsForJoin(steps, join).filter(
         (branchId) => !erroredBranchIds.has(branchId),
-    );
+    ).filter(branchId => {
+        // Check if this branch's tail step is skipped.
+        const tailIndex = join.branchTailIndices.find((_, i) =>
+            steps[join.branchTailIndices[i]]?.branch?.branchId === branchId)
+        if (tailIndex === undefined) return true
+        return steps[tailIndex]?.skipped !== true
+    });
 }
 
 /** Augment join metadata with survivor and errored branch info. */

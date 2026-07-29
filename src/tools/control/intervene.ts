@@ -83,12 +83,17 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                 }
             }
 
-            // Snapshot the run id once before writing. activeTask.runId is
-            // eager-assigned at workflow Phase 3 creation, so it is normally
-            // defined; in the pre-capture edge it may be undefined, in which case
-            // the directive carries an undefined runId and the Transform hook
-            // injects it unconditionally — an acceptable bounded fallback.
-            const runId = team.activeTask.runId
+            // M-20/C-10: the directive MUST carry the active run's runId so the
+            // Transform hook can scope it. Pre-fix code allowed runId===undefined
+            // which let the directive inject in ANY subsequent run (cross-run
+            // replay). Now: refuse to send an unscoped directive when there IS
+            // an active task. The only legitimate unscoped case is a pre-capture
+            // team (no activeTask at all).
+            const runId = team.activeTask?.runId
+            if (team.activeTask && !runId) {
+                return `Error: cannot send directive — active task has no runId. `
+                    + `Wait for the workflow to initialize and retry.`
+            }
 
             const base: Message = {
                 version: 1,

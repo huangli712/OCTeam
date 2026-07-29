@@ -24,9 +24,13 @@ export async function deliverToRecipients(
     base: Omit<Message, "to">,
     backpressureMaxBytes?: number,
 ): Promise<void> {
-    // Pass teamName and active runId for directive authentication binding.
+    // C-9: pass team.directory (unique per team) as the auth binding so a
+    // directive copied cross-team cannot authenticate against another team's
+    // registry entry. Pre-fix code passed team.teamName which is also unique
+    // in practice, but team.directory is the canonical identity used by all
+    // mailbox functions.
     const authContext = base.kind === "directive"
-        ? { teamName: team.teamName, runId: team.activeTask?.runId }
+        ? { teamName: team.directory, runId: team.activeTask?.runId }
         : undefined
     const failures: string[] = []
     const backpressureFailures: string[] = []

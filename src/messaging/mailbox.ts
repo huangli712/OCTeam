@@ -89,10 +89,14 @@ export async function writeMailboxMessage(
         // throw here skips auth registration entirely.
         if (message.kind === "directive") {
             const runId = authContext?.runId ?? message.runId
-            authenticateDirective(message, authContext?.teamName, runId)
+            // C-9: default the team binding to teamDirectory so directives
+            // are ALWAYS bound to the team they were written to, even when
+            // the caller omits authContext. This matches what deliver.ts now
+            // passes explicitly and makes cross-team replay impossible.
+            authenticateDirective(message, authContext?.teamName ?? teamDirectory, runId)
         }
         await appendJsonl(inboxPath(teamDirectory, recipient), message, teamDirectory)
-    })
+    }, teamDirectory)
 }
 
 /**
@@ -107,7 +111,7 @@ export async function pollMailbox(
     recipient: string,
 ): Promise<Message[]> {
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
-        const inbox = await readJsonl(inboxPath(teamDirectory, recipient))
+        const inbox = await readJsonl(inboxPath(teamDirectory, recipient), teamDirectory)
         if (inbox.length === 0) return []
         // HIGH-E: dedup by message ID within this batch. A crash during
         // pollMailbox's truncate-rollback can leave the same message in BOTH
@@ -197,7 +201,7 @@ export async function pollMailbox(
             throw err
         }
         return safe
-    })
+    }, teamDirectory)
 }
 
 /**
@@ -221,15 +225,26 @@ export async function ackMessages(
                 ...msg,
                 deliveryStatus: "processed",
             }, teamDirectory)
+            // C-11: track per-message unlink outcome so one earlier failure
+            // does not suppress auth consumption for later directives whose
+            // own reservation unlink succeeded. Pre-fix code used a shared
+            // `unlinkErrors.length === 0` check, leaving successful directives'
+            // auth records unconsumed → same-run replay by copying the JSONL
+            // line back into the inbox.
+            let thisMsgUnlinkFailed = false
             await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
                 if (!isEnoent(err)) {
                     const errMsg = err instanceof Error ? err.message : String(err)
                     logger.warn("ackMessages: reservation unlink failed", { msgId: msg.id, error: errMsg })
                     unlinkErrors.push(errMsg)
+                    thisMsgUnlinkFailed = true
                 }
             })
-            if (msg.kind === "directive" && unlinkErrors.length === 0) {
-                consumeDirectiveAuth(msg)
+            if (msg.kind === "directive" && !thisMsgUnlinkFailed) {
+                // C-9: bind consumption to the team directory so a directive
+                // copied from team A's mailbox cannot be ACK-consumed by team B
+                // (which would delete team A's auth record and enable replay).
+                consumeDirectiveAuth(msg, teamDirectory)
             }
         }
         if (unlinkErrors.length > 0) {
@@ -237,7 +252,7 @@ export async function ackMessages(
         }
         // Retention: cap the audit log so it doesn't grow unbounded.
         await pruneProcessedLogUnlocked(teamDirectory, recipient)
-    })
+    }, teamDirectory)
 }
 
 /**
@@ -253,6 +268,15 @@ const PROCESSED_RETENTION_MS = RESERVATION_TTL_MS * 2
 
 async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: string): Promise<void> {
     const p = processedPath(teamDirectory, recipient)
+    // C-1: processedPath is a leaf under <team>/mailbox; the mailbox lock
+    // only walks ancestors of the lockfile, so the processed.jsonl leaf
+    // and any mailbox/ subdirs need their own guard.
+    try {
+        await assertNoSymlinkTraversal(teamDirectory, p)
+    } catch (err) {
+        if (isEnoent(err)) return
+        throw err
+    }
     let raw: string
     try {
         // H2: cap file size and reject non-regular files before reading.
@@ -300,6 +324,15 @@ export async function releaseStaleReservations(
 ): Promise<void> {
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
         const dir = reservedDir(teamDirectory, recipient)
+        // C-1: reservedDir is <team>/mailbox/reserved/<recipient>; the lock
+        // walks ancestors of <team>/mailbox/<recipient>.lock only, so the
+        // reserved/ subdir chain needs its own guard before readdir.
+        try {
+            await assertNoSymlinkTraversal(teamDirectory, dir)
+        } catch (err: unknown) {
+            if (isEnoent(err)) return
+            throw err
+        }
         let files: string[]
         try {
             files = await fs.readdir(dir)
@@ -315,6 +348,8 @@ export async function releaseStaleReservations(
         try {
             // H2: cap file size and reject non-regular files before reading.
             const procPath = processedPath(teamDirectory, recipient)
+            // C-1: guard the processed.jsonl leaf path before lstat/readFile.
+            await assertNoSymlinkTraversal(teamDirectory, procPath)
             const procStat = await fs.lstat(procPath)
             if (procStat.isFile() && procStat.size <= 1_048_576) {
                 const processedRaw = await fs.readFile(procPath, "utf8")
@@ -449,7 +484,7 @@ export async function releaseStaleReservations(
                 }
             }
         }
-    })
+    }, teamDirectory)
 }
 
 /**
@@ -461,7 +496,7 @@ export async function countUnreadMessages(
     teamDirectory: string,
     recipient: string,
 ): Promise<number> {
-    return (await readJsonl(inboxPath(teamDirectory, recipient))).length
+    return (await readJsonl(inboxPath(teamDirectory, recipient), teamDirectory)).length
 }
 
 /**
@@ -476,7 +511,12 @@ export async function unreadInboxBytes(
     recipient: string,
 ): Promise<number> {
     try {
-        const stat = await fs.stat(inboxPath(teamDirectory, recipient))
+        // C-1: unreadInboxBytes runs OUTSIDE the mailbox lock; guard the
+        // inbox path's ancestor chain so a symlinked <team>/mailbox (or the
+        // inbox file itself) cannot redirect the stat to an external file.
+        const inboxP = inboxPath(teamDirectory, recipient)
+        await assertNoSymlinkTraversal(teamDirectory, inboxP)
+        const stat = await fs.stat(inboxP)
         return stat.size
     } catch (err: unknown) {
         if (isEnoent(err)) return 0

@@ -42,6 +42,9 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     // dispatch and the reducer's capture cannot promote it as reducedResult
     // on resume (resume.ts sees responses[reducer] truthy → handleReduceIdle
     // → task.reducedResult = stale mapper output). Mirrors fanout.ts:218-220.
+    // J-4: snapshot the value first so empty-output retries can restore it
+    // and rebuild the same input set as the first attempt.
+    task._reducerMapperSnapshot = task.responses[reducer.name]
     delete task.responses[reducer.name]
     const prompt = buildReducePrompt(body)
     await dispatchToMember(ctx, reducer, prompt, reducer.worktreePath ?? ctx.directory, team)
@@ -121,12 +124,24 @@ export async function handleReduceIdle(
             return
         }
         const body = await buildSummary(team, task, "pending_reduce")
+        // J-4: restore the reducer's mapper-stage response before rebuilding
+        // the summary so the retry input matches the first attempt. Pre-fix
+        // code deleted responses[reducer] at reduce-trigger time (line 45,
+        // correct for the stale-promotion guard) but the retry path here
+        // rebuilds from current responses — which no longer has the reducer's
+        // mapper output — producing a different (smaller) input set.
+        if (task._reducerMapperSnapshot !== undefined && !task.responses[member.name]) {
+            task.responses[member.name] = task._reducerMapperSnapshot
+        }
         await dispatchToMember(ctx, reducer, buildReducePrompt(body), reducer.worktreePath ?? ctx.directory, team)
         await saveTeamState(team)
         return
     }
     task.reducedResult = reduced
     task.reduceStage = false
+    // J-4: clear the snapshot once a real reduction is captured so it is
+    // not persisted in the run record.
+    task._reducerMapperSnapshot = undefined
     if (await maybeTriggerSignoff(ctx, team)) return
     await finishRun(ctx, team, `parallel_${task.mode}_reduced:${task.reducePolicy}`, "idle")
 }

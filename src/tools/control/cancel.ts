@@ -52,7 +52,11 @@ export function teamCancelTool(ctx: PluginContext): ToolDefinition {
                 // a. Abort running member turns + reset to idle (shared helper).
                 await abortAndResetMembers(ctx, team)
                 // b. Notify master, clear active task, and transition to idle.
-                await finishRun(ctx, team, "cancelled", "idle")
+                // M-2: cancel keeps team status "idle" (available for new work)
+                // but overrides the run record status to "failed" so cancel is
+                // not counted as success in metrics. Pre-fix code recorded
+                // cancelled runs as "completed".
+                await finishRun(ctx, team, "cancelled", "idle", "failed")
                 // d. Persist.
                 await saveTeamState(team)
                 result = `Team "${args.team_id}" orchestration cancelled. Team is idle and reusable.`

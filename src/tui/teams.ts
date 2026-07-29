@@ -116,6 +116,18 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
             // state.json could read arbitrary content; /dev/zero could OOM.
             const stateP = statePath(dir)
             await assertNoSymlinkTraversal(dir, stateP)
+            // C-8: cap state.json size and reject non-regular files. Same
+            // threat model as countMailbox: a tampered or replaced state.json
+            // (large file or /dev/zero) could OOM the sidebar.
+            const stateStat = await fs.lstat(stateP)
+            if (stateStat.isSymbolicLink() || !stateStat.isFile()) {
+                console.warn(`[octeam] teams: refusing non-regular state file`)
+                continue
+            }
+            if (stateStat.size > 1_048_576) {
+                console.warn(`[octeam] teams: ${stateP} exceeds 1 MiB cap, refusing to read`)
+                continue
+            }
             const raw = await fs.readFile(stateP, "utf8")
             const state = JSON.parse(raw)
             if (!isValidTeamState(state, dir)) continue
@@ -124,6 +136,17 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
             try {
                 const configP = configPath(dir)
                 await assertNoSymlinkTraversal(dir, configP)
+                // C-8: same non-regular/size guard as state.json above.
+                // Throw to land in the existing catch — config is optional.
+                const configStat = await fs.lstat(configP)
+                if (configStat.isSymbolicLink() || !configStat.isFile()) {
+                    console.warn(`[octeam] teams: refusing non-regular config file`)
+                    throw new Error("non-regular config")
+                }
+                if (configStat.size > 1_048_576) {
+                    console.warn(`[octeam] teams: ${configP} exceeds 1 MiB cap, refusing to read`)
+                    throw new Error("config too large")
+                }
                 const configRaw = await fs.readFile(configP, "utf8")
                 const config = JSON.parse(configRaw)
                 for (const m of (config.members ?? [])) {

@@ -8,6 +8,8 @@
  */
 
 import { listAllTeams, loadTeamState } from "./store.js"
+import { masterSentinelPath } from "./paths.js"
+import fs from "node:fs/promises"
 import type { MemberState } from "../core/types.js"
 import type { PluginContext } from "../core/context.js"
 import { logSwallowed, logger } from "../core/log.js"
@@ -306,7 +308,18 @@ export async function resolveCallerInTeam(
     if (nameMatches.length === 0) return null
     const entry = nameMatches.length === 1
         ? nameMatches[0]
-        : nameMatches.find(t => t.storageRoot === storageRoot) ?? nameMatches[0]
+        : nameMatches.find(t => t.storageRoot === storageRoot)
+    if (!entry) {
+        // L/R3: multiple teams share this name across scopes and none match
+        // the caller's storageRoot. Pre-fix code fell back to nameMatches[0]
+        // (Map insertion order), which could resolve to the wrong scope's
+        // team. Fail closed so the caller gets a clear "ambiguous team" error
+        // instead of silently operating on the wrong team.
+        logger.warn("resolveCallerInTeam: ambiguous team name across scopes; no storageRoot match", {
+            teamId, storageRoot, matches: nameMatches.map(m => m.storageRoot),
+        })
+        return null
+    }
     let team
     try {
         team = await loadTeamState(entry.storageRoot, entry.teamName, entry.leadSessionId)
@@ -350,11 +363,37 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
             // leadSessionId to its own session, which on the pre-fix code
             // granted that session master privilege on the next rebuild.
             //
-            // For user scope (segmented=false), `leadSessionId` is undefined
-            // (flat layout has no per-session segment); the disk value is
-            // the only source. This is an accepted limitation for user scope
-            // and needs separate trusted-owner infrastructure to close.
-            const trustedLeadSessionId = segmented ? leadSessionId : team.leadSessionId
+            // C-17: for user scope (segmented=false), read the master.sentinel
+            // file (written once at team_create, read-only) instead of the
+            // mutable state.json.leadSessionId. If the sentinel is absent
+            // (legacy team created before C-17) or mismatches state.json, log
+            // a warning and fall back to state.json — but mark it as untrusted.
+            // A member with FS write can still overwrite the sentinel, but the
+            // read-only permission and separate file raise the bar and make
+            // tampering observable via the warning.
+            let trustedLeadSessionId: string | undefined
+            if (segmented) {
+                trustedLeadSessionId = leadSessionId
+            } else {
+                try {
+                    const sentinelPath = masterSentinelPath(team.directory)
+                    const sentinelContent = await fs.readFile(sentinelPath, "utf8")
+                    const sentinelLead = sentinelContent.trim()
+                    if (sentinelLead && sentinelLead === team.leadSessionId) {
+                        trustedLeadSessionId = sentinelLead
+                    } else {
+                        // Mismatch or empty sentinel — disk tampering signal.
+                        if (ctx) logSwallowed(ctx, "indexScope: user-scope master.sentinel mismatches state.json; refusing master privilege", undefined, {
+                            teamName, sentinelLead, diskLeadSessionId: team.leadSessionId,
+                        })
+                        // Do NOT grant master — leave trustedLeadSessionId undefined.
+                    }
+                } catch (sentinelErr) {
+                    // Legacy team (no sentinel) or unreadable sentinel.
+                    if (ctx) logSwallowed(ctx, "indexScope: user-scope team has no master.sentinel; using state.json (legacy, less secure)", sentinelErr, { teamName })
+                    trustedLeadSessionId = team.leadSessionId
+                }
+            }
             if (ctx && segmented && team.leadSessionId !== leadSessionId) {
                 logSwallowed(ctx, "indexScope: disk leadSessionId mismatches directory layout; using directory value", undefined, {
                     teamName, diskLeadSessionId: team.leadSessionId, dirLeadSessionId: leadSessionId,

@@ -125,23 +125,31 @@ async function createApprovalPause(
         round: request.round,
         detail: request.kind,
     })
-    // H-30: notification failure must not strand the run in a silent paused
-    // state. If the leader notification throws (session unavailable, network
-    // error), log and continue — the pause IS persisted on disk, so the sweep
-    // timer's approval re-notify path will retry. Pre-fix code let the
-    // exception propagate, leaving the team permanently paused with the leader
-    // never informed.
-    try {
-        await notifyLeader(ctx, team, request)
-    } catch (err) {
-        // Best-effort: log so the operator knows the initial notification
-        // failed. The sweep timer (or team_resume) will re-notify.
-        const { logSwallowed } = await import("../../core/log.js")
-        logSwallowed(ctx, "approval notification failed (will retry via sweep/resume)", err, {
-            team: team.teamName,
-            approvalId: request.id,
-        })
+    // H-30/G: notification failure must not strand the run in a silent
+    // paused state. Pre-fix code relied on a sweep-timer re-notify path that
+    // DOES NOT EXIST — the sweep never calls notifyLeader or resumeApprovalStage.
+    // Use bounded retry inline so transient failures (session unavailable,
+    // network error) don't permanently strand the paused run.
+    const NOTIFY_MAX_ATTEMPTS = 3
+    let notifyOk = false
+    for (let attempt = 1; attempt <= NOTIFY_MAX_ATTEMPTS; attempt++) {
+        try {
+            await notifyLeader(ctx, team, request)
+            notifyOk = true
+            break
+        } catch (err) {
+            if (attempt < NOTIFY_MAX_ATTEMPTS) {
+                await new Promise(r => setTimeout(r, 100 * attempt))
+            } else {
+                const { logSwallowed } = await import("../../core/log.js")
+                logSwallowed(ctx, "approval notification failed after retries; leader must use team_progress to discover pending approval", err, {
+                    team: team.teamName,
+                    approvalId: request.id,
+                }, "error")
+            }
+        }
     }
+    void notifyOk
     return true
 }
 

@@ -203,9 +203,22 @@ async function spawnMemberSafely(
                     })
                 }
             }
-            void deleted  // acknowledged; cleanup continues regardless
-            unindexSession(sessionId)
-            member.sessionId = undefined
+            // L-3: keep the sessionId indexed when session.delete fails so the
+            // crash reconciler (reconcile.ts) can retry cleanup on the next
+            // sweep. Pre-fix code always called unindexSession, orphaning the
+            // host session permanently — no index entry means reconcile cannot
+            // find it to retry the delete.
+            if (deleted) {
+                unindexSession(sessionId)
+                member.sessionId = undefined
+            } else {
+                // Keep sessionId in memory AND index so reconcile retries.
+                // Mark the member as errored so checkTermination/sweep handle
+                // it as a known-bad state.
+                member.status = "errored"
+                member.error = "spawn_rollback_failed: orphaned host session"
+                // Do NOT clear member.sessionId — reconcile needs it.
+            }
         }
         member.status = "pending"
         member.initialized = false

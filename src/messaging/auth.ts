@@ -33,9 +33,9 @@ import type { Message } from "../core/types.js"
 const AUTH_DIRECTIVE_MAP_CAP = 64
 const authenticatedDirectives = new Map<string, { from: string; to: string; body: string; correlationId: string | undefined; teamName?: string; runId?: string; ts: number }>()
 
-/** Registry key combines recipient + id so broadcast (same id, many recipients) authenticates each recipient independently. */
-function authKey(to: string, id: string): string {
-    return `${to}|${id}`
+/** Registry key combines team + recipient + id so broadcast (same id, many recipients) authenticates each recipient independently, and directives cannot be replayed across teams that share a member name. */
+function authKey(teamName: string | undefined, to: string, id: string): string {
+    return `${teamName ?? ""}|${to}|${id}`
 }
 
 /** Evict the oldest auth entries once the map exceeds the cap. */
@@ -60,7 +60,7 @@ export function authenticateDirective(
     teamName?: string,
     runId?: string,
 ): void {
-    authenticatedDirectives.set(authKey(msg.to, msg.id), {
+    authenticatedDirectives.set(authKey(teamName, msg.to, msg.id), {
         from: msg.from,
         to: msg.to,
         body: msg.body,
@@ -95,9 +95,10 @@ export function authenticateDirective(
 export function isAuthenticatedDirective(
     msg: Message,
     activeRunId?: string,
+    teamName?: string,
 ): boolean {
     if (msg.kind !== "directive") return false
-    const registered = authenticatedDirectives.get(authKey(msg.to, msg.id))
+    const registered = authenticatedDirectives.get(authKey(teamName, msg.to, msg.id))
     if (registered === undefined) return false
     if (registered.from !== msg.from) return false
     if (registered.to !== msg.to) return false
@@ -139,15 +140,16 @@ export function isAuthenticatedDirective(
  */
 export function consumeDirectiveAuth(
     msg: Message,
+    teamName?: string,
 ): boolean {
     if (msg.kind !== "directive") return false
-    const registered = authenticatedDirectives.get(authKey(msg.to, msg.id))
+    const registered = authenticatedDirectives.get(authKey(teamName, msg.to, msg.id))
     if (registered === undefined) return false
     if (registered.from !== msg.from) return false
     if (registered.to !== msg.to) return false
     if (registered.body !== msg.body) return false
     if (registered.correlationId !== msg.correlationId) return false
-    authenticatedDirectives.delete(authKey(msg.to, msg.id))
+    authenticatedDirectives.delete(authKey(teamName, msg.to, msg.id))
     return true
 }
 

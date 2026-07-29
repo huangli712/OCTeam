@@ -179,6 +179,23 @@ export function validateWorkflowSteps(
     return validateWorkflowStepArrayInternal(value, { filePath: sourcePath, prefix: "step" }, { totalSteps: 0, depth: 0 })
 }
 
+/**
+ * C-13: bound the number of branches a matrix/foreach fanout would expand to,
+ * so a large matrix cannot bypass the total-step budget at validation time.
+ * Returns the product of all matrix array lengths, or foreach length, or 1.
+ */
+function matrixForeachExpansionBound(step: { matrix?: unknown; foreach?: unknown }): number {
+    if (Array.isArray(step.foreach)) return step.foreach.length
+    if (isRecord(step.matrix)) {
+        let product = 1
+        for (const v of Object.values(step.matrix)) {
+            if (Array.isArray(v)) product *= v.length
+        }
+        return product
+    }
+    return 1
+}
+
 /** Validate a single workflow step, recursing into fanout branches. */
 function validateWorkflowStep(value: unknown, location: StepLocation, budget: ValidationBudget): { step: WorkflowToolStep } | { error: string } {
     if (!isRecord(value)) {
@@ -204,7 +221,30 @@ function validateWorkflowStep(value: unknown, location: StepLocation, budget: Va
             // define variables that are expanded at runtime. Only validate
             // branches when neither matrix nor foreach is present.
             if (value.matrix !== undefined || value.foreach !== undefined) {
-                return { step: { ...value } as WorkflowToolStep }
+                // C-13: validate the template `steps` array recursively so an
+                // invalid kind inside the template (which would be expanded
+                // into N branches at runtime) is caught at load time, and so
+                // the total step budget accounts for the expanded size.
+                // Pre-fix code returned the step without any validation, so a
+                // malformed template could trigger assertNever in lower or
+                // bypass the 256-step budget via a large matrix × template.
+                if (!Array.isArray(value.steps)) {
+                    return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} with matrix/foreach requires a \`steps\` array` }
+                }
+                // Bound the matrix/foreach expansion to prevent resource
+                // exhaustion via a large matrix.
+                const expansionBound = matrixForeachExpansionBound(value)
+                if (expansionBound * value.steps.length > WORKFLOW_MAX_TOTAL_STEPS) {
+                    return {
+                        error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                            + ` matrix/foreach expansion (${expansionBound} branches × ${value.steps.length} steps)`
+                            + ` exceeds the ${WORKFLOW_MAX_TOTAL_STEPS}-step budget`,
+                    }
+                }
+                const childBudget: ValidationBudget = { totalSteps: budget.totalSteps, depth: budget.depth + 1 }
+                const validatedSteps = validateWorkflowStepArrayInternal(value.steps, { filePath: location.filePath, prefix: `${location.prefix} steps` }, childBudget)
+                if ("error" in validatedSteps) return { error: validatedSteps.error }
+                return { step: { ...(value as Record<string, unknown>), steps: validatedSteps.steps } as unknown as WorkflowToolStep }
             }
             const branches = validateWorkflowBranches(value.branches, location, budget)
             if ("error" in branches) return branches
@@ -440,16 +480,27 @@ export async function loadWorkflowFile(
         // C-2: reject non-regular files (FIFO, socket, device). A FIFO named
         // workflow.json has size 0 but readFile would block forever waiting
         // for data that never arrives, hanging the event loop permanently.
-        const fileStat = await fs.stat(resolved.filePath)
-        if (!fileStat.isFile()) {
-            return { error: `Error: workflow_file "${relPath}" is not a regular file` }
-        }
-        if (fileStat.size > WORKFLOW_FILE_MAX_BYTES) {
-            return {
-                error: `Error: workflow_file "${relPath}" is too large: ${fileStat.size} bytes exceeds the ${WORKFLOW_FILE_MAX_BYTES}-byte limit`,
+        // C-3: open the file ONCE and stat/read through the resulting file
+        // handle so the inode is pinned after open. Pre-fix code ran
+        // fs.stat(path) then fs.readFile(path) as separate path operations —
+        // between them an attacker could swap the file (e.g. replace a
+        // regular file with a FIFO after the stat check passed). The handle
+        // pins the inode; fh.stat/fh.readFile operate on that same inode.
+        const fh = await fs.open(resolved.filePath, "r")
+        try {
+            const fileStat = await fh.stat()
+            if (!fileStat.isFile()) {
+                return { error: `Error: workflow_file "${relPath}" is not a regular file` }
             }
+            if (fileStat.size > WORKFLOW_FILE_MAX_BYTES) {
+                return {
+                    error: `Error: workflow_file "${relPath}" is too large: ${fileStat.size} bytes exceeds the ${WORKFLOW_FILE_MAX_BYTES}-byte limit`,
+                }
+            }
+            raw = await fh.readFile("utf8")
+        } finally {
+            await fh.close().catch(() => { /* best-effort */ })
         }
-        raw = await fs.readFile(real, "utf8")
     } catch {
         return { error: `Error: workflow_file "${relPath}" could not be read` }
     }
