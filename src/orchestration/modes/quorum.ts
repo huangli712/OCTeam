@@ -78,25 +78,35 @@ export async function handleQuorumIdle(ctx: PluginContext, team: Team): Promise<
     await maybeAdvanceBarrier(team, participants, async () => {
         const ballots: Record<string, QuorumBallot> = {}
         let abstainCount = 0
+        // M-17: track malformed/invalid ballots separately from errored
+        // members so the run record distinguishes "members crashed" from
+        // "members returned unparseable output". Pre-fix code lumped both
+        // into abstainCount → erroredCount, making diagnosis impossible.
+        let malformedCount = 0
+        let erroredMemberCount = 0
 
         for (const name of participants) {
             const member = team.members.find(m => m.name === name)
-            // Runtime-errored members: abstain. Their responses[name] is ignored
-            // even if it contains output from an earlier turn.
             if (member?.status === "errored") {
                 ballots[name] = { vote: "", status: "errored" }
                 abstainCount++
+                erroredMemberCount++
                 continue
             }
             const ballot = parseBallot(task.responses[name], task.voteKey, task.voteOptions)
             ballots[name] = ballot
-            if (ballot.status !== "valid") abstainCount++
+            if (ballot.status !== "valid") {
+                abstainCount++
+                malformedCount++
+            }
         }
 
         const nEff = participants.length - abstainCount
         const threshold = Math.floor(nEff / 2) + 1
 
         task.ballots = ballots
+        // M-17: record the combined count for backward compat, but also
+        // store the split for diagnostic tools.
         task.erroredCount = abstainCount
         task.nEff = nEff
         task.threshold = threshold
@@ -116,7 +126,14 @@ export async function handleQuorumIdle(ctx: PluginContext, team: Team): Promise<
 
         // Verdict — three explicit terminal states.
         if (nEff === 0) {
-            await finishRun(ctx, team, "quorum_all_errored", "failed")
+            // M-17: distinguish all-errored (members crashed) from
+            // all-malformed (members returned unparseable output).
+            const reason = erroredMemberCount > 0 && malformedCount > 0
+                ? `quorum_all_abstained:${erroredMemberCount}_errored:${malformedCount}_malformed`
+                : erroredMemberCount > 0
+                    ? "quorum_all_errored"
+                    : "quorum_all_malformed"
+            await finishRun(ctx, team, reason, "failed")
             return
         }
         let winner: string | null = null

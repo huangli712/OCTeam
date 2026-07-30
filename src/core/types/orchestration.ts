@@ -346,6 +346,10 @@ export interface RecurseTask extends ActiveTaskBase {
     rootTaskId?: string                      // the root task id; its result is the final deliverable
     aggregationDispatchCount?: number        // decomposer dispatches that failed to produce a root claim (stall detection; recurse mode)
     maxAggregationDispatches?: number        // H42: override default aggregation stall threshold (default 3)
+    // M-20: dedicated counter for malformed <decompose> parse failures so
+    // continuous format errors don't burn unlimited tokens.
+    decomposeParseFailures?: number
+    maxDecomposeParseFailures?: number       // override default (3)
 }
 
 // tollgate: verdict-gated pipeline (produce -> verify -> escalate). A gated

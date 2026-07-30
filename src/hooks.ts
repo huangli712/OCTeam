@@ -515,18 +515,28 @@ export async function sweepTeamOnce(
         // cleanup sequentially before checkTermination; any thrown error
         // would skip timeout/budget enforcement entirely.
         try {
-            await releaseStaleReservations(team.directory, "master")
+            await releaseStaleReservations(team.directory, "master").catch(err =>
+                logSwallowed(ctx, "sweepTeamOnce: master reservation release failed", err, { team: team.teamName }),
+            )
             for (const m of team.members) {
                 if (m.status === "running") continue
-                await releaseStaleReservations(team.directory, m.name)
+                // H-cleanup: isolate per-member release so one corrupt mailbox
+                // does NOT block subsequent members' reservation reclaim.
+                // Pre-fix code shared one try — the first throw skipped all
+                // remaining members AND reapStaleClaims.
+                await releaseStaleReservations(team.directory, m.name).catch(err =>
+                    logSwallowed(ctx, "sweepTeamOnce: member reservation release failed", err, { team: team.teamName, member: m.name }),
+                )
             }
             // M10: reap stale claims for both delegate and recurse modes.
             const taskType = team.activeTask?.type
             if (taskType === "delegate" || taskType === "recurse") {
-                await reapStaleClaims(team.directory)
+                await reapStaleClaims(team.directory).catch(err =>
+                    logSwallowed(ctx, "sweepTeamOnce: reapStaleClaims failed", err, { team: team.teamName }),
+                )
             }
         } catch (err) {
-            logSwallowed(ctx, "sweepTeamOnce: cleanup error (continuing to termination checks)", err, {
+            logSwallowed(ctx, "sweepTeamOnce: unexpected cleanup error (continuing to termination checks)", err, {
                 team: team.teamName,
             })
         }

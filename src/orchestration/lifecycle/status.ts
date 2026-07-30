@@ -9,7 +9,7 @@
 import type { PluginContext } from "../../core/context.js"
 import { logger } from "../../core/log.js"
 import type { MemberState } from "../../core/types.js"
-import { type Team, loadTeamState, saveTeamState } from "../../state/store.js"
+import { type Team, loadTeamState, saveTeamStateBounded } from "../../state/store.js"
 import { resolveTeamMember } from "../../state/resolve.js"
 import { recordEvent } from "../records/events.js"
 import { extractSessionStatusEntry } from "../protocol/output.js"
@@ -47,7 +47,19 @@ async function escalateMemberToErrored(
         `sustained retry > ${RETRY_ESCALATION_MS}ms`
         + ((live.retryCount ?? 0) > 0 ? ` after ${live.retryCount} retries` : "")
         + `: ${entry?.message ?? "unknown"}`
-    await saveTeamState(team)
+    // H-status: bounded-retry save so a transient I/O error does not leave
+    // memory (errored) and disk (still retrying) diverged. Pre-fix code used
+    // bare saveTeamState whose throw propagated up through the event wrapper,
+    // swallowing the error but leaving the member as errored in memory only.
+    try {
+        await saveTeamStateBounded(team)
+    } catch {
+        // Save failed after retries — rollback in-memory status so the next
+        // sweep re-attempts the escalation.
+        live.status = "running"
+        live.error = undefined
+        return
+    }
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "errored",
@@ -88,7 +100,12 @@ async function escalateMemberToErrored(
             }
         }
     }
-    await saveTeamState(team)
+    // H-status: trailing save also uses bounded retry.
+    try {
+        await saveTeamStateBounded(team)
+    } catch (err) {
+        logger.warn("maybeEscalateRetry: trailing save failed after retries", { team: team.teamName, member: live.name, error: String(err) })
+    }
 }
 
 /**
@@ -131,12 +148,12 @@ export async function handleStatusEvent(
             // Persist retryingSince on first set so crash-resume does not lose
             // the escalation timer (otherwise a restart resets it and the
             // 60s escalation window starts over).
-            if (wasUnset) await saveTeamState(team)
+            if (wasUnset) await saveTeamStateBounded(team)
             await maybeEscalateRetry(ctx, team, live)
         } else if (entry?.type === "idle") {
             // Member returned to idle: the retry storm ended, so clear tracking.
             live.retryingSince = undefined
-            await saveTeamState(team)
+            await saveTeamStateBounded(team)
         } else if (entry?.type === "busy") {
             // A previously-idle member is active again: backfill the running state.
             // H7: also clear retryingSince — the member is now productively
@@ -153,7 +170,7 @@ export async function handleStatusEvent(
                 live.retryingSince = undefined
                 changed = true
             }
-            if (changed) await saveTeamState(team)
+            if (changed) await saveTeamStateBounded(team)
         }
     })
 }
@@ -186,7 +203,7 @@ export async function maybeEscalateRetry(
             member: live.name,
             detail: `grace ${live.retryCount}/${maxRetries}`,
         })
-        await saveTeamState(team)
+        await saveTeamStateBounded(team)
         return
     }
     // Grace exhausted: escalate the member to errored, then re-drive.

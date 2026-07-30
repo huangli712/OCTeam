@@ -25,6 +25,7 @@
  */
 
 import type { Message } from "../core/types.js"
+import { logger } from "../core/log.js"
 
 // Cap on tracked directive authentications. When exceeded, the oldest
 // entries are evicted to bound memory growth for long-lived hosts.
@@ -44,7 +45,16 @@ function evictStaleAuthDirectives(): void {
     const sorted = [...authenticatedDirectives.entries()].sort((a, b) => a[1].ts - b[1].ts)
     const toRemove = sorted.length - AUTH_DIRECTIVE_MAP_CAP
     for (let i = 0; i < toRemove; i++) {
-        authenticatedDirectives.delete(sorted[i][0])
+        // M-7: log eviction so operators can detect if legitimate directives
+        // are being silently downgraded. Pre-fix code deleted without logging,
+        // so a large broadcast exceeding the 64-entry cap would silently
+        // degrade earlier directives to regular messages.
+        const evicted = sorted[i]
+        const teamDir = evicted[1].teamName ?? "(unknown)"
+        logger.warn("evictStaleAuthDirectives: auth entry evicted (cap exceeded); directive will be downgraded to regular message if replayed", {
+            teamDir, to: evicted[1].to, age: Date.now() - evicted[1].ts,
+        })
+        authenticatedDirectives.delete(evicted[0])
     }
 }
 

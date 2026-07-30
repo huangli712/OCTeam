@@ -199,6 +199,14 @@ const WorkflowRunStepSchema = z.object({
     timeoutMs: z.number().optional(),
     onTimeout: WorkflowOnTimeoutSchema.optional(),
     maxTimeoutRetries: z.number().int().nonnegative().optional(),
+    // M-9: retry audit fields persisted by persistRun but previously stripped
+    // by Zod on read. Without these, result/audit tools lose the retry
+    // configuration and consumed-attempt history that persistence records.
+    fallbackMember: z.string().optional(),
+    retryOn: z.unknown().optional(),
+    maxTaskRetries: z.number().int().nonnegative().optional(),
+    taskAttempts: z.number().int().nonnegative().optional(),
+    timeoutAttempts: z.number().int().nonnegative().optional(),
     jumpCount: z.number().int().nonnegative().optional(),
     skipped: z.boolean().optional(),
     completed: z.boolean(),

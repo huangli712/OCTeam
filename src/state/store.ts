@@ -677,9 +677,15 @@ function isValidTeamSpec(value: unknown): value is TeamSpec {
     return true
 }
 
-/** Read TeamSpec from a known team directory (scope-independent). */
+/** Read TeamSpec from a known team directory (scope-independent).
+ * M-14: validate via isValidTeamSpec so a corrupt/tampered config.json
+ * does not propagate to callers that expect a well-formed spec. Pre-fix
+ * code called readJsonOrNull without a validator, so a malformed config
+ * could crash downstream callers (ensureMembersReady dereferences
+ * spec.members.map without guards).
+ */
 export async function readTeamSpecFromDir(teamDirectory: string): Promise<TeamSpec | null> {
-    return readJsonOrNull<TeamSpec>(configPath(teamDirectory))
+    return readJsonOrNull<TeamSpec>(configPath(teamDirectory), isValidTeamSpec)
 }
 
 /** Write the immutable TeamSpec (config.json) atomically. Used at team_create.

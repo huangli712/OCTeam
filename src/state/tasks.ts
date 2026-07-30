@@ -122,13 +122,20 @@ function isValidTask(value: unknown): value is Task {
         typeof t.id === "string"
         && typeof t.subject === "string"
         && typeof t.status === "string"
-        // M-21: reject out-of-enum task statuses. The task state machine only
-        // allows pending/claimed/in_progress/completed/deleted. A tampered
-        // task file with status:"blocked" would pass the string check but
-        // break claim/complete transitions.
+        // M-21: reject out-of-enum task statuses.
         && new Set(["pending", "claimed", "in_progress", "completed", "deleted"]).has(t.status as string)
         && Array.isArray(t.blockedBy)
         && t.blockedBy.every(v => typeof v === "string")
+        // M-11: validate claimedAt is a finite number when present. A
+        // non-numeric claimedAt makes stale-claim computation produce NaN,
+        // stranding the task forever (NaN > TTL is always false).
+        && (t.claimedAt === undefined || (typeof t.claimedAt === "number" && Number.isFinite(t.claimedAt)))
+        // M-11: validate each blockedBy entry is a valid string.
+        && t.blockedBy.every(v => typeof v === "string" && v.length > 0 && v.length <= 128)
+        // M-3: cross-field — claimed/in_progress tasks MUST have an owner.
+        // A tampered task with status:"in_progress" and no owner would be
+        // invisible to reaper (not claimable) and to deadlock detection.
+        && ((t.status !== "claimed" && t.status !== "in_progress") || typeof t.owner === "string")
     )
 }
 

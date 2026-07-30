@@ -133,9 +133,19 @@ export function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 }
                 const jumpTag = jumps.length > 0 ? `; ${jumps.join(" ")} (max_jumps=${step.max_jumps ?? 3})` : ""
                 const indent = step.branchContext === undefined ? "" : "  "
+                // M-16: show ensemble verifier details when present. Pre-fix
+                // code only showed step.verifier (single verifier), so an
+                // ensemble gate with verifiers[] displayed as "verifier=?",
+                // hiding the actual policy and verifier list from reviewers.
+                const verifierLabel = step.verifiers !== undefined && step.verifiers.length > 0
+                    ? `${step.verifiers.join("+")} (${step.ensemble_policy ?? "majority"}${step.ensemble_quorum !== undefined ? ` quorum=${step.ensemble_quorum}` : ""})`
+                    : step.verifier ?? "?"
+                const malformedTag = step.on_malformed && step.on_malformed !== "fail"
+                    ? `; on_malformed=${step.on_malformed}${step.max_malformed_retries !== undefined ? ` max_malformed_retries=${step.max_malformed_retries}` : ""}`
+                    : ""
                 lines.push(
-                    `${indent}${i + 1}. [gate]${idTag} ${step.verifier ?? "?"} verifies ${target}:`
-                    + ` ${step.criteria ?? ""}${retry}${invalid}${jumpTag}${ctrlTag}`,
+                    `${indent}${i + 1}. [gate]${idTag} ${verifierLabel} verifies ${target}:`
+                    + ` ${step.criteria ?? ""}${retry}${invalid}${malformedTag}${jumpTag}${ctrlTag}`,
                 )
                 break
             }

@@ -263,10 +263,17 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 detail: `${T.subject} -> ${ids.length} @d${depth + 1}`,
             })
         } else if (dec.parseFailed) {
-            // H46/J: a malformed <decompose> block is NOT a leaf — the member
-            // explicitly tried to decompose but formatted it wrong. Re-dispatch
-            // with feedback. Clear the stale response first so the next idle
-            // handler doesn't re-parse the same malformed output.
+            // H46/J/M-20: a malformed <decompose> block is NOT a leaf — the
+            // member explicitly tried to decompose but formatted it wrong.
+            // M-20: track a dedicated parse-failure counter with a mode-local
+            // budget so continuous format errors don't burn unlimited tokens.
+            // Pre-fix code re-dispatched indefinitely with no mode-local cap.
+            task.decomposeParseFailures = (task.decomposeParseFailures ?? 0) + 1
+            const maxParseFailures = task.maxDecomposeParseFailures ?? 3
+            if (task.decomposeParseFailures > maxParseFailures) {
+                await finishRun(ctx, team, `recurse_decompose_parse_failed:${task.decomposeParseFailures}_attempts`, "failed")
+                return
+            }
             delete task.responses[member.name]
             const member2 = findMember(team, member.name)
             if (member2?.sessionId) {

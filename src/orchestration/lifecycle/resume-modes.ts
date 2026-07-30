@@ -559,6 +559,11 @@ export async function resumeArenaMode(
     team: Team,
     task: Extract<ActiveTask, { type: "arena" }>,
 ): Promise<void> {
+    // M-1: validate required arena fields before resuming.
+    if (!task.evaluatorMember) {
+        await finishRun(ctx, team, "arena_resume_missing_evaluator", "failed");
+        return;
+    }
     if ((task.arenaPhase ?? "implement") === "evaluate") {
         const evaluator = team.members.find(
             (m) => m.name === task.evaluatorMember && !m.isMaster,
