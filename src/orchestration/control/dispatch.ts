@@ -51,20 +51,12 @@ export async function dispatchToMember(
     if (!member.sessionId) return
     if (member.status === "errored") return
     const dispatchedText = prependStandingInstruction(member, text)
-    await ctx.client.session.promptAsync({
-        path: { id: member.sessionId },
-        body: {
-            parts: [
-                { 
-                    type: "text",
-                    text: `${dispatchedText}\n<!-- OMO_INTERNAL_INITIATOR -->`,
-                    synthetic: false,
-                },
-            ],
-            agent: safeMemberAgent(member.agent),
-        },
-        query: { directory },
-    })
+    // #10: persist dispatch intent BEFORE sending the prompt. Pre-fix code
+    // called promptAsync first, then set status/turnCount and saved — a crash
+    // between prompt and save left disk unaware of the dispatch, and recovery
+    // would re-dispatch (duplicate prompt) with no way to attribute the old
+    // output. Now: set state + persist first, then send. If promptAsync
+    // fails, rollback the state so the next caller can retry.
     member.promptDelivered = true
     member.status = "running"
     member.turnCount++
@@ -75,15 +67,48 @@ export async function dispatchToMember(
             member: member.name,
             ...eventMeta,
         })
-        // C5/G: persist immediately with bounded retry so the dispatched state
-        // survives a crash. Pre-fix code used `.catch(logSwallowed)` which left
-        // disk unaware of the dispatch on transient I/O errors.
         try {
             await saveTeamStateBounded(team)
         } catch (err) {
-            logSwallowed(ctx, "dispatchToMember: saveTeamState failed after retries; disk may not reflect dispatch", err, {
-                member: member.name, team: team.teamName,
-            }, "error")
+            // If we cannot persist the dispatch intent, do NOT send the prompt
+            // — sending it without durable state would create the exact
+            // non-atomic window this fix closes. Rollback and rethrow.
+            member.status = "idle"
+            member.turnCount--
+            member.promptDelivered = false
+            throw err
         }
+    }
+    try {
+        await ctx.client.session.promptAsync({
+            path: { id: member.sessionId },
+            body: {
+                parts: [
+                    { 
+                        type: "text",
+                        text: `${dispatchedText}\n<!-- OMO_INTERNAL_INITIATOR -->`,
+                        synthetic: false,
+                    },
+                ],
+                agent: safeMemberAgent(member.agent),
+            },
+            query: { directory },
+        })
+    } catch (err) {
+        // promptAsync failed after we persisted the dispatch intent. Rollback
+        // to idle so the barrier can re-drive, and persist the rollback.
+        if (team) {
+            member.status = "idle"
+            member.turnCount--
+            member.promptDelivered = false
+            try {
+                await saveTeamStateBounded(team)
+            } catch (rollbackErr) {
+                logSwallowed(ctx, "dispatchToMember: rollback persist failed after promptAsync error", rollbackErr, {
+                    member: member.name, team: team.teamName,
+                })
+            }
+        }
+        throw err
     }
 }

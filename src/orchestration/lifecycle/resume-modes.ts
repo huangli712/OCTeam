@@ -84,6 +84,18 @@ export async function resetInterruptedClaims(team: Team): Promise<void> {
     await reapStaleClaims(team.directory);
     for (const t of await listAllTasks(team.directory)) {
         if (t.status === "claimed" || t.status === "in_progress") {
+            // #15: do NOT reset a task whose owner is still running. Pre-fix
+            // code reset ALL claimed/in_progress tasks unconditionally — if
+            // the owner's session was still alive (e.g. cross-process resume
+            // where the member was dispatched by another process), the reset
+            // would orphan the in-flight work and the task would be re-claimed
+            // by another member, producing duplicate output.
+            if (t.owner) {
+                const ownerMember = team.members.find(m => m.name === t.owner);
+                if (ownerMember?.sessionId && ownerMember.status === "running") {
+                    continue;
+                }
+            }
             await updateTask(team.directory, t.id, {
                 status: "pending",
                 owner: undefined,

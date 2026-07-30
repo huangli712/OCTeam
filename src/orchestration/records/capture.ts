@@ -61,6 +61,11 @@ export async function captureMemberOutput(
 ): Promise<CaptureMemberOutputResult> {
     const task = team.activeTask
     if (!task) return { fresh: false, reason: "empty" }
+    // #18: do not capture output for a member whose workflow step has been
+    // skipped (e.g. any_success cancelled their branch). Late idle events
+    // from such members would pollute task.responses with output from a
+    // cancelled branch. Check both workflow step status and member status.
+    if (member.status === "errored") return { fresh: false, reason: "stale" }
     // Idempotency: a member whose message history hasn't grown since its last
     // classified turn has no new turn to persist. This guards the delegate
     // completion sweep (which re-captures every member, including ones already

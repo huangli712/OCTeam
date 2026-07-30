@@ -96,7 +96,6 @@ function stripRuntimeFields(team: Team): TeamState {
         mutex: _mutex,
         directory: _directory,
         deleted: _deleted,
-        spawning: _spawning,
         _diskSnapshot: _snap,
         ...state
     } = team
@@ -249,34 +248,40 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
  * @param validate    optional schema guard; null returned on mismatch
  */
 
+// #9: O_NOFOLLOW closes the TOCTOU window in readJsonOrNull. Without it,
+// an attacker can lstat (regular file) → swap to symlink → readFile (follows).
+// O_NOFOLLOW is checked atomically with open: ELOOP if leaf is a symlink.
+// 0x20000 is the Linux value; harmless on platforms that don't support it.
+const O_NOFOLLOW = 0x20000
+
 async function readJsonOrNull<T>(
     filePath: string,
     validate?: (value: unknown) => value is T,
 ): Promise<T | null> {
+    let fh: fs.FileHandle | undefined
     try {
-        // H11: cap file size before reading. A symlinked or tampered state
-        // file can be unbounded (/dev/zero, FIFO, huge sparse file). 1 MiB
-        // is far above any legitimate state.json/config.json.
-        const stat = await fs.lstat(filePath)
-        if (stat.isSymbolicLink()) return null
+        // #9: open with O_NOFOLLOW so a leaf symlink is rejected atomically
+        // (ELOOP), closing the lstat→readFile TOCTOU window.
+        fh = await fs.open(filePath, fs.constants.O_RDONLY | O_NOFOLLOW)
+        const stat = await fh.stat()
         if (!stat.isFile()) return null
         if (stat.size > 1_048_576) {
             logger.warn("readJsonOrNull: file exceeds 1 MiB cap", { file: filePath, size: stat.size })
             return null
         }
-        const raw = await fs.readFile(filePath, "utf8")
+        const raw = await fh.readFile("utf8")
         const parsed: unknown = JSON.parse(raw)
         if (validate && !validate(parsed)) {
-            // Structurally valid JSON but wrong shape (corrupt / tampered).
-            // Reject rather than trusting the cast; the caller takes its
-            // not-found path instead of propagating garbage.
             logger.warn("readJsonOrNull: schema validation failed", { file: filePath })
             return null
         }
         return parsed as T
     } catch (err: unknown) {
-        if (isEnoent(err)) return null
+        const code = (err as NodeJS.ErrnoException).code
+        if (code === "ENOENT" || code === "ELOOP") return null
         throw err
+    } finally {
+        if (fh) await fh.close().catch(() => {})
     }
 }
 

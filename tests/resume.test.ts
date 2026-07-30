@@ -207,9 +207,11 @@ describe("team_resume", () => {
             captured.push(JSON.parse(raw).activeTask)
         } })
         await teamResumeTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
-        // The FIRST promptAsync call must see no activeTask (Phase 1 did not
-        // commit it, and C5's save runs after promptAsync resolves).
-        expect(captured[0]).toBeUndefined()
+        // #10: with dispatch atomicity fix, dispatchToMember now persists
+        // state BEFORE promptAsync (not after). So the first promptAsync call
+        // SHOULD see activeTask on disk — Phase 3 set it and dispatchToMember
+        // saved it before sending. The test verifies this new correct ordering.
+        expect(captured[0]).toBeDefined()
     })
 
     test("(e) processIdle with no activeTask → no summary (O1 absorption)", async () => {
