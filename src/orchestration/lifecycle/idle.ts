@@ -235,6 +235,8 @@ export async function processErrorRecovery(
     member: MemberState,
 ): Promise<void> {
     if (!team.activeTask) return
+    // CRIT #4: cross-process ownership guard.
+    if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
     if (team.activeTask.approvalStage) return
     if (team.activeTask.signoffStage) {
         await handleSignoffIdle(ctx, team, member)
@@ -247,6 +249,17 @@ export async function processErrorRecovery(
         return
     }
     const taskType = team.activeTask.type
+    if (taskType === "workflow") {
+        // HIGH: workflow error recovery should NOT route to handleWorkflowIdle
+        // which treats responses as valid outputs. Instead, mark the step's
+        // verifier/member as errored and advance — matching the retry-escalation
+        // path used by status.ts. This prevents a failed verifier's stale
+        // output from being counted as a valid verdict.
+        const { advanceWorkflowStep } = await import("../workflow/engine.js")
+        await advanceWorkflowStep(ctx, team)
+        await checkTermination(ctx, team)
+        return
+    }
     if (idleDispatch[taskType]) {
         await idleDispatch[taskType](ctx, team, member, undefined)
         await checkTermination(ctx, team)

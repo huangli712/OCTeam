@@ -240,7 +240,8 @@ const WorkflowRunStepSchema = z.object({
     approvalBefore: z.boolean().optional(),
     approvalAfter: z.boolean().optional(),
     maxOutputBytes: z.number().optional(),
-    humanApproval: z.boolean().optional(),
+    // humanApproval removed from per-step schema (MEDIUM: persistRun never
+    // writes it here; it's a per-run field on ActiveTaskBase).
 })
 
 /**
@@ -481,6 +482,8 @@ export const RunRecordSchema = z.object({
     artifacts: z.object({
         reduce: z.string().optional(),
         signoff: z.record(z.string(), z.string()).optional(),
+        // HIGH: join artifacts were written but stripped by Zod on read.
+        join: z.record(z.string(), z.string()).optional(),
     }).optional(),
     tasks: z.array(z.object({
         id: z.string(),

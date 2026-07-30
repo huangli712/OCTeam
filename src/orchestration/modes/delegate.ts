@@ -79,12 +79,7 @@ export async function runDelegateStyleTail(
             }
         }
         if (await maybeTriggerSignoff(ctx, team)) {
-            // HIGH #9: if signoff was configured but no reviewers were available,
-            // signoffFailed is set — fail the run instead of delivering.
-            if (team.activeTask?.signoffFailed) {
-                await finishRun(ctx, team, "signoff_failed:no_reviewers", "failed")
-            }
-            return  // signoff in progress or failed
+            return  // signoff in progress or run terminated
         }
         await finishRun(ctx, team, `${label}_complete`, "idle")
         return

@@ -169,6 +169,12 @@ function testRegexSafely(pattern: string, output: string): boolean {
         })
         return false
     }
+    // #1: reject patterns with 3+ consecutive wildcard quantifiers.
+    // ^.*.*.*.*X$ on 1000 chars blocks 5s+ in V8.
+    if (/(?:\.[*+]){3,}/.test(pattern.replace(/\\[+*?]/g, ""))) {
+        logger.warn("shouldRetryTask: regex pattern has 3+ consecutive wildcard quantifiers (ReDoS risk)", { pattern })
+        return false
+    }
     try {
         const cappedOutput = output.length > REDOS_INPUT_CAP ? output.slice(0, REDOS_INPUT_CAP) : output
         return new RegExp(pattern).test(cappedOutput)

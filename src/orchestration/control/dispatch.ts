@@ -103,6 +103,10 @@ export async function dispatchToMember(
             member.status = origStatus
             member.turnCount = origTurnCount
             member.promptDelivered = origPromptDelivered
+            // #5: set retryingSince so the sweep timer re-drives this member
+            // instead of stalling until wall-clock timeout. The mode handler
+            // that called dispatchToMember may not have a catch path.
+            member.retryingSince = Date.now()
             try {
                 await saveTeamStateBounded(team)
             } catch (rollbackErr) {

@@ -219,6 +219,10 @@ export interface ActiveTaskBase {
     // round-bearing types (loop / arbitrate / consensus)
     maxRounds?: number                       // round limit
     currentRound?: number
+    // #4: track which participants were successfully dispatched this round.
+    // Barrier checks this to avoid treating a failed-dispatch member as
+    // "already responded" — the member is idle but never received the prompt.
+    dispatchedParticipants?: string[]
 
     // ordered stages (parallel holds []; pipeline / loop / tollgate use it).
     // Constructed by every variant, so it lives in Base.

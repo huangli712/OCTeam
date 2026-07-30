@@ -270,6 +270,8 @@ export async function applyApprovalDecision(
         // approvalStage=undefined and returns "no pending approval" instead
         // of re-running the dispatch.
         task.startedAt = savedStartedAt
+        // MEDIUM: persist the startedAt rollback so disk and memory agree.
+        try { await saveTeamStateBounded(team) } catch { /* best-effort */ }
         throw err
     }
 }

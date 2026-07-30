@@ -208,11 +208,9 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             owner: undefined,
             claimedAt: undefined,
         }, {
-            // HIGH #11: CAS guard — only release if this member still owns it.
-            // Without this, a reaper reset + re-claim by another member
-            // would be clobbered.
+            // HIGH: use actual status, not hardcoded "claimed".
             expectedOwner: member.name,
-            expectedStatus: "claimed",
+            expectedStatus: T.status as "claimed" | "in_progress",
         })
         recordEvent(team, {
             timestamp: Date.now(),

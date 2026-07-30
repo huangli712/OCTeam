@@ -291,7 +291,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         unindexSession(liveMember.sessionId)
                         indexMember(
                             liveMember.sessionId, team.teamName, newName,
-                            caller.leadSessionId, ctx.storageRoot,
+                            caller.leadSessionId, caller.storageRoot,
                         )
                     }
                     // H-T2/H-T6: worktree destroy deferred to AFTER successful
@@ -357,25 +357,13 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     changes.push("prompt: updated")
                 }
 
-                // MEDIUM: if role or prompt changed, the existing session
-                // still carries the old system context. Force re-initialization
-                // by clearing sessionId so the next orchestration re-creates
-                // the session with the updated role prompt.
+                // HIGH: if role or prompt changed, defer session deletion
+                // to AFTER successful persistence. Pre-fix code deleted
+                // the session then failed to persist, leaving disk with a
+                // stale sessionId pointing to a deleted session.
+                let needsSessionReset = false
                 if ((args.new_role || args.new_prompt) && liveMember.sessionId && liveMember.initialized) {
-                    try {
-                        await ctx.client.session.delete({
-                            path: { id: liveMember.sessionId },
-                            query: { directory: liveMember.worktreePath ?? ctx.directory },
-                        })
-                    } catch (err) {
-                        if (!isEnoent(err)) {
-                            logSwallowed(ctx, "fixmember: session delete for re-init failed", err, { member: args.member_name })
-                        }
-                    }
-                    unindexSession(liveMember.sessionId)
-                    liveMember.sessionId = undefined
-                    liveMember.initialized = false
-                    changes.push("session: cleared for re-initialization with new role/prompt")
+                    needsSessionReset = true
                 }
 
                 // --- agent: explicit new_agent wins; otherwise a changed role
@@ -403,7 +391,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 let specWritten = false
                 const writeErr = await (async () => {
                     if (spec) {
-                        await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId, ctx.storageRoot)
+                        await writeTeamSpec(caller.storageRoot, spec, caller.leadSessionId, caller.storageRoot)
                         specWritten = true
                     }
                     await saveTeamState(team)
@@ -428,7 +416,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             unindexSession(liveMember.sessionId)
                             indexMember(
                                 liveMember.sessionId, team.teamName, args.member_name,
-                                caller.leadSessionId, ctx.storageRoot,
+                                caller.leadSessionId, caller.storageRoot,
                             )
                         }
                         if (team.activeTask) {
@@ -475,7 +463,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     // but does not mask the original writeErr.
                     if (specWritten && spec) {
                         try {
-                            await writeTeamSpec(ctx.storageRoot, spec, caller.leadSessionId, ctx.storageRoot)
+                            await writeTeamSpec(caller.storageRoot, spec, caller.leadSessionId, caller.storageRoot)
                         } catch (specRollbackErr) {
                             logger.warn("fixmember: failed to compensate-rewrite config.json after saveTeamState failure", {
                                 teamName: caller.teamName,
@@ -484,6 +472,27 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         }
                     }
                     throw writeErr
+                }
+                // HIGH: deferred session deletion for role/prompt changes.
+                // Only delete AFTER successful persistence so a write failure
+                // doesn't leave disk pointing to a deleted session.
+                if (needsSessionReset && liveMember.sessionId) {
+                    const oldSid = liveMember.sessionId
+                    try {
+                        await ctx.client.session.delete({
+                            path: { id: oldSid },
+                            query: { directory: liveMember.worktreePath ?? ctx.directory },
+                        })
+                    } catch (err) {
+                        if (!isEnoent(err)) {
+                            logSwallowed(ctx, "fixmember: deferred session delete failed", err, { member: args.member_name, session: oldSid })
+                        }
+                    }
+                    unindexSession(oldSid)
+                    liveMember.sessionId = undefined
+                    liveMember.initialized = false
+                    try { await saveTeamStateBounded(team) } catch { /* state already saved above */ }
+                    changes.push("session: cleared for re-initialization with new role/prompt")
                 }
                 // H-T6: NOW safe to destroy old worktree after successful
                 // persistence. If this fails, the member still has name/index/

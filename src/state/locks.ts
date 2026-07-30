@@ -163,16 +163,31 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
         const st = await fs.stat(lockPath)
         const pidStr = await fs.readFile(lockPath, "utf8")
         const pid = parseInt(pidStr.trim(), 10)
-        if (!Number.isFinite(pid) || pid <= 0) return
+        if (!Number.isFinite(pid) || pid <= 0) {
+            // CRIT #1: empty/invalid PID means the lock was truncated by
+            // a TOCTOU-safe reap or is corrupt. Safe to unlink now.
+            if (st.size === 0) await fs.unlink(lockPath).catch(() => {})
+            return
+        }
         let alive = true
         try {
             process.kill(pid, 0)
         } catch (e) {
-            // ESRCH = process does not exist; EPERM = exists but no permission.
             alive = (e as NodeJS.ErrnoException).code !== "ESRCH"
         }
         if (shouldReapStaleLock(st.mtimeMs, Date.now(), LOCK_TTL_MS, alive)) {
-            await fs.unlink(lockPath).catch(() => {})
+            // CRIT #1: TOCTOU-safe reap. Instead of unlink (which can
+            // delete a newer lock if another process acquired between
+            // stat/read and unlink), truncate the file to empty. The
+            // next acquireLock's open("wx") still gets EEXIST, but the
+            // empty PID read in releaseLock/maybeReapStaleLock will
+            // return NaN → skip, letting acquireLock's timeout-retry
+            // eventually succeed. Alternatively the next maybeReapStaleLock
+            // will find a 0-byte file and immediately unlink it.
+            const fh = await fs.open(lockPath, "w").catch(() => undefined)
+            if (fh) {
+                try { await fh.writeFile("") } finally { await fh.close() }
+            }
         }
     } catch {
         // Lock vanished or unreadable — next open("wx") retry handles it.

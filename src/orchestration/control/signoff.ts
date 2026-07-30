@@ -41,6 +41,9 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     if (!task) return false
     if (!task.signoffPolicy || task.signoffPolicy === "none") return false
     if (task.signoffStage) return true
+    // HIGH #H4: if a previous call set signoffFailed, the run is already
+    // terminated or needs termination. Don't re-enter signoff setup.
+    if (task.signoffFailed) return true
 
     const summary = await buildSummary(team, task, "pending_signoff")
     const reviewPrompt = buildSignoffReviewPrompt(summary)
@@ -51,11 +54,9 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     if (task.signoffPolicy === "decider") {
         const decider = findMember(team, task.signoffDecider ?? "")
         if (!decider?.sessionId || decider.status === "errored") {
-            // HIGH #9: signoff configured but decider unavailable — return
-            // true (handled) but mark the task as failed so the caller does
-            // NOT deliver without review.
+            // HIGH #H4: fail the run directly so ALL callers terminate.
             task.signoffStage = false
-            task.signoffFailed = true
+            await finishRun(ctx, team, "signoff_failed:decider_unavailable", "failed")
             return true
         }
         reviewers = [decider]
@@ -64,9 +65,8 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
             !member.isMaster && member.sessionId && member.status !== "errored"
         )
         if (reviewers.length === 0) {
-            // HIGH #9: peer-quorum signoff configured but no reviewers available.
             task.signoffStage = false
-            task.signoffFailed = true
+            await finishRun(ctx, team, "signoff_failed:no_reviewers", "failed")
             return true
         }
     }

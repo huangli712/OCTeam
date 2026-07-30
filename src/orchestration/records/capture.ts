@@ -77,14 +77,22 @@ export async function captureMemberOutput(
         // snapshot to compare against. If lastCapturedOutput is unset
         // (legacy member), fall back to count-only dedup.
         if (member.lastCapturedOutput !== undefined) {
-            let lastAssistantText = ""
+            // HIGH: compute the FULL turn output for comparison, not just
+            // the last assistant message. Pre-fix code compared different
+            // strings (last message vs full turn), causing false negatives.
+            let turnStart = 0
             for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i]?.info?.role === "user") { turnStart = i + 1; break }
+            }
+            const turnOutputs: string[] = []
+            for (let i = turnStart; i < messages.length; i++) {
                 if (messages[i]?.info?.role === "assistant") {
-                    lastAssistantText = extractOutputFromParts(messages[i]?.parts) || ""
-                    break
+                    const text = extractOutputFromParts(messages[i]?.parts) || ""
+                    if (text) turnOutputs.push(text)
                 }
             }
-            if (lastAssistantText.slice(0, 256) === member.lastCapturedOutput) {
+            const fullTurnText = turnOutputs.join("\n\n")
+            if (fullTurnText.slice(0, 256) === member.lastCapturedOutput) {
                 return { fresh: false, reason: "stale" }
             }
             // Content differs despite same count — fall through to capture.

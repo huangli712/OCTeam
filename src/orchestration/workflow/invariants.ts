@@ -170,6 +170,12 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
         ["onInvalidGoto", step.onInvalidGoto],
     ] as const) {
         if (gotoIdx === undefined) continue
+        // MEDIUM: reject non-integer indices before bounds check to avoid
+        // accessing steps[1.5] === undefined and crashing on .kind access.
+        if (!Number.isInteger(gotoIdx)) {
+            context.violations.push(`step ${index}: ${field} ${gotoIdx} is not an integer`)
+            continue
+        }
         if (gotoIdx < 0 || gotoIdx >= context.steps.length) {
             context.violations.push(`step ${index}: ${field} ${gotoIdx} is out of bounds`)
             continue

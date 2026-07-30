@@ -141,8 +141,13 @@ export async function handleStatusEvent(
     }
     await team.mutex.runExclusive(async () => {
         if (team.deleted) return
+        // CRIT #4: cross-process ownership guard — don't process status
+        // events for a run owned by another process.
+        if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
+        // HIGH: verify the event's sessionID matches the live member's.
         const live = team.members.find(m => m.name === member.name)
         if (!live) return
+        if (live.sessionId !== undefined && live.sessionId !== sessionID) return
         // The event payload is only a signal; re-query to read the authoritative
         // status entry for this session.
         const status = await ctx.client.session.status({})

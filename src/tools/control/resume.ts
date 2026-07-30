@@ -158,6 +158,10 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // of reference equality.
                     if (team.status !== "failed" || !team.lastInterruptedTask) {
                         resumeRaced = true
+                        // MEDIUM: clear spawning lease on raced path so the
+                        // team isn't permanently wedged.
+                        team.spawning = false
+                        try { await saveTeamState(team) } catch { /* best-effort */ }
                         return
                     }
                     // Commit atomically with dispatch.

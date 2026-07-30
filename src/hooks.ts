@@ -205,8 +205,13 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                     // L5: serialize the full error info instead of relying on
                     // SDK properties.error being a string (it may be an object).
                     const errProps = narrowed?.properties
+                    // HIGH: JSON.stringify can throw on circular refs or BigInt.
+                    // Use a safe serializer that never throws.
+                    const safeStringify = (v: unknown): string => {
+                        try { return JSON.stringify(v) } catch { return String(v) }
+                    }
                     const errMsg = errProps?.error !== undefined
-                        ? (typeof errProps.error === "string" ? errProps.error : JSON.stringify(errProps.error))
+                        ? (typeof errProps.error === "string" ? errProps.error : safeStringify(errProps.error))
                         : errProps?.message !== undefined
                             ? String(errProps.message)
                             : "unknown"

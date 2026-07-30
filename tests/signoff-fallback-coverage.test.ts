@@ -82,7 +82,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
 
         const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(true)
-        expect(team.activeTask!.signoffFailed).toBe(true)
+        expect(team.activeTask).toBeUndefined()
     })
 
     test("decider mode + decider has no sessionId (legacy/uninitialized) → fail closed", async () => {
@@ -105,7 +105,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
 
         const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(true)
-        expect(team.activeTask!.signoffFailed).toBe(true)
+        expect(team.activeTask).toBeUndefined()
     })
 
     test("decider mode + decider name not in team → fail closed", async () => {
@@ -124,7 +124,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
 
         const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(true)
-        expect(team.activeTask!.signoffFailed).toBe(true)
+        expect(team.activeTask).toBeUndefined()
     })
 
     test("peer-quorum mode + all non-master members are errored → fail closed", async () => {
@@ -146,10 +146,10 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
 
         const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(true)
-        expect(team.activeTask!.signoffStage).toBe(false)
+        expect(team.activeTask).toBeUndefined()
     })
 
-    test("peer-quorum mode + only master + no other members → fallback", async () => {
+    test("peer-quorum mode + only master + no other members → fail closed", async () => {
         const root = tmpRoot("signoff-quorum-no-reviewers")
         const masterSid = "ses_signoff_master_5"
         tracked.push(masterSid)
@@ -165,7 +165,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
 
         const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
         expect(triggered).toBe(true)
-        expect(team.activeTask!.signoffFailed).toBe(true)
+        expect(team.activeTask).toBeUndefined()
     })
 
     test("no signoffPolicy → no trigger (caller delivers directly)", async () => {

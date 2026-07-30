@@ -10,6 +10,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import { type Team } from "../../state/store.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { buildRoundSummary } from "../records/summary.js"
@@ -37,6 +38,13 @@ export async function handleConsensusIdle(
     const participants = nonMasterMembers(team).map(m => m.name)
 
     await maybeAdvanceBarrier(team, participants, async () => {
+        // HIGH #H3: require ALL participants to have responses, not just
+        // successfully dispatched ones. Pre-fix code used dispatchedParticipants
+        // (which excludes failed dispatches), letting the barrier advance
+        // with missing members. Failed-dispatch members need re-dispatch,
+        // not silent exclusion.
+        const allResponded = participants.every(name => task.responses[name] !== undefined)
+        if (!allResponded) return  // barrier not satisfied yet
         task.consensusReached = allMembersAgree(task.responses, participants)
         if (task.consensusReached) {
             await finishRun(ctx, team, "consensus_reached", "idle")
@@ -72,12 +80,18 @@ export async function handleConsensusIdle(
         // responses — a crash would resume with wrong round. Setting it first
         // ensures the disk state is consistent with the dispatched prompts.
         task.currentRound = nextRound
+        task.dispatchedParticipants = []
         recordEvent(team, { timestamp: Date.now(), kind: "round", round: nextRound })
         const roundText =
             `[Consensus Round ${nextRound}]\n${summary}\n\n`
             + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`
         for (const m of nonMasterMembers(team)) {
-            await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory, team)
+            try {
+                await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory, team)
+                task.dispatchedParticipants.push(m.name)
+            } catch (err) {
+                logSwallowed(ctx, "consensus: dispatch failed for member", err, { member: m.name, round: nextRound })
+            }
         }
     })
 }

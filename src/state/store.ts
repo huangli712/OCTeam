@@ -414,7 +414,16 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
                     )
                 }
                 if (typeof da.tokensUsed === "number" && typeof ca.tokensUsed === "number") {
-                    ma.tokensUsed = Math.max(da.tokensUsed as number, ca.tokensUsed as number)
+                    // MEDIUM: recompute from the merged tokensByMember map,
+                    // not Math.max of two writers' totals. Pre-fix code
+                    // took the larger writer's sum, undercounting when
+                    // concurrent writers tracked different members.
+                    if (ma.tokensByMember) {
+                        ma.tokensUsed = Math.max(0, Object.values(ma.tokensByMember)
+                            .reduce((a, b) => a + b, 0))
+                    } else {
+                        ma.tokensUsed = Math.max(da.tokensUsed as number, ca.tokensUsed as number)
+                    }
                 }
             }
         }

@@ -737,11 +737,14 @@ export async function handleGateVerdict(
     } else {
         const response = task.responses[verifierName];
         if (response !== undefined) {
-            // MEDIUM: cap the stored gate output so a verbose verifier
-            // can't inflate state.json or downstream prompts unbounded.
+            // HIGH: parse the FULL response first, then store a truncated
+            // version. Pre-fix code truncated before parsing, which could
+            // cut the closing </verdict> tag and cause false parseFailed.
+            output = response;
             step.output = response.length > 8192 ? response.slice(0, 8192) + "\n[...truncated]" : response;
+        } else {
+            output = step.output ?? "";
         }
-        output = step.output ?? "";
     }
     const parsed = parseVerdict(output);
 

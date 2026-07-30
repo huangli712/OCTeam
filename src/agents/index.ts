@@ -14,7 +14,7 @@ import { juniorAgent } from "./junior.js"
 import { deepAgent } from "./deep.js"
 import { ultrabrainAgent } from "./ultrabrain.js"
 import { multimodalLookerAgent } from "./multimodal-looker.js"
-import type { OcteamAgentConfig, OcteamAgentPermission } from "./types.js"
+import type { OcteamAgentConfig, OcteamAgentPermission, OcteamPermissionAction } from "./types.js"
 
 /**
  * OCTeam's built-in subagents. No `model` field is pinned here on purpose:
@@ -54,11 +54,34 @@ function mergePermissionsMonotonic(
     const rank: Record<string, number> = { allow: 0, ask: 1, deny: 2 }
     const wildcardAction = result["*"]
     for (const [tool, action] of Object.entries(userPerm as Record<string, unknown>)) {
-        if (action !== "allow" && action !== "deny" && action !== "ask") continue
-        const presetAction = result[tool]
-        const effectiveBaseline = presetAction ?? wildcardAction
-        if (effectiveBaseline === undefined || rank[action] >= rank[effectiveBaseline]) {
-            result[tool] = action
+        // #2: handle both scalar and nested (Record<string,Action>) values.
+        // SDK supports bash: { "*": "deny", "git status": "allow" }.
+        if (action === "allow" || action === "deny" || action === "ask") {
+            const presetAction = result[tool]
+            const effectiveBaseline = typeof presetAction === "string" ? presetAction : wildcardAction
+            if (effectiveBaseline === undefined || rank[action] >= rank[effectiveBaseline]) {
+                result[tool] = action
+            }
+        } else if (action !== null && typeof action === "object" && !Array.isArray(action)) {
+            // Nested permission map (e.g. bash: { "git push": "deny" }).
+            // CRIT #5: preserve the preset's wildcard baseline so the nested
+            // map doesn't weaken the default-deny posture. Pre-fix code
+            // replaced the scalar entirely, losing the "*":"deny" floor.
+            const presetScalar = typeof result[tool] === "string" ? result[tool] as string : wildcardAction
+            const nested: Record<string, OcteamPermissionAction> = {}
+            // Always seed with the preset baseline so unlisted sub-keys inherit it.
+            if (presetScalar !== undefined) {
+                nested["*"] = presetScalar as OcteamPermissionAction
+            }
+            for (const [subTool, subAction] of Object.entries(action as Record<string, unknown>)) {
+                if (subAction !== "allow" && subAction !== "deny" && subAction !== "ask") continue
+                if (presetScalar === undefined || rank[subAction] >= rank[presetScalar]) {
+                    nested[subTool] = subAction
+                }
+            }
+            if (Object.keys(nested).length > 0) {
+                result[tool] = nested as unknown as OcteamPermissionAction
+            }
         }
     }
     return result

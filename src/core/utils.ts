@@ -38,11 +38,10 @@ export function waitUntil(
     const rawPollMs = opts.pollMs ?? 250
     const pollMs = Number.isFinite(rawPollMs) && rawPollMs > 0 ? rawPollMs : 250
     return new Promise<void>((resolve, reject) => {
-        // MEDIUM: use monotonic deadline and cap each poll interval by the
-        // remaining time so the function never overshoots timeoutMs by more
-        // than one poll interval. Pre-fix code waited the full pollMs even
-        // when the deadline had almost been reached.
-        const start = Date.now()
+        // MEDIUM: use performance.now() for monotonic timing. Date.now()
+        // can jump backward on NTP sync, causing premature timeout or
+        // indefinite waiting.
+        const start = performance.now()
         const deadline = start + opts.timeoutMs
         const tick = () => {
             try {
@@ -54,7 +53,7 @@ export function waitUntil(
                 reject(err)
                 return
             }
-            const remaining = deadline - Date.now()
+            const remaining = deadline - performance.now()
             if (remaining <= 0) {
                 reject(new Error(`waitUntil: timed out after ${opts.timeoutMs}ms`))
                 return
