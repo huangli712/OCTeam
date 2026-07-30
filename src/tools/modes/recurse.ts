@@ -69,7 +69,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             ...commonOrchestrationFields,
-            ...parseThresholdFields,
+            max_aggregation_dispatches: parseThresholdFields.max_aggregation_dispatches,
             max_errored_members: tool.schema
                 .number()
                 .int()
@@ -128,6 +128,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                         decomposerMember: args.decomposer,
                         maxDepth: args.max_depth ?? DEFAULT_RECURSE_DEPTH,
                         maxSubtasks: args.max_subtasks ?? DEFAULT_RECURSE_SUBTASKS,
+                        maxAggregationDispatches: args.max_aggregation_dispatches,
                         rootTaskId: root.id,
                         maxErroredMembers: args.max_errored_members,
                         ...humanApprovalTaskFields(args),

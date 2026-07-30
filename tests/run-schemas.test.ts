@@ -45,7 +45,13 @@ function wfRunStep(index: number, overrides: Record<string, unknown> = {}): Reco
     }
 }
 
-function fanoutStep(index: number, joinIndex: number, branchIds: string[], ranges: Array<{ startIndex: number; endIndex: number }>): Record<string, unknown> {
+function fanoutStep(
+    index: number,
+    joinIndex: number,
+    branchIds: string[],
+    ranges: Array<{ startIndex: number; endIndex: number }>,
+    metadataOverrides: Record<string, unknown> = {},
+): Record<string, unknown> {
     return wfRunStep(index, {
         kind: "fanout",
         completed: true,
@@ -54,6 +60,7 @@ function fanoutStep(index: number, joinIndex: number, branchIds: string[], range
             branchRanges: ranges,
             joinIndex,
             maxErrored: 0,
+            ...metadataOverrides,
         },
     })
 }
@@ -150,6 +157,20 @@ describe("RunRecordSchema", () => {
         })
         const result = RunRecordSchema.safeParse(rec)
         expect(result.success).toBe(true)
+    })
+
+    test("arena winner outside candidates is rejected", () => {
+        const result = RunRecordSchema.safeParse(validRunRecord({
+            type: "arena",
+            arena: {
+                candidates: ["alice", "bob"],
+                evaluator: "carol",
+                winner: "mallory",
+                scoreDirection: "max",
+                winnerMetric: "score",
+            },
+        }))
+        expect(result.success).toBe(false)
     })
 })
 
@@ -312,6 +333,30 @@ describe("WorkflowRunSchema (via RunRecordSchema.workflow)", () => {
             joinStep(2, 0, [1], { survivorBranchIds: ["b1"], erroredBranchIds: ["b1"] }),
         ])
         expectIssue(result, "join branch cannot be both survivor and errored")
+    })
+
+    test("join quorum outside (0, 1] is rejected", () => {
+        const result = parseWorkflow([
+            fanoutStep(0, 2, ["b1"], [{ startIndex: 1, endIndex: 1 }]),
+            branchStep(1, 0, "b1", 0, 2),
+            joinStep(2, 0, [1], { quorum: -1 }),
+        ])
+        expectIssue(result, "quorum must be in (0, 1]")
+    })
+
+    test("quorum fanout cannot use an all join", () => {
+        const result = parseWorkflow([
+            fanoutStep(
+                0,
+                2,
+                ["b1"],
+                [{ startIndex: 1, endIndex: 1 }],
+                { joinPolicy: "quorum", quorum: 0.5 },
+            ),
+            branchStep(1, 0, "b1", 0, 2),
+            joinStep(2, 0, [1], { joinPolicy: "all" }),
+        ])
+        expectIssue(result, "quorum fanout cannot use all join policy")
     })
 
     test("task/gate step with fanout metadata rejected", () => {

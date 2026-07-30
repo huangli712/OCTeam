@@ -65,7 +65,17 @@ function extractTaggedJSON(
     // parseable JSON, that is a real failure.
     const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "g")
     const matches = [...(text?.matchAll(re) ?? [])]
-    if (matches.length === 0) return null
+    if (matches.length === 0) {
+        // H39: before returning null ("no tag found"), check if the text has
+        // an UNCLOSED opening tag (e.g. trailing `<decision>{...` without
+        // `</decision>`). If so, this is a parse failure (undefined), not
+        // "no tag at all" — the model attempted to emit a decision but the
+        // output was truncated. Returning null here would cause callers to
+        // fall back to older complete tags or treat it as "direct answer".
+        const openRe = new RegExp(`<${tag}>`)
+        if (openRe.test(text ?? "")) return undefined
+        return null
+    }
     const lastPayload = matches[matches.length - 1][1]
     // M14: extract the LAST valid JSON object from the payload. Pre-fix code
     // used a greedy /\{[\s\S]*\}/ that spanned from the first `{` to the
@@ -151,13 +161,15 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
             timestamp: Date.now(),
         }
     }
-    // L3: if `decision` is undefined (key absent) with no `done:true`,
-    // treat as "continue" (LLM may restate the tag without a decision).
-    // If `decision` is present but has an INVALID value (misspelling),
-    // that IS parseFailed — the LLM tried to express a decision but used
-    // a non-standard label. Pre-fix code normalized ALL non-"done" values
-    // to "continue" silently, even misspellings.
-    if (decision !== undefined && decision !== "continue") return fail()
+    // M22 fix: if `decision` key is absent AND no `done:true`, this is a
+    // malformed payload — the model emitted a <decision> tag but didn't
+    // include the required decision field. Pre-fix code silently defaulted
+    // to "continue", wasting an entire loop round. Now: set parseFailed so
+    // the retry/reformat budget can fire.
+    if (decision === undefined) return fail()
+    // If decision is present but not a recognized value, it's also a parse
+    // failure (misspelling like "dnoe" or "stpo").
+    if (decision !== "continue") return fail()
     return {
         round: 0,
         decision: "continue",
@@ -353,11 +365,14 @@ function parseWorkflowIssues(raw: unknown): WorkflowIssue[] | undefined {
         issues.push(issue)
     }
     // R2: return the array even when empty for legit `issues:[]`.
-    // H9: BUT return undefined when the verifier reported issues with
-    // invalid severity labels (all entries malformed). An empty array
-    // means "no qualifying issues" (does_not_match); undefined means
-    // "verifier couldn't properly report issues" (unevaluable).
-    return issues.length > 0 ? issues : (hadInvalidSeverity ? undefined : [])
+    // H40 fix: ANY malformed entry makes the entire issues field unevaluable.
+    // Pre-fix code only returned undefined when ALL entries were malformed
+    // (issues.length === 0). A mix of valid + invalid entries silently dropped
+    // the invalid ones, which is fail-open for quality gates — e.g. a
+    // `["low", "CRITICALL"]` payload would keep only "low" and a
+    // `has_issue_severity:"critical"` condition would not match.
+    if (hadInvalidSeverity) return undefined
+    return issues
 }
 
 /**

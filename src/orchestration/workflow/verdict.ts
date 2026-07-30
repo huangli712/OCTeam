@@ -273,6 +273,7 @@ export async function handleInvalidVerdict(
         // Honor gate approval_before on invalid-verifier retry re-dispatch
         // (parity with FAIL retry and the initial advance path). Reset timing first
         // so a pause-then-resume does not preserve the prior attempt's startedAt.
+        delete task.responses[verifierName];
         resetWorkflowStepTiming(step);
         if (await maybePauseBeforeWorkflowStep(ctx, team, gateIndex)) return;
         const nudge =
@@ -390,10 +391,7 @@ async function handleGatePass(
         // retry_verifier branch in handleInvalidVerdict re-dispatches the
         // verifier and waits for a fresh idle response, but a completed gate
         // is skipped by the idle router → the retry response would never
-        // process, deadlocking the run until wall-clock timeout. Pre-fix
-        // resetStepAfterCompletion ran unconditionally at the top of this
-        // function; it now runs only when the gate is actually settling
-        // (PASS advances, goto fires).
+        // process, deadlocking the run until wall-clock timeout.
         await handleInvalidVerdict(ctx, team, {
             step, gateIndex, verifierName,
             reason: "INVALID",
@@ -402,9 +400,7 @@ async function handleGatePass(
         });
         return;
     }
-    // H-4: now that where has resolved (gotoIdx !== -2), the gate is truly
-    // settling — mark it completed for the advance / goto / approval paths.
-    resetStepAfterCompletion(step, { completed: true });
+    if (gotoIdx < 0) resetStepAfterCompletion(step, { completed: true });
     const nextIndex =
         gotoIdx >= 0 ? gotoIdx : steps.findIndex((s) => !s.completed);
     // Skip the task-global approval when on_pass_goto is set: the approval
@@ -751,24 +747,27 @@ export async function handleGateVerdict(
         return;
     }
 
-    if (v.verdict === "INVALID") {
-        await handleInvalidVerdict(
-            ctx,
-            team,
-            { step, gateIndex, verifierName, reason: "INVALID", rationale: v.rationale, diff: v.diff },
-        );
-        return;
-    }
-
-    if (v.verdict === "PASS") {
-        await handleGatePass(ctx, team, step, gateIndex, steps, verifierName, v);
-        return;
-    }
-
-    // v.verdict === "FAIL"
-    if ((step.onFail ?? "fail") === "retry") {
-        await handleGateRetry(ctx, team, task, step, gateIndex, steps, verifierName, v);
-    } else {
-        await handleGateFail(ctx, team, task, steps, { step, gateIndex, verifierName, v });
+    switch (v.verdict) {
+        case "INVALID":
+            await handleInvalidVerdict(
+                ctx,
+                team,
+                { step, gateIndex, verifierName, reason: "INVALID", rationale: v.rationale, diff: v.diff },
+            );
+            return;
+        case "PASS":
+            await handleGatePass(ctx, team, step, gateIndex, steps, verifierName, v);
+            return;
+        case "FAIL":
+            if ((step.onFail ?? "fail") === "retry") {
+                await handleGateRetry(ctx, team, task, step, gateIndex, steps, verifierName, v);
+            } else {
+                await handleGateFail(ctx, team, task, steps, { step, gateIndex, verifierName, v });
+            }
+            return;
+        default: {
+            const exhaustive: never = v.verdict;
+            throw new Error(`Unknown workflow verdict: ${String(exhaustive)}`);
+        }
     }
 }

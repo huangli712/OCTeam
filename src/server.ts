@@ -62,15 +62,28 @@ const server = async (input: PluginInput): Promise<Hooks> => {
 
     // Restart invariant: clear all teams' activatedAt so none is auto-active
     // after a restart. Users must team_activate explicitly.
-    await reconcileActivation(ctx).catch((err) => {
-        logSwallowed(ctx, "reconcileActivation failed", err)
-    })
+    // H27 fix: recovery failures are critical — continuing with stale
+    // activatedAt, busy runs, or unreleased reservations causes state
+    // conflicts. Fail-closed instead of fail-open.
+    try {
+        await reconcileActivation(ctx)
+    } catch (err) {
+        throw new Error(
+            `octeam: reconcileActivation failed — team activation state may be inconsistent. `
+            + `Plugin startup aborted. Error: ${err instanceof Error ? err.message : String(err)}`,
+        )
+    }
 
     // Crash recovery: reconcile teams left "busy"/"idle" by a crashed prior
     // process — release stale reservations, fail interrupted orchestrations.
-    await reconcileCrashedTeams(ctx).catch((err) => {
-        logSwallowed(ctx, "reconcileCrashedTeams failed", err)
-    })
+    try {
+        await reconcileCrashedTeams(ctx)
+    } catch (err) {
+        throw new Error(
+            `octeam: reconcileCrashedTeams failed — crashed team recovery incomplete. `
+            + `Plugin startup aborted. Error: ${err instanceof Error ? err.message : String(err)}`,
+        )
+    }
 
     // Background sweep timer: reaps stale resources, enforces termination, and
     // reconciles missed idle events. Runs for the lifetime of the plugin.

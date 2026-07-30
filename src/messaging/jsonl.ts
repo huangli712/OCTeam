@@ -88,6 +88,12 @@ function isValidMessage(value: unknown): value is Message {
     ) {
         return false
     }
+    // M7 fix: Message.deliveryStatus is a required field, but legacy or
+    // hand-edited JSONL lines may omit it. Normalize undefined to "pending"
+    // so the type assertion (value is Message) is sound.
+    if (m.deliveryStatus === undefined) {
+        m.deliveryStatus = "pending"
+    }
     return true
 }
 

@@ -110,4 +110,38 @@ describe("H43: tollgate FAIL retry clears stale producer artifact", () => {
         // H43: the stale producer artifact MUST be cleared.
         expect(task.responses["alice"]).toBeUndefined()
     })
+
+    test("FAIL retry preserves completed upstream context and appends verifier feedback", async () => {
+        const upstream = gate({ member: "carol", verifier: "dave", completed: true })
+        const stage = gate({ member: "alice", verifier: "bob", task: "revise the artifact" })
+        const task = makeTollgateTask({
+            gatedStages: [upstream, stage],
+            currentStageIndex: 1,
+            tollgatePhase: "verify",
+            maxGateRetries: 2,
+            responses: {
+                carol: "UPSTREAM_ARTIFACT",
+                alice: "OLD_ARTIFACT",
+                bob: V.fail(),
+            },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_a" },
+                { name: "bob", sessionId: "ses_b" },
+            ],
+        })
+        const ctx = makeCtx({ calls: dispatches })
+
+        await team.mutex.runExclusive(async () => {
+            await handleTollgateIdle(ctx, team, idle(team, "bob"))
+        })
+
+        const retry = dispatches.find(call => call.sessionId === "ses_a")
+        expect(retry?.text).toContain("UPSTREAM_ARTIFACT")
+        expect(retry?.text.indexOf("revise the artifact")).toBeLessThan(
+            retry?.text.indexOf("Gate FAILED") ?? -1,
+        )
+    })
 })

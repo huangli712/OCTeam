@@ -66,11 +66,6 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     // Commit the signoff stage only once reviewers are confirmed available.
     task.signoffStage = true
     task.signoffApprovals = {}
-    recordEvent(team, {
-        timestamp: Date.now(),
-        kind: "signoff",
-        detail: task.signoffPolicy,
-    })
     // Persist BEFORE dispatching reviewers so a crash between save and
     // dispatch does not leave reviewers prompted without signoffStage
     // persisted. On resume, signoffStage=true ensures reviewer responses
@@ -81,6 +76,10 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     // stranding the team in a "signoff paused but reviewers never dispatched"
     // state — the next idle would route to handleSignoffIdle on a stage that
     // had no reviewers in flight.
+    //
+    // M9 fix: recordEvent was fire-and-forget BEFORE save. If save failed,
+    // the timeline showed a signoff entry that was rolled back. Now record
+    // the event only AFTER successful save so the timeline is consistent.
     try {
         await saveTeamStateBounded(team)
     } catch (err) {
@@ -88,6 +87,11 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         task.signoffApprovals = undefined
         throw err
     }
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "signoff",
+        detail: task.signoffPolicy,
+    })
     // G: track dispatch failures so partial-dispatch does not leave the run
     // stalled. Pre-fix code had no error handling in the loop; if reviewer
     // dispatch threw partway, already-dispatched reviewers were prompted but

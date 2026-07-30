@@ -38,6 +38,34 @@ function makeParallelTask(opts: Partial<ActiveTask> = {}): ActiveTask {
     } as ActiveTask
 }
 
+describe("reducer mapper snapshot", () => {
+    test("empty reducer output retry includes the reducer's mapper output and clears its response slot", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeParallelTask({
+            reduceStage: true,
+            reducerMember: "alice",
+            reducePolicy: "merge",
+            responses: { bob: "BOB_RAW" },
+            _reducerMapperSnapshot: "ALICE_RAW",
+            maxRetries: 1,
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", status: "idle" },
+                { name: "bob", sessionId: "ses_bob", status: "idle" },
+            ],
+        })
+
+        await handleReduceIdle(makeCtx({ calls }), team, team.members[0])
+
+        const retry = calls.find(call => call.sessionId === "ses_alice")
+        expect(retry?.text).toContain("ALICE_RAW")
+        expect(retry?.text).toContain("BOB_RAW")
+        expect(task.responses["alice"]).toBeUndefined()
+    })
+})
+
 describe("H41: reducer-errored fallback honors signoff", () => {
     test("reducer errored + signoffPolicy set → signoff triggered before finishRun", async () => {
         const calls: DispatchCall[] = []
@@ -48,7 +76,8 @@ describe("H41: reducer-errored fallback honors signoff", () => {
             reducerMember: "alice",
             reducePolicy: "summarize",
             signoffPolicy: "peer-quorum", // require signoff
-            responses: { alice: "ALICE_RAW", bob: "BOB_RAW" },
+            responses: { bob: "BOB_RAW" },
+            _reducerMapperSnapshot: "ALICE_RAW",
             maxErroredMembers: 1,
         })
         // alice (reducer) is errored; bob is a healthy mapper.
@@ -72,6 +101,9 @@ describe("H41: reducer-errored fallback honors signoff", () => {
         expect(task.signoffStage).toBe(true)
         // Reviewer should have been dispatched.
         expect(calls.some(c => c.sessionId === "ses_rev")).toBe(true)
+        const review = calls.find(call => call.sessionId === "ses_rev")
+        expect(review?.text).toContain("ALICE_RAW")
+        expect(review?.text).toContain("BOB_RAW")
     })
 
     test("reducer errored + signoffPolicy=none → finishRun directly (control)", async () => {

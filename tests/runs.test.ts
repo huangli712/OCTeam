@@ -117,6 +117,7 @@ describe("persistRun", () => {
         const dir = tmpTeamDir()
         const team = makeTeam({
             directory: dir,
+            members: [{ name: "alice" }, { name: "bob" }],
             activeTask: {
                 runId: "run-1",
                 type: "parallel",
@@ -130,6 +131,9 @@ describe("persistRun", () => {
         await fs.mkdir(runDir(dir, "run-1"), { recursive: true })
         await fs.writeFile(runMemberOutputPath(dir, "run-1", "alice"), "x".repeat(50000))
         await fs.writeFile(runMemberOutputPath(dir, "run-1", "bob"), "short")
+        await fs.writeFile(`${runDir(dir, "run-1")}/reduce.md`, "reduced")
+        await fs.writeFile(`${runDir(dir, "run-1")}/signoff.md`, "approved")
+        await fs.writeFile(`${runDir(dir, "run-1")}/intruder.md`, "untrusted")
 
         await persistRun(team, "parallel_isolated_complete")
 
@@ -145,6 +149,7 @@ describe("persistRun", () => {
         expect(rec!.memberOutputs.alice.bytes).toBe(50000)
         expect(rec!.memberOutputs.alice.file).toBe("alice.md")
         expect(rec!.memberOutputs.bob.bytes).toBe(5)
+        expect(Object.keys(rec!.memberOutputs).sort()).toEqual(["alice", "bob"])
     })
 
     test("lazy runId: generated when task has none", async () => {
@@ -222,6 +227,7 @@ describe("persistRun", () => {
         const joinedOutput = "joined aggregate output"
         const team = makeTeam({
             directory: dir,
+            members: [{ name: "alice" }, { name: "bob" }],
             activeTask: {
                 runId: "run-branch",
                 type: "workflow",
@@ -314,6 +320,39 @@ describe("persistRun", () => {
         expect(rawRecord).not.toContain("FULL ALICE OUTPUT")
         expect(rawRecord).not.toContain("FULL BOB OUTPUT")
         expect(rawRecord).not.toContain(joinedOutput)
+    })
+
+    test("workflow: caps aggregate persisted outputs and marks truncation", async () => {
+        const dir = tmpTeamDir()
+        const output = "x".repeat(8192)
+        const team = makeTeam({
+            directory: dir,
+            activeTask: {
+                runId: "run-output-budget",
+                type: "workflow",
+                steps: Array.from({ length: 80 }, (_, index) => ({
+                    kind: "task" as const,
+                    member: "alice",
+                    task: `step ${index + 1}`,
+                    completed: true,
+                    output,
+                })),
+            },
+        })
+
+        await persistRun(team, "workflow_complete")
+
+        const rec = await readRunRecord(dir, "run-output-budget")
+        const steps = rec!.workflow!.steps
+        const persistedOutputBytes = steps.reduce(
+            (total, step) => total + Buffer.byteLength(step.output ?? "", "utf8"),
+            0,
+        )
+        const markerIndex = steps.findIndex(step => step.output?.includes("workflow outputs truncated") === true)
+        expect(persistedOutputBytes).toBeLessThanOrEqual(512 * 1024)
+        expect(markerIndex).toBeGreaterThan(-1)
+        expect(steps[markerIndex + 1]?.output).toBeUndefined()
+        expect(steps[markerIndex + 1]?.outputBytes).toBe(Buffer.byteLength(output, "utf8"))
     })
 
     test("no activeTask → no-op", async () => {

@@ -35,8 +35,10 @@
  * by the oct-* definitions in this repo, not by host configuration.
  */
 
-/** A role's fixed agent and preset instruction text. */
-export type RoleDef = { agent: string; instruction: string }
+/** A role's fixed agent and preset instruction text.
+ * M1 fix: fields are readonly to prevent runtime mutation of the frozen
+ * role catalogue entries. */
+export type RoleDef = { readonly agent: string; readonly instruction: string }
 
 /** The complete role catalogue — maps role labels to agent and instruction.
  * M-ROLES: frozen so callers cannot mutate the shared catalogue in-place.

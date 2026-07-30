@@ -39,7 +39,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
             max_rounds: tool.schema.number().int().min(1).max(50),
             initial_task: tool.schema.string().min(1).max(8192),
             ...commonOrchestrationFields,
-            ...parseThresholdFields,
+            max_decision_parse_failures: parseThresholdFields.max_decision_parse_failures,
             ...humanApprovalSchemaFields,
         },
         async execute(args, context) {
@@ -111,6 +111,7 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                         deciderMember: args.decider,
                         currentRound: 1,
                         maxRounds: args.max_rounds,
+                        maxDecisionParseFailures: args.max_decision_parse_failures,
                     }
                 },
                 // dispatch: first stage with the initial task.

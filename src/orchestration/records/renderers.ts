@@ -13,6 +13,9 @@ import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./ledge
 import type { ActiveTask, ArenaCandidateScore } from "../../core/types.js"
 import type { Task } from "../../core/types.js"
 
+const WORKFLOW_OUTPUT_BYTE_BUDGET = 512 * 1024
+const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-byte budget exceeded]"
+
 /**
  * Render a delegate run: task status lines plus each member's captured output.
  * Member outputs are essential for signoff reviewers — without them the summary
@@ -24,14 +27,15 @@ export async function summarizeDelegate(team: Team, task: ActiveTask, head: stri
     const lines = tasks.map(
         t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
     )
-    // M-3: include each completed task's persisted `result` field, not just
-    // task.responses. Pre-fix code only rendered task.responses (the live
-    // member output map), losing the durable per-task result that was written
-    // at completion time. This is especially important for delegate runs where
-    // the task result is the canonical deliverable.
+    const fallbackResult = Object.values(task.responses).at(-1)
     const taskResults = tasks
-        .filter(t => t.status === "completed" && t.result && t.result.trim().length > 0)
-        .map(t => `by ${t.owner ?? "unknown"} (task: ${t.subject}):\n${truncateOutput(t.result!)}`)
+        .filter(t => t.status === "completed")
+        .flatMap(t => {
+            const result = t.result ?? fallbackResult
+            return result && result.trim().length > 0
+                ? [`by ${t.owner ?? "unknown"} (task: ${t.subject}):\n${truncateOutput(result)}`]
+                : []
+        })
         .join("\n\n")
     const memberOutputs = Object.entries(task.responses)
         .filter(([, out]) => out.trim().length > 0)
@@ -195,7 +199,27 @@ export function summarizePipeline(task: ActiveTask, head: string): string {
 export function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head: string): string {
     const steps = task.steps ?? []
     const rows = formatWorkflowLedgerLines(steps)
-    const outputs = formatWorkflowOutputSections(steps).join("\n\n")
+    const outputSections: string[] = []
+    let outputBytes = 0
+    for (const section of formatWorkflowOutputSections(steps)) {
+        const separatorBytes = outputSections.length > 0 ? 2 : 0
+        const sectionBytes = Buffer.byteLength(section, "utf8")
+        if (outputBytes + separatorBytes + sectionBytes <= WORKFLOW_OUTPUT_BYTE_BUDGET) {
+            outputSections.push(section)
+            outputBytes += separatorBytes + sectionBytes
+            continue
+        }
+        const markerBytes = Buffer.byteLength(WORKFLOW_OUTPUT_TRUNCATED_MARKER, "utf8")
+        while (outputSections.length > 0
+            && outputBytes + 2 + markerBytes > WORKFLOW_OUTPUT_BYTE_BUDGET) {
+            const removed = outputSections.pop()
+            if (removed === undefined) break
+            outputBytes -= Buffer.byteLength(removed, "utf8") + (outputSections.length > 0 ? 2 : 0)
+        }
+        outputSections.push(WORKFLOW_OUTPUT_TRUNCATED_MARKER)
+        break
+    }
+    const outputs = outputSections.join("\n\n")
     const ledger = rows.length > 0 ? `\n[Steps]\n${rows.join("\n")}` : ""
     return outputs ? `${head}${ledger}\n\n${outputs}` : `${head}${ledger}`
 }

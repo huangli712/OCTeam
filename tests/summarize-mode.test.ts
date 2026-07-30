@@ -12,7 +12,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
 
-import type { ActiveTask } from "../src/core/types.js"
+import type { ActiveTask, WorkflowStep } from "../src/core/types.js"
 import {
     summarizeArbitrate,
     summarizeArena,
@@ -298,6 +298,33 @@ describe("summarizeWorkflow", () => {
         const summary = summarizeWorkflow(task, HEAD)
         expect(summary).toBe(HEAD)
     })
+
+    test("omits outputs from skipped completed task steps", () => {
+        const task = makeWorkflowTask({
+            steps: [
+                { kind: "task", member: "alice", task: "skipped", completed: true, skipped: true, output: "stale skipped output" },
+            ],
+        }) as Extract<ActiveTask, { type: "workflow" }>
+        const summary = summarizeWorkflow(task, HEAD)
+        expect(summary).toContain("skipped")
+        expect(summary).not.toContain("stale skipped output")
+    })
+
+    test("caps aggregate workflow outputs and records truncation", () => {
+        const steps: WorkflowStep[] = Array.from({ length: 80 }, (_, index) => ({
+            kind: "task",
+            member: "alice",
+            task: `step ${index + 1}`,
+            completed: true,
+            output: "x".repeat(8192),
+        }))
+        const task = makeWorkflowTask({ steps }) as Extract<ActiveTask, { type: "workflow" }>
+        const summary = summarizeWorkflow(task, HEAD)
+        const outputStart = summary.indexOf("<Step")
+        expect(outputStart).toBeGreaterThan(-1)
+        expect(Buffer.byteLength(summary.slice(outputStart), "utf8")).toBeLessThanOrEqual(512 * 1024)
+        expect(summary).toContain("[workflow outputs truncated:")
+    })
 })
 
 // --- summarizeArena ---------------------------------------------------------
@@ -399,6 +426,7 @@ describe("summarizeDelegate", () => {
         expect(summary).toContain("[completed]")
         expect(summary).toContain("do work")
         expect(summary).toContain("@alice")
+        expect(summary).toContain("by alice (task: do work):")
         // Member outputs must be included so signoff reviewers have code to evaluate
         expect(summary).toContain("function doWork() { return 42 }")
     })

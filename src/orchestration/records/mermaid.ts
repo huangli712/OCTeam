@@ -24,6 +24,13 @@ function mermaidNodeId(step: WorkflowRunStep): string {
     return `s${step.step}`
 }
 
+/** M19: check if a gate step has a conditional goto (a `where` clause).
+ * WorkflowRunStep type doesn't declare `where` (schema drift, tracked as
+ * M3), but runtime data may carry it. Use a safe runtime check. */
+function hasConditionalGoto(step: WorkflowRunStep): boolean {
+    return "where" in step && (step as Record<string, unknown>).where !== undefined
+}
+
 /** Sanitize a branch id for use in Mermaid subgraph names. */
 function mermaidSafeId(value: string): string {
     return value.replace(/[^A-Za-z0-9_]/g, "_") || "branch"
@@ -137,7 +144,13 @@ export function formatWorkflowMermaid(
                     // Pre-fix code generated BOTH s2-->s3 (sequential) AND
                     // s2--PASS-->s4 (goto), making the diagram imply two
                     // conflicting flows from the same gate.
-                    const suppressSequential = current.kind === "gate" && current.onPassGoto !== undefined
+                    // M19 fix: only suppress when the goto is UNCONDITIONAL
+                    // (no `where` clause). A conditional goto (where != null)
+                    // may not fire at runtime — the sequential edge is the
+                    // fallback path and must be shown.
+                    const suppressSequential = current.kind === "gate"
+                        && current.onPassGoto !== undefined
+                        && !hasConditionalGoto(current)
                     if (!suppressSequential) {
                         lines.push(`  ${mermaidNodeId(current)} --> ${mermaidNodeId(next)}`)
                     }
@@ -147,9 +160,13 @@ export function formatWorkflowMermaid(
                 // inner sequential-edge suppression above. Pre-fix code
                 // unconditionally drew tail-->join even when the tail gate had
                 // an onPassGoto, producing two conflicting flows from the tail.
+                // M19 fix: same conditional-goto logic as the inner loop —
+                // a gate with `where` still falls through to the join on
+                // non-match, so the tail-->join edge must be drawn.
                 const suppressTailJoin = tail !== undefined
                     && tail.kind === "gate"
                     && tail.onPassGoto !== undefined
+                    && !hasConditionalGoto(tail)
                 if (tail !== undefined && join !== undefined && !suppressTailJoin) {
                     lines.push(`  ${mermaidNodeId(tail)} --> ${mermaidNodeId(join)}`)
                 }
@@ -179,7 +196,12 @@ export function formatWorkflowMermaid(
         }
         // Draw the default sequential edge ONLY when the gate does not have
         // an onPassGoto (without it, PASS flow continues to the next step).
-        const hasPassGoto = step.kind === "gate" && step.onPassGoto !== undefined
+        // M19 fix: a gate with a `where` conditional goto still falls through
+        // to the next step when the condition doesn't match, so the sequential
+        // edge must be preserved.
+        const hasPassGoto = step.kind === "gate"
+            && step.onPassGoto !== undefined
+            && !hasConditionalGoto(step)
         const next = steps[step.index + 1]
         if (!hasPassGoto && step.branch === undefined && next !== undefined && next.branch === undefined && step.kind !== "fanout") {
             lines.push(`  ${mermaidNodeId(step)} --> ${mermaidNodeId(next)}`)

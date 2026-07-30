@@ -31,6 +31,9 @@ import { RunRecordSchema, RunEventSchema } from "./schemas.js"
 /** Keep at most this many run records per team; older ones are pruned. */
 export const DEFAULT_MAX_RUNS = 20
 
+const WORKFLOW_OUTPUT_BYTE_BUDGET = 512 * 1024
+const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-byte budget exceeded]"
+
 /**
  * Reason substrings that indicate a FAILED run. Everything else is "completed".
  *
@@ -134,6 +137,7 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
 
     // Collect the full-output files staged at capture time (<member>.md).
     const memberOutputs: RunRecord["memberOutputs"] = {}
+    const memberNames = new Set(team.members.filter(member => !member.isMaster).map(member => member.name))
     let entries: string[] = []
     // C-2: runDir is <team>/runs/<runId>; verify the ancestor chain before
     // readdir so a symlinked intermediate (e.g. <team>/runs) cannot redirect
@@ -156,11 +160,10 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     for (const file of entries) {
         if (!file.endsWith(".md")) continue
         const member = file.slice(0, -3)
+        if (!memberNames.has(member)) continue
         // M10: skip files whose name starts with "master" — a member with
         // FS write access could plant a master.md to impersonate the leader.
-        // Other non-member files (e.g. attacker.md) are harmless because
-        // memberOutputs is display-only metadata; the real security concern
-        // is output impersonation, not extra metadata.
+        // Keep this defense even when a configured member has that prefix.
         if (member.startsWith("master")) continue
         try {
             const filePath = `${dir}/${file}`
@@ -219,8 +222,24 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
 
     if (task.type === "workflow") {
         const steps = task.steps ?? []
+        const markerBytes = Buffer.byteLength(WORKFLOW_OUTPUT_TRUNCATED_MARKER, "utf8")
+        let persistedOutputBytes = 0
+        let outputsTruncated = false
         record.workflow = {
             steps: steps.map((step, index) => {
+                const outputBytes = step.output === undefined
+                    ? undefined
+                    : Buffer.byteLength(step.output, "utf8")
+                let output: string | undefined
+                if (step.output !== undefined && outputBytes !== undefined && !outputsTruncated) {
+                    if (persistedOutputBytes + outputBytes <= WORKFLOW_OUTPUT_BYTE_BUDGET - markerBytes) {
+                        output = step.output
+                        persistedOutputBytes += outputBytes
+                    } else {
+                        output = WORKFLOW_OUTPUT_TRUNCATED_MARKER
+                        outputsTruncated = true
+                    }
+                }
                 const base = {
                     index,
                     step: index + 1,
@@ -232,8 +251,8 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
                     maxTimeoutRetries: step.maxTimeoutRetries,
                     skipped: step.skipped,
                     completed: step.completed,
-                    output: step.output,
-                    outputBytes: step.output === undefined ? undefined : Buffer.byteLength(step.output, "utf8"),
+                    output,
+                    outputBytes,
                     startedAt: step.startedAt,
                     completedAt: step.completedAt,
                     durationMs: step.durationMs,
@@ -482,7 +501,11 @@ export async function readRunRecord(teamDirectory: string, runId: string): Promi
     await assertNoSymlinkTraversal(teamDirectory, recordPath)
     try {
         const raw = await fs.readFile(recordPath, "utf8")
-        return parseRunRecord(raw)
+        const parsed = parseRunRecord(raw)
+        if (parsed.runId !== runId) {
+            throw new Error(`runId mismatch: expected ${runId}, got ${parsed.runId}`)
+        }
+        return parsed
     } catch (err) {
         if (!isEnoent(err)) {
             logger.warn("readRunRecord: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })

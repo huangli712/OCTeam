@@ -304,13 +304,16 @@ export async function handleTollgateIdle(
         delete task.responses[stage.member]
         const producer = team.members.find(m => m.name === stage.member)
         if (producer?.sessionId) {
+            const upstream = buildUpstreamContext(
+                task.gatedStages ?? [], task.responses, task.currentStageIndex)
+            const text = upstream ? `${upstream}\n\n[Your task]\n${stage.task}` : stage.task
             const feedback =
                 `[Gate FAILED — attempt ${stage.attempts}/${maxR}]\n`
                 + `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`
             await dispatchToMember(
                 ctx,
                 producer,
-                `${feedback}\n\n[Your task]\n${stage.task}`,
+                `${text}\n\n${feedback}`,
                 producer.worktreePath ?? ctx.directory,
                 team,
             )

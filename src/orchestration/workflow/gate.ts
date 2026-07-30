@@ -371,7 +371,11 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
             aggIssues: allIssues,
         }
     }
-    switch (step.ensemblePolicy) {
+    const ensemblePolicy = step.ensemblePolicy;
+    if (ensemblePolicy === undefined) {
+        throw new Error("Missing workflow ensemble policy");
+    }
+    switch (ensemblePolicy) {
         case "majority":
             if (passCount > total / 2) {
                 const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("PASS")
@@ -411,8 +415,10 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
                 return ensembleResult("FAIL", `Unanimous FAIL (${failCount}/${total})`, aggScore, aggConfidence, aggIssues)
             }
             return ensembleResult("INVALID", `Not unanimous (${passCount}P/${failCount}F/${invalidCount}I)`);
-        default:
-            return ensembleResult("INVALID", `Unknown ensemble policy`);
+        default: {
+            const exhaustive: never = ensemblePolicy;
+            throw new Error(`Unknown workflow ensemble policy: ${String(exhaustive)}`);
+        }
     }
 }
 

@@ -10,7 +10,7 @@ import { waitUntil } from "../src/core/utils.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { __test__ as logTest, initLogger } from "../src/core/log.js"
 
-import { makeCtx, makeTeam, cleanupTmpRoots, tmpRoot } from "./helpers.js"
+import { makeCtx, makeTeam, makeWorkflowTask, cleanupTmpRoots, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 function tmpTeamDir(): string {
@@ -84,6 +84,30 @@ describe("recordEvent + readRunEvents", () => {
         // not have been created.
         await new Promise(r => setImmediate(r))
         await expect(fs.readdir(join(dir, "runs"))).rejects.toThrow()
+    })
+
+    test("rechecks the tombstone immediately before appending", async () => {
+        const dir = tmpTeamDir()
+        const path = runEventsPath(dir, "run-deleted")
+        await fs.mkdir(join(dir, "runs", "run-deleted"), { recursive: true })
+        await fs.writeFile(path, "")
+        const team = makeTeam({
+            directory: dir,
+            activeTask: makeWorkflowTask({ runId: "run-deleted" }),
+        })
+        let deletedChecks = 0
+        Object.defineProperty(team, "deleted", {
+            configurable: true,
+            get: () => {
+                deletedChecks += 1
+                return deletedChecks >= 3
+            },
+        })
+
+        recordEvent(team, { timestamp: 1, kind: "dispatched", member: "alice" })
+
+        await waitUntil(() => deletedChecks >= 3, { timeoutMs: 2000, pollMs: 10 })
+        expect(await fs.readFile(path, "utf8")).toBe("")
     })
 })
 

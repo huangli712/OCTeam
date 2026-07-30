@@ -200,6 +200,7 @@ describe("teamCancelTool", () => {
         expect(teamAfter.status).toBe("idle")
         expect(teamAfter.activeTask).toBeUndefined()
         expect(result).toContain("cancelled")
+        expect(result).toContain("1 member may still be running")
     })
 
     test("lingering idle after cancel is a no-op: activeTask cleared, no throw", async () => {

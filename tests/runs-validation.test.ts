@@ -75,6 +75,13 @@ describe("runs.ts zod validation (H3)", () => {
         expect(rec).toBeNull()
     })
 
+    it("readRunRecord returns null when the embedded runId differs from the directory", async () => {
+        const root = tmpRoot("runs-id-mismatch")
+        writeRecord(root, "run-directory", validRecord("run-other", 5000))
+        const rec = await readRunRecord(root, "run-directory")
+        expect(rec).toBeNull()
+    })
+
     it("readRunRecord accepts pre-P2 flat workflow records", async () => {
         const root = tmpRoot("runs-workflow-flat")
         writeRecord(root, "run-flat", JSON.stringify({

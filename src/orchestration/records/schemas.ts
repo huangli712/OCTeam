@@ -142,6 +142,14 @@ const WorkflowJoinMetadataSchema = z.object({
     erroredBranchIds: z.array(z.string().min(1)).optional(),
     selectedBranchId: z.string().min(1).optional(),
     selectionRationale: z.string().optional(),
+}).superRefine((join, ctx) => {
+    if (join.quorum !== undefined && (join.quorum <= 0 || join.quorum > 1)) {
+        ctx.addIssue({
+            code: "custom",
+            path: ["quorum"],
+            message: "quorum must be in (0, 1]",
+        })
+    }
 })
 
 /**
@@ -348,6 +356,9 @@ const WorkflowRunSchema = z.object({
                     break
                 }
                 const fanout = fanoutStep.fanout
+                if (fanout.joinPolicy === "quorum" && step.join.joinPolicy === "all") {
+                    addStepIssue(index, "quorum fanout cannot use all join policy", ["join", "joinPolicy"])
+                }
                 if (fanout.branchRanges.length !== step.join.branchTailIndices.length) {
                     addStepIssue(
                         index,
@@ -491,6 +502,15 @@ export const RunRecordSchema = z.object({
         threshold: z.number().optional(),
         winningOption: z.string().optional(),
     }).optional(),
+}).superRefine((record, ctx) => {
+    if (record.arena?.winner !== undefined
+        && !record.arena.candidates.includes(record.arena.winner)) {
+        ctx.addIssue({
+            code: "custom",
+            path: ["arena", "winner"],
+            message: "arena winner must be one of the candidates",
+        })
+    }
 })
 
 /** Validates a single RunEvent line from the events.jsonl timeline. */

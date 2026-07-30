@@ -64,7 +64,7 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             ...commonOrchestrationFields,
-            ...parseThresholdFields,
+            max_route_parse_failures: parseThresholdFields.max_route_parse_failures,
         },
         async execute(args, context) {
             return startOrchestration(
@@ -114,6 +114,7 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
                         routerMember: args.router,
                         routeBranches: branches,
                         routeStage: false,
+                        maxRouteParseFailures: args.max_route_parse_failures,
                         ...humanApprovalTaskFields(args),
                         ...signoffTaskFields(args),
                     }

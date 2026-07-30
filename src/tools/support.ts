@@ -61,7 +61,10 @@ export function findMember(team: Team, name: string): MemberState | undefined {
  * duplicated this ~12-line block. Best-effort on abort: a failed abort must
  * not block cancel/delete. Caller MUST already hold team.mutex.
  */
-export async function abortAndResetMembers(ctx: PluginContext, team: Team): Promise<void> {
+export async function abortAndResetMembers(
+    ctx: PluginContext,
+    team: Team,
+): Promise<Array<{ member: string; aborted: boolean }>> {
     // Abort running member turns (best-effort).
     // M-10: track which members failed to abort so they are marked errored
     // (not idle) in the reset loop below. Pre-fix code reset ALL members to
@@ -69,18 +72,21 @@ export async function abortAndResetMembers(ctx: PluginContext, team: Team): Prom
     // failed would be marked idle — its next idle event would be processed
     // as if it were a fresh turn.
     const abortFailed = new Set<string>()
+    const abortResults: Array<{ member: string; aborted: boolean }> = []
     for (const m of team.members) {
         if (!m.isMaster && m.sessionId && m.status === "running") {
-            await ctx.client.session
-                .abort({
+            try {
+                await ctx.client.session.abort({
                     path: { id: m.sessionId },
                     query: { directory: m.worktreePath ?? ctx.directory },
                 })
-                .catch((err) => {
-                    // best-effort: a failed abort must not block teardown
-                    logSwallowed(ctx, "session.abort failed during teardown", err, { member: m.name, session: m.sessionId })
-                    abortFailed.add(m.name)
-                })
+                abortResults.push({ member: m.name, aborted: true })
+            } catch (err) {
+                // best-effort: a failed abort must not block teardown
+                logSwallowed(ctx, "session.abort failed during teardown", err, { member: m.name, session: m.sessionId })
+                abortFailed.add(m.name)
+                abortResults.push({ member: m.name, aborted: false })
+            }
         }
     }
     // Reset every non-master member to a clean idle state.
@@ -95,6 +101,7 @@ export async function abortAndResetMembers(ctx: PluginContext, team: Team): Prom
         m.declaredDone = false
         m.retryingSince = undefined
     }
+    return abortResults
 }
 
 /**

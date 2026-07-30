@@ -111,13 +111,6 @@ export async function applyApprovalDecision(
     task.approvalHistory = [...(task.approvalHistory ?? []), record]
     task.approvalStage = undefined
     task.approvalRequest = undefined
-    recordEvent(team, {
-        timestamp: resolvedAt,
-        kind: "approval_resolved",
-        stage: request.stage,
-        round: request.round,
-        detail: `${request.kind}:${decision.approved ? "approved" : "rejected"}`,
-    })
     // H-13/G: persist the approval resolution BEFORE dispatch/advance. Pre-fix
     // code saved only at the end, so a dispatch throw left disk showing the
     // approval as still pending. M20 moved save inside the try but the catch
@@ -140,6 +133,13 @@ export async function applyApprovalDecision(
         task.approvalHistory = (task.approvalHistory ?? []).slice(0, -1)
         throw saveErr
     }
+    recordEvent(team, {
+        timestamp: resolvedAt,
+        kind: "approval_resolved",
+        stage: request.stage,
+        round: request.round,
+        detail: `${request.kind}:${decision.approved ? "approved" : "rejected"}`,
+    })
 
     // Save succeeded — dispatch/advance below. A failure here must NOT
     // restore the approval (disk already has the resolution; restoring

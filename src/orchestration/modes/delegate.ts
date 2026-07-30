@@ -15,7 +15,7 @@
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
 import type { MemberState } from "../../core/types.js"
-import { listAllTasks, updateTask } from "../../state/tasks.js"
+import { listAllTasks, TaskOwnershipError, TaskStatusError, updateTask } from "../../state/tasks.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { extractSessionStatusEntry, asSdkMessages } from "../protocol/output.js"
 import { finishRun } from "../control/completion.js"
@@ -109,8 +109,9 @@ export async function runDelegateStyleTail(
                     detail: `${label}: released ${erroredTask.status} task ${erroredTask.id} from errored member`,
                 })
                 erroredResetHappened = true
-            } catch {
+            } catch (err: unknown) {
                 // Task transitioned out between our read and update — do NOT clobber.
+                if (!(err instanceof TaskOwnershipError) && !(err instanceof TaskStatusError)) throw err
             }
         }
     }

@@ -5,6 +5,7 @@
  */
 
 import { execFile } from "node:child_process"
+import fs from "node:fs/promises"
 import path from "node:path"
 import { promisify } from "node:util"
 
@@ -38,13 +39,26 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
         // non-force delete. Now: only "does not exist" / ENOENT returns false
         // (genuinely no path, no work to lose). "not a git repository" returns
         // true (fail-closed) so the caller requires force: true to proceed.
+        // C8 fix: ENOENT can also mean the git binary itself is missing. Verify
+        // the path exists independently before treating ENOENT as "path absent".
         const msg = err instanceof Error ? err.message : String(err)
-        if (
-            /does not exist|no such file/i.test(msg)
-            || (err as NodeJS.ErrnoException).code === "ENOENT"
-        ) {
-            logger.debug("hasUncommittedChanges: path does not exist (no work to lose)", { worktreePath })
-            return false
+        const isEnoent = (err as NodeJS.ErrnoException).code === "ENOENT"
+        if (isEnoent || /does not exist|no such file/i.test(msg)) {
+            // C8: confirm the WORKTREE PATH itself is the missing entity, not
+            // the git binary or some other ENOENT source. Only if the path is
+            // genuinely absent is it safe to return false (no work to lose).
+            try {
+                await fs.access(worktreePath)
+                // Path exists but we got ENOENT — the git binary is likely
+                // missing or the cwd is inaccessible. Fail-closed.
+                logger.warn("hasUncommittedChanges: ENOENT from git but path exists (git binary missing or cwd issue), treating as dirty (fail-closed)", {
+                    worktreePath, error: msg,
+                })
+                return true
+            } catch {
+                logger.debug("hasUncommittedChanges: path does not exist (no work to lose)", { worktreePath })
+                return false
+            }
         }
         logger.warn("hasUncommittedChanges: git status failed (including corrupted .git), treating as dirty (fail-closed)", {
             worktreePath, error: msg,

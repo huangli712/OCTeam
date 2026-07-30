@@ -1,7 +1,7 @@
 /**
  * H42: optional parse-failure threshold fields for modes with bounded
- * decision/verdict parse recovery. Spread into a mode tool's schema when the
- * mode handler reads these fields (loop, arbitrate, route, recurse).
+ * decision/verdict parse recovery. Each mode tool selects only its matching
+ * field (loop, arbitrate, route, recurse).
  * Pre-fix code: handlers supported overrides but the tool schemas never
  * exposed them, so callers could not actually configure them.
  */
@@ -24,7 +24,7 @@ export const parseThresholdFields = {
         .optional()
         .describe(
             "arbitrate mode: consecutive arbiter ruling parse failures before the run fails. " +
-            "Default 3.",
+            "Default 2.",
         ),
     max_route_parse_failures: tool.schema
         .number()
@@ -34,7 +34,7 @@ export const parseThresholdFields = {
         .optional()
         .describe(
             "route mode: consecutive router decision parse failures before the run fails. " +
-            "Default 3.",
+            "Default 2.",
         ),
     max_aggregation_dispatches: tool.schema
         .number()

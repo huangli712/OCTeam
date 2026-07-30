@@ -23,6 +23,7 @@ export async function deliverToRecipients(
     recipients: string[],
     base: Omit<Message, "to">,
     backpressureMaxBytes?: number,
+    onDelivered?: (recipient: string) => void,
 ): Promise<void> {
     // C-9: pass team.directory (unique per team) as the auth binding so a
     // directive copied cross-team cannot authenticate against another team's
@@ -56,6 +57,7 @@ export async function deliverToRecipients(
             failures.push(r)
             continue
         }
+        onDelivered?.(r)
         // Best-effort wake hint if the recipient is idle (Layer 2) so it
         // is prompted to process the message on its next turn. Wake-hint
         // failure does NOT count as a delivery failure — the message is

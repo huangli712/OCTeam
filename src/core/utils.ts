@@ -60,10 +60,14 @@ export function waitUntil(
 }
 
 /** Split the array into batches of size n.
- * M6: validates n is a finite positive integer. NaN (n <= 0 is false for NaN)
- * would cause i += NaN → infinite loop. */
+ * M5 fix: throw RangeError on invalid n instead of silently returning [].
+ * Pre-fix code returned [] which was indistinguishable from an empty input,
+ * causing callers (e.g. maxParallelMembers bounds) to silently skip members
+ * and wait ~2 minutes before timing out. */
 export function chunk<T>(arr: T[], n: number): T[][] {
-    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return []
+    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+        throw new RangeError(`chunk: batch size must be a finite positive integer, got ${n}`)
+    }
     const out: T[][] = []
     for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n))
     return out

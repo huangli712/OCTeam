@@ -55,6 +55,14 @@ export function buildRecursePrompt(): string {
     )
 }
 
+function buildDirectSolvePrompt(subject: string): string {
+    return (
+        `[Direct solve required]\n`
+        + `The proposed decomposition cannot be used. Solve this task directly and do not emit another <decompose> block.\n\n`
+        + `[Your task]\n${subject}`
+    )
+}
+
 /**
  * Aggregation-phase dispatch prompt for the decomposer. Stronger than the
  * generic buildRecursePrompt(): names the completed sub-tasks, forbids
@@ -139,7 +147,7 @@ export async function approveRecurseDecompose(
     await runRecurseTailFromApproval(ctx, team, request.member)
 }
 
-/** Reject a recurse decomposition: finalize the parent task as completed and re-dispatch the member. */
+/** Reject a recurse decomposition and re-dispatch the member to solve the task directly. */
 export async function rejectRecurseDecompose(
     ctx: PluginContext,
     team: Team,
@@ -152,10 +160,17 @@ export async function rejectRecurseDecompose(
     if (parent.id === task.rootTaskId) {
         task.aggregationDispatchCount = 0
     }
-    const output = request.member ? (task.responses[request.member] ?? "") : ""
-    const result = output.length > 0 ? output : "(no output provided)"
-    await updateTask(team.directory, parent.id, { status: "completed", result })
-    await runRecurseTailFromApproval(ctx, team, request.member)
+    const member = findMember(team, request.member ?? "")
+    if (!member?.sessionId) return
+    delete task.responses[member.name]
+    await dispatchToMember(
+        ctx,
+        member,
+        buildDirectSolvePrompt(parent.subject),
+        member.worktreePath ?? ctx.directory,
+        team,
+    )
+    await saveTeamState(team)
 }
 
 /**
@@ -242,16 +257,26 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                     blockedBy: ids,
                 })
             } catch (createErr) {
-                // Rollback: delete any created children so they are not
-                // claimable orphans. No deleteTask API exists; tasks are
-                // just files, so unlink the task file directly.
-                const { taskPath } = await import("../../state/paths.js")
-                const fsMod = await import("node:fs/promises")
+                // C7 fix: rollback must mark created children as deleted via
+                // updateTask (which uses atomicWrite with symlink traversal
+                // protection) instead of raw fs.unlink. Raw unlink had no
+                // symlink check (TOCTOU redirect risk) and silently swallowed
+                // ALL errors via bare catch. updateTask's "deleted" status
+                // leaves the file on disk but makes it unclaimable and visible
+                // to the stale-claim reaper for final cleanup.
+                const { updateTask } = await import("../../state/tasks.js")
                 for (const id of ids) {
                     try {
-                        await fsMod.unlink(taskPath(team.directory, id))
-                    } catch {
-                        // best-effort — orphaned child is logged via sweep
+                        await updateTask(team.directory, id, { status: "deleted" })
+                    } catch (rollbackErr: unknown) {
+                        // Log rollback failure so orphaned tasks are observable.
+                        // The stale-claim reaper will eventually clean them.
+                        logSwallowed(
+                            ctx,
+                            "recurse rollback delete child task",
+                            rollbackErr,
+                            { taskId: id },
+                        )
                     }
                 }
                 throw createErr
@@ -262,6 +287,17 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 member: member.name,
                 detail: `${T.subject} -> ${ids.length} @d${depth + 1}`,
             })
+        } else if (dec.subtasks.length > 0 && !dec.parseFailed) {
+            delete task.responses[member.name]
+            await dispatchToMember(
+                ctx,
+                member,
+                buildDirectSolvePrompt(T.subject),
+                member.worktreePath ?? ctx.directory,
+                team,
+            )
+            await saveTeamState(team)
+            return
         } else if (dec.parseFailed) {
             // H46/J/M-20: a malformed <decompose> block is NOT a leaf — the
             // member explicitly tried to decompose but formatted it wrong.
@@ -293,7 +329,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 detail: `recurse: malformed <decompose> on task ${T.id}, re-dispatched`,
             })
         } else {
-            // Leaf (or capped/aggregator): finalize with the member's output,
+            // Leaf: finalize with the member's output,
             // or a placeholder when the member produced nothing (so an aggregating
             // parent reads a recognizable sub-result, not an empty string).
             // Reset aggregation stall counter when the decomposer claims and

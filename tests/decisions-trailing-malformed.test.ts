@@ -35,7 +35,7 @@ describe("H-14: extractTaggedJSON treats trailing malformed tag as parse failure
         expect(result.decision).toBe("continue")
     })
 
-    test("trailing <decision>{} empty-brace block is treated as parse failure too", () => {
+    test("trailing <decision>{} empty-brace block is treated as parse failure (M22)", () => {
         const output = [
             '<decision>{"decision":"done"}</decision>',
             '<decision>{}</decision>',  // empty JSON object — parses but lacks decision
@@ -43,11 +43,10 @@ describe("H-14: extractTaggedJSON treats trailing malformed tag as parse failure
 
         const result = parseDecision(output)
 
-        // Empty {} parses as a valid empty object; parseDecision then falls
-        // through to "continue" because decision is not "done". This is the
-        // correct strict-parse behavior — NOT parseFailed, but not "done" either.
-        expect(result.parseFailed).not.toBe(true)
-        expect(result.decision).toBe("continue")
+        // M22 fix: empty {} has no `decision` key, which is a malformed payload.
+        // Pre-fix code silently defaulted to "continue". Now it sets parseFailed
+        // so the retry/reformat budget fires instead of wasting a loop round.
+        expect(result.parseFailed).toBe(true)
     })
 
     test("control: single well-formed decision still parses", () => {

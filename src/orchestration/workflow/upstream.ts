@@ -4,7 +4,7 @@
  *
  * Extracted from workflow.ts. Gate-step verdicts are skipped (control-flow, not
  * work product). Each output block is individually truncated, then capped at
- * UPSTREAM_TOTAL_CAP total bytes.
+ * MAX_UPSTREAM_OUTPUT_BYTES total bytes.
  */
 
 import type { WorkflowStep } from "../../core/types.js";
@@ -12,13 +12,13 @@ import { truncateOutput } from "../protocol/output.js";
 import { assertNeverWorkflowStepKind, isSameWorkflowBranch } from "./dag.js";
 
 /** Total byte budget for injected upstream context. */
-const UPSTREAM_TOTAL_CAP = 65_536;
+export const MAX_UPSTREAM_OUTPUT_BYTES = 65_536;
 
 /**
  * Build the upstream-context prefix for a workflow task step: ALL completed
  * prior TASK-step outputs (gate steps are skipped -- their verdicts are
  * control-flow, not work product), each labelled by member and individually
- * truncated, then capped at UPSTREAM_TOTAL_CAP total bytes. Returns "" when
+ * truncated, then capped at MAX_UPSTREAM_OUTPUT_BYTES total bytes. Returns "" when
  * there is no completed task-step upstream.
  */
 export function buildWorkflowUpstream(
@@ -41,15 +41,19 @@ export function buildWorkflowUpstream(
             explicitInputs !== undefined,
         );
         if (block === null) continue;
+        const separator = blocks.length === 0 ? "" : "\n\n";
+        const separatorSize = Buffer.byteLength(separator, "utf8");
         const blockSize = Buffer.byteLength(block, "utf8");
-        if (used + blockSize > UPSTREAM_TOTAL_CAP) {
-            blocks.push(
-                `[…upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`,
-            );
+        if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) {
+            const marker = `[…upstream context truncated at ${MAX_UPSTREAM_OUTPUT_BYTES} bytes]`;
+            const markerSize = Buffer.byteLength(marker, "utf8");
+            if (used + separatorSize + markerSize <= MAX_UPSTREAM_OUTPUT_BYTES) {
+                blocks.push(marker);
+            }
             break;
         }
         blocks.push(block);
-        used += blockSize;
+        used += separatorSize + blockSize;
     }
     return blocks.join("\n\n");
 }

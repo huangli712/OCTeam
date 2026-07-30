@@ -207,8 +207,8 @@ export async function getTask(teamDirectory: string, taskId: string): Promise<Ta
     return readTaskFile(teamDirectory, taskId)
 }
 
-/** List every task under the team's tasks directory, skipping unreadable files. */
-export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
+/** List every task under the team's tasks directory, optionally rejecting unreadable files. */
+export async function listAllTasks(teamDirectory: string, strict = false): Promise<Task[]> {
     let entries: import("node:fs").Dirent[]
     try {
         entries = await fs.readdir(tasksDir(teamDirectory), { withFileTypes: true })
@@ -232,6 +232,8 @@ export async function listAllTasks(teamDirectory: string): Promise<Task[]> {
             try {
                 return await readTaskFile(teamDirectory, id)
             } catch (err) {
+                if (isEnoent(err)) return null
+                if (strict) throw err
                 // A single corrupt/unreadable task file must not break the listing.
                 logger.warn(
                     "listAllTasks: skipping unreadable task",
@@ -299,6 +301,11 @@ export async function updateTask(
             if (TERMINAL.has(task.status) && ACTIVE.has(patch.status)) {
                 throw new Error(
                     `updateTask: cannot revive terminal task ${taskId} from "${task.status}" to "${patch.status}"`,
+                )
+            }
+            if (patch.status === "in_progress" && task.status !== "claimed" && patch.owner === undefined) {
+                throw new Error(
+                    `updateTask: transition from "${task.status}" to "in_progress" requires an owner`,
                 )
             }
         }
@@ -390,7 +397,7 @@ export async function claimTask(
     return withLock(claimMutexPath(teamDirectory), async () => {
         // 0. Per-member concurrency cap (1): reject if this owner already
         // holds a task in the "claimed" or "in_progress" window.
-        const allTasks = await listAllTasks(teamDirectory)
+        const allTasks = await listAllTasks(teamDirectory, true)
         const held = allTasks.find(
             t =>
                 t.owner === owner

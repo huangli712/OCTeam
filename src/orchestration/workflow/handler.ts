@@ -53,8 +53,10 @@ export function shouldRetryTask(step: WorkflowTaskStep, output: string): boolean
             return !output.includes(step.retryOn.pattern);
         case "regex":
             return testRegexSafely(step.retryOn.pattern, output);
-        default:
-            return false;
+        default: {
+            const exhaustive: never = step.retryOn;
+            throw new Error(`Unknown workflow retry condition: ${String(exhaustive)}`);
+        }
     }
 }
 
@@ -192,16 +194,8 @@ async function handleTaskIdle(
     step: WorkflowTaskStep,
     activeStepIndex: number,
 ): Promise<void> {
-    const raw = step.output ?? task.responses[member.name] ?? "";
-    // Per-step output cap on the captured snapshot only — the full output
-    // is still persisted to runs/<runId>/<member>.md by captureMemberOutput.
-    if (step.output === undefined) {
-        step.output =
-            step.maxOutputBytes !== undefined
-                ? truncateOutput(raw, step.maxOutputBytes)
-                : raw;
-    }
-    if (shouldRetryTask(step, step.output)) {
+    const rawOutput = step.output ?? task.responses[member.name] ?? "";
+    if (shouldRetryTask(step, rawOutput)) {
         step.taskAttempts = (step.taskAttempts ?? 0) + 1;
         const maxR = step.maxTaskRetries ?? 0;
         if (step.taskAttempts <= maxR) {
@@ -220,6 +214,7 @@ async function handleTaskIdle(
                     + ` auto-retry ${step.taskAttempts}/${maxR};`
                     + ` retry_on condition matched`,
             });
+            delete task.responses[member.name];
             // K-1: re-request approval_before on retry re-dispatch. Pre-fix
             // code called dispatchTaskStep directly, bypassing the approval
             // gate (engine.ts:131 clears approvalBeforeGranted so the next
@@ -239,6 +234,14 @@ async function handleTaskIdle(
             return;
         }
         // exhausted: fall through to normal completion
+    }
+    // Per-step output cap on the captured snapshot only — the full output
+    // is still persisted to runs/<runId>/<member>.md by captureMemberOutput.
+    if (step.output === undefined) {
+        step.output =
+            step.maxOutputBytes !== undefined
+                ? truncateOutput(rawOutput, step.maxOutputBytes)
+                : rawOutput;
     }
     // Capture correlationId before the reset clears it; the captured event
     // below still needs to reference the original dispatch correlation.

@@ -276,7 +276,8 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
         expect(calls.some(c => c.sessionId === "ses_alice")).toBe(true)
     })
 
-    test("depth capped (depth >= maxDepth): finalizes as completed", async () => {
+    test("depth capped (depth >= maxDepth): re-dispatches for a direct solution", async () => {
+        const calls: DispatchCall[] = []
         const team = makeTeam({
             activeTask: makeRecurseTask({ maxDepth: 2 }),
             members: [{ name: "alice", sessionId: "ses_alice" }],
@@ -287,16 +288,19 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
             depth: 2, // at the cap
         })
 
-        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls: [], status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls, status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
 
         const t = await getTask(team.directory, root.id)
-        expect(t!.status).toBe("completed")
+        expect(t?.status).toBe("claimed")
+        expect(t?.result).toBeUndefined()
+        expect(calls.some(call => call.sessionId === "ses_alice")).toBe(true)
         // No children despite a valid decompose (depth cap prevents branching).
         const all = await listAllTasks(team.directory)
         expect(all.filter(x => x.depth === 3)).toHaveLength(0)
     })
 
-    test("aggregator task (has blockers): finalizes instead of re-decomposing", async () => {
+    test("aggregator task (has blockers): re-dispatches for a direct solution", async () => {
+        const calls: DispatchCall[] = []
         const team = makeTeam({
             activeTask: makeRecurseTask(),
             members: [{ name: "alice", sessionId: "ses_alice" }],
@@ -315,16 +319,18 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
             blockedBy: [child.id],
         })
 
-        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls: [], status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls, status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
 
         const t = await getTask(team.directory, root.id)
-        // Finalized (aggregation), NOT re-decomposed.
-        expect(t!.status).toBe("completed")
+        expect(t?.status).toBe("claimed")
+        expect(t?.result).toBeUndefined()
+        expect(calls.some(call => call.sessionId === "ses_alice")).toBe(true)
         const all = await listAllTasks(team.directory)
         expect(all.filter(x => x.depth === 1 && x.subject !== "child")).toHaveLength(0)
     })
 
-    test("too many subtasks (> maxSubtasks): finalizes as completed", async () => {
+    test("too many subtasks (> maxSubtasks): re-dispatches for a direct solution", async () => {
+        const calls: DispatchCall[] = []
         const six = `<decompose>{"subtasks":[
             {"subject":"s1","description":"d"},{"subject":"s2","description":"d"},
             {"subject":"s3","description":"d"},{"subject":"s4","description":"d"},
@@ -339,10 +345,12 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
             status: "claimed",
         })
 
-        await processIdle(makeCtx({ outputs: { ses_alice: six }, calls: [], status: statusIdleFrom({ ses_alice: six }) }), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: six }, calls, status: statusIdleFrom({ ses_alice: six }) }), team, team.members[0], "ses_alice")
 
         const t = await getTask(team.directory, root.id)
-        expect(t!.status).toBe("completed")
+        expect(t?.status).toBe("claimed")
+        expect(t?.result).toBeUndefined()
+        expect(calls.some(call => call.sessionId === "ses_alice")).toBe(true)
         const all = await listAllTasks(team.directory)
         expect(all).toHaveLength(1) // no children created
     })
@@ -391,7 +399,9 @@ describe("recurse tail engine", () => {
             members: [{ name: "alice", sessionId: "ses_alice" }],
         })
         // A pending task blocked by an incomplete (never-completing) dependency.
-        const blocker = await seedTask(team, { subject: "block", description: "x", status: "in_progress" })
+        const blocker = await seedTask(team, {
+            subject: "block", description: "x", status: "pending", blockedBy: [crypto.randomUUID()],
+        })
         await seedTask(team, {
             subject: "stuck",
             description: "x",
@@ -437,8 +447,9 @@ async function setupRecurseTeam(
 
 // --- MEDIUM-1: maxTasks resource cap ---
 
-describe("MEDIUM-1: maxTasks cap degrades an over-budget decomposition to a leaf", () => {
-    test("tasks + proposed subtasks > maxTasks finalizes as completed (no children)", async () => {
+describe("MEDIUM-1: maxTasks cap rejects an over-budget decomposition", () => {
+    test("tasks + proposed subtasks > maxTasks re-dispatches for a direct solution", async () => {
+        const calls: DispatchCall[] = []
         const team = makeTeam({
             activeTask: makeRecurseTask({ maxDepth: 3, maxSubtasks: 5 }),
             members: [{ name: "alice", sessionId: "ses_alice" }],
@@ -447,10 +458,12 @@ describe("MEDIUM-1: maxTasks cap degrades an over-budget decomposition to a leaf
         team.bounds.maxTasks = 2
         const root = await seedTask(team, { owner: "alice", status: "claimed" })
 
-        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls: [], status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
+        await processIdle(makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls, status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }), team, team.members[0], "ses_alice")
 
         const t = await getTask(team.directory, root.id)
-        expect(t!.status).toBe("completed")
+        expect(t?.status).toBe("claimed")
+        expect(t?.result).toBeUndefined()
+        expect(calls.some(call => call.sessionId === "ses_alice")).toBe(true)
         // No children created despite a valid decompose (resource cap).
         const all = await listAllTasks(team.directory)
         expect(all).toHaveLength(1)

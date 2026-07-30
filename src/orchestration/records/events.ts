@@ -61,6 +61,7 @@ export function recordEvent(team: Team, event: RunEvent): void {
             // C-2: pass team.directory as trustedRoot so refuseSymlink walks the
             // full ancestor chain. Without it, a symlinked runs/ or intermediate
             // <runId>/ directory could redirect the append outside the team root.
+            if (team.deleted) return
             await appendJsonl(
                 eventsFile,
                 JSON.stringify(event) + "\n",

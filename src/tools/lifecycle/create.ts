@@ -249,13 +249,16 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 await writeTeamSpec(ctx.storageRoot, spec, leadSessionId, ctx.storageRoot)
 
                 // C-17: write a read-only master.sentinel pinning the creator's
-                // leadSessionId. For user-scope teams (flat layout, no directory
+                // sessionID. For user-scope teams (flat layout, no directory
                 // segment), this is the trusted master source at restart instead
                 // of the mutable state.json.leadSessionId. chmod 0444 raises the
                 // bar against tampering (attacker needs explicit chmod first).
+                // C2 fix: always write context.sessionID, NOT leadSessionId which
+                // is undefined for user-scope teams (writing "undefined\n" would
+                // make the sentinel useless and cause master restoration to fail).
                 try {
                     const sentinelPath = masterSentinelPath(newTeamDir)
-                    await fs.writeFile(sentinelPath, leadSessionId + "\n", "utf8")
+                    await fs.writeFile(sentinelPath, context.sessionID + "\n", "utf8")
                     await fs.chmod(sentinelPath, 0o444).catch(() => { /* best-effort on platforms without chmod */ })
                 } catch {
                     // Sentinel is a hardening layer; failure to write it does

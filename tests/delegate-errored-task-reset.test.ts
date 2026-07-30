@@ -18,12 +18,14 @@
  * surviving idle members pick them up instead of declaring deadlock.
  */
 import { afterAll, describe, expect, test } from "bun:test"
+import { chmod } from "node:fs/promises"
 
 import type { PluginContext } from "../src/core/context.js"
 import { runDelegateStyleTail } from "../src/orchestration/modes/delegate.js"
 import { initTeamState } from "../src/state/store.js"
 import { createTask, updateTask } from "../src/state/tasks.js"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { tasksDir } from "../src/state/paths.js"
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 import type { ActiveTask } from "../src/core/types.js"
 import { mock } from "bun:test"
 
@@ -98,5 +100,39 @@ describe("H40: delegate resets errored members' tasks before deadlock check", ()
         expect(team.status).not.toBe("failed")
         // bob should have been dispatched toward the reclaimed task.
         expect(promptCalls).toContain("ses_b")
+    })
+
+    test("non-CAS task release errors are rethrown", async () => {
+        const root = tmpRoot("delegate-release-error")
+        const alice = makeMember("alice", "ses_a_error")
+        const bob = makeMember("bob", "ses_b_error")
+        const team = await initTeamState(
+            root,
+            makeState("release-error-team", "ses_master_error", [alice, bob], Date.now()),
+            "ses_master_error",
+        )
+        team.activeTask = delegateTask("run-release-error")
+
+        const task = await createTask(team.directory, { subject: "work", description: "do X" })
+        await updateTask(team.directory, task.id, { status: "claimed", owner: "alice" })
+        team.members[0].status = "errored"
+        team.members[1].status = "idle"
+
+        const directory = tasksDir(team.directory)
+        await chmod(directory, 0o500)
+        let releaseError: unknown
+        try {
+            try {
+                await runDelegateStyleTail(
+                    makeCtx({ calls: [] }), team, team.members[1], "delegate", () => "reprompt",
+                )
+            } catch (error) {
+                if (!(error instanceof Error)) throw error
+                releaseError = error
+            }
+        } finally {
+            await chmod(directory, 0o700)
+        }
+        expect(releaseError).toBeInstanceOf(Error)
     })
 })

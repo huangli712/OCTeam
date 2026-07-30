@@ -13,6 +13,8 @@ import type { ApprovalKind, ApprovalRequest, ApprovalSubtask } from "../../core/
 import { type Team, saveTeamState } from "../../state/store.js"
 import { recordEvent } from "../records/events.js"
 
+const NOTIFICATION_BACKOFF_MS = 100
+
 /** Caller-supplied input for constructing an ApprovalRequest at a pause site. */
 type ApprovalRequestInput = {
     kind: ApprovalKind
@@ -139,7 +141,7 @@ async function createApprovalPause(
             break
         } catch (err) {
             if (attempt < NOTIFY_MAX_ATTEMPTS) {
-                await new Promise(r => setTimeout(r, 100 * attempt))
+                await new Promise(r => setTimeout(r, NOTIFICATION_BACKOFF_MS * attempt))
             } else {
                 const { logSwallowed } = await import("../../core/log.js")
                 logSwallowed(ctx, "approval notification failed after retries; leader must use team_progress to discover pending approval", err, {

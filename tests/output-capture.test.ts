@@ -174,6 +174,27 @@ describe("extractOutputFromParts", () => {
         expect(result).toContain("[File: src/main.ts]")
         expect(result).toContain("console.log('hello')")
     })
+
+    test("all mutation tools are recognized as work tools", () => {
+        const tools = [
+            "aft_delete",
+            "aft_move",
+            "aft_refactor",
+            "aft_import",
+            "aft_ast_replace",
+            "aft_apply_patch",
+            "aft_write",
+            "edit",
+            "write",
+        ] as const
+
+        for (const tool of tools) {
+            const result = extractOutputFromParts([
+                { type: "tool", tool, state: { input: { content: `work from ${tool}` } } },
+            ])
+            expect(result).toContain(`work from ${tool}`)
+        }
+    })
 })
 
 // --- captureMemberOutput: turn accumulation + reduce-stage routing ---

@@ -14,6 +14,7 @@ import { rolePreset } from "../../core/role.js"
 const WORK_TOOLS = new Set([
     "write", "edit", "bash",
     "aft_write", "aft_edit", "aft_bash", "aft_apply_patch",
+    "aft_delete", "aft_move", "aft_refactor", "aft_import", "aft_ast_replace",
 ])
 
 /**

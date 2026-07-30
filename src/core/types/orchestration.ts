@@ -58,8 +58,8 @@ export type ApprovalKind =
     | "consensus_deadlock"
     | "workflow_step"
 
-/** Action taken when an approval pause times out. */
-type ApprovalTimeoutAction = "fail" | "approve" | "reject"
+/** Action taken when an approval pause times out; automatic approve/reject is not implemented. */
+type ApprovalTimeoutAction = "fail"
 
 // --- Stage types ---
 

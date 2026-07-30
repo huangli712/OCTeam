@@ -98,6 +98,10 @@ export async function handleReduceIdle(
                 return
             }
             for (const name of errored) delete task.responses[name]
+            if (task._reducerMapperSnapshot !== undefined) {
+                task.responses[member.name] = task._reducerMapperSnapshot
+                task._reducerMapperSnapshot = undefined
+            }
             // H41: honor signoff on the fallback path, matching the normal
             // reduce completion path (line 125). Without this, a parallel
             // task configured with signoffPolicy + a reducer could deliver
@@ -123,7 +127,6 @@ export async function handleReduceIdle(
             await finishRun(ctx, team, "parallel_reduce_failed:reducer_unavailable", "failed")
             return
         }
-        const body = await buildSummary(team, task, "pending_reduce")
         // J-4: restore the reducer's mapper-stage response before rebuilding
         // the summary so the retry input matches the first attempt. Pre-fix
         // code deleted responses[reducer] at reduce-trigger time (line 45,
@@ -133,6 +136,8 @@ export async function handleReduceIdle(
         if (task._reducerMapperSnapshot !== undefined && !task.responses[member.name]) {
             task.responses[member.name] = task._reducerMapperSnapshot
         }
+        const body = await buildSummary(team, task, "pending_reduce")
+        delete task.responses[member.name]
         await dispatchToMember(ctx, reducer, buildReducePrompt(body), reducer.worktreePath ?? ctx.directory, team)
         await saveTeamState(team)
         return

@@ -54,7 +54,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
             ...commonOrchestrationFields,
-            ...parseThresholdFields,
+            max_ruling_parse_failures: parseThresholdFields.max_ruling_parse_failures,
         },
         async execute(args, context) {
             return startOrchestration(
@@ -91,6 +91,7 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
                     hitlPhase: args.hitl_phase ?? "pre",
                     maxRounds: args.max_rounds ?? DEFAULT_ARBITRATE_ROUNDS,
                     currentRound: 1,
+                    maxRulingParseFailures: args.max_ruling_parse_failures,
                     ...humanApprovalTaskFields(args),
                     ...signoffTaskFields(args),
                 }),

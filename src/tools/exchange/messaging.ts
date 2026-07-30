@@ -143,19 +143,20 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
             const taskAtDispatch = team.activeTask
             let deliveredCount = 0
             try {
-                await deliverToRecipients(ctx, team, recipients, base, team.bounds.messageUnreadMaxBytes)
-                deliveredCount = recipients.length
+                await deliverToRecipients(
+                    ctx,
+                    team,
+                    recipients,
+                    base,
+                    team.bounds.messageUnreadMaxBytes,
+                    () => { deliveredCount += 1 },
+                )
             } catch (err) {
                 // HIGH-F/G: roll back messagesSent only for the recipients that
                 // were NOT delivered. deliverToRecipients isolates per-recipient
                 // failures and continues, so on a partial-failure throw some
-                // recipients DID receive the message — their quota must not be
-                // refunded. Approximate failed count = recipients.length - (those
-                // whose write succeeded). Since we cannot observe the internal
-                // failure list from here, refund conservatively only on total
-                // failure (deliveredCount === 0). On partial failure the lost
-                // quota is a bounded, observable cost (logged) preferable to
-                // over-refunding and exceeding the cap on retry.
+                // recipients DID receive the message and their quota must not be
+                // refunded.
                 const undelivered = recipients.length - deliveredCount
                 if (taskAtDispatch && undelivered > 0) {
                     await team.mutex.runExclusive(async () => {

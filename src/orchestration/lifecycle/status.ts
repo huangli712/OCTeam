@@ -53,7 +53,12 @@ async function escalateMemberToErrored(
     // swallowing the error but leaving the member as errored in memory only.
     try {
         await saveTeamStateBounded(team)
-    } catch {
+    } catch (err) {
+        logger.warn("retry escalation state save failed after retries", {
+            team: team.teamName,
+            member: live.name,
+            error: err instanceof Error ? err.message : String(err),
+        })
         // Save failed after retries — rollback in-memory status so the next
         // sweep re-attempts the escalation.
         live.status = "running"

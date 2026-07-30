@@ -78,22 +78,24 @@ describe("HITL recurse decomposition approval", () => {
         expect(parent?.blockedBy).toHaveLength(2)
     })
 
-    test("team_reject completes the task as a leaf and creates no children", async () => {
+    test("team_reject re-dispatches the task for a direct solution and creates no children", async () => {
         const root = tmpRoot("hitl-recurse-reject")
         const sid = "ses_hitl_recurse_reject_master"
+        const calls: DispatchCall[] = []
         const team = await setupTeam(root, sid, [makeMember("alice", "ses_alice")])
         const claimed = await seedClaimedTask(team, "alice")
         const task = recurseTask(claimed.id)
         await setRecurseTask(team, task)
-        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: DECOMPOSE }, calls: [], abort: async () => ({}), status: async () => ({ data: {} }) })
+        const ctx = makeCtx({ storageRoot: root, outputs: { ses_alice: DECOMPOSE }, calls, abort: async () => ({}), status: async () => ({ data: {} }) })
 
         await processIdle(ctx, team, team.members[0], "ses_alice")
         const result = await teamRejectTool(ctx).execute({ team_id: "alpha", feedback: "solve directly" }, makeToolContext(sid))
 
         expect(result).toContain("Rejected")
         const parent = await getTask(team.directory, claimed.id)
-        expect(parent?.status).toBe("completed")
-        expect(parent?.result).toContain("decompose")
+        expect(parent?.status).toBe("claimed")
+        expect(parent?.result).toBeUndefined()
+        expect(calls.some(call => call.sessionId === "ses_alice")).toBe(true)
         expect((await listAllTasks(team.directory)).filter(t => t.depth === 1)).toHaveLength(0)
     })
 

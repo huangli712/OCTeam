@@ -37,10 +37,8 @@ import {
     workflowFanoutOverToleranceReason,
     workflowNoSessionReason,
 } from "./reasons.js";
+import { MAX_UPSTREAM_OUTPUT_BYTES } from "./upstream.js";
 import { findMember } from "../../tools/support.js";
-
-// Total byte budget for joined output (mirrors workflow.ts UPSTREAM_TOTAL_CAP).
-const JOINED_TOTAL_CAP = 65_536;
 
 /** Result of evaluating fanout branch errors against join tolerance policy. */
 export type WorkflowFanoutErrorResult =
@@ -136,15 +134,19 @@ function buildJoinedWorkflowOutput(
 
         if (branchBlocks.length === 0) continue;
         const block = `[Branch ${branchId}]\n${branchBlocks.join("\n\n")}`;
+        const separator = blocks.length === 0 ? "" : "\n\n";
+        const separatorSize = Buffer.byteLength(separator, "utf8");
         const blockSize = Buffer.byteLength(block, "utf8");
-        if (used + blockSize > JOINED_TOTAL_CAP) {
-            blocks.push(
-                `[…joined output truncated at ${JOINED_TOTAL_CAP} bytes]`,
-            );
+        if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) {
+            const marker = `[…joined output truncated at ${MAX_UPSTREAM_OUTPUT_BYTES} bytes]`;
+            const markerSize = Buffer.byteLength(marker, "utf8");
+            if (used + separatorSize + markerSize <= MAX_UPSTREAM_OUTPUT_BYTES) {
+                blocks.push(marker);
+            }
             break;
         }
         blocks.push(block);
-        used += blockSize;
+        used += separatorSize + blockSize;
     }
 
     return blocks.join("\n\n");

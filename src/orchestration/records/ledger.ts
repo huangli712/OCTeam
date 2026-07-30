@@ -151,7 +151,7 @@ export function formatWorkflowLedgerLines(steps: readonly WorkflowStep[]): strin
 
 /** Format a completed task step's output as a markdown section, or null if not applicable. */
 function formatWorkflowTaskOutput(step: WorkflowStep, index: number): string | null {
-    if (step.kind !== "task" || !step.completed) return null
+    if (step.kind !== "task" || !step.completed || step.skipped) return null
     return `<Step index = ${index + 1}> by ${step.member || "?"}\n`
         + `${truncateOutput(step.output ?? "")}\n`
         + `</Step>`

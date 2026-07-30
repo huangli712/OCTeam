@@ -657,10 +657,14 @@ export async function readTeamSpec(
     teamName: string,
     leadSessionId?: string,
 ): Promise<TeamSpec | null> {
-    return readJsonOrNull<TeamSpec>(
+    const spec = await readJsonOrNull<TeamSpec>(
         configPath(teamDir(storageRoot, teamName, leadSessionId)),
         isValidTeamSpec,
     )
+    if (spec && spec.name !== teamName) {
+        throw new Error(`TeamSpec name "${spec.name}" does not match requested team "${teamName}"`)
+    }
+    return spec
 }
 
 /** M14: minimal structural validation for TeamSpec. */

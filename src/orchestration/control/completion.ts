@@ -37,7 +37,7 @@ export async function deliverSummaryToLeader(
         logSwallowed(ctx, "persist run record failed", err, {
             team: team.teamName,
             reason,
-        }),
+        }, "warn"),
     )
     // Build and deliver the summary. A throw here is caught by finishRun's
     // finally block; the run record is already persisted.

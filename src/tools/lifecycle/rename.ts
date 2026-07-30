@@ -83,7 +83,8 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     await fs.stat(newDir)
                     collision = true
                     return
-                } catch {
+                } catch (err) {
+                    if (!isEnoent(err)) throw err
                     // newDir does not exist — safe to rename
                 }
                 // Re-read spec INSIDE the mutex so concurrent mutators
@@ -105,8 +106,12 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     specError = `Error: team "${args.team_id}" config is unreadable — refusing to rename (${err instanceof Error ? err.message : String(err)})`
                     return
                 }
+                if (!spec) {
+                    specError = `Error: team "${args.team_id}" config is missing — refusing to rename`
+                    return
+                }
                 // Capture the original spec name so the rollback can restore it.
-                const originalSpecName = spec?.name
+                const originalSpecName = spec.name
                 // Rename directory on disk.
                 await fs.rename(oldDir, newDir)
 

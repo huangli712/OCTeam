@@ -27,6 +27,7 @@
 import type { PluginContext } from "../../core/context.js";
 import { type Team, saveTeamState } from "../../state/store.js";
 import type {
+    WorkflowGateStep,
     WorkflowStep,
     WorkflowTask,
 } from "../../core/types.js";
@@ -515,6 +516,21 @@ export async function maybePauseAfterWorkflowStep(
     return false;
 }
 
+function settleForwardGotoGate(task: WorkflowTask, gate: WorkflowGateStep): void {
+    markWorkflowStepCompleted(gate);
+    gate.completed = true;
+    if (gate.verifiers !== undefined) {
+        for (const verifierName of gate.verifiers) {
+            delete task.responses[verifierName];
+        }
+    }
+    if (gate.verifier !== undefined) delete task.responses[gate.verifier];
+    if (gate.dispatchedActor !== undefined) delete task.responses[gate.dispatchedActor];
+    gate.dispatchedAt = undefined;
+    gate.dispatchedActor = undefined;
+    gate.correlationId = undefined;
+}
+
 /**
  * Execute a verdict-driven conditional jump to `targetIndex`. Bounds the state
  * machine via the per-gate max_jumps cap (default 3). Forward jumps mark the
@@ -624,8 +640,7 @@ export async function gotoWorkflowStep(
     // jumps leave the gate incomplete so it re-verifies the re-run path on the
     // next advance (mirroring FAIL-retry semantics).
     if (targetIndex > gateIndex) {
-        gate.completed = true;
-        gate.dispatchedActor = undefined;
+        settleForwardGotoGate(task, gate);
     }
 
     recordEvent(team, {

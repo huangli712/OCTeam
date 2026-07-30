@@ -77,7 +77,9 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
             members: [{ name: "alice", sessionId: "ses_alice" }],
         })
         // A pending task blocked by an incomplete (never-completing) dependency.
-        const blocker = await seedTask(team, { subject: "blocker", description: "x", status: "in_progress" })
+        const blocker = await seedTask(team, {
+            subject: "blocker", description: "x", status: "pending", blockedBy: [crypto.randomUUID()],
+        })
         await seedTask(team, {
             subject: "stuck",
             description: "x",
@@ -104,7 +106,9 @@ describe("handleDelegateIdle (via processIdle): termination tail", () => {
             activeTask: makeDelegateTask(),
             members: [{ name: "alice", sessionId: "ses_alice" }],
         })
-        const blocker = await seedTask(team, { subject: "blocker", description: "x", status: "in_progress" })
+        const blocker = await seedTask(team, {
+            subject: "blocker", description: "x", status: "pending", blockedBy: [crypto.randomUUID()],
+        })
         await seedTask(team, {
             subject: "stuck",
             description: "x",

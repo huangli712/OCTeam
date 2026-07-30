@@ -18,6 +18,7 @@ import { buildRolePrompt } from "../protocol/output.js"
 
 // Max milliseconds to wait for all non-master members to reach initialized state.
 const ROLE_SETUP_BARRIER_TIMEOUT_MS = 120_000
+const SESSION_DELETE_RETRY_DELAY_MS = 500
 
 /**
  * Wait outside the mutex for role-setup idle acknowledgements.
@@ -192,7 +193,7 @@ async function spawnMemberSafely(
                 await ctx.client.session.delete({ path: { id: sessionId }, query: { directory: dir } })
                 deleted = true
             } catch {
-                await new Promise(r => setTimeout(r, 500))
+                await new Promise(r => setTimeout(r, SESSION_DELETE_RETRY_DELAY_MS))
                 try {
                     await ctx.client.session.delete({ path: { id: sessionId }, query: { directory: dir } })
                     deleted = true
