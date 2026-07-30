@@ -529,6 +529,17 @@ export function markWorkflowFanoutBranchErrored(
         activeStep?.branch === undefined
         && recordUnavailableEnsembleVerifier(activeStep, memberName)
     ) {
+        // MEDIUM #9: check if ALL ensemble verifiers now have results. If so,
+        // clear dispatchedAt so hasWaitingActiveWorkflowActor stops waiting
+        // and the engine can aggregate on the next tick.
+        if (activeStep && activeStep.kind === "gate" && activeStep.verifiers) {
+            const allResolved = activeStep.verifiers.every(
+                v => activeStep.ensembleResults?.[v] !== undefined,
+            );
+            if (allResolved) {
+                activeStep.dispatchedAt = undefined;
+            }
+        }
         return { kind: "within_tolerance" };
     }
     const activeBranch =

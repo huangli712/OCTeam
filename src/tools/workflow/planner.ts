@@ -301,12 +301,19 @@ function validateTeamId(teamId: string): string | null {
     return null
 }
 
-/** Validate team bounds object: numeric fields must be positive integers, maxMembers >= member count. */
+/** Validate team bounds object: numeric fields must be positive integers, maxMembers >= member count.
+ *  MEDIUM #14: also validate role/prompt/member name constraints to match
+ *  team_create's stricter validation. */
 function validatePlannerBounds(bounds: unknown, memberCount: number): string | null {
     if (bounds === undefined) return null
     if (!isRecord(bounds)) return "Error: team.bounds must be an object"
+    // Whitelist known bounds keys.
+    const KNOWN_BOUNDS = new Set(["maxMembers", "maxTasks", "maxWallClockMinutes", "maxMessagesPerRun"])
     for (const [key, value] of Object.entries(bounds)) {
         if (value !== undefined) {
+            if (!KNOWN_BOUNDS.has(key)) {
+                return `Error: team.bounds.${key} is not a recognized bounds field`
+            }
             if (typeof value !== "number") {
                 return `Error: team.bounds.${key} must be numeric`
             }

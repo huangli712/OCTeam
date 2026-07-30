@@ -547,19 +547,10 @@ async function loadWorkflowFileUnchecked(
 
     let raw: string
     try {
-        // C-7: stat before read so a hostile workflow_file does not get slurped
-        // into memory in full. The cap is generous for real workflows but
-        // blocks OOM-by-giant-file attacks.
-        // C-2: reject non-regular files (FIFO, socket, device). A FIFO named
-        // workflow.json has size 0 but readFile would block forever waiting
-        // for data that never arrives, hanging the event loop permanently.
-        // C-3: open the file ONCE and stat/read through the resulting file
-        // handle so the inode is pinned after open. Pre-fix code ran
-        // fs.stat(path) then fs.readFile(path) as separate path operations —
-        // between them an attacker could swap the file (e.g. replace a
-        // regular file with a FIFO after the stat check passed). The handle
-        // pins the inode; fh.stat/fh.readFile operate on that same inode.
-        const fh = await fs.open(resolved.filePath, "r")
+        // MEDIUM #12: open with O_NOFOLLOW so a leaf symlink installed
+        // between assertNoSymlinkTraversal and open is rejected atomically.
+        const O_NOFOLLOW = 0x20000
+        const fh = await fs.open(resolved.filePath, fs.constants.O_RDONLY | O_NOFOLLOW)
         try {
             const fileStat = await fh.stat()
             if (!fileStat.isFile()) {

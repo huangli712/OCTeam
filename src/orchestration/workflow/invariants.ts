@@ -289,6 +289,23 @@ function checkFanoutStep(context: WorkflowInvariantContext, index: number, step:
                 context.violations.push(`step ${index}: branch range ${rangeIndex} overlaps ${previousIndex}`)
             }
         }
+        // MEDIUM #13: verify every step in the branch range has the correct
+        // branch metadata. Pre-fix code only checked that steps WITH metadata
+        // are in a valid range — not that all steps IN a range have metadata.
+        const expectedBranchId = fanout.branchIds[rangeIndex]
+        for (let si = range.startIndex; si <= range.endIndex; si += 1) {
+            const rangeStep = context.steps[si]
+            if (rangeStep === undefined) continue
+            if (rangeStep.branch === undefined) {
+                context.violations.push(`step ${si}: in branch range ${rangeIndex} but has no branch metadata`)
+            } else if (rangeStep.branch.fanoutIndex !== index
+                || rangeStep.branch.branchId !== expectedBranchId) {
+                context.violations.push(
+                    `step ${si}: branch metadata mismatch (expected fanout ${index}/${expectedBranchId}`
+                        + `, got ${rangeStep.branch.fanoutIndex}/${rangeStep.branch.branchId})`,
+                )
+            }
+        }
     }
 }
 

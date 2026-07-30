@@ -51,8 +51,12 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     if (task.signoffPolicy === "decider") {
         const decider = findMember(team, task.signoffDecider ?? "")
         if (!decider?.sessionId || decider.status === "errored") {
+            // HIGH #9: signoff configured but decider unavailable — return
+            // true (handled) but mark the task as failed so the caller does
+            // NOT deliver without review.
             task.signoffStage = false
-            return false
+            task.signoffFailed = true
+            return true
         }
         reviewers = [decider]
     } else {
@@ -60,8 +64,10 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
             !member.isMaster && member.sessionId && member.status !== "errored"
         )
         if (reviewers.length === 0) {
+            // HIGH #9: peer-quorum signoff configured but no reviewers available.
             task.signoffStage = false
-            return false
+            task.signoffFailed = true
+            return true
         }
     }
 

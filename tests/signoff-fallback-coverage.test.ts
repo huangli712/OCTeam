@@ -62,7 +62,7 @@ async function setupSignoffTeam(opts: {
 }
 
 describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () => {
-    test("decider mode + decider member is errored → fallback, signoffStage reset", async () => {
+    test("decider mode + decider member is errored → fail closed (signoffFailed)", async () => {
         const root = tmpRoot("signoff-decider-errored")
         const masterSid = "ses_signoff_master_1"
         tracked.push(masterSid)
@@ -81,18 +81,16 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
         })
 
         const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
-        expect(triggered).toBe(false)
-        // Fallback resets signoffStage so a stale stage flag doesn't trap the
-        // next idle in handleSignoffIdle's no-op branch.
-        expect(team.activeTask!.signoffStage).toBe(false)
+        expect(triggered).toBe(true)
+        expect(team.activeTask!.signoffFailed).toBe(true)
     })
 
-    test("decider mode + decider has no sessionId (legacy/uninitialized) → fallback", async () => {
+    test("decider mode + decider has no sessionId (legacy/uninitialized) → fail closed", async () => {
         const root = tmpRoot("signoff-decider-no-sid")
         const masterSid = "ses_signoff_master_2"
         tracked.push(masterSid)
         const noSessionDecider: MemberState = {
-            ...makeMember("carol"),  // no sessionId arg
+            ...makeMember("carol"),
             sessionId: undefined,
         }
         const { team } = await setupSignoffTeam({
@@ -106,11 +104,11 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
         })
 
         const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
-        expect(triggered).toBe(false)
-        expect(team.activeTask!.signoffStage).toBe(false)
+        expect(triggered).toBe(true)
+        expect(team.activeTask!.signoffFailed).toBe(true)
     })
 
-    test("decider mode + decider name not in team → fallback", async () => {
+    test("decider mode + decider name not in team → fail closed", async () => {
         const root = tmpRoot("signoff-decider-missing")
         const masterSid = "ses_signoff_master_3"
         tracked.push(masterSid)
@@ -120,16 +118,16 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
             members: [makeMember("alice", "ses_alice_3")],
             task: makeParallelTask({
                 signoffPolicy: "decider",
-                signoffDecider: "nonexistent",  // decider name not in team
+                signoffDecider: "nonexistent",
             }),
         })
 
         const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
-        expect(triggered).toBe(false)
-        expect(team.activeTask!.signoffStage).toBe(false)
+        expect(triggered).toBe(true)
+        expect(team.activeTask!.signoffFailed).toBe(true)
     })
 
-    test("peer-quorum mode + all non-master members are errored → fallback", async () => {
+    test("peer-quorum mode + all non-master members are errored → fail closed", async () => {
         const root = tmpRoot("signoff-quorum-all-errored")
         const masterSid = "ses_signoff_master_4"
         tracked.push(masterSid)
@@ -147,7 +145,7 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
         })
 
         const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
-        expect(triggered).toBe(false)
+        expect(triggered).toBe(true)
         expect(team.activeTask!.signoffStage).toBe(false)
     })
 
@@ -166,8 +164,8 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
         })
 
         const triggered = await maybeTriggerSignoff(makeCtx({ storageRoot: root, directory: root, promptAsync: async () => ({}) }), team)
-        expect(triggered).toBe(false)
-        expect(team.activeTask!.signoffStage).toBe(false)
+        expect(triggered).toBe(true)
+        expect(team.activeTask!.signoffFailed).toBe(true)
     })
 
     test("no signoffPolicy → no trigger (caller delivers directly)", async () => {

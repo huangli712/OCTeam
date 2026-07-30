@@ -102,6 +102,9 @@ function parseRunEvent(line: string): RunEvent {
 /** Project a runtime join metadata object into the persisted (RunRecord) shape. */
 function runJoinMetadata(join: WorkflowJoinMetadata | undefined): WorkflowRunStep["join"] {
     if (join === undefined) return undefined
+    // MEDIUM #15: joinedOutput is NOT included in record.json to keep the
+    // record lean. Instead, persistRun writes it to a per-step artifact
+    // file (join-<stepIndex>.md) so it's recoverable without bloating state.
     return {
         fanoutIndex: join.fanoutIndex,
         branchTailIndices: join.branchTailIndices,
@@ -389,14 +392,23 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     // captured (and thus written to the shared signoff.md) to that file.
     const artifacts: NonNullable<RunRecord["artifacts"]> = {}
     if (entries.includes("reduce.md")) artifacts.reduce = "reduce.md"
-    if (entries.includes("signoff.md")) {
-        const reviewers = Object.keys(task.signoffRawOutputs ?? {})
-        if (reviewers.length > 0) {
-            artifacts.signoff = {}
-            for (const reviewer of reviewers) artifacts.signoff[reviewer] = "signoff.md"
+    // Signoff artifacts: per-reviewer files or shared signoff.md.
+    const signoffFiles = entries.filter(f => f.startsWith("signoff") && f.endsWith(".md"))
+    if (signoffFiles.length > 0) {
+        artifacts.signoff = {}
+        for (const f of signoffFiles) {
+            // signoff-{reviewer}.md or signoff.md
+            const reviewer = f === "signoff.md" ? "_shared" : f.slice("signoff-".length, -".md".length)
+            artifacts.signoff[reviewer] = f
         }
     }
-    if (artifacts.reduce !== undefined || artifacts.signoff !== undefined) {
+    // MEDIUM #15: index join output artifacts (join-<step>.md).
+    const joinFiles = entries.filter(f => f.startsWith("join-") && f.endsWith(".md"))
+    if (joinFiles.length > 0) {
+        artifacts.join = {}
+        for (const f of joinFiles) artifacts.join[f] = f
+    }
+    if (Object.keys(artifacts).length > 0) {
         record.artifacts = artifacts
     }
 

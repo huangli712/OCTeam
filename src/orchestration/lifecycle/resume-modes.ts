@@ -521,6 +521,24 @@ export async function resumeWorkflowMode(
             // member-response shortcut; the redispatch loop below clears and
             // re-dispatches them.
             if (activeStep?.kind === "join") continue;
+            // HIGH #7: for ensemble gates, replay each verifier that has a
+            // pending response. workflowStepActor returns null for ensemble
+            // gates (no single verifier field), so pre-fix code skipped them.
+            if (activeStep?.kind === "gate" && activeStep.verifiers !== undefined) {
+                let replayedAny = false;
+                for (const vName of activeStep.verifiers) {
+                    if (task.responses[vName] !== undefined
+                        && activeStep.ensembleResults?.[vName] === undefined) {
+                        const vMember = team.members.find(m => m.name === vName && !m.isMaster);
+                        if (vMember) {
+                            await handleWorkflowIdle(ctx, team, vMember);
+                            replayedAny = true;
+                            if (team.activeTask !== task || task.approvalStage || task.signoffStage) return;
+                        }
+                    }
+                }
+                if (replayedAny) continue;
+            }
             const actorName = workflowStepActor(activeStep);
             if (actorName === null || !task.responses[actorName]) continue;
             const actor = team.members.find(

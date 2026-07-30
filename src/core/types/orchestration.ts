@@ -256,6 +256,7 @@ export interface ActiveTaskBase {
     signoffReviewers?: string[]              // reviewers that successfully received the signoff prompt
     signoffParseFailures?: Record<string, number> // consecutive malformed responses by reviewer
     signoffStage?: boolean                   // true when in signoff phase
+    signoffFailed?: boolean                  // HIGH #9: signoff configured but no reviewers available; caller must fail run
     signoffRawOutputs?: Record<string, string>  // per-reviewer signoff turn output (side-channel so task.responses preserves work output)
 
     // human approval policy (mid-run HITL pause; distinct from post-completion signoff)

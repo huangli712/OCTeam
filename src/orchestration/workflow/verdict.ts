@@ -301,6 +301,12 @@ export async function handleInvalidVerdict(
 
     if (policy === "escalate") {
         const nextIndex = (task.steps ?? []).findIndex((s) => !s.completed);
+        // MEDIUM #11: mark the gate complete BEFORE creating the approval
+        // pause so both changes are persisted in a single saveTeamState call
+        // inside createApprovalPause. Pre-fix code saved twice (approval
+        // first, then gate) — a crash between them left an inconsistent
+        // checkpoint where the approval existed but the gate was incomplete.
+        resetStepAfterCompletion(step, { completed: true });
         const escalated = await forceApprovalRequest(ctx, team, {
             kind: "workflow_step",
             stage: gateIndex,
@@ -310,14 +316,12 @@ export async function handleInvalidVerdict(
                 + ` reject to fail as workflow_invalid.`,
         });
         if (escalated) {
-            // Mark the gate complete so that on team_approve (which calls
-            // advanceWorkflowStep) the workflow proceeds past this gate.
-            // Use resetStepAfterCompletion for full cleanup parity with
-            // PASS/skip completion paths (clears dispatchedAt/correlationId).
-            resetStepAfterCompletion(step, { completed: true });
-            await saveTeamState(team);
             return;
         }
+        // forceApprovalRequest failed to create the pause (H-30 rollback
+        // already cleared approvalStage). Revert the gate completion since
+        // there is no approval to gate it on.
+        step.completed = false;
         // No escalation handler available -> fall through to terminal fail.
     }
 

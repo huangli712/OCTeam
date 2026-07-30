@@ -136,7 +136,7 @@ export type RunRecord = {
     // because their basenames are not member names. Paths are relative to
     // runs/<runId>/, like memberOutputs.file. signoff maps each reviewer that
     // contributed a verdict to the shared signoff.md.
-    artifacts?: { reduce?: string; signoff?: Record<string, string> }
+    artifacts?: { reduce?: string; signoff?: Record<string, string>; join?: Record<string, string> }
     // delegate snapshot of the shared task list at completion
     tasks?: Array<{ id: string; subject: string; status: TaskStatus; owner?: string }>
     // workflow snapshot of the step ledger at completion/failure
