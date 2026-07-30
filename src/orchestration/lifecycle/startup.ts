@@ -219,18 +219,16 @@ export async function startOrchestration(
     // Steps 1-3 sees spawning=true here and bails before duplicating
     // member-session spawns in Phase 2 (which runs OUTSIDE the mutex).
     let busy = false
+    const spawnOwner = crypto.randomUUID()
     await team.mutex.runExclusive(async () => {
         if (team.activeTask || team.spawning) { busy = true; return }
         team.spawning = true
-        // CRITICAL #1: persist spawning=true IMMEDIATELY so a concurrent
-        // process sees it on disk. Without this, two processes can both
-        // pass the check and enter Phase 2 simultaneously.
+        team.spawningOwner = spawnOwner
         try {
             await saveTeamState(team)
         } catch (err) {
-            // If we cannot persist the spawn guard, do NOT proceed —
-            // the concurrent-safety guarantee is void without it.
             team.spawning = false
+            team.spawningOwner = undefined
             throw err
         }
     })
@@ -338,6 +336,16 @@ export async function startOrchestration(
                 // collides with the orphaned turn).
                 for (const m of team.members) {
                     if (m.status === "running" || (m.turnCount ?? 0) > 0) {
+                        // HIGH: abort the session before marking errored so
+                        // it doesn't keep running and consume tokens.
+                        if (m.sessionId) {
+                            try {
+                                await ctx.client.session.abort({
+                                    path: { id: m.sessionId },
+                                    query: { directory: m.worktreePath ?? ctx.directory },
+                                })
+                            } catch { /* best-effort */ }
+                        }
                         m.status = "errored"
                     }
                 }
@@ -348,15 +356,11 @@ export async function startOrchestration(
             }
         })
     } finally {
-        // CRITICAL #1: clear AND persist so a crashed process doesn't
-        // leave spawning=true on disk permanently.
-        team.spawning = false
-        try {
-            await saveTeamState(team)
-        } catch {
-            // Best-effort: the run either succeeded (Phase 3 saved with
-            // spawning=false) or failed (Phase 3 rollback saved). This save
-            // ensures the finally path also clears spawning.
+        // CRIT #2: only clear if we still own the lease.
+        if (team.spawningOwner === spawnOwner) {
+            team.spawning = false
+            team.spawningOwner = undefined
+            try { await saveTeamState(team) } catch { /* best-effort */ }
         }
     }
     if (raced) return "Error: team already has an active orchestration"

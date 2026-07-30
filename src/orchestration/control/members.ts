@@ -238,7 +238,11 @@ async function spawnMemberSafely(
                 // Do NOT clear member.sessionId — reconcile needs it.
             }
         }
-        member.status = "pending"
+        // HIGH: only reset to pending if session was successfully deleted.
+        // If delete failed, keep errored status so reconcile retries.
+        if (member.status !== "errored") {
+            member.status = "pending"
+        }
         member.initialized = false
         member.prompt = undefined
         member.promptDelivered = false

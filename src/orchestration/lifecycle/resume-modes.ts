@@ -126,7 +126,7 @@ export async function resumeSignoffReduceStage(
             await finishRun(ctx, team, `parallel_failed:reducer_missing:${task.reducerMember ?? "undefined"}`, "failed");
             return true;
         }
-        if (!task.responses[reducer.name]) {
+        if (task.responses[reducer.name] === undefined) {
             const body = await buildSummary(team, task, "pending_reduce");
             const prompt = buildReducePrompt(body);
             await dispatchToMember(
@@ -214,7 +214,7 @@ export async function resumeParallelMode(
     // Completion criterion depends on require_done_ack; a zero-dispatch re-drives the barrier.
     await resumeConcurrentDispatch(
         ctx, team, team.members,
-        (m) => task.requireDoneAck ? !m.declaredDone : !task.responses[m.name],
+        (m) => task.requireDoneAck ? !m.declaredDone : task.responses[m.name] === undefined,
         (m) => task.tasks?.[m.name] ?? task.task ?? "",
         () => handleParallelIdle(ctx, team),
     );
@@ -236,7 +236,7 @@ export async function resumeConsensusMode(
     }
     await resumeConcurrentDispatch(
         ctx, team, team.members,
-        (m) => !task.responses[m.name],
+        (m) => task.responses[m.name] === undefined,
         () =>
             `[Consensus Round ${task.currentRound ?? 0}] ${task.topic}\n\n` +
             'Respond, then emit <consensus>{"agreed": true|false}</consensus>.',
@@ -350,7 +350,7 @@ export async function resumeRouteMode(
     const routeTargets = new Set(task.routeTargets ?? []);
     await resumeConcurrentDispatch(
         ctx, team, team.members,
-        (m) => routeTargets.has(m.name) && !task.responses[m.name],
+        (m) => routeTargets.has(m.name) && task.responses[m.name] === undefined,
         (m) => task.routeBranches?.find((b) => b.member === m.name)?.task ?? task.task ?? "",
         () => handleRouteIdle(ctx, team),
     );
@@ -373,7 +373,7 @@ export async function resumeArbitrateMode(
             .filter((m): m is TeamMember => m !== undefined);
         await resumeConcurrentDispatch(
             ctx, team, debaters,
-            (m) => !task.responses[m.name],
+            (m) => task.responses[m.name] === undefined,
             () => buildDebatePrompt(task),
             () => handleArbitrateIdle(ctx, team),
         );
@@ -540,7 +540,7 @@ export async function resumeWorkflowMode(
                 if (replayedAny) continue;
             }
             const actorName = workflowStepActor(activeStep);
-            if (actorName === null || !task.responses[actorName]) continue;
+            if (actorName === null || task.responses[actorName] === undefined) continue;
             const actor = team.members.find(
                 (m) => m.name === actorName && !m.isMaster,
             );
@@ -650,7 +650,7 @@ export async function resumeArenaMode(
         }
         if (
             evaluator.status !== "running" &&
-            !task.responses[task.evaluatorMember]
+            task.responses[task.evaluatorMember] === undefined
         ) {
             // No captured evaluator output -> re-dispatch the scoreboard prompt.
             await dispatchToMember(
@@ -682,7 +682,7 @@ export async function resumeArenaMode(
         (m) => candidateSet.has(m.name)
             && m.status !== "errored"
             && !!m.sessionId
-            && !task.responses[m.name],
+            && task.responses[m.name] === undefined,
         () => task.task,
         async () => {
             // Zero real dispatch -> re-drive the barrier with the FIRST candidate
@@ -717,7 +717,7 @@ export async function resumeQuorumMode(
         (m) => participantSet.has(m.name)
             && m.status !== "errored"
             && !!m.sessionId
-            && !task.responses[m.name],
+            && task.responses[m.name] === undefined,
         () => `[Quorum vote — resumed]\n${task.task}`,
         async () => {
             // Zero real dispatch -> re-drive the barrier with the FIRST

@@ -61,21 +61,21 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             }
         }
         let didBranchSave = false
-        // CRITICAL #1: if spawning=true but the runner PID is dead, the
-        // previous process crashed during spawn. Clear the stale flag so
-        // the team isn't permanently wedged.
+        // CRIT #2: if spawning=true but the runner PID is dead, the
+        // previous process crashed during spawn. Clear the stale flag.
+        // Only clear if we can confirm the owner is dead (PID check).
         if (team.spawning && team.runnerPid !== undefined) {
             try {
                 process.kill(team.runnerPid, 0)
             } catch (err) {
                 if ((err as NodeJS.ErrnoException).code === "ESRCH") {
                     team.spawning = false
+                    team.spawningOwner = undefined
                 }
             }
         } else if (team.spawning && team.runnerPid === undefined) {
-            // No PID to check — clear spawning conservatively since no
-            // active run owns it.
             team.spawning = false
+            team.spawningOwner = undefined
         }
         if (team.status === "busy") {
             // H38: PID-based fencing. If runnerPid is set and the process is
@@ -238,13 +238,17 @@ export async function handleSessionDeleted(ctx: PluginContext, sessionID: string
             try {
                 const team = await loadTeamState(ctx.projectStorageRoot, teamName, leadSessionId)
                 team.deleted = true  // tombstone: prevent racing handlers from resurrecting
-                // H-L12: persist the tombstone BEFORE removing the directory.
-                // Pre-fix code only set deleted in memory and invalidated the
-                // cache — a process crash between here and fs.rm would leave
-                // the state.json on disk without the tombstone, and the next
-                // startup would see the team as alive with stale sessionIds.
-                try { await saveTeamState(team) } catch (e) {
-                    logSwallowed(ctx, "saveTeamState failed during session deletion", e, { team: teamName })
+                // HIGH: write a DURABLE deletion marker BEFORE fs.rm.
+                // saveTeamState skips deleted teams, so the in-memory tombstone
+                // alone is not crash-safe. Write a marker file so the next
+                // startup detects the deletion.
+                try {
+                    const { deletedMarkerPath } = await import("../../state/paths.js")
+                    const marker = deletedMarkerPath(team.directory)
+                    const fs = await import("node:fs/promises")
+                    await fs.writeFile(marker, team.teamRunId, "utf8")
+                } catch (markerErr) {
+                    logSwallowed(ctx, "failed to write deletion marker", markerErr, { team: teamName })
                 }
                 dirsToInvalidate.push(team.directory)
             } catch (err) {

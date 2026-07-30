@@ -95,11 +95,10 @@ export type TeamState = {
                                        // caller must team_deactivate first) + startup reconcile
                                        // (clears ALL activatedAt on plugin restart so nothing
                                        // auto-activates after a reload). Orthogonal to TeamStatus.
-    spawning?: boolean                 // #12: persisted cross-process spawn guard. Set true in
-                                       // Phase 1 of startOrchestration, cleared in Phase 3
-                                       // (success) or finally (failure). A second process that
-                                       // passes Steps 1-3 sees spawning=true and bails, preventing
-                                       // duplicate session/worktree creation.
+    spawning?: boolean                 // cross-process spawn guard.
+    spawningOwner?: string             // CRIT #2: UUID of the process that set
+                                       // spawning. Only the owner can clear it.
+                                       // reconciler clears if owner PID is dead.
 }
 
 // ---------------------------------------------------------------------------

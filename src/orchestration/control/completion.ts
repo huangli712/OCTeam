@@ -125,12 +125,14 @@ runStatusOverride?: RunStatus,
             if (!m.isMaster && m.sessionId
                 && (m.status === "running" || m.status === "errored" || m.retryingSince !== undefined)) {
                 try {
-                    await ctx.client.session.abort({ path: { id: m.sessionId } })
-                    // Clear retry state so the member is clean for the next run.
-                    if (m.status === "errored" || m.retryingSince !== undefined) {
-                        m.status = "idle"
-                        m.retryingSince = undefined
-                    }
+                    await ctx.client.session.abort({
+                        path: { id: m.sessionId },
+                        query: { directory: m.worktreePath ?? ctx.directory },
+                    })
+                    // HIGH: set to idle on successful abort so the session
+                    // is clean for the next run.
+                    m.status = "idle"
+                    m.retryingSince = undefined
                 } catch (err) {
                     logSwallowed(ctx, "finishRun: best-effort session.abort failed", err, {
                         member: m.name, session: m.sessionId,

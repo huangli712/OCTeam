@@ -15,6 +15,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import type { ActiveTask, ArbitrateTask } from "../../core/types.js"
 import { dispatchToMember } from "../control/dispatch.js"
@@ -152,12 +153,19 @@ export async function handleArbitrateIdle(
             // is consistent with dispatched prompts. Pre-fix code set it
             // after dispatch — a crash would resume with wrong round.
             task.currentRound = nextRound
+            task.dispatchedParticipants = []
             recordEvent(team, { timestamp: Date.now(), kind: "round", round: task.currentRound })
             for (const name of disputants) {
                 const m = team.members.find(x => x.name === name)
                 if (!m?.sessionId) continue
-                await dispatchToMember(ctx, m, prompts.get(name)!, m.worktreePath ?? ctx.directory, team)
+                try {
+                    await dispatchToMember(ctx, m, prompts.get(name)!, m.worktreePath ?? ctx.directory, team)
+                    task.dispatchedParticipants.push(name)
+                } catch (err) {
+                    logSwallowed(ctx, "arbitrate: dispatch failed for disputant", err, { member: name, round: nextRound })
+                }
             }
+            await saveTeamState(team)
         })
         return
     }

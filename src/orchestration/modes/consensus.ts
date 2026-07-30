@@ -11,7 +11,7 @@
 
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
-import { type Team } from "../../state/store.js"
+import { type Team, saveTeamState } from "../../state/store.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import { buildRoundSummary } from "../records/summary.js"
 import { finishRun } from "../control/completion.js"
@@ -93,5 +93,8 @@ export async function handleConsensusIdle(
                 logSwallowed(ctx, "consensus: dispatch failed for member", err, { member: m.name, round: nextRound })
             }
         }
+        // HIGH: persist the dispatched roster after the dispatch loop so
+        // crash recovery knows which members were successfully prompted.
+        await saveTeamState(team)
     })
 }
