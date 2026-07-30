@@ -356,8 +356,11 @@ const WorkflowRunSchema = z.object({
                     break
                 }
                 const fanout = fanoutStep.fanout
-                if (fanout.joinPolicy === "quorum" && step.join.joinPolicy === "all") {
-                    addStepIssue(index, "quorum fanout cannot use all join policy", ["join", "joinPolicy"])
+                if (fanout.joinPolicy !== step.join.joinPolicy) {
+                    addStepIssue(index, "join policy must match fanout join policy", ["join", "joinPolicy"])
+                }
+                if (fanout.quorum !== step.join.quorum) {
+                    addStepIssue(index, "join quorum must match fanout quorum", ["join", "quorum"])
                 }
                 if (fanout.branchRanges.length !== step.join.branchTailIndices.length) {
                     addStepIssue(
@@ -486,6 +489,33 @@ export const RunRecordSchema = z.object({
         scoreDirection: z.enum(["max", "min"]),
         winnerMetric: z.string(),
         scoreboard: ArenaScoreboardSchema.optional(),
+    }).superRefine((arena, ctx) => {
+        if (arena.winner === undefined) return
+        if (!arena.candidates.includes(arena.winner)) {
+            ctx.addIssue({
+                code: "custom",
+                path: ["winner"],
+                message: "arena winner must be one of the candidates",
+            })
+        }
+        if (arena.survivingCandidates?.includes(arena.winner) !== true) {
+            ctx.addIssue({
+                code: "custom",
+                path: ["winner"],
+                message: "arena winner must be one of the surviving candidates",
+            })
+        }
+        const winnerEntry = arena.scoreboard?.scores.find(score => score.member === arena.winner)
+        const winnerScore = arena.winnerMetric === "score"
+            ? winnerEntry?.score
+            : winnerEntry?.metrics?.[arena.winnerMetric]
+        if (typeof winnerScore !== "number" || !Number.isFinite(winnerScore)) {
+            ctx.addIssue({
+                code: "custom",
+                path: ["scoreboard"],
+                message: "arena winner must have a valid scoreboard score",
+            })
+        }
     }).optional(),
     quorum: z.object({
         task: z.string(),
@@ -501,33 +531,102 @@ export const RunRecordSchema = z.object({
         nEff: z.number().optional(),
         threshold: z.number().optional(),
         winningOption: z.string().optional(),
+    }).superRefine((quorum, ctx) => {
+        if (quorum.winningOption !== undefined
+            && quorum.voteOptions !== undefined
+            && !quorum.voteOptions.includes(quorum.winningOption)) {
+            ctx.addIssue({
+                code: "custom",
+                path: ["winningOption"],
+                message: "quorum winning option must be one of the vote options",
+            })
+        }
     }).optional(),
-}).superRefine((record, ctx) => {
-    if (record.arena?.winner !== undefined
-        && !record.arena.candidates.includes(record.arena.winner)) {
-        ctx.addIssue({
-            code: "custom",
-            path: ["arena", "winner"],
-            message: "arena winner must be one of the candidates",
-        })
-    }
 })
 
-/** Validates a single RunEvent line from the events.jsonl timeline. */
-export const RunEventSchema = z.object({
+const RunEventCommonShape = {
     timestamp: z.number(),
-    kind: z.enum([
-        "dispatched", "captured", "retry", "errored", "stage_advanced", "round",
-        "signoff", "approval_requested", "approval_resolved", "terminated",
-        "routed", "arbitrated", "decomposed", "aggregated",
-        "aggregation_stalled", "verdict", "repaired",
-    ]),
-    member: z.string().optional(),
+    member: z.string().min(1).optional(),
     stage: z.number().optional(),
     round: z.number().optional(),
     stepIndex: z.number().optional(),
-    correlationId: z.string().optional(),
-    reason: z.string().optional(),
-    bytes: z.number().optional(),
-    detail: z.string().optional(),
+    correlationId: z.string().min(1).optional(),
+    reason: z.string().min(1).optional(),
+    bytes: z.number().nonnegative().optional(),
+    detail: z.string().min(1).optional(),
+}
+
+/** Validates a single RunEvent line from the events.jsonl timeline. */
+export const RunEventSchema = z.discriminatedUnion("kind", [
+    z.object({ ...RunEventCommonShape, kind: z.literal("dispatched"), member: z.string().min(1) }),
+    z.object({
+        ...RunEventCommonShape,
+        kind: z.literal("captured"),
+        member: z.string().min(1),
+        bytes: z.number().nonnegative(),
+    }),
+    z.object({
+        ...RunEventCommonShape,
+        kind: z.literal("retry"),
+        member: z.string().min(1),
+        detail: z.string().min(1),
+    }),
+    z.object({ ...RunEventCommonShape, kind: z.literal("errored"), member: z.string().min(1) }),
+    z.object({
+        ...RunEventCommonShape,
+        kind: z.literal("stage_advanced"),
+        stage: z.number(),
+        detail: z.string().min(1),
+    }),
+    z.object({ ...RunEventCommonShape, kind: z.literal("round"), round: z.number() }),
+    z.object({ ...RunEventCommonShape, kind: z.literal("signoff"), detail: z.string().min(1) }),
+    z.object({ ...RunEventCommonShape, kind: z.literal("approval_requested"), detail: z.string().min(1) }),
+    z.object({ ...RunEventCommonShape, kind: z.literal("approval_resolved"), detail: z.string().min(1) }),
+    z.object({ ...RunEventCommonShape, kind: z.literal("terminated"), reason: z.string().min(1) }),
+    z.object({
+        ...RunEventCommonShape,
+        kind: z.literal("routed"),
+        member: z.string().min(1),
+        detail: z.string().min(1),
+    }),
+    z.object({
+        ...RunEventCommonShape,
+        kind: z.literal("arbitrated"),
+        member: z.string().min(1),
+        detail: z.string().min(1),
+    }),
+    z.object({
+        ...RunEventCommonShape,
+        kind: z.literal("decomposed"),
+        member: z.string().min(1),
+        detail: z.string().min(1),
+    }),
+    z.object({
+        ...RunEventCommonShape,
+        kind: z.literal("aggregated"),
+        member: z.string().min(1),
+        detail: z.string().min(1),
+    }),
+    z.object({
+        ...RunEventCommonShape,
+        kind: z.literal("aggregation_stalled"),
+        member: z.string().min(1),
+        detail: z.string().min(1),
+    }),
+    z.object({
+        ...RunEventCommonShape,
+        kind: z.literal("verdict"),
+        member: z.string().min(1),
+        stage: z.number(),
+        detail: z.string().min(1),
+    }),
+    z.object({ ...RunEventCommonShape, kind: z.literal("repaired"), detail: z.string().min(1) }),
+]).superRefine((event, ctx) => {
+    if (event.kind === "errored" && event.reason === undefined && event.detail === undefined) {
+        ctx.addIssue({
+            code: "custom",
+            path: ["reason"],
+            message: "errored event must include a reason or detail",
+        })
+    }
 })

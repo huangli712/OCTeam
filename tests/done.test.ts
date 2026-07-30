@@ -185,9 +185,9 @@ describe("maybeAdvanceBarrier: require_done_ack mode", () => {
         expect(fired).toBe(0)
     })
 
-    test("declaredDone=true fires even if member status is still running", async () => {
-        // Edge case: a member could ack team_done and then dispatch flips it
-        // to running again briefly. The barrier should still fire on acks.
+    test("does NOT fire while an acknowledged member is still running", async () => {
+        // team_done can be called from inside the member's active tool turn.
+        // The acknowledgement is not barrier-ready until that turn goes idle.
         const team = makeTeam({
             members: [
                 { name: "alice", status: "running", declaredDone: true },
@@ -199,7 +199,7 @@ describe("maybeAdvanceBarrier: require_done_ack mode", () => {
         await maybeAdvanceBarrier(team, ["alice", "bob"], async () => {
             fired++
         })
-        expect(fired).toBe(1)
+        expect(fired).toBe(0)
     })
 
     test("partial ack is not enough (1 of 2)", async () => {

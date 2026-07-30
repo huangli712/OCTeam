@@ -54,6 +54,39 @@ function makeLoopTask(): ActiveTask {
     } as ActiveTask
 }
 
+function makeRouteTask(): ActiveTask {
+    return {
+        type: "route",
+        startedAt: Date.now(),
+        wallClockTimeoutMs: 300_000,
+        tokensUsed: 10,
+        tokensByMember: { alice: 10 },
+        tokenBaselineByMember: { alice: 2 },
+        messagesSent: 0,
+        responses: { alice: "routed" },
+        stages: [],
+        currentStageIndex: 0,
+        decisionHistory: [],
+        decisionParseFailures: 0,
+        reducerMember: "alice",
+        signoffDecider: "alice",
+        signoffReviewers: ["alice"],
+        signoffApprovals: { alice: true },
+        signoffParseFailures: { alice: 1 },
+        signoffRawOutputs: { alice: "approve" },
+        approvalRequest: {
+            id: "approval-1",
+            kind: "route_decision",
+            requestedAt: Date.now(),
+            summary: "review route",
+            member: "alice",
+        },
+        routerMember: "alice",
+        routeBranches: [{ name: "selected", member: "alice" }],
+        routeTargets: ["alice"],
+    }
+}
+
 async function setupTeamWithActiveTask(
     root: string,
     sid: string,
@@ -125,6 +158,37 @@ describe("team_fix_member: activeTask migration on rename", () => {
         }
         expect(at!.tokensByMember).toHaveProperty("bob")
         expect(at!.tokensByMember).not.toHaveProperty("alice")
+
+        invalidateTeam(team.directory)
+        unindexSession(sid)
+        unindexSession("ses_alice_fix")
+    })
+
+    test("route task migrates common and route-specific member references", async () => {
+        const root = tmpRoot("fix-route-migrate")
+        const sid = "ses_fix_route_migrate"
+        const team = await setupTeamWithActiveTask(root, sid, makeRouteTask())
+
+        const result = await teamFixMemberTool(makeCtx({ storageRoot: root })).execute(
+            { team_id: "alpha", member_name: "alice", new_name: "bob" },
+            makeToolContext(sid),
+        )
+        expect(result).toContain("name: alice → bob")
+
+        const after = await loadTeamState(root, "alpha", sid)
+        const task = after.activeTask
+        if (task?.type !== "route") throw new Error("Expected route task")
+        expect(task.tokenBaselineByMember).toEqual({ bob: 2 })
+        expect(task.reducerMember).toBe("bob")
+        expect(task.signoffDecider).toBe("bob")
+        expect(task.signoffReviewers).toEqual(["bob"])
+        expect(task.signoffApprovals).toEqual({ bob: true })
+        expect(task.signoffParseFailures).toEqual({ bob: 1 })
+        expect(task.signoffRawOutputs).toEqual({ bob: "approve" })
+        expect(task.approvalRequest?.member).toBe("bob")
+        expect(task.routerMember).toBe("bob")
+        expect(task.routeBranches?.[0]?.member).toBe("bob")
+        expect(task.routeTargets).toEqual(["bob"])
 
         invalidateTeam(team.directory)
         unindexSession(sid)

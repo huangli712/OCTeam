@@ -421,8 +421,8 @@ describe("teamProgressTool.execute", () => {
         })
         await seedEvents(dir, "run-active-1", [
             { timestamp: t0, kind: "dispatched", member: "alice" },
-            { timestamp: t0 + 500, kind: "captured", member: "alice" },
-            { timestamp: t0 + 1000, kind: "errored", member: "alice" },
+            { timestamp: t0 + 500, kind: "captured", member: "alice", bytes: 1 },
+            { timestamp: t0 + 1000, kind: "errored", member: "alice", reason: "failed" },
         ])
 
         const result = await teamProgressTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
@@ -447,7 +447,7 @@ describe("teamProgressTool.execute", () => {
         // Seed 10 events.
         const events: RunEvent[] = []
         for (let i = 0; i < 10; i++) {
-            events.push({ timestamp: Date.now() + i, kind: "captured", member: `m${i}` })
+            events.push({ timestamp: Date.now() + i, kind: "captured", member: `m${i}`, bytes: i })
         }
         await seedEvents(dir, "run-active-1", events)
 

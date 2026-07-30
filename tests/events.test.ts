@@ -96,7 +96,7 @@ describe("recordEvent + readRunEvents", () => {
             path,
             JSON.stringify({ timestamp: 30, kind: "round", round: 2 }) + "\n" +
             JSON.stringify({ timestamp: 10, kind: "dispatched", member: "a" }) + "\n" +
-            JSON.stringify({ timestamp: 20, kind: "captured", member: "a" }) + "\n",
+            JSON.stringify({ timestamp: 20, kind: "captured", member: "a", bytes: 1 }) + "\n",
         )
         const events = await readRunEvents(dir, "r2")
         expect(events.map(e => e.timestamp)).toEqual([10, 20, 30])
@@ -107,7 +107,7 @@ describe("recordEvent + readRunEvents", () => {
         await fs.mkdir(join(dir, "runs", "r3"), { recursive: true })
         await fs.writeFile(
             runEventsPath(dir, "r3"),
-            JSON.stringify({ timestamp: 1, kind: "dispatched" }) + "\n" +
+            JSON.stringify({ timestamp: 1, kind: "dispatched", member: "a" }) + "\n" +
             "{ this is not json\n" +
             JSON.stringify({ timestamp: 2, kind: "terminated", reason: "done" }) + "\n",
         )

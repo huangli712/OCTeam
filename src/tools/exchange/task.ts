@@ -178,6 +178,21 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
             if (!caller) return "Error: caller is not a member of this team"
             const dir = caller.directory
             if (args.status === "claimed") {
+                // M29 fix: isolated mode (parallel without per-member tasks) also
+                // prohibits claiming shared tasks, not just creating them.
+                // Pre-fix code let isolated members claim existing tasks, forming
+                // a side channel for reading shared task content.
+                try {
+                    const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+                    const at = team.activeTask
+                    if (at?.type === "parallel" && !at.tasks) {
+                        return `Error: team_task_claim is disabled in parallel isolated mode. Isolated members cannot share a task list.`
+                    }
+                } catch (err) {
+                    if (!isEnoent(err)) {
+                        return `Error: cannot verify team state for isolated-mode check. Task claim rejected. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+                    }
+                }
                 try {
                     const task = await claimTask(dir, args.task_id, caller.name)
                     return `Claimed task ${task.id} [${task.subject}].`

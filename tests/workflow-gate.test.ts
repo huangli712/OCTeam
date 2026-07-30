@@ -524,7 +524,17 @@ describe("handleWorkflowIdle (via processIdle): gate steps", () => {
         expect(team.activeTask).toBeDefined();
 
         // Second INVALID: 1 -> 2 > maxInvalidRetries 1 -> fail as workflow_invalid.
-        ctx = makeCtx({ outputs: { ses_bob: INVALID_VERDICT }, calls: calls });
+        ctx = makeCtx({
+            calls: calls,
+            messages: async () => ({
+                data: [
+                    { info: { role: "user" }, parts: [{ type: "text", text: "verify" }] },
+                    { info: { role: "assistant" }, parts: [{ type: "text", text: INVALID_VERDICT }] },
+                    { info: { role: "user" }, parts: [{ type: "text", text: "verify again" }] },
+                    { info: { role: "assistant" }, parts: [{ type: "text", text: INVALID_VERDICT }] },
+                ],
+            }),
+        });
         await processIdle(ctx, team, team.members[1], "ses_bob");
 
         expect(team.status).toBe("failed");

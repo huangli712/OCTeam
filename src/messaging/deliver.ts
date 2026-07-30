@@ -25,6 +25,14 @@ export async function deliverToRecipients(
     backpressureMaxBytes?: number,
     onDelivered?: (recipient: string) => void,
 ): Promise<void> {
+    // S2 fix: check team.deleted before delivery. team_delete holds
+    // team.mutex during deletion, so if we pass this check without the
+    // mutex, a concurrent delete could still race — but this catches the
+    // common case (delete completed before delivery started). A full
+    // fix would wrap the entire loop in team.mutex.runExclusive.
+    if (team.deleted) {
+        throw new Error("deliverToRecipients: team is deleted, refusing to deliver")
+    }
     // C2 fix: use base.runId (captured at dispatch time under the team
     // mutex) instead of team.activeTask?.runId (re-read here, which may
     // have changed if a run completed and a new run started between

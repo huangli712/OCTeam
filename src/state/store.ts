@@ -5,6 +5,7 @@
 
 import fs from "node:fs/promises"
 import { realpathSync } from "node:fs"
+import { randomUUID } from "node:crypto"
 import path from "node:path"
 
 import { logger } from '../core/log.js';
@@ -392,17 +393,17 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
             merged.activeTask = mergeObjects(
                 disk.activeTask, ancestor.activeTask, current.activeTask,
             ) as TeamState["activeTask"]
-            // H-3: messagesSent is a monotonic counter — two concurrent sends
-            // from different processes each increment from the same base, then
-            // last-writer-wins merge picks ONE increment and loses the other.
-            // merge with max(disk, current) so both increments survive. Same for
-            // tokensUsed (sum of tokensByMember, also monotonic per run).
+            // H-3: merge each writer's messagesSent delta onto the latest disk
+            // value so concurrent increments from the same ancestor all survive.
             if (merged.activeTask && current.activeTask && disk.activeTask) {
                 const da = disk.activeTask as unknown as Record<string, unknown>
                 const ca = current.activeTask as unknown as Record<string, unknown>
                 const ma = merged.activeTask as unknown as Record<string, unknown>
                 if (typeof da.messagesSent === "number" && typeof ca.messagesSent === "number") {
-                    ma.messagesSent = Math.max(da.messagesSent as number, ca.messagesSent as number)
+                    ma.messagesSent = da.messagesSent + Math.max(
+                        0,
+                        ca.messagesSent - (ancestor.activeTask?.messagesSent ?? 0),
+                    )
                 }
                 if (typeof da.tokensUsed === "number" && typeof ca.tokensUsed === "number") {
                     ma.tokensUsed = Math.max(da.tokensUsed as number, ca.tokensUsed as number)
@@ -568,14 +569,18 @@ export async function saveTeamState(team: Team): Promise<void> {
     const dir = team.directory
     const currentState = stripRuntimeFields(team)
     await withLock(stateLockPath(dir), async () => {
-        // C-16: check for cross-process deletion marker. If another process
-        // deleted this team, refuse to write (prevent resurrection).
+        // C-16: check for cross-process deletion marker. Only a marker for this
+        // team run is a tombstone; a replacement team removes the stale marker.
+        const marker = deletedMarkerPath(dir)
         try {
-            await fs.access(deletedMarkerPath(dir))
-            team.deleted = true
-            return // tombstone detected — do not write
-        } catch {
-            // No marker — proceed normally.
+            const deletedTeamRunId = await fs.readFile(marker, "utf8")
+            if (deletedTeamRunId === team.teamRunId) {
+                team.deleted = true
+                return
+            }
+            await fs.unlink(marker)
+        } catch (err) {
+            if (!isEnoent(err)) throw err
         }
         const ancestor = team._diskSnapshot
         let toWrite: TeamState
@@ -621,25 +626,28 @@ export async function saveTeamState(team: Team): Promise<void> {
         // "busy" — the merge writes it to disk correctly, but the live Team
         // still has "live", so the next in-process operation uses stale data).
         //
-        // Scalar fields: adopt the merged value for fields the caller did NOT
-        // change (merge already took disk's value for those). For fields the
-        // caller DID change, the merged value == caller's value, so the sync
-        // is a no-op. Skip identity fields (teamName, leadSessionId, teamRunId)
-        // that must not change via merge — they are set at creation/rename.
-        const scalarsToSync: Array<keyof TeamState> = [
-            "status", "activatedAt", "startedAt", "createdAt",
-            "lastInterruptedTask", "lastMode", "bounds",
-        ]
-        for (const key of scalarsToSync) {
+        // Adopt every merged scalar while preserving immutable identity fields.
+        const scalarKeys = new Set<keyof TeamState>([
+            ...(Object.keys(currentState) as Array<keyof TeamState>),
+            ...(Object.keys(toWrite) as Array<keyof TeamState>),
+        ])
+        const nonScalarKeys = new Set<keyof TeamState>([
+            "version", "teamRunId", "teamName", "leadSessionId", "members", "activeTask",
+        ])
+        const liveState = team as Record<string, unknown>
+        for (const key of scalarKeys) {
+            if (nonScalarKeys.has(key)) continue
             const merged = toWrite[key]
-            if (merged !== undefined && !jsonEqual(team[key], merged)) {
-                ;(team as Record<string, unknown>)[key] = deepClone(merged)
-            }
+            if (jsonEqual(team[key], merged)) continue
+            if (merged === undefined) delete liveState[key]
+            else liveState[key] = deepClone(merged)
         }
-        // Members: only PUSH missing members — never replace existing objects
-        // or the array reference, which would break in-flight callers holding
-        // references to the current members/steps.
+        // Synchronize membership in place to preserve the array reference.
         if (team.members) {
+            const mergedNames = new Set((toWrite.members ?? []).map(member => member.name))
+            for (let index = team.members.length - 1; index >= 0; index--) {
+                if (!mergedNames.has(team.members[index].name)) team.members.splice(index, 1)
+            }
             const liveNames = new Set(team.members.map(m => m.name))
             for (const m of toWrite.members ?? []) {
                 if (!liveNames.has(m.name)) team.members.push(m)
@@ -657,16 +665,26 @@ export async function saveTeamState(team: Team): Promise<void> {
             const live = team.activeTask as unknown as Record<string, unknown>
             const merged = toWrite.activeTask as unknown as Record<string, unknown>
             const currentAt = (currentState.activeTask ?? {}) as unknown as Record<string, unknown>
-            for (const key of Object.keys(merged)) {
+            const activeTaskKeys = new Set([...Object.keys(currentAt), ...Object.keys(merged)])
+            for (const key of activeTaskKeys) {
                 if (jsonEqual(merged[key], currentAt[key])) continue // unchanged
                 // Field changed by merge (disk won). Update in place.
                 const liveVal = live[key]
                 const mergedVal = merged[key]
+                if (mergedVal === undefined) {
+                    delete live[key]
+                    continue
+                }
                 if (liveVal && mergedVal && typeof liveVal === "object" && typeof mergedVal === "object"
                     && !Array.isArray(liveVal) && !Array.isArray(mergedVal)) {
-                    // Plain object map (responses, tokensByMember): assign keys in
+                    // Plain object map (responses, tokensByMember): synchronize in
                     // place to preserve the map reference.
-                    Object.assign(liveVal as Record<string, unknown>, deepClone(mergedVal))
+                    const liveObject = liveVal as Record<string, unknown>
+                    const mergedObject = mergedVal as Record<string, unknown>
+                    for (const nestedKey of Object.keys(liveObject)) {
+                        if (!(nestedKey in mergedObject)) delete liveObject[nestedKey]
+                    }
+                    Object.assign(liveObject, deepClone(mergedObject))
                 } else {
                     live[key] = deepClone(mergedVal)
                 }
@@ -784,35 +802,42 @@ export async function initTeamState(
     return team
 }
 
-/** Recursively remove a team's on-disk directory. Used at team_delete(force).
- *
- * C14: asserts no symlink traversal BEFORE the recursive remove. Without
- * this, an attacker who replaces the team directory (or an intermediate
- * ancestor) with a symlink could redirect fs.rm to an arbitrary location
- * outside the storage root.
- */
-export async function deleteTeamStorage(
+export async function quarantineTeamStorage(
     storageRoot: string,
     teamName: string,
-    leadSessionId?: string,
-): Promise<void> {
-    const dir = teamDir(storageRoot, teamName, leadSessionId)
+    leadSessionId: string | undefined,
+    resolvedDir: string | undefined,
+    teamRunId: string,
+): Promise<string> {
+    // S7 fix: prefer resolvedDir (from the loaded Team object) over
+    // reconstructing from teamName, which may be stale after a rename.
+    const dir = resolvedDir ?? teamDir(storageRoot, teamName, leadSessionId)
     await assertNoSymlinkTraversal(storageRoot, dir)
-    // C-16: write a deletion marker in the PARENT directory before rm so
+    // C-16: write a deletion marker in the PARENT directory before rename so
     // another process holding a stale Team reference can detect the deletion
     // inside the state lock and refuse to resurrect the team directory.
-    try {
-        const marker = deletedMarkerPath(dir)
-        await assertNoSymlinkTraversal(path.dirname(dir), marker)
-        await fs.writeFile(marker, String(Date.now()), "utf8")
-    } catch {
-        // best-effort — if the marker can't be written, the rm still proceeds.
-        // Cross-process resurrection protection is degraded but not absent
-        // (the in-process tombstone still prevents same-process writes).
-    }
-    await fs.rm(dir, {
+    const marker = deletedMarkerPath(dir)
+    await assertNoSymlinkTraversal(path.dirname(dir), marker)
+    await fs.writeFile(marker, teamRunId, "utf8")
+
+    const quarantineRoot = path.join(storageRoot, ".quarantine")
+    await assertNoSymlinkTraversal(storageRoot, quarantineRoot)
+    await fs.mkdir(quarantineRoot, { recursive: true })
+    await assertNoSymlinkTraversal(storageRoot, quarantineRoot)
+    const quarantineDirectory = path.join(quarantineRoot, randomUUID())
+    await fs.rename(dir, quarantineDirectory)
+    return quarantineDirectory
+}
+
+export async function deleteQuarantinedTeamStorage(
+    storageRoot: string,
+    quarantineDirectory: string,
+): Promise<void> {
+    const quarantineRoot = path.join(storageRoot, ".quarantine")
+    await assertNoSymlinkTraversal(quarantineRoot, quarantineDirectory)
+    await fs.rm(quarantineDirectory, {
         recursive: true,
-        force: true, // force:true already swallows ENOENT (dir already gone).
+        force: true,
     })
 }
 
@@ -872,6 +897,11 @@ export async function listAllTeams(
  */
 export function invalidateTeam(teamDirectory: string): void {
     teamRegistry.delete(teamDirectory)
+}
+
+export function rekeyTeamRegistry(oldDirectory: string, newDirectory: string, team: Team): void {
+    teamRegistry.delete(oldDirectory)
+    teamRegistry.set(newDirectory, team)
 }
 
 /**

@@ -132,6 +132,28 @@ describe("validateWorkflowSteps", () => {
             if ("error" in result) expect(result.error).toContain(errorField)
         })
     }
+
+    for (const [kind, field, value] of [
+        ["fanout", "approval_before", true],
+        ["fanout", "timeout_ms", 1000],
+        ["fanout", "max_output_bytes", 1],
+        ["join", "approval_before", true],
+        ["join", "timeout_ms", 1000],
+        ["join", "max_output_bytes", 1],
+        ["join", "join_policy", "all"],
+        ["join", "quorum", 0.5],
+        ["join", "reducer_member", "alice"],
+    ] satisfies Array<["fanout" | "join", string, unknown]>) {
+        test(`rejects ${field} on a ${kind} marker`, () => {
+            const step = kind === "fanout"
+                ? { kind, branches: [], [field]: value }
+                : { kind, [field]: value }
+            const result = validateWorkflowSteps([step])
+
+            expect("error" in result).toBe(true)
+            if ("error" in result) expect(result.error).toContain(`${kind} marker does not support ${field}`)
+        })
+    }
 })
 
 // -----------------------------------------------------------------------

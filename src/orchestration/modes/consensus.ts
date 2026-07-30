@@ -19,13 +19,19 @@ import { maybeAdvanceBarrier } from "../control/barriers.js"
 import { allMembersAgree } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../control/approval.js"
 import { nonMasterMembers } from "../../tools/support.js"
+import type { CaptureMemberOutputResult } from "../records/capture.js"
 
 /**
  * Consensus idle handler: wait for the round barrier, then either deliver on
  * agreement, fail on max rounds (with optional HITL deadlock approval), or
  * dispatch the next round with a prior-round summary broadcast.
  */
-export async function handleConsensusIdle(ctx: PluginContext, team: Team): Promise<void> {
+export async function handleConsensusIdle(
+    ctx: PluginContext,
+    team: Team,
+    captureResult?: CaptureMemberOutputResult,
+): Promise<void> {
+    if (captureResult?.fresh === false && captureResult.reason === "stale") return
     const task = team.activeTask
     if (!task || task.type !== "consensus") return
     const participants = nonMasterMembers(team).map(m => m.name)

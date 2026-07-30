@@ -13,6 +13,7 @@ import { dispatchToMember } from "../control/dispatch.js"
 import { parseScoreboard } from "../protocol/decisions.js"
 import { finishRun } from "../control/completion.js"
 import { findMember } from "../../tools/support.js"
+import type { CaptureMemberOutputResult } from "../records/capture.js"
 
 /**
  * Select the winning candidate deterministically from an evaluator-attested
@@ -171,7 +172,9 @@ export async function handleArenaIdle(
     ctx: PluginContext,
     team: Team,
     member: MemberState,
+    captureResult?: CaptureMemberOutputResult,
 ): Promise<void> {
+    if (captureResult?.fresh === false && captureResult.reason === "stale") return
     const task = team.activeTask
     if (!task || task.type !== "arena") return
     const phase = task.arenaPhase ?? "implement"

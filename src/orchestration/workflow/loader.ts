@@ -209,7 +209,7 @@ function validateWorkflowStep(value: unknown, location: StepLocation, budget: Va
                 + ` kind must be task, gate, fanout, or join`,
         }
     }
-    const fieldError = validateWorkflowStepFields(value, location)
+    const fieldError = validateWorkflowStepFields(value, kind, location)
     if (fieldError !== null) return { error: fieldError }
     switch (kind) {
         case "task":
@@ -317,7 +317,27 @@ function validateWorkflowBranches(
 }
 
 /** Validate all field-level constraints on a single workflow step. Returns an error string or null. */
-function validateWorkflowStepFields(step: Record<string, unknown>, location: StepLocation): string | null {
+function validateWorkflowStepFields(
+    step: Record<string, unknown>,
+    kind: WorkflowToolStep["kind"],
+    location: StepLocation,
+): string | null {
+    if (kind === "fanout" || kind === "join") {
+        for (const field of ["approval_before", "timeout_ms", "max_output_bytes"] as const) {
+            if (step[field] !== undefined) {
+                return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                    + ` ${kind} marker does not support ${field}`
+            }
+        }
+    }
+    if (kind === "join") {
+        for (const field of ["join_policy", "quorum", "reducer_member"] as const) {
+            if (step[field] !== undefined) {
+                return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                    + ` join marker does not support ${field}`
+            }
+        }
+    }
     for (const field of [
         "id", "member", "fallback_member", "verifier", "fallback_verifier", "reducer_member",
     ] as const) {

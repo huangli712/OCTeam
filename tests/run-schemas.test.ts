@@ -356,7 +356,7 @@ describe("WorkflowRunSchema (via RunRecordSchema.workflow)", () => {
             branchStep(1, 0, "b1", 0, 2),
             joinStep(2, 0, [1], { joinPolicy: "all" }),
         ])
-        expectIssue(result, "quorum fanout cannot use all join policy")
+        expectIssue(result, "join policy must match fanout join policy")
     })
 
     test("task/gate step with fanout metadata rejected", () => {
@@ -369,7 +369,13 @@ describe("WorkflowRunSchema (via RunRecordSchema.workflow)", () => {
 
     test("multi-branch fanout with required_branches parses", () => {
         const result = parseWorkflow([
-            fanoutStep(0, 3, ["b1", "b2"], [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }]),
+            fanoutStep(
+                0,
+                3,
+                ["b1", "b2"],
+                [{ startIndex: 1, endIndex: 1 }, { startIndex: 2, endIndex: 2 }],
+                { joinPolicy: "required_branches", requiredBranchIds: ["b1"] },
+            ),
             branchStep(1, 0, "b1", 0, 3),
             branchStep(2, 0, "b2", 1, 3),
             joinStep(3, 0, [1, 2], {

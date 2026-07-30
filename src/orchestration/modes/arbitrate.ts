@@ -28,6 +28,7 @@ import { parseArbitrationDecision } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/approval.js"
 import { findMember } from "../../tools/support.js"
+import type { CaptureMemberOutputResult } from "../records/capture.js"
 
 /** Max consecutive arbiter ruling parse failures before aborting the run. */
 const MAX_RULING_PARSE_FAILURES = 2
@@ -72,7 +73,12 @@ export function buildArbiterPrompt(task: ArbitrateTask): string {
  * max_rounds is the normal debate length (NOT a failure condition, unlike
  * consensus). Failures: arbiter unavailable, or unparseable ruling.
  */
-export async function handleArbitrateIdle(ctx: PluginContext, team: Team): Promise<void> {
+export async function handleArbitrateIdle(
+    ctx: PluginContext,
+    team: Team,
+    captureResult?: CaptureMemberOutputResult,
+): Promise<void> {
+    if (captureResult?.fresh === false && captureResult.reason === "stale") return
     const task = team.activeTask
     if (!task || task.type !== "arbitrate") return
     const disputants = task.disputants ?? []

@@ -1093,6 +1093,32 @@ describe("team_resume: tollgate case", () => {
         expect(team.activeTask ? (team.activeTask as TollgateTask).tollgatePhase : undefined).toBe("escalate")
     })
 
+    test("escalate phase fails when the checkpoint escalation actor is missing", async () => {
+        const root = tmpRoot("tg-resume-escalate-missing")
+        const sid = "ses_tg_resume_escalate_missing"
+        tracked.push(sid)
+        const task = makeTollgateTask({
+            gatedStages: [gate({ member: "alice", verifier: "bob" })],
+            tollgatePhase: "escalate",
+            escalateTo: "carol",
+            responses: { alice: "artifact", bob: V.invalid() },
+        })
+        const team = await setupFailedTeam(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+
+        await teamResumeTool(makeCtx({ storageRoot: root })).execute(
+            { team_id: "alpha" },
+            makeToolContext(sid),
+        )
+
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        const record = await readRunRecord(team.directory, task.runId!)
+        expect(record?.reason).toBe("tollgate_resume_missing_escalation_actor")
+    })
+
     test("produce phase re-dispatches the current gate's producer", async () => {
         const root = tmpRoot("tg-resume-produce")
         const sid = "ses_tg_resume_produce"

@@ -208,9 +208,23 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                         if (m) {
                             // H-31: if this member was dispatched during the
                             // partial resume (status is now "running" or
-                            // turnCount increased), mark it errored — its idle
-                            // event would otherwise be silently dropped.
+                            // turnCount increased), abort its session and mark
+                            // it errored. H21 fix: pre-fix code only marked it
+                            // errored without aborting — the session kept running,
+                            // consuming tokens and producing output that would be
+                            // dropped (activeTask was cleared).
                             if (m.status === "running" || (m.turnCount ?? 0) > (saved.turnCount ?? 0)) {
+                                // H21: best-effort abort the still-running session.
+                                if (m.sessionId) {
+                                    try {
+                                        await ctx.client.session.abort({
+                                            path: { id: m.sessionId },
+                                            query: { directory: m.worktreePath ?? ctx.directory },
+                                        })
+                                    } catch (abortErr) {
+                                        logSwallowed(ctx, "resume rollback: session.abort failed (best-effort)", abortErr, { member: m.name })
+                                    }
+                                }
                                 m.status = "errored"
                                 m.error = `resume dispatch failed: ${e instanceof Error ? e.message : String(e)}`
                             } else {

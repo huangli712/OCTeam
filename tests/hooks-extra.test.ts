@@ -21,7 +21,11 @@ interface LogCall {
     extra: Record<string, unknown>
 }
 
-function ctxFor(root: string, logCalls: LogCall[]): PluginContext {
+function ctxFor(
+    root: string,
+    logCalls: LogCall[],
+    status: (req: unknown) => Promise<{ data: unknown }> = async () => ({ data: {} }),
+): PluginContext {
     return {
         storageRoot: root,
         directory: root,
@@ -37,7 +41,7 @@ function ctxFor(root: string, logCalls: LogCall[]): PluginContext {
             session: {
                 promptAsync: mock(async () => ({})),
                 abort: mock(async () => ({})),
-                status: mock(async () => ({ data: {} })),
+                status,
                 messages: mock(async () => ({ data: [] })),
             },
         },
@@ -248,7 +252,8 @@ describe("sweepTeamOnce: missed-idle reconciliation (line 303-305)", () => {
         aliceLive.status = "running" // sweep's missed-idle trigger
 
         const logCalls: LogCall[] = []
-        const ctx = ctxFor(root, logCalls)
+        const status = mock(async () => ({ data: { [aliceSid]: { type: "idle" } } }))
+        const ctx = ctxFor(root, logCalls, status)
         // statusMap reports alice's session as idle — sweep re-drives processIdle.
         const statusMap = { [aliceSid]: { type: "idle" } }
         await sweepTeamOnce(ctx, team, statusMap)
@@ -282,5 +287,49 @@ describe("sweepTeamOnce: missed-idle reconciliation (line 303-305)", () => {
         const after = await loadTeamState(root, "alpha", leadSid)
         const aliceAfter = after.members.find(m => m.name === "alice")!
         expect(aliceAfter.status).toBe("running")
+    })
+
+    test("stale idle snapshot is ignored when the live session is busy", async () => {
+        const root = tmpRoot("swp-live-busy")
+        const leadSid = "ses_swp_live_busy_m"
+        const aliceSid = "ses_swp_live_busy_a"
+        tracked.push(leadSid, aliceSid)
+        await initTeamState(root, makeState("alpha", leadSid, [makeMember("alice", aliceSid)], Date.now()), leadSid)
+        const team = await loadTeamState(root, "alpha", leadSid)
+        team.activeTask = parallelTask()
+        const alice = team.members.find(member => member.name === "alice")!
+        alice.status = "running"
+        const status = mock(async () => ({ data: { [aliceSid]: { type: "busy" } } }))
+        const ctx = ctxFor(root, [], status)
+
+        await sweepTeamOnce(ctx, team, { [aliceSid]: { type: "idle" } })
+
+        expect(status).toHaveBeenCalledTimes(1)
+        expect(alice.status).toBe("running")
+        expect(team.activeTask).toBeDefined()
+    })
+
+    test("idle observation is ignored when the member turn changes during the live status read", async () => {
+        const root = tmpRoot("swp-turn-generation")
+        const leadSid = "ses_swp_turn_generation_m"
+        const aliceSid = "ses_swp_turn_generation_a"
+        tracked.push(leadSid, aliceSid)
+        await initTeamState(root, makeState("alpha", leadSid, [makeMember("alice", aliceSid)], Date.now()), leadSid)
+        const team = await loadTeamState(root, "alpha", leadSid)
+        team.activeTask = parallelTask()
+        const alice = team.members.find(member => member.name === "alice")!
+        alice.status = "running"
+        const status = mock(async () => {
+            alice.turnCount++
+            return { data: { [aliceSid]: { type: "idle" } } }
+        })
+        const ctx = ctxFor(root, [], status)
+
+        await sweepTeamOnce(ctx, team, { [aliceSid]: { type: "idle" } })
+
+        expect(status).toHaveBeenCalledTimes(1)
+        expect(alice.turnCount).toBe(1)
+        expect(alice.status).toBe("running")
+        expect(team.activeTask).toBeDefined()
     })
 })

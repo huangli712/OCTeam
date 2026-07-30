@@ -12,6 +12,7 @@ import { dispatchToMember } from "../control/dispatch.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { findMember } from "../../tools/support.js"
 import { buildSummary } from "../records/summary.js"
+import type { CaptureMemberOutputResult } from "../records/capture.js"
 
 /** Build the reducer's dispatch prompt: combine candidate outputs into one final result per the policy. */
 export function buildReducePrompt(body: string): string {
@@ -60,7 +61,9 @@ export async function handleReduceIdle(
     ctx: PluginContext,
     team: Team,
     member: MemberState,
+    captureResult?: CaptureMemberOutputResult,
 ): Promise<void> {
+    if (captureResult?.fresh === false && captureResult.reason === "stale") return
     const task = team.activeTask
     if (!task?.reduceStage || task.type !== "parallel") return
     if (member.name !== task.reducerMember) return

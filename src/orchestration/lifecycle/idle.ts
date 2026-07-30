@@ -45,7 +45,7 @@ import { handleArbitrateIdle } from "../modes/arbitrate.js"
 import { handleArenaIdle } from "../modes/arena.js"
 import { handleWorkflowIdle } from "../workflow/handler.js"
 import { handleQuorumIdle } from "../modes/quorum.js"
-import { captureMemberOutput } from "../records/capture.js"
+import { captureMemberOutput, type CaptureMemberOutputResult } from "../records/capture.js"
 
 /**
  * Idle dispatch table. Record<OrchestrationType, ...> enforces compile-time
@@ -53,18 +53,18 @@ import { captureMemberOutput } from "../records/capture.js"
  * type error. Wrappers adapt heterogeneous handler signatures (some take
  * member, some don't) to a uniform interface.
  */
-const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, member: MemberState, capturedNew?: boolean) => Promise<void>> = {
+const idleDispatch: Record<OrchestrationType, (ctx: PluginContext, team: Team, member: MemberState, captureResult?: CaptureMemberOutputResult) => Promise<void>> = {
     parallel: async (ctx, team) => handleParallelIdle(ctx, team),
-    consensus: async (ctx, team) => handleConsensusIdle(ctx, team),
+    consensus: async (ctx, team, _member, captureResult) => handleConsensusIdle(ctx, team, captureResult),
     pipeline: async (ctx, team, member) => handlePipelineIdle(ctx, team, member),
-    loop: async (ctx, team, member) => handleLoopIdle(ctx, team, member),
+    loop: async (ctx, team, member, captureResult) => handleLoopIdle(ctx, team, member, captureResult),
     delegate: async (ctx, team, member) => handleDelegateIdle(ctx, team, member),
-    route: async (ctx, team) => handleRouteIdle(ctx, team),
-    arbitrate: async (ctx, team) => handleArbitrateIdle(ctx, team),
+    route: async (ctx, team, _member, captureResult) => handleRouteIdle(ctx, team, captureResult),
+    arbitrate: async (ctx, team, _member, captureResult) => handleArbitrateIdle(ctx, team, captureResult),
     recurse: async (ctx, team, member) => handleRecurseIdle(ctx, team, member),
     tollgate: async (ctx, team, member) => handleTollgateIdle(ctx, team, member),
-    workflow: async (ctx, team, member, capturedNew) => handleWorkflowIdle(ctx, team, member, capturedNew),
-    arena: async (ctx, team, member) => handleArenaIdle(ctx, team, member),
+    workflow: async (ctx, team, member, captureResult) => handleWorkflowIdle(ctx, team, member, captureResult?.fresh),
+    arena: async (ctx, team, member, captureResult) => handleArenaIdle(ctx, team, member, captureResult),
     quorum: async (ctx, team) => handleQuorumIdle(ctx, team),
 }
 
@@ -164,10 +164,14 @@ async function accountAndValidateIdle(
     const msgs = await ctx.client.session.messages({ path: { id: sessionID } })
     const messages = asSdkMessages(msgs.data)
     if (team.activeTask) {
-        // Step 4: Token accounting (recompute from full session history, then
-        // subtract the per-run baseline so only THIS run's tokens are counted).
+        // Step 4: Token accounting keeps the highest full-history observation
+        // because session compaction can remove messages and lower the total.
         const baseline = team.activeTask.tokenBaselineByMember?.[member.name] ?? 0
-        team.activeTask.tokensByMember[member.name] = Math.max(0, sumMemberTokens(messages) - baseline)
+        const observedTokens = Math.max(0, sumMemberTokens(messages) - baseline)
+        team.activeTask.tokensByMember[member.name] = Math.max(
+            team.activeTask.tokensByMember[member.name] ?? 0,
+            observedTokens,
+        )
         team.activeTask.tokensUsed = Object.values(team.activeTask.tokensByMember).reduce(
             (a, b) => a + b,
             0,
@@ -254,11 +258,10 @@ export async function processIdle(
     // with status==="running", so a read failure permanently stranded the
     // member as idle with uncaptured output. Now: keep status="running"
     // until capture succeeds; the sweep will retry on the next tick.
-    member.retryingSince = undefined // idle clears retry tracking
-
     // Step 3: Role-setup barrier — first idle of an uninitialized member
     // marks it ready and returns WITHOUT capturing output or advancing.
     if (!member.initialized) {
+        member.retryingSince = undefined
         member.initialized = true
         member.status = "idle"
         await saveTeamState(team)
@@ -276,18 +279,26 @@ export async function processIdle(
     // replied) — advancing the signoff policy on it would read the stale
     // pre-signoff response and falsely reject. Step 8 gates on this signal.
     const task = team.activeTask
-    let capturedNew = false
+    let captureResult: CaptureMemberOutputResult = { fresh: false, reason: "empty" }
     if (
         task?.type !== "workflow"
         || task.signoffStage === true
         || findActiveWorkflowStepIndexForMember(task, member.name) !== null
     ) {
-        capturedNew = await captureMemberOutput(team, member, messages)
+        captureResult = await captureMemberOutput(team, member, messages)
     }
+
+    if (!captureResult.fresh && captureResult.reason === "stale") {
+        const unread = await countUnreadMessages(team.directory, member.name)
+        if (unread > 0) await sendWakeHint(ctx, sessionID, unread)
+        return
+    }
+    const capturedNew = captureResult.fresh
 
     // M-1: now that capture succeeded, flip the status to idle. Pre-fix
     // code flipped at the start; deferring means a capture throw leaves
     // the member as "running" so the sweep retries on the next tick.
+    member.retryingSince = undefined
     member.status = "idle"
     await saveTeamState(team)
 
@@ -307,7 +318,7 @@ export async function processIdle(
         && capturedNew
         && /<(?:decompose|分解)>/.test(task.responses[member.name] ?? "")
     ) {
-        await idleDispatch[task.type](ctx, team, member, capturedNew)
+        await idleDispatch[task.type](ctx, team, member, captureResult)
         await checkTermination(ctx, team)
         return
     }
@@ -335,7 +346,7 @@ export async function processIdle(
     }
     // reduce stage takes priority (real map-reduce).
     if (team.activeTask.reduceStage) {
-        await handleReduceIdle(ctx, team, member)
+        await handleReduceIdle(ctx, team, member, captureResult)
         await checkTermination(ctx, team)
         return
     }
@@ -354,7 +365,7 @@ export async function processIdle(
     // require_done_ack recovery (parallel-only): re-prompt premature idle.
     if (taskType === "parallel" && await maybeRepromptPrematureIdle(ctx, team, member)) return
 
-    await idleDispatch[taskType](ctx, team, member, capturedNew)
+    await idleDispatch[taskType](ctx, team, member, captureResult)
 
     // Step 9: Termination checks.
     await checkTermination(ctx, team)

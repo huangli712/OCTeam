@@ -7,6 +7,8 @@ import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import type { RunStatus } from "../../core/types.js"
 import { type Team, clearActiveTask, saveTeamStateBounded } from "../../state/store.js"
+import { asSdkMessages } from "../protocol/output.js"
+import { sumMemberTokens } from "../protocol/output.js"
 import { recordEvent } from "../records/events.js"
 import { persistRun } from "../records/runs.js"
 import { buildSummary } from "../records/summary.js"
@@ -72,6 +74,28 @@ status: "idle" | "failed",
 runStatusOverride?: RunStatus,
 ): Promise<void> {
     const runStatus: RunStatus = runStatusOverride ?? (status === "failed" ? "failed" : "completed")
+    // M25 fix: best-effort token refresh before terminal persistence.
+    // Pre-fix code skipped token refresh on timeout/retry-escalation/session-error
+    // paths, so the final token count underestimated actual usage. Refresh
+    // for all running members; failures are best-effort (network errors do
+    // not block termination).
+    if (team.activeTask) {
+        for (const m of team.members) {
+            if (!m.isMaster && m.sessionId && m.status === "running") {
+                try {
+                    const msgs = await ctx.client.session.messages({ path: { id: m.sessionId } })
+                    const messages = asSdkMessages(msgs.data)
+                    const baseline = team.activeTask.tokenBaselineByMember?.[m.name] ?? 0
+                    team.activeTask.tokensByMember![m.name] = Math.max(
+                        team.activeTask.tokensByMember?.[m.name] ?? 0,
+                        Math.max(0, sumMemberTokens(messages) - baseline),
+                    )
+                } catch {
+                    // best-effort — keep existing token count if refresh fails
+                }
+            }
+        }
+    }
     try {
         await deliverSummaryToLeader(
             ctx,

@@ -165,11 +165,11 @@ async function applyRedispatch(
     if (workflowStep === undefined) return `Error: step ${index + 1} does not exist`
     if (!isActiveWorkflowStep(task, index)) return `Error: step ${index + 1} is not in the active workflow frontier`
     if (workflowStep.completed) return `Error: step ${index + 1} is already completed`
+    const invariantError = validateWorkflowAfterFix(task)
+    if (invariantError !== null) return invariantError
     workflowStep.dispatchedAt = undefined
     const dispatched = await redispatchWorkflowStep(ctx, team, index)
     if (!dispatched) return `Error: step ${index + 1} cannot be redispatched`
-    const invariantError = validateWorkflowAfterFix(task)
-    if (invariantError !== null) return invariantError
     await saveTeamState(team)
     return `team_fix_workflow redispatched step ${index + 1}.`
 }
@@ -187,25 +187,21 @@ async function applySkip(
     if (workflowStep.kind === "fanout" || workflowStep.kind === "join") {
         return `Error: step ${index + 1} marker steps cannot be skipped directly`
     }
+    const invariantError = validateWorkflowAfterFix(task)
+    if (invariantError !== null) return invariantError
     workflowStep.completed = true
     workflowStep.skipped = true
     workflowStep.dispatchedAt = undefined
     await advanceWorkflowStep(ctx, team)
-    if (team.activeTask?.type === "workflow") {
-        const invariantError = validateWorkflowAfterFix(team.activeTask)
-        if (invariantError !== null) return invariantError
-    }
     await saveTeamState(team)
     return `team_fix_workflow skipped step ${index + 1}.`
 }
 
 /** Advance the workflow to the next step unconditionally. */
-async function applyAdvance(ctx: PluginContext, team: Team): Promise<string> {
+async function applyAdvance(ctx: PluginContext, team: Team, task: WorkflowTask): Promise<string> {
+    const invariantError = validateWorkflowAfterFix(task)
+    if (invariantError !== null) return invariantError
     await advanceWorkflowStep(ctx, team)
-    if (team.activeTask?.type === "workflow") {
-        const invariantError = validateWorkflowAfterFix(team.activeTask)
-        if (invariantError !== null) return invariantError
-    }
     await saveTeamState(team)
     return "team_fix_workflow advanced workflow."
 }
@@ -312,10 +308,10 @@ async function applyReassign(
     workflowStep.dispatchedAt = undefined
     workflowStep.correlationId = undefined
 
-    const dispatched = await redispatchWorkflowStep(ctx, team, index)
-    if (!dispatched) return `Error: step ${index + 1} cannot be redispatched to "${toMember}"`
     const invariantError = validateWorkflowAfterFix(task)
     if (invariantError !== null) return invariantError
+    const dispatched = await redispatchWorkflowStep(ctx, team, index)
+    if (!dispatched) return `Error: step ${index + 1} cannot be redispatched to "${toMember}"`
     await saveTeamState(team)
     return `team_fix_workflow reassigned step ${index + 1} to "${toMember}".`
 }
@@ -355,7 +351,7 @@ async function dispatchWorkflowFixOp(
         case "skip":
             return await applySkip(ctx, team, task, step)
         case "advance":
-            return await applyAdvance(ctx, team)
+            return await applyAdvance(ctx, team, task)
         case "fail":
             return await applyFail(ctx, team, reason)
         case "reassign":

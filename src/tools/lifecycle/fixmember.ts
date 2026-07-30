@@ -16,7 +16,7 @@ import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/re
 import { inboxPath, worktreesDir } from "../../state/paths.js"
 import { destroyWorktree } from "../../state/worktrees.js"
 import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../../core/role.js"
-import type { ActiveTask, TeamSpec } from "../../core/types.js"
+import type { ActiveTask, TeamSpec, WorkflowStep } from "../../core/types.js"
 import { MEMBER_NAME_POOL } from "../../state/naming.js"
 
 /**
@@ -24,18 +24,118 @@ import { MEMBER_NAME_POOL } from "../../state/naming.js"
  * is renamed. Used for both activeTask and lastInterruptedTask so a rename on
  * a failed team does not break the preserved checkpoint.
  */
+function renameRecordKey<T>(record: Record<string, T> | undefined, oldName: string, newName: string): void {
+    const value = record?.[oldName]
+    if (record === undefined || value === undefined) return
+    record[newName] = value
+    delete record[oldName]
+}
+
+function migrateWorkflowStepMemberRefs(step: WorkflowStep, oldName: string, newName: string): void {
+    if (step.dispatchedActor === oldName) step.dispatchedActor = newName
+    switch (step.kind) {
+        case "task":
+            if (step.member === oldName) step.member = newName
+            if (step.fallbackMember === oldName) step.fallbackMember = newName
+            return
+        case "gate":
+            if (step.verifier === oldName) step.verifier = newName
+            if (step.fallbackVerifier === oldName) step.fallbackVerifier = newName
+            if (step.verifiers !== undefined) {
+                step.verifiers = step.verifiers.map(name => name === oldName ? newName : name)
+            }
+            renameRecordKey(step.ensembleResults, oldName, newName)
+            return
+        case "fanout":
+            if (step.fanout.reducerMember === oldName) {
+                step.fanout = { ...step.fanout, reducerMember: newName }
+            }
+            return
+        case "join":
+            if (step.join.reducerMember === oldName) {
+                step.join = { ...step.join, reducerMember: newName }
+            }
+            return
+        default:
+            step satisfies never
+    }
+}
+
 function migrateActiveTaskMemberRefs(task: ActiveTask, oldName: string, newName: string): void {
-    if (task.tokensByMember[oldName] !== undefined) {
-        task.tokensByMember[newName] = task.tokensByMember[oldName]
-        delete task.tokensByMember[oldName]
+    renameRecordKey(task.tokensByMember, oldName, newName)
+    renameRecordKey(task.tokenBaselineByMember, oldName, newName)
+    renameRecordKey(task.responses, oldName, newName)
+    renameRecordKey(task.signoffApprovals, oldName, newName)
+    renameRecordKey(task.signoffParseFailures, oldName, newName)
+    renameRecordKey(task.signoffRawOutputs, oldName, newName)
+    if (task.reducerMember === oldName) task.reducerMember = newName
+    if (task.signoffDecider === oldName) task.signoffDecider = newName
+    if (task.signoffReviewers !== undefined) {
+        task.signoffReviewers = task.signoffReviewers.map(name => name === oldName ? newName : name)
     }
-    if (task.responses[oldName] !== undefined) {
-        task.responses[newName] = task.responses[oldName]
-        delete task.responses[oldName]
+    if (task.approvalRequest?.member === oldName) task.approvalRequest.member = newName
+    for (const stage of task.stages) {
+        if (stage.member === oldName) stage.member = newName
     }
-    if (task.type === "loop" && task.deciderMember === oldName) task.deciderMember = newName
-    for (const s of task.stages) {
-        if (s.member === oldName) s.member = newName
+
+    switch (task.type) {
+        case "parallel":
+            renameRecordKey(task.tasks, oldName, newName)
+            return
+        case "pipeline":
+        case "delegate":
+        case "consensus":
+            return
+        case "loop":
+            if (task.deciderMember === oldName) task.deciderMember = newName
+            return
+        case "route":
+            if (task.routerMember === oldName) task.routerMember = newName
+            for (const branch of task.routeBranches ?? []) {
+                if (branch.member === oldName) branch.member = newName
+            }
+            if (task.routeTargets !== undefined) {
+                task.routeTargets = task.routeTargets.map(name => name === oldName ? newName : name)
+            }
+            return
+        case "arbitrate":
+            if (task.arbiterMember === oldName) task.arbiterMember = newName
+            if (task.disputants !== undefined) {
+                task.disputants = task.disputants.map(name => name === oldName ? newName : name)
+            }
+            return
+        case "recurse":
+            if (task.decomposerMember === oldName) task.decomposerMember = newName
+            return
+        case "tollgate":
+            for (const stage of task.gatedStages ?? []) {
+                if (stage.member === oldName) stage.member = newName
+                if (stage.verifier === oldName) stage.verifier = newName
+            }
+            if (task.escalateTo === oldName) task.escalateTo = newName
+            return
+        case "workflow":
+            for (const step of task.steps ?? []) {
+                migrateWorkflowStepMemberRefs(step, oldName, newName)
+            }
+            return
+        case "arena":
+            if (task.evaluatorMember === oldName) task.evaluatorMember = newName
+            task.candidates = task.candidates.map(name => name === oldName ? newName : name)
+            if (task.survivingCandidates !== undefined) {
+                task.survivingCandidates = task.survivingCandidates.map(name => name === oldName ? newName : name)
+            }
+            for (const score of task.scoreboard?.scores ?? []) {
+                if (score.member === oldName) score.member = newName
+            }
+            if (task.winner === oldName) task.winner = newName
+            return
+        case "quorum":
+            task.participants = task.participants.map(name => name === oldName ? newName : name)
+            renameRecordKey(task.ballots, oldName, newName)
+            return
+        default:
+            task satisfies never
     }
 }
 
@@ -294,21 +394,11 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                                 caller.leadSessionId, ctx.storageRoot,
                             )
                         }
-                        // Restore activeTask references
                         if (team.activeTask) {
-                            const at = team.activeTask
-                            if (at.tokensByMember[newName] !== undefined) {
-                                at.tokensByMember[oldName] = at.tokensByMember[newName]
-                                delete at.tokensByMember[newName]
-                            }
-                            if (at.responses[newName] !== undefined) {
-                                at.responses[oldName] = at.responses[newName]
-                                delete at.responses[newName]
-                            }
-                            if (at.type === "loop" && at.deciderMember === newName) at.deciderMember = oldName
-                            for (const s of at.stages) {
-                                if (s.member === newName) s.member = oldName
-                            }
+                            migrateActiveTaskMemberRefs(team.activeTask, newName, oldName)
+                        }
+                        if (team.lastInterruptedTask) {
+                            migrateActiveTaskMemberRefs(team.lastInterruptedTask, newName, oldName)
                         }
                         // Attempt to revert mailbox rename (best-effort)
                         try {

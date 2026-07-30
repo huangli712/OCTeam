@@ -32,6 +32,10 @@ export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: s
     return prev === "" ? block : `${prev}\n\n${block}`
 }
 
+export type CaptureMemberOutputResult =
+    | { fresh: true; output: string }
+    | { fresh: false; reason: "stale" | "empty" }
+
 /**
  * Step 4 of processIdle: capture the member's output from the current turn.
  *
@@ -43,9 +47,9 @@ export function appendTurnBlock(prev: string, turnOutput: string, capturedIso: s
  * Reduce-stage routing: when the parallel task is in its reduce stage and this
  * member is the reducer, the output is routed to runs/<runId>/reduce.md.
  *
- * Returns true when new assistant output was captured this turn, false when no
- * task is active or the current turn produced no extractable assistant content
- * (a stale/redundant idle whose dispatch landed but whose turn hasn't replied).
+ * Returns a fresh result when assistant output was captured, otherwise an
+ * explicit stale/empty reason. Empty advances the message-history watermark so
+ * a duplicate idle for the same empty turn is classified as stale.
  * The freshness signal gates signoff-stage advancement: a decider's stale
  * pre-signoff idle (re-firing after the signoff dispatch) must not read the
  * stale pre-signoff response and falsely reject the run.
@@ -54,15 +58,15 @@ export async function captureMemberOutput(
     team: Team,
     member: MemberState,
     messages: SdkMessage[],
-): Promise<boolean> {
+): Promise<CaptureMemberOutputResult> {
     const task = team.activeTask
-    if (!task) return false
+    if (!task) return { fresh: false, reason: "empty" }
     // Idempotency: a member whose message history hasn't grown since its last
-    // successful capture has no new turn to persist. This guards the delegate
+    // classified turn has no new turn to persist. This guards the delegate
     // completion sweep (which re-captures every member, including ones already
     // captured via their own idle path) and stale pre-signoff idle events.
     if (member.lastCapturedMsgCount !== undefined && messages.length === member.lastCapturedMsgCount) {
-        return false
+        return { fresh: false, reason: "stale" }
     }
     // Find the start of the current turn (last user message).
     let turnStart = 0
@@ -80,7 +84,10 @@ export async function captureMemberOutput(
             if (text) outputs.push(text)
         }
     }
-    if (outputs.length === 0) return false
+    if (outputs.length === 0) {
+        member.lastCapturedMsgCount = messages.length
+        return { fresh: false, reason: "empty" }
+    }
     const full = outputs.join("\n\n")
     const captured = truncateOutput(full)
     const runId = (task.runId ??= crypto.randomUUID())
@@ -149,5 +156,5 @@ export async function captureMemberOutput(
         member: member.name,
         bytes: Buffer.byteLength(captured, "utf8"),
     })
-    return true
+    return { fresh: true, output: captured }
 }

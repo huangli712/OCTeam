@@ -9,16 +9,21 @@
  * Read-only, any-member (requireActive: false), like team_details.
  */
 
+import { createReadStream } from "node:fs"
+import { createInterface } from "node:readline"
+
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import { isEnoent } from "../../core/utils.js"
 import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
 import { formatWorkflowMermaid, type MermaidStepStatus } from "../../orchestration/records/mermaid.js"
+import { RunEventSchema } from "../../orchestration/records/schemas.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { loadTeamState } from "../../state/store.js"
-import { listRunRecords, readRunEvents } from "../../orchestration/records/runs.js"
-import { isSafePathSegment } from "../../state/paths.js"
+import { listRunRecords } from "../../orchestration/records/runs.js"
+import { assertNoSymlinkTraversal } from "../../state/locks.js"
+import { isSafePathSegment, runEventsPath } from "../../state/paths.js"
 import { getActiveWorkflowStepIndices } from "../../orchestration/workflow/dag.js"
 import type { RunEvent, WorkflowRunStep, WorkflowStep, WorkflowTask } from "../../core/types.js"
 import type { Team } from "../../state/store.js"
@@ -75,6 +80,15 @@ function liveStepsToRunSteps(steps: readonly WorkflowStep[]): WorkflowRunStep[] 
                     onInvalid: step.onInvalid,
                     invalidAttempts: step.invalidAttempts,
                     jumpCount: step.jumpCount,
+                    // M34 fix: include goto and conditional fields so the live
+                    // mermaid diagram shows non-linear control flow correctly.
+                    onPassGoto: step.onPassGoto === undefined ? undefined : step.onPassGoto + 1,
+                    onFailGoto: step.onFailGoto === undefined ? undefined : step.onFailGoto + 1,
+                    onInvalidGoto: step.onInvalidGoto === undefined ? undefined : step.onInvalidGoto + 1,
+                    onFail: step.onFail,
+                    onTimeout: step.onTimeout,
+                    where: step.where,
+                    loopIterations: step.loopIterations,
                 }
             case "fanout":
                 return { ...base, fanout: step.fanout }
@@ -180,9 +194,62 @@ function formatSnapshot(team: Team): string[] {
     return lines
 }
 
+type RunEventWindow = {
+    events: RunEvent[]
+    total: number
+    malformed: number
+}
+
+async function readRunEventWindow(
+    teamDirectory: string,
+    runId: string,
+    limit: number,
+    since?: number,
+): Promise<RunEventWindow> {
+    const path = runEventsPath(teamDirectory, runId)
+    await assertNoSymlinkTraversal(teamDirectory, path)
+
+    const events: RunEvent[] = []
+    let total = 0
+    let malformed = 0
+    const input = createReadStream(path, { encoding: "utf8" })
+    const lines = createInterface({ input, crlfDelay: Infinity })
+    try {
+        for await (const line of lines) {
+            if (!line.trim()) continue
+            let value: unknown
+            try {
+                value = JSON.parse(line)
+            } catch {
+                malformed += 1
+                continue
+            }
+            const result = RunEventSchema.safeParse(value)
+            if (!result.success) {
+                malformed += 1
+                continue
+            }
+            total += 1
+            if (since !== undefined && result.data.timestamp <= since) continue
+            events.push(result.data)
+            events.sort((left, right) => left.timestamp - right.timestamp)
+            if (events.length > limit) events.splice(0, events.length - limit)
+        }
+    } catch (err) {
+        if (!isEnoent(err)) throw err
+    } finally {
+        lines.close()
+        input.destroy()
+    }
+    return { events, total, malformed }
+}
+
 /** Render the event timeline with times relative to the first event. */
-function formatTimeline(events: RunEvent[], runId: string, totalBefore: number): string[] {
-    if (events.length === 0) return ["Timeline: (no events yet)"]
+function formatTimeline(events: RunEvent[], runId: string, totalBefore: number, malformed: number): string[] {
+    if (events.length === 0) {
+        const malformedSuffix = malformed > 0 ? `; ${malformed} malformed skipped` : ""
+        return [`Timeline: (no events yet${malformedSuffix})`]
+    }
     const t0 = events[0].timestamp
     const rel = (ts: number) => `+${((ts - t0) / 1000).toFixed(1)}s`
     const lines = events.map(e => {
@@ -197,9 +264,10 @@ function formatTimeline(events: RunEvent[], runId: string, totalBefore: number):
         return `  [${rel(e.timestamp)}] ${e.kind}${who}${extra ? ` ${extra}` : ""}`
     })
     const shown = events.length
+    const malformedSuffix = malformed > 0 ? `, ${malformed} malformed skipped` : ""
     const header = totalBefore > shown
-        ? `Timeline (last ${shown} of ${totalBefore}, run ${runId.slice(0, 8)}…):`
-        : `Timeline (${shown} events, run ${runId.slice(0, 8)}…):`
+        ? `Timeline (last ${shown} of ${totalBefore}${malformedSuffix}, run ${runId.slice(0, 8)}…):`
+        : `Timeline (${shown} events${malformedSuffix}, run ${runId.slice(0, 8)}…):`
     return [header, ...lines]
 }
 
@@ -281,24 +349,16 @@ export function teamProgressTool(ctx: PluginContext): ToolDefinition {
                 return [...snapshot, "", "Timeline: (no runs yet)"].join("\n")
             }
 
-            let events
+            const limit = args.limit ?? 40
+            let window
             try {
-                events = await readRunEvents(team.directory, runId)
+                window = await readRunEventWindow(team.directory, runId, limit, args.since)
             } catch (err) {
                 logSwallowed(ctx, "team_progress failed to read run events", err, { team: args.team_id, runId })
                 return `Error: events for run "${runId}" could not be read: ${err instanceof Error ? err.message : String(err)}`
             }
-            const totalBefore = events.length
-            if (args.since !== undefined) {
-                const since = args.since
-                events = events.filter(e => e.timestamp > since)
-            }
-            const limit = args.limit ?? 40
-            if (events.length > limit) {
-                events = events.slice(-limit)
-            }
 
-            const timeline = formatTimeline(events, runId, totalBefore)
+            const timeline = formatTimeline(window.events, runId, window.total, window.malformed)
             return [...snapshot, "", ...timeline].join("\n")
         },
     })

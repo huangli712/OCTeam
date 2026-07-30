@@ -21,6 +21,7 @@ import { recordEvent } from "../records/events.js"
 import { allReadOnlyStagesReportNoIssues, parseDecision } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../control/approval.js"
 import { truncateOutput } from "../protocol/output.js"
+import type { CaptureMemberOutputResult } from "../records/capture.js"
 
 /** Max consecutive decision parse failures before the loop is failed. */
 const MAX_DECISION_PARSE_FAILURES = 3
@@ -107,7 +108,13 @@ export async function rejectLoopDone(ctx: PluginContext, team: Team, feedback?: 
 }
 
 /** Round-based decider loop: parse the decider's output after all stages complete and advance or deliver. */
-export async function handleLoopIdle(ctx: PluginContext, team: Team, member: MemberState): Promise<void> {
+export async function handleLoopIdle(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+    captureResult?: CaptureMemberOutputResult,
+): Promise<void> {
+    if (captureResult?.fresh === false && captureResult.reason === "stale") return
     const task = team.activeTask
     if (!task || task.type !== "loop") return
     const stages = task.stages

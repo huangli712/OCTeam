@@ -60,6 +60,16 @@ export class BackpressureError extends Error {
     }
 }
 
+export class AckMessagesError extends Error {
+    constructor(
+        public readonly acknowledgedMessages: Message[],
+        cause: unknown,
+    ) {
+        super(cause instanceof Error ? cause.message : String(cause))
+        this.name = "AckMessagesError"
+    }
+}
+
 export async function writeMailboxMessage(
     teamDirectory: string,
     recipient: string,
@@ -225,18 +235,24 @@ export async function ackMessages(
     // releaseStaleReservations batch semantics. Calls pruneProcessedLogUnlocked
     // (the unlocked variant) to avoid re-acquiring the same non-reentrant lock.
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
-        const unlinkErrors: string[] = []
+        const acknowledgedMessages: Message[] = []
+        const unlinkErrors: unknown[] = []
         for (const msg of msgs) {
-            await appendJsonl(processedPath(teamDirectory, recipient), {
-                ...msg,
-                deliveryStatus: "processed",
-                // M12 fix: record ACK time so retention pruning uses when the
-                // message was actually processed, not when it was sent. A
-                // message that sat in the inbox for a long time before being
-                // ACKed would otherwise be pruned immediately on the next
-                // prune cycle, losing its dedup protection.
-                processedAt: Date.now(),
-            }, teamDirectory)
+            try {
+                await appendJsonl(processedPath(teamDirectory, recipient), {
+                    ...msg,
+                    deliveryStatus: "processed",
+                    // M12 fix: record ACK time so retention pruning uses when the
+                    // message was actually processed, not when it was sent. A
+                    // message that sat in the inbox for a long time before being
+                    // ACKed would otherwise be pruned immediately on the next
+                    // prune cycle, losing its dedup protection.
+                    processedAt: Date.now(),
+                }, teamDirectory)
+            } catch (err) {
+                throw new AckMessagesError(acknowledgedMessages, err)
+            }
+            acknowledgedMessages.push(msg)
             // C-11: track per-message unlink outcome so one earlier failure
             // does not suppress auth consumption for later directives whose
             // own reservation unlink succeeded. Pre-fix code used a shared
@@ -248,7 +264,7 @@ export async function ackMessages(
                 if (!isEnoent(err)) {
                     const errMsg = err instanceof Error ? err.message : String(err)
                     logger.warn("ackMessages: reservation unlink failed", { msgId: msg.id, error: errMsg })
-                    unlinkErrors.push(errMsg)
+                    unlinkErrors.push(err)
                     thisMsgUnlinkFailed = true
                 }
             })
@@ -260,10 +276,14 @@ export async function ackMessages(
             }
         }
         if (unlinkErrors.length > 0) {
-            throw new Error(unlinkErrors[0])
+            throw new AckMessagesError(acknowledgedMessages, unlinkErrors[0])
         }
         // Retention: cap the audit log so it doesn't grow unbounded.
-        await pruneProcessedLogUnlocked(teamDirectory, recipient)
+        try {
+            await pruneProcessedLogUnlocked(teamDirectory, recipient)
+        } catch (err) {
+            throw new AckMessagesError(acknowledgedMessages, err)
+        }
     }, teamDirectory)
 }
 

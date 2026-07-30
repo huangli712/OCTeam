@@ -24,6 +24,7 @@ import { parseRouteDecision } from "../protocol/decisions.js"
 import { maybeTriggerSignoff } from "../control/signoff.js"
 import { maybeRequestApproval } from "../control/approval.js"
 import { findMember } from "../../tools/support.js"
+import type { CaptureMemberOutputResult } from "../records/capture.js"
 
 /** Max consecutive router parse failures before aborting the run. */
 const MAX_ROUTE_PARSE_FAILURES = 2
@@ -79,7 +80,12 @@ export async function advanceRouteAfterDecision(ctx: PluginContext, team: Team):
  * with a reason containing "decision_parse_failure" so runStatusFromReason
  * classifies it as failed.
  */
-export async function handleRouteIdle(ctx: PluginContext, team: Team): Promise<void> {
+export async function handleRouteIdle(
+    ctx: PluginContext,
+    team: Team,
+    captureResult?: CaptureMemberOutputResult,
+): Promise<void> {
+    if (captureResult?.fresh === false && captureResult.reason === "stale") return
     const task = team.activeTask
     if (!task || task.type !== "route") return
 

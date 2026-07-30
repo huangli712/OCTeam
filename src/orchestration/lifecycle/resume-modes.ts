@@ -304,20 +304,22 @@ export async function resumeRouteMode(
             const router = team.members.find(
                 (m) => m.name === task.routerMember && !m.isMaster,
             );
-            if (router?.sessionId) {
-                const prompt = buildRouterPrompt(
-                    team.teamName,
-                    task.task ?? "",
-                    task.routeBranches ?? [],
-                );
-                await dispatchToMember(
-                    ctx,
-                    router,
-                    prompt,
-                    router.worktreePath ?? ctx.directory,
-                    team,
-                );
+            if (!router?.sessionId || router.status === "errored") {
+                await finishRun(ctx, team, "route_resume_missing_router", "failed");
+                return;
             }
+            const prompt = buildRouterPrompt(
+                team.teamName,
+                task.task ?? "",
+                task.routeBranches ?? [],
+            );
+            await dispatchToMember(
+                ctx,
+                router,
+                prompt,
+                router.worktreePath ?? ctx.directory,
+                team,
+            );
         }
         return;
     }
@@ -361,15 +363,17 @@ export async function resumeArbitrateMode(
         const arbiter = team.members.find(
             (m) => m.name === task.arbiterMember && !m.isMaster,
         );
-        if (arbiter) {
-            await dispatchToMember(
-                ctx,
-                arbiter,
-                buildArbiterPrompt(task),
-                arbiter.worktreePath ?? ctx.directory,
-                team,
-            );
+        if (!arbiter?.sessionId || arbiter.status === "errored") {
+            await finishRun(ctx, team, "arbitrate_resume_missing_arbiter", "failed");
+            return;
         }
+        await dispatchToMember(
+            ctx,
+            arbiter,
+            buildArbiterPrompt(task),
+            arbiter.worktreePath ?? ctx.directory,
+            team,
+        );
     }
 }
 
@@ -417,28 +421,34 @@ export async function resumeTollgateMode(
     }
     const phase = task.tollgatePhase ?? "produce";
     if (phase === "verify") {
+        const verifier = team.members.find(
+            (m) => m.name === stage.verifier && !m.isMaster,
+        );
+        if (!verifier) {
+            await finishRun(ctx, team, "tollgate_resume_missing_verifier", "failed");
+            return;
+        }
         // Verifier output already captured -> re-run the verdict parse; else re-dispatch the verifier.
         if (task.responses[stage.verifier]) {
-            const verifier = team.members.find(
-                (m) => m.name === stage.verifier && !m.isMaster,
-            );
-            if (verifier) await handleTollgateIdle(ctx, team, verifier);
+            await handleTollgateIdle(ctx, team, verifier);
         } else {
             await startVerification(ctx, team, stage);
         }
-    } else if (phase === "escalate" && task.escalateTo) {
-        const h = team.members.find(
-            (m) => m.name === task.escalateTo && !m.isMaster,
-        );
-        if (h) {
-            await dispatchToMember(
-                ctx,
-                h,
-                "Resume: fix the verifier/reference, then report done.",
-                h.worktreePath ?? ctx.directory,
-                team,
-            );
+    } else if (phase === "escalate") {
+        const handler = task.escalateTo
+            ? team.members.find((m) => m.name === task.escalateTo && !m.isMaster)
+            : undefined;
+        if (!handler?.sessionId || handler.status === "errored") {
+            await finishRun(ctx, team, "tollgate_resume_missing_escalation_actor", "failed");
+            return;
         }
+        await dispatchToMember(
+            ctx,
+            handler,
+            "Resume: fix the verifier/reference, then report done.",
+            handler.worktreePath ?? ctx.directory,
+            team,
+        );
     } else {
         // produce phase: re-dispatch the current gate's producer.
         await advanceToGatedStage(ctx, team, stage);
@@ -580,7 +590,10 @@ export async function resumeArenaMode(
             await finishRun(ctx, team, "arena_failed:evaluator_error", "failed");
             return;
         }
-        if (evaluator === undefined) return;
+        if (evaluator?.sessionId === undefined) {
+            await finishRun(ctx, team, "arena_resume_missing_evaluator", "failed");
+            return;
+        }
         if (
             evaluator.status !== "running" &&
             !task.responses[task.evaluatorMember]

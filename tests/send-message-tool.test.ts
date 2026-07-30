@@ -15,7 +15,9 @@ import { teamSendMessageTool } from "../src/tools/exchange/messaging.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
 import { countUnreadMessages, writeMailboxMessage } from "../src/messaging/mailbox.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
+import { inboxPath } from "../src/state/paths.js"
 import type { Message } from "../src/core/types.js"
+import { mkdir } from "node:fs/promises"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
@@ -153,6 +155,35 @@ describe("teamSendMessageTool.execute: broadcast is master-only", () => {
         expect(result).toContain("2 members")
         expect(await countUnreadMessages(dir, "alice")).toBe(1)
         expect(await countUnreadMessages(dir, "bob")).toBe(1)
+    })
+
+    test("partial broadcast refunds quota only for undelivered recipients", async () => {
+        const root = tmpRoot("sm-bcast-partial")
+        const masterSid = "ses_sm_bcp_master"
+        tracked.push(masterSid)
+        const task = makeActiveTask("cooperative")
+        const dir = await setup({
+            root,
+            masterSid,
+            members: [
+                makeMember("alice", "ses_sm_bcp_a"),
+                makeMember("bob", "ses_sm_bcp_b"),
+            ],
+            activeTask: task,
+        })
+        await mkdir(inboxPath(dir, "bob"), { recursive: true })
+
+        const delivery = teamSendMessageTool(makeCtx({ storageRoot: root, promptAsync: async () => ({}) })).execute(
+            { team_id: TEAM, to: "*", body: "partially delivered" },
+            makeToolContext(masterSid),
+        )
+
+        const deliveryError = await delivery.catch(error => error)
+        expect(deliveryError).toBeInstanceOf(Error)
+        expect(String(deliveryError)).toContain("delivery failed for: bob")
+        expect(await countUnreadMessages(dir, "alice")).toBe(1)
+        const reloaded = await loadTeamState(root, TEAM, masterSid)
+        expect(reloaded.activeTask?.messagesSent).toBe(1)
     })
 })
 

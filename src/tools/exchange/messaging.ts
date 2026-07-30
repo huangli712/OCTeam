@@ -58,7 +58,9 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
 
             let team
             try {
-                team = await loadTeamState(ctx.storageRoot, args.team_id, sender.leadSessionId)
+                // M36 fix: use sender.storageRoot (authoritative) instead of
+                // ctx.storageRoot so cross-scope teams resolve correctly.
+                team = await loadTeamState(sender.storageRoot, args.team_id, sender.leadSessionId)
             } catch (err) {
                 if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })

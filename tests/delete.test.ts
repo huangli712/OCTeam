@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process"
-import { writeFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { promisify } from "node:util"
 
@@ -136,5 +136,51 @@ describe("team_delete git branch cleanup", () => {
             { cwd: repoDir },
         )
         expect(after.stdout.trim()).toBe("")
+    })
+
+    test("worktree cleanup starts only after the canonical team directory is quarantined", async () => {
+        const storageRoot = tmpRoot("quarantine-order-store")
+        const projectDir = tmpRoot("quarantine-order-project")
+        const binDir = tmpRoot("quarantine-order-bin")
+        const sid = "ses_quarantine_order"
+        const dir = teamDir(storageRoot, "alpha", sid)
+        const wtPath = join(worktreesDir(dir), "alice")
+        const logPath = join(binDir, "git.log")
+        const gitPath = join(binDir, "git")
+        const alice = { ...makeMember("alice"), worktreePath: wtPath }
+        await initTeamState(storageRoot, makeState("alpha", sid, [alice]), sid)
+        await mkdir(wtPath, { recursive: true })
+        await writeFile(gitPath, `#!/bin/sh
+if [ -e "$OCTEAM_S8_CANONICAL" ]; then
+    printf 'present\\n'
+else
+    printf 'absent\\n'
+fi >> "$OCTEAM_S8_LOG"
+exit 0
+`, { mode: 0o755 })
+
+        const previousPath = process.env.PATH
+        process.env.PATH = `${binDir}:${previousPath ?? ""}`
+        process.env.OCTEAM_S8_CANONICAL = dir
+        process.env.OCTEAM_S8_LOG = logPath
+        tracked.push(sid)
+        let result: string
+        try {
+            const ctx = { storageRoot, directory: projectDir, scope: "project" } as unknown as PluginContext
+            result = await teamDeleteTool(ctx).execute(
+                { team_id: "alpha", force: true },
+                makeToolContext(sid),
+            )
+        } finally {
+            if (previousPath === undefined) delete process.env.PATH
+            else process.env.PATH = previousPath
+            delete process.env.OCTEAM_S8_CANONICAL
+            delete process.env.OCTEAM_S8_LOG
+        }
+
+        expect(result).toContain("deleted")
+        const observations = (await readFile(logPath, "utf8")).trim().split("\n")
+        expect(observations.length).toBeGreaterThan(0)
+        expect(observations.every(observation => observation === "absent")).toBe(true)
     })
 })

@@ -102,6 +102,55 @@ describe("processIdle: role-setup barrier (Step 1.5)", () => {
     })
 })
 
+describe("processIdle: token accounting high-water mark", () => {
+    const tracked: string[] = []
+    afterEach(() => {
+        for (const sid of tracked.splice(0)) unindexSession(sid)
+    })
+
+    test("compacted session history cannot reduce the confirmed run token count", async () => {
+        const root = tmpRoot("pid-token-high-water")
+        const sid = "ses_pid_token_high_water"
+        const aliceSid = "ses_pid_token_high_water_alice"
+        let visibleTokens = 1_500
+        const messages = mock(async () => ({
+            data: [{
+                info: {
+                    role: "assistant",
+                    tokens: { input: visibleTokens, output: 0, reasoning: 0 },
+                },
+                parts: [],
+            }],
+        }))
+        const ctx = makeCtx({ storageRoot: root, messages })
+        const team = await makeTeam(root, sid, tracked, [
+            makeMember("alice", aliceSid),
+            makeMember("bob", "ses_pid_token_high_water_bob"),
+        ])
+        await setActiveTask(root, sid, {
+            type: "pipeline",
+            tokenBaselineByMember: { alice: 1_000 },
+            stages: [{ member: "bob", task: "next", completed: false }],
+        })
+        const alice = team.members.find(member => member.name === "alice")!
+        alice.status = "running"
+
+        await team.mutex.runExclusive(() => processIdle(ctx, team, alice, aliceSid))
+        expect(team.activeTask!.tokensByMember.alice).toBe(500)
+        expect(team.activeTask!.tokensUsed).toBe(500)
+
+        visibleTokens = 800
+        await team.mutex.runExclusive(() => processIdle(ctx, team, alice, aliceSid))
+        expect(team.activeTask!.tokensByMember.alice).toBe(500)
+        expect(team.activeTask!.tokensUsed).toBe(500)
+
+        visibleTokens = 1_800
+        await team.mutex.runExclusive(() => processIdle(ctx, team, alice, aliceSid))
+        expect(team.activeTask!.tokensByMember.alice).toBe(800)
+        expect(team.activeTask!.tokensUsed).toBe(800)
+    })
+})
+
 describe("processIdle: unread-message wake hint (Step 5)", () => {
     const tracked: string[] = []
     afterEach(() => {

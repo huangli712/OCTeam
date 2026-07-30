@@ -12,9 +12,10 @@ import type { Team } from "../../state/store.js"
  * Check readiness for one orchestration phase without waiting.
  *
  * In the default mode, idle members are ready. When requireDoneAck is enabled
- * on the active task, members must explicitly call team_done. Errored members
- * are terminal in both modes so failure-isolation policies can advance with the
- * surviving participants. Missing members remain not-ready defensively.
+ * on the active task, members must explicitly call team_done and finish their
+ * active turn. Errored members are terminal in both modes so failure-isolation
+ * policies can advance with the surviving participants. Missing members remain
+ * not-ready defensively.
  *
  * The caller holds the team mutex, so a successful transition cannot fire twice
  * for the same phase.
@@ -30,7 +31,7 @@ export async function maybeAdvanceBarrier(
         if (!member) return false
         if (member.status === "errored") return true
         return requireDoneAck
-            ? member.declaredDone === true
+            ? member.declaredDone === true && member.status === "idle"
             : member.status === "idle"
     })
     if (allReady) {

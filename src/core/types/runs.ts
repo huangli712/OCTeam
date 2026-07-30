@@ -17,7 +17,14 @@ import type {
     SignoffPolicy,
 } from "./orchestration.js"
 
-import type { WorkflowStepKind, Verdict, WorkflowIssue, WorkflowFanoutMetadata, WorkflowJoinMetadata, WorkflowBranchMetadata } from "./workflow.js"
+import type {
+    WorkflowBranchMetadata,
+    WorkflowFanoutMetadata,
+    WorkflowIssue,
+    WorkflowJoinMetadata,
+    WorkflowStepKind,
+    Verdict,
+} from "./workflow.js"
 import type { TaskStatus } from "./task.js"
 
 /** Per-branch status within a workflow fanout. */
@@ -34,8 +41,17 @@ export type WorkflowRunStep = {
     // task
     member?: string
     dispatchedActor?: string
+    fallbackMember?: string
+    retryOn?: unknown
+    maxTaskRetries?: number
+    taskAttempts?: number
     // gate
     verifier?: string
+    verifiers?: readonly string[]
+    fallbackVerifier?: string
+    ensemblePolicy?: "majority" | "quorum" | "unanimous"
+    ensembleQuorum?: number
+    ensembleResults?: Record<string, unknown>
     targetStep?: number
     targetSteps?: number[]
     verdict?: Verdict
@@ -45,6 +61,9 @@ export type WorkflowRunStep = {
     attempts?: number
     onInvalid?: string
     invalidAttempts?: number
+    onMalformed?: "fail" | "retry_verifier" | "skip" | "escalate"
+    maxMalformedRetries?: number
+    malformedAttempts?: number
     onFail?: string
     maxRetries?: number
     maxInvalidRetries?: number
@@ -53,6 +72,9 @@ export type WorkflowRunStep = {
     onInvalidGoto?: number
     maxJumps?: number
     criteria?: string
+    where?: unknown
+    loop?: { maxIterations: number; onExhaust?: "fail" | "continue" }
+    loopIterations?: number
     jumpCount?: number
     // fanout / join
     fanout?: WorkflowFanoutMetadata
@@ -61,6 +83,7 @@ export type WorkflowRunStep = {
     timeoutMs?: number
     onTimeout?: string
     maxTimeoutRetries?: number
+    timeoutAttempts?: number
     output?: string
     outputBytes?: number
     joinedOutputBytes?: number
@@ -73,6 +96,7 @@ export type WorkflowRunStep = {
     approvalBefore?: boolean
     approvalAfter?: boolean
     maxOutputBytes?: number
+    humanApproval?: boolean
     completed: boolean
     skipped?: boolean
     branchStatuses?: Record<string, WorkflowBranchStatus>

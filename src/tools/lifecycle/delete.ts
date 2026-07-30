@@ -9,7 +9,14 @@ import { isEnoent } from "../../core/utils.js"
 import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
-import { clearActiveTask, deleteTeamStorage, invalidateTeam, loadTeamState, type Team } from "../../state/store.js"
+import {
+    clearActiveTask,
+    deleteQuarantinedTeamStorage,
+    invalidateTeam,
+    loadTeamState,
+    quarantineTeamStorage,
+    type Team,
+} from "../../state/store.js"
 import { unindexMasterTeam, unindexSession, isIndexedMasterOf } from "../../state/resolve.js"
 import { clearWakeHint } from "../../messaging/wake-hint.js"
 import { abortAndResetMembers } from "../support.js"
@@ -70,6 +77,18 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             const worktreeErrors: string[] = []
             let staleBusy = false
             let staleSpawning = false
+            let quarantineDirectory: string | undefined
+            const unindexDeletedTeam = () => {
+                for (const member of team.members) {
+                    if (member.sessionId) {
+                        unindexSession(member.sessionId)
+                        clearWakeHint(member.sessionId)
+                    }
+                }
+                unindexMasterTeam(team.leadSessionId, team.directory)
+                clearWakeHint(team.leadSessionId)
+                invalidateTeam(team.directory)
+            }
             try {
                 await team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
@@ -95,6 +114,14 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 team.deleted = true  // tombstone: prevent any racing handler from resurrecting this dir
+                const quarantined = await quarantineTeamStorage(
+                    ctx.storageRoot,
+                    args.team_id,
+                    pathLeadSessionId,
+                    team.directory,
+                    team.teamRunId,
+                )
+                quarantineDirectory = quarantined
                 // Force-deleting a busy team: abort running members and clear the
                 // active task in memory FIRST (mirrors team_cancel) so any handler
                 // that acquires the mutex after us sees a consistent, finished state
@@ -108,12 +135,6 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     clearActiveTask(team)
                     team.status = "idle"
                 }
-                // Clean up worktrees BEFORE deleteTeamStorage (git needs the
-                // files present). Member sessions are un-indexed ONLY after
-                // deleteTeamStorage succeeds (H58: pre-fix code ran unindex
-                // before the storage delete, so a failure left members
-                // un-indexed but the team still on disk — "restored to usable
-                // state" was a lie since sessions were gone).
                 for (const m of team.members) {
                     try {
                         await destroyWorktree(
@@ -127,33 +148,8 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                         worktreeErrors.push(`${m.name}: ${err instanceof Error ? err.message : String(err)}`)
                     }
                 }
-                // HIGH-A: order cleanup so an fs.rm failure leaves indexes intact.
-                // Pre-fix code ran unindexMasterTeam + clearWakeHint BEFORE
-                // deleteTeamStorage, so a storage-delete failure left the
-                // team un-indexed in memory but still present on disk. On
-                // restart rebuildSessionIndex would reindex from disk, but in
-                // the live process the master could not see this team until
-                // restart. The fix moves deleteTeamStorage first; only on
-                // successful removal do we unindex.
-                try {
-                    await deleteTeamStorage(ctx.storageRoot, args.team_id, pathLeadSessionId)
-                } catch (err) {
-                    // Re-raise to the outer catch (H-24 tombstone restore).
-                    throw err
-                }
-                    // H58: unindex member sessions + master team ONLY after
-                    // deleteTeamStorage succeeds. Worktree destruction above
-                    // is best-effort (errors collected); if it fails the team
-                    // is still deleted but worktree branches may linger.
-                    for (const m of team.members) {
-                        if (m.sessionId) {
-                            unindexSession(m.sessionId)
-                            clearWakeHint(m.sessionId)
-                        }
-                    }
-                    unindexMasterTeam(team.leadSessionId, team.directory)
-                    clearWakeHint(team.leadSessionId)
-                    invalidateTeam(team.directory)
+                await deleteQuarantinedTeamStorage(ctx.storageRoot, quarantined)
+                unindexDeletedTeam()
                 })
                 if (staleSpawning) {
                     return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). Retry in a few seconds.`
@@ -167,24 +163,14 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     : ""
                 return `Team "${args.team_id}" deleted${force ? " (forced)" : ""}.${wtWarning}`
             } catch (err: unknown) {
-                // deleteTeamStorage failed (non-ENOENT fs.rm error). The on-disk
-                // state still exists — surface the failure so the caller knows
-                // the deletion was incomplete and the orphaned state may
-                // resurrect on restart.
-                //
-                // H-24: restore the tombstone so the in-memory team object is
-                // still usable. Pre-fix code left team.deleted=true, which made
-                // the team permanently invisible to all handlers (processIdle,
-                // saveTeamState, etc.) even though the directory still existed
-                // on disk. With the tombstone cleared, the team can be retried
-                // on the next team_delete call, and on plugin restart
-                // rebuildSessionIndex re-indexes it from the surviving disk state.
-                team.deleted = false
                 const msg = err instanceof Error ? err.message : String(err)
-                invalidateTeam(team.directory)
-return `Error: failed to fully delete team "${args.team_id}" storage: ${msg}. `
-+ `The team directory may still exist on disk; manual cleanup may be required. `
-+ `The team has been restored to a usable state.`
+                if (!quarantineDirectory) {
+                    return `Error: failed to quarantine team "${args.team_id}": ${msg}. `
+                        + `No worktrees or branches were modified; the team remains tombstoned and can be retried.`
+                }
+                unindexDeletedTeam()
+                return `Error: team "${args.team_id}" was quarantined but cleanup failed: ${msg}. `
+                    + `The canonical team directory is gone; manual quarantine cleanup may be required.`
             }
         },
     })

@@ -13,7 +13,7 @@ import type { PluginContext } from "./core/context.js"
 import type { Team } from "./state/store.js"
 import { activeTeams, loadTeamState, saveTeamState } from "./state/store.js"
 import { resolveMasterTeams, resolveTeamMember, isMasterSession } from "./state/resolve.js"
-import { ackMessages, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
+import { AckMessagesError, ackMessages, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
 import { formatMailboxInjection } from "./messaging/format.js"
 import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent, maybeEscalateRetry } from "./orchestration/lifecycle/status.js"
@@ -450,21 +450,29 @@ export function createTransformHook(
                 if (targetIdx < 0) return // nothing to attach to; leave reserved for retry (do NOT ack)
                 const target = messages[targetIdx]
                 const parts = (target.parts = target.parts ?? [])
-                parts.push({ type: "text", text: injection, synthetic: true })
+                const injectedPart = { type: "text" as const, text: injection, synthetic: true }
+                parts.push(injectedPart)
 
-                // H-5/M-hooks: ACK the FULL reserved set INSIDE the injection
-                // block so an ack failure rolls back the injected part. Pre-fix
-                // code acked AFTER the injection block at line 460 unconditionally;
-                // an ack throw (caught at the outer catch) left the injection in
-                // output.messages while reserved messages stayed un-acked, so
-                // releaseStaleReservations re-queued them → duplicate delivery
-                // violating the exactly-once contract.
+                // H-5/M-hooks: ACK the full reserved set inside the injection
+                // block. If the batch partially commits, retain only messages
+                // whose processed records were written; otherwise roll back the
+                // entire injected part so unacknowledged messages can be retried.
                 try {
                     await ackMessages(member.directory, member.name, unread)
                 } catch (ackErr) {
-                    // Rollback the injected part so the next poll re-delivers
-                    // cleanly (no partial injection without ack).
-                    parts.pop()
+                    const acknowledgedIds = ackErr instanceof AckMessagesError
+                        ? new Set(ackErr.acknowledgedMessages.map(message => message.id))
+                        : new Set<string>()
+                    const acknowledgedInjection = toInject.filter(message => acknowledgedIds.has(message.id))
+                    if (acknowledgedInjection.length === 0) {
+                        parts.pop()
+                    } else {
+                        injectedPart.text = formatMailboxInjection(
+                            acknowledgedInjection,
+                            activeRunIdForAuth,
+                            member.directory,
+                        )
+                    }
                     throw ackErr
                 }
             } else {
@@ -569,19 +577,48 @@ export async function sweepTeamOnce(
             }
         }
         if (!team.activeTask) return
-        // I-3/H-2: missed-idle reconciliation. Re-check each member's status
-        // INSIDE the loop (not from the stale statusMap snapshot) so a
-        // processIdle dispatch that synchronously changes another member's
-        // status to running is respected. Pre-fix code used the snapshot
-        // entry captured before the loop, so a just-dispatched member could
-        // be re-processed as idle, corrupting the state machine.
-        for (const member of team.members) {
-            if (!member.sessionId || member.status !== "running") continue
-            // Re-read the live status entry (statusMap may be stale after a
-            // prior processIdle dispatched the next member).
+        // I-3/H-2: use the sweep-wide snapshot only to identify candidates.
+        // Every candidate carries its turn generation, then gets a fresh SDK
+        // status read and a final live-team-state check before processIdle.
+        const idleCandidates = team.members.flatMap(member => {
+            if (!member.sessionId || member.status !== "running") return []
             const entry = extractSessionStatusEntry(statusMap, member.sessionId)
-            if (entry?.type === "idle" && member.status === "running") {
-                await processIdle(ctx, team, member, member.sessionId)
+            return entry?.type === "idle"
+                ? [{ name: member.name, sessionId: member.sessionId, turnCount: member.turnCount }]
+                : []
+        })
+        for (const candidate of idleCandidates) {
+            const beforeStatusRead = team.members.find(member => member.name === candidate.name)
+            if (
+                !beforeStatusRead
+                || beforeStatusRead.sessionId !== candidate.sessionId
+                || beforeStatusRead.status !== "running"
+                || beforeStatusRead.turnCount !== candidate.turnCount
+            ) {
+                continue
+            }
+            let liveStatusMap: unknown
+            try {
+                liveStatusMap = (await ctx.client.session.status({})).data
+            } catch (err) {
+                logSwallowed(ctx, "sweepTeamOnce: live session status read failed", err, {
+                    team: team.teamName,
+                    member: candidate.name,
+                })
+                continue
+            }
+            const liveMember = team.members.find(member => member.name === candidate.name)
+            if (
+                !liveMember
+                || liveMember.sessionId !== candidate.sessionId
+                || liveMember.status !== "running"
+                || liveMember.turnCount !== candidate.turnCount
+            ) {
+                continue
+            }
+            const liveEntry = extractSessionStatusEntry(liveStatusMap, candidate.sessionId)
+            if (liveEntry?.type === "idle") {
+                await processIdle(ctx, team, liveMember, candidate.sessionId)
             }
         }
         await persistTeamState(ctx, team, "persist team state failed (sweep)", { team: team.teamName ?? "(unknown)" })

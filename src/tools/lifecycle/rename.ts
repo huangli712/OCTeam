@@ -11,7 +11,7 @@ import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
 import {
-    invalidateTeam, listTeamNames, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec,
+    listTeamNames, loadTeamState, readTeamSpec, rekeyTeamRegistry, saveTeamState, writeTeamSpec,
 } from "../../state/store.js"
 import { indexMasterTeam, isIndexedMasterOf, setActiveTeam, unindexMasterTeam } from "../../state/resolve.js"
 import { teamDir } from "../../state/paths.js"
@@ -133,7 +133,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // Only after persistence succeeds: update registry, master
                     // index, and active-team pointer. These are in-memory only
                     // and cannot fail in a way that requires disk rollback.
-                    invalidateTeam(oldDir)
+                    rekeyTeamRegistry(oldDir, newDir, team)
                     unindexMasterTeam(context.sessionID, oldDir)
                     indexMasterTeam(context.sessionID, args.new_name, pathLeadSessionId, ctx.storageRoot, newDir)
                     if (wasActive) {

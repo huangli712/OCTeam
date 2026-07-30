@@ -1553,6 +1553,32 @@ describe("arena resume", () => {
         expect(team.activeTask).toBeDefined()
     })
 
+    test("evaluate phase, evaluator missing from the team -> resumed run fails", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeArenaCtx("/app", calls)
+        const task = makeArenaTask({
+            arenaPhase: "evaluate",
+            evaluatorMember: "ghost",
+            survivingCandidates: ["alice", "bob"],
+            responses: {},
+        })
+        const team = makeArenaHandlerTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", worktreePath: "/app/wt/alice" },
+                { name: "bob", sessionId: "ses_bob", worktreePath: "/app/wt/bob" },
+            ],
+        })
+
+        await resumeDispatch(ctx, team, task)
+
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        expect(calls.some(call => call.sessionId === "ghost")).toBe(false)
+        const record = await readRunRecord(team.directory, task.runId!)
+        expect(record?.reason).toBe("arena_resume_missing_evaluator")
+    })
+
     test("evaluate phase, bad evaluator response present -> handleArenaIdle consumes it once, deletes it, re-dispatches, evalAttempts===1", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeArenaCtx("/app", calls)

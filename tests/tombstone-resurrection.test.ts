@@ -26,8 +26,15 @@ import { afterEach, describe, expect, mock, test } from "bun:test"
 
 import type { ActiveTask, MemberState } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
-import { runEventsPath, runsDir, runDir, runMemberOutputPath, statePath } from "../src/state/paths.js"
-import { initTeamState, invalidateTeam, loadTeamState, saveTeamState } from "../src/state/store.js"
+import { deletedMarkerPath, runEventsPath, runsDir, runDir, runMemberOutputPath, statePath } from "../src/state/paths.js"
+import {
+    deleteQuarantinedTeamStorage,
+    initTeamState,
+    invalidateTeam,
+    loadTeamState,
+    quarantineTeamStorage,
+    saveTeamState,
+} from "../src/state/store.js"
 import { teamDir } from "../src/state/paths.js"
 import { teamDeleteTool } from "../src/tools/lifecycle/delete.js"
 import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
@@ -289,5 +296,39 @@ describe("C1 T6: tombstone does not survive a registry rebuild (self-heal)", () 
         // Fresh mutex/directory, same identity fields.
         expect(reloaded.teamName).toBe("alpha")
         expect(reloaded.leadSessionId).toBe(sid)
+    })
+})
+
+describe("S3: deletion markers are scoped to a team run", () => {
+    test("a replacement team removes the previous run's marker and persists its first save", async () => {
+        const root = tmpRoot("s3-marker-generation")
+        roots.push(root)
+        const sid = "ses_s3_marker_generation"
+        const originalState = makeState("alpha", sid, [makeMember("alice")])
+        const original = await initTeamState(root, originalState, sid)
+        const dir = original.directory
+        const marker = deletedMarkerPath(dir)
+
+        const quarantineDirectory = await quarantineTeamStorage(
+            root,
+            "alpha",
+            sid,
+            dir,
+            original.teamRunId,
+        )
+        expect(await readFile(marker, "utf8")).toBe(original.teamRunId)
+        await deleteQuarantinedTeamStorage(root, quarantineDirectory)
+        invalidateTeam(dir)
+
+        const replacementState = makeState("alpha", sid, [makeMember("alice")])
+        replacementState.teamRunId = `${original.teamRunId}-replacement`
+        const replacement = await initTeamState(root, replacementState, sid)
+        replacement.status = "idle"
+        await saveTeamState(replacement)
+
+        expect(replacement.deleted).toBeUndefined()
+        expect(await absent(marker)).toBe(true)
+        const persisted = JSON.parse(await readFile(statePath(dir), "utf8")) as Record<string, unknown>
+        expect(persisted.status).toBe("idle")
     })
 })

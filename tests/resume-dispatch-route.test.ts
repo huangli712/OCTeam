@@ -12,6 +12,7 @@ import {
 } from "../src/state/store.js";
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js";
 import { resumeDispatch } from "../src/orchestration/lifecycle/resume.js";
+import { readRunRecord } from "../src/orchestration/records/runs.js";
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTask, tmpRoot } from './helpers.js';
 
 
@@ -75,6 +76,33 @@ describe("resumeDispatch: route Phase A with NO captured router output", () => {
         expect(dispatched.map((d) => d.id)).toEqual(["ses_router"]);
         expect(dispatched[0].text).toContain("classify this ticket");
         expect(team.activeTask).toBeDefined();
+    });
+
+    test("missing router fails the resumed run instead of leaving it busy", async () => {
+        const root = tmpRoot("rdb-route-missing-router");
+        const sid = "ses_rdb_route_missing_router";
+        tracked.push(sid);
+        const task = makeTask({
+            type: "route",
+            routerMember: "router",
+            routeStage: false,
+            task: "classify this ticket",
+            responses: {},
+        });
+        const team = await setup(root, sid, task, [makeMember("alice", "ses_alice")]);
+        const calls: string[] = [];
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(makeCtx({ storageRoot: root, promptAsync: async req => {
+                calls.push(req.path.id);
+            } }), team, task);
+        });
+
+        expect(team.status).toBe("failed");
+        expect(team.activeTask).toBeUndefined();
+        expect(calls).toEqual([sid]);
+        const record = await readRunRecord(team.directory, task.runId!);
+        expect(record?.reason).toBe("route_resume_missing_router");
     });
 });
 

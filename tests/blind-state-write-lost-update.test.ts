@@ -39,7 +39,7 @@ import type { TeamState } from "../src/core/types.js"
 import type { Team } from "../src/state/store.js"
 import { initTeamState, saveTeamState } from "../src/state/store.js"
 import { statePath, teamDir } from "../src/state/paths.js"
-import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
+import { cleanupTmpRoots, makeMember, makeState, makeTask, tmpRoot } from "./helpers.js"
 
 afterAll(cleanupTmpRoots)
 
@@ -111,5 +111,50 @@ describe("blind state write lost update (finding: blind-state-write-lost-update)
         const final = await readDiskState(dir)
         expect(final.members.find(m => m.name === "alice")!.status).toBe("errored")
         expect(final.members.find(m => m.name === "bob")!.status).toBe("running")
+    })
+
+    test("merged removals are synchronized back into the stale live object", async () => {
+        const root = tmpRoot("live-sync-removals")
+        const sid = "ses_live_sync_removals"
+        const dir = teamDir(root, "alpha", sid)
+        const seedState = makeState("alpha", sid, [makeMember("alice"), makeMember("bob")])
+        seedState.lastInterruptedTask = makeTask({ runId: "run-checkpoint" })
+        seedState.activeTask = makeTask({
+            runId: "run-active",
+            responses: { alice: "kept", bob: "removed" },
+        })
+        await initTeamState(root, seedState, sid)
+
+        const teamA = makeStandaloneTeam(dir, seedState)
+        const teamB = makeStandaloneTeam(dir, seedState)
+        teamA.lastInterruptedTask = undefined
+        teamA.members = teamA.members.filter(member => member.name !== "bob")
+        delete teamA.activeTask!.responses.bob
+        await saveTeamState(teamA)
+
+        await saveTeamState(teamB)
+
+        expect(teamB.lastInterruptedTask).toBeUndefined()
+        expect(teamB.members.map(member => member.name)).toEqual(["alice"])
+        expect(teamB.activeTask!.responses).toEqual({ alice: "kept" })
+    })
+
+    test("concurrent messagesSent increments are merged as ancestor deltas", async () => {
+        const root = tmpRoot("messages-sent-delta")
+        const sid = "ses_messages_sent_delta"
+        const dir = teamDir(root, "alpha", sid)
+        const seedState = makeState("alpha", sid)
+        seedState.activeTask = makeTask({ runId: "run-messages", messagesSent: 10 })
+        await initTeamState(root, seedState, sid)
+
+        const teamA = makeStandaloneTeam(dir, seedState)
+        const teamB = makeStandaloneTeam(dir, seedState)
+        teamA.activeTask!.messagesSent += 1
+        await saveTeamState(teamA)
+        teamB.activeTask!.messagesSent += 1
+        await saveTeamState(teamB)
+
+        const persisted = await readDiskState(dir)
+        expect(persisted.activeTask!.messagesSent).toBe(12)
     })
 })

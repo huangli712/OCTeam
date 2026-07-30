@@ -105,6 +105,27 @@ describe("team_fix_workflow", () => {
         expect(calls).toEqual([])
     })
 
+    test("rejects an invalid workflow checkpoint before redispatching", async () => {
+        const root = tmpRoot("fix-wf-invalid-checkpoint")
+        const masterSid = "ses_fix_wf_invalid_master"
+        const aliceSid = "ses_fix_wf_invalid_alice"
+        tracked.push(masterSid, aliceSid)
+        const task = makeWorkflowTask({
+            activeStepIndices: [0, 0],
+            steps: [{ kind: "task", member: "alice", task: "must not dispatch", completed: false }],
+        })
+        await setupTeam(root, masterSid, task, [makeMember("alice", aliceSid)])
+        const calls: DispatchCall[] = []
+
+        const result = await teamFixWorkflowTool(makeCtx({ storageRoot: root, calls })).execute(
+            { team_id: "alpha", op: "redispatch", step: 1 },
+            makeToolContext(masterSid),
+        )
+
+        expect(result).toContain("workflow invariant violation")
+        expect(calls).toEqual([])
+    })
+
     test("redispatches an active fanout branch workflow step without touching sibling branches", async () => {
         // Given
         const root = tmpRoot("fix-wf-redispatch-branch")

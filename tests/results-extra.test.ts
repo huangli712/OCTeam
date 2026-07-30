@@ -322,7 +322,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
                     },
                     { index: 1, step: 2, kind: "task", member: "alice", completed: true, branch: { fanoutIndex: 0, branchId: "api", branchIndex: 0, joinIndex: 3 } },
                     { index: 2, step: 3, kind: "task", member: "carol", completed: true, branch: { fanoutIndex: 0, branchId: "docs", branchIndex: 1, joinIndex: 3 } },
-                    { index: 3, step: 4, kind: "join", completed: true, join: { fanoutIndex: 0, branchTailIndices: [1, 2], maxErrored: 0, survivorBranchIds: ["api", "docs"] } },
+                    { index: 3, step: 4, kind: "join", completed: true, join: { fanoutIndex: 0, branchTailIndices: [1, 2], maxErrored: 0, joinPolicy: "reduce", survivorBranchIds: ["api", "docs"] } },
                     {
                         index: 4,
                         step: 5,
@@ -339,7 +339,7 @@ describe("team_result_get: workflow branch tree rendering", () => {
                     },
                     { index: 5, step: 6, kind: "task", member: "alice", completed: true, branch: { fanoutIndex: 4, branchId: "linux", branchIndex: 0, joinIndex: 7 } },
                     { index: 6, step: 7, kind: "task", member: "carol", completed: true, branch: { fanoutIndex: 4, branchId: "mac", branchIndex: 1, joinIndex: 7 } },
-                    { index: 7, step: 8, kind: "join", completed: true, join: { fanoutIndex: 4, branchTailIndices: [5, 6], maxErrored: 0, survivorBranchIds: ["linux", "mac"] } },
+                    { index: 7, step: 8, kind: "join", completed: true, join: { fanoutIndex: 4, branchTailIndices: [5, 6], maxErrored: 0, joinPolicy: "quorum", quorum: 0.5, survivorBranchIds: ["linux", "mac"] } },
                 ],
             },
         } as RunRecord)

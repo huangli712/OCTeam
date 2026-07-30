@@ -276,9 +276,10 @@ describe("team_rename", () => {
     test("rename live team → success, state + spec + directory updated", async () => {
         const root = tmpRoot("rn-ok")
         const sid = "ses_rn_ok"
-        await setupLiveTeam(root, sid, "old-name", [
+        const { team } = await setupLiveTeam(root, sid, "old-name", [
             { name: "alice", role: "coder", prompt: "code" },
         ])
+        const originalMutex = team.mutex
 
         const tool = teamRenameTool(makeCtx({ storageRoot: root }))
         const result = await tool.execute(
@@ -294,6 +295,8 @@ describe("team_rename", () => {
         ).rejects.toThrow()
         // New name should be loadable.
         const reloaded = await loadTeamState(root, "new-name", sid)
+        expect(reloaded).toBe(team)
+        expect(reloaded.mutex).toBe(originalMutex)
         expect(reloaded.teamName).toBe("new-name")
 
         invalidateTeam(reloaded.directory)

@@ -4,7 +4,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { getExpectedMember } from "../src/orchestration/lifecycle/idle.js"
 import { handleArbitrateIdle } from "../src/orchestration/modes/arbitrate.js"
 import { parseArbitrationDecision } from "../src/orchestration/protocol/decisions.js"
-import { readRunEvents } from "../src/orchestration/records/runs.js"
+import { readRunEvents, readRunRecord } from "../src/orchestration/records/runs.js"
 import { buildSummary } from "../src/orchestration/records/summary.js"
 import { teamArbitrateTool } from "../src/tools/modes/arbitrate.js"
 import { teamResumeTool } from "../src/tools/control/resume.js"
@@ -707,6 +707,31 @@ describe("team_resume: arbitrate case", () => {
         // Arbiter has no response -> re-dispatched; the ruling phase is preserved.
         expect(calls).toEqual(["ses_arbiter"])
         expect((team.activeTask as ArbitrateTask | undefined)?.arbitrationStage).toBe(true)
+    })
+
+    test("Phase B fails when the checkpoint arbiter is missing from the team", async () => {
+        const root = tmpRoot("arb-resume-b-missing")
+        const sid = "ses_arb_resume_b_missing"
+        tracked.push(sid)
+        const task = makeArbitrateTask({
+            arbiterMember: "ghost",
+            arbitrationStage: true,
+            responses: { alice: "ship it", bob: "wait" },
+        })
+        const team = await setupFailedTeam(root, sid, task, [
+            makeMember("alice", "ses_alice"),
+            makeMember("bob", "ses_bob"),
+        ])
+
+        await teamResumeTool(makeResumeCtx(root, async () => {})).execute(
+            { team_id: "alpha" },
+            makeToolContext(sid),
+        )
+
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
+        const record = await readRunRecord(team.directory, task.runId!)
+        expect(record?.reason).toBe("arbitrate_resume_missing_arbiter")
     })
 
     test("Phase B with a captured ruling re-runs handleArbitrateIdle to deliver", async () => {
