@@ -151,6 +151,13 @@ export async function resumeSignoffReduceStage(
         for (const m of reviewers) {
             // Skip reviewers who already have a recorded approval.
             if (task.signoffApprovals?.[m.name] !== undefined) continue;
+            // #16: also skip reviewers whose raw output was already captured
+            // (signoffRawOutputs) but not yet parsed into signoffApprovals.
+            // Pre-fix code only checked signoffApprovals, so a crash between
+            // capture and handleSignoffIdle would re-dispatch the reviewer,
+            // potentially getting a different verdict. Instead, re-process the
+            // already-captured output via handleSignoffIdle on the next idle.
+            if (task.signoffRawOutputs?.[m.name] !== undefined) continue;
             await dispatchToMember(
                 ctx,
                 m,

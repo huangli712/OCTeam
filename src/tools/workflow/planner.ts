@@ -24,7 +24,8 @@ import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
 import { isIndexedMember } from "../../state/resolve.js"
-import { atomicWrite } from "../../state/locks.js"
+import { assertNoSymlinkTraversal, atomicWrite, withLock } from "../../state/locks.js"
+import { stateLockPath } from "../../state/paths.js"
 import { validateMemberAgent, validateMemberName } from "../support.js"
 import { validateWorkflowSteps } from "../../orchestration/workflow/loader.js"
 import { validateWorkflowStepsAgainstMembers } from "./validate.js"
@@ -42,6 +43,9 @@ const PLANNER_POLL_MS = 2_000
 const PLANNER_MAX_RETRIES = 2
 const PLANNER_DELETE_ATTEMPTS = 3
 const PLANNER_DELETE_RETRY_MS = 500
+
+/** Maximum size (10 MiB) of an existing loader file we will read for backup. */
+const MAX_BACKUP_BYTES = 10 * 1024 * 1024
 
 /** Regex for a safe lowercase-slug team_id. */
 const TEAM_ID_SLUG = /^[a-z0-9-]+$/
@@ -91,9 +95,18 @@ function sleep(ms: number): Promise<void> {
  * before overwriting. The previous implementation returned null for both
  * cases, causing the rollback path to unlink an existing-but-unreadable file
  * — permanent data loss. */
-async function readFileForBackup(filePath: string): Promise<string | null> {
-    const { readFile } = await import("node:fs/promises")
+async function readFileForBackup(filePath: string, trustedRoot: string): Promise<string | null> {
+    const { readFile, lstat } = await import("node:fs/promises")
+    // Refuse to follow a symlinked ancestor chain: a tampered .octeam/ could
+    // otherwise redirect the backup read outside the team root.
+    await assertNoSymlinkTraversal(trustedRoot, filePath)
     try {
+        // Reject oversized files before reading them into memory so a tampered
+        // loader cannot exhaust memory during backup.
+        const stat = await lstat(filePath)
+        if (stat.size > MAX_BACKUP_BYTES) {
+            throw new Error(`readFileForBackup: file exceeds ${MAX_BACKUP_BYTES} bytes (${stat.size}): ${filePath}`)
+        }
         return await readFile(filePath, "utf8")
     } catch (err: unknown) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
@@ -586,74 +599,80 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
     if (args.dry_run === true) {
         return `Validation OK for "${args.team_id}". Dry run — nothing written.\n\n${artifact}`
     }
-    if (args.overwrite !== true && (existsSync(teamPath) || existsSync(workflowPath))) {
-        return (
-            `Error: refusing to overwrite existing loader(s). ${teamFileName(args.team_id)}`
-            + ` or ${workflowFileName(args.team_id)} already exists; pass overwrite: true to replace both.`
-        )
-    }
-    // Back up existing files so rollback can restore them (overwrite:true case).
-    // C-9: back up BOTH team and workflow files so a failure of the second
-    // write can restore BOTH originals. Backup failures (file exists but
-    // unreadable) MUST abort before overwriting — the previous code returned
-    // null for both "missing" and "unreadable", causing the rollback path to
-    // unlink an existing-but-unreadable file (permanent data loss).
-    let teamBackup: string | null = null
-    let workflowBackup: string | null = null
-    if (args.overwrite === true) {
-        try {
-            teamBackup = await readFileForBackup(teamPath)
-            workflowBackup = await readFileForBackup(workflowPath)
-        } catch (err) {
-            // A file exists but could not be read for backup. Abort BEFORE
-            // writing so the original content is not destroyed.
-            logSwallowed(ctx, "planner: backup read failed; aborting write to preserve originals", err, { teamId: args.team_id })
-            return `Error: cannot back up existing loader(s) for overwrite (file unreadable). Aborting before write to preserve original content. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+    // C: hold the state lock across the existsSync check + backup + BOTH writes
+    // + rollback so a concurrent process (another team_planner write, or team
+    // lifecycle writer under the same directory) cannot interleave between the
+    // no-overwrite check and the writes, producing a torn team/workflow pair.
+    return await withLock(stateLockPath(ctx.directory), async () => {
+        if (args.overwrite !== true && (existsSync(teamPath) || existsSync(workflowPath))) {
+            return (
+                `Error: refusing to overwrite existing loader(s). ${teamFileName(args.team_id)}`
+                + ` or ${workflowFileName(args.team_id)} already exists; pass overwrite: true to replace both.`
+            )
         }
-    }
-    // Use atomicWrite for symlink-safety (refuses to write through symlinks,
-    // walks ancestor chain from ctx.directory when trustedRoot is supplied)
-    // and crash-safety (tmp + rename, fsync'd).
-    // G: wrap BOTH writes in one rollback try so a failure of the FIRST
-    // write (e.g. fsync after rename) also restores the original team file.
-    // Pre-fix code had only the second write in the try, so a first-write
-    // throw left the team file corrupted with no restore path.
-    try {
-        await atomicWrite(teamPath, `${JSON.stringify(team, null, 4)}\n`, ctx.directory)
-        await atomicWrite(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`, ctx.directory)
-    } catch (err) {
-        // Rollback: restore the ORIGINAL content (or delete if none existed).
-        // This is critical for overwrite:true — without it, the old loader
-        // data is permanently lost.
-        const rollbackPaths = [teamPath, workflowPath] as const
-        const rollbackResults = await Promise.allSettled([
-            teamBackup !== null
-                ? atomicWrite(teamPath, teamBackup, ctx.directory)
-                : unlink(teamPath).catch((unlinkErr: unknown) => {
-                    if (!isEnoent(unlinkErr)) throw unlinkErr
-                }),
-            workflowBackup !== null
-                ? atomicWrite(workflowPath, workflowBackup, ctx.directory)
-                : unlink(workflowPath).catch((unlinkErr: unknown) => {
-                    if (!isEnoent(unlinkErr)) throw unlinkErr
-                }),
-        ])
-        for (let index = 0; index < rollbackResults.length; index++) {
-            const result = rollbackResults[index]
-            const rollbackPath = rollbackPaths[index]
-            if (result?.status === "rejected" && rollbackPath !== undefined) {
-                logSwallowed(ctx, "planner: rollback restore failed", result.reason, {
-                    teamId: args.team_id,
-                    path: rollbackPath,
-                })
+        // Back up existing files so rollback can restore them (overwrite:true case).
+        // C-9: back up BOTH team and workflow files so a failure of the second
+        // write can restore BOTH originals. Backup failures (file exists but
+        // unreadable) MUST abort before overwriting — the previous code returned
+        // null for both "missing" and "unreadable", causing the rollback path to
+        // unlink an existing-but-unreadable file (permanent data loss).
+        let teamBackup: string | null = null
+        let workflowBackup: string | null = null
+        if (args.overwrite === true) {
+            try {
+                teamBackup = await readFileForBackup(teamPath, ctx.directory)
+                workflowBackup = await readFileForBackup(workflowPath, ctx.directory)
+            } catch (err) {
+                // A file exists but could not be read for backup. Abort BEFORE
+                // writing so the original content is not destroyed.
+                logSwallowed(ctx, "planner: backup read failed; aborting write to preserve originals", err, { teamId: args.team_id })
+                return `Error: cannot back up existing loader(s) for overwrite (file unreadable). Aborting before write to preserve original content. Underlying error: ${err instanceof Error ? err.message : String(err)}`
             }
         }
-        throw err
-    }
-    return (
-        `Wrote ${teamFileName(args.team_id)} and ${workflowFileName(args.team_id)}`
-        + ` under ${ctx.directory}.\n\n${artifact}`
-    )
+        // Use atomicWrite for symlink-safety (refuses to write through symlinks,
+        // walks ancestor chain from ctx.directory when trustedRoot is supplied)
+        // and crash-safety (tmp + rename, fsync'd).
+        // G: wrap BOTH writes in one rollback try so a failure of the FIRST
+        // write (e.g. fsync after rename) also restores the original team file.
+        // Pre-fix code had only the second write in the try, so a first-write
+        // throw left the team file corrupted with no restore path.
+        try {
+            await atomicWrite(teamPath, `${JSON.stringify(team, null, 4)}\n`, ctx.directory)
+            await atomicWrite(workflowPath, `${JSON.stringify(workflow, null, 4)}\n`, ctx.directory)
+        } catch (err) {
+            // Rollback: restore the ORIGINAL content (or delete if none existed).
+            // This is critical for overwrite:true — without it, the old loader
+            // data is permanently lost.
+            const rollbackPaths = [teamPath, workflowPath] as const
+            const rollbackResults = await Promise.allSettled([
+                teamBackup !== null
+                    ? atomicWrite(teamPath, teamBackup, ctx.directory)
+                    : unlink(teamPath).catch((unlinkErr: unknown) => {
+                        if (!isEnoent(unlinkErr)) throw unlinkErr
+                    }),
+                workflowBackup !== null
+                    ? atomicWrite(workflowPath, workflowBackup, ctx.directory)
+                    : unlink(workflowPath).catch((unlinkErr: unknown) => {
+                        if (!isEnoent(unlinkErr)) throw unlinkErr
+                    }),
+            ])
+            for (let index = 0; index < rollbackResults.length; index++) {
+                const result = rollbackResults[index]
+                const rollbackPath = rollbackPaths[index]
+                if (result?.status === "rejected" && rollbackPath !== undefined) {
+                    logSwallowed(ctx, "planner: rollback restore failed", result.reason, {
+                        teamId: args.team_id,
+                        path: rollbackPath,
+                    })
+                }
+            }
+            throw err
+        }
+        return (
+            `Wrote ${teamFileName(args.team_id)} and ${workflowFileName(args.team_id)}`
+            + ` under ${ctx.directory}.\n\n${artifact}`
+        )
+    }, ctx.directory)
 }
 
 /** Plan and persist team definitions and workflows via a child oct-metis session. */

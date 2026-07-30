@@ -296,7 +296,11 @@ export async function ackMessages(
  * message whose reservation file was still pending → duplicate delivery.
  * Caller MUST hold the mailbox lock.
  */
-const PROCESSED_RETENTION_MS = RESERVATION_TTL_MS * 2
+// H-G4: retention must cover the worst-case reservation lifetime.
+// Reservations have TTL = RESERVATION_TTL_MS (30s); the stale-reaper checks
+// periodically, so a reservation can survive up to ~2× TTL past expiry.
+// Pre-fix multiplier of 2 (60s) was too tight if the reaper was delayed.
+const PROCESSED_RETENTION_MS = RESERVATION_TTL_MS * 4
 const PROCESSED_MAX_BYTES = 1_048_576
 const PROCESSED_RETENTION_BYTES = 512 * 1024
 

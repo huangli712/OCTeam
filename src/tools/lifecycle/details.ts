@@ -76,8 +76,8 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
                             `Tasks: ${by("completed")} done, ${by("in_progress")} in progress, `
                                 + `${by("claimed")} claimed, ${by("pending")} pending (of ${tasks.length})`,
                         )
-                    } catch {
-                        // tasklist unreadable — skip
+                    } catch (err) {
+                        logSwallowed(ctx, "team_details: tasklist unreadable", err, {}, "debug")
                     }
                 }
                 // loop: decider + last decision

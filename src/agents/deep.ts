@@ -43,6 +43,6 @@ export const deepAgent: OcteamAgentConfig = {
     description: "OCTeam heavy-duty executor for long-range, complex, challenging tasks",
     temperature: 0.1,
     color: "#f59e0b",
-    permission: { edit: "allow", task: "deny", bash: "allow", webfetch: "allow", read: "allow", glob: "allow", grep: "allow" },
+    permission: { edit: "allow", task: "deny", bash: "allow", webfetch: "allow", read: "allow", glob: "allow", grep: "allow", "*": "deny" },
     prompt: DEEP_PROMPT,
 }

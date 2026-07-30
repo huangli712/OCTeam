@@ -55,9 +55,17 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
                     worktreePath, error: msg,
                 })
                 return true
-            } catch {
-                logger.debug("hasUncommittedChanges: path does not exist (no work to lose)", { worktreePath })
-                return false
+            } catch (accessErr) {
+                // H-O1: only ENOENT means the path doesn't exist. EACCES,
+                // EIO, ELOOP etc. mean it exists but is inaccessible —
+                // treat as dirty (fail-closed) to protect uncommitted work.
+                const code = (accessErr as NodeJS.ErrnoException).code
+                if (code === "ENOENT") {
+                    logger.debug("hasUncommittedChanges: path does not exist (no work to lose)", { worktreePath })
+                    return false
+                }
+                logger.warn("hasUncommittedChanges: access error, treating as dirty (fail-closed)", { worktreePath, error: String(accessErr) })
+                return true
             }
         }
         logger.warn("hasUncommittedChanges: git status failed (including corrupted .git), treating as dirty (fail-closed)", {

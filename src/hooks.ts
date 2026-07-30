@@ -639,16 +639,20 @@ export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
             for (const [sid, exp] of compacting) {
                 if (now >= exp) compacting.delete(sid)
             }
-            // No directory filter — include sessions in member worktrees too.
-            // H32a: isolate the status API call so its failure does NOT disable
-            // reservation reclaim, stale-claim reap, and termination checks.
-            // Pre-fix code let a status API throw skip the entire per-team
-            // loop, leaving busy teams, reservations, and claims stranded.
-            // On failure, proceed with an empty statusMap (missed-idle is
-            // skipped, but reclaim/termination still run).
+            // H-M1: race the status API against a timeout so a hanging
+            // host API does not block all teams' sweep ticks indefinitely.
+            // Pre-fix code had no timeout — a stuck session.status would
+            // permanently disable timeout detection, retry escalation, and
+            // stale-resource recovery for ALL teams.
+            const SWEEP_STATUS_TIMEOUT_MS = 10_000
             let statusMap: unknown = undefined
             try {
-                statusMap = (await ctx.client.session.status({})).data
+                const statusPromise = ctx.client.session.status({}).then(r => r.data)
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                    const t = setTimeout(() => reject(new Error("session.status timeout")), SWEEP_STATUS_TIMEOUT_MS)
+                    t.unref()
+                })
+                statusMap = await Promise.race([statusPromise, timeoutPromise])
             } catch (err) {
                 logEvent(ctx, "warn", "sweep: session.status API failed; proceeding without missed-idle reconciliation", {
                     error: err instanceof Error ? err.message : String(err),
@@ -657,8 +661,16 @@ export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
             for (const team of activeTeams()) {
                 // M-29: isolate per-team sweep failures so one bad team does
                 // not prevent the sweep from processing the remaining teams.
+                // H-M2: race each team's sweep against a timeout so a
+                // permanently hung team does not block the rest.
+                const SWEEP_PER_TEAM_TIMEOUT_MS = 30_000
                 try {
-                    await sweepTeamOnce(ctx, team, statusMap)
+                    const sweepPromise = sweepTeamOnce(ctx, team, statusMap)
+                    const teamTimeout = new Promise<never>((_, reject) => {
+                        const t = setTimeout(() => reject(new Error(`sweep timeout for team ${team.teamName}`)), SWEEP_PER_TEAM_TIMEOUT_MS)
+                        t.unref()
+                    })
+                    await Promise.race([sweepPromise, teamTimeout])
                 } catch (err) {
                     logEvent(ctx, "warn", "sweep: per-team sweep failed (continuing)", {
                         team: team.teamName,

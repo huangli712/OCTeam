@@ -14,7 +14,7 @@ import { juniorAgent } from "./junior.js"
 import { deepAgent } from "./deep.js"
 import { ultrabrainAgent } from "./ultrabrain.js"
 import { multimodalLookerAgent } from "./multimodal-looker.js"
-import type { OcteamAgentConfig } from "./types.js"
+import type { OcteamAgentConfig, OcteamAgentPermission } from "./types.js"
 
 /**
  * OCTeam's built-in subagents. No `model` field is pinned here on purpose:
@@ -35,6 +35,33 @@ export const OCTEAM_AGENTS: Record<string, OcteamAgentConfig> = {
     "oct-junior": juniorAgent,
     "oct-deep": deepAgent,
     "oct-ultrabrain": ultrabrainAgent,
+}
+
+/**
+ * Monotonically merge user permissions over OCTeam presets: the user may
+ * only TIGHTEN (allow → ask → deny), never loosen. Preset permissions act
+ * as a security floor — user config can restrict further but cannot open
+ * tools the preset denies. The wildcard "*" key (if present in the preset)
+ * serves as the effective baseline for any tool the preset does not name
+ * explicitly.
+ */
+function mergePermissionsMonotonic(
+    preset: OcteamAgentPermission | undefined,
+    userPerm?: unknown,
+): OcteamAgentPermission {
+    const result: OcteamAgentPermission = { ...(preset ?? {}) }
+    if (!userPerm || typeof userPerm !== "object") return result
+    const rank: Record<string, number> = { allow: 0, ask: 1, deny: 2 }
+    const wildcardAction = result["*"]
+    for (const [tool, action] of Object.entries(userPerm as Record<string, unknown>)) {
+        if (action !== "allow" && action !== "deny" && action !== "ask") continue
+        const presetAction = result[tool]
+        const effectiveBaseline = presetAction ?? wildcardAction
+        if (effectiveBaseline === undefined || rank[action] >= rank[effectiveBaseline]) {
+            result[tool] = action
+        }
+    }
+    return result
 }
 
 /**
@@ -62,7 +89,7 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
                 // hook cannot in-place weaken it (e.g. flip edit to "allow").
                 // A later hook that REPLACES the whole permission object still
                 // can (visible operation), but silent field mutation is blocked.
-                const perm = Object.freeze({ ...def.permission })
+                const perm = Object.freeze(mergePermissionsMonotonic(def.permission))
                 cfg.agent[name] = { ...def, permission: perm }
                 continue
             }
@@ -87,13 +114,14 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
             // (UI visibility). Both are user preferences, not security
             // fields — dropping them silently resets user configuration.
             if (typeof existing.steps === "number") allowed.steps = existing.steps
+            if (typeof existing.maxSteps === "number") allowed.maxSteps = existing.maxSteps
             if (typeof existing.hidden === "boolean") allowed.hidden = existing.hidden
             cfg.agent[name] = {
                 ...def,
                 // H1: freeze the permission object so later hooks cannot mutate
                 // it in-place. Re-asserted after the allowed merge for the same
                 // reason as mode/description/prompt below.
-                permission: Object.freeze({ ...def.permission }),
+                permission: Object.freeze(mergePermissionsMonotonic(def.permission, existing?.permission)),
                 ...allowed,
                 // Security-critical overrides (OCTeam wins) — re-asserted AFTER
                 // the allowed merge above so a stray `mode` in `existing` (which

@@ -222,7 +222,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // doesn't hit EEXIST.
                 await fs.rm(newTeamDir, {
                     recursive: true, force: true,
-                }).catch(() => { /* best-effort */ })
+                }).catch((err) => logSwallowed(ctx, "team_create: cleanup of just-created directory failed", err, { dir: newTeamDir }, "debug"))
                 return `Error: bounds.maxMembers (${bounds.maxMembers}) is less than the number of initial `
                     + `members (${resolved.length}). Set maxMembers to at least ${resolved.length}.`
             }
@@ -259,11 +259,9 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 try {
                     const sentinelPath = masterSentinelPath(newTeamDir)
                     await fs.writeFile(sentinelPath, context.sessionID + "\n", "utf8")
-                    await fs.chmod(sentinelPath, 0o444).catch(() => { /* best-effort on platforms without chmod */ })
-                } catch {
-                    // Sentinel is a hardening layer; failure to write it does
-                    // not block team creation. User scope will fall back to the
-                    // less-secure state.json path with a startup warning.
+                    await fs.chmod(sentinelPath, 0o444).catch((err) => logSwallowed(ctx, "team_create: chmod sentinel failed", err, {}, "debug"))
+                } catch (err) {
+                    logSwallowed(ctx, "team_create: sentinel write failed", err, {}, "debug")
                 }
 
                 const createdTeam = await initTeamState(ctx.storageRoot, {
@@ -285,7 +283,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // failure does not orphan it and permanently reserve the name.
                 await fs.rm(newTeamDir, {
                     recursive: true, force: true,
-                }).catch(() => { /* best-effort */ })
+                }).catch((err) => logSwallowed(ctx, "team_create: rollback rm failed", err, { dir: newTeamDir }, "debug"))
                 throw err
             }
 

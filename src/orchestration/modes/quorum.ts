@@ -34,16 +34,14 @@ function parseBallot(
     // H-17: use matchAll + last, not match (which returns first). When a member
     // restates an old vote before giving the final one, the stale FIRST match
     // would win — the LAST match is the authoritative ballot.
+    // J-6/MEDIUM: extract all complete vote blocks, parse ONLY the last.
+    // Pre-fix code used global tag count comparison which let an earlier
+    // malformed tag pollute a later valid ballot. Now we trust the last
+    // complete block regardless of earlier garbage.
     const re = /<(?:vote|投票)>\s*(\{[\s\S]*?\})\s*<\/(?:vote|投票)>/g
     const matches = [...output.matchAll(re)]
     if (matches.length === 0) return { vote: "", status: "invalid" }
     const match = matches[matches.length - 1]
-    // H5: if there are more raw <vote> tags than matched ones, the LAST tag
-    // was malformed (no parseable JSON). The member attempted to change their
-    // vote but the final expression is broken — treat as invalid rather than
-    // falling back to an earlier valid vote.
-    const rawTagCount = (output.match(/<(?:vote|投票)>/g) ?? []).length
-    if (rawTagCount > matches.length) return { vote: "", status: "invalid" }
     try {
         const obj = JSON.parse(match[1]) as Record<string, unknown>
         const raw = obj[voteKey]

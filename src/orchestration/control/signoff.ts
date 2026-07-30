@@ -127,32 +127,28 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
                 team: team.teamName, reviewer: reviewer.name, policy: task.signoffPolicy,
             })
             if (task.signoffPolicy === "decider") {
-                // Decider dispatch failed — the run cannot complete. Rollback
-                // the signoffStage so finishRun(failed) is the explicit outcome.
-                task.signoffStage = false
-                task.signoffApprovals = undefined
-                task.signoffReviewers = undefined
+                // H-H3: finishRun instead of throw — the mode that triggered
+                // signoff already completed, so no idle event will re-drive
+                // the barrier after a throw. The run would stall until
+                // wall-clock timeout. finishRun terminates immediately.
                 try {
-                    await saveTeamStateBounded(team)
-                } catch (rollbackErr) {
-                    logSwallowed(ctx, "signoff: rollback save failed after decider dispatch failure", rollbackErr, { team: team.teamName })
+                    await finishRun(ctx, team, "signoff_dispatch_failed:decider", "failed")
+                } catch (finishErr) {
+                    logSwallowed(ctx, "signoff: finishRun failed after decider dispatch failure", finishErr, { team: team.teamName })
                 }
-                throw err
+                return false
             }
         }
     }
     // peer-quorum with all-failures: no reviewer was prompted, so the run
-    // would stall. Rollback the stage and fail the run.
+    // would stall. finishRun terminates immediately.
     if (dispatchFailures.length === reviewers.length) {
-        task.signoffStage = false
-        task.signoffApprovals = undefined
-        task.signoffReviewers = undefined
         try {
-            await saveTeamStateBounded(team)
-        } catch (rollbackErr) {
-            logSwallowed(ctx, "signoff: rollback save failed after all-reviewers dispatch failure", rollbackErr, { team: team.teamName })
+            await finishRun(ctx, team, `signoff_dispatch_failed:all_reviewers`, "failed")
+        } catch (finishErr) {
+            logSwallowed(ctx, "signoff: finishRun failed after all-reviewers dispatch failure", finishErr, { team: team.teamName })
         }
-        throw new Error(`signoff: all ${reviewers.length} reviewer dispatch(es) failed: ${dispatchFailures.join(", ")}`)
+        return false
     }
 
     task.signoffReviewers = dispatchedReviewers
@@ -222,16 +218,15 @@ export async function handleSignoffIdle(
 
     const memberOutput = task.signoffRawOutputs?.[member.name] ?? task.responses[member.name] ?? ""
     const signoff = parseSignoff(memberOutput)
-    if (!signoff) {
-        logEvent(ctx, "debug", "signoff tag parse failed", {
-            team: team.teamName,
-            member: member.name,
-        })
-    } else if (signoff.parseFailed) {
+    // HIGH: a completely missing tag (null) should enter the same retry path
+    // as a malformed payload (parseFailed). Pre-fix code treated null as an
+    // immediate rejection — one format omission could wrongly veto the run.
+    if (!signoff || signoff.parseFailed) {
         if (!task.signoffParseFailures) task.signoffParseFailures = {}
         const failures = (task.signoffParseFailures[member.name] ?? 0) + 1
         task.signoffParseFailures[member.name] = failures
-        logEvent(ctx, "warn", "signoff payload malformed", {
+        const reason = !signoff ? "signoff tag not found" : "signoff payload malformed"
+        logEvent(ctx, "warn", reason, {
             team: team.teamName,
             member: member.name,
             failures,
@@ -242,7 +237,7 @@ export async function handleSignoffIdle(
             await dispatchToMember(
                 ctx,
                 member,
-                `[Signoff format retry]\nYour previous signoff was malformed. Emit exactly one <signoff>{"approved": true|false, "rationale": "..."}</signoff> block.`,
+                `[Signoff format retry]\nYour previous signoff was malformed or missing. Emit exactly one <signoff>{"approved": true|false, "rationale": "..."}</signoff> block.`,
                 member.worktreePath ?? ctx.directory,
                 team,
             )

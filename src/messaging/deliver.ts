@@ -44,6 +44,13 @@ export async function deliverToRecipients(
     const failures: string[] = []
     const backpressureFailures: string[] = []
     for (const r of recipients) {
+        // H-G3: re-check tombstone per-recipient to narrow the race window
+        // where team_delete completes after the initial check but before
+        // this write. A full fix requires wrapping in team.mutex, which
+        // risks deadlock if the caller already holds it.
+        if (team.deleted) {
+            throw new Error("deliverToRecipients: team was deleted during delivery")
+        }
         try {
             await writeMailboxMessage(team.directory, r, { ...base, to: r }, backpressureMaxBytes, authContext)
         } catch (err) {

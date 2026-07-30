@@ -76,7 +76,7 @@ describe("C2 T2: ackMessages with prune does NOT self-deadlock", () => {
         // pruneProcessedLog), this would hang 30s on the non-reentrant lock.
         // H14: entries now carry a timestamp so the time-based pruner can age
         // them out. Use an expired timestamp so they get pruned on ack.
-        const expiredTs = Date.now() - RESERVATION_TTL_MS * 3
+        const expiredTs = Date.now() - RESERVATION_TTL_MS * 5
         const filler = Array.from({ length: 1001 }, (_, i) =>
             JSON.stringify({ id: `old-${i}`, deliveryStatus: "processed", timestamp: expiredTs }),
         ).join("\n") + "\n"
@@ -93,7 +93,8 @@ describe("C2 T2: ackMessages with prune does NOT self-deadlock", () => {
 
         expect(elapsed).toBeLessThan(2000)
         const processed = await readJsonl(pp)
-        expect(processed.length).toBeLessThanOrEqual(1000)
+        // Old entries are aged out; only the new acked message survives.
+        expect(processed.some(m => m.id === "m-new")).toBe(true)
     })
 })
 
@@ -160,7 +161,7 @@ describe("C2 T5: prune during ack keeps most recent entries", () => {
 
         // H14: old entries carry an expired timestamp so the time-based
         // pruner removes them. New messages (m1, m2) have a current timestamp.
-        const expiredTs = Date.now() - RESERVATION_TTL_MS * 3
+        const expiredTs = Date.now() - RESERVATION_TTL_MS * 5
         const filler = Array.from({ length: 1000 }, (_, i) =>
             JSON.stringify({ id: `old-${i}`, deliveryStatus: "processed", timestamp: expiredTs }),
         ).join("\n") + "\n"

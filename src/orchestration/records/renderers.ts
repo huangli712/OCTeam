@@ -27,17 +27,20 @@ export async function summarizeDelegate(team: Team, task: ActiveTask, head: stri
     const lines = tasks.map(
         t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
     )
+    // Track owners whose output is already shown via a task-result line so the
+    // per-member sweep below does not emit the same output a second time.
+    const coveredOwners = new Set<string>()
     const taskResults = tasks
         .filter(t => t.status === "completed")
         .flatMap(t => {
             const result = t.result ?? (t.owner ? task.responses[t.owner] : undefined)
-            return result && result.trim().length > 0
-                ? [`by ${t.owner ?? "unknown"} (task: ${t.subject}):\n${truncateOutput(result)}`]
-                : []
+            if (!result || result.trim().length === 0) return []
+            if (t.owner) coveredOwners.add(t.owner)
+            return [`by ${t.owner ?? "unknown"} (task: ${t.subject}):\n${truncateOutput(result)}`]
         })
         .join("\n\n")
     const memberOutputs = Object.entries(task.responses)
-        .filter(([, out]) => out.trim().length > 0)
+        .filter(([name, out]) => out.trim().length > 0 && !coveredOwners.has(name))
         .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
         .join("\n\n")
     const outputs = [taskResults, memberOutputs].filter(s => s.length > 0).join("\n\n")

@@ -12,7 +12,7 @@ import type { MemberSpec, MemberState } from "../../core/types.js"
 import { chunk, waitUntil } from "../../core/utils.js"
 import { worktreesDir } from "../../state/paths.js"
 import { indexMember, unindexSession } from "../../state/resolve.js"
-import { type Team, readTeamSpecFromDir, saveTeamState } from "../../state/store.js"
+import { type Team, readTeamSpecFromDir, saveTeamState, saveTeamStateBounded } from "../../state/store.js"
 import { createWorktree, destroyWorktree } from "../../state/worktrees.js"
 import { buildRolePrompt } from "../protocol/output.js"
 
@@ -55,23 +55,29 @@ async function waitForRoleSetupBarrier(
                             path: { id: sid },
                             query: { directory: dir },
                         })
+                        unindexSession(sid)
+                        current.sessionId = undefined
                     } catch (err) {
                         logSwallowed(ctx, "barrier timeout: session.delete failed", err, {
                             team: team.teamName, member: name, sessionId: sid,
                         })
+                        // H-H4: keep sessionId on failure so the reconciler can
+                        // retry cleanup. Pre-fix code cleared it unconditionally,
+                        // making the orphaned session unrecoverable.
                     }
-                    unindexSession(sid)
-                    current.sessionId = undefined
                     if (current.worktreePath) {
-                        await destroyWorktree(
-                            ctx.directory, current.worktreePath,
-                            worktreesDir(team.directory), team.teamName, name,
-                        ).catch(err =>
+                        try {
+                            await destroyWorktree(
+                                ctx.directory, current.worktreePath,
+                                worktreesDir(team.directory), team.teamName, name,
+                            )
+                            current.worktreePath = undefined
+                        } catch (err) {
                             logSwallowed(ctx, "barrier timeout: destroyWorktree failed", err, {
                                 team: team.teamName, member: name,
-                            }),
-                        )
-                        current.worktreePath = undefined
+                            })
+                            // Keep worktreePath for reconciler retry.
+                        }
                     }
                 }
                 if (current && !current.initialized) {
@@ -180,6 +186,17 @@ async function spawnMemberSafely(
             },
         })
         member.turnCount = 1
+        // H-H3: persist the new session ID immediately so a crash between
+        // session.create and the first role-idle does not orphan the session.
+        // Pre-fix code only saved on the next unrelated idle; a restart would
+        // re-create a second session, leaving the first orphaned.
+        try {
+            await saveTeamStateBounded(team)
+        } catch (persistErr) {
+            logSwallowed(ctx, "spawnMemberSafely: post-spawn persist failed", persistErr, {
+                team: team.teamName, member: member.name, sessionId,
+            })
+        }
     } catch (err) {
         // Roll back every side effect before exposing the spawn error.
         if (member.sessionId) {

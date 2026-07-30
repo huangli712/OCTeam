@@ -45,6 +45,6 @@ export const metisAgent: OcteamAgentConfig = {
     temperature: 0.3,
     color: "#a855f7",
     // task allowed: metis delegates research to librarian/explore
-    permission: { edit: "deny", task: "allow", bash: "deny", webfetch: "deny", read: "allow", glob: "allow", grep: "allow" },
+    permission: { edit: "deny", task: "allow", bash: "deny", webfetch: "deny", read: "allow", glob: "allow", grep: "allow", "*": "deny" },
     prompt: METIS_PROMPT,
 }

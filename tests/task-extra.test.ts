@@ -9,9 +9,12 @@
  */
 import { afterAll, describe, expect, test } from "bun:test"
 
+import { rm } from "node:fs/promises"
+
 import { teamTaskCreateTool, teamTaskUpdateTool } from "../src/tools/exchange/task.js"
 import { initTeamState, invalidateTeam } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
+import { statePath } from "../src/state/paths.js"
 import { createTask } from "../src/state/tasks.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from "./helpers.js"
 
@@ -25,19 +28,24 @@ async function setupTeam(root: string, sid: string, members = [makeMember("alice
 }
 
 describe("team_task_create: validation errors", () => {
-    test("team not found → error", async () => {
+    test("team state missing → error (caller cannot be resolved)", async () => {
         const root = tmpRoot("tc-404")
         const sid = "ses_tc_404"
-        await setupTeam(root, sid)
-        // Use a different storage root so resolveCallerInTeam's master lookup
-        // succeeds (via the index) but the tool's loadTeamState fails.
-        const emptyRoot = tmpRoot("tc-404-empty")
-        const result = await teamTaskCreateTool(makeCtx({ storageRoot: emptyRoot })).execute(
+        const team = await setupTeam(root, sid)
+        // The tool now loads team state via caller.storageRoot (the indexed
+        // root), matching resolveCallerInTeam. When the state file is gone the
+        // master caller can no longer be resolved, so the tool rejects with a
+        // caller error instead of silently proceeding on a mismatched root
+        // (the pre-fix ctx.storageRoot bug).
+        invalidateTeam(team.directory)
+        await rm(statePath(team.directory), { force: true })
+        const result = await teamTaskCreateTool(makeCtx({ storageRoot: root })).execute(
             { team_id: "alpha", subject: "test", description: "d" },
             makeToolContext(sid),
         )
-        expect(result).toContain("not found")
-        invalidateTeam(`${root}/${sid}/teams/alpha`)
+        expect(result).toContain("Error")
+        expect(result).not.toContain("Task created")
+        invalidateTeam(team.directory)
         unindexSession(sid)
     })
 

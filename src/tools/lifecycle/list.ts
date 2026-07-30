@@ -5,6 +5,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import { listTeamNames, loadTeamState, readTeamSpec } from "../../state/store.js"
 
 /** List all teams in the current scope with status and member count. */
@@ -26,8 +27,8 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
                     let spec = null
                     try {
                         spec = await readTeamSpec(ctx.storageRoot, name, leadSessionId)
-                    } catch {
-                        // config unreadable — proceed with defaults
+                    } catch (err) {
+                        logSwallowed(ctx, "team_list: config unreadable", err, { name }, "debug")
                     }
                     let status = "unknown"
                     let count = spec?.members.length ?? 0
@@ -39,8 +40,8 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
                         count = team.members.length
                         createdAt = team.createdAt
                         active = team.activatedAt !== undefined
-                    } catch {
-                        // state unreadable
+                    } catch (err) {
+                        logSwallowed(ctx, "team_list: state unreadable", err, { name }, "debug")
                     }
                     const desc = (spec?.description ?? "").trim() || "-"
                     const created = createdAt
@@ -54,7 +55,9 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
                 "|------|-------------|---------|---------|--------|--------|",
             ]
             for (const r of rows) {
-                const desc = r.desc.length > 50 ? r.desc.slice(0, 47) + "…" : r.desc
+                const desc = (r.desc.length > 50 ? r.desc.slice(0, 47) + "…" : r.desc)
+                    .replace(/\r?\n/g, " ")
+                    .replace(/\|/g, "\\|")
                 const row = `| ${r.name} | ${desc} | ${r.created} | ${r.count} | ${r.status} `
                     + `| ${r.active ? "yes" : "no"} |`
                 lines.push(row)

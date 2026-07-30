@@ -28,10 +28,12 @@ import type { Message } from "../core/types.js"
 import { logger } from "../core/log.js"
 
 // Cap on tracked directive authentications. When exceeded, the oldest
-// entries are evicted to bound memory growth for long-lived hosts.
-// Directives are authenticated at write time and checked at poll time
-// (typically seconds later); 64 is far above any realistic in-flight count.
-const AUTH_DIRECTIVE_MAP_CAP = 64
+// entries (older than AUTH_MIN_AGE_MS) are evicted to bound memory growth.
+// H-G2: pre-fix cap of 64 was too low — a 12-member team × 6 broadcasts
+// already produces 72 in-flight authentications. Raised to 512 and added
+// a minimum-age guard so fresh in-flight directives are never evicted.
+const AUTH_DIRECTIVE_MAP_CAP = 512
+const AUTH_MIN_AGE_MS = 60_000
 const authenticatedDirectives = new Map<string, { from: string; to: string; body: string; correlationId: string | undefined; teamName?: string; runId?: string; ts: number }>()
 
 /** Registry key combines team + recipient + id so broadcast (same id, many recipients) authenticates each recipient independently, and directives cannot be replayed across teams that share a member name. */
@@ -39,11 +41,17 @@ function authKey(teamName: string | undefined, to: string, id: string): string {
     return `${teamName ?? ""}|${to}|${id}`
 }
 
-/** Evict the oldest auth entries once the map exceeds the cap. */
+/** Evict the oldest auth entries once the map exceeds the cap.
+ * H-G2: never evict entries younger than AUTH_MIN_AGE_MS — they are likely
+ * still in-flight (not yet polled/ACKed). Only evict aged entries. */
 function evictStaleAuthDirectives(): void {
     if (authenticatedDirectives.size <= AUTH_DIRECTIVE_MAP_CAP) return
-    const sorted = [...authenticatedDirectives.entries()].sort((a, b) => a[1].ts - b[1].ts)
-    const toRemove = sorted.length - AUTH_DIRECTIVE_MAP_CAP
+    const now = Date.now()
+    const sorted = [...authenticatedDirectives.entries()]
+        .filter(([, v]) => now - v.ts > AUTH_MIN_AGE_MS)
+        .sort((a, b) => a[1].ts - b[1].ts)
+    const excess = authenticatedDirectives.size - AUTH_DIRECTIVE_MAP_CAP
+    const toRemove = Math.min(sorted.length, excess)
     for (let i = 0; i < toRemove; i++) {
         // M-7: log eviction so operators can detect if legitimate directives
         // are being silently downgraded. Pre-fix code deleted without logging,
@@ -173,4 +181,11 @@ export const __test__ = {
     authDirectiveMapSize(): number {
         return authenticatedDirectives.size
     },
+    /** Test-only: backdate all auth entries by ms to simulate aging. */
+    backdateAuthEntries(ms: number): void {
+        const offset = Date.now() - ms
+        for (const [, v] of authenticatedDirectives) v.ts = offset
+    },
+    AUTH_DIRECTIVE_MAP_CAP,
+    AUTH_MIN_AGE_MS,
 }

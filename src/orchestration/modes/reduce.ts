@@ -122,6 +122,12 @@ export async function handleReduceIdle(
         const maxRetries = task.maxRetries ?? 0
         task.reduceRetries = (task.reduceRetries ?? 0) + 1
         if (task.reduceRetries > maxRetries) {
+            // J-7/MEDIUM: restore the mapper snapshot before failing so the
+            // summary includes the mapper's original output.
+            if (task._reducerMapperSnapshot !== undefined) {
+                task.responses[member.name] = task._reducerMapperSnapshot
+                task._reducerMapperSnapshot = undefined
+            }
             await finishRun(ctx, team, "parallel_reduce_failed:empty_output", "failed")
             return
         }

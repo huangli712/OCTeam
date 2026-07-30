@@ -524,8 +524,10 @@ function settleForwardGotoGate(task: WorkflowTask, gate: WorkflowGateStep): void
  * machine via the per-gate max_jumps cap (default 3). Forward jumps mark the
  * intermediate steps as skipped (completed + skipped); backward jumps reset
  * steps[targetIndex..gateIndex] (mirroring FAIL-retry semantics) so the path
- * re-runs. The triggering gate's attempts/invalidAttempts/jumpCount are NEVER
- * reset by the range reset, so retry + jump bounds compose safely.
+ * re-runs. Every re-entered gate's retry counters
+ * (attempts/invalidAttempts/malformedAttempts/timeoutAttempts) are reset,
+ * including the triggering gate; only the jump/loop bounds
+ * (jumpCount/loopIterations) are preserved, so retry + jump bounds compose safely.
  *
  * Returns true when the jump dispatched (caller must not also advance), false
  * when the jump cap was exceeded and the run terminated.

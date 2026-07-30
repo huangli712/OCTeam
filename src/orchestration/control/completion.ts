@@ -90,10 +90,19 @@ runStatusOverride?: RunStatus,
                         team.activeTask.tokensByMember?.[m.name] ?? 0,
                         Math.max(0, sumMemberTokens(messages) - baseline),
                     )
-                } catch {
-                    // best-effort — keep existing token count if refresh fails
+                } catch (err) {
+                    // H-H1: log refresh failures with context so operators can
+                    // investigate token underestimation. Pre-fix code swallowed
+                    // silently.
+                    logSwallowed(ctx, "finishRun: token refresh failed", err, { member: m.name, session: m.sessionId })
                 }
             }
+        }
+        // H-H2: recompute tokensUsed from tokensByMember after refreshing.
+        // Pre-fix code updated per-member counts but left tokensUsed stale,
+        // so run records and termination summaries reported old totals.
+        if (team.activeTask.tokensByMember) {
+            team.activeTask.tokensUsed = Object.values(team.activeTask.tokensByMember).reduce((a, b) => a + b, 0)
         }
     }
     try {
@@ -104,6 +113,22 @@ runStatusOverride?: RunStatus,
             runStatus,
         )
     } finally {
+        // #11: best-effort abort any still-running member sessions before
+        // clearing activeTask. On timeout/budget-failure/partial-spawn-
+        // failure, running sessions are not stopped — their late output can
+        // be misattributed to the next run. A best-effort abort is better
+        // than nothing; failures are swallowed (the run IS terminating).
+        for (const m of team.members) {
+            if (!m.isMaster && m.sessionId && m.status === "running") {
+                try {
+                    await ctx.client.session.abort({ path: { id: m.sessionId } })
+                } catch (err) {
+                    logSwallowed(ctx, "finishRun: best-effort session.abort failed", err, {
+                        member: m.name, session: m.sessionId,
+                    }, "debug")
+                }
+            }
+        }
         // clearActiveTask and terminal status MUST execute even if delivery
         // throws — otherwise the team is stuck in "busy" with an activeTask
         // that can never be cleared.

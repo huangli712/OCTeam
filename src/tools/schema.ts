@@ -108,9 +108,10 @@ export const humanApprovalSchemaFields = {
  * budget, and member-retry grace windows. Spread into a tool's schema.object().
  */
 export const commonOrchestrationFields = {
-    timeout_ms: tool.schema.number().min(1000).optional(),
+    timeout_ms: tool.schema.number().int().min(1000).optional(),
     token_budget: tool.schema
         .number()
+        .int()
         .min(1)
         .optional()
         .describe("optional token cap; orchestration fails if exceeded"),

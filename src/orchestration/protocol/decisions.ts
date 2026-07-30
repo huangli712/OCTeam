@@ -50,6 +50,22 @@ const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>\s*$/
  * When a decider restates a prior decision, the LATEST restatement carries the
  * authoritative payload — if it cannot parse, that is a real failure.
  */
+/**
+ * Validate nextActions array: must be absent or an array of all strings.
+ * Returns the typed array, or null if any element is non-string (caller
+ * should treat as parseFailed). Pre-fix code filtered out non-string
+ * entries silently, so `["fix A", 7]` became `["fix A"]` without signaling
+ * a malformed payload.
+ */
+function validateNextActions(raw: unknown): string[] | null {
+    if (raw === undefined) return []
+    if (!Array.isArray(raw)) return null
+    for (const item of raw) {
+        if (typeof item !== "string") return null
+    }
+    return raw
+}
+
 function extractTaggedJSON(
     text: string,
     en: string,
@@ -124,6 +140,24 @@ function extractTaggedJSON(
         }
     }
     if (openIdx === -1) return undefined
+    // CRITICAL: reject payloads with multiple top-level JSON objects.
+    // Pre-fix backward brace-counting extracted the LAST object, so
+    // `{"approved":false}{"approved":true}` silently became approved.
+    // Now count top-level objects (depth 0, outside strings) and reject
+    // if more than one exists — the payload is ambiguous.
+    let topLevelObjects = 0
+    let countDepth = 0
+    let countInString = false
+    for (let i = 0; i < lastPayload.length; i++) {
+        if (unescapedQuotes.has(i)) { countInString = !countInString; continue }
+        if (countInString) continue
+        const ch = lastPayload[i]
+        if (ch === "{") {
+            if (countDepth === 0) topLevelObjects++
+            countDepth++
+        } else if (ch === "}") countDepth--
+    }
+    if (topLevelObjects > 1) return undefined
     const candidate = lastPayload.slice(openIdx, lastClose + 1)
     try {
         return JSON.parse(candidate) as Record<string, unknown>
@@ -161,13 +195,13 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
         if (typeof parsed.done !== "boolean" || parsed.done !== (decision === "done")) return fail()
     }
     if (decision === "done" || (decision === undefined && parsed.done === true)) {
+        const nextActions = validateNextActions(parsed.nextActions)
+        if (nextActions === null) return fail()
         return {
             round: 0,
             decision: "done",
             rationale: typeof parsed.rationale === "string" ? parsed.rationale : "No rationale provided",
-            nextActions: Array.isArray(parsed.nextActions)
-                ? parsed.nextActions.filter((a): a is string => typeof a === "string")
-                : [],
+            nextActions,
             timestamp: Date.now(),
         }
     }
@@ -180,13 +214,13 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
     // If decision is present but not a recognized value, it's also a parse
     // failure (misspelling like "dnoe" or "stpo").
     if (decision !== "continue") return fail()
+    const nextActions = validateNextActions(parsed.nextActions)
+    if (nextActions === null) return fail()
     return {
         round: 0,
         decision: "continue",
         rationale: typeof parsed.rationale === "string" ? parsed.rationale : "No rationale provided",
-        nextActions: Array.isArray(parsed.nextActions)
-            ? parsed.nextActions.filter((a): a is string => typeof a === "string")
-            : [],
+        nextActions,
         timestamp: Date.now(),
     }
 }

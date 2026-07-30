@@ -235,6 +235,13 @@ export async function processIdle(
     // those all funnel through atomicWrite, whose mkdir({recursive:true}) would
     // otherwise recreate the just-removed directory.
     if (team.deleted) return
+    // HIGH: stale idle guard — the idle event's sessionID must match the
+    // member's current sessionId. A session that was replaced (rename,
+    // fixmember, re-spawn) can fire a late idle for the OLD session, which
+    // would process the new session's output as if it belonged to the old one.
+    if (member.sessionId !== undefined && member.sessionId !== sessionID) {
+        return
+    }
     // Step 1: Master special case — synthetic member, never dispatches.
     if (member.isMaster) {
         await deliverQueuedResultsToMaster(ctx, team, sessionID)

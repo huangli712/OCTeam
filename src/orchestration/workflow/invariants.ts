@@ -159,6 +159,41 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
     if (step.verifier !== undefined && step.verifiers !== undefined) {
         context.violations.push(`step ${index}: verifier and verifiers are mutually exclusive`)
     }
+    // I-H7: validate goto edges. Pre-fix invariant checker did NOT validate
+    // onPassGoto/onFailGoto/onInvalidGoto — out-of-bounds, cross-branch, or
+    // self-referencing goto targets passed invariant checks, and the runtime
+    // gatedGotoIndex returned -1, silently treating "invalid goto" as "no
+    // goto" and continuing sequential execution.
+    for (const [field, gotoIdx] of [
+        ["onPassGoto", step.onPassGoto],
+        ["onFailGoto", step.onFailGoto],
+        ["onInvalidGoto", step.onInvalidGoto],
+    ] as const) {
+        if (gotoIdx === undefined) continue
+        if (gotoIdx < 0 || gotoIdx >= context.steps.length) {
+            context.violations.push(`step ${index}: ${field} ${gotoIdx} is out of bounds`)
+            continue
+        }
+        if (gotoIdx === index) {
+            context.violations.push(`step ${index}: ${field} ${gotoIdx} is self-referencing`)
+            continue
+        }
+        const target = context.steps[gotoIdx]
+        if (target.kind !== "task" && target.kind !== "gate") {
+            context.violations.push(`step ${index}: ${field} ${gotoIdx} targets a ${target.kind} step (only task/gate allowed)`)
+            continue
+        }
+        // Cross-branch check: goto target must be in the same branch (or
+        // top-level if gate is top-level).
+        if (step.branch !== undefined) {
+            if (target.branch === undefined || target.branch.fanoutIndex !== step.branch.fanoutIndex
+                || target.branch.branchId !== step.branch.branchId) {
+                context.violations.push(`step ${index}: ${field} ${gotoIdx} crosses branch boundary`)
+            }
+        } else if (target.branch !== undefined) {
+            context.violations.push(`step ${index}: ${field} ${gotoIdx} targets inside a branch from top-level gate`)
+        }
+    }
     for (const counter of [
         { field: "attempts", value: step.attempts, cap: step.maxRetries ?? 0 },
         { field: "invalidAttempts", value: step.invalidAttempts, cap: step.maxInvalidRetries ?? 0 },

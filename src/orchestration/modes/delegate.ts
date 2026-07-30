@@ -44,6 +44,15 @@ export async function runDelegateStyleTail(
     const incomplete = tasks.filter(t => t.status !== "completed" && t.status !== "deleted")
 
     if (incomplete.length === 0) {
+        // J-1/CRITICAL: do NOT finalize while a non-master member is still
+        // running. Their idle event will re-drive this tail. Pre-fix code
+        // captured partial output, cleared activeTask, and dispatched signoff
+        // to running members — losing in-flight output and racing signoff.
+        const stillRunning = team.members.some(
+            m => !m.isMaster && m.sessionId && m.status === "running",
+        )
+        if (stillRunning) return
+
         // Before clearing the active task (or entering signoff), capture any
         // member whose turn output hasn't been persisted yet. Delegate/recurse
         // members run concurrently; when the completing member idles and

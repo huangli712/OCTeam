@@ -37,7 +37,25 @@ export async function checkTermination(
         return
     }
 
-    if (task.type === "workflow" && await checkWorkflowStepTimeouts(ctx, team, task, now)) return
+    // #14: HITL approval timeout. When approvalStage is active and
+    // approvalTimeoutMs is set, check if the pause has exceeded the timeout.
+    // Pre-fix code: ApprovalTimeoutAction type was defined but had ZERO
+    // execution path — a leader going offline or missing the notification
+    // could leave the run busy indefinitely (wall-clock was paused).
+    if (task.approvalStage && task.approvalRequest && task.approvalTimeoutMs !== undefined) {
+        const elapsed = now - task.approvalRequest.requestedAt
+        if (elapsed > task.approvalTimeoutMs) {
+            // Clear the approval pause before finishing so startedAt is not
+            // shifted by a non-existent resume.
+            const kind = task.approvalRequest?.kind ?? "unknown"
+            task.approvalStage = false
+            task.approvalRequest = undefined
+            await finishRun(ctx, team, `approval_timeout:${kind}:${elapsed}ms`, "failed")
+            return
+        }
+    }
+
+    if (task.type === "workflow" && !task.approvalStage && await checkWorkflowStepTimeouts(ctx, team, task, now)) return
 
     // Token budget
     if (task.tokenBudget !== undefined && task.tokensUsed > task.tokenBudget) {

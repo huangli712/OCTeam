@@ -297,6 +297,11 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 member: member.name,
                 detail: `${T.subject} -> ${ids.length} @d${depth + 1}`,
             })
+            // J-4/HIGH: reset the parse-failure counter after a successful
+            // decomposition. Pre-fix code accumulated failures across
+            // unrelated, widely-spaced malformed responses, eventually
+            // terminating long recurse runs.
+            task.decomposeParseFailures = 0
         } else if (dec.subtasks.length > 0 && !dec.parseFailed) {
             if (forcedDirect) {
                 const attempts = (task.forcedDirectDecomposeAttempts?.[T.id] ?? 0) + 1
@@ -329,7 +334,8 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             // Pre-fix code re-dispatched indefinitely with no mode-local cap.
             task.decomposeParseFailures = (task.decomposeParseFailures ?? 0) + 1
             const maxParseFailures = task.maxDecomposeParseFailures ?? 3
-            if (task.decomposeParseFailures > maxParseFailures) {
+            // J-4: use >= so 'max 3' means exactly 3 failures, not 4.
+            if (task.decomposeParseFailures >= maxParseFailures) {
                 await finishRun(ctx, team, `recurse_decompose_parse_failed:${task.decomposeParseFailures}_attempts`, "failed")
                 return
             }

@@ -400,14 +400,15 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         if (team.lastInterruptedTask) {
                             migrateActiveTaskMemberRefs(team.lastInterruptedTask, newName, oldName)
                         }
-                        // Attempt to revert mailbox rename (best-effort)
                         try {
                             await fs.rename(
                                 inboxPath(team.directory, newName),
                                 inboxPath(team.directory, args.member_name),
                             )
-                        } catch {
-                            // Mailbox may not exist or rename fails; not critical
+                        } catch (err) {
+                            if (!isEnoent(err)) {
+                                logSwallowed(ctx, "fixmember: mailbox rollback rename failed", err, { newName, oldName: args.member_name })
+                            }
                         }
                     }
                     // H-23: restore agent/model mutations too. Pre-fix code
@@ -452,6 +453,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 // spec correctly updated; the stale worktree is a benign orphan
                 // that cleanWorktree will eventually clear on team_delete.
                 if (renaming && liveMember.worktreePath) {
+                    let destroyed = true
                     try {
                         await destroyWorktree(
                             ctx.directory,
@@ -460,20 +462,29 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             team.teamName,
                             args.member_name,
                         )
-                    } catch {
-                        // best-effort: old worktree may already be gone
+                    } catch (err) {
+                        destroyed = false
+                        logSwallowed(ctx, "fixmember: old worktree destroy failed", err, { member: args.member_name }, "debug")
                     }
-                    liveMember.worktreePath = undefined
-                    if (liveMember.sessionId) {
-                        unindexSession(liveMember.sessionId)
+                    // Only clear worktree/session state when the destroy actually
+                    // succeeded. If it failed, the worktree still exists on disk,
+                    // so clearing worktreePath/sessionId would report success while
+                    // orphaning a live worktree; keep the fields and warn instead.
+                    if (destroyed) {
+                        liveMember.worktreePath = undefined
+                        if (liveMember.sessionId) {
+                            unindexSession(liveMember.sessionId)
+                        }
+                        liveMember.sessionId = undefined
+                        liveMember.initialized = false
+                        // H5: unindex the old session and persist the cleared state.
+                        // Pre-fix code cleared fields in memory but didn't save —
+                        // a process restart would reload the old sessionId from
+                        // disk, making the destroyed worktree appear active.
+                        changes.push(`worktree: destroyed old (will re-create on next start)`)
+                    } else {
+                        changes.push(`worktree: WARNING old worktree destroy failed; stale worktree left in place`)
                     }
-                    liveMember.sessionId = undefined
-                    liveMember.initialized = false
-                    // H5: unindex the old session and persist the cleared state.
-                    // Pre-fix code cleared fields in memory but didn't save —
-                    // a process restart would reload the old sessionId from
-                    // disk, making the destroyed worktree appear active.
-                    changes.push(`worktree: destroyed old (will re-create on next start)`)
                 }
                 // G: teardown-save with bounded retry. Pre-fix code used bare
                 // saveTeamState which swallows save failures silently — if

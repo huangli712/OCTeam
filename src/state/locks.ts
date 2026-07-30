@@ -151,6 +151,35 @@ export function shouldReapStaleLock(
 }
 
 /**
+ * Stale-lock recovery: if the lock's owner PID is dead and mtime exceeds
+ * TTL, unlink it so the next open("wx") retry can acquire. Closes the gap
+ * where releaseLock failed (EPERM, crash mid-release) and the lock file
+ * became a permanent orphan — all future acquireLock calls would spin to
+ * timeout with no recovery. TOCTOU-safe: after unlink, acquireLock retries
+ * open("wx"); if another process grabbed it, we get EEXIST and loop.
+ */
+async function maybeReapStaleLock(lockPath: string): Promise<void> {
+    try {
+        const st = await fs.stat(lockPath)
+        const pidStr = await fs.readFile(lockPath, "utf8")
+        const pid = parseInt(pidStr.trim(), 10)
+        if (!Number.isFinite(pid) || pid <= 0) return
+        let alive = true
+        try {
+            process.kill(pid, 0)
+        } catch (e) {
+            // ESRCH = process does not exist; EPERM = exists but no permission.
+            alive = (e as NodeJS.ErrnoException).code !== "ESRCH"
+        }
+        if (shouldReapStaleLock(st.mtimeMs, Date.now(), LOCK_TTL_MS, alive)) {
+            await fs.unlink(lockPath).catch(() => {})
+        }
+    } catch {
+        // Lock vanished or unreadable — next open("wx") retry handles it.
+    }
+}
+
+/**
  * Cross-process lock acquisition via exclusive-create (fs.open "wx").
  * Spins with polling until the lock is acquired or LOCK_MAX_WAIT_MS elapses.
  * Writes the current PID into the lock file for ownership tracking.
@@ -186,6 +215,11 @@ async function acquireLock(lockPath: string): Promise<void> {
         } catch (err: unknown) {
             const code = (err as NodeJS.ErrnoException).code
             if (code !== "EEXIST") throw err
+            // H-D3: reap stale locks whose owner PID is dead and TTL expired.
+            // Without this, a failed releaseLock (EPERM, crash) orphans the
+            // lock permanently — the log message "stale-lock reaper will
+            // recover" was referencing a reaper that never existed.
+            await maybeReapStaleLock(lockPath)
             if (Date.now() > deadline) {
                 throw new Error(`withLock: timed out acquiring ${lockPath}`)
             }
@@ -342,14 +376,18 @@ export async function atomicWrite(
         await fh.writeFile(content, "utf8")
         await fh.sync()
     } catch (err) {
-        await fs.unlink(tmp).catch(() => {
-            // best-effort cleanup of a partial tmp file
-        })
+        await fh.close().catch(() => {})
+        await fs.unlink(tmp).catch(() => {})
         throw err
-    } finally {
-        await fh.close().catch(() => {
-            // best-effort close even on failure
-        })
+    }
+    // H-D1: close can report delayed I/O errors (e.g. NFS write-behind).
+    // Pre-fix code ignored close errors in a finally block and proceeded
+    // to rename, potentially committing a corrupt file as success.
+    try {
+        await fh.close()
+    } catch (closeErr) {
+        await fs.unlink(tmp).catch(() => {})
+        throw closeErr
     }
 
     try {
@@ -416,6 +454,16 @@ export async function appendJsonl(
     trustedRoot?: string,
 ): Promise<void> {
     await refuseSymlink(filePath, trustedRoot)
+    // H-D2: reject non-regular files (FIFO, device) that could block
+    // appendFile indefinitely. refuseSymlink only checks symlinks.
+    try {
+        const st = await fs.lstat(filePath)
+        if (!st.isFile()) {
+            throw new Error(`appendJsonl: target is not a regular file: ${filePath}`)
+        }
+    } catch (err) {
+        if (!isEnoent(err)) throw err
+    }
     await fs.mkdir(path.dirname(filePath), { recursive: true }).catch((err: unknown) => {
         const code = (err as NodeJS.ErrnoException).code
         if (code !== "EEXIST") throw err

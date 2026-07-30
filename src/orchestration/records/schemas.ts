@@ -197,10 +197,10 @@ const WorkflowRunStepSchema = z.object({
     // M-3: where condition — pre-fix schema omitted it. Stored as a raw
     // object (the condition shape is validated at validate-time; the record
     // reader just needs to preserve it for display/audit).
-    where: z.unknown().optional(),
+    where: z.record(z.string(), z.any()).optional(),
     // M-3: loop config — pre-fix schema omitted it.
     loop: z.object({
-        maxIterations: z.number(),
+        maxIterations: z.number().int().positive(),
         onExhaust: z.enum(["fail", "continue"]).optional(),
     }).optional(),
     loopIterations: z.number().int().nonnegative().optional(),
@@ -474,6 +474,10 @@ export const RunRecordSchema = z.object({
     signoffPolicy: SignoffPolicySchema.optional(),
     signoffApprovals: z.record(z.string(), z.boolean()).optional(),
     memberOutputs: z.record(z.string(), z.object({ bytes: z.number().nonnegative(), file: z.string() })),
+    artifacts: z.object({
+        reduce: z.string().optional(),
+        signoff: z.record(z.string(), z.string()).optional(),
+    }).optional(),
     tasks: z.array(z.object({
         id: z.string(),
         subject: z.string(),
@@ -506,6 +510,13 @@ export const RunRecordSchema = z.object({
             })
         }
         const winnerEntry = arena.scoreboard?.scores.find(score => score.member === arena.winner)
+        if (winnerEntry?.passed !== true) {
+            ctx.addIssue({
+                code: "custom",
+                path: ["winner"],
+                message: "arena winner must have passed === true in the scoreboard",
+            })
+        }
         const winnerScore = arena.winnerMetric === "score"
             ? winnerEntry?.score
             : winnerEntry?.metrics?.[arena.winnerMetric]
@@ -527,9 +538,9 @@ export const RunRecordSchema = z.object({
             rationale: z.string().optional(),
             status: z.enum(["valid", "invalid", "errored"]),
         })).optional(),
-        erroredCount: z.number().optional(),
-        nEff: z.number().optional(),
-        threshold: z.number().optional(),
+        erroredCount: z.number().int().nonnegative().optional(),
+        nEff: z.number().int().nonnegative().optional(),
+        threshold: z.number().int().nonnegative().optional(),
         winningOption: z.string().optional(),
     }).superRefine((quorum, ctx) => {
         if (quorum.winningOption !== undefined
@@ -545,11 +556,11 @@ export const RunRecordSchema = z.object({
 })
 
 const RunEventCommonShape = {
-    timestamp: z.number(),
+    timestamp: z.number().nonnegative(),
     member: z.string().min(1).optional(),
-    stage: z.number().optional(),
-    round: z.number().optional(),
-    stepIndex: z.number().optional(),
+    stage: z.number().int().nonnegative().optional(),
+    round: z.number().int().nonnegative().optional(),
+    stepIndex: z.number().int().nonnegative().optional(),
     correlationId: z.string().min(1).optional(),
     reason: z.string().min(1).optional(),
     bytes: z.number().nonnegative().optional(),

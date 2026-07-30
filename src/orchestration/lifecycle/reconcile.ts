@@ -108,7 +108,15 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             }
         }
         try {
-            await saveTeamState(team)
+            // M-H1: only save if the branch above did not already persist.
+            // Pre-fix code saved unconditionally after the if/else block,
+            // causing a double-save where a branch failure stayed in the
+            // failures list even though the final save succeeded — reporting
+            // a transient error as a startup failure.
+            const branchAlreadySaved = team.activeTask === undefined || team.lastInterruptedTask !== undefined
+            if (!branchAlreadySaved) {
+                await saveTeamState(team)
+            }
         } catch (err) {
             logSwallowed(ctx, "persist team state failed (reconcile)", err, { team: team.teamName })
             failures.push(err)

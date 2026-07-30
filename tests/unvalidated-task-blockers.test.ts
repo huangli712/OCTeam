@@ -92,36 +92,23 @@ describe("unvalidated task blockers (finding: unvalidated-task-blockers)", () =>
         await initTeamState(root, makeState("alpha", leadSid, [alice]), leadSid)
         const team = await loadTeamState(root, "alpha", leadSid)
 
-        // Persist a task with a bogus blocker (simulates what the unfixed
-        // team_task_create allows through).
+        // Persist a task with a bogus blocker (non-UUID format).
+        // With the UUID validation fix in isValidTask, this task should be
+        // REJECTED at read time — the fix prevents the task from being loaded
+        // at all, eliminating the wedge condition.
         await createTask(team.directory, {
             subject: "wedged",
             description: "blocked by a non-existent task",
             blockedBy: ["00000000-0000-0000-0000-nonexist01"],
         })
 
-        // Load all tasks and apply delegate.ts:58-62's claimability predicate
-        // directly: pending AND every blocker resolves to a completed task.
+        // Load all tasks — the bogus-blocker task is rejected by validation.
         const allTasks = await listAllTasks(team.directory)
-        const claimable = allTasks.filter(
-            t =>
-                t.status === "pending"
-                && t.blockedBy.every(id => allTasks.find(x => x.id === id)?.status === "completed"),
-        )
 
-        // The wedged task must NOT appear in claimable — but it IS pending,
-        // so it sits forever in the task list without being claimable.
-        // On UNFIXED code: the task exists but is unclaimable (0 claimable
-        // despite 1 pending task) — the deadlock condition delegate.ts:69
-        // would fire.
-        expect(claimable).toHaveLength(0)
-
-        // Confirm the task exists and is pending — it's not deleted, just
-        // permanently stuck. This IS the harm: an unclaimable task wedges
-        // delegate mode.
+        // The task with invalid UUID blocker must NOT be loaded — the fix
+        // prevents the wedge condition where the task exists but is permanently
+        // unclaimable because its non-UUID blocker never resolves.
         const wedged = allTasks.find(t => t.subject === "wedged")
-        expect(wedged).toBeDefined()
-        expect(wedged!.status).toBe("pending")
-        expect(wedged!.blockedBy).toContain("00000000-0000-0000-0000-nonexist01")
+        expect(wedged).toBeUndefined()
     })
 })

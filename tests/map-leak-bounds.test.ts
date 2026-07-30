@@ -52,11 +52,17 @@ describe("wake-hint Map eviction", () => {
 })
 
 describe("authenticatedDirectives Map eviction", () => {
-    test("inserting beyond the cap evicts the oldest entries", () => {
+    const AUTH_CAP = mailboxTest.AUTH_DIRECTIVE_MAP_CAP
+    test("fresh entries exceed cap but aged entries are evicted", () => {
         const before = mailboxTest.authDirectiveMapSize()
-        for (let i = 0; i < CAP + 10; i++) {
+        for (let i = 0; i < AUTH_CAP + 10; i++) {
             authenticateDirective(makeDirective(`dir_evict_${i}_${Date.now()}_${i}`))
         }
-        expect(mailboxTest.authDirectiveMapSize() - before).toBeLessThanOrEqual(CAP)
+        // Fresh entries are protected from eviction (in-flight directives).
+        expect(mailboxTest.authDirectiveMapSize() - before).toBe(AUTH_CAP + 10)
+        // Age them past the minimum and insert one more to trigger eviction.
+        mailboxTest.backdateAuthEntries(mailboxTest.AUTH_MIN_AGE_MS + 1000)
+        authenticateDirective(makeDirective(`dir_trigger_${Date.now()}`))
+        expect(mailboxTest.authDirectiveMapSize() - before).toBeLessThanOrEqual(AUTH_CAP)
     })
 })

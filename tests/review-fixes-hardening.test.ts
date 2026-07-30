@@ -27,8 +27,8 @@ afterAll(cleanupTmpRoots)
 // P2-1: waiters never reap existing locks (locks.ts)
 // ---------------------------------------------------------------------------
 
-describe("P2-1 acquireLock: existing locks are never reaped by waiters", () => {
-    test("stale lock held by a dead pid remains until removed", async () => {
+describe("P2-1 acquireLock: stale locks with dead PID are reaped", () => {
+    test("stale lock held by a dead pid is reaped and acquired", async () => {
         const dir = tmpRoot("lock-dead")
         const lockPath = join(dir, "state.json.lock")
         writeFileSync(lockPath, "999999")
@@ -36,14 +36,9 @@ describe("P2-1 acquireLock: existing locks are never reaped by waiters", () => {
         utimesSync(lockPath, stale, stale)
 
         let ran = false
-        const pending = withLock(lockPath, async () => {
+        await withLock(lockPath, async () => {
             ran = true
         })
-        await new Promise(r => setTimeout(r, 300))
-        expect(ran).toBe(false)
-
-        unlinkSync(lockPath)
-        await pending
         expect(ran).toBe(true)
     })
 

@@ -131,7 +131,8 @@ function isValidTask(value: unknown): value is Task {
         // stranding the task forever (NaN > TTL is always false).
         && (t.claimedAt === undefined || (typeof t.claimedAt === "number" && Number.isFinite(t.claimedAt)))
         // M-11: validate each blockedBy entry is a valid string.
-        && t.blockedBy.every(v => typeof v === "string" && v.length > 0 && v.length <= 128)
+        && t.blockedBy.every(v => typeof v === "string" && v.length > 0 && v.length <= 128
+            && TASK_ID_PATTERN.test(v))
         // M-3: cross-field — claimed/in_progress tasks MUST have an owner.
         // A tampered task with status:"in_progress" and no owner would be
         // invisible to reaper (not claimable) and to deadlock detection.

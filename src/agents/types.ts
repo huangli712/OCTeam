@@ -19,6 +19,9 @@ export interface OcteamAgentPermission {
     read?: OcteamPermissionAction
     glob?: OcteamPermissionAction
     grep?: OcteamPermissionAction
+    // Index signature: allows wildcard "*": "deny" to close default-allow
+    // gaps where unlisted tools (MCP, plugins) inherit allow from OpenCode.
+    [key: string]: OcteamPermissionAction | undefined
 }
 
 /**

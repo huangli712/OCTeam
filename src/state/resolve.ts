@@ -7,6 +7,7 @@
  * same private Maps.
  */
 
+import { isEnoent } from "../core/utils.js"
 import { listAllTeams, loadTeamState } from "./store.js"
 import { masterSentinelPath } from "./paths.js"
 import fs from "node:fs/promises"
@@ -402,9 +403,17 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
                         // Do NOT grant master — leave trustedLeadSessionId undefined.
                     }
                 } catch (sentinelErr) {
-                    // Legacy team (no sentinel) or unreadable sentinel.
-                    if (ctx) logSwallowed(ctx, "indexScope: user-scope team has no master.sentinel; using state.json (legacy, less secure)", sentinelErr, { teamName })
-                    trustedLeadSessionId = team.leadSessionId
+                    // #5: fail-CLOSED on non-ENOENT errors. A missing sentinel
+                    // (ENOENT) is a legacy team — accept state.json.
+                    // EACCES/EIO/ELOOP/EISDIR mean the sentinel exists but is
+                    // unreadable (possible tampering) — do NOT grant master.
+                    if (isEnoent(sentinelErr)) {
+                        if (ctx) logSwallowed(ctx, "indexScope: user-scope team has no master.sentinel; using state.json (legacy, less secure)", sentinelErr, { teamName })
+                        trustedLeadSessionId = team.leadSessionId
+                    } else {
+                        if (ctx) logSwallowed(ctx, "indexScope: user-scope master.sentinel unreadable; refusing master privilege (fail-closed)", sentinelErr, { teamName })
+                        // trustedLeadSessionId stays undefined
+                    }
                 }
             }
             if (ctx && segmented && team.leadSessionId !== leadSessionId) {

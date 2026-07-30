@@ -52,8 +52,8 @@ const FAILED_REASON_MARKERS = [
     "arbiter_unavailable", // arbitrate: arbiter has no live session at ruling time
     "tollgate_failed",     // tollgate: a gate's FAIL retries (maxGateRetries) exhausted
     "tollgate_invalid",    // tollgate: verifier/oracle unevaluable, no escalation handler
-    "workflow_failed",     // workflow: a gate FAIL (onFail='fail' or retries exhausted) or unparseable verdict
-    "workflow_invalid",    // workflow: verifier could not evaluate the target task output
+    "workflow_failed",     // workflow: MUST stay in sync with WORKFLOW_FAILED_REASON_PREFIXES in workflow/reasons.ts
+    "workflow_invalid",    // workflow: MUST stay in sync
     "pipeline_failed",    // pipeline: a stage's member has no live session (explicit failure instead of stalling)
     "parallel_failed",    // parallel: reducer member missing on resume of a reduce stage
     "signoff_rejected",           // signoff: decider/reviewer rejected the work
@@ -146,14 +146,15 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         await assertNoSymlinkTraversal(team.directory, dir)
         entries = await fs.readdir(dir)
     } catch (err) {
-        // H37: distinguish ENOENT (expected — no member turns yet) from real
-        // I/O errors (EACCES, EIO). Pre-fix code silently swallowed ALL errors,
-        // so a permission or disk failure would persist a run record with an
-        // empty memberOutputs — silently losing member output metadata.
+        // H37: only ENOENT is the benign "no member turns yet" case. Any other
+        // error (EACCES, EIO) means the enumeration is unreliable, so rethrow
+        // instead of persisting a record with silently-empty memberOutputs. The
+        // best-effort caller boundary (deliverSummaryToLeader) logs the failure.
         if (!isEnoent(err)) {
             logger.warn("persistRun: readdir failed for run output dir", {
                 dir, error: err instanceof Error ? err.message : String(err),
             })
+            throw err
         }
         // dir may not exist (e.g. a run with no member turns yet) — that's fine
     }
@@ -174,11 +175,15 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
             const stat = await fs.stat(filePath)
             memberOutputs[member] = { bytes: stat.size, file }
         } catch (err) {
-            // H37: log non-ENOENT errors so output metadata loss is observable.
+            // H37: ENOENT means the file was raced/removed between readdir and
+            // stat — skip it. Any other error (EACCES, EIO, symlink rejection)
+            // means the metadata is unreliable, so rethrow instead of silently
+            // dropping this member's output from the record.
             if (!isEnoent(err)) {
                 logger.warn("persistRun: stat failed for member output", {
                     file, error: err instanceof Error ? err.message : String(err),
                 })
+                throw err
             }
             // raced/removed — skip
         }
@@ -373,6 +378,24 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
             threshold: task.threshold,
             winningOption: task.winningOption,
         }
+    }
+
+    // Index run-level artifacts (reduce.md, signoff.md) that the memberOutputs
+    // scan skips because their basenames are not member names. Without this a
+    // RunRecord consumer has no path reference to the reduced result or the
+    // signoff verdict file. signoff maps each reviewer whose verdict was
+    // captured (and thus written to the shared signoff.md) to that file.
+    const artifacts: NonNullable<RunRecord["artifacts"]> = {}
+    if (entries.includes("reduce.md")) artifacts.reduce = "reduce.md"
+    if (entries.includes("signoff.md")) {
+        const reviewers = Object.keys(task.signoffRawOutputs ?? {})
+        if (reviewers.length > 0) {
+            artifacts.signoff = {}
+            for (const reviewer of reviewers) artifacts.signoff[reviewer] = "signoff.md"
+        }
+    }
+    if (artifacts.reduce !== undefined || artifacts.signoff !== undefined) {
+        record.artifacts = artifacts
     }
 
     await atomicWrite(runRecordPath(team.directory, runId), JSON.stringify(record, null, 2), team.directory)

@@ -110,15 +110,6 @@ export async function captureMemberOutput(
         && !member.isMaster
         && (task.signoffPolicy === "peer-quorum"
             || member.name === task.signoffDecider)
-    // For signoff/reduce turns, store the output in a side-channel so the
-    // member's work output in task.responses is preserved for the final
-    // summary. The mode handler reads from the side-channel instead.
-    if (isSignoffTurn) {
-        if (!task.signoffRawOutputs) task.signoffRawOutputs = {}
-        task.signoffRawOutputs[member.name] = captured
-    } else {
-        task.responses[member.name] = captured
-    }
     const outPath = isReduceTurn
         ? runReduceOutputPath(team.directory, runId)
         : isSignoffTurn
@@ -146,7 +137,20 @@ export async function captureMemberOutput(
         ? truncateOutput(accumulated, ACCUMULATED_OUTPUT_CAP)
         : accumulated
 
+    // Persist to disk FIRST. The in-memory response slot and the capture
+    // watermark are updated only after a successful write, so a write failure
+    // (which propagates to the caller) leaves no phantom "captured" entry that
+    // was never persisted.
     await atomicWrite(outPath, capped, team.directory)
+    // For signoff/reduce turns, store the output in a side-channel so the
+    // member's work output in task.responses is preserved for the final
+    // summary. The mode handler reads from the side-channel instead.
+    if (isSignoffTurn) {
+        if (!task.signoffRawOutputs) task.signoffRawOutputs = {}
+        task.signoffRawOutputs[member.name] = captured
+    } else {
+        task.responses[member.name] = captured
+    }
     // Record the message-history watermark so a re-entry whose history hasn't
     // grown is skipped (idempotency guard at the top).
     member.lastCapturedMsgCount = messages.length

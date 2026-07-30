@@ -31,6 +31,32 @@ import {
 } from "../../state/tasks.js"
 import type { Task } from "../../core/types/task.js"
 import type { TaskStatus } from "../../core/types.js"
+import type { ResolvedMember } from "../../state/resolve.js"
+
+/**
+ * Reject shared-task access from a member in a parallel isolated run. Isolated
+ * members must not read or mutate the shared task list — doing so forms a side
+ * channel that defeats isolation. Returns an error string to surface, or null
+ * when access is allowed. Fails closed: an unreadable state file rejects too.
+ */
+async function rejectIfIsolated(
+    ctx: PluginContext,
+    caller: ResolvedMember,
+    teamId: string,
+): Promise<string | null> {
+    try {
+        const team = await loadTeamState(caller.storageRoot, teamId, caller.leadSessionId)
+        const at = team.activeTask
+        if (at?.type === "parallel" && !at.tasks) {
+            return `Error: shared task access is disabled in parallel isolated mode. Isolated members cannot share a task list.`
+        }
+        return null
+    } catch (err) {
+        if (isEnoent(err)) return `Error: team "${teamId}" not found`
+        logSwallowed(ctx, "loadTeamState failed during isolated-mode check", err, { team: teamId })
+        return `Error: cannot verify team state for isolated-mode check. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+    }
+}
 
 /** Create a new task on the team's shared task list. */
 export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
@@ -49,7 +75,7 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
             if (!caller) return "Error: caller is not a member of this team"
             let team
             try {
-                team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+                team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
             } catch (err) {
                 if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
@@ -145,6 +171,8 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller) return "Error: caller is not a member of this team"
+            const isolatedError = await rejectIfIsolated(ctx, caller, args.team_id)
+            if (isolatedError) return isolatedError
             let tasks = await listAllTasks(caller.directory)
             if (args.status) tasks = tasks.filter(t => t.status === (args.status as TaskStatus))
             if (args.owner) tasks = tasks.filter(t => t.owner === args.owner)
@@ -183,15 +211,20 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                 // Pre-fix code let isolated members claim existing tasks, forming
                 // a side channel for reading shared task content.
                 try {
-                    const team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+                    const team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
                     const at = team.activeTask
                     if (at?.type === "parallel" && !at.tasks) {
                         return `Error: team_task_claim is disabled in parallel isolated mode. Isolated members cannot share a task list.`
                     }
                 } catch (err) {
-                    if (!isEnoent(err)) {
-                        return `Error: cannot verify team state for isolated-mode check. Task claim rejected. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+                    // Fail closed: ENOENT means the team's state file is missing,
+                    // so we cannot verify isolated-mode. Rejecting (rather than
+                    // proceeding) prevents an isolated member from claiming a
+                    // shared task via a missing-state side channel.
+                    if (isEnoent(err)) {
+                        return `Error: team "${args.team_id}" not found`
                     }
+                    return `Error: cannot verify team state for isolated-mode check. Task claim rejected. Underlying error: ${err instanceof Error ? err.message : String(err)}`
                 }
                 try {
                     const task = await claimTask(dir, args.task_id, caller.name)
@@ -209,6 +242,12 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                     throw err
                 }
             }
+            // Non-claim updates also prohibited in parallel isolated mode: an
+            // isolated member must not mutate the shared task list. The claim
+            // path above enforces this for status="claimed"; enforce it here for
+            // in_progress/completed/deleted before any shared-task mutation.
+            const isolatedError = await rejectIfIsolated(ctx, caller, args.team_id)
+            if (isolatedError) return isolatedError
             // Non-claim updates: owner check is TOCTOU-safe inside updateTask's
             // lock (expectedOwner). Master bypasses the owner check.
             const existing = await getTask(dir, args.task_id)
@@ -227,18 +266,18 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
             if (args.status === "completed") {
                 let team
                 try {
-                    team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+                    team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
                 } catch (err) {
-                    // H-19: only ENOENT means "team genuinely not found".
-                    // Other errors (EACCES, EIO, corruption) must FAIL CLOSED:
-                    // treating a corrupted/unreadable state as "no active run"
-                    // would let the member bypass the recurse single-writer
-                    // guard and write a resultless completed task.
-                    if (!isEnoent(err)) {
-                        logSwallowed(ctx, "loadTeamState failed during recurse single-writer check; rejecting completion", err, { team: args.team_id })
-                        return `Error: cannot verify team state for recurse single-writer check. Task completion rejected to avoid bypassing orchestrator ownership. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+                    // Fail closed on every load error. ENOENT (state file
+                    // missing) must not be treated as "no active run": that
+                    // would let a member bypass the recurse single-writer guard
+                    // and write a resultless completed task. Other errors
+                    // (EACCES, EIO, corruption) fail closed for the same reason.
+                    if (isEnoent(err)) {
+                        return `Error: team "${args.team_id}" not found`
                     }
-                    // ENOENT: team genuinely not found — no activeTask to guard.
+                    logSwallowed(ctx, "loadTeamState failed during recurse single-writer check; rejecting completion", err, { team: args.team_id })
+                    return `Error: cannot verify team state for recurse single-writer check. Task completion rejected to avoid bypassing orchestrator ownership. Underlying error: ${err instanceof Error ? err.message : String(err)}`
                 }
                 if (team?.activeTask?.type === "recurse") {
                     return (
@@ -281,6 +320,8 @@ export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
             if (!caller) return "Error: caller is not a member of this team"
+            const isolatedError = await rejectIfIsolated(ctx, caller, args.team_id)
+            if (isolatedError) return isolatedError
             const task = await getTask(caller.directory, args.task_id)
             if (!task) return `Error: task ${args.task_id} not found`
             return [

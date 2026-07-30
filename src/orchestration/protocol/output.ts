@@ -277,7 +277,13 @@ export function buildRolePrompt(
  * propagating as a wrongly-typed reference.
  */
 export function asSdkMessages(data: unknown): import("../../core/types.js").SdkMessage[] {
-    return Array.isArray(data) ? data as import("../../core/types.js").SdkMessage[] : []
+    if (!Array.isArray(data)) return []
+    // LOW: validate each element is at least a non-null object so a malformed
+    // SDK response doesn't propagate as a wrongly-typed reference. Pre-fix
+    // code cast the entire array without element-level checks.
+    return data.filter((m): m is import("../../core/types.js").SdkMessage =>
+        typeof m === "object" && m !== null && !Array.isArray(m),
+    )
 }
 
 /**

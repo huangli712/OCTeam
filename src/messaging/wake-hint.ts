@@ -12,6 +12,10 @@ import { logger } from "../core/log.js"
 // Minimum gap between wake hints sent to the same session. Prevents wake loops
 // where a long unread backlog keeps re-triggering promptAsync on every sweep.
 const WAKE_HINT_THROTTLE_MS = 30_000
+// H-G1: bound the promptAsync call so a hanging host API does not leave
+// an unresolved promise indefinitely. Fire-and-forget wake hints should
+// never block the caller.
+const WAKE_HINT_TIMEOUT_MS = 10_000
 
 // Cap on tracked sessions. When exceeded, the oldest entries are evicted to
 // bound memory growth for long-lived hosts where sessions end without a
@@ -53,7 +57,10 @@ export async function sendWakeHint(
     const snapshot = now
     wakeHintLastSent.set(sessionID, snapshot)
     evictStaleWakeHints()
-    await ctx.client.session
+    // H-G1: race the promptAsync against a timeout so a hanging host API
+    // does not leave an unresolved promise. Pre-fix code had no timeout,
+    // so a stuck SDK call would permanently occupy the await.
+    const promptPromise = ctx.client.session
         .promptAsync({
             path: { id: sessionID },
             body: {
@@ -69,6 +76,11 @@ export async function sendWakeHint(
                 ],
             },
         })
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        const t = setTimeout(() => reject(new Error("wake-hint promptAsync timeout")), WAKE_HINT_TIMEOUT_MS)
+        t.unref()
+    })
+    await Promise.race([promptPromise, timeoutPromise])
         .catch((err) => {
             // M2: only clear the throttle if OUR timestamp is still the one
             // in the map. Pre-fix code deleted unconditionally, so a newer

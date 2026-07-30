@@ -360,10 +360,11 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
         if (!jsonEqual(current[key], ancestor[key])) {
             // H#5: runnerPid is a fencing token set by whichever process
             // starts/resumes a run. If current cleared it (undefined) but
-            // another process set it, clearing would falsely mark the run as
-            // ownerless — letting reconcile fail it. Keep the disk value when
-            // current has no PID (the other process's run is still active).
-            if (key === "runnerPid" && current[key] === undefined && disk[key] !== undefined) continue
+            // disk changed it from ancestor (another process set it), clearing
+            // would falsely mark the run as ownerless. Only protect disk when
+            // it actually changed from ancestor; if disk == ancestor, the
+            // current process legitimately cleared it.
+            if (key === "runnerPid" && current[key] === undefined && disk[key] !== undefined && !jsonEqual(disk[key], ancestor[key])) continue
             ;(merged as Record<string, unknown>)[key] = current[key]
         }
     }
@@ -374,19 +375,17 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
     // update. Field-level three-way merge preserves both processes' changes.
     if (current.activeTask !== undefined || ancestor.activeTask !== undefined || disk.activeTask !== undefined) {
         // C1 fix: activeTask runId fencing. If disk has a different runId
-        // than current, disk belongs to a NEW run started by another process
-        // after current's snapshot was taken. Merging would mix fields from
-        // two different runs (type/stages/responses from old run overwriting
-        // new run). Keep the disk value entirely — the current process's
-        // activeTask is stale and must not clobber the new run.
+        // than current (or current is undefined while disk started a new run
+        // not in ancestor), disk belongs to a NEW run. Merging would mix
+        // fields from two different runs or clear the new run. Keep disk.
         const diskRunId = disk.activeTask?.runId
         const currentRunId = current.activeTask?.runId
+        const ancestorRunId = ancestor.activeTask?.runId
         if (
             disk.activeTask !== undefined
-            && current.activeTask !== undefined
             && diskRunId !== undefined
-            && currentRunId !== undefined
             && diskRunId !== currentRunId
+            && diskRunId !== ancestorRunId
         ) {
             merged.activeTask = disk.activeTask
         } else {
@@ -400,9 +399,13 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
                 const ca = current.activeTask as unknown as Record<string, unknown>
                 const ma = merged.activeTask as unknown as Record<string, unknown>
                 if (typeof da.messagesSent === "number" && typeof ca.messagesSent === "number") {
-                    ma.messagesSent = da.messagesSent + Math.max(
+                    // H-F1: use signed delta (delivery failures can refund
+                    // quota via negative delta), then clamp the final result
+                    // to non-negative. Pre-fix Math.max(0, delta) discarded
+                    // legitimate refunds, causing disk quota to never decrease.
+                    ma.messagesSent = Math.max(
                         0,
-                        ca.messagesSent - (ancestor.activeTask?.messagesSent ?? 0),
+                        da.messagesSent + (ca.messagesSent - (ancestor.activeTask?.messagesSent ?? 0)),
                     )
                 }
                 if (typeof da.tokensUsed === "number" && typeof ca.tokensUsed === "number") {
@@ -599,6 +602,13 @@ export async function saveTeamState(team: Team): Promise<void> {
                 toWrite = currentState
             } else {
                 diskChanged = diskState !== null && !jsonEqual(diskState, ancestor)
+                // H-F2: cross-generation fence. If disk teamRunId differs
+                // from the live team, the team was deleted and recreated.
+                // Merging would mix old-generation members/tasks into the
+                // new team. Refuse to merge stale state.
+                if (diskState && diskState.teamRunId !== currentState.teamRunId) {
+                    throw new Error(`saveTeamState: disk teamRunId (${diskState.teamRunId}) differs from live (${currentState.teamRunId}) — team was recreated; refusing to merge stale state`)
+                }
                 toWrite = diskState
                     ? mergeTeamState(diskState, ancestor, currentState)
                     : currentState
@@ -643,14 +653,24 @@ export async function saveTeamState(team: Team): Promise<void> {
             else liveState[key] = deepClone(merged)
         }
         // Synchronize membership in place to preserve the array reference.
+        // H-F3: update EXISTING members' fields from disk (e.g. concurrent
+        // status/session changes by another process), not just add/remove.
         if (team.members) {
-            const mergedNames = new Set((toWrite.members ?? []).map(member => member.name))
+            const mergedMembers = toWrite.members ?? []
+            const mergedMap = new Map(mergedMembers.map(m => [m.name, m] as const))
+            const mergedNames = new Set(mergedMap.keys())
             for (let index = team.members.length - 1; index >= 0; index--) {
                 if (!mergedNames.has(team.members[index].name)) team.members.splice(index, 1)
             }
-            const liveNames = new Set(team.members.map(m => m.name))
-            for (const m of toWrite.members ?? []) {
-                if (!liveNames.has(m.name)) team.members.push(m)
+            const liveMap = new Map(team.members.map(m => [m.name, m] as const))
+            for (const m of mergedMembers) {
+                const live = liveMap.get(m.name)
+                if (live) {
+                    // In-place field sync for existing members.
+                    Object.assign(live, deepClone(m))
+                } else {
+                    team.members.push(deepClone(m))
+                }
             }
         }
         // C-15: sync activeTask from the merged result into the live team.
@@ -813,19 +833,22 @@ export async function quarantineTeamStorage(
     // reconstructing from teamName, which may be stale after a rename.
     const dir = resolvedDir ?? teamDir(storageRoot, teamName, leadSessionId)
     await assertNoSymlinkTraversal(storageRoot, dir)
-    // C-16: write a deletion marker in the PARENT directory before rename so
-    // another process holding a stale Team reference can detect the deletion
-    // inside the state lock and refuse to resurrect the team directory.
-    const marker = deletedMarkerPath(dir)
-    await assertNoSymlinkTraversal(path.dirname(dir), marker)
-    await fs.writeFile(marker, teamRunId, "utf8")
+    // #6: perform marker write + rename INSIDE the state lock so a concurrent
+    // saveTeamState cannot pass its lock check (no marker) and then atomicWrite
+    // back into the renamed-away directory (resurrection race).
+    const quarantineDirectory = await withLock(stateLockPath(dir), async () => {
+        const marker = deletedMarkerPath(dir)
+        await assertNoSymlinkTraversal(path.dirname(dir), marker)
+        await fs.writeFile(marker, teamRunId, "utf8")
 
-    const quarantineRoot = path.join(storageRoot, ".quarantine")
-    await assertNoSymlinkTraversal(storageRoot, quarantineRoot)
-    await fs.mkdir(quarantineRoot, { recursive: true })
-    await assertNoSymlinkTraversal(storageRoot, quarantineRoot)
-    const quarantineDirectory = path.join(quarantineRoot, randomUUID())
-    await fs.rename(dir, quarantineDirectory)
+        const quarantineRoot = path.join(storageRoot, ".quarantine")
+        await assertNoSymlinkTraversal(storageRoot, quarantineRoot)
+        await fs.mkdir(quarantineRoot, { recursive: true })
+        await assertNoSymlinkTraversal(storageRoot, quarantineRoot)
+        const qd = path.join(quarantineRoot, randomUUID())
+        await fs.rename(dir, qd)
+        return qd
+    })
     return quarantineDirectory
 }
 

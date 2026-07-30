@@ -177,8 +177,9 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
             if (step.quorum === undefined) {
                 return `Error: fanout step ${displayStep} join_policy='quorum' requires \`quorum\``
             }
-            if (!(step.quorum > 0 && step.quorum <= 1)) {
-                return `Error: fanout step ${displayStep} quorum must be > 0 and <= 1`
+            if (typeof step.quorum !== "number" || !Number.isFinite(step.quorum)
+                || !(step.quorum > 0 && step.quorum <= 1)) {
+                return `Error: fanout step ${displayStep} quorum must be a number > 0 and <= 1`
             }
             break
         }
@@ -203,6 +204,19 @@ function validateFanoutJoinPolicy(step: WorkflowFanoutToolStep, displayStep: num
     }
     if ((policy === "reduce" || policy === "select") && step.reducer_member === undefined) {
         return `Error: fanout step ${displayStep} join_policy='${policy}' requires \`reducer_member\``
+    }
+    // Reject fields irrelevant to the selected policy so a workflow cannot set,
+    // e.g., quorum on join_policy='all' where it silently has no effect. quorum
+    // is only for 'quorum'; required_branches only for 'required_branches';
+    // reducer_member only for 'reduce'/'select'.
+    if (policy !== "quorum" && step.quorum !== undefined) {
+        return `Error: fanout step ${displayStep} join_policy='${policy}' must not set \`quorum\` (only join_policy='quorum')`
+    }
+    if (policy !== "required_branches" && step.required_branches !== undefined) {
+        return `Error: fanout step ${displayStep} join_policy='${policy}' must not set \`required_branches\` (only join_policy='required_branches')`
+    }
+    if (policy !== "reduce" && policy !== "select" && step.reducer_member !== undefined) {
+        return `Error: fanout step ${displayStep} join_policy='${policy}' must not set \`reducer_member\` (only join_policy='reduce'/'select')`
     }
     return null
 }
@@ -597,6 +611,9 @@ function validateLoweredTaskStep(
     if (task.fallback_member !== undefined && !isTeamMember(team, task.fallback_member)) {
         return `Error: ${location} fallback_member "${task.fallback_member}" is not a team member`
     }
+    if (task.fallback_member !== undefined && task.fallback_member === task.member) {
+        return `Error: ${location} fallback_member must differ from member`
+    }
     return null
 }
 
@@ -809,6 +826,9 @@ function validateLoweredGateStep(
     }
     if (gate.fallback_verifier !== undefined && !isTeamMember(team, gate.fallback_verifier)) {
         return `Error: ${location} fallback_verifier "${gate.fallback_verifier}" is not a team member`
+    }
+    if (gate.fallback_verifier !== undefined && gate.fallback_verifier === gate.verifier) {
+        return `Error: ${location} fallback_verifier must differ from verifier`
     }
     if (gate.verifiers !== undefined) {
         // M-6: verify verifiers is an array before iterating. A non-array

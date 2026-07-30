@@ -24,11 +24,9 @@ function mermaidNodeId(step: WorkflowRunStep): string {
     return `s${step.step}`
 }
 
-/** M19: check if a gate step has a conditional goto (a `where` clause).
- * WorkflowRunStep type doesn't declare `where` (schema drift, tracked as
- * M3), but runtime data may carry it. Use a safe runtime check. */
+/** Check if a gate step has a conditional goto (a `where` clause). */
 function hasConditionalGoto(step: WorkflowRunStep): boolean {
-    return "where" in step && (step as Record<string, unknown>).where !== undefined
+    return step.where !== undefined
 }
 
 /** Sanitize a branch id for use in Mermaid subgraph names. */
