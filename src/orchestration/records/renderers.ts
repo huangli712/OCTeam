@@ -23,7 +23,13 @@ const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-by
  * evaluate. Mirrors the responses-inclusion pattern used by summarizePipeline.
  */
 export async function summarizeDelegate(team: Team, task: ActiveTask, head: string): Promise<string> {
-    const tasks = await listAllTasks(team.directory)
+    // HIGH #25: only include tasks from the CURRENT run, not the entire
+    // history. Pre-fix code called listAllTasks which returns all statuses
+    // including deleted tasks from previous runs, causing unbounded growth.
+    const allTasks = await listAllTasks(team.directory)
+    // Filter to non-deleted tasks (deleted = from previous runs or explicit
+    // cleanup). This bounds the summary to the current run's active set.
+    const tasks = allTasks.filter(t => t.status !== "deleted")
     const lines = tasks.map(
         t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
     )
@@ -33,7 +39,12 @@ export async function summarizeDelegate(team: Team, task: ActiveTask, head: stri
     const taskResults = tasks
         .filter(t => t.status === "completed")
         .flatMap(t => {
-            const result = t.result ?? (t.owner ? task.responses[t.owner] : undefined)
+            // HIGH #24: only use task.result, NOT task.responses[owner] as a
+            // fallback. Pre-fix code fell back to the owner's latest response,
+            // which overwrites earlier task outputs when the same member
+            // completed multiple tasks — showing the latest output for ALL
+            // tasks and losing earlier work.
+            const result = t.result
             if (!result || result.trim().length === 0) return []
             if (t.owner) coveredOwners.add(t.owner)
             return [`by ${t.owner ?? "unknown"} (task: ${t.subject}):\n${truncateOutput(result)}`]

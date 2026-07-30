@@ -14,6 +14,7 @@
  * Re-driven by status.ts:escalateMemberToErrored on tolerated runtime errors
  * so the barrier can re-check readiness (otherwise hang until wall-clock).
  */
+import { extractTaggedJSON } from "../protocol/decisions.js"
 import type { PluginContext } from "../../core/context.js"
 import { type Team } from "../../state/store.js"
 import type { QuorumBallot } from "../../core/types.js"
@@ -30,36 +31,19 @@ function parseBallot(
     voteOptions: string[] | undefined,
 ): QuorumBallot {
     if (!output) return { vote: "", status: "invalid" }
-    // Tolerate <vote> or <投票>; extract LAST {...} JSON payload inside the tag.
-    // H-17: use matchAll + last, not match (which returns first). When a member
-    // restates an old vote before giving the final one, the stale FIRST match
-    // would win — the LAST match is the authoritative ballot.
-    // J-6/MEDIUM: extract all complete vote blocks, parse ONLY the last.
-    // Pre-fix code used global tag count comparison which let an earlier
-    // malformed tag pollute a later valid ballot. Now we trust the last
-    // complete block regardless of earlier garbage.
-    const re = /<(?:vote|投票)>\s*(\{[\s\S]*?\})\s*<\/(?:vote|投票)>/g
-    const matches = [...output.matchAll(re)]
-    if (matches.length === 0) return { vote: "", status: "invalid" }
-    const match = matches[matches.length - 1]
-    try {
-        const obj = JSON.parse(match[1]) as Record<string, unknown>
-        const raw = obj[voteKey]
-        if (typeof raw !== "string") return { vote: "", status: "invalid" }
-        const vote = raw.trim()
-        if (!vote) return { vote: "", status: "invalid" }
-        // M-QUORUM: trim voteOptions to match the trimmed vote. Pre-fix code
-        // compared raw voteOptions against trimmed votes, so a legitimate
-        // option like " A " could never produce a valid ballot.
-        const normalizedOptions = voteOptions?.map(o => o.trim())
-        if (normalizedOptions && !normalizedOptions.includes(vote)) {
-            return { vote, status: "invalid" }
-        }
-        const rationale = typeof obj.rationale === "string" ? obj.rationale : undefined
-        return { vote, rationale, status: "valid" }
-    } catch {
-        return { vote: "", status: "invalid" }
+    // HIGH #20: use shared extractTaggedJSON instead of local regex.
+    const parsed = extractTaggedJSON(output, "vote", "投票")
+    if (parsed === null || parsed === undefined) return { vote: "", status: "invalid" }
+    const raw = parsed[voteKey]
+    if (typeof raw !== "string") return { vote: "", status: "invalid" }
+    const vote = raw.trim()
+    if (!vote) return { vote: "", status: "invalid" }
+    const normalizedOptions = voteOptions?.map(o => o.trim())
+    if (normalizedOptions && !normalizedOptions.includes(vote)) {
+        return { vote, status: "invalid" }
     }
+    const rationale = typeof parsed.rationale === "string" ? parsed.rationale : undefined
+    return { vote, rationale, status: "valid" }
 }
 
 /**

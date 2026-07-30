@@ -453,6 +453,7 @@ describe("summarizeDelegate", () => {
             blockedBy: [],
             createdAt: 0,
             updatedAt: 0,
+            result: "function doWork() { return 42 }",
         }))
         const task = baseTask({
             type: "delegate",
@@ -487,6 +488,7 @@ describe("summarizeDelegate", () => {
                 blockedBy: [],
                 createdAt: 0,
                 updatedAt: 0,
+                result: item.owner === "alice" ? "alice response" : undefined,
             }))
         }
         const task = baseTask({
@@ -496,7 +498,9 @@ describe("summarizeDelegate", () => {
 
         const summary = await summarizeDelegate(team, task, HEAD)
 
+        // Alice's task has a result field → shown.
         expect(summary).toContain("by alice (task: alice task):\nalice response")
+        // Bob's task has no result field → not shown (no responses fallback).
         expect(summary).not.toContain("by bob (task: bob task):")
     })
 })

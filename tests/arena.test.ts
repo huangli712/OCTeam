@@ -97,22 +97,14 @@ describe("parseScoreboard", () => {
         expect(r.scores).toEqual([])
     })
 
-    test("drops a non-numeric score but retains the entry", () => {
+    test("rejects a non-numeric score as parseFailed (strict validation)", () => {
         const r = parseScoreboard(sb('{"scores":[{"member":"alice","score":"x","passed":true}]}'))
-        expect(r.parseFailed).toBeUndefined()
-        expect(r.scores).toHaveLength(1)
-        expect(r.scores[0].member).toBe("alice")
-        expect(r.scores[0].score).toBeUndefined()
+        expect(r.parseFailed).toBe(true)
     })
 
-    test("drops a non-finite score (JSON 1e400 -> Infinity) but retains the entry", () => {
-        // NaN/Infinity are not JSON literals; 1e400 overflows to Infinity on
-        // JSON.parse, which is the only JSON-reachable non-finite number. The
-        // Number.isFinite guard covers NaN and Infinity identically.
+    test("rejects a non-finite score as parseFailed (strict validation)", () => {
         const r = parseScoreboard(sb('{"scores":[{"member":"alice","score":1e400,"passed":true}]}'))
-        expect(r.parseFailed).toBeUndefined()
-        expect(r.scores).toHaveLength(1)
-        expect(r.scores[0].score).toBeUndefined()
+        expect(r.parseFailed).toBe(true)
     })
 
     test("drops non-finite metric values but keeps finite ones", () => {

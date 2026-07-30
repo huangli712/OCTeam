@@ -217,7 +217,13 @@ export function sumMemberTokens(messages: Array<{ info?: Message }> | undefined)
         if (m.info?.role !== "assistant") continue
         const t = m.info.tokens
         if (!t) continue
-        total += (t.input ?? 0) + (t.output ?? 0) + (t.reasoning ?? 0)
+        // MEDIUM #8: validate each token field is a finite non-negative
+        // number before summing. Pre-fix code used ?? 0 which silently
+        // coerced strings/NaN/undefined to 0, underestimating usage.
+        const input = typeof t.input === "number" && Number.isFinite(t.input) && t.input >= 0 ? t.input : 0
+        const output = typeof t.output === "number" && Number.isFinite(t.output) && t.output >= 0 ? t.output : 0
+        const reasoning = typeof t.reasoning === "number" && Number.isFinite(t.reasoning) && t.reasoning >= 0 ? t.reasoning : 0
+        total += input + output + reasoning
     }
     return total
 }

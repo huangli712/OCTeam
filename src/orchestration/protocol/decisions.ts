@@ -66,7 +66,7 @@ function validateNextActions(raw: unknown): string[] | null {
     return raw
 }
 
-function extractTaggedJSON(
+export function extractTaggedJSON(
     text: string,
     en: string,
     zh?: string,
@@ -155,9 +155,17 @@ function extractTaggedJSON(
         if (ch === "{") {
             if (countDepth === 0) topLevelObjects++
             countDepth++
-        } else if (ch === "}") countDepth--
+        } else if (ch === "}") {
+            countDepth--
+            // HIGH #21: negative depth means an unmatched closing brace
+            // precedes the first opening brace (e.g. `}{"approved":true}`).
+            // The backward scanner skips leading garbage, so this payload
+            // would pass the count check with only 1 object detected.
+            if (countDepth < 0) return undefined
+        }
     }
-    if (topLevelObjects > 1) return undefined
+    // Depth must be 0 (balanced) and exactly one top-level object.
+    if (countDepth !== 0 || topLevelObjects !== 1) return undefined
     const candidate = lastPayload.slice(openIdx, lastClose + 1)
     try {
         return JSON.parse(candidate) as Record<string, unknown>
@@ -355,7 +363,16 @@ export function parseScoreboard(
             member: item.member,
             passed: "passed" in item && item.passed === true,
         }
-        if (typeof item.score === "number" && Number.isFinite(item.score)) entry.score = item.score
+        // HIGH #22: if score is present but not a finite number, the
+        // evaluator's output is malformed — fail the ENTIRE scoreboard
+        // rather than silently dropping the invalid score and changing
+        // the winner selection.
+        if ("score" in item) {
+            if (typeof item.score !== "number" || !Number.isFinite(item.score)) {
+                return { scores: [], rationale: "", parseFailed: true }
+            }
+            entry.score = item.score
+        }
         if (typeof item.metrics === "object" && item.metrics !== null && !Array.isArray(item.metrics)) {
             const metrics: Record<string, number> = {}
             for (const [key, value] of Object.entries(item.metrics)) {

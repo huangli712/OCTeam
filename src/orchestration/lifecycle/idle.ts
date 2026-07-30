@@ -390,12 +390,11 @@ export async function processIdle(
     }
     // signoff stage takes priority over normal mode dispatch.
     if (team.activeTask.signoffStage) {
-        // Stale-idle guard: a reviewer dispatched for signoff re-fires a
-        // redundant idle before its signoff turn produces output. Without
-        // new output this idle holds no fresh verdict — advancing would read
-        // the stale pre-signoff response (e.g. a coder task ack) and falsely
-        // reject. Skip; the real signoff turn's idle will carry the verdict.
-        if (!capturedNew) return
+        // MEDIUM #4: only skip on STALE idle (no new turn). A genuinely new
+        // but EMPTY turn (reason="empty") must reach handleSignoffIdle so
+        // the missing-tag retry path can fire. Pre-fix code blocked ALL
+        // non-fresh idles, permanently stalling signoff on empty turns.
+        if (captureResult?.fresh === false && captureResult.reason === "stale") return
         await handleSignoffIdle(ctx, team, member)
         await checkTermination(ctx, team)
         return

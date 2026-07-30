@@ -103,11 +103,15 @@ export function signoffTaskFields(
  * Runtime counterpart of humanApprovalSchemaFields (tools/schema.ts).
  */
 export function humanApprovalTaskFields(
-    args: { human_approval?: boolean },
-): { humanApproval: boolean | undefined; approvalHistory: [] } {
+    args: { human_approval?: boolean; approval_timeout_ms?: number },
+): { humanApproval: boolean | undefined; approvalHistory: []; approvalTimeoutMs: number | undefined } {
     return {
         humanApproval: args.human_approval,
         approvalHistory: [],
+        // HIGH #13: connect the schema-level approval_timeout_ms to the
+        // ActiveTask field so checkTermination's timeout logic is reachable.
+        // Default: no timeout (infinite wait) unless explicitly configured.
+        approvalTimeoutMs: args.approval_timeout_ms,
     }
 }
 

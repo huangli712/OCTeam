@@ -295,8 +295,8 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             ),
             ...signoffSchemaFields,
             ...humanApprovalSchemaFields,
-            timeout_ms: tool.schema.number().min(1000).optional(),
-            token_budget: tool.schema.number().min(1).optional().describe(
+            timeout_ms: tool.schema.number().int().min(1000).optional(),
+            token_budget: tool.schema.number().int().min(1).optional().describe(
                 "optional token cap; orchestration fails if exceeded",
             ),
             max_retries: tool.schema.number().int().min(0).max(5).optional().describe(

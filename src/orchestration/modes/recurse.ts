@@ -222,6 +222,13 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
         const output = task.responses[member.name] ?? ""
         const depth = T.depth ?? 0
         const dec = parseDecompose(output)
+        // MEDIUM #6: reset the parse-failure counter on ANY successful parse
+        // (not just decomposition). Pre-fix code only reset on successful
+        // decomposition, so a direct-solve success after a failure left the
+        // counter at 1, and a later unrelated failure could terminate the run.
+        if (!dec.parseFailed && dec.subtasks.length >= 0) {
+            task.decomposeParseFailures = 0
+        }
         const maxDepth = task.maxDepth ?? DEFAULT_RECURSE_DEPTH
         const maxSubtasks = task.maxSubtasks ?? DEFAULT_RECURSE_SUBTASKS
         const forcedDirect = task.forcedDirectTaskIds?.includes(T.id) ?? false

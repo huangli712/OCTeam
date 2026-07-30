@@ -258,10 +258,23 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                 // make the sentinel useless and cause master restoration to fail).
                 try {
                     const sentinelPath = masterSentinelPath(newTeamDir)
-                    await fs.writeFile(sentinelPath, context.sessionID + "\n", "utf8")
+                    // CRITICAL #3: use O_CREAT|O_EXCL|O_NOFOLLOW so a concurrent
+                    // symlink plant cannot redirect the write to an arbitrary
+                    // file. O_EXCL fails if the file already exists (fresh team).
+                    // O_NOFOLLOW fails if the leaf is a symlink.
+                    const O_NOFOLLOW = 0x20000
+                    const fh = await fs.open(sentinelPath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | O_NOFOLLOW, 0o644)
+                    try {
+                        await fh.writeFile(context.sessionID + "\n", "utf8")
+                    } finally {
+                        await fh.close()
+                    }
                     await fs.chmod(sentinelPath, 0o444).catch((err) => logSwallowed(ctx, "team_create: chmod sentinel failed", err, {}, "debug"))
                 } catch (err) {
-                    logSwallowed(ctx, "team_create: sentinel write failed", err, {}, "debug")
+                    // Sentinel creation failed (symlink detected, EEXIST, or I/O).
+                    // This is a security signal — do NOT continue with a team
+                    // that lacks its trust anchor.
+                    throw new Error(`team_create: failed to create master.sentinel securely: ${err instanceof Error ? err.message : String(err)}`)
                 }
 
                 const createdTeam = await initTeamState(ctx.storageRoot, {
