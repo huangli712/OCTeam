@@ -313,7 +313,7 @@ export function teamProgressTool(ctx: PluginContext): ToolDefinition {
 
             let team
             try {
-                team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+                team = await loadTeamState(caller.storageRoot, caller.teamName, caller.leadSessionId)
             } catch (err) {
                 if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })

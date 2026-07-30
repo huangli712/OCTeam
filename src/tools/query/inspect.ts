@@ -26,7 +26,7 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
             if (!caller) return "Error: caller is not a member of this team"
             let team
             try {
-                team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+                team = await loadTeamState(caller.storageRoot, caller.teamName, caller.leadSessionId)
             } catch (err) {
                 if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
@@ -38,7 +38,7 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
             let role: string | undefined
             let prompt: string | undefined
             try {
-                const spec = await readTeamSpec(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+                const spec = await readTeamSpec(caller.storageRoot, caller.teamName, caller.leadSessionId)
                 const sm = spec?.members.find(m => m.name === args.member_name)
                 role = sm?.role
                 prompt = sm?.prompt

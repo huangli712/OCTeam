@@ -60,6 +60,7 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
                 failures.push(err)
             }
         }
+        let didBranchSave = false
         if (team.status === "busy") {
             // H38: PID-based fencing. If runnerPid is set and the process is
             // dead, the team IS crashed → safe to fail (enables team_resume).
@@ -91,6 +92,7 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
                 team.activeTask = undefined
                 try {
                     await saveTeamState(team)
+                    didBranchSave = true
                 } catch (err) {
                     logSwallowed(ctx, "persist crashed team state failed (reconcile)", err, { team: team.teamName })
                     failures.push(err)
@@ -101,25 +103,23 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
                 team.lastInterruptedTask = team.activeTask
                 try {
                     await saveTeamState(team)
+                    didBranchSave = true
                 } catch (err) {
                     logSwallowed(ctx, "persist interrupted team state failed (reconcile)", err, { team: team.teamName })
                     failures.push(err)
                 }
             }
         }
-        try {
-            // M-H1: only save if the branch above did not already persist.
-            // Pre-fix code saved unconditionally after the if/else block,
-            // causing a double-save where a branch failure stayed in the
-            // failures list even though the final save succeeded — reporting
-            // a transient error as a startup failure.
-            const branchAlreadySaved = team.activeTask === undefined || team.lastInterruptedTask !== undefined
-            if (!branchAlreadySaved) {
+        // M-H1/M3: the crash/interrupt branches above already saved when
+        // applicable. Only save here if no branch saved (e.g. team was idle
+        // but we still released reservations and want to persist that).
+        if (!didBranchSave) {
+            try {
                 await saveTeamState(team)
+            } catch (err) {
+                logSwallowed(ctx, "persist team state failed (reconcile)", err, { team: team.teamName })
+                failures.push(err)
             }
-        } catch (err) {
-            logSwallowed(ctx, "persist team state failed (reconcile)", err, { team: team.teamName })
-            failures.push(err)
         }
     })
     return failures

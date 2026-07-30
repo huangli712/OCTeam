@@ -93,6 +93,11 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
             let limitError = false
             let blockedByError: string | undefined
             await team.mutex.runExclusive(async () => {
+                // HIGH: tombstone guard — refuse writes after team_delete.
+                if (team.deleted) {
+                    blockedByError = "Error: team has been deleted"
+                    return
+                }
                 // H60: re-check recurse mode INSIDE the mutex.
                 if (team.activeTask?.type === "recurse") {
                     blockedByError = (

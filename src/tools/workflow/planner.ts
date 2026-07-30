@@ -182,15 +182,39 @@ function buildCorrectionPrompt(error: string): string {
     )
 }
 
-/** Poll the child session until it yields assistant text, or throw on timeout. */
+/** Poll the child session until it yields COMPLETE assistant text, or throw on timeout.
+ *  HIGH: pre-fix code returned on the FIRST non-empty text, which could be a
+ *  partial streaming response. Evaluating partial text and sending a
+ *  correction prompt while the original generation is still running creates
+ *  overlapping turns. Now we wait for a closing tag or stable output. */
 async function pollForAssistantOutput(ctx: PluginContext, childId: string, poll: PollConfig): Promise<string> {
     const deadline = Date.now() + poll.timeoutMs
+    let lastOutput = ""
+    let stableCount = 0
     for (;;) {
         const res = await ctx.client.session.messages({ path: { id: childId } })
         const output = extractAssistantText(res.data ?? [])
-        if (output.trim().length > 0) return output
+        if (output.trim().length > 0) {
+            // Check if the response looks complete: either a closing tag is
+            // present, or the output has stabilized across 2 consecutive polls.
+            const hasClosingTag = /<\/(?:team_planner|团队规划师|workflow|工作流)>/.test(output)
+            if (hasClosingTag) return output
+            if (output === lastOutput) {
+                stableCount++
+                if (stableCount >= 2) return output
+            } else {
+                stableCount = 0
+                lastOutput = output
+            }
+        }
         if (Date.now() >= deadline) {
-            throw new Error("team_planner: timed out waiting for planner output")
+            // Throw on timeout only when NO output was received. If partial
+            // output exists, return it so the validation/correction loop can
+            // report the actual error.
+            if (output.trim().length === 0) {
+                throw new Error("team_planner: timed out waiting for planner output")
+            }
+            return output
         }
         await sleep(poll.pollMs)
     }

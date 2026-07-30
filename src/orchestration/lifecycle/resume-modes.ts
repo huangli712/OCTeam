@@ -461,16 +461,29 @@ export async function resumeTollgateMode(
             await finishRun(ctx, team, "tollgate_resume_missing_escalation_actor", "failed");
             return;
         }
-        await dispatchToMember(
-            ctx,
-            handler,
-            "Resume: fix the verifier/reference, then report done.",
-            handler.worktreePath ?? ctx.directory,
-            team,
-        );
+        // MEDIUM: if the escalation handler's output was already captured
+        // pre-crash, replay it instead of re-dispatching.
+        if (task.responses[handler.name]) {
+            await handleTollgateIdle(ctx, team, handler);
+        } else {
+            await dispatchToMember(
+                ctx,
+                handler,
+                "Resume: fix the verifier/reference, then report done.",
+                handler.worktreePath ?? ctx.directory,
+                team,
+            );
+        }
     } else {
-        // produce phase: re-dispatch the current gate's producer.
-        await advanceToGatedStage(ctx, team, stage);
+        // produce phase: check if the producer's output was already captured.
+        const producer = team.members.find(
+            (m) => m.name === stage.member && !m.isMaster,
+        );
+        if (producer && task.responses[producer.name]) {
+            await handleTollgateIdle(ctx, team, producer);
+        } else {
+            await advanceToGatedStage(ctx, team, stage);
+        }
     }
 }
 

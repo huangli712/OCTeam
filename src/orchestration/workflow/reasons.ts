@@ -21,6 +21,10 @@ export const WORKFLOW_FAILED_REASON_PREFIXES = [
     "workflow_failed",
     "workflow_invalid",
     "workflow_timeout",
+    // LOW: engine inlines these without a builder; add them to the registry
+    // so runStatusFromReason and tests classify them as failures.
+    "workflow_input_skipped",
+    "workflow_frontier_deadlock",
 ] as const
 
 /** Stable workflow reason prefixes (success + failure) for tests and UI. */

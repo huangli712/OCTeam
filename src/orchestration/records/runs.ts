@@ -54,6 +54,8 @@ const FAILED_REASON_MARKERS = [
     "tollgate_invalid",    // tollgate: verifier/oracle unevaluable, no escalation handler
     "workflow_failed",     // workflow: MUST stay in sync with WORKFLOW_FAILED_REASON_PREFIXES in workflow/reasons.ts
     "workflow_invalid",    // workflow: MUST stay in sync
+    "workflow_input_skipped", // workflow: declared inputs were skipped by goto
+    "workflow_frontier_deadlock", // workflow: no steps ready, all waiting
     "pipeline_failed",    // pipeline: a stage's member has no live session (explicit failure instead of stalling)
     "parallel_failed",    // parallel: reducer member missing on resume of a reduce stage
     "signoff_rejected",           // signoff: decider/reviewer rejected the work

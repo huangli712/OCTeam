@@ -38,7 +38,12 @@ export function waitUntil(
     const rawPollMs = opts.pollMs ?? 250
     const pollMs = Number.isFinite(rawPollMs) && rawPollMs > 0 ? rawPollMs : 250
     return new Promise<void>((resolve, reject) => {
+        // MEDIUM: use monotonic deadline and cap each poll interval by the
+        // remaining time so the function never overshoots timeoutMs by more
+        // than one poll interval. Pre-fix code waited the full pollMs even
+        // when the deadline had almost been reached.
         const start = Date.now()
+        const deadline = start + opts.timeoutMs
         const tick = () => {
             try {
                 if (predicate()) {
@@ -49,11 +54,12 @@ export function waitUntil(
                 reject(err)
                 return
             }
-            if (Date.now() - start >= opts.timeoutMs) {
+            const remaining = deadline - Date.now()
+            if (remaining <= 0) {
                 reject(new Error(`waitUntil: timed out after ${opts.timeoutMs}ms`))
                 return
             }
-            setTimeout(tick, pollMs)
+            setTimeout(tick, Math.min(pollMs, remaining))
         }
         tick()
     })

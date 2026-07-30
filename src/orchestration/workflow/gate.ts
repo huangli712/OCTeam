@@ -471,14 +471,20 @@ export type WorkflowConditionEvaluation = "matches" | "does_not_match" | "uneval
  * mis-routes the gate to the default successor.
  */
 export function evaluateWorkflowCondition(condition: WorkflowCondition, input: ConditionInput): WorkflowConditionEvaluation {
+    // LOW: validate threshold ranges match the verifier prompt contract.
+    // score: 0-10, confidence: 0-1. Out-of-range configs produce
+    // tautological or impossible conditions — treat as unevaluable.
     switch (condition.kind) {
         case "score_gte":
+            if (condition.value < 0 || condition.value > 10) return "unevaluable"
             if (input.score === undefined) return "unevaluable"
             return input.score >= condition.value ? "matches" : "does_not_match"
         case "score_lt":
+            if (condition.value < 0 || condition.value > 10) return "unevaluable"
             if (input.score === undefined) return "unevaluable"
             return input.score < condition.value ? "matches" : "does_not_match"
         case "confidence_gte":
+            if (condition.value < 0 || condition.value > 1) return "unevaluable"
             if (input.confidence === undefined) return "unevaluable"
             return input.confidence >= condition.value ? "matches" : "does_not_match"
         case "has_issue_severity":

@@ -318,7 +318,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
                 // handles this via startOrchestration's error wrapper.
                 let team
                 try {
-                    team = await loadTeamState(ctx.storageRoot, args.team_id, caller.leadSessionId)
+                    team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err)
                     return `Error: failed to load team state for dry-run: ${msg}`

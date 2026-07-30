@@ -15,6 +15,7 @@ import { loadTeamState, readTeamSpec, saveTeamState, saveTeamStateBounded, write
 import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
 import { inboxPath, worktreesDir } from "../../state/paths.js"
 import { destroyWorktree } from "../../state/worktrees.js"
+import { listAllTasks, updateTask } from "../../state/tasks.js"
 import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../../core/role.js"
 import type { ActiveTask, TeamSpec, WorkflowStep } from "../../core/types.js"
 import { MEMBER_NAME_POOL } from "../../state/naming.js"
@@ -173,7 +174,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             }
             let team
             try {
-                team = await loadTeamState(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+                team = await loadTeamState(caller.storageRoot, caller.teamName, caller.leadSessionId)
             } catch (err) {
                 if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
@@ -242,7 +243,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 // don't clobber each other's spec changes.
                 let spec: TeamSpec | null = null
                 try {
-                    spec = await readTeamSpec(ctx.storageRoot, caller.teamName, caller.leadSessionId)
+                    spec = await readTeamSpec(caller.storageRoot, caller.teamName, caller.leadSessionId)
                 } catch (err) {
                     logger.warn("fixmember: failed to read team spec", { teamName: caller.teamName, error: String(err) })
                 }
@@ -319,6 +320,21 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         migrateActiveTaskMemberRefs(team.lastInterruptedTask, oldName, newName)
                     }
                     changes.push(`name: ${oldName} → ${newName}`)
+                    // HIGH: migrate shared task ownership so claimed/in_progress
+                    // tasks are not orphaned under the old name.
+                    try {
+                        const tasks = await listAllTasks(team.directory)
+                        for (const t of tasks) {
+                            if (t.owner === oldName && (t.status === "claimed" || t.status === "in_progress")) {
+                                await updateTask(team.directory, t.id, { owner: newName }, {
+                                    expectedOwner: oldName,
+                                    expectedStatus: t.status as "claimed" | "in_progress",
+                                })
+                            }
+                        }
+                    } catch (err) {
+                        changes.push(`warning: task owner migration failed (${err instanceof Error ? err.message : String(err)})`)
+                    }
                 }
 
                 // M-FIXMEMBER: if spec is unreadable but the user requested

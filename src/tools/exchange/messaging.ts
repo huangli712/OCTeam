@@ -104,6 +104,7 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
             if (team.activeTask) {
                 let overLimit = false
                 await team.mutex.runExclusive(async () => {
+                    if (team.deleted) return
                     const task = team.activeTask
                     if (!task) return
                     if (task.messagesSent + recipients.length > team.bounds.maxMessagesPerRun) {

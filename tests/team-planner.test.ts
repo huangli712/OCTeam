@@ -287,12 +287,17 @@ describe("runPlannerSession: tagged-JSON extraction", () => {
             childSessionId: "ses_child",
             messageScript: [
                 // Turn 1: assistant output with NO <team_planner> tag.
+                // Duplicate entries so the stability check returns this as
+                // a complete (but tagless) response.
+                [assistantWith("I could not find a good structure. No tag here.")],
+                [assistantWith("I could not find a good structure. No tag here.")],
                 [assistantWith("I could not find a good structure. No tag here.")],
                 // Turn 2: after the correction prompt, a valid tagged block.
                 [
                     { info: { role: "user" }, parts: [{ type: "text", text: "correction", synthetic: true }] },
                     assistantWith(taggedBlock(VALID_PAYLOAD)),
                 ],
+                [assistantWith(taggedBlock(VALID_PAYLOAD))],
             ],
         })
 
