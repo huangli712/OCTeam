@@ -229,10 +229,9 @@ describe("reconcileCrashedTeams", () => {
         const corruptDir = teamDir(root, "corrupt", sid)
         await fs.mkdir(corruptDir, { recursive: true })
         await corruptState(root, "corrupt", sid)
-        await rebuildSessionIndex(root, userRoot)
+        await rebuildSessionIndex(root, userRoot).catch(() => undefined)
 
-        // Must not throw — corrupt team is skipped via logSwallowed.
-        expect(reconcileCrashedTeams(ctxFor(root, userRoot))).resolves.toBeUndefined()
+        expect(reconcileCrashedTeams(ctxFor(root, userRoot))).rejects.toBeInstanceOf(AggregateError)
 
         // Healthy team still reconciled despite the sibling corruption.
         // New semantics: busy team is NOT auto-failed (concurrent-instance safety);
@@ -256,13 +255,49 @@ describe("reconcileCrashedTeams", () => {
         const corruptDir = teamDir(userRoot, "ucorrupt")
         await fs.mkdir(corruptDir, { recursive: true })
         await fs.writeFile(statePath(corruptDir), "{broken")
-        await rebuildSessionIndex(root, userRoot)
+        await rebuildSessionIndex(root, userRoot).catch(() => undefined)
 
-        expect(reconcileCrashedTeams(ctxFor(root, userRoot))).resolves.toBeUndefined()
+        expect(reconcileCrashedTeams(ctxFor(root, userRoot))).rejects.toBeInstanceOf(AggregateError)
 
         // Project-scope team untouched by the user-scope corruption.
         const proj = await loadTeamState(root, "proj", sid)
         expect(proj.status).toBe("idle")
+    })
+
+    test("reservation failure is aggregated after healthy sibling recovery completes", async () => {
+        const root = tmpRoot("rcu-reservation-failure")
+        const userRoot = `${root}__user`
+        const sid = "ses_rcu_reservation_failure"
+        const broken = await initTeamState(root, {
+            ...makeState("broken", sid),
+            status: "idle" as const,
+        }, sid)
+        const healthy = await initTeamState(root, {
+            ...makeState("healthy", sid),
+            status: "busy" as const,
+            activeTask: {
+                runId: "run-healthy-reservation",
+                type: "parallel",
+                mode: "isolated",
+                startedAt: 1,
+                wallClockTimeoutMs: 300_000,
+                tokensUsed: 0,
+                tokensByMember: {},
+                messagesSent: 0,
+                responses: {},
+                stages: [],
+                currentStageIndex: 0,
+                decisionHistory: [],
+                decisionParseFailures: 0,
+            } as ActiveTask,
+        }, sid)
+        const outside = tmpRoot("rcu-reservation-outside")
+        await fs.mkdir(outside, { recursive: true })
+        await fs.symlink(outside, path.join(broken.directory, "mailbox"), "dir")
+
+        expect(reconcileCrashedTeams(ctxFor(root, userRoot))).rejects.toBeInstanceOf(AggregateError)
+
+        expect(healthy.lastInterruptedTask?.runId).toBe("run-healthy-reservation")
     })
 })
 
@@ -286,13 +321,29 @@ describe("reconcileActivation", () => {
         const corruptDir = teamDir(root, "bad", sid)
         await fs.mkdir(corruptDir, { recursive: true })
         await fs.writeFile(statePath(corruptDir), "{not-json")
-        await rebuildSessionIndex(root, userRoot)
+        await rebuildSessionIndex(root, userRoot).catch(() => undefined)
 
-        // Must not throw — bad team is skipped via logSwallowed.
-        expect(reconcileActivation(ctxFor(root, userRoot))).resolves.toBeUndefined()
+        expect(reconcileActivation(ctxFor(root, userRoot))).rejects.toBeInstanceOf(AggregateError)
 
         // Good team's activatedAt was still cleared.
         const good = await loadTeamState(root, "good", sid)
         expect(good.activatedAt).toBeUndefined()
+    })
+
+    test("state persistence failure is aggregated after healthy sibling activation is cleared", async () => {
+        const root = tmpRoot("ra-persist-failure")
+        const userRoot = `${root}__user`
+        const sid = "ses_ra_persist_failure"
+        const broken = await initTeamState(root, makeState("broken", sid, [], 1234), sid)
+        const healthy = await initTeamState(root, makeState("healthy", sid, [], 1234), sid)
+        const outside = path.join(tmpRoot("ra-persist-outside"), "state.json")
+        await fs.mkdir(path.dirname(outside), { recursive: true })
+        await fs.writeFile(outside, "{}")
+        await fs.unlink(statePath(broken.directory))
+        await fs.symlink(outside, statePath(broken.directory))
+
+        expect(reconcileActivation(ctxFor(root, userRoot))).rejects.toBeInstanceOf(AggregateError)
+
+        expect(healthy.activatedAt).toBeUndefined()
     })
 })

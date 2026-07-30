@@ -27,11 +27,10 @@ export async function summarizeDelegate(team: Team, task: ActiveTask, head: stri
     const lines = tasks.map(
         t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
     )
-    const fallbackResult = Object.values(task.responses).at(-1)
     const taskResults = tasks
         .filter(t => t.status === "completed")
         .flatMap(t => {
-            const result = t.result ?? fallbackResult
+            const result = t.result ?? (t.owner ? task.responses[t.owner] : undefined)
             return result && result.trim().length > 0
                 ? [`by ${t.owner ?? "unknown"} (task: ${t.subject}):\n${truncateOutput(result)}`]
                 : []
@@ -199,10 +198,12 @@ export function summarizePipeline(task: ActiveTask, head: string): string {
 export function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }>, head: string): string {
     const steps = task.steps ?? []
     const rows = formatWorkflowLedgerLines(steps)
+    const rawLedger = rows.length > 0 ? `\n[Steps]\n${rows.join("\n")}` : ""
+    const ledger = truncateOutput(rawLedger, WORKFLOW_OUTPUT_BYTE_BUDGET)
     const outputSections: string[] = []
-    let outputBytes = 0
+    let outputBytes = Buffer.byteLength(ledger, "utf8")
     for (const section of formatWorkflowOutputSections(steps)) {
-        const separatorBytes = outputSections.length > 0 ? 2 : 0
+        const separatorBytes = ledger || outputSections.length > 0 ? 2 : 0
         const sectionBytes = Buffer.byteLength(section, "utf8")
         if (outputBytes + separatorBytes + sectionBytes <= WORKFLOW_OUTPUT_BYTE_BUDGET) {
             outputSections.push(section)
@@ -214,13 +215,15 @@ export function summarizeWorkflow(task: Extract<ActiveTask, { type: "workflow" }
             && outputBytes + 2 + markerBytes > WORKFLOW_OUTPUT_BYTE_BUDGET) {
             const removed = outputSections.pop()
             if (removed === undefined) break
-            outputBytes -= Buffer.byteLength(removed, "utf8") + (outputSections.length > 0 ? 2 : 0)
+            outputBytes -= Buffer.byteLength(removed, "utf8") + (ledger || outputSections.length > 0 ? 2 : 0)
         }
-        outputSections.push(WORKFLOW_OUTPUT_TRUNCATED_MARKER)
+        const markerSeparatorBytes = ledger || outputSections.length > 0 ? 2 : 0
+        if (outputBytes + markerSeparatorBytes + markerBytes <= WORKFLOW_OUTPUT_BYTE_BUDGET) {
+            outputSections.push(WORKFLOW_OUTPUT_TRUNCATED_MARKER)
+        }
         break
     }
     const outputs = outputSections.join("\n\n")
-    const ledger = rows.length > 0 ? `\n[Steps]\n${rows.join("\n")}` : ""
     return outputs ? `${head}${ledger}\n\n${outputs}` : `${head}${ledger}`
 }
 

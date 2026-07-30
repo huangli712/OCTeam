@@ -14,6 +14,7 @@ import {
     runDir,
     runRecordPath,
     runMemberOutputPath,
+    tasksDir,
 } from "../src/state/paths.js"
 import { createTask } from "../src/state/tasks.js"
 import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
@@ -175,6 +176,23 @@ describe("persistRun", () => {
         expect(rec!.tasks).toHaveLength(2)
         expect(rec!.tasks!.map(t => t.subject).sort()).toEqual(["task A", "task B"])
         expect(Object.keys(rec!.memberOutputs)).toHaveLength(0)
+    })
+
+    test("delegate: persists the base record when the optional task snapshot fails", async () => {
+        const dir = tmpTeamDir()
+        await fs.mkdir(dir, { recursive: true })
+        await fs.writeFile(tasksDir(dir), "not a directory")
+        const team = makeTeam({
+            directory: dir,
+            activeTask: { runId: "run-d-snapshot-error", type: "delegate", mode: undefined },
+        })
+
+        await persistRun(team, "delegate_complete")
+
+        const rec = await readRunRecord(dir, "run-d-snapshot-error")
+        expect(rec).not.toBeNull()
+        expect(rec?.type).toBe("delegate")
+        expect(rec?.tasks).toBeUndefined()
     })
 
     test("loop: record carries decisionHistory", async () => {

@@ -29,6 +29,7 @@ import {
     findActiveWorkflowStepIndexForMember,
     getActiveWorkflowStepIndices,
     isSameWorkflowBranch,
+    recordUnavailableEnsembleVerifier,
     sortedWorkflowIndices,
     workflowStepActorName,
 } from "./dag.js";
@@ -199,12 +200,10 @@ function buildWorkflowSelectPrompt(
     steps: WorkflowStep[],
     joinIndex: number,
 ): string {
-    const step = steps[joinIndex];
-    const join = step?.kind === "join" ? step.join : undefined;
-    const branchIds = join === undefined ? [] : branchIdsForJoin(steps, join);
+    const selectableBranchIds = selectableBranchIdsForJoin(steps, joinIndex);
     return `[Workflow select task]\n` 
         + `You are the selector for workflow join step ${joinIndex + 1}.`
-        + ` Choose exactly one winning branch id from: ${branchIds.join(", ")}.`
+        + ` Choose exactly one winning branch id from: ${selectableBranchIds.join(", ")}.`
         + ` Emit ONLY <selection>{"winner":"branch_id","rationale":"..."}</selection>.\n\n`
         + buildJoinedWorkflowOutput(steps, joinIndex);
 }
@@ -291,6 +290,19 @@ function survivorBranchIdsForJoin(
         if (tailIndex === undefined) return true
         return steps[tailIndex]?.skipped !== true
     });
+}
+
+/** Collect surviving branches that expose a non-empty output for selection. */
+export function selectableBranchIdsForJoin(
+    steps: WorkflowStep[],
+    joinIndex: number,
+): readonly string[] {
+    const step = steps[joinIndex];
+    const join = step?.kind === "join" ? step.join : undefined;
+    if (join === undefined) return [];
+    return survivorBranchIdsForJoin(steps, join).filter(
+        (branchId) => buildBranchWorkflowOutput(steps, joinIndex, branchId) !== "",
+    );
 }
 
 /** Augment join metadata with survivor and errored branch info. */
@@ -512,8 +524,15 @@ export function markWorkflowFanoutBranchErrored(
 ): WorkflowFanoutErrorResult {
     const steps = task.steps ?? [];
     const activeIndex = findActiveWorkflowStepIndexForMember(task, memberName);
+    const activeStep = activeIndex === null ? undefined : steps[activeIndex];
+    if (
+        activeStep?.branch === undefined
+        && recordUnavailableEnsembleVerifier(activeStep, memberName)
+    ) {
+        return { kind: "within_tolerance" };
+    }
     const activeBranch =
-        activeIndex === null ? null : (steps[activeIndex]?.branch ?? null);
+        activeIndex === null ? null : (activeStep?.branch ?? null);
     // H50: only use the recorded-errored-branch fallback when the member has
     // NO active step at all (activeIndex === null). This covers the H-7 case
     // where a second ensemble verifier errors after the branch was removed
@@ -559,11 +578,20 @@ export async function handleWorkflowDispatchUnavailable(
         return "failed";
     }
     const result = markWorkflowFanoutBranchErrored(task, actorName);
-    if (result.kind === "failed") {
-        await finishRun(ctx, team, result.reason, "failed");
-        return "failed";
+    switch (result.kind) {
+        case "within_tolerance":
+            return "degraded";
+        case "failed":
+            await finishRun(ctx, team, result.reason, "failed");
+            return "failed";
+        case "not_fanout":
+            await finishRun(ctx, team, workflowNoSessionReason(actorName), "failed");
+            return "failed";
+        default: {
+            const exhaustive: never = result;
+            throw new Error(`Unknown workflow fanout error result: ${String(exhaustive)}`);
+        }
     }
-    return "degraded";
 }
 
 /** Resolve the actor name from a workflow step for dispatch failure reporting. */

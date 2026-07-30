@@ -14,6 +14,7 @@ import type {
     WorkflowStep,
     WorkflowTask,
 } from "../../core/types.js"
+import { gateTargetIndices } from "./gate-targets.js"
 import { joinPolicySatisfied } from "./join-policy.js"
 
 /** Default per-gate jump cap (mirrors engine.ts; kept local to avoid a circular import). */
@@ -122,8 +123,20 @@ function checkStep(context: WorkflowInvariantContext, index: number, step: Workf
 
 /** Validate a gate step's target indices, verifier conflicts, and attempt counters. */
 function checkGateStep(context: WorkflowInvariantContext, index: number, step: WorkflowGateStep): void {
-    const targetIndices = gateTargetIndices(context.steps, index, step)
-    if (targetIndices.length === 0) context.violations.push(`step ${index}: gate has no previous task target`)
+    const targetIndices = gateTargetIndices(context.steps, index)
+    const explicitTargetIndices = step.targetStepIndices !== undefined && step.targetStepIndices.length > 0
+        ? step.targetStepIndices
+        : step.targetStepIndex === undefined
+            ? undefined
+            : [step.targetStepIndex]
+    if (explicitTargetIndices === undefined && targetIndices.length === 0) {
+        context.violations.push(`step ${index}: gate has no previous task target`)
+    }
+    for (const targetIndex of explicitTargetIndices ?? []) {
+        if (!targetIndices.includes(targetIndex)) {
+            context.violations.push(`step ${index}: target ${targetIndex} is not a previous task or join step`)
+        }
+    }
 
     for (const targetIndex of targetIndices) {
         const target = context.steps[targetIndex]
@@ -158,16 +171,6 @@ function checkGateStep(context: WorkflowInvariantContext, index: number, step: W
             context.violations.push(`step ${index}: ${counter.field} ${counter.value} exceeds cap ${counter.cap}`)
         }
     }
-}
-
-/** Resolve the target step indices a gate step should verify against. */
-function gateTargetIndices(steps: readonly WorkflowStep[], gateIndex: number, gate: WorkflowGateStep): readonly number[] {
-    if (gate.targetStepIndices !== undefined) return gate.targetStepIndices
-    if (gate.targetStepIndex !== undefined) return [gate.targetStepIndex]
-    for (let index = gateIndex - 1; index >= 0; index -= 1) {
-        if (steps[index]?.kind === "task") return [index]
-    }
-    return []
 }
 
 /** Validate that a branch's metadata is consistent with its fanout and join markers. */

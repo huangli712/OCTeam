@@ -10,7 +10,7 @@
  */
 import { existsSync } from "node:fs"
 import path from "node:path"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 
 import { afterAll, describe, expect, test } from "bun:test"
 
@@ -183,5 +183,65 @@ describe("C2 T5: prune during ack keeps most recent entries", () => {
         expect(processed.every(m => m.id !== "old-0")).toBe(true)
         const ids = processed.slice(-2).map(m => m.id)
         expect(ids).toEqual(["m1", "m2"])
+    })
+
+    test("processed log over 1 MiB is compacted to the recent byte window", async () => {
+        const teamDir = tmpRoot("c2-t5-large")
+        const recipient = "alice"
+        const pp = processedPath(teamDir, recipient)
+        const recentTs = Date.now()
+        const largeEntry = JSON.stringify({
+            id: "recent-filler",
+            deliveryStatus: "processed",
+            timestamp: recentTs,
+            processedAt: recentTs,
+            padding: "x".repeat(1024),
+        }) + "\n"
+        const filler = largeEntry.repeat(Math.ceil(1_048_576 / Buffer.byteLength(largeEntry)) + 1)
+        await mkdir(path.dirname(pp), { recursive: true })
+        await writeFile(pp, filler)
+
+        const message = makeMessage("large-log-new")
+        await writeMailboxMessage(teamDir, recipient, message)
+        const reserved = await pollMailbox(teamDir, recipient)
+        await ackMessages(teamDir, recipient, reserved)
+
+        expect((await stat(pp)).size).toBeLessThanOrEqual(524_288)
+        const processed = await readJsonl(pp)
+        expect(processed.some(entry => entry.id === message.id)).toBe(true)
+    })
+
+    test("stale reservation dedupe reads the recent window of an oversized processed log", async () => {
+        const teamDir = tmpRoot("c2-t5-large-dedupe")
+        const recipient = "alice"
+        const pp = processedPath(teamDir, recipient)
+        const message = makeMessage("large-log-deduped")
+        const recentTs = Date.now()
+        const largeEntry = JSON.stringify({
+            id: "recent-filler",
+            deliveryStatus: "processed",
+            timestamp: recentTs,
+            processedAt: recentTs,
+            padding: "x".repeat(1024),
+        }) + "\n"
+        const filler = largeEntry.repeat(Math.ceil(1_048_576 / Buffer.byteLength(largeEntry)) + 1)
+        await mkdir(path.dirname(pp), { recursive: true })
+        await writeFile(pp, filler + JSON.stringify({
+            ...message,
+            deliveryStatus: "processed",
+            processedAt: recentTs,
+        }) + "\n")
+        const rp = reservedPath(teamDir, recipient, message.id)
+        await mkdir(path.dirname(rp), { recursive: true })
+        await writeFile(rp, JSON.stringify({
+            ...message,
+            deliveryStatus: "delivered",
+            reservedAt: Date.now() - RESERVATION_TTL_MS - 1_000,
+        }))
+
+        await releaseStaleReservations(teamDir, recipient)
+
+        expect(existsSync(rp)).toBe(false)
+        expect(await readJsonl(inboxPath(teamDir, recipient))).toHaveLength(0)
     })
 })

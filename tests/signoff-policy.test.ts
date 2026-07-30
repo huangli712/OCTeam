@@ -5,6 +5,7 @@ import type { Team } from "../src/state/store.js"
 import { getExpectedMember } from "../src/orchestration/lifecycle/idle.js"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { isQuorumReached, parseSignoff } from "../src/orchestration/protocol/decisions.js"
+import { handleSignoffIdle } from "../src/orchestration/control/signoff.js"
 import { makeCtx, makeTask, makeTeam, makeWorkflowTask, type DispatchCall } from "./helpers.js"
 
 function requireMember(team: Team, name: string): MemberState {
@@ -30,8 +31,12 @@ describe("parseSignoff", () => {
         expect(parseSignoff("just regular output, no tag")).toBeNull()
     })
 
-    test("returns null for malformed JSON inside tag", () => {
-        expect(parseSignoff("<signoff>not valid json</signoff>")).toBeNull()
+    test("returns parseFailed for malformed JSON inside tag", () => {
+        expect(parseSignoff("<signoff>not valid json</signoff>")).toEqual({
+            approved: false,
+            rationale: "",
+            parseFailed: true,
+        })
     })
 
     test("handles missing rationale field (defaults to empty string)", () => {
@@ -50,6 +55,7 @@ describe("parseSignoff", () => {
         const text = '<signoff>{"approved": "yes"}</signoff>'
         const result = parseSignoff(text)
         expect(result?.approved).toBe(false)
+        expect(result?.parseFailed).toBe(true)
     })
 
     test("parses signoff embedded in longer text", () => {
@@ -64,6 +70,43 @@ describe("parseSignoff", () => {
 
     test("handles undefined-like input gracefully", () => {
         expect(parseSignoff(undefined as unknown as string)).toBeNull()
+    })
+})
+
+describe("handleSignoffIdle malformed retry", () => {
+    test("retries malformed signoff twice before recording a rejection", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeTask({
+            signoffPolicy: "decider",
+            signoffDecider: "alice",
+            signoffStage: true,
+            signoffReviewers: ["alice"],
+            signoffApprovals: {},
+            signoffRawOutputs: { alice: "<signoff>not valid json</signoff>" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "alice", sessionId: "ses_alice", status: "idle" }],
+        })
+        const alice = requireMember(team, "alice")
+        const ctx = makeCtx({ calls })
+
+        for (let attempt = 1; attempt < 3; attempt++) {
+            alice.status = "idle"
+            await handleSignoffIdle(ctx, team, alice)
+            expect(task.signoffParseFailures?.alice).toBe(attempt)
+            expect(task.signoffApprovals?.alice).toBeUndefined()
+            expect(team.activeTask).toBe(task)
+        }
+
+        alice.status = "idle"
+        await handleSignoffIdle(ctx, team, alice)
+
+        expect(task.signoffParseFailures?.alice).toBe(3)
+        expect(task.signoffApprovals?.alice).toBe(false)
+        expect(calls.filter(call => call.sessionId === "ses_alice")).toHaveLength(2)
+        expect(team.activeTask).toBeUndefined()
+        expect(team.status).toBe("failed")
     })
 })
 

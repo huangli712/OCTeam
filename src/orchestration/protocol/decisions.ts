@@ -76,6 +76,13 @@ function extractTaggedJSON(
         if (openRe.test(text ?? "")) return undefined
         return null
     }
+    const lastCompleteMatch = matches[matches.length - 1]
+    const lastCompleteEnd = (lastCompleteMatch.index ?? 0) + lastCompleteMatch[0].length
+    const lastOpeningIndex = Math.max(
+        (text ?? "").lastIndexOf(`<${en}>`),
+        zh ? (text ?? "").lastIndexOf(`<${zh}>`) : -1,
+    )
+    if (lastOpeningIndex >= lastCompleteEnd) return undefined
     const lastPayload = matches[matches.length - 1][1]
     // M14: extract the LAST valid JSON object from the payload. Pre-fix code
     // used a greedy /\{[\s\S]*\}/ that spanned from the first `{` to the
@@ -150,7 +157,10 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
     // "continue" explicit, or boolean done:true are the only accepted values.
     // Anything else sets parseFailed so the retry/reformat path can fire.
     const decision = parsed.decision
-    if (decision === "done" || parsed.done === true) {
+    if (decision !== undefined && parsed.done !== undefined) {
+        if (typeof parsed.done !== "boolean" || parsed.done !== (decision === "done")) return fail()
+    }
+    if (decision === "done" || (decision === undefined && parsed.done === true)) {
         return {
             round: 0,
             decision: "done",
@@ -413,11 +423,12 @@ export function parseDecompose(
 
 /**
  * Parse a <signoff>{"approved": true|false, "rationale": "..."}</signoff> block
- * from a reviewer's output. Returns null if no valid signoff tag found.
+ * from a reviewer's output. Returns null only when no signoff tag is present.
  */
 export function parseSignoff(text: string): { approved: boolean; rationale: string; parseFailed?: boolean } | null {
     const parsed = extractTaggedJSON(text, "signoff", "签核")
-    if (!parsed) return null
+    if (parsed === null) return null
+    if (parsed === undefined) return { approved: false, rationale: "", parseFailed: true }
     // H-3/N: distinguish malformed output from explicit rejection. Pre-fix
     // code returned approved:false for ANY parsed object with missing or
     // non-boolean approved — the caller couldn't tell a malformed response

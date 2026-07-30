@@ -11,7 +11,7 @@ import path from "node:path"
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
 
-import { loadTeams } from "../src/tui/teams.js"
+import { loadTeams, type TeamSummary } from "../src/tui/teams.js"
 import { statePath, teamDir } from "../src/state/paths.js"
 import { cleanupTmpRoots, makeMember, makeState, tmpRoot } from "./helpers.js"
 
@@ -35,12 +35,18 @@ async function writeTeamState(
     return dir
 }
 
+async function loadOk(directory: string, sessionId: string): Promise<TeamSummary[]> {
+    const result = await loadTeams(directory, sessionId)
+    expect(result.status).toBe("ok")
+    return result.status === "ok" ? result.data : []
+}
+
 describe("loadTeams", () => {
     test("no teams directory → returns empty array", async () => {
         const root = tmpRoot("teams-empty")
         process.chdir(root)
-        const result = await loadTeams("ses_nonexistent")
-        expect(result).toEqual([])
+        const result = await loadTeams(root, "ses_nonexistent")
+        expect(result).toEqual({ status: "ok", data: [] })
     })
 
     test("team without config.json → members load with undefined roles", async () => {
@@ -51,7 +57,7 @@ describe("loadTeams", () => {
         const octeamRoot = path.join(root, ".octeam")
         await writeTeamState(octeamRoot, sid, makeState("alpha", sid, [makeMember("alice")]))
 
-        const result = await loadTeams(sid)
+        const result = await loadOk(root, sid)
         expect(result).toHaveLength(1)
         expect(result[0]!.name).toBe("alpha")
         expect(result[0]!.members).toHaveLength(1)
@@ -76,7 +82,7 @@ describe("loadTeams", () => {
         const octeamRoot = path.join(root, ".octeam")
         await writeTeamState(octeamRoot, sid, state)
 
-        const result = await loadTeams(sid)
+        const result = await loadOk(root, sid)
         expect(result).toHaveLength(1)
         expect(result[0]!.active).toBeDefined()
         expect(result[0]!.active!.type).toBe("consensus")
@@ -97,7 +103,7 @@ describe("loadTeams", () => {
         const octeamRoot = path.join(root, ".octeam")
         await writeTeamState(octeamRoot, sid, state)
 
-        const result = await loadTeams(sid)
+        const result = await loadOk(root, sid)
         expect(result).toHaveLength(1)
         expect(result[0]!.active).toBeDefined()
         expect(result[0]!.active!.type).toBe("pipeline")

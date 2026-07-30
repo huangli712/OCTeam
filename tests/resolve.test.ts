@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import fs from "node:fs/promises"
 
-import { teamDir } from "../src/state/paths.js"
+import { statePath, teamDir } from "../src/state/paths.js"
 import { initTeamState } from "../src/state/store.js"
 import {
     indexMasterTeam,
@@ -8,6 +9,7 @@ import {
     resolveCallerInTeam,
     resolveMasterTeams,
     resolveTeamMember,
+    rebuildSessionIndex,
     setActiveTeam,
     unindexMasterTeam,
     unindexSession,
@@ -133,5 +135,21 @@ describe("master 1:many index", () => {
 
         unindexSession(LEAD)
         expect(resolveMasterTeams(LEAD)).toEqual([])
+    })
+})
+
+describe("rebuildSessionIndex recovery failures", () => {
+    test("indexes healthy teams before throwing aggregated unreadable-state failures", async () => {
+        const root = tmpRoot("resolve-rebuild-aggregate")
+        const userRoot = `${root}__user`
+        await initTeamState(root, makeState("healthy", LEAD, [makeMember("bob", MEMBER)]), LEAD)
+        const corruptDir = teamDir(root, "corrupt", LEAD)
+        await fs.mkdir(corruptDir, { recursive: true })
+        await fs.writeFile(statePath(corruptDir), "{broken")
+
+        expect(rebuildSessionIndex(root, userRoot)).rejects.toBeInstanceOf(AggregateError)
+
+        const resolved = await resolveCallerInTeam(root, MEMBER, "healthy", { requireActive: false })
+        expect(resolved?.name).toBe("bob")
     })
 })

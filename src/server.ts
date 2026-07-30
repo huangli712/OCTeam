@@ -7,7 +7,7 @@
 import type { Hooks, PluginInput, PluginModule } from "@opencode-ai/plugin"
 
 import { createPluginContext, warnIfProjectScopeLacksIsolation } from "./core/context.js"
-import type { PluginContext } from "./core/context.js"
+import type { PluginContext, StorageScope } from "./core/context.js"
 import { createTools } from "./tools/index.js"
 import {
     createCompactingHook,
@@ -30,9 +30,21 @@ const id = "octeam"
  * Pipeline: tool handlers + event handler + transform hook all
  * share ctx; event handler + sweep timer drive the per-team locked state
  * machine; mailbox/tasks/store persist under ~/.octeam (or <dir>/.octeam).
+ *
+ * H7 fix: accept PluginOptions so users can select storage scope via the
+ * plugin config (e.g. ["octeam", { scope: "user" }]). Pre-fix code ignored
+ * options entirely, making the "switch to user scope" mitigation in the
+ * startup warning unreachable.
  */
-const server = async (input: PluginInput): Promise<Hooks> => {
-    const ctx: PluginContext = createPluginContext(input)
+const server = async (input: PluginInput, options?: Record<string, unknown>): Promise<Hooks> => {
+    // H7: read storage scope from plugin options. Default to "project".
+    // Accept "user" or "project" (case-insensitive); anything else falls
+    // back to "project" for safety.
+    const rawScope = options?.scope
+    const scope: StorageScope = typeof rawScope === "string" && rawScope.toLowerCase() === "user"
+        ? "user"
+        : "project"
+    const ctx: PluginContext = createPluginContext(input, scope)
 
     // Initialize the global logger sink so bottom-layer modules (state/,
     // messaging/) can emit structured logs without a ctx parameter.

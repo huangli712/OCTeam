@@ -17,6 +17,11 @@ import type {
 import { isWorkflowIssueSeverity } from "../protocol/decisions.js";
 import { truncateOutput } from "../protocol/output.js";
 import { isSameWorkflowBranch } from "./dag.js";
+import { MAX_UPSTREAM_OUTPUT_BYTES } from "./upstream.js";
+// M22: gate target resolution functions moved to gate-targets.ts to
+// break the dag→invariants→gate→dag import cycle. Re-export to preserve
+// the public API for existing consumers (engine.ts, verdict.ts, etc.).
+export { precedingTaskIndex, gateTargetIndex, gateTargetIndices } from "./gate-targets.js";
 
 /** Structured jump context produced by a gate's goto evaluation. */
 export type WorkflowJumpTransition = {
@@ -128,65 +133,6 @@ function buildVerdictSchemaExample(
     return `{${base},${extras.join(",")}}`;
 }
 
-// --- gate target resolution ---
-
-/**
- * Find the nearest preceding TASK step index for a gate. Returns -1 when none.
- */
-/** Scan backward from gateIndex for the nearest preceding task step. */
-export function precedingTaskIndex(steps: WorkflowStep[], gateIndex: number): number {
-    for (let i = gateIndex - 1; i >= 0; i--) {
-        if (canGateReferenceTask(steps, gateIndex, i)) return i;
-    }
-    return -1;
-}
-
-/** Return the single target task index for a gate (first of multi-target if present). */
-export function gateTargetIndex(steps: WorkflowStep[], gateIndex: number): number {
-    const targets = gateTargetIndices(steps, gateIndex);
-    return targets[0] ?? -1;
-}
-
-/** Return all target task indices a gate verifies (explicit or inferred). */
-export function gateTargetIndices(steps: WorkflowStep[], gateIndex: number): number[] {
-    const gate = steps[gateIndex];
-    if (gate?.kind !== "gate") return [];
-    if (
-        gate.targetStepIndices !== undefined &&
-        gate.targetStepIndices.length > 0
-    ) {
-        return gate.targetStepIndices
-            .filter((targetIndex) =>
-                canGateReferenceTask(steps, gateIndex, targetIndex),
-            )
-            .sort((a, b) => a - b);
-    }
-    if (gate.targetStepIndex !== undefined) {
-        return canGateReferenceTask(steps, gateIndex, gate.targetStepIndex)
-            ? [gate.targetStepIndex]
-            : [];
-    }
-    const nearest = precedingTaskIndex(steps, gateIndex);
-    return nearest < 0 ? [] : [nearest];
-}
-
-/** Check whether a gate can reference a given task or join step (same-branch check). */
-function canGateReferenceTask(
-    steps: WorkflowStep[],
-    gateIndex: number,
-    targetIndex: number,
-): boolean {
-    const gate = steps[gateIndex];
-    const target = steps[targetIndex];
-    if (gate?.kind !== "gate") return false;
-    // join is always top-level (no branch) and carries joinedOutput; allow it.
-    if (target?.kind === "join") return true;
-    if (target?.kind !== "task") return false;
-
-    const gateBranch = gate.branch;
-    if (gateBranch === undefined) return target.branch === undefined;
-    return isSameWorkflowBranch(target, gateBranch);
-}
 
 // --- labels ---
 
@@ -204,27 +150,52 @@ export function workflowTargetLabel(indices: number[]): string {
     return `workflow ${stepIndicesLabel(indices)}`;
 }
 
-/** Concatenate truncated outputs of all target producer steps for a gate. */
+/** Concatenate truncated outputs of all target producer steps for a gate.
+ * M30 fix: apply a total byte budget (MAX_UPSTREAM_OUTPUT_BYTES) across
+ * all targets, not just per-target truncation. Pre-fix code could produce
+ * arbitrarily large concatenated output when there were many targets. */
 export function buildGateProducerOutput(
     steps: WorkflowStep[],
     targetIndices: number[],
 ): string {
     const blocks: string[] = [];
+    let used = 0;
     for (const targetIndex of targetIndices) {
         const producerStep = steps[targetIndex];
         if (!producerStep) continue;
         if (producerStep.kind === "task") {
-            blocks.push(
-                `[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n` +
-                    `${truncateOutput(producerStep.output ?? "")}`,
-            );
+            const block = `[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n` +
+                `${truncateOutput(producerStep.output ?? "")}`;
+            const blockSize = Buffer.byteLength(block, "utf8");
+            const separatorSize = blocks.length > 0 ? 2 : 0; // "\n\n"
+            if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) {
+                const marker = `[…gate producer output truncated at ${MAX_UPSTREAM_OUTPUT_BYTES} bytes]`;
+                const markerSize = Buffer.byteLength(marker, "utf8");
+                if (used + separatorSize + markerSize <= MAX_UPSTREAM_OUTPUT_BYTES) {
+                    blocks.push(marker);
+                    used += separatorSize + markerSize;
+                }
+                break;
+            }
+            blocks.push(block);
+            used += separatorSize + blockSize;
         } else if (producerStep.kind === "join") {
             const joined = producerStep.join?.joinedOutput ?? "";
             if (joined) {
-                blocks.push(
-                    `[Joined output from workflow step ${targetIndex + 1}]\n` +
-                        `${truncateOutput(joined)}`,
-                );
+                const block = `[Joined output from workflow step ${targetIndex + 1}]\n` +
+                    `${truncateOutput(joined)}`;
+                const blockSize = Buffer.byteLength(block, "utf8");
+                const separatorSize = blocks.length > 0 ? 2 : 0;
+                if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) {
+                    const marker = `[…gate producer output truncated at ${MAX_UPSTREAM_OUTPUT_BYTES} bytes]`;
+                    const markerSize = Buffer.byteLength(marker, "utf8");
+                    if (used + separatorSize + markerSize <= MAX_UPSTREAM_OUTPUT_BYTES) {
+                        blocks.push(marker);
+                    }
+                    break;
+                }
+                blocks.push(block);
+                used += separatorSize + blockSize;
             }
         }
     }
@@ -297,8 +268,8 @@ export function whereReason(step: WorkflowGateStep, fallback: string): string {
 
 // --- ensemble verdict aggregation ---
 
-/** Build an ensemble aggregation result with the given verdict and rationale. */
-function ensembleResult(verdict: Verdict, rationale: string, score?: number, confidence?: number, issues?: WorkflowIssue[]): {
+/** Build an ensemble aggregation result with the given verdict and feedback. */
+function ensembleResult(verdict: Verdict, rationale: string, score?: number, confidence?: number, issues?: WorkflowIssue[], diff = ""): {
     verdict: Verdict
     parseFailed: boolean
     rationale: string
@@ -307,7 +278,7 @@ function ensembleResult(verdict: Verdict, rationale: string, score?: number, con
     confidence?: number
     issues?: WorkflowIssue[]
 } {
-    return { verdict, parseFailed: false, rationale, diff: "", score, confidence, issues }
+    return { verdict, parseFailed: false, rationale, diff, score, confidence, issues }
 }
 
 /**
@@ -322,15 +293,41 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
     confidence?: number
     issues?: WorkflowIssue[]
 } {
-    const results = Object.values(step.ensembleResults ?? {});
+    const resultEntries = Object.entries(step.ensembleResults ?? {});
+    const results = resultEntries.map(([, result]) => result);
+    const resultFromVerdict = (finalVerdict: Verdict, summary: string) => {
+        const supporters = resultEntries.filter(([, result]) => result.verdict === finalVerdict)
+        const scores = supporters.map(([, result]) => result.score)
+            .filter((score): score is number => typeof score === "number")
+        const confidences = supporters.map(([, result]) => result.confidence)
+            .filter((confidence): confidence is number => typeof confidence === "number")
+        const supportersWithIssues = supporters.filter(([, result]) => result.issues !== undefined)
+        const allIssues = supportersWithIssues.length > 0
+            ? supportersWithIssues.flatMap(([, result]) => result.issues ?? [])
+            : undefined
+        const rationaleLines = supporters.flatMap(([verifierName, result]) => {
+            const rationale = result.rationale?.trim()
+            return rationale ? [`[${verifierName}] ${rationale}`] : []
+        })
+        const diffLines = supporters.flatMap(([verifierName, result]) => {
+            const diff = result.diff?.trim()
+            return diff ? [`[${verifierName}] ${diff}`] : []
+        })
+        return ensembleResult(
+            finalVerdict,
+            truncateOutput([summary, ...rationaleLines].join("\n")),
+            scores.length > 0 ? Math.max(...scores) : undefined,
+            confidences.length > 0 ? Math.max(...confidences) : undefined,
+            allIssues,
+            truncateOutput(diffLines.join("\n")),
+        )
+    }
     const parseFailures = results.filter(r => r.parseFailed).length;
     if (parseFailures > 0) {
         return {
-            verdict: "INVALID",
+            ...resultFromVerdict("INVALID", `${parseFailures} verifier(s) produced malformed verdicts`),
             parseFailed: true,
-            rationale: `${parseFailures} verifier(s) produced malformed verdicts`,
-            diff: "",
-        };
+        }
     }
     const verdicts = results.map(r => r.verdict).filter((v): v is Verdict => v !== undefined);
     const passCount = verdicts.filter(v => v === "PASS").length;
@@ -343,34 +340,11 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
     if (total === 0) {
         return ensembleResult("INVALID", "No verifier results");
     }
-    // H-5: aggregate score/confidence/issues from ONLY the verifier results
+    // H-5/L1: aggregate metadata and feedback from ONLY the verifier results
     // that SUPPORT the final aggregated verdict. A minority verifier voting
     // INVALID with score=10 (or FAIL when the majority is PASS) must not
     // contaminate the aggregate and trigger an incorrect `where` jump.
     // Pre-fix code used Math.max across ALL results including dissenting votes.
-    const aggregateFromVerdict = (finalVerdict: Verdict) => {
-        const supporters = results.filter(r => r.verdict === finalVerdict)
-        const scores = supporters.map(r => r.score).filter((s): s is number => typeof s === "number")
-        const confidences = supporters.map(r => r.confidence).filter((c): c is number => typeof c === "number")
-        // H5: if ALL supporters omitted issues (undefined), the aggregate must
-        // be undefined (unevaluable), NOT []. Pre-fix code used
-        // `r.issues ?? []` which converted undefined to [], making H54's
-        // has_issue_severity treat omitted issues as "no qualifying issues"
-        // (does_not_match) instead of unevaluable. Only flatten issues from
-        // supporters that actually REPORTED issues.
-        const supportersWithIssues = supporters.filter(r => r.issues !== undefined)
-        const allIssues = supportersWithIssues.length > 0
-            ? supportersWithIssues.flatMap(r => r.issues!)
-            : undefined
-        return {
-            aggScore: scores.length > 0 ? Math.max(...scores) : undefined,
-            aggConfidence: confidences.length > 0 ? Math.max(...confidences) : undefined,
-            // H-W7/H5: return the array even when empty (issues:[] from
-            // supporters means "no qualifying issues found"). Only return
-            // undefined when NO supporter reported issues at all (unevaluable).
-            aggIssues: allIssues,
-        }
-    }
     const ensemblePolicy = step.ensemblePolicy;
     if (ensemblePolicy === undefined) {
         throw new Error("Missing workflow ensemble policy");
@@ -378,14 +352,12 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
     switch (ensemblePolicy) {
         case "majority":
             if (passCount > total / 2) {
-                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("PASS")
-                return ensembleResult("PASS", `Majority PASS (${passCount}/${total})`, aggScore, aggConfidence, aggIssues)
+                return resultFromVerdict("PASS", `Majority PASS (${passCount}/${total})`)
             }
             if (failCount > total / 2) {
-                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("FAIL")
-                return ensembleResult("FAIL", `Majority FAIL (${failCount}/${total})`, aggScore, aggConfidence, aggIssues)
+                return resultFromVerdict("FAIL", `Majority FAIL (${failCount}/${total})`)
             }
-            return ensembleResult("INVALID", `No majority (${passCount}P/${failCount}F/${invalidCount}I)`);
+            return resultFromVerdict("INVALID", `No majority (${passCount}P/${failCount}F/${invalidCount}I)`);
         case "quorum": {
             const threshold = step.ensembleQuorum ?? 0.5;
             const passMeets = passCount / total >= threshold;
@@ -393,28 +365,24 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
             // When BOTH pass and fail meet the threshold simultaneously
             // (e.g. 1P/1F at threshold 0.5), there is no clear winner → INVALID.
             if (passMeets && failMeets) {
-                return ensembleResult("INVALID", `Tie at quorum threshold (${passCount}P/${failCount}F/${invalidCount}I, threshold ${threshold})`);
+                return resultFromVerdict("INVALID", `Tie at quorum threshold (${passCount}P/${failCount}F/${invalidCount}I, threshold ${threshold})`);
             }
             if (passMeets) {
-                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("PASS")
-                return ensembleResult("PASS", `Quorum PASS (${passCount}/${total} >= ${threshold})`, aggScore, aggConfidence, aggIssues)
+                return resultFromVerdict("PASS", `Quorum PASS (${passCount}/${total} >= ${threshold})`)
             }
             if (failMeets) {
-                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("FAIL")
-                return ensembleResult("FAIL", `Quorum FAIL (${failCount}/${total} >= ${threshold})`, aggScore, aggConfidence, aggIssues)
+                return resultFromVerdict("FAIL", `Quorum FAIL (${failCount}/${total} >= ${threshold})`)
             }
-            return ensembleResult("INVALID", `No quorum (${passCount}P/${failCount}F/${invalidCount}I)`);
+            return resultFromVerdict("INVALID", `No quorum (${passCount}P/${failCount}F/${invalidCount}I)`);
         }
         case "unanimous":
             if (passCount === total) {
-                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("PASS")
-                return ensembleResult("PASS", `Unanimous PASS (${passCount}/${total})`, aggScore, aggConfidence, aggIssues)
+                return resultFromVerdict("PASS", `Unanimous PASS (${passCount}/${total})`)
             }
             if (failCount === total) {
-                const { aggScore, aggConfidence, aggIssues } = aggregateFromVerdict("FAIL")
-                return ensembleResult("FAIL", `Unanimous FAIL (${failCount}/${total})`, aggScore, aggConfidence, aggIssues)
+                return resultFromVerdict("FAIL", `Unanimous FAIL (${failCount}/${total})`)
             }
-            return ensembleResult("INVALID", `Not unanimous (${passCount}P/${failCount}F/${invalidCount}I)`);
+            return resultFromVerdict("INVALID", `Not unanimous (${passCount}P/${failCount}F/${invalidCount}I)`);
         default: {
             const exhaustive: never = ensemblePolicy;
             throw new Error(`Unknown workflow ensemble policy: ${String(exhaustive)}`);

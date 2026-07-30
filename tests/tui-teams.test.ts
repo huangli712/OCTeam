@@ -19,14 +19,14 @@ describe("countMailbox", () => {
     test("missing mailbox files -> zero, does not throw", async () => {
         const dir = tmpRoot("tui-mailbox-missing")
         const result = await countMailbox(dir, "alice")
-        expect(result).toEqual({ unread: 0, total: 0 })
+        expect(result).toEqual({ status: "ok", data: { unread: 0, total: 0 } })
     })
 
     test("counts unread inbox lines", async () => {
         const dir = tmpRoot("tui-mailbox-unread")
         await writeMailbox(dir, "alice.jsonl", ['{"id":1}', '{"id":2}', '{"id":3}'])
         const result = await countMailbox(dir, "alice")
-        expect(result).toEqual({ unread: 3, total: 3 })
+        expect(result).toEqual({ status: "ok", data: { unread: 3, total: 3 } })
     })
 
     test("total = inbox + processed", async () => {
@@ -34,7 +34,7 @@ describe("countMailbox", () => {
         await writeMailbox(dir, "alice.jsonl", ['{"id":1}', '{"id":2}'])
         await writeMailbox(dir, "alice.processed.jsonl", ['{"id":0}'])
         const result = await countMailbox(dir, "alice")
-        expect(result).toEqual({ unread: 2, total: 3 })
+        expect(result).toEqual({ status: "ok", data: { unread: 2, total: 3 } })
     })
 
     test("blank lines are ignored", async () => {
@@ -42,13 +42,27 @@ describe("countMailbox", () => {
         // trailing newline + interior blank line should not be counted
         await writeMailbox(dir, "alice.jsonl", ['{"id":1}', "", '{"id":2}', ""])
         const result = await countMailbox(dir, "alice")
-        expect(result).toEqual({ unread: 2, total: 2 })
+        expect(result).toEqual({ status: "ok", data: { unread: 2, total: 2 } })
     })
 
     test("only processed present -> unread 0, total from processed", async () => {
         const dir = tmpRoot("tui-mailbox-processed-only")
         await writeMailbox(dir, "bob.processed.jsonl", ['{"id":1}', '{"id":2}'])
         const result = await countMailbox(dir, "bob")
-        expect(result).toEqual({ unread: 0, total: 2 })
+        expect(result).toEqual({ status: "ok", data: { unread: 0, total: 2 } })
+    })
+
+    test("refuses mailbox files reached through a symlinked ancestor", async () => {
+        const dir = tmpRoot("tui-mailbox-symlink-team")
+        const outside = tmpRoot("tui-mailbox-symlink-outside")
+        await fs.mkdir(dir, { recursive: true })
+        await fs.mkdir(outside, { recursive: true })
+        await fs.writeFile(path.join(outside, "alice.jsonl"), '{"id":1}\n')
+        await fs.writeFile(path.join(outside, "alice.processed.jsonl"), '{"id":2}\n')
+        await fs.symlink(outside, path.join(dir, "mailbox"), "dir")
+
+        const result = await countMailbox(dir, "alice")
+
+        expect(result).toMatchObject({ status: "error" })
     })
 })

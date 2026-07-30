@@ -253,6 +253,8 @@ export interface ActiveTaskBase {
     signoffDecider?: string                  // member name (decider mode)
     signoffQuorum?: number                   // 0-1, default 0.5 (peer-quorum mode, Phase D)
     signoffApprovals?: Record<string, boolean>  // collected approvals
+    signoffReviewers?: string[]              // reviewers that successfully received the signoff prompt
+    signoffParseFailures?: Record<string, number> // consecutive malformed responses by reviewer
     signoffStage?: boolean                   // true when in signoff phase
     signoffRawOutputs?: Record<string, string>  // per-reviewer signoff turn output (side-channel so task.responses preserves work output)
 
@@ -350,6 +352,8 @@ export interface RecurseTask extends ActiveTaskBase {
     // continuous format errors don't burn unlimited tokens.
     decomposeParseFailures?: number
     maxDecomposeParseFailures?: number       // override default (3)
+    forcedDirectTaskIds?: string[]
+    forcedDirectDecomposeAttempts?: Record<string, number>
 }
 
 // tollgate: verdict-gated pipeline (produce -> verify -> escalate). A gated

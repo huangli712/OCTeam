@@ -105,7 +105,9 @@ describe("tui team loader must reject untyped/corrupt state (finding: untyped-te
                 }),
             )
 
-            const summaries = await loadTeams(sid)
+            const result = await loadTeams(root, sid)
+            expect(result.status).toBe("error")
+            const summaries = "data" in result ? result.data ?? [] : []
 
             // Guard: the loader works — the valid team renders correctly.
             const good = summaries.find(s => s.name === "good")

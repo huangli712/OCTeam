@@ -344,13 +344,26 @@ export async function rebuildSessionIndex(
     ctx?: PluginContext,
 ): Promise<void> {
     // Project scope is segmented (<root>/<sid>/teams); user scope is flat (<root>/teams).
-    await indexScope(projectStorageRoot, true, ctx)
-    await indexScope(userStorageRoot, false, ctx)
+    const failures = [
+        ...await indexScope(projectStorageRoot, true, ctx),
+        ...await indexScope(userStorageRoot, false, ctx),
+    ]
+    if (failures.length > 0) {
+        throw new AggregateError(failures, `rebuildSessionIndex failed for ${failures.length} team or scope operation(s)`)
+    }
 }
 
 /** Index every team in one scope. Shared by the project + user passes above. */
-async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginContext): Promise<void> {
-    const teams = await listAllTeams(storageRoot, segmented)
+async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginContext): Promise<unknown[]> {
+    const failures: unknown[] = []
+    let teams: Awaited<ReturnType<typeof listAllTeams>>
+    try {
+        teams = await listAllTeams(storageRoot, segmented)
+    } catch (err) {
+        if (ctx) logSwallowed(ctx, "indexScope failed to list teams", err, { storageRoot })
+        failures.push(err)
+        return failures
+    }
     for (const { leadSessionId, teamName } of teams) {
         try {
             const team = await loadTeamState(storageRoot, teamName, leadSessionId)
@@ -410,6 +423,8 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
             }
         } catch (err) {
             if (ctx) logSwallowed(ctx, "indexScope skipped unreadable state", err, { dir: teamName })
+            failures.push(err)
         }
     }
+    return failures
 }

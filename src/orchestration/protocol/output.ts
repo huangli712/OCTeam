@@ -60,7 +60,31 @@ export function extractOutputFromParts(parts: unknown): string {
             const toolStatus = p.state?.status
             if (toolStatus === "error" || toolStatus === "running" || toolStatus === "pending") continue
             const input = (p.state?.input ?? {}) as Record<string, unknown>
-            if (typeof input.content === "string" && input.content.trim()) {
+            let primaryInput: string | undefined
+            switch (p.tool) {
+                case "aft_delete":
+                    if (Array.isArray(input.files)) {
+                        primaryInput = input.files.filter((file): file is string => typeof file === "string").join(" ")
+                    }
+                    break
+                case "aft_move":
+                    if (typeof input.path === "string" && typeof input.destination === "string") {
+                        primaryInput = `${input.path}→${input.destination}`
+                    }
+                    break
+                case "aft_refactor":
+                    if (typeof input.symbol === "string") primaryInput = input.symbol
+                    break
+                case "aft_import":
+                    if (typeof input.module === "string") primaryInput = input.module
+                    break
+                case "aft_ast_replace":
+                    if (typeof input.pattern === "string") primaryInput = input.pattern
+                    break
+            }
+            if (primaryInput?.trim()) {
+                segments.push(primaryInput)
+            } else if (typeof input.content === "string" && input.content.trim()) {
                 const fp = typeof input.filePath === "string" ? input.filePath : ""
                 segments.push(fp ? `[File: ${fp}]\n${input.content}` : input.content)
             } else if (typeof input.command === "string" && input.command.trim()) {
@@ -277,7 +301,7 @@ export function formatWorkflowIssueDetail(issues: WorkflowIssueLike[] | undefine
     if (!issues || issues.length === 0) return ""
     const sorted = [...issues].sort((a, b) => (SEVERITY_ORDER[a.severity ?? ""] ?? 99) - (SEVERITY_ORDER[b.severity ?? ""] ?? 99))
     const lines = sorted.map(issue => {
-        const msg = issue.message && issue.message.trim() !== "" ? `: ${issue.message}` : ""
+        const msg = issue.message && issue.message.trim() !== "" ? `: ${truncateOutput(issue.message, 1024)}` : ""
         return `    - [${issue.severity ?? "unknown"}]${msg}`
     })
     return "\n" + lines.join("\n")

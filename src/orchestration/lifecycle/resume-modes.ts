@@ -34,7 +34,7 @@ import { finishRun } from "../control/completion.js";
 import { buildArenaEvaluatorPrompt, handleArenaIdle } from "../modes/arena.js";
 import { buildReducePrompt, handleReduceIdle } from "../modes/reduce.js";
 import { handleQuorumIdle } from "../modes/quorum.js";
-import { buildSignoffReviewPrompt } from "../control/signoff.js";
+import { buildSignoffReviewPrompt, evaluateSignoffQuorum } from "../control/signoff.js";
 import { listAllTasks, reapStaleClaims, updateTask } from "../../state/tasks.js";
 import {
     getActiveWorkflowStepIndices,
@@ -141,9 +141,11 @@ export async function resumeSignoffReduceStage(
             );
             reviewers = decider ? [decider] : [];
         } else if (task.signoffPolicy === "peer-quorum") {
-            reviewers = team.members.filter(
-                (m) => !m.isMaster && m.sessionId && m.status !== "errored",
-            );
+            const reviewerRoster = task.signoffReviewers
+                ?? team.members.filter((m) => !m.isMaster && m.sessionId).map((m) => m.name);
+            reviewers = reviewerRoster
+                .map((name) => team.members.find((m) => m.name === name))
+                .filter((m): m is TeamMember => m !== undefined && !m.isMaster && !!m.sessionId && m.status !== "errored");
         }
         let dispatched = 0;
         for (const m of reviewers) {
@@ -158,14 +160,19 @@ export async function resumeSignoffReduceStage(
             );
             dispatched++;
         }
-        // If zero reviewers needed dispatch AND all reviewers have approvals,
-        // the signoff barrier will be re-driven by the next idle event or the
-        // sweep timer (which calls processIdle → handleSignoffIdle). Do NOT
-        // re-drive here — the test contract expects zero side effects when
-        // all approvals are already recorded.
-        // NOTE: if no reviewers were dispatched and some approvals are still
-        // missing (e.g. all reviewers errored), the run will fail via
-        // checkTermination's tolerance check on the next idle.
+        if (dispatched === 0 && task.signoffPolicy === "decider" && task.signoffDecider) {
+            const approved = task.signoffApprovals?.[task.signoffDecider];
+            if (approved !== undefined) {
+                await finishRun(
+                    ctx,
+                    team,
+                    approved ? "signoff_approved" : "signoff_rejected",
+                    approved ? "idle" : "failed",
+                );
+            }
+        } else if (dispatched === 0 && task.signoffPolicy === "peer-quorum") {
+            await evaluateSignoffQuorum(ctx, team);
+        }
         return true;
     }
     return false;

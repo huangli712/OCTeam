@@ -40,6 +40,8 @@ const PLANNER_POLL_MS = 2_000
 
 /** Number of correction rounds before failing the planner session. */
 const PLANNER_MAX_RETRIES = 2
+const PLANNER_DELETE_ATTEMPTS = 3
+const PLANNER_DELETE_RETRY_MS = 500
 
 /** Regex for a safe lowercase-slug team_id. */
 const TEAM_ID_SLUG = /^[a-z0-9-]+$/
@@ -229,14 +231,26 @@ export async function runPlannerSession(ctx: PluginContext, opts: RunPlannerOpti
     } finally {
         // Close the child session so it does not linger in the session list
         // after the planner completes (success, error, or timeout).
-        await ctx.client.session.delete({
-            path: { id: childId },
-            query: { directory: ctx.directory },
-        }).catch((err) => {
-            // Best-effort: if delete fails the session lingers but does
-            // not block the planner result.
-            logSwallowed(ctx, "planner: child session.delete failed", err, { childId })
-        })
+        let deleted = false
+        let deleteError: unknown
+        for (let attempt = 1; attempt <= PLANNER_DELETE_ATTEMPTS; attempt += 1) {
+            try {
+                await ctx.client.session.delete({
+                    path: { id: childId },
+                    query: { directory: ctx.directory },
+                })
+                deleted = true
+                break
+            } catch (err) {
+                deleteError = err instanceof Error ? err : new Error(String(err))
+                if (attempt < PLANNER_DELETE_ATTEMPTS) {
+                    await sleep(PLANNER_DELETE_RETRY_MS)
+                }
+            }
+        }
+        if (!deleted) {
+            logSwallowed(ctx, "planner: child session.delete failed", deleteError, { childId })
+        }
     }
 }
 
@@ -320,6 +334,22 @@ function validatePlannerTeam(teamId: string, team: unknown): { memberNames: stri
         }
         if (member.role !== undefined && typeof member.role !== "string") {
             return { error: `Error: team.members[${i}] role must be a string` }
+        }
+        // M10 fix: planner-produced members MUST have a role and prompt.
+        // Pre-fix code treated these as optional, producing a team.json that
+        // team_create would later reject or silently use empty prompts.
+        if (typeof member.role !== "string" || member.role.length === 0) {
+            return { error: `Error: team.members[${i}] is missing a role` }
+        }
+        if (typeof member.prompt !== "string" || member.prompt.length === 0) {
+            return { error: `Error: team.members[${i}] is missing a prompt` }
+        }
+        // Optional fields type check
+        if (member.model !== undefined && typeof member.model !== "string") {
+            return { error: `Error: team.members[${i}] model must be a string` }
+        }
+        if (member.worktree !== undefined && typeof member.worktree !== "boolean") {
+            return { error: `Error: team.members[${i}] worktree must be a boolean` }
         }
     }
     // M-PLANNER: enforce the same member count limit as team_create (max 12).
@@ -595,29 +625,28 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
         // Rollback: restore the ORIGINAL content (or delete if none existed).
         // This is critical for overwrite:true — without it, the old loader
         // data is permanently lost.
-        try {
-            if (teamBackup !== null) {
-                await atomicWrite(teamPath, teamBackup, ctx.directory)
-            } else {
-                await unlink(teamPath).catch((err: unknown) => {
-                    // H62: log non-ENOENT unlink failures so the orphaned file
-                    // is observable. Pre-fix code silently swallowed ALL errors.
-                    if (!isEnoent(err)) {
-                        logSwallowed(ctx, "planner: rollback unlink failed for teamPath", err, { teamId: args.team_id, path: teamPath })
-                    }
+        const rollbackPaths = [teamPath, workflowPath] as const
+        const rollbackResults = await Promise.allSettled([
+            teamBackup !== null
+                ? atomicWrite(teamPath, teamBackup, ctx.directory)
+                : unlink(teamPath).catch((unlinkErr: unknown) => {
+                    if (!isEnoent(unlinkErr)) throw unlinkErr
+                }),
+            workflowBackup !== null
+                ? atomicWrite(workflowPath, workflowBackup, ctx.directory)
+                : unlink(workflowPath).catch((unlinkErr: unknown) => {
+                    if (!isEnoent(unlinkErr)) throw unlinkErr
+                }),
+        ])
+        for (let index = 0; index < rollbackResults.length; index++) {
+            const result = rollbackResults[index]
+            const rollbackPath = rollbackPaths[index]
+            if (result?.status === "rejected" && rollbackPath !== undefined) {
+                logSwallowed(ctx, "planner: rollback restore failed", result.reason, {
+                    teamId: args.team_id,
+                    path: rollbackPath,
                 })
             }
-            if (workflowBackup !== null) {
-                await atomicWrite(workflowPath, workflowBackup, ctx.directory)
-            } else {
-                await unlink(workflowPath).catch((err: unknown) => {
-                    if (!isEnoent(err)) {
-                        logSwallowed(ctx, "planner: rollback unlink failed for workflowPath", err, { teamId: args.team_id, path: workflowPath })
-                    }
-                })
-            }
-        } catch (rollbackErr) {
-            logSwallowed(ctx, "planner: rollback failed after workflow write failure", rollbackErr, { teamId: args.team_id })
         }
         throw err
     }

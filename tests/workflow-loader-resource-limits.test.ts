@@ -71,6 +71,43 @@ describe("C-7.2: validateWorkflowSteps rejects excessive step counts", () => {
         const result = validateWorkflowSteps(reasonable)
         expect("steps" in result).toBe(true)
     })
+
+    test("sibling foreach expansions share one total-step budget", () => {
+        const values = Array.from({ length: 64 }, (_, index) => `item-${index}`)
+        const fanout = {
+            kind: "fanout",
+            foreach: values,
+            steps: [
+                { kind: "task", member: "x", task: "first" },
+                { kind: "task", member: "x", task: "second" },
+            ],
+        }
+
+        const result = validateWorkflowSteps([fanout, { kind: "join" }, fanout, { kind: "join" }])
+
+        expect("error" in result).toBe(true)
+    })
+
+    test("nested foreach expansions count the fully expanded template", () => {
+        const inner = {
+            kind: "fanout",
+            foreach: Array.from({ length: 20 }, (_, index) => `inner-${index}`),
+            steps: Array.from({ length: 3 }, (_, index) => ({
+                kind: "task",
+                member: "x",
+                task: `inner task ${index}`,
+            })),
+        }
+        const outer = {
+            kind: "fanout",
+            foreach: Array.from({ length: 5 }, (_, index) => `outer-${index}`),
+            steps: [inner, { kind: "join" }],
+        }
+
+        const result = validateWorkflowSteps([outer, { kind: "join" }])
+
+        expect("error" in result).toBe(true)
+    })
 })
 
 describe("C-7.3: validateWorkflowSteps rejects excessive fanout recursion depth", () => {

@@ -114,6 +114,24 @@ describe("validateWorkflowSteps", () => {
             expect(result.error).not.toContain("<workflow>")
         }
     })
+
+    for (const [field, errorField, step] of [
+        ["on_fail", "on_fail", { kind: "gate", on_fail: "invalid" }],
+        ["on_invalid", "on_invalid", { kind: "gate", on_invalid: "invalid" }],
+        ["on_malformed", "on_malformed", { kind: "gate", on_malformed: "invalid" }],
+        ["on_timeout", "on_timeout", { kind: "gate", on_timeout: "invalid" }],
+        ["ensemble_policy", "ensemble_policy", { kind: "gate", ensemble_policy: "invalid" }],
+        ["join_policy", "join_policy", { kind: "fanout", join_policy: "invalid", branches: [] }],
+        ["loop.on_exhaust", "on_exhaust", { kind: "gate", loop: { max_iterations: 1, on_exhaust: "invalid" } }],
+        ["where.has_issue_severity", "where", { kind: "gate", where: { has_issue_severity: "invalid" } }],
+    ] satisfies Array<[string, string, Record<string, unknown>]>) {
+        test(`rejects unknown ${field} enum value`, () => {
+            const result = validateWorkflowSteps([step])
+
+            expect("error" in result).toBe(true)
+            if ("error" in result) expect(result.error).toContain(errorField)
+        })
+    }
 })
 
 // -----------------------------------------------------------------------

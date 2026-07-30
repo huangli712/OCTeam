@@ -7,8 +7,9 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import { dispatchToMember } from "../../orchestration/control/dispatch.js"
-import { createTask, listAllTasks } from "../../state/tasks.js"
+import { createTask, listAllTasks, updateTask } from "../../state/tasks.js"
 import { buildRecursePrompt } from "../../orchestration/modes/recurse.js"
 import {
     DEFAULT_RECURSE_DEPTH,
@@ -84,7 +85,10 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
         },
         async execute(args, context) {
             let rootTaskId = ""
-            return startOrchestration(
+            let taskDirectory = ""
+            const createdTaskIds: string[] = []
+            try {
+                return await startOrchestration(
                 args.team_id, context, ctx, "team_recurse",
                 // validate
                 (team) => {
@@ -100,6 +104,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                 // buildTask: seed the root task BEFORE committing activeTask
                 // so a mid-create failure leaves the team idle.
                 async (team) => {
+                    taskDirectory = team.directory
                     // Enforce maxTasks: seeding the root task via createTask
                     // bypasses team_task_create's cap check, so guard here.
                     const liveTasks = (await listAllTasks(team.directory)).filter(
@@ -120,6 +125,7 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                         depth: 0,
                     })
                     rootTaskId = root.id
+                    createdTaskIds.push(root.id)
                     return {
                         type: "recurse",
                         ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
@@ -149,7 +155,18 @@ export function teamRecurseTool(ctx: PluginContext): ToolDefinition {
                 // successMessage
                 () => `team_recurse started on "${args.team_id}" `
                     + `(decomposer: ${args.decomposer}, root task: ${rootTaskId}).`,
-            )
+                )
+            } catch (err) {
+                for (const taskId of createdTaskIds) {
+                    try {
+                        await updateTask(taskDirectory, taskId, { status: "deleted" })
+                    } catch (cleanupErr) {
+                        const cleanupError = cleanupErr instanceof Error ? cleanupErr : new Error(String(cleanupErr))
+                        logSwallowed(ctx, "recurse startup: failed to delete created task", cleanupError, { taskId })
+                    }
+                }
+                throw err
+            }
         },
     })
 }

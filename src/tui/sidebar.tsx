@@ -3,12 +3,14 @@
 import type { TuiPluginApi, TuiThemeCurrent } from "@opencode-ai/plugin/tui"
 import { createSignal, createEffect, on, onCleanup, For } from "solid-js"
 import { loadChildren, type SessionTreeNode } from "./tree.js"
-import { loadTeams, type TeamSummary } from "./teams.js"
+import { loadTeams, type LoadState, type TeamSummary } from "./teams.js"
 
 // Status colors: green=running, red=idle, purple=errored
 const COLOR_RUNNING = "#22c55e"
 const COLOR_IDLE = "#ef4444"
 const COLOR_ERRORED = "#a855f7"
+const COLOR_RETRYING = "#eab308"
+const COLOR_UNKNOWN = "#6b7280"
 const COLOR_ACTIVE = "#22c55e"
 const COLOR_INACTIVE = "#ef4444"
 
@@ -19,9 +21,8 @@ export function SessionNavigatorSidebar(props: {
     theme: TuiThemeCurrent
     version: string
 }) {
-    const [sessions, setSessions] = createSignal<SessionTreeNode[]>([])
-    const [loading, setLoading] = createSignal(true)
-    const [teams, setTeams] = createSignal<TeamSummary[]>([])
+    const [sessions, setSessions] = createSignal<LoadState<SessionTreeNode[]>>({ status: "unknown" })
+    const [teams, setTeams] = createSignal<LoadState<TeamSummary[]>>({ status: "unknown" })
     // Persist collapsed state in kv — survives component remount when navigating
     // to child sessions and back (sidebar unmounts/remounts)
     const [collapsed, setCollapsed] = createSignal<boolean>(
@@ -51,10 +52,13 @@ export function SessionNavigatorSidebar(props: {
             const children = await loadChildren(props.api, sid)
             if (gen !== refreshGeneration) return  // newer refresh started; discard stale result
             setSessions(children)
-        } catch {
-            // Silent fail — sidebar is best-effort
-        } finally {
-            if (gen === refreshGeneration) setLoading(false)
+        } catch (err) {
+            if (gen === refreshGeneration) {
+                setSessions({
+                    status: "error",
+                    error: err instanceof Error ? err.message : String(err),
+                })
+            }
         }
     }
 
@@ -62,11 +66,16 @@ export function SessionNavigatorSidebar(props: {
     const refreshTeams = async () => {
         const gen = ++refreshTeamsGeneration
         try {
-            const result = await loadTeams(props.sessionID())
+            const result = await loadTeams(props.api.state.path.directory, props.sessionID())
             if (gen !== refreshTeamsGeneration) return  // newer refresh started; discard stale result
             setTeams(result)
-        } catch {
-            // best-effort
+        } catch (err) {
+            if (gen === refreshTeamsGeneration) {
+                setTeams({
+                    status: "error",
+                    error: err instanceof Error ? err.message : String(err),
+                })
+            }
         }
     }
 
@@ -89,7 +98,8 @@ export function SessionNavigatorSidebar(props: {
             if (!rootSessionId()) {
                 setRootSessionId(sid)
             }
-            setLoading(true)
+            setSessions({ status: "unknown" })
+            setTeams({ status: "unknown" })
             refresh()
             refreshTeams()
 
@@ -146,12 +156,23 @@ export function SessionNavigatorSidebar(props: {
     }
     const isMembersExpanded = (name: string) => expandedMembers().has(name)
 
+    const sessionRows = (): SessionTreeNode[] => {
+        const state = sessions()
+        return state.status === "unknown" ? [] : state.data ?? []
+    }
+
+    const teamRows = (): TeamSummary[] => {
+        const state = teams()
+        return state.status === "unknown" ? [] : state.data ?? []
+    }
+
     const statusColor = (status: string): string => {
         switch (status) {
             case "running": return COLOR_RUNNING
             case "idle": return COLOR_IDLE
+            case "retrying": return COLOR_RETRYING
             case "errored": return COLOR_ERRORED
-            default: return COLOR_IDLE
+            default: return COLOR_UNKNOWN
         }
     }
 
@@ -175,20 +196,22 @@ export function SessionNavigatorSidebar(props: {
                     {collapsed() ? "\u25b6 " : "\u25bc "}
                 </text>
                 <text fg={textMuted()}>{"Tasks"}</text>
-                {!loading() && sessions().length > 0 ? (
-                    <text fg={textMuted()}>{" (" + sessions().length + ")"}</text>
+                {sessions().status === "ok" && sessionRows().length > 0 ? (
+                    <text fg={textMuted()}>{" (" + sessionRows().length + ")"}</text>
                 ) : null}
             </box>
 
             {/* Expanded task list (between Tasks and Teams) */}
             {!collapsed() ? (
                 <box flexDirection="column" width="100%" paddingLeft={1}>
-                    {loading() ? (
+                    {sessions().status === "unknown" ? (
                         <text fg={textMuted()}>{"Loading\u2026"}</text>
-                    ) : sessions().length === 0 ? (
+                    ) : sessions().status === "error" ? (
+                        <text fg={COLOR_UNKNOWN}>{"Unavailable"}</text>
+                    ) : sessionRows().length === 0 ? (
                         <text fg={textMuted()}>{"No tasks"}</text>
                     ) : (
-                        <For each={sessions()}>
+                        <For each={sessionRows()}>
                             {(session) => (
                                 <box
                                     flexDirection="row"
@@ -227,17 +250,21 @@ export function SessionNavigatorSidebar(props: {
                     {teamsCollapsed() ? "\u25b6 " : "\u25bc "}
                 </text>
                 <text fg={textMuted()}>{"Teams"}</text>
-                {teams().length > 0 ? (
-                    <text fg={textMuted()}>{" (" + teams().length + ")"}</text>
+                {teams().status === "ok" && teamRows().length > 0 ? (
+                    <text fg={textMuted()}>{" (" + teamRows().length + ")"}</text>
                 ) : null}
             </box>
 
             {!teamsCollapsed() ? (
                 <box flexDirection="column" width="100%" paddingLeft={1}>
-                    {teams().length === 0 ? (
+                    {teams().status === "unknown" ? (
+                        <text fg={textMuted()}>{"Loading\u2026"}</text>
+                    ) : teams().status === "error" ? (
+                        <text fg={COLOR_UNKNOWN}>{"Unavailable"}</text>
+                    ) : teamRows().length === 0 ? (
                         <text fg={textMuted()}>{"No teams"}</text>
                     ) : (
-                        <For each={teams()}>
+                        <For each={teamRows()}>
                             {(team) => (
                                 <box flexDirection="column" width="100%">
                                     <box
@@ -265,6 +292,9 @@ export function SessionNavigatorSidebar(props: {
                                             <For each={team.members}>
                                                 {(member) => {
                                                     const memberKey = team.name + "/" + member.name
+                                                    const mailbox = member.mailbox.status === "ok"
+                                                        ? `${member.mailbox.data.unread} / ${member.mailbox.data.total}`
+                                                        : member.mailbox.status === "error" ? "unavailable" : "unknown"
                                                     return (
                                                         <box flexDirection="column" width="100%">
                                                             <box
@@ -286,7 +316,7 @@ export function SessionNavigatorSidebar(props: {
                                                                      <text fg={textMuted()}>{"      Role    : " + (member.role ?? "unknown")}</text>
                                                                      <text fg={textMuted()}>{"      Agent   : " + (member.agent ?? "unknown")}</text>
                                                                     <text fg={textMuted()}>{"      Model   : " + (member.model ? member.model.split("/").pop() : "unknown")}</text>
-                                                                    <text fg={textMuted()}>{"      Mailbox : " + (member.unread ?? 0) + " / " + (member.totalMessages ?? 0)}</text>
+                                                                    <text fg={textMuted()}>{"      Mailbox : " + mailbox}</text>
                                                                      <text fg={textMuted()}>{"      Turn    : " + (member.turnCount ?? 0)}</text>
                                                                      <text fg={textMuted()}>{"      Tokens  : " + (member.tokens ?? 0)}</text>
                                                                      <text fg={textMuted()}>{"      Status  : " + member.status}</text>

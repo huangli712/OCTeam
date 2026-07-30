@@ -503,10 +503,12 @@ async function handleGateFail(
         return;
     }
     if (failGoto >= 0) {
-        if (step.loop !== undefined) {
+        const loop = step.loop;
+        const isBackwardLoop = failGoto < gateIndex && loop !== undefined;
+        if (isBackwardLoop) {
             step.loopIterations = (step.loopIterations ?? 0) + 1;
-            if (step.loopIterations > step.loop.maxIterations) {
-                if (step.loop.onExhaust === "continue") {
+            if (step.loopIterations > loop.maxIterations) {
+                if (loop.onExhaust === "continue") {
                     delete task.responses[verifierName];
                     resetStepAfterCompletion(step, { completed: true });
                     recordEvent(team, {
@@ -516,7 +518,7 @@ async function handleGateFail(
                         stage: gateIndex,
                         stepIndex: gateIndex,
                         detail: `workflow loop step ${gateIndex + 1} exhausted`
-                            + ` after ${step.loop.maxIterations} iterations;`
+                            + ` after ${loop.maxIterations} iterations;`
                             + ` on_exhaust=continue`,
                     });
                     // H-LOOP-EXHAUST: honor task-level human approval before
@@ -531,7 +533,7 @@ async function handleGateFail(
                         && (await maybeRequestApproval(ctx, team, {
                             kind: "workflow_step",
                             stage: gateIndex,
-                            summary: `Loop gate step ${gateIndex + 1} exhausted after ${step.loop.maxIterations} iterations (on_exhaust=continue). Next: ${describeStep(steps[exhaustNextIndex], exhaustNextIndex)}. Review before continuing.`,
+                            summary: `Loop gate step ${gateIndex + 1} exhausted after ${loop.maxIterations} iterations (on_exhaust=continue). Next: ${describeStep(steps[exhaustNextIndex], exhaustNextIndex)}. Review before continuing.`,
                         }))
                     ) {
                         return;
@@ -723,11 +725,19 @@ export async function handleGateVerdict(
     const steps = task.steps ?? [];
     if (step.verifier === undefined && step.verifiers === undefined) return;
     const verifierName = member.name;
-    const response = task.responses[verifierName];
-    if (response !== undefined) {
-        step.output = response;
+    let output: string;
+    if (step.verifiers !== undefined) {
+        const response = task.responses[verifierName];
+        if (response === undefined) return;
+        output = response;
+    } else {
+        const response = task.responses[verifierName];
+        if (response !== undefined) {
+            step.output = response;
+        }
+        output = step.output ?? "";
     }
-    const parsed = parseVerdict(step.output ?? "");
+    const parsed = parseVerdict(output);
 
     const collected = collectEnsembleVerdicts(team, task, step, gateIndex, verifierName, parsed);
     if (collected === null) return;

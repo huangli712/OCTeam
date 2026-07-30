@@ -11,6 +11,7 @@ import { teamRecurseTool } from "../src/tools/modes/recurse.js"
 import { teamRouteTool } from "../src/tools/modes/router.js"
 import { initTeamState, loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
+import { listAllTasks } from "../src/state/tasks.js"
 import { makeCtx, makeMember, makeState, makeToolContext, tmpRoot } from './helpers.js';
 
 
@@ -462,6 +463,57 @@ describe("team_delegate: happy-path startup", () => {
         const team = await loadTeamState(root, "alpha", sid)
         expect(team.activeTask?.type).toBe("delegate")
     })
+
+    test("delegate resolves blocked_by refs to the preallocated task ids", async () => {
+        const root = tmpRoot("del-blocked-by")
+        const sid = "ses_del_blocked_by"
+        await setupTeam(root, sid, [makeMember("alice", "ses_del_blocked_by_alice")], Date.now())
+
+        const result = await teamDelegateTool(makeFullCtx(root)).execute(
+            {
+                team_id: "alpha",
+                tasks: [
+                    { ref: "first", subject: "first", description: "first" },
+                    { subject: "second", description: "second", blocked_by: ["first"] },
+                ],
+            },
+            makeToolContext(sid),
+        )
+
+        expect(result).toContain("started")
+        const team = await loadTeamState(root, "alpha", sid)
+        const tasks = await listAllTasks(team.directory)
+        const first = tasks.find(task => task.subject === "first")
+        const second = tasks.find(task => task.subject === "second")
+        expect(first).toBeDefined()
+        if (!first) throw new Error("expected first delegate task")
+        expect(second?.blockedBy).toEqual([first.id])
+    })
+
+    test("delegate deletes created tasks when initial dispatch fails", async () => {
+        const root = tmpRoot("del-dispatch-rollback")
+        const sid = "ses_del_dispatch_rollback"
+        await setupTeam(root, sid, [makeMember("alice", "ses_del_dispatch_rollback_alice")], Date.now())
+        const promptAsync = mock(async () => {
+            throw new Error("delegate dispatch failed")
+        })
+
+        await expect(teamDelegateTool(makeFullCtx(root, { promptAsync })).execute(
+            {
+                team_id: "alpha",
+                tasks: [
+                    { subject: "first", description: "first" },
+                    { subject: "second", description: "second" },
+                ],
+            },
+            makeToolContext(sid),
+        )).rejects.toThrow("delegate dispatch failed")
+
+        const team = await loadTeamState(root, "alpha", sid)
+        const tasks = await listAllTasks(team.directory)
+        expect(tasks).toHaveLength(2)
+        expect(tasks.every(task => task.status === "deleted")).toBe(true)
+    })
 })
 
 describe("team_parallel: cooperative happy-path startup", () => {
@@ -594,5 +646,28 @@ describe("team_recurse: happy-path startup", () => {
 
         const team = await loadTeamState(root, "alpha", sid)
         expect(team.activeTask?.type).toBe("recurse")
+    })
+
+    test("recurse deletes the root task when initial dispatch fails", async () => {
+        const root = tmpRoot("rec-dispatch-rollback")
+        const sid = "ses_rec_dispatch_rollback"
+        await setupTeam(root, sid, [makeMember("alice", "ses_rec_dispatch_rollback_alice")], Date.now())
+        const promptAsync = mock(async () => {
+            throw new Error("recurse dispatch failed")
+        })
+
+        await expect(teamRecurseTool(makeFullCtx(root, { promptAsync })).execute(
+            {
+                team_id: "alpha",
+                task: "build a calculator",
+                decomposer: "alice",
+            },
+            makeToolContext(sid),
+        )).rejects.toThrow("recurse dispatch failed")
+
+        const team = await loadTeamState(root, "alpha", sid)
+        const tasks = await listAllTasks(team.directory)
+        expect(tasks).toHaveLength(1)
+        expect(tasks[0]?.status).toBe("deleted")
     })
 })

@@ -11,6 +11,7 @@ import path from "node:path"
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import { runDir, isSafePathSegment } from "../../state/paths.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { listRunRecords, readRunRecord } from "../../orchestration/records/runs.js"
@@ -39,11 +40,23 @@ export function teamRunDirTool(ctx: PluginContext): ToolDefinition {
 
             let runId: string
             if (args.run_id) {
-                const record = await readRunRecord(caller.directory, args.run_id)
+                let record
+                try {
+                    record = await readRunRecord(caller.directory, args.run_id)
+                } catch (err) {
+                    logSwallowed(ctx, "team_run_dir failed to read run record", err, { team: args.team_id, runId: args.run_id })
+                    return `Error: run "${args.run_id}" for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+                }
                 if (!record) return `Error: run "${args.run_id}" not found for team "${args.team_id}"`
                 runId = record.runId
             } else {
-                const records = await listRunRecords(caller.directory)
+                let records
+                try {
+                    records = await listRunRecords(caller.directory)
+                } catch (err) {
+                    logSwallowed(ctx, "team_run_dir failed to read run records", err, { team: args.team_id })
+                    return `Error: run records for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+                }
                 if (records.length === 0) return `No run records for team "${args.team_id}" yet.`
                 runId = records[0].runId
             }

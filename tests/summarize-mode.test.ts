@@ -26,6 +26,7 @@ import {
     summarizeTollgate,
     summarizeWorkflow,
 } from "../src/orchestration/records/renderers.js"
+import { formatWorkflowIssueDetail } from "../src/orchestration/protocol/output.js"
 import { cleanupTmpRoots, makeTeam, makeWorkflowTask, tmpRoot } from './helpers.js';
 
 afterAll(cleanupTmpRoots)
@@ -274,6 +275,17 @@ describe("summarizeTollgate", () => {
 // --- summarizeWorkflow ------------------------------------------------------
 
 describe("summarizeWorkflow", () => {
+    test("caps each workflow issue message at 1KB", () => {
+        const detail = formatWorkflowIssueDetail([
+            { severity: "critical", message: "x".repeat(8192) },
+        ])
+
+        expect(Buffer.byteLength(detail, "utf8")).toBeLessThanOrEqual(
+            1024 + Buffer.byteLength("\n    - [critical]: ", "utf8"),
+        )
+        expect(detail).toContain("[truncated")
+    })
+
     test("renders step ledger and task outputs", () => {
         const task = makeWorkflowTask({
             steps: [
@@ -323,6 +335,31 @@ describe("summarizeWorkflow", () => {
         const outputStart = summary.indexOf("<Step")
         expect(outputStart).toBeGreaterThan(-1)
         expect(Buffer.byteLength(summary.slice(outputStart), "utf8")).toBeLessThanOrEqual(512 * 1024)
+        expect(summary).toContain("[workflow outputs truncated:")
+    })
+
+    test("counts the workflow ledger toward the aggregate byte budget", () => {
+        const steps: WorkflowStep[] = Array.from({ length: 80 }, (_, index) => [
+            {
+                kind: "task" as const,
+                member: "alice",
+                task: `step ${index + 1}`,
+                completed: true,
+                output: "x".repeat(8192),
+            },
+            {
+                kind: "gate" as const,
+                verifier: "bob",
+                criteria: "quality",
+                completed: true,
+                verdict: "FAIL" as const,
+                issues: [{ severity: "critical" as const, message: "i".repeat(7900) }],
+            },
+        ]).flat()
+        const task = makeWorkflowTask({ steps }) as Extract<ActiveTask, { type: "workflow" }>
+        const summary = summarizeWorkflow(task, HEAD)
+
+        expect(Buffer.byteLength(summary.slice(HEAD.length), "utf8")).toBeLessThanOrEqual(512 * 1024)
         expect(summary).toContain("[workflow outputs truncated:")
     })
 })
@@ -429,6 +466,38 @@ describe("summarizeDelegate", () => {
         expect(summary).toContain("by alice (task: do work):")
         // Member outputs must be included so signoff reviewers have code to evaluate
         expect(summary).toContain("function doWork() { return 42 }")
+    })
+
+    test("falls back only to each task owner's response", async () => {
+        const root = tmpRoot("sum-del-owner")
+        const team = makeTeam({ directory: root, teamName: "alpha" })
+        const tasksDir = join(root, "tasks")
+        const { mkdirSync } = await import("node:fs")
+        mkdirSync(tasksDir, { recursive: true })
+        const tasks = [
+            { id: "11111111-1111-1111-1111-111111111111", subject: "alice task", owner: "alice" },
+            { id: "22222222-2222-2222-2222-222222222222", subject: "bob task", owner: "bob" },
+        ]
+        for (const item of tasks) {
+            writeFileSync(join(tasksDir, `${item.id}.json`), JSON.stringify({
+                version: 1,
+                ...item,
+                description: "desc",
+                status: "completed",
+                blockedBy: [],
+                createdAt: 0,
+                updatedAt: 0,
+            }))
+        }
+        const task = baseTask({
+            type: "delegate",
+            responses: { alice: "alice response", carol: "unrelated last response" },
+        })
+
+        const summary = await summarizeDelegate(team, task, HEAD)
+
+        expect(summary).toContain("by alice (task: alice task):\nalice response")
+        expect(summary).not.toContain("by bob (task: bob task):")
     })
 })
 

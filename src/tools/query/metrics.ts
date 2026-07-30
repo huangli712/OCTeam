@@ -19,6 +19,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
 import { listRunRecords } from "../../orchestration/records/runs.js"
 import type { RunRecord } from "../../core/types.js"
@@ -54,7 +55,13 @@ export function teamMetricsTool(ctx: PluginContext): ToolDefinition {
             })
             if (!caller) return "Error: caller is not a member of this team"
 
-            const records = await listRunRecords(caller.directory)
+            let records: RunRecord[]
+            try {
+                records = await listRunRecords(caller.directory)
+            } catch (err) {
+                logSwallowed(ctx, "team_metrics failed to read run records", err, { team: args.team_id })
+                return `Error: run records for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+            }
             if (records.length === 0) return `No run records for team "${args.team_id}" yet.`
 
             const limit = args.limit ?? 20

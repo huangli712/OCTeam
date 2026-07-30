@@ -43,6 +43,10 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
                 role = sm?.role
                 prompt = sm?.prompt
             } catch (err) {
+                if (!isEnoent(err)) {
+                    logSwallowed(ctx, "readTeamSpec failed (inspect)", err, { team: caller.teamName })
+                    return `Error: team "${args.team_id}" config could not be read: ${err instanceof Error ? err.message : String(err)}`
+                }
                 logSwallowed(ctx, "readTeamSpec failed (inspect)", err, { team: caller.teamName })
             }
 

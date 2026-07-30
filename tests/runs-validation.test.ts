@@ -7,13 +7,13 @@
  * parseRunRecord/parseRunEvent validate via zod safeParse; a bad record is
  * treated the same as corrupt JSON (skipped, returns null/[]).
  */
-import { mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 import { afterAll, describe, expect, it } from "bun:test"
 
 import { cleanupTmpRoots, tmpRoot } from "./helpers.js"
-import { listRunRecords, readRunRecord } from "../src/orchestration/records/runs.js"
+import { listRunRecords, pruneRuns, readRunRecord } from "../src/orchestration/records/runs.js"
 
 afterAll(cleanupTmpRoots)
 
@@ -159,5 +159,26 @@ describe("runs.ts zod validation (H3)", () => {
         expect(recs).toHaveLength(2)
         expect(recs[0].runId).toBe("run-c") // finishedAt 3000 > 1000
         expect(recs[1].runId).toBe("run-a")
+    })
+
+    it("listRunRecords skips records whose embedded runId differs from the directory", async () => {
+        const root = tmpRoot("runs-list-id-mismatch")
+        writeRecord(root, "run-good", validRecord("run-good", 1000))
+        writeRecord(root, "run-directory", validRecord("run-other", 2000))
+
+        const recs = await listRunRecords(root)
+
+        expect(recs.map(record => record.runId)).toEqual(["run-good"])
+    })
+
+    it("pruneRuns preserves a mismatched record directory", async () => {
+        const root = tmpRoot("runs-prune-id-mismatch")
+        writeRecord(root, "run-good", validRecord("run-good", 2000))
+        writeRecord(root, "run-directory", validRecord("run-other", 1000))
+
+        await pruneRuns(root, 1)
+
+        expect(existsSync(path.join(root, "runs", "run-good"))).toBe(true)
+        expect(existsSync(path.join(root, "runs", "run-directory"))).toBe(true)
     })
 })

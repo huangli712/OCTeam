@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { handleParallelIdle } from "../src/orchestration/modes/parallel.js"
 import { dispatchToMember } from "../src/orchestration/control/dispatch.js"
+import { handleSignoffIdle } from "../src/orchestration/control/signoff.js"
 import type { ActiveTask } from "../src/core/types.js"
 
 
@@ -114,6 +115,31 @@ describe("P0-1: peer-quorum denominator excludes errored members", () => {
         expect(team.status).toBe("idle")
         expect(team.activeTask).toBeUndefined()
         expect(calls.some(c => c.sessionId === "ses_lead")).toBe(true)
+    })
+
+    test("an errored reviewer re-evaluates quorum using the remaining roster", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeParallelTask({
+            signoffPolicy: "peer-quorum",
+            signoffQuorum: 0.5,
+            signoffStage: true,
+            signoffReviewers: ["alice", "bob"],
+            signoffApprovals: { alice: true },
+            responses: { alice: "alice work" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", status: "idle" },
+                { name: "bob", sessionId: "ses_bob", status: "errored", error: "boom" },
+            ],
+        })
+
+        await handleSignoffIdle(makeCtx({ calls }), team, team.members[1])
+
+        expect(task.signoffApprovals).toEqual({ alice: true })
+        expect(team.activeTask).toBeUndefined()
+        expect(team.status).toBe("idle")
     })
 })
 

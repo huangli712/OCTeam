@@ -41,6 +41,52 @@ describe("recordEvent + readRunEvents", () => {
         expect(events[1].bytes).toBe(100)
     })
 
+    test("serializes same-run appends in emission order", async () => {
+        const dir = tmpTeamDir()
+        const path = runEventsPath(dir, "run-ordered")
+        const team = makeTeam({
+            directory: dir,
+            activeTask: makeWorkflowTask({ runId: "run-ordered" }),
+        })
+        const originalAppendFile = fs.appendFile
+        let appendCalls = 0
+        let releaseFirst: () => void = () => {}
+        const firstAppendGate = new Promise<void>(resolve => {
+            releaseFirst = resolve
+        })
+        Object.defineProperty(fs, "appendFile", {
+            configurable: true,
+            value: async (...args: Parameters<typeof fs.appendFile>) => {
+                appendCalls++
+                if (appendCalls === 1) await firstAppendGate
+                return originalAppendFile(...args)
+            },
+        })
+
+        try {
+            recordEvent(team, { timestamp: 100, kind: "dispatched", member: "first" })
+            await waitUntil(() => appendCalls === 1, { timeoutMs: 2000, pollMs: 10 })
+            recordEvent(team, { timestamp: 100, kind: "dispatched", member: "second" })
+            await new Promise(resolve => setTimeout(resolve, 50))
+            releaseFirst()
+            await waitUntil(
+                () => existsSync(path) && readFileSync(path, "utf8").trim().split("\n").length === 2,
+                { timeoutMs: 2000, pollMs: 10 },
+            )
+        } finally {
+            Object.defineProperty(fs, "appendFile", {
+                configurable: true,
+                value: originalAppendFile,
+            })
+        }
+
+        const events: Array<{ member?: string }> = (await fs.readFile(path, "utf8"))
+            .trim()
+            .split("\n")
+            .map(line => JSON.parse(line))
+        expect(events.map(event => event.member)).toEqual(["first", "second"])
+    })
+
     test("readRunEvents sorts by timestamp, not file order", async () => {
         const dir = tmpTeamDir()
         // write out-of-order on disk

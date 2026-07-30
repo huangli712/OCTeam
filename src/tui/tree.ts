@@ -6,10 +6,10 @@
  */
 
 import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
-import { loadTeams } from "./teams.js"
+import { loadTeams, type LoadState } from "./teams.js"
 
 /** Display status derived from OpenCode SessionStatus. */
-export type DisplayStatus = "running" | "idle" | "errored"
+export type DisplayStatus = "running" | "idle" | "retrying" | "errored" | "unknown"
 
 /** A child session node for sidebar rendering. */
 export type SessionTreeNode = {
@@ -27,10 +27,11 @@ export type SessionTreeNode = {
  * to our display status.
  */
 export function mapStatus(raw: { type: string } | undefined | null): DisplayStatus {
-    if (!raw) return "idle"
+    if (!raw) return "unknown"
     if (raw.type === "busy") return "running"
-    if (raw.type === "retry") return "errored"
-    return "idle"
+    if (raw.type === "retry") return "retrying"
+    if (raw.type === "idle") return "idle"
+    return "unknown"
 }
 
 /**
@@ -125,22 +126,25 @@ export function computeDuration(messages: MessageRow[]): string {
 export async function loadChildren(
     api: Pick<TuiPluginApi, "client" | "state">,
     currentSessionId: string,
-): Promise<SessionTreeNode[]> {
+): Promise<LoadState<SessionTreeNode[]>> {
     let allSessions: NonNullable<Awaited<ReturnType<typeof api.client.session.list>>["data"]> = []
+    let hadError = false
+    const directory = api.state.path.directory
     try {
-        const mainResult = await api.client.session.list()
-        allSessions = mainResult?.data ?? []
+        const mainResult = await api.client.session.list({ directory })
+        if (!mainResult?.data) return { status: "error", error: "sessions unavailable" }
+        allSessions = mainResult.data
     } catch {
-        // Network/backend failure — return empty list so the TUI sidebar
-        // renders blank instead of crashing the user's session.
-        return []
+        return { status: "error", error: "sessions unavailable" }
     }
 
     // Merge in sessions from each worktree directory owned by a team whose
     // lead is the current session. Errors here are best-effort: a failed
     // directory lookup must not break the default listing.
     try {
-        const teams = await loadTeams(currentSessionId)
+        const teamsResult = await loadTeams(directory, currentSessionId)
+        if (teamsResult.status !== "ok") hadError = true
+        const teams = "data" in teamsResult ? teamsResult.data ?? [] : []
         const worktreeDirs = new Set<string>()
         for (const t of teams) {
             for (const m of t.members) {
@@ -148,17 +152,25 @@ export async function loadChildren(
             }
         }
         if (worktreeDirs.size > 0) {
-            const extras = await Promise.all(
-                [...worktreeDirs].map(p =>
-                    api.client.session.list({ directory: p })
-                        .then(r => r?.data ?? [])
-                        .catch(() => [] as typeof allSessions),
-                ),
+            const extras: Array<{ ok: boolean; data: typeof allSessions }> = await Promise.all(
+                [...worktreeDirs].map(async p => {
+                    try {
+                        const result = await api.client.session.list({ directory: p })
+                        return result?.data
+                            ? { ok: true, data: result.data }
+                            : { ok: false, data: [] }
+                    } catch {
+                        return { ok: false, data: [] }
+                    }
+                }),
             )
-            for (const list of extras) allSessions.push(...list)
+            for (const extra of extras) {
+                if (!extra.ok) hadError = true
+                allSessions.push(...extra.data)
+            }
         }
     } catch {
-        // best effort — fall through with the default listing
+        hadError = true
     }
 
     const children = allSessions.filter(s => s.parentID === currentSessionId)
@@ -181,10 +193,11 @@ export async function loadChildren(
             // 100 messages cap truncated multi-hour sessions to appear
             // much shorter than they actually were.
             const msgResult = await api.client.session.messages({ sessionID: s.id, limit: 500 })
+            if (!msgResult?.data) hadError = true
             messages = msgResult?.data ?? []
             duration = computeDuration(messages)
         } catch {
-            // best effort
+            hadError = true
         }
         return {
             sessionId: s.id,
@@ -199,5 +212,7 @@ export async function loadChildren(
 
     // Sort by creation time descending (newest first)
     nodes.sort((a, b) => b.created - a.created)
-    return nodes
+    return hadError
+        ? { status: "error", error: "some session data is unavailable", data: nodes }
+        : { status: "ok", data: nodes }
 }

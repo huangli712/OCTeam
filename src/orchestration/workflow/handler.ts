@@ -33,9 +33,9 @@ import {
 import { parseSelection } from "../protocol/decisions.js";
 import { maybeRequestApproval } from "../control/approval.js";
 import {
-    branchIdsForJoin,
     buildBranchWorkflowOutput,
     handleWorkflowDispatchUnavailable,
+    selectableBranchIdsForJoin,
 } from "./fanout.js";
 import { handleGateVerdict, resetStepAfterCompletion } from "./verdict.js";
 import { resetWorkflowStepTiming } from "./engine.js";
@@ -302,13 +302,8 @@ async function handleJoinIdle(
     const response = task.responses[member.name] ?? "";
     if (joinPolicy === "select") {
         const selection = parseSelection(response);
-        const branchIds = branchIdsForJoin(steps, join);
-        // H-W2: reject selection of errored branches. The selector prompt
-        // lists all branch IDs, but a branch that errored should not be
-        // selectable as the final result. Pre-fix code validated only that
-        // the winner was a known branch ID, not that it was a survivor.
-        const erroredBranchIds = new Set(join.erroredBranchIds ?? []);
-        if (selection.parseFailed || !branchIds.includes(selection.winner) || erroredBranchIds.has(selection.winner)) {
+        const selectableBranchIds = selectableBranchIdsForJoin(steps, activeStepIndex);
+        if (selection.parseFailed || !selectableBranchIds.includes(selection.winner)) {
             await finishRun(ctx, team, workflowInvalidReason("parse_failure", member.name), "failed");
             return;
         }
@@ -393,17 +388,16 @@ export async function handleWorkflowIdle(
         // gate: skip when output already set (double-count ensemble verdict).
         // join: always skip (no retry_on='empty' path for reducers).
         if ((step.kind === "task" || step.kind === "gate") && step.output !== undefined) {
-            // K-3: for ENSEMBLE gates, the first verifier sets step.output,
-            // so the guard would wrongly skip subsequent verifiers whose
-            // empty responses still need to be recorded in ensembleResults.
-            // Only skip if THIS verifier has already contributed.
+            // K-3/H23: ensemble verifiers must contribute an independent
+            // response. A stale idle without one remains pending and must not
+            // reuse another verifier's shared step output.
             if (step.kind === "gate" && step.verifiers !== undefined) {
-                if (step.ensembleResults?.[member.name] !== undefined) {
-                    return // already recorded
+                if (
+                    step.ensembleResults?.[member.name] !== undefined
+                    || task.responses[member.name] === undefined
+                ) {
+                    return;
                 }
-                // Fall through — this verifier hasn't contributed yet, even
-                // with empty output. handleGateVerdict will record a
-                // parse_failure so ensemble aggregation can complete.
             } else {
                 return;
             }

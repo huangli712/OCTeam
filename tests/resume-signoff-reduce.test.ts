@@ -25,7 +25,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { initTeamState, loadTeamState, saveTeamState } from "../src/state/store.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { resumeDispatch } from "../src/orchestration/lifecycle/resume.js"
-import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTask, tmpRoot } from './helpers.js';
+import { cleanupTmpRoots, makeCtx, makeMember, makeState, makeTask, tmpRoot, type DispatchCall } from './helpers.js';
 
 
 const tracked: string[] = []
@@ -89,7 +89,7 @@ describe("resumeDispatch signoff/reduce sub-stage recovery (P1-1)", () => {
         expect(dispatched).toEqual(["ses_carol"])
     })
 
-    test("signoffStage set + decider already responded → decider NOT re-dispatched (idempotent)", async () => {
+    test("signoffStage set + decider already responded → persisted approval settles immediately", async () => {
         const root = tmpRoot("rd-sig-idem")
         const sid = "ses_rd_sig_idem"
         tracked.push(sid)
@@ -115,19 +115,52 @@ describe("resumeDispatch signoff/reduce sub-stage recovery (P1-1)", () => {
         })
         await rebuildSessionIndex(root, `${root}__unused`)
 
-        const dispatched: string[] = []
-        const ctx = makeCtx({ storageRoot: root, promptAsync: async (req: any) => {
-            dispatched.push(req.path.id)
-        } })
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({ storageRoot: root, calls })
 
         await team.mutex.runExclusive(async () => {
             await resumeDispatch(ctx, team, team.activeTask!)
         })
 
-        // Carol already has an approval recorded → she is NOT re-dispatched.
-        // (The caller's checkTermination / sweep eventually re-drives
-        // handleSignoffIdle to capture the already-recorded verdict.)
-        expect(dispatched).toEqual([])
+        expect(calls.map(call => call.sessionId)).toEqual([sid])
+        expect(team.activeTask).toBeUndefined()
+        expect(team.status).toBe("idle")
+    })
+
+    test("peer-quorum approvals already recorded → persisted quorum settles immediately", async () => {
+        const root = tmpRoot("rd-pq-settle")
+        const sid = "ses_rd_pq_settle"
+        tracked.push(sid)
+        const task = makeTask({
+            responses: { alice: "a", bob: "b" },
+            signoffPolicy: "peer-quorum",
+            signoffQuorum: 0.5,
+            signoffStage: true,
+            signoffReviewers: ["alice", "bob"],
+            signoffApprovals: { alice: true, bob: false },
+        })
+        const state = makeState(
+            "alpha",
+            sid,
+            [makeMember("alice", "ses_alice"), makeMember("bob", "ses_bob")],
+            Date.now(),
+        )
+        await initTeamState(root, state, sid)
+        const team = await loadTeamState(root, "alpha", sid)
+        await team.mutex.runExclusive(async () => {
+            team.activeTask = task
+            await saveTeamState(team)
+        })
+        await rebuildSessionIndex(root, `${root}__unused`)
+        const calls: DispatchCall[] = []
+
+        await team.mutex.runExclusive(async () => {
+            await resumeDispatch(makeCtx({ storageRoot: root, calls }), team, team.activeTask!)
+        })
+
+        expect(calls.map(call => call.sessionId)).toEqual([sid])
+        expect(team.activeTask).toBeUndefined()
+        expect(team.status).toBe("idle")
     })
 
     test("peer-quorum signoffStage + 1 of 2 reviewers responded → only the missing reviewer is dispatched", async () => {

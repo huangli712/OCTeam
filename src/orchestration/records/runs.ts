@@ -211,13 +211,21 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     }
 
     if (task.type === "delegate") {
-        const tasks = await listAllTasks(team.directory)
-        record.tasks = tasks.map(t => ({
-            id: t.id,
-            subject: t.subject,
-            status: t.status,
-            owner: t.owner,
-        }))
+        try {
+            const tasks = await listAllTasks(team.directory)
+            record.tasks = tasks.map(t => ({
+                id: t.id,
+                subject: t.subject,
+                status: t.status,
+                owner: t.owner,
+            }))
+        } catch (err) {
+            logger.warn("persistRun: delegate task snapshot failed", {
+                team: team.teamName,
+                runId,
+                error: err instanceof Error ? err.message : String(err),
+            })
+        }
     }
 
     if (task.type === "workflow") {
@@ -413,7 +421,11 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
         checked.map(runId =>
             fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
                 .then(raw => {
-                    try { return { kind: "ok" as const, rec: parseRunRecord(raw) } }
+                    try {
+                        const rec = parseRunRecord(raw)
+                        if (rec.runId !== runId) return { kind: "mismatch" as const, rec }
+                        return { kind: "ok" as const, rec }
+                    }
                     catch { return { kind: "corrupt" as const, rec: null } }
                 })
                 .catch(err => ({
@@ -425,6 +437,9 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     )
     for (const { runId, kind, rec } of records) {
         if (kind === "ok" && rec) dated.push({ runId, finishedAt: rec.finishedAt ?? 0 })
+        else if (kind === "mismatch" && rec) {
+            logger.warn("pruneRuns: runId mismatch; skipping run record", { runId, recordRunId: rec.runId })
+        }
         else if (kind === "missing") orphaned.push(runId)
         else corrupted.push(runId)
     }
@@ -470,21 +485,31 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
         // "no runs," hiding disk problems from operators.
         if (!isEnoent(err)) {
             logger.warn("listRunRecords: readdir failed", { dir: root, error: err instanceof Error ? err.message : String(err) })
+            throw err
         }
         return []
     }
     const records: RunRecord[] = []
     for (const runId of runIds) {
         const recordPath = runRecordPath(teamDirectory, runId)
+        let raw: string
         try {
             await assertNoSymlinkTraversal(teamDirectory, recordPath)
-            const raw = await fs.readFile(recordPath, "utf8")
-            records.push(parseRunRecord(raw))
+            raw = await fs.readFile(recordPath, "utf8")
         } catch (err) {
-            // skip incomplete/corrupt runs, but log non-ENOENT errors for observability
-            if (!isEnoent(err)) {
-                logger.warn("listRunRecords: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })
+            if (isEnoent(err)) continue
+            logger.warn("listRunRecords: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })
+            throw err
+        }
+        try {
+            const parsed = parseRunRecord(raw)
+            if (parsed.runId !== runId) {
+                logger.warn("listRunRecords: runId mismatch; skipping run record", { runId, recordRunId: parsed.runId })
+                continue
             }
+            records.push(parsed)
+        } catch (err) {
+            logger.warn("listRunRecords: invalid run record; skipping", { runId, error: err instanceof Error ? err.message : String(err) })
         }
     }
     records.sort((a, b) => b.finishedAt - a.finishedAt)
@@ -499,24 +524,30 @@ export async function readRunRecord(teamDirectory: string, runId: string): Promi
     // errors as "corrupt run", which would silently accept attacker-controlled
     // content from a redirected file.
     await assertNoSymlinkTraversal(teamDirectory, recordPath)
+    let raw: string
     try {
-        const raw = await fs.readFile(recordPath, "utf8")
+        raw = await fs.readFile(recordPath, "utf8")
+    } catch (err) {
+        if (isEnoent(err)) return null
+        logger.warn("readRunRecord: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })
+        throw err
+    }
+    try {
         const parsed = parseRunRecord(raw)
         if (parsed.runId !== runId) {
             throw new Error(`runId mismatch: expected ${runId}, got ${parsed.runId}`)
         }
         return parsed
     } catch (err) {
-        if (!isEnoent(err)) {
-            logger.warn("readRunRecord: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })
-        }
+        logger.warn("readRunRecord: invalid run record", { runId, error: err instanceof Error ? err.message : String(err) })
         return null
     }
 }
 
 /**
- * Read a run's event timeline (runs/<runId>/events.jsonl), sorted by timestamp
- * (NOT file order — events are appended fire-and-forget). Bad lines are skipped.
+ * Read a run's event timeline (runs/<runId>/events.jsonl), sorted by timestamp.
+ * Per-run appends preserve emission order, and stable sorting preserves that
+ * file order when multiple events share a timestamp. Bad lines are skipped.
  * Returns [] when the file is absent (run produced no events yet).
  */
 export async function readRunEvents(teamDirectory: string, runId: string): Promise<RunEvent[]> {
@@ -529,10 +560,9 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
     try {
         raw = await fs.readFile(eventsPath, "utf8")
     } catch (err) {
-        if (!isEnoent(err)) {
-            logger.warn("readRunEvents: failed to read events file", { runId, error: err instanceof Error ? err.message : String(err) })
-        }
-        return []
+        if (isEnoent(err)) return []
+        logger.warn("readRunEvents: failed to read events file", { runId, error: err instanceof Error ? err.message : String(err) })
+        throw err
     }
     const events: RunEvent[] = []
     for (const line of raw.split("\n")) {

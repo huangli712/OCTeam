@@ -84,6 +84,31 @@ export function getActiveWorkflowStepActors(
     return actors
 }
 
+/** Record an unavailable ensemble verifier as a producer-neutral INVALID vote. */
+export function recordUnavailableEnsembleVerifier(
+    step: WorkflowStep | undefined,
+    verifierName: string,
+): boolean {
+    if (
+        step?.kind !== "gate"
+        || step.verifiers?.includes(verifierName) !== true
+        || step.ensembleResults?.[verifierName] !== undefined
+    ) {
+        return false
+    }
+    if (step.ensembleResults === undefined) step.ensembleResults = {}
+    step.ensembleResults[verifierName] = {
+        verdict: "INVALID",
+        score: undefined,
+        confidence: undefined,
+        issues: undefined,
+        rationale: "verifier unavailable",
+        diff: undefined,
+        parseFailed: false,
+    }
+    return true
+}
+
 /** Find the active step index a member is dispatched to, or null if none. */
 export function findActiveWorkflowStepIndexForMember(
     task: Pick<WorkflowTask, "activeStepIndices" | "currentStageIndex" | "steps">,

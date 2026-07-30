@@ -51,6 +51,7 @@ import {
     assertNeverWorkflowStepKind,
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
+    recordUnavailableEnsembleVerifier,
     sortedWorkflowIndices,
 } from "./dag.js";
 import { maybeTriggerSignoff } from "../control/signoff.js";
@@ -226,21 +227,8 @@ export async function dispatchEnsembleGate(
     // unavailable verifiers so the ensemble can reach its completion
     // threshold instead of hanging permanently.
     if (dispatchedAny && unavailable.length > 0) {
-        if (step.ensembleResults === undefined) step.ensembleResults = {};
         for (const name of unavailable) {
-            step.ensembleResults[name] = {
-                verdict: "INVALID",
-                score: undefined,
-                confidence: undefined,
-                issues: undefined,
-                rationale: "verifier unavailable",
-                diff: undefined,
-                // Do NOT set parseFailed: an unavailable verifier is NOT a
-                // parse failure. Setting parseFailed would make
-                // aggregateEnsembleVerdict treat the entire ensemble as
-                // malformed, routing to on_malformed instead of on_invalid.
-                parseFailed: false,
-            };
+            recordUnavailableEnsembleVerifier(step, name);
         }
     }
     if (dispatchedAny) markWorkflowStepDispatched(step);
@@ -556,10 +544,10 @@ export async function gotoWorkflowStep(
     const target = steps[targetIndex];
     if (!gate || gate.kind !== "gate" || !target) return false;
 
-    // Loop-controlled backward gotos use loopIterations instead of jumpCount.
-    const isLoopGoto = gate.loop !== undefined && targetIndex <= gateIndex && transition.verdict === "FAIL";
+    // Loop-controlled backward FAIL gotos use loopIterations instead of jumpCount.
+    const isBackwardLoop = targetIndex < gateIndex && gate.loop !== undefined && transition.verdict === "FAIL";
     const maxJ = gate.maxJumps ?? DEFAULT_MAX_JUMPS;
-    if (!isLoopGoto) {
+    if (!isBackwardLoop) {
         gate.jumpCount = (gate.jumpCount ?? 0) + 1;
         if (gate.jumpCount > maxJ) {
             await finishRun(

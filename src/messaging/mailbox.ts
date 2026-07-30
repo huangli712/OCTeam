@@ -85,8 +85,15 @@ export async function writeMailboxMessage(
             }
         }
         // C8: fall back to message.runId when authContext.runId is absent.
-        // Register auth AFTER backpressure check passes — a BackpressureError
-        // throw here skips auth registration entirely.
+        // M11 fix: register auth AFTER append succeeds. Pre-fix code
+        // registered auth BEFORE append — if append failed (EIO, ENOSPC),
+        // the auth record persisted for a message that was never written to
+        // the mailbox, creating an orphan auth entry that could authenticate
+        // a forged inbox line matching the directive's id/from/to/body.
+        // Now: the message must be durably in the inbox before it can be
+        // authenticated. The mailbox lock prevents poll from observing the
+        // message between append and auth registration.
+        await appendJsonl(inboxPath(teamDirectory, recipient), message, teamDirectory)
         if (message.kind === "directive") {
             const runId = authContext?.runId ?? message.runId
             // C-9: default the team binding to teamDirectory so directives
@@ -95,7 +102,6 @@ export async function writeMailboxMessage(
             // passes explicitly and makes cross-team replay impossible.
             authenticateDirective(message, authContext?.teamName ?? teamDirectory, runId)
         }
-        await appendJsonl(inboxPath(teamDirectory, recipient), message, teamDirectory)
     }, teamDirectory)
 }
 
@@ -224,6 +230,12 @@ export async function ackMessages(
             await appendJsonl(processedPath(teamDirectory, recipient), {
                 ...msg,
                 deliveryStatus: "processed",
+                // M12 fix: record ACK time so retention pruning uses when the
+                // message was actually processed, not when it was sent. A
+                // message that sat in the inbox for a long time before being
+                // ACKed would otherwise be pruned immediately on the next
+                // prune cycle, losing its dedup protection.
+                processedAt: Date.now(),
             }, teamDirectory)
             // C-11: track per-message unlink outcome so one earlier failure
             // does not suppress auth consumption for later directives whose
@@ -265,6 +277,8 @@ export async function ackMessages(
  * Caller MUST hold the mailbox lock.
  */
 const PROCESSED_RETENTION_MS = RESERVATION_TTL_MS * 2
+const PROCESSED_MAX_BYTES = 1_048_576
+const PROCESSED_RETENTION_BYTES = 512 * 1024
 
 async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: string): Promise<void> {
     const p = processedPath(teamDirectory, recipient)
@@ -278,29 +292,53 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
         throw err
     }
     let raw: string
+    let truncated = false
     try {
-        // H2: cap file size and reject non-regular files before reading.
+        // H2: reject non-regular files and bound memory while compacting an
+        // oversized log to its most recent complete-line window.
         const stat = await fs.lstat(p)
-        if (!stat.isFile() || stat.size > 1_048_576) return
-        raw = await fs.readFile(p, "utf8")
+        if (!stat.isFile()) return
+        if (stat.size > PROCESSED_MAX_BYTES) {
+            const start = stat.size - PROCESSED_RETENTION_BYTES
+            const buffer = Buffer.alloc(PROCESSED_RETENTION_BYTES)
+            const handle = await fs.open(p, "r")
+            try {
+                const { bytesRead } = await handle.read(buffer, 0, buffer.length, start)
+                const tail = buffer.subarray(0, bytesRead).toString("utf8")
+                const firstNewline = tail.indexOf("\n")
+                raw = firstNewline === -1 ? "" : tail.slice(firstNewline + 1)
+                truncated = true
+            } finally {
+                await handle.close()
+            }
+        } else {
+            raw = await fs.readFile(p, "utf8")
+        }
     } catch (err: unknown) {
         if (isEnoent(err)) return
         throw err
     }
     const lines = raw.split("\n").filter(l => l.length > 0)
     // H14: prune by timestamp, not line count. Each processed entry has a
-    // `timestamp` field (the original Message.timestamp). Keep entries whose
-    // timestamp is within PROCESSED_RETENTION_MS of now. Entries without a
-    // parseable timestamp are kept (conservative — never prune what we
-    // can't age-check).
+    // `timestamp` field (the original Message.timestamp) and optionally a
+    // `processedAt` field (when the message was ACKed).
+    // M12 fix: prefer `processedAt` for retention so a message that sat in
+    // the inbox for a long time before ACK is not immediately pruned. Fall
+    // back to `timestamp` for legacy entries without processedAt. Keep
+    // entries whose retention time is within PROCESSED_RETENTION_MS of now.
+    // Entries without a parseable timestamp are kept (conservative — never
+    // prune what we can't age-check).
     const now = Date.now()
     const kept: string[] = []
     let pruned = 0
     for (const line of lines) {
         try {
-            const entry = JSON.parse(line) as { timestamp?: unknown }
-            if (typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp)
-                && now - entry.timestamp > PROCESSED_RETENTION_MS) {
+            const entry = JSON.parse(line) as { timestamp?: unknown; processedAt?: unknown }
+            const retentionTime = typeof entry.processedAt === "number" && Number.isFinite(entry.processedAt)
+                ? entry.processedAt
+                : entry.timestamp
+            if (typeof retentionTime === "number" && Number.isFinite(retentionTime)
+                && now - retentionTime > PROCESSED_RETENTION_MS) {
                 pruned++
                 continue
             }
@@ -309,7 +347,7 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
         }
         kept.push(line)
     }
-    if (pruned === 0) return
+    if (pruned === 0 && !truncated) return
     await atomicWrite(p, kept.join("\n") + "\n", teamDirectory)
 }
 
@@ -340,6 +378,7 @@ export async function releaseStaleReservations(
             if (isEnoent(err)) return
             throw err
         }
+        await pruneProcessedLogUnlocked(teamDirectory, recipient)
         // Build a set of already-processed message ids so we don't re-deliver
         // a message whose ack succeeded but whose reservation unlink failed
         // (non-ENOENT — see ackMessages). Such an orphan would otherwise be
@@ -351,7 +390,7 @@ export async function releaseStaleReservations(
             // C-1: guard the processed.jsonl leaf path before lstat/readFile.
             await assertNoSymlinkTraversal(teamDirectory, procPath)
             const procStat = await fs.lstat(procPath)
-            if (procStat.isFile() && procStat.size <= 1_048_576) {
+            if (procStat.isFile() && procStat.size <= PROCESSED_MAX_BYTES) {
                 const processedRaw = await fs.readFile(procPath, "utf8")
                 for (const line of processedRaw.split("\n")) {
                     if (line.length === 0) continue

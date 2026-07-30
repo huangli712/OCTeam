@@ -8,25 +8,25 @@ import {
 } from "../src/tui/tree.js"
 
 describe("mapStatus", () => {
-    test("null/undefined -> idle", () => {
-        expect(mapStatus(null)).toBe("idle")
-        expect(mapStatus(undefined)).toBe("idle")
+    test("null/undefined -> unknown", () => {
+        expect(mapStatus(null)).toBe("unknown")
+        expect(mapStatus(undefined)).toBe("unknown")
     })
 
     test("busy -> running", () => {
         expect(mapStatus({ type: "busy" })).toBe("running")
     })
 
-    test("retry -> errored", () => {
-        expect(mapStatus({ type: "retry" })).toBe("errored")
+    test("retry -> retrying", () => {
+        expect(mapStatus({ type: "retry" })).toBe("retrying")
     })
 
     test("idle -> idle", () => {
         expect(mapStatus({ type: "idle" })).toBe("idle")
     })
 
-    test("unknown type -> idle", () => {
-        expect(mapStatus({ type: "something-else" })).toBe("idle")
+    test("unknown type -> unknown", () => {
+        expect(mapStatus({ type: "something-else" })).toBe("unknown")
     })
 })
 

@@ -270,7 +270,16 @@ export function teamResultsTool(ctx: PluginContext): ToolDefinition {
                 requireActive: false,
             })
             if (!caller) return "Error: caller is not a member of this team"
-            const records = await listRunRecords(caller.directory)
+            let records: RunRecord[]
+            try {
+                records = await listRunRecords(caller.directory)
+            } catch (err) {
+                logger.warn("team_results: failed to read run records", {
+                    team: args.team_id,
+                    error: err instanceof Error ? err.message : String(err),
+                })
+                return `Error: run records for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+            }
             if (records.length === 0) return `No run records for team "${args.team_id}" yet.`
             const limit = args.limit ?? 10
             const lines = records.slice(0, limit).map(formatRunLine)
@@ -310,10 +319,19 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
 
             let record: RunRecord | null
             if (args.run_id) {
-                record = await readRunRecord(caller.directory, args.run_id)
+                try {
+                    record = await readRunRecord(caller.directory, args.run_id)
+                } catch (err) {
+                    return `Error: run "${args.run_id}" for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+                }
                 if (!record) return `Error: run "${args.run_id}" not found for team "${args.team_id}"`
             } else {
-                const records = await listRunRecords(caller.directory)
+                let records: RunRecord[]
+                try {
+                    records = await listRunRecords(caller.directory)
+                } catch (err) {
+                    return `Error: run records for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+                }
                 if (records.length === 0) return `No run records for team "${args.team_id}" yet.`
                 record = records[0]
             }
@@ -335,10 +353,9 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                     await assertNoSymlinkTraversal(caller.directory, memberOutputFile)
                     return await fs.readFile(memberOutputFile, "utf8")
                 } catch (err) {
-                    if (!isEnoent(err)) {
-                        logger.warn("team_result_get: failed to read member output file", { runId: record.runId, member: args.member, error: err instanceof Error ? err.message : String(err) })
-                    }
-                    return `Error: output file for "${args.member}" is missing in run ${record.runId}`
+                    if (isEnoent(err)) return `Error: output file for "${args.member}" is missing in run ${record.runId}`
+                    logger.warn("team_result_get: failed to read member output file", { runId: record.runId, member: args.member, error: err instanceof Error ? err.message : String(err) })
+                    return `Error: output file for "${args.member}" is unreadable in run ${record.runId}: ${err instanceof Error ? err.message : String(err)}`
                 }
             }
 

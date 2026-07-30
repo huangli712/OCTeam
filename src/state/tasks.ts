@@ -179,15 +179,17 @@ async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task
     }
 }
 
-/** Create a new task with a random UUID id and write it atomically to disk. */
+/** Create a task with an optional preallocated UUID and write it atomically to disk. */
 export async function createTask(
     teamDirectory: string,
-    input: { subject: string; description: string; blockedBy?: string[]; depth?: number },
+    input: { id?: string; subject: string; description: string; blockedBy?: string[]; depth?: number },
 ): Promise<Task> {
     const now = Date.now()
+    const id = input.id ?? crypto.randomUUID()
+    assertValidTaskId(id)
     const task: Task = {
         version: 1,
-        id: crypto.randomUUID(),
+        id,
         subject: input.subject,
         description: input.description,
         status: "pending",
@@ -243,6 +245,29 @@ export async function listAllTasks(teamDirectory: string, strict = false): Promi
             }
         }),
     )
+    // M28 fix: in strict mode, schema-invalid tasks (readTaskFile returned
+    // null due to validation failure, NOT ENOENT) must also throw. Pre-fix
+    // code treated schema-corrupt files the same as missing files, so
+    // claimTask's strict scan silently ignored them, potentially bypassing
+    // maxTasks and single-active-task invariants. We can't distinguish
+    // "file existed but failed schema" from "file was ENOENT" inside
+    // readTaskFile without changing its return type, so check the file's
+    // existence when strict and result is null.
+    if (strict) {
+        for (let i = 0; i < ids.length; i++) {
+            if (results[i] === null) {
+                try {
+                    await fs.access(taskPath(teamDirectory, ids[i]))
+                    // File exists but readTaskFile returned null → schema corrupt
+                    throw new Error(`listAllTasks(strict): task ${ids[i]} exists but failed schema validation`)
+                } catch (accessErr) {
+                    if (isEnoent(accessErr)) continue // benign race
+                    if (accessErr instanceof Error && accessErr.message.includes("schema validation")) throw accessErr
+                    // Other access error — already handled by readTaskFile catch
+                }
+            }
+        }
+    }
     return results.filter((t): t is Task => t !== null)
 }
 

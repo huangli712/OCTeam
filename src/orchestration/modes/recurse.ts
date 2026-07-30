@@ -29,6 +29,7 @@ import { findMember } from "../../tools/support.js"
 
 /** Cap on root re-dispatch attempts before declaring the run stalled. */
 const MAX_AGGREGATION_DISPATCHES = 3
+const MAX_FORCED_DIRECT_DECOMPOSE_RETRIES = 3
 
 /**
  * Build the recursive-decomposition contract prompt: claim a task, then either
@@ -160,16 +161,20 @@ export async function rejectRecurseDecompose(
     if (parent.id === task.rootTaskId) {
         task.aggregationDispatchCount = 0
     }
+    if (!task.forcedDirectTaskIds?.includes(parent.id)) {
+        task.forcedDirectTaskIds = [...(task.forcedDirectTaskIds ?? []), parent.id]
+    }
     const member = findMember(team, request.member ?? "")
-    if (!member?.sessionId) return
-    delete task.responses[member.name]
-    await dispatchToMember(
-        ctx,
-        member,
-        buildDirectSolvePrompt(parent.subject),
-        member.worktreePath ?? ctx.directory,
-        team,
-    )
+    if (member?.sessionId) {
+        delete task.responses[member.name]
+        await dispatchToMember(
+            ctx,
+            member,
+            buildDirectSolvePrompt(parent.subject),
+            member.worktreePath ?? ctx.directory,
+            team,
+        )
+    }
     await saveTeamState(team)
 }
 
@@ -219,8 +224,10 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
         const dec = parseDecompose(output)
         const maxDepth = task.maxDepth ?? DEFAULT_RECURSE_DEPTH
         const maxSubtasks = task.maxSubtasks ?? DEFAULT_RECURSE_SUBTASKS
+        const forcedDirect = task.forcedDirectTaskIds?.includes(T.id) ?? false
         const canDecompose =
-            !dec.parseFailed
+            !forcedDirect
+            && !dec.parseFailed
             && dec.subtasks.length > 0
             && depth < maxDepth
             && T.blockedBy.length === 0
@@ -234,6 +241,8 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 member: member.name,
                 subtasks: dec.subtasks,
             })) {
+                delete task.responses[member.name]
+                await saveTeamState(team)
                 return
             }
             // Branch: create subtasks (depth+1), re-queue T as their aggregator.
@@ -256,6 +265,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                     owner: undefined,
                     blockedBy: ids,
                 })
+                delete task.responses[member.name]
             } catch (createErr) {
                 // C7 fix: rollback must mark created children as deleted via
                 // updateTask (which uses atomicWrite with symlink traversal
@@ -288,6 +298,19 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 detail: `${T.subject} -> ${ids.length} @d${depth + 1}`,
             })
         } else if (dec.subtasks.length > 0 && !dec.parseFailed) {
+            if (forcedDirect) {
+                const attempts = (task.forcedDirectDecomposeAttempts?.[T.id] ?? 0) + 1
+                task.forcedDirectDecomposeAttempts = {
+                    ...(task.forcedDirectDecomposeAttempts ?? {}),
+                    [T.id]: attempts,
+                }
+                if (attempts > MAX_FORCED_DIRECT_DECOMPOSE_RETRIES) {
+                    await finishRun(ctx, team, `recurse_forced_direct_decompose_failed:${attempts}_attempts`, "failed")
+                    return
+                }
+            } else {
+                task.forcedDirectTaskIds = [...(task.forcedDirectTaskIds ?? []), T.id]
+            }
             delete task.responses[member.name]
             await dispatchToMember(
                 ctx,
@@ -339,6 +362,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             }
             const result = output.length > 0 ? output : "(no output provided)"
             await updateTask(team.directory, T.id, { status: "completed", result })
+            delete task.responses[member.name]
         }
     }
 

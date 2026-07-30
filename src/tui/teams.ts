@@ -1,7 +1,7 @@
 /**
  * Phase 2.9: file-based team loader for the sidebar. Team/member/task state is
  * the server module's private TeamState — the TUI reads it
- * straight from disk (<cwd>/.octeam and ~/.octeam) since TUI and server share
+ * straight from disk (<workspace>/.octeam and ~/.octeam) since TUI and server share
  * the same process filesystem. Polls on refresh; child-session info still comes
  * from api.state/api.client.
  */
@@ -16,6 +16,13 @@ import { configPath, inboxPath, processedPath, statePath, teamDir, teamsDir } fr
 import { isValidTeamState } from "../state/store.js"
 import { assertNoSymlinkTraversal } from "../state/locks.js"
 
+export type LoadState<T> =
+    | { status: "unknown" }
+    | { status: "ok"; data: T }
+    | { status: "error"; error: string; data?: T }
+
+export type MailboxCount = { unread: number; total: number }
+
 /** Flat member row for sidebar rendering from on-disk team state. */
 export type TeamMemberRow = {
     name: string
@@ -25,8 +32,7 @@ export type TeamMemberRow = {
     model?: string
     sessionId?: string
     worktreePath?: string
-    unread?: number
-    totalMessages?: number
+    mailbox: LoadState<MailboxCount>
     turnCount?: number
     tokens?: number
 }
@@ -53,9 +59,10 @@ export type TeamSummary = {
  * unread (inbox) and total (inbox + processed). Reserved / in-flight messages
  * live in a separate dir and are intentionally not counted.
  */
-export async function countMailbox(teamDirectory: string, recipient: string): Promise<{ unread: number; total: number }> {
+export async function countMailbox(teamDirectory: string, recipient: string): Promise<LoadState<MailboxCount>> {
     const countLines = async (file: string): Promise<number> => {
         try {
+            await assertNoSymlinkTraversal(teamDirectory, file)
             // HIGH-G: cap the file size before reading so a maliciously
             // placed large file (or /dev/zero via symlink) cannot OOM the
             // sidebar process. 1 MiB is far above any legitimate processed.jsonl
@@ -67,40 +74,44 @@ export async function countMailbox(teamDirectory: string, recipient: string): Pr
             // rejected symlinks (R1).
             const lstat = await fs.lstat(file)
             if (lstat.isSymbolicLink() || !lstat.isFile()) {
-                console.warn(`[octeam] countMailbox: refusing non-regular mailbox file`)
-                return 0
+                throw new Error("refusing non-regular mailbox file")
             }
             if (lstat.size > 1_048_576) {
-                console.warn(`[octeam] countMailbox: ${file} exceeds 1 MiB cap, refusing to read`)
-                return 0
+                throw new Error("mailbox file exceeds 1 MiB cap")
             }
             const raw = await fs.readFile(file, "utf8")
             return raw.split("\n").filter(l => l.length > 0).length
         } catch (err: unknown) {
             // M-22: ENOENT (no inbox yet) is expected — return 0. Other errors
-            // (EACCES, EIO, corruption) are real problems; log so operators
-            // notice, then fall back to 0 so the sidebar does not crash.
+            // (EACCES, EIO, corruption) are real problems and must remain
+            // distinguishable from an empty mailbox.
             const code = (err as NodeJS.ErrnoException).code
-            if (code !== "ENOENT") {
-                console.warn(`[octeam] countMailbox: unreadable ${file}: ${err instanceof Error ? err.message : String(err)}`)
-            }
-            return 0
+            if (code === "ENOENT") return 0
+            throw err
         }
     }
-    const unread = await countLines(inboxPath(teamDirectory, recipient))
-    const processed = await countLines(processedPath(teamDirectory, recipient))
-    return { unread, total: unread + processed }
+    try {
+        const unread = await countLines(inboxPath(teamDirectory, recipient))
+        const processed = await countLines(processedPath(teamDirectory, recipient))
+        return { status: "ok", data: { unread, total: unread + processed } }
+    } catch (err) {
+        console.warn(`[octeam] countMailbox: unavailable for ${recipient}: ${err instanceof Error ? err.message : String(err)}`)
+        return { status: "error", error: "mailbox unavailable" }
+    }
 }
 
-async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promise<TeamSummary[]> {
+async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promise<LoadState<TeamSummary[]>> {
     const teamsPath = teamsDir(storageRoot, leadSessionId)
     let entries: import("node:fs").Dirent[]
     try {
         entries = await fs.readdir(teamsPath, { withFileTypes: true })
-    } catch {
-        return []
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return { status: "ok", data: [] }
+        console.warn(`[octeam] readTeamsFrom: unreadable teams directory: ${err instanceof Error ? err.message : String(err)}`)
+        return { status: "error", error: "teams unavailable" }
     }
     const out: TeamSummary[] = []
+    let hadError = false
     for (const e of entries) {
         if (!e.isDirectory()) continue
         try {
@@ -122,15 +133,20 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
             const stateStat = await fs.lstat(stateP)
             if (stateStat.isSymbolicLink() || !stateStat.isFile()) {
                 console.warn(`[octeam] teams: refusing non-regular state file`)
+                hadError = true
                 continue
             }
             if (stateStat.size > 1_048_576) {
                 console.warn(`[octeam] teams: ${stateP} exceeds 1 MiB cap, refusing to read`)
+                hadError = true
                 continue
             }
             const raw = await fs.readFile(stateP, "utf8")
             const state = JSON.parse(raw)
-            if (!isValidTeamState(state, dir)) continue
+            if (!isValidTeamState(state, dir)) {
+                hadError = true
+                continue
+            }
             // Also read config.json for member roles (role lives in MemberSpec, not MemberState).
             const roleMap: Record<string, string> = {}
             try {
@@ -172,8 +188,7 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                         model: typeof m.model === "string" ? m.model : undefined,
                         sessionId: typeof m.sessionId === "string" ? m.sessionId : undefined,
                         worktreePath: typeof m.worktreePath === "string" ? m.worktreePath : undefined,
-                        unread: mailbox.unread,
-                        totalMessages: mailbox.total,
+                        mailbox,
                         turnCount: typeof m.turnCount === "number" ? m.turnCount : undefined,
                         // M-12: validate tokensByMember entries are numbers — a
                         // tampered state.json can set them to objects/strings,
@@ -210,11 +225,14 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
             // are real problems; log so operators notice.
             const code = (err as NodeJS.ErrnoException).code
             if (code !== "ENOENT") {
+                hadError = true
                 console.warn(`[octeam] readTeamsFrom: unreadable state for "${e.name}": ${err instanceof Error ? err.message : String(err)}`)
             }
         }
     }
-    return out
+    return hadError
+        ? { status: "error", error: "one or more teams are unavailable", data: out }
+        : { status: "ok", data: out }
 }
 
 /**
@@ -223,9 +241,9 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
  * User-scope (~/.octeam) teams are global and intentionally excluded from the
  * per-session sidebar view.
  */
-export async function loadTeams(sessionId: string): Promise<TeamSummary[]> {
-    // <cwd>/.octeam mirrors context.ts's project-scope storageRoot; teamsDir()
+export async function loadTeams(directory: string, sessionId: string): Promise<LoadState<TeamSummary[]>> {
+    // <workspace>/.octeam mirrors context.ts's project-scope storageRoot; teamsDir()
     // then appends the session segment + "teams".
-    const storageRoot = path.join(process.cwd(), ".octeam")
+    const storageRoot = path.join(directory, ".octeam")
     return readTeamsFrom(storageRoot, sessionId)
 }

@@ -266,7 +266,13 @@ export function teamProgressTool(ctx: PluginContext): ToolDefinition {
             // Resolve which run's timeline to read.
             let runId = args.run_id ?? team.activeTask?.runId
             if (!runId) {
-                const records = await listRunRecords(team.directory)
+                let records
+                try {
+                    records = await listRunRecords(team.directory)
+                } catch (err) {
+                    logSwallowed(ctx, "team_progress failed to read run records", err, { team: args.team_id })
+                    return `Error: run records for team "${args.team_id}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+                }
                 runId = records[0]?.runId
             }
 
@@ -275,7 +281,13 @@ export function teamProgressTool(ctx: PluginContext): ToolDefinition {
                 return [...snapshot, "", "Timeline: (no runs yet)"].join("\n")
             }
 
-            let events = await readRunEvents(team.directory, runId)
+            let events
+            try {
+                events = await readRunEvents(team.directory, runId)
+            } catch (err) {
+                logSwallowed(ctx, "team_progress failed to read run events", err, { team: args.team_id, runId })
+                return `Error: events for run "${runId}" could not be read: ${err instanceof Error ? err.message : String(err)}`
+            }
             const totalBefore = events.length
             if (args.since !== undefined) {
                 const since = args.since

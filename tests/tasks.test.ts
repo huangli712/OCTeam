@@ -36,6 +36,24 @@ describe("claimMutexPath", () => {
     })
 })
 
+describe("createTask", () => {
+    test("persists a preallocated id with its complete blockedBy list", async () => {
+        const dir = await setupTeamDir("create-preallocated")
+        const id = crypto.randomUUID()
+        const blockerId = crypto.randomUUID()
+
+        const task = await createTask(dir, {
+            id,
+            subject: "dependent",
+            description: "wait for blocker",
+            blockedBy: [blockerId],
+        })
+
+        expect(task.id).toBe(id)
+        expect(task.blockedBy).toEqual([blockerId])
+    })
+})
+
 describe("claimTask: per-member concurrency cap (1 active task)", () => {
     test("member cannot claim a 2nd task while holding a claimed task", async () => {
         const dir = await setupTeamDir("cap-claimed")

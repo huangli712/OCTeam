@@ -4,7 +4,7 @@ import type { RecurseTask, Task } from "../src/core/types.js"
 import { processIdle } from "../src/orchestration/lifecycle/idle.js"
 import { teamApproveTool, teamRejectTool } from "../src/tools/control/approve.js"
 import { createTask, getTask, listAllTasks, updateTask } from "../src/state/tasks.js"
-import { saveTeamState, type Team } from "../src/state/store.js"
+import { loadTeamState, saveTeamState, type Team } from "../src/state/store.js"
 import { type DispatchCall, makeCtx, makeHitlLifecycle, makeMember, makeToolContext, tmpRoot } from './helpers.js';
 
 const DECOMPOSE = '<decompose>{"subtasks":[{"subject":"part A","description":"do A"},{"subject":"part B","description":"do B"}]}</decompose>'
@@ -64,6 +64,7 @@ describe("HITL recurse decomposition approval", () => {
 
         expect(task.approvalStage).toBe(true)
         expect(task.approvalRequest?.kind).toBe("recurse_decompose")
+        expect(task.responses.alice).toBeUndefined()
         expect((await listAllTasks(team.directory)).filter(t => t.depth === 1)).toHaveLength(0)
 
         const result = await teamApproveTool(ctx).execute({ team_id: "alpha" }, makeToolContext(sid))
@@ -97,6 +98,12 @@ describe("HITL recurse decomposition approval", () => {
         expect(parent?.result).toBeUndefined()
         expect(calls.some(call => call.sessionId === "ses_alice")).toBe(true)
         expect((await listAllTasks(team.directory)).filter(t => t.depth === 1)).toHaveLength(0)
+        expect(task.forcedDirectTaskIds).toContain(claimed.id)
+        const reloaded = await loadTeamState(root, "alpha", sid)
+        expect(reloaded.activeTask?.type).toBe("recurse")
+        if (reloaded.activeTask?.type === "recurse") {
+            expect(reloaded.activeTask.forcedDirectTaskIds).toContain(claimed.id)
+        }
     })
 
     test("pending recurse approval globally pauses other task-pool idles", async () => {

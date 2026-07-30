@@ -9,9 +9,9 @@
  * runId is now generated at orchestration start, so that path is effectively dead
  * except for tasks persisted by an older build.
  *
- * Readers (team_progress) sort by event.timestamp rather than trusting file
- * order, because two fire-and-forget appends from different turns could in
- * principle land out of order (impossible at LLM-turn cadence, but cheap insurance).
+ * Appends are serialized per run so file order matches emission order. Readers
+ * still sort by timestamp for compatibility with event files written by older
+ * versions; stable sorting preserves serialized order for equal timestamps.
  */
 
 import type { Team } from "../../state/store.js"
@@ -19,6 +19,8 @@ import type { RunEvent } from "../../core/types.js"
 import { appendJsonl } from "../../state/locks.js"
 import { runEventsPath } from "../../state/paths.js"
 import { logger } from "../../core/log.js"
+
+const appendChains = new Map<string, Promise<void>>()
 
 /** Fire-and-forget: append one RunEvent to the run's events.jsonl timeline. */
 export function recordEvent(team: Team, event: RunEvent): void {
@@ -32,7 +34,9 @@ export function recordEvent(team: Team, event: RunEvent): void {
     if (team.deleted) return
     const runId = team.activeTask?.runId
     if (!runId) return
-    void (async () => {
+    const eventsFile = runEventsPath(team.directory, runId)
+    const previous = appendChains.get(eventsFile) ?? Promise.resolve()
+    const append = previous.then(async () => {
         // M-2: re-check the tombstone inside the async path so a concurrent
         // team_delete that set team.deleted after the synchronous guard above
         // is visible by the time the microtask resolves.
@@ -46,7 +50,6 @@ export function recordEvent(team: Team, event: RunEvent): void {
             // between stat and append; a true atomic fix requires coordinating
             // team_delete with pending recordEvent IIFEs (heavy for fire-and-
             // forget telemetry), so this pragmatic check is the right trade.
-            const eventsFile = runEventsPath(team.directory, runId)
             const { stat } = await import("node:fs/promises")
             try {
                 await stat(eventsFile)
@@ -76,5 +79,9 @@ export function recordEvent(team: Team, event: RunEvent): void {
                 error: err instanceof Error ? err.message : String(err),
             })
         }
-    })()
+    })
+    appendChains.set(eventsFile, append)
+    void append.then(() => {
+        if (appendChains.get(eventsFile) === append) appendChains.delete(eventsFile)
+    })
 }

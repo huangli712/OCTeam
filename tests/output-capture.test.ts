@@ -195,6 +195,21 @@ describe("extractOutputFromParts", () => {
             expect(result).toContain(`work from ${tool}`)
         }
     })
+
+    test("extracts primary arguments from AFT mutation tools", () => {
+        const cases = [
+            { tool: "aft_delete", input: { files: ["src/a.ts", "src/b.ts"] }, expected: "src/a.ts src/b.ts" },
+            { tool: "aft_move", input: { path: "src/a.ts", destination: "src/b.ts" }, expected: "src/a.ts→src/b.ts" },
+            { tool: "aft_refactor", input: { path: "src/a.ts", symbol: "run" }, expected: "run" },
+            { tool: "aft_import", input: { module: "node:path", names: ["join"] }, expected: "node:path" },
+            { tool: "aft_ast_replace", input: { pattern: "console.log($MSG)", rewrite: "logger.info($MSG)" }, expected: "console.log($MSG)" },
+        ]
+
+        for (const { tool, input, expected } of cases) {
+            const result = extractOutputFromParts([{ type: "tool", tool, state: { input } }])
+            expect(result).toBe(expected)
+        }
+    })
 })
 
 // --- captureMemberOutput: turn accumulation + reduce-stage routing ---

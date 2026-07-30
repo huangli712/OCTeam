@@ -17,6 +17,8 @@ import { finishRun } from "./completion.js"
 import { dispatchToMember } from "./dispatch.js"
 import { findMember } from "../../tools/support.js"
 
+const MAX_SIGNOFF_PARSE_FAILURES = 3
+
 /** Build the structured verdict contract shared by live and resumed reviews. */
 export function buildSignoffReviewPrompt(summary: string): string {
     return `[Signoff review]\n` 
@@ -98,6 +100,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     // the run stalled waiting for never-dispatched ones (peer-quorum) or
     // failed with a misleading error (decider).
     const dispatchFailures: string[] = []
+    const dispatchedReviewers: string[] = []
     for (const reviewer of reviewers) {
         // Do NOT pre-write a false sentinel for pending reviewers — false is
         // a valid rejection vote and isQuorumReached counts map keys as
@@ -113,6 +116,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
                 reviewer.worktreePath ?? ctx.directory,
                 team,
             )
+            dispatchedReviewers.push(reviewer.name)
         } catch (err) {
             // Isolate per-reviewer dispatch failures. For decider policy this
             // is fatal (the single reviewer never got the prompt); for
@@ -127,6 +131,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
                 // the signoffStage so finishRun(failed) is the explicit outcome.
                 task.signoffStage = false
                 task.signoffApprovals = undefined
+                task.signoffReviewers = undefined
                 try {
                     await saveTeamStateBounded(team)
                 } catch (rollbackErr) {
@@ -141,6 +146,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     if (dispatchFailures.length === reviewers.length) {
         task.signoffStage = false
         task.signoffApprovals = undefined
+        task.signoffReviewers = undefined
         try {
             await saveTeamStateBounded(team)
         } catch (rollbackErr) {
@@ -149,7 +155,35 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         throw new Error(`signoff: all ${reviewers.length} reviewer dispatch(es) failed: ${dispatchFailures.join(", ")}`)
     }
 
+    task.signoffReviewers = dispatchedReviewers
+    await saveTeamStateBounded(team)
+
     return true
+}
+
+/** Settle peer-quorum signoff against the successfully dispatched live roster. */
+export async function evaluateSignoffQuorum(ctx: PluginContext, team: Team): Promise<void> {
+    const task = team.activeTask
+    if (!task?.signoffStage || task.signoffPolicy !== "peer-quorum") return
+    const reviewerRoster = task.signoffReviewers
+        ?? team.members.filter(member => !member.isMaster && member.sessionId).map(member => member.name)
+    const reviewers = reviewerRoster.filter(name => {
+        const reviewer = team.members.find(member => member.name === name)
+        return reviewer?.sessionId && reviewer.status !== "errored"
+    })
+    const reviewerSet = new Set(reviewers)
+    const activeApprovals: Record<string, boolean> = {}
+    for (const [name, approved] of Object.entries(task.signoffApprovals ?? {})) {
+        if (reviewerSet.has(name)) activeApprovals[name] = approved
+    }
+    const { allResponded, reached } = isQuorumReached(
+        activeApprovals,
+        reviewers.length,
+        task.signoffQuorum ?? 0.5,
+    )
+    if (!allResponded) return
+    const reason = reached ? "signoff_quorum_reached" : "signoff_quorum_not_reached"
+    await finishRun(ctx, team, reason, reached ? "idle" : "failed")
 }
 
 /** Capture one reviewer verdict and complete the signoff policy when ready. */
@@ -180,8 +214,9 @@ export async function handleSignoffIdle(
             await finishRun(ctx, team, "signoff_decider_error", "failed")
             return
         }
-        // For peer-quorum, the errored reviewer simply doesn't vote — quorum
-        // is calculated from the remaining responders. Do nothing here.
+        // For peer-quorum, skip this reviewer's vote and settle against the
+        // remaining live roster.
+        await evaluateSignoffQuorum(ctx, team)
         return
     }
 
@@ -193,14 +228,28 @@ export async function handleSignoffIdle(
             member: member.name,
         })
     } else if (signoff.parseFailed) {
-        // H-3/N: malformed signoff (missing/non-boolean approved). Log so
-        // operators can distinguish from explicit rejections. The reviewer's
-        // output was parsed but didn't contain a valid boolean — likely an
-        // LLM formatting error.
-        logEvent(ctx, "warn", "signoff payload malformed (approved field missing/non-boolean); treating as rejection", {
+        if (!task.signoffParseFailures) task.signoffParseFailures = {}
+        const failures = (task.signoffParseFailures[member.name] ?? 0) + 1
+        task.signoffParseFailures[member.name] = failures
+        logEvent(ctx, "warn", "signoff payload malformed", {
             team: team.teamName,
             member: member.name,
+            failures,
+            maxFailures: MAX_SIGNOFF_PARSE_FAILURES,
         })
+        if (failures < MAX_SIGNOFF_PARSE_FAILURES) {
+            if (task.signoffApprovals) delete task.signoffApprovals[member.name]
+            await dispatchToMember(
+                ctx,
+                member,
+                `[Signoff format retry]\nYour previous signoff was malformed. Emit exactly one <signoff>{"approved": true|false, "rationale": "..."}</signoff> block.`,
+                member.worktreePath ?? ctx.directory,
+                team,
+            )
+            return
+        }
+    } else if (task.signoffParseFailures) {
+        delete task.signoffParseFailures[member.name]
     }
     // signoffApprovals is initialized to {} in maybeTriggerSignoff before
     // signoffStage is set. Guard against undefined for robustness.
@@ -218,30 +267,6 @@ export async function handleSignoffIdle(
         // correctly reflects the gate failure.
         await finishRun(ctx, team, reason, approved ? "idle" : "failed")
     } else if (task.signoffPolicy === "peer-quorum") {
-        // Reviewer list: use current live members. An errored reviewer
-        // is excluded from the denominator, but their dispatch already
-        // happened — the barrier waits only for non-errored reviewers.
-        // This is the same set used by maybeTriggerSignoff at dispatch time.
-        const reviewers = team.members
-            .filter(member => !member.isMaster && member.sessionId && member.status !== "errored")
-            .map(member => member.name)
-        const reviewerSet = new Set(reviewers)
-        // Filter approvals to only include current non-errored reviewers so
-        // that members who errored AFTER responding do not inflate the
-        // response count or approval count beyond the active set.
-        const activeApprovals: Record<string, boolean> = {}
-        for (const [name, approved] of Object.entries(task.signoffApprovals ?? {})) {
-            if (reviewerSet.has(name)) activeApprovals[name] = approved
-        }
-        const { allResponded, reached } = isQuorumReached(
-            activeApprovals,
-            reviewers.length,
-            task.signoffQuorum ?? 0.5,
-        )
-        if (!allResponded) return
-        const reason = reached ? "signoff_quorum_reached" : "signoff_quorum_not_reached"
-        // H36: quorum not reached is a quality gate failure (same as decider
-        // rejection above). Pass "failed" so the run record is correct.
-        await finishRun(ctx, team, reason, reached ? "idle" : "failed")
+        await evaluateSignoffQuorum(ctx, team)
     }
 }

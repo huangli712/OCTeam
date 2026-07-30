@@ -49,6 +49,18 @@ describe("H-14: extractTaggedJSON treats trailing malformed tag as parse failure
         expect(result.parseFailed).toBe(true)
     })
 
+    test("trailing unclosed decision does not revert to an earlier complete block", () => {
+        const output = [
+            '<decision>{"decision":"done"}</decision>',
+            '<decision>{"decision":"continue"',
+        ].join("\n")
+
+        const result = parseDecision(output)
+
+        expect(result.parseFailed).toBe(true)
+        expect(result.decision).toBe("continue")
+    })
+
     test("control: single well-formed decision still parses", () => {
         const output = '<decision>{"decision":"done","rationale":"ok","nextActions":[]}</decision>'
         const result = parseDecision(output)
@@ -65,6 +77,21 @@ describe("H-14: extractTaggedJSON treats trailing malformed tag as parse failure
         ].join("\n")
 
         const result = parseDecision(output)
+        expect(result.parseFailed).not.toBe(true)
+        expect(result.decision).toBe("done")
+    })
+})
+
+describe("parseDecision done alias", () => {
+    test("rejects conflicting decision and done fields", () => {
+        const result = parseDecision('<decision>{"decision":"continue","done":true}</decision>')
+
+        expect(result.parseFailed).toBe(true)
+    })
+
+    test("accepts done true when decision is absent", () => {
+        const result = parseDecision('<decision>{"done":true}</decision>')
+
         expect(result.parseFailed).not.toBe(true)
         expect(result.decision).toBe("done")
     })

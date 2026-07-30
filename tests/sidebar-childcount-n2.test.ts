@@ -84,17 +84,25 @@ describe("loadChildren childCount must not scan allSessions per child (finding: 
 
         const sessionsCount = sessions.length         // 30
         const childrenCount = 10                       // c0..c9 are children of root
+        const directory = "/workspace/project"
+        const listQueries: Array<{ directory?: string } | undefined> = []
+        let listShouldFail = false
 
         // Minimal TUI plugin API mock. messages() returns empty so duration is "";
         // status() returns idle. list() returns the instrumented sessions.
         const api = {
             client: {
                 session: {
-                    list: async () => ({ data: sessions }),
+                    list: async (query?: { directory?: string }) => {
+                        if (listShouldFail) throw new Error("backend unavailable")
+                        listQueries.push(query)
+                        return { data: sessions }
+                    },
                     messages: async () => ({ data: [] }),
                 },
             },
             state: {
+                path: { directory },
                 session: {
                     status: () => ({ type: "idle" }),
                 },
@@ -104,7 +112,9 @@ describe("loadChildren childCount must not scan allSessions per child (finding: 
         // Reset reads AFTER setup (list() return etc. don't touch getters, but be
         // safe). We only want to measure the loadChildren call itself.
         reads.n = 0
-        const nodes = await loadChildren(api, currentSessionId)
+        const result = await loadChildren(api, currentSessionId)
+        expect(result.status).toBe("ok")
+        const nodes = result.status === "ok" ? result.data : []
 
         // Correctness: c0's childCount is 3 (refactor must preserve this).
         const c0 = nodes.find(n => n.sessionId === "c0")
@@ -112,10 +122,15 @@ describe("loadChildren childCount must not scan allSessions per child (finding: 
         expect(c0!.childCount).toBe(3)
         // All 10 children of root are present.
         expect(nodes).toHaveLength(10)
+        expect(listQueries[0]).toEqual({ directory })
 
         // Core contract: parentID must NOT be read once-per-child-per-session.
         //   UNFIXED (per-child filter): reads = S*(C+1) >= S*C -> FAILS.
         //   FIXED   (Map / single pass): reads ~ 2*S < S*C      -> PASSES.
         expect(reads.n).toBeLessThan(sessionsCount * childrenCount)
+
+        listShouldFail = true
+        const unavailable = await loadChildren(api, currentSessionId)
+        expect(unavailable).toMatchObject({ status: "error" })
     })
 })

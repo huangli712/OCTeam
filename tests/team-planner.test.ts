@@ -44,11 +44,17 @@ type CreateReq = {
     query?: { directory?: string }
 }
 
+type LogReq = {
+    body?: { message?: string }
+}
+
 /** Records of every fake call, for assertions. */
 type Recorder = {
     creates: CreateReq[]
     prompts: PromptReq[]
     messageCalls: number
+    deleteCalls: number
+    logs: LogReq[]
 }
 
 /**
@@ -62,8 +68,9 @@ function makeCtx(opts: {
     /** One entry per messages() call; last entry repeats when exhausted. */
     messageScript: FakeMessage[][]
     directory?: string
+    deleteFailures?: number
 }): { ctx: PluginContext; rec: Recorder } {
-    const rec: Recorder = { creates: [], prompts: [], messageCalls: 0 }
+    const rec: Recorder = { creates: [], prompts: [], messageCalls: 0, deleteCalls: 0, logs: [] }
     const childId = opts.childSessionId
     const ctx = {
         storageRoot: "/unused",
@@ -73,6 +80,12 @@ function makeCtx(opts: {
         projectStorageRoot: "/unused",
         userStorageRoot: "/unused__user",
         client: {
+            app: {
+                log: mock(async (req: LogReq) => {
+                    rec.logs.push(req)
+                    return {}
+                }),
+            },
             session: {
                 create: mock(async (req: CreateReq) => {
                     rec.creates.push(req)
@@ -90,6 +103,10 @@ function makeCtx(opts: {
                     return { data: entry }
                 }),
                 delete: mock(async () => {
+                    rec.deleteCalls++
+                    if (rec.deleteCalls <= (opts.deleteFailures ?? 0)) {
+                        throw new Error("simulated session delete failure")
+                    }
                     return {}
                 }),
             },
@@ -180,6 +197,50 @@ describe("runPlannerSession: happy path", () => {
 
         // Never dispatched a prompt without a session to send it to.
         expect(rec.prompts).toHaveLength(0)
+    })
+})
+
+describe("runPlannerSession: child cleanup", () => {
+    test("retries deletion until the third attempt succeeds", async () => {
+        const { ctx, rec } = makeCtx({
+            childSessionId: "ses_planner_cleanup_retry",
+            messageScript: [[assistantWith(taggedBlock(VALID_PAYLOAD))]],
+            deleteFailures: 2,
+        })
+
+        await runPlannerSession(ctx, {
+            teamId: "demo",
+            parentSessionId: "ses_master",
+            prompt: "goal",
+            validate: acceptAll,
+            timeoutMs: 5_000,
+            pollMs: 1,
+            maxRetries: 0,
+        })
+
+        expect(rec.deleteCalls).toBe(3)
+        expect(rec.logs.some(log => log.body?.message === "planner: child session.delete failed")).toBe(false)
+    })
+
+    test("warns after all three deletion attempts fail", async () => {
+        const { ctx, rec } = makeCtx({
+            childSessionId: "ses_planner_cleanup_failed",
+            messageScript: [[assistantWith(taggedBlock(VALID_PAYLOAD))]],
+            deleteFailures: 3,
+        })
+
+        await runPlannerSession(ctx, {
+            teamId: "demo",
+            parentSessionId: "ses_master",
+            prompt: "goal",
+            validate: acceptAll,
+            timeoutMs: 5_000,
+            pollMs: 1,
+            maxRetries: 0,
+        })
+
+        expect(rec.deleteCalls).toBe(3)
+        expect(rec.logs.some(log => log.body?.message === "planner: child session.delete failed")).toBe(true)
     })
 })
 

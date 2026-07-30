@@ -22,7 +22,7 @@ const SUPPORTED_WORKFLOW_FILE_VERSIONS = new Set([1])
 // or stack (deeply nested fanout). These limits are generous enough for any
 // realistic workflow and tight enough to fail fast on abuse.
 const WORKFLOW_FILE_MAX_BYTES = 1024 * 1024 // 1 MiB raw file
-const WORKFLOW_MAX_TOTAL_STEPS = 256 // across linear + nested fanouts
+export const WORKFLOW_MAX_TOTAL_STEPS = 256 // across linear + nested fanouts
 const WORKFLOW_MAX_FANOUT_DEPTH = 8 // nested fanout levels
 const WORKFLOW_MAX_BRANCHES_PER_FANOUT = 64 // raw branch array (matrix/foreach expansion is capped separately in lower.ts)
 
@@ -241,9 +241,21 @@ function validateWorkflowStep(value: unknown, location: StepLocation, budget: Va
                             + ` exceeds the ${WORKFLOW_MAX_TOTAL_STEPS}-step budget`,
                     }
                 }
-                const childBudget: ValidationBudget = { totalSteps: budget.totalSteps, depth: budget.depth + 1 }
-                const validatedSteps = validateWorkflowStepArrayInternal(value.steps, { filePath: location.filePath, prefix: `${location.prefix} steps` }, childBudget)
+                const totalBeforeTemplate = budget.totalSteps
+                const parentDepth = budget.depth
+                budget.depth = parentDepth + 1
+                const validatedSteps = validateWorkflowStepArrayInternal(value.steps, { filePath: location.filePath, prefix: `${location.prefix} steps` }, budget)
+                budget.depth = parentDepth
                 if ("error" in validatedSteps) return { error: validatedSteps.error }
+                const recursiveTemplateSteps = budget.totalSteps - totalBeforeTemplate
+                budget.totalSteps += recursiveTemplateSteps * (expansionBound - 1)
+                if (budget.totalSteps > WORKFLOW_MAX_TOTAL_STEPS) {
+                    return {
+                        error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                            + ` matrix/foreach expansion (${expansionBound} branches × ${recursiveTemplateSteps} recursive steps)`
+                            + ` exceeds the ${WORKFLOW_MAX_TOTAL_STEPS}-step budget`,
+                    }
+                }
                 return { step: { ...(value as Record<string, unknown>), steps: validatedSteps.steps } as unknown as WorkflowToolStep }
             }
             const branches = validateWorkflowBranches(value.branches, location, budget)
@@ -357,6 +369,36 @@ function validateWorkflowStepFields(step: Record<string, unknown>, location: Ste
         return `Error: workflow_file "${location.filePath}" ${location.prefix}`
             + ` on_invalid must be fail, retry_verifier, or escalate`
     }
+    if (step.on_malformed !== undefined
+        && step.on_malformed !== "fail"
+        && step.on_malformed !== "retry_verifier"
+        && step.on_malformed !== "skip"
+        && step.on_malformed !== "escalate") {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` on_malformed must be fail, retry_verifier, skip, or escalate`
+    }
+    if (step.ensemble_policy !== undefined
+        && step.ensemble_policy !== "majority"
+        && step.ensemble_policy !== "quorum"
+        && step.ensemble_policy !== "unanimous") {
+        return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` ensemble_policy must be majority, quorum, or unanimous`
+    }
+    if (step.loop !== undefined) {
+        if (!isRecord(step.loop)) {
+            return `Error: workflow_file "${location.filePath}" ${location.prefix} loop must be an object`
+        }
+        if (!isIntegerInRange(step.loop.max_iterations, 1, 20)) {
+            return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                + ` loop.max_iterations must be an integer from 1 to 20`
+        }
+        if (step.loop.on_exhaust !== undefined
+            && step.loop.on_exhaust !== "fail"
+            && step.loop.on_exhaust !== "continue") {
+            return `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                + ` loop.on_exhaust must be fail or continue`
+        }
+    }
     if (step.max_invalid_retries !== undefined && !isIntegerInRange(step.max_invalid_retries, 0, 5)) {
         return `Error: workflow_file "${location.filePath}" ${location.prefix}`
             + ` max_invalid_retries must be an integer from 0 to 5`
@@ -445,6 +487,17 @@ function isValidWhere(value: unknown): boolean {
 
 /** Load, parse, template, and validate a workflow_file JSON from disk. */
 export async function loadWorkflowFile(
+    baseDir: string, relPath: string, vars: Record<string, string>,
+): Promise<WorkflowFileResult> {
+    try {
+        return await loadWorkflowFileUnchecked(baseDir, relPath, vars)
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        return { error: `Error: workflow_file "${relPath}" could not be loaded: ${message}` }
+    }
+}
+
+async function loadWorkflowFileUnchecked(
     baseDir: string, relPath: string, vars: Record<string, string>,
 ): Promise<WorkflowFileResult> {
     const resolved = await resolveWorkflowFilePath(baseDir, relPath)

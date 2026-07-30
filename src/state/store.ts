@@ -190,11 +190,14 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
         if (typeof name !== "string" || !isSafePathSegment(name)) return false
         const status = (m as { status?: unknown }).status
         if (typeof status !== "string") return false
-        // M-5: reject out-of-enum member statuses. The state machine only
-        // allows pending/running/idle/errored/retrying. A tampered state.json
-        // with status:"paused" would pass the string check but be permanently
-        // skipped by the sweep (which only handles "running").
-        const VALID_MEMBER_STATUSES = new Set(["pending", "running", "idle", "errored", "retrying"])
+              // M-5: reject out-of-enum member statuses. The state machine only
+              // allows pending/running/idle/errored (MemberStatus union). A
+              // tampered state.json with status:"paused" or status:"retrying"
+              // (legacy value not in MemberStatus) would pass the string check
+              // but be permanently skipped by the sweep (which only handles
+              // "running"). M4 fix: removed "retrying" from the valid set — it
+              // is not a valid MemberStatus and no code path writes it.
+              const VALID_MEMBER_STATUSES = new Set(["pending", "running", "idle", "errored"])
         if (!VALID_MEMBER_STATUSES.has(status)) return false
         const agent = (m as { agent?: unknown }).agent
         if (agent !== undefined && (typeof agent !== "string" || !isOCTeamAgent(agent))) {
@@ -369,23 +372,41 @@ function mergeTeamState(disk: TeamState, ancestor: TeamState, current: TeamState
     // process's change to any sub-field clobber another's concurrent sub-field
     // update. Field-level three-way merge preserves both processes' changes.
     if (current.activeTask !== undefined || ancestor.activeTask !== undefined || disk.activeTask !== undefined) {
-        merged.activeTask = mergeObjects(
-            disk.activeTask, ancestor.activeTask, current.activeTask,
-        ) as TeamState["activeTask"]
-        // H-3: messagesSent is a monotonic counter — two concurrent sends
-        // from different processes each increment from the same base, then
-        // last-writer-wins merge picks ONE increment and loses the other.
-        // merge with max(disk, current) so both increments survive. Same for
-        // tokensUsed (sum of tokensByMember, also monotonic per run).
-        if (merged.activeTask && current.activeTask && disk.activeTask) {
-            const da = disk.activeTask as unknown as Record<string, unknown>
-            const ca = current.activeTask as unknown as Record<string, unknown>
-            const ma = merged.activeTask as unknown as Record<string, unknown>
-            if (typeof da.messagesSent === "number" && typeof ca.messagesSent === "number") {
-                ma.messagesSent = Math.max(da.messagesSent as number, ca.messagesSent as number)
-            }
-            if (typeof da.tokensUsed === "number" && typeof ca.tokensUsed === "number") {
-                ma.tokensUsed = Math.max(da.tokensUsed as number, ca.tokensUsed as number)
+        // C1 fix: activeTask runId fencing. If disk has a different runId
+        // than current, disk belongs to a NEW run started by another process
+        // after current's snapshot was taken. Merging would mix fields from
+        // two different runs (type/stages/responses from old run overwriting
+        // new run). Keep the disk value entirely — the current process's
+        // activeTask is stale and must not clobber the new run.
+        const diskRunId = disk.activeTask?.runId
+        const currentRunId = current.activeTask?.runId
+        if (
+            disk.activeTask !== undefined
+            && current.activeTask !== undefined
+            && diskRunId !== undefined
+            && currentRunId !== undefined
+            && diskRunId !== currentRunId
+        ) {
+            merged.activeTask = disk.activeTask
+        } else {
+            merged.activeTask = mergeObjects(
+                disk.activeTask, ancestor.activeTask, current.activeTask,
+            ) as TeamState["activeTask"]
+            // H-3: messagesSent is a monotonic counter — two concurrent sends
+            // from different processes each increment from the same base, then
+            // last-writer-wins merge picks ONE increment and loses the other.
+            // merge with max(disk, current) so both increments survive. Same for
+            // tokensUsed (sum of tokensByMember, also monotonic per run).
+            if (merged.activeTask && current.activeTask && disk.activeTask) {
+                const da = disk.activeTask as unknown as Record<string, unknown>
+                const ca = current.activeTask as unknown as Record<string, unknown>
+                const ma = merged.activeTask as unknown as Record<string, unknown>
+                if (typeof da.messagesSent === "number" && typeof ca.messagesSent === "number") {
+                    ma.messagesSent = Math.max(da.messagesSent as number, ca.messagesSent as number)
+                }
+                if (typeof da.tokensUsed === "number" && typeof ca.tokensUsed === "number") {
+                    ma.tokensUsed = Math.max(da.tokensUsed as number, ca.tokensUsed as number)
+                }
             }
         }
     }
@@ -581,7 +602,18 @@ export async function saveTeamState(team: Team): Promise<void> {
             // No ancestor snapshot (first save / legacy) — blind write.
             toWrite = currentState
         }
-        await atomicWrite(statePath(dir), JSON.stringify(toWrite, null, 2), dir)
+        // M35 fix: enforce the same 1 MiB size cap on writes that the reader
+        // enforces. Without this, a legitimate run with large workflow steps,
+        // responses, and histories could write a state.json that the loader
+        // then refuses to read (>1 MiB cap), making the team appear to vanish
+        // on restart.
+        const serialized = JSON.stringify(toWrite, null, 2)
+        if (Buffer.byteLength(serialized, "utf8") > 1_048_576) {
+            logger.warn("saveTeamState: serialized state exceeds 1 MiB cap, writing anyway but load may fail on restart", { dir, size: Buffer.byteLength(serialized, "utf8") })
+            // We still write — losing state is worse than a large file. But
+            // the warning surfaces the issue for investigation.
+        }
+        await atomicWrite(statePath(dir), serialized, dir)
         team._diskSnapshot = deepClone(toWrite)
         // Sync concurrent changes from the merged result back into the live
         // team. Without this, the live Team diverges from disk after a

@@ -110,6 +110,38 @@ describe("C-8: gate.loop strict validation", () => {
     })
 })
 
+describe("workflow gate enum validation", () => {
+    for (const [field, value] of [
+        ["on_fail", "invalid"],
+        ["on_invalid", "invalid"],
+        ["on_malformed", "invalid"],
+        ["on_timeout", "invalid"],
+        ["ensemble_policy", "invalid"],
+    ] satisfies Array<[string, string]>) {
+        test(`rejects unknown ${field} value`, async () => {
+            const team = await makeTeam()
+            const gate = {
+                kind: "gate",
+                id: "g1",
+                verifier: "bob",
+                criteria: "ok",
+                target_step: 1,
+                ...(field === "ensemble_policy" ? {
+                    verifier: undefined,
+                    verifiers: ["bob", "carol"],
+                } : {}),
+                [field]: value,
+            }
+            const args = buildArgs([
+                { kind: "task", id: "t1", member: "alice", task: "do" },
+                gate,
+            ])
+
+            expect(validateWorkflowArgs(args, team)).toContain(field)
+        })
+    }
+})
+
 describe("C-8: max_*_retries integer+range validation", () => {
     test("rejects task max_task_retries that is not an integer", async () => {
         const team = await makeTeam()

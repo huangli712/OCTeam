@@ -35,12 +35,16 @@ import { assertSafeSegment, teamDir } from "../../state/paths.js"
 import { releaseStaleReservations } from "../../messaging/mailbox.js"
 import { logSwallowed } from "../../core/log.js"
 
-async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx: PluginContext): Promise<void> {
-    if (team.status !== "busy" && team.status !== "idle") return
+async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx: PluginContext): Promise<unknown[]> {
+    const failures: unknown[] = []
+    if (team.status !== "busy" && team.status !== "idle") return failures
     await team.mutex.runExclusive(async () => {
-        await releaseStaleReservations(team.directory, "master").catch(err =>
+        try {
+            await releaseStaleReservations(team.directory, "master")
+        } catch (err) {
             logSwallowed(ctx, "release stale reservations failed (master)", err, { team: team.teamName })
-        )
+            failures.push(err)
+        }
         for (const m of team.members) {
             // H-L8: skip running members, matching H13 in sweepTeamOnce. This
             // team may belong to a live sibling process (see comment below);
@@ -49,9 +53,12 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             // crashed, the member's status will be stale and the next sweep
             // tick's missed-idle reconciliation will handle it.
             if (m.status === "running") continue
-            await releaseStaleReservations(team.directory, m.name).catch(err =>
+            try {
+                await releaseStaleReservations(team.directory, m.name)
+            } catch (err) {
                 logSwallowed(ctx, "release stale reservations failed", err, { team: team.teamName, member: m.name })
-            )
+                failures.push(err)
+            }
         }
         if (team.status === "busy") {
             // H38: PID-based fencing. If runnerPid is set and the process is
@@ -82,41 +89,61 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
                 // activeTeams() filters on activeTask presence, so leaving it
                 // would also keep the failed team in the sweep loop forever.
                 team.activeTask = undefined
-                await saveTeamState(team)
+                try {
+                    await saveTeamState(team)
+                } catch (err) {
+                    logSwallowed(ctx, "persist crashed team state failed (reconcile)", err, { team: team.teamName })
+                    failures.push(err)
+                }
             } else if (team.activeTask) {
                 // No PID or process is alive: preserve state for eventual
                 // team_resume but keep status=busy (concurrent-instance safety).
                 team.lastInterruptedTask = team.activeTask
-                await saveTeamState(team)
+                try {
+                    await saveTeamState(team)
+                } catch (err) {
+                    logSwallowed(ctx, "persist interrupted team state failed (reconcile)", err, { team: team.teamName })
+                    failures.push(err)
+                }
             }
         }
-        await saveTeamState(team).catch((err) =>
+        try {
+            await saveTeamState(team)
+        } catch (err) {
             logSwallowed(ctx, "persist team state failed (reconcile)", err, { team: team.teamName })
-        )
+            failures.push(err)
+        }
     })
+    return failures
 }
 
 /** Release stale resources for every team left in a non-terminal state after a crash. */
 export async function reconcileCrashedTeams(ctx: PluginContext): Promise<void> {
-    // Project scope: teams live under <projectStorageRoot>/<leadSessionId>/teams/.
-    for (const { leadSessionId, teamName } of await listAllTeams(ctx.projectStorageRoot, true)) {
+    const failures: unknown[] = []
+    for (const scope of [
+        { root: ctx.projectStorageRoot, segmented: true },
+        { root: ctx.userStorageRoot, segmented: false },
+    ]) {
+        let teams: Awaited<ReturnType<typeof listAllTeams>>
         try {
-            const team = await loadTeamState(ctx.projectStorageRoot, teamName, leadSessionId)
-            await reconcileOne(team, ctx)
+            teams = await listAllTeams(scope.root, scope.segmented)
         } catch (err) {
-            logSwallowed(ctx, "skipped unreadable state (reconcile)", err, { dir: teamName })
+            logSwallowed(ctx, "failed to list teams (reconcile)", err, { root: scope.root })
+            failures.push(err)
             continue
+        }
+        for (const { leadSessionId, teamName } of teams) {
+            try {
+                const team = await loadTeamState(scope.root, teamName, leadSessionId)
+                failures.push(...await reconcileOne(team, ctx))
+            } catch (err) {
+                logSwallowed(ctx, "skipped unreadable state (reconcile)", err, { dir: teamName })
+                failures.push(err)
+            }
         }
     }
-    // User scope: flat layout (<userStorageRoot>/teams/<name>/), no session segment.
-    for (const { teamName } of await listAllTeams(ctx.userStorageRoot, false)) {
-        try {
-            const team = await loadTeamState(ctx.userStorageRoot, teamName)
-            await reconcileOne(team, ctx)
-        } catch (err) {
-            logSwallowed(ctx, "skipped unreadable state (reconcile)", err, { dir: teamName })
-            continue
-        }
+    if (failures.length > 0) {
+        throw new AggregateError(failures, `reconcileCrashedTeams failed for ${failures.length} team or scope operation(s)`)
     }
 }
 
@@ -129,11 +156,20 @@ export async function reconcileCrashedTeams(ctx: PluginContext): Promise<void> {
  * server() init, AFTER rebuildSessionIndex.
  */
 export async function reconcileActivation(ctx: PluginContext): Promise<void> {
+    const failures: unknown[] = []
     for (const scope of [
         { root: ctx.projectStorageRoot, seg: true },
         { root: ctx.userStorageRoot, seg: false },
     ]) {
-        for (const { leadSessionId, teamName } of await listAllTeams(scope.root, scope.seg)) {
+        let teams: Awaited<ReturnType<typeof listAllTeams>>
+        try {
+            teams = await listAllTeams(scope.root, scope.seg)
+        } catch (err) {
+            logSwallowed(ctx, "failed to list teams (reconcileActivation)", err, { root: scope.root })
+            failures.push(err)
+            continue
+        }
+        for (const { leadSessionId, teamName } of teams) {
             try {
                 const team = await loadTeamState(scope.root, teamName, leadSessionId)
                 if (team.activatedAt === undefined) continue
@@ -143,8 +179,12 @@ export async function reconcileActivation(ctx: PluginContext): Promise<void> {
                 })
             } catch (err) {
                 logSwallowed(ctx, "skipped unreadable team state (reconcileActivation)", err, { dir: teamName })
+                failures.push(err)
             }
         }
+    }
+    if (failures.length > 0) {
+        throw new AggregateError(failures, `reconcileActivation failed for ${failures.length} team or scope operation(s)`)
     }
 }
 

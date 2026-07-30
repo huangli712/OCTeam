@@ -205,6 +205,7 @@ describe("handleRecurseIdle branching: decompose creates children", () => {
         expect(updated!.owner).toBeUndefined()
         expect(updated!.blockedBy).toHaveLength(2)
         expect(updated!.blockedBy.every(id => children.some(c => c.id === id))).toBe(true)
+        expect(task.responses.alice).toBeUndefined()
 
         // decomposed event recorded.
         await waitForEvent(team.directory, runId, "decomposed")
@@ -221,8 +222,9 @@ describe("handleRecurseIdle branching: decompose creates children", () => {
 describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
     test("no <decompose> tag: finalizes the task as completed with member output", async () => {
         const calls: DispatchCall[] = []
+        const task = makeRecurseTask()
         const team = makeTeam({
-            activeTask: makeRecurseTask(),
+            activeTask: task,
             members: [{ name: "alice", sessionId: "ses_alice" }],
         })
         const root = await seedTask(team, {
@@ -242,6 +244,7 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
         const t = await getTask(team.directory, root.id)
         expect(t!.status).toBe("completed")
         expect(t!.result).toContain("direct solution")
+        expect(task.responses.alice).toBeUndefined()
         // No children were created.
         const all = await listAllTasks(team.directory)
         expect(all).toHaveLength(1)
@@ -278,8 +281,9 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
 
     test("depth capped (depth >= maxDepth): re-dispatches for a direct solution", async () => {
         const calls: DispatchCall[] = []
+        const task = makeRecurseTask({ maxDepth: 2 })
         const team = makeTeam({
-            activeTask: makeRecurseTask({ maxDepth: 2 }),
+            activeTask: task,
             members: [{ name: "alice", sessionId: "ses_alice" }],
         })
         const root = await seedTask(team, {
@@ -294,9 +298,61 @@ describe("handleRecurseIdle leaf: finalize instead of decompose", () => {
         expect(t?.status).toBe("claimed")
         expect(t?.result).toBeUndefined()
         expect(calls.some(call => call.sessionId === "ses_alice")).toBe(true)
+        expect(task.forcedDirectTaskIds).toContain(root.id)
         // No children despite a valid decompose (depth cap prevents branching).
         const all = await listAllTasks(team.directory)
         expect(all.filter(x => x.depth === 3)).toHaveLength(0)
+    })
+
+    test("forced-direct task bypasses approval and increments its own retry counter", async () => {
+        const calls: DispatchCall[] = []
+        const task = makeRecurseTask({ humanApproval: true })
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "alice", sessionId: "ses_alice" }],
+        })
+        const root = await seedTask(team, {
+            owner: "alice",
+            status: "claimed",
+        })
+        task.rootTaskId = root.id
+        task.forcedDirectTaskIds = [root.id]
+
+        await processIdle(
+            makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls, status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }),
+            team,
+            team.members[0],
+            "ses_alice",
+        )
+
+        expect(task.approvalStage).not.toBe(true)
+        expect(task.forcedDirectDecomposeAttempts?.[root.id]).toBe(1)
+        expect(calls.some(call => call.sessionId === "ses_alice")).toBe(true)
+    })
+
+    test("forced-direct task fails after its own retry limit", async () => {
+        const task = makeRecurseTask({ humanApproval: true })
+        const team = makeTeam({
+            activeTask: task,
+            members: [{ name: "alice", sessionId: "ses_alice" }],
+        })
+        const root = await seedTask(team, {
+            owner: "alice",
+            status: "claimed",
+        })
+        task.rootTaskId = root.id
+        task.forcedDirectTaskIds = [root.id]
+        task.forcedDirectDecomposeAttempts = { [root.id]: 3 }
+
+        await processIdle(
+            makeCtx({ outputs: { ses_alice: DECOMPOSE_2 }, calls: [], status: statusIdleFrom({ ses_alice: DECOMPOSE_2 }) }),
+            team,
+            team.members[0],
+            "ses_alice",
+        )
+
+        expect(team.status).toBe("failed")
+        expect(team.activeTask).toBeUndefined()
     })
 
     test("aggregator task (has blockers): re-dispatches for a direct solution", async () => {

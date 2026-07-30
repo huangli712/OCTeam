@@ -13,6 +13,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import type { WorkflowStep, WorkflowTask } from "../../core/types.js"
+import { WORKFLOW_MAX_TOTAL_STEPS } from "../../orchestration/workflow/loader.js"
 import {
     advanceWorkflowStep,
     dispatchTaskStep,
@@ -276,6 +277,7 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             steps: tool.schema
                 .array(workflowStepSchema)
                 .min(1)
+                .max(WORKFLOW_MAX_TOTAL_STEPS)
                 .optional()
                 .describe(
                     "ordered workflow steps; fanout must be immediately followed by a join marker",

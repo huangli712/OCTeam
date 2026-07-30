@@ -19,11 +19,11 @@
  * cannot be obtained.
  */
 
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test"
 import { chmodSync, writeFileSync, readFileSync, existsSync } from "node:fs"
+import { createRequire } from "node:module"
 import path from "node:path"
 
-import { teamPlannerTool } from "../src/tools/workflow/planner.js"
 import type { PluginContext } from "../src/core/context.js"
 import type { Project } from "@opencode-ai/sdk"
 import { cleanupTmpRoots, makeToolContext, tmpRoot } from "./helpers.js"
@@ -52,6 +52,26 @@ function workflowFilePath(dir: string): string {
     return path.join(dir, `workflow.${PLAN_TEAM_ID}.json`)
 }
 
+const require = createRequire(import.meta.url)
+const realLocks: typeof import("../src/state/locks.js") = require("../src/state/locks.js")
+const realAtomicWrite = realLocks.atomicWrite
+const atomicWritePaths: string[] = []
+let failingTeamPath: string | undefined
+
+mock.module("../src/state/locks.js", () => ({
+    ...realLocks,
+    atomicWrite: async (...args: Parameters<typeof realAtomicWrite>) => {
+        const [filePath] = args
+        atomicWritePaths.push(filePath)
+        if (filePath === failingTeamPath) {
+            throw new Error("simulated team write and restore failure")
+        }
+        return realAtomicWrite(...args)
+    },
+}))
+
+import { teamPlannerTool } from "../src/tools/workflow/planner.js"
+
 // Minimal makeCtx inline (the helper in tests/helpers.ts requires more imports).
 function makeMinimalCtx(directory: string): { ctx: PluginContext } {
     return {
@@ -67,6 +87,10 @@ function makeMinimalCtx(directory: string): { ctx: PluginContext } {
 }
 
 afterAll(cleanupTmpRoots)
+afterEach(() => {
+    failingTeamPath = undefined
+    atomicWritePaths.splice(0)
+})
 
 describe("C-9: planner overwrite backup failure does NOT delete existing file", () => {
     test("when backup read fails, the existing file is preserved (not deleted)", async () => {
@@ -127,6 +151,27 @@ describe("C-9: planner overwrite backup failure does NOT delete existing file", 
 })
 
 describe("C-9: workflow file is also backed up (pair recovery)", () => {
+    test("workflow restore is attempted when team restore fails", async () => {
+        const dir = tmpRoot("c9-independent-restore")
+        writeFileSync(teamFilePath(dir), JSON.stringify({ name: PLAN_TEAM_ID, members: [] }))
+        writeFileSync(workflowFilePath(dir), JSON.stringify({ version: 1, steps: [] }))
+        failingTeamPath = teamFilePath(dir)
+
+        const { ctx } = makeMinimalCtx(dir)
+        await expect(teamPlannerTool(ctx).execute(
+            {
+                op: "write",
+                team_id: PLAN_TEAM_ID,
+                team: PLAN_TEAM,
+                workflow: PLAN_WORKFLOW,
+                overwrite: true,
+            },
+            makeToolContext("ses_c9_independent", { directory: dir }),
+        )).rejects.toThrow("simulated team write and restore failure")
+
+        expect(atomicWritePaths.filter(filePath => filePath === workflowFilePath(dir))).toHaveLength(1)
+    })
+
     test("both team and workflow original contents are preserved on overwrite rollback", async () => {
         // Verify the planner backs up BOTH files before overwriting, so a
         // failure of the second write restores BOTH originals.

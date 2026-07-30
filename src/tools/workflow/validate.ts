@@ -8,7 +8,7 @@
 
 import type { MemberState } from "../../core/types.js"
 import { parseWorkflowCondition } from "../../orchestration/workflow/gate.js"
-import { loadWorkflowFile } from "../../orchestration/workflow/loader.js"
+import { loadWorkflowFile, validateWorkflowSteps } from "../../orchestration/workflow/loader.js"
 import { defaultBounds, validateSignoff } from "../support.js"
 import { AsyncMutex } from "../../state/locks.js"
 import type { Team } from "../../state/store.js"
@@ -514,6 +514,10 @@ function validateLoweredTaskStep(
     if (GATE_ONLY_FIELDS.some(field => f[field] !== undefined)) {
         return `Error: ${location} must not set gate fields`
     }
+    if (f.on_timeout !== undefined
+        && f.on_timeout !== "fail" && f.on_timeout !== "retry" && f.on_timeout !== "skip") {
+        return `Error: ${location} on_timeout must be fail, retry, or skip`
+    }
     if (!task.member) return `Error: ${location} requires \`member\``
     if (!task.task) return `Error: ${location} requires \`task\``
     const inputsError = validateTaskInputs(steps, task, index, displayStep)
@@ -616,6 +620,27 @@ function validateLoweredGateStep(
     if (TASK_ONLY_FIELDS.some(field => f[field] !== undefined)) {
         const hasRetryFields = f.retry_on !== undefined || f.max_task_retries !== undefined
         return `Error: ${location} must not set ${hasRetryFields ? "task retry" : "task"} fields`
+    }
+    if (f.on_fail !== undefined && f.on_fail !== "retry" && f.on_fail !== "fail" && f.on_fail !== "skip") {
+        return `Error: ${location} on_fail must be retry, fail, or skip`
+    }
+    if (f.on_invalid !== undefined
+        && f.on_invalid !== "fail" && f.on_invalid !== "retry_verifier" && f.on_invalid !== "escalate") {
+        return `Error: ${location} on_invalid must be fail, retry_verifier, or escalate`
+    }
+    if (f.on_malformed !== undefined
+        && f.on_malformed !== "fail" && f.on_malformed !== "retry_verifier"
+        && f.on_malformed !== "skip" && f.on_malformed !== "escalate") {
+        return `Error: ${location} on_malformed must be fail, retry_verifier, skip, or escalate`
+    }
+    if (f.on_timeout !== undefined
+        && f.on_timeout !== "fail" && f.on_timeout !== "retry" && f.on_timeout !== "skip") {
+        return `Error: ${location} on_timeout must be fail, retry, or skip`
+    }
+    if (f.ensemble_policy !== undefined
+        && f.ensemble_policy !== "majority" && f.ensemble_policy !== "quorum"
+        && f.ensemble_policy !== "unanimous") {
+        return `Error: ${location} ensemble_policy must be majority, quorum, or unanimous`
     }
     if (gate.inputs !== undefined || gate.expose_output !== undefined) {
         return `Error: ${location} must not set task data-flow fields`
@@ -967,7 +992,9 @@ export async function resolveWorkflowArgs(
     if (args.steps !== undefined) {
         const shapeError = validateMatrixForeachShapeInSteps(args.steps)
         if (shapeError !== null) return shapeError
-        const expanded = safeExpandMatrixForeach(args.steps)
+        const validated = validateWorkflowSteps(args.steps)
+        if ("error" in validated) return validated.error
+        const expanded = safeExpandMatrixForeach(validated.steps)
         if (typeof expanded === "string") return expanded
         return { ...args, steps: expanded }
     }

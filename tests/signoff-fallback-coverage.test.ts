@@ -9,10 +9,12 @@
  * branches (lines 53-57 and 64-67 of src/orchestration/control/signoff.ts).
  */
 import { afterAll, afterEach, describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 
 import type { ActiveTask, MemberState, TeamState } from "../src/core/types.js"
-import { maybeTriggerSignoff } from "../src/orchestration/control/signoff.js"
+import { handleSignoffIdle, maybeTriggerSignoff } from "../src/orchestration/control/signoff.js"
 import { initTeamState, loadTeamState } from "../src/state/store.js"
+import { statePath } from "../src/state/paths.js"
 import { rebuildSessionIndex, unindexSession } from "../src/state/resolve.js"
 import { cleanupTmpRoots, makeCtx, makeMember, makeState, tmpRoot } from "./helpers.js"
 
@@ -183,5 +185,50 @@ describe("maybeTriggerSignoff: fallback to direct delivery (return false)", () =
         expect(triggered).toBe(false)
         // signoffStage was never set; still undefined.
         expect(team.activeTask!.signoffStage).toBeUndefined()
+    })
+})
+
+describe("maybeTriggerSignoff: peer-quorum dispatch roster", () => {
+    test("persists only successfully dispatched reviewers after a partial failure", async () => {
+        const root = tmpRoot("signoff-quorum-partial-dispatch")
+        const masterSid = "ses_signoff_master_partial"
+        tracked.push(masterSid)
+        const { team } = await setupSignoffTeam({
+            root,
+            masterSid,
+            members: [
+                makeMember("alice", "ses_alice_partial"),
+                makeMember("bob", "ses_bob_partial"),
+            ],
+            task: makeParallelTask({
+                signoffPolicy: "peer-quorum",
+                signoffQuorum: 0.5,
+            }),
+        })
+        const ctx = makeCtx({
+            storageRoot: root,
+            directory: root,
+            promptAsync: async request => {
+                if (request.path.id === "ses_bob_partial") throw new Error("dispatch failed")
+                return {}
+            },
+        })
+
+        expect(await maybeTriggerSignoff(ctx, team)).toBe(true)
+        expect(team.activeTask?.signoffReviewers).toEqual(["alice"])
+        const persisted: unknown = JSON.parse(await readFile(statePath(team.directory), "utf8"))
+        expect(persisted).toMatchObject({ activeTask: { signoffReviewers: ["alice"] } })
+
+        const alice = team.members.find(member => member.name === "alice")
+        if (alice === undefined) throw new Error("Missing alice fixture")
+        alice.status = "idle"
+        if (team.activeTask === undefined) throw new Error("Missing active task")
+        team.activeTask.signoffRawOutputs = {
+            alice: '<signoff>{"approved":true,"rationale":"ready"}</signoff>',
+        }
+
+        await handleSignoffIdle(ctx, team, alice)
+
+        expect(team.activeTask).toBeUndefined()
     })
 })

@@ -6,6 +6,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 import { createTask, listAllTasks, updateTask } from "../../state/tasks.js"
 import {
@@ -101,7 +102,10 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 ),
         },
         async execute(args, context) {
-            return startOrchestration(
+            let taskDirectory = ""
+            const createdTaskIds: string[] = []
+            try {
+                return await startOrchestration(
                 args.team_id, context, ctx, "team_delegate",
                 // validate
                 (team) => {
@@ -151,6 +155,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 // creating both run under the mutex so the count cannot be
                 // raced by a concurrent create.
                 async (team) => {
+                    taskDirectory = team.directory
                     const liveTaskCount = (await listAllTasks(team.directory)).filter(
                         t => t.status !== "deleted",
                     ).length
@@ -161,41 +166,29 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                         }
                     }
 
-                    // Create all tasks, building ref -> uuid and index -> uuid
-                    // maps, then resolve blockedBy. The index map keys every
-                    // task by its position so blocked_by is applied even to
-                    // tasks without their own ref (a ref is only needed to be
-                    // a dependency *target*, not to *have* dependencies).
+                    // Preallocate every id and resolve complete dependencies before the first write.
                     const refToUuid = new Map<string, string>()
                     const indexToUuid = new Map<number, string>()
-                    try {
-                        for (let i = 0; i < args.tasks.length; i++) {
-                            const t = args.tasks[i]
-                            const created = await createTask(team.directory, {
-                                subject: t.subject,
-                                description: t.description,
-                            })
-                            indexToUuid.set(i, created.id)
-                            if (t.ref) refToUuid.set(t.ref, created.id)
-                        }
-                    } catch (err) {
-                        // Rollback: mark already-created tasks as deleted so they
-                        // do not linger as orphans counting against maxTasks.
-                        for (const uuid of indexToUuid.values()) {
-                            await updateTask(team.directory, uuid, { status: "deleted" }).catch(() => {})
-                        }
-                        throw err
+                    for (let i = 0; i < args.tasks.length; i++) {
+                        const t = args.tasks[i]
+                        const id = crypto.randomUUID()
+                        indexToUuid.set(i, id)
+                        if (t.ref) refToUuid.set(t.ref, id)
                     }
                     for (let i = 0; i < args.tasks.length; i++) {
                         const t = args.tasks[i]
-                        const uuid = indexToUuid.get(i)
-                        if (!uuid) continue
+                        const id = indexToUuid.get(i)
+                        if (!id) continue
                         const blockedBy = (t.blocked_by ?? [])
-                            .map(r => refToUuid.get(r))
-                            .filter((id): id is string => id !== undefined)
-                        if (blockedBy.length > 0) {
-                            await updateTask(team.directory, uuid, { blockedBy })
-                        }
+                            .map(ref => refToUuid.get(ref))
+                            .filter((taskId): taskId is string => taskId !== undefined)
+                        await createTask(team.directory, {
+                            id,
+                            subject: t.subject,
+                            description: t.description,
+                            blockedBy,
+                        })
+                        createdTaskIds.push(id)
                     }
 
                     return {
@@ -221,7 +214,18 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 },
                 // successMessage
                 () => `team_delegate started on "${args.team_id}" with ${args.tasks.length} task(s).`,
-            )
+                )
+            } catch (err) {
+                for (const taskId of createdTaskIds) {
+                    try {
+                        await updateTask(taskDirectory, taskId, { status: "deleted" })
+                    } catch (cleanupErr) {
+                        const cleanupError = cleanupErr instanceof Error ? cleanupErr : new Error(String(cleanupErr))
+                        logSwallowed(ctx, "delegate startup: failed to delete created task", cleanupError, { taskId })
+                    }
+                }
+                throw err
+            }
         },
     })
 }
