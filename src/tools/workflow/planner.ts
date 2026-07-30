@@ -195,9 +195,10 @@ async function pollForAssistantOutput(ctx: PluginContext, childId: string, poll:
         const res = await ctx.client.session.messages({ path: { id: childId } })
         const output = extractAssistantText(res.data ?? [])
         if (output.trim().length > 0) {
-            // Check if the response looks complete: either a closing tag is
-            // present, or the output has stabilized across 2 consecutive polls.
-            const hasClosingTag = /<\/(?:team_planner|团队规划师|workflow|工作流)>/.test(output)
+            // HIGH: only accept the team_planner closing tag as a completion
+            // signal, not workflow/工作流 (those are inner tags that may
+            // appear before the full response is generated).
+            const hasClosingTag = /<\/(?:team_planner|团队规划师)>/.test(output)
             if (hasClosingTag) return output
             if (output === lastOutput) {
                 stableCount++

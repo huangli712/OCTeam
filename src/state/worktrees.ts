@@ -28,6 +28,7 @@ export async function hasUncommittedChanges(worktreePath: string): Promise<boole
     try {
         const { stdout } = await execFileP("git", ["status", "--porcelain"], {
             cwd: worktreePath,
+            timeout: 10_000, // MEDIUM: bound git status to prevent indefinite hangs
         })
         return stdout.trim().length > 0
     } catch (err) {
@@ -119,6 +120,7 @@ export async function cleanWorktree(
     // validated absolute path eliminates the divergence.
     await execFileP("git", ["worktree", "remove", resolved, "--force"], {
         cwd: projectDir,
+        timeout: 30_000,
     })
 }
 
@@ -144,6 +146,7 @@ export async function createWorktree(
     // handled by the caller checking member.worktreePath.
     await execFileP("git", ["worktree", "add", dest, "-b", branch], {
         cwd: projectDir,
+        timeout: 30_000,
     }).catch((err) => {
         throw new Error(
             `createWorktree(${memberName}) failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -192,6 +195,7 @@ export async function destroyWorktree(
     const branch = `team/${teamName}/${memberName}`;
     await execFileP("git", ["branch", "-D", branch], {
         cwd: projectDir,
+        timeout: 10_000,
     }).catch(() => {
         // Best effort — matches the historical spawn-rollback behavior.
         // A missing or already-removed branch is not a teardown blocker.

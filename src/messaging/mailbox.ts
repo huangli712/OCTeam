@@ -259,19 +259,19 @@ export async function ackMessages(
             // `unlinkErrors.length === 0` check, leaving successful directives'
             // auth records unconsumed → same-run replay by copying the JSONL
             // line back into the inbox.
-            let thisMsgUnlinkFailed = false
+            // Note: auth consumption is now unconditional (HIGH #13), so
+            // thisMsgUnlinkFailed is tracked only for the error report.
             await fs.unlink(reservedPath(teamDirectory, recipient, msg.id)).catch((err: unknown) => {
                 if (!isEnoent(err)) {
                     const errMsg = err instanceof Error ? err.message : String(err)
                     logger.warn("ackMessages: reservation unlink failed", { msgId: msg.id, error: errMsg })
                     unlinkErrors.push(err)
-                    thisMsgUnlinkFailed = true
                 }
             })
-            if (msg.kind === "directive" && !thisMsgUnlinkFailed) {
-                // C-9: bind consumption to the team directory so a directive
-                // copied from team A's mailbox cannot be ACK-consumed by team B
-                // (which would delete team A's auth record and enable replay).
+            if (msg.kind === "directive") {
+                // HIGH #13: consume auth after processed append succeeds,
+                // regardless of unlink outcome. Pre-fix code only consumed
+                // on unlink success, leaving auth replayable if unlink failed.
                 consumeDirectiveAuth(msg, teamDirectory)
             }
         }

@@ -300,13 +300,12 @@ export async function handleInvalidVerdict(
     }
 
     if (policy === "escalate") {
-        const nextIndex = (task.steps ?? []).findIndex((s) => !s.completed);
         // MEDIUM #11: mark the gate complete BEFORE creating the approval
-        // pause so both changes are persisted in a single saveTeamState call
-        // inside createApprovalPause. Pre-fix code saved twice (approval
-        // first, then gate) — a crash between them left an inconsistent
-        // checkpoint where the approval existed but the gate was incomplete.
+        // pause so both changes are persisted in a single saveTeamState call.
         resetStepAfterCompletion(step, { completed: true });
+        // LOW: compute nextIndex AFTER marking gate complete so the summary
+        // describes the actual next step, not the current gate.
+        const nextIndex = (task.steps ?? []).findIndex((s) => !s.completed);
         const escalated = await forceApprovalRequest(ctx, team, {
             kind: "workflow_step",
             stage: gateIndex,

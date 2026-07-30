@@ -30,7 +30,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
             "Delete a team. Without force, refuses while the team is busy with an active orchestration, or if any "
             + "member worktree has uncommitted changes. With force, removes on-disk state "
             + "immediately (member worktrees are cleaned up; sessions stay in OpenCode history; "
-            + "running agents finish their current turn but receive no further dispatch).",
+            + "running agents are best-effort aborted and receive no further dispatch).",
         args: {
             team_id: tool.schema.string().min(1),
             force: tool.schema.boolean().optional(),

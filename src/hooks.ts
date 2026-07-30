@@ -192,6 +192,10 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                 const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
                 await team.mutex.runExclusive(async () => {
                     const live = team.members.find(m => m.name === member.name)
+                    // HIGH #11: verify the error event's sessionID matches
+                    // the live member's current session. A stale error from
+                    // a replaced session must not affect the current run.
+                    if (live?.sessionId !== undefined && live.sessionId !== sessionID) return
                     // H-SD: gate session.error on status === "running" + active
                     // task + not deleted. Without this, a stale session.error
                     // from an aborted turn (team_cancel/finishRun already reset

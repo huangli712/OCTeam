@@ -751,16 +751,25 @@ export async function readTeamSpec(
     return spec
 }
 
-/** M14: minimal structural validation for TeamSpec. */
+/** M14: structural validation for TeamSpec. */
 function isValidTeamSpec(value: unknown): value is TeamSpec {
     if (typeof value !== "object" || value === null) return false
     const s = value as Record<string, unknown>
     if (typeof s.name !== "string" || !s.name) return false
+    if (s.version !== 1) return false
     if (!Array.isArray(s.members)) return false
+    const seenNames = new Set<string>()
     for (const m of s.members) {
         if (typeof m !== "object" || m === null) return false
         const mb = m as Record<string, unknown>
         if (typeof mb.name !== "string" || !mb.name) return false
+        // MEDIUM: reject duplicate member names.
+        if (seenNames.has(mb.name)) return false
+        seenNames.add(mb.name)
+        // Validate role is a non-empty string when present.
+        if (mb.role !== undefined && (typeof mb.role !== "string" || !mb.role)) return false
+        // Validate prompt is a string when present.
+        if (mb.prompt !== undefined && typeof mb.prompt !== "string") return false
     }
     return true
 }

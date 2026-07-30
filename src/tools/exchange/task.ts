@@ -327,6 +327,11 @@ export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
             if (!caller) return "Error: caller is not a member of this team"
             const isolatedError = await rejectIfIsolated(ctx, caller, args.team_id)
             if (isolatedError) return isolatedError
+            // HIGH #22: tombstone guard for non-claim updates.
+            try {
+                const team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
+                if (team.deleted) return "Error: team has been deleted"
+            } catch { /* ENOENT handled below */ }
             const task = await getTask(caller.directory, args.task_id)
             if (!task) return `Error: task ${args.task_id} not found`
             return [
