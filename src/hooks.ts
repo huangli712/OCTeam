@@ -17,7 +17,7 @@ import { AckMessagesError, ackMessages, pollMailbox, releaseStaleReservations } 
 import { formatMailboxInjection } from "./messaging/format.js"
 import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent, maybeEscalateRetry } from "./orchestration/lifecycle/status.js"
-import { processIdle } from "./orchestration/lifecycle/idle.js"
+import { processErrorRecovery, processIdle } from "./orchestration/lifecycle/idle.js"
 import { checkTermination } from "./orchestration/lifecycle/termination.js"
 import { finishRun } from "./orchestration/control/completion.js"
 import { handleSignoffIdle } from "./orchestration/control/signoff.js"
@@ -232,7 +232,11 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                     if (team.activeTask && team.status === "busy") {
                         // Run not terminated — re-drive the barrier so the mode
                         // handler can process the errored member.
-                        await processIdle(ctx, team, live, sessionID)
+                        // H-M3: processIdle returns early for errored members
+                        // (H6 guard at idle.ts:255). Instead, call the mode
+                        // handler directly so it can advance the barrier past
+                        // the errored member.
+                        await processErrorRecovery(ctx, team, live)
                     }
                     await persistTeamState(ctx, team, "persist team state failed (session.error)", { team: team.teamName, member: live.name })
                 })

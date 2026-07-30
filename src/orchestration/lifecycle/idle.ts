@@ -222,6 +222,37 @@ async function maybeRepromptPrematureIdle(
     return false
 }
 
+/**
+ * Error-recovery barrier re-drive: called from hooks.ts session.error handler.
+ * Unlike processIdle, this does NOT gate on member.status === "errored" —
+ * the whole point is to let the mode handler see the errored member and
+ * advance the barrier past it. Pre-fix code called processIdle which
+ * returned immediately at the H6 errored guard.
+ */
+export async function processErrorRecovery(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+): Promise<void> {
+    if (!team.activeTask) return
+    if (team.activeTask.approvalStage) return
+    if (team.activeTask.signoffStage) {
+        await handleSignoffIdle(ctx, team, member)
+        await checkTermination(ctx, team)
+        return
+    }
+    if (team.activeTask.reduceStage) {
+        await handleReduceIdle(ctx, team, member)
+        await checkTermination(ctx, team)
+        return
+    }
+    const taskType = team.activeTask.type
+    if (idleDispatch[taskType]) {
+        await idleDispatch[taskType](ctx, team, member, undefined)
+        await checkTermination(ctx, team)
+    }
+}
+
 /** Single entry point for the idle state machine, driven by session.idle events. */
 export async function processIdle(
     ctx: PluginContext,
