@@ -148,6 +148,7 @@ export type MemberState = {
                                        // real task dispatch (NOT during role-setup, which is identity-only).
     promptDelivered?: boolean          // true after prompt has been prepended to a dispatch once
     lastCapturedMsgCount?: number      // capture dedup: messages.length at the last successful
+    lastCapturedOutput?: string       // HIGH #3: last assistant text for compaction-safe dedup
                                        // captureMemberOutput for this member. A re-entry whose message
                                        // history hasn't grown (stale idle, delegate completion sweep)
                                        // yields no new turn and is skipped, making capture effectively

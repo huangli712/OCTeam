@@ -57,6 +57,10 @@ export async function dispatchToMember(
     // would re-dispatch (duplicate prompt) with no way to attribute the old
     // output. Now: set state + persist first, then send. If promptAsync
     // fails, rollback the state so the next caller can retry.
+    // Save originals for accurate rollback.
+    const origPromptDelivered = member.promptDelivered
+    const origStatus = member.status
+    const origTurnCount = member.turnCount
     member.promptDelivered = true
     member.status = "running"
     member.turnCount++
@@ -70,12 +74,10 @@ export async function dispatchToMember(
         try {
             await saveTeamStateBounded(team)
         } catch (err) {
-            // If we cannot persist the dispatch intent, do NOT send the prompt
-            // — sending it without durable state would create the exact
-            // non-atomic window this fix closes. Rollback and rethrow.
-            member.status = "idle"
-            member.turnCount--
-            member.promptDelivered = false
+            // If we cannot persist the dispatch intent, do NOT send the prompt.
+            member.status = origStatus
+            member.turnCount = origTurnCount
+            member.promptDelivered = origPromptDelivered
             throw err
         }
     }
@@ -98,9 +100,9 @@ export async function dispatchToMember(
         // promptAsync failed after we persisted the dispatch intent. Rollback
         // to idle so the barrier can re-drive, and persist the rollback.
         if (team) {
-            member.status = "idle"
-            member.turnCount--
-            member.promptDelivered = false
+            member.status = origStatus
+            member.turnCount = origTurnCount
+            member.promptDelivered = origPromptDelivered
             try {
                 await saveTeamStateBounded(team)
             } catch (rollbackErr) {

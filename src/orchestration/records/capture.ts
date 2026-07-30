@@ -71,7 +71,26 @@ export async function captureMemberOutput(
     // completion sweep (which re-captures every member, including ones already
     // captured via their own idle path) and stale pre-signoff idle events.
     if (member.lastCapturedMsgCount !== undefined && messages.length === member.lastCapturedMsgCount) {
-        return { fresh: false, reason: "stale" }
+        // HIGH #3: message count alone is not a reliable turn identity —
+        // compaction can produce the same count with different content.
+        // Only trust the stale verdict if we ALSO have a stored output
+        // snapshot to compare against. If lastCapturedOutput is unset
+        // (legacy member), fall back to count-only dedup.
+        if (member.lastCapturedOutput !== undefined) {
+            let lastAssistantText = ""
+            for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i]?.info?.role === "assistant") {
+                    lastAssistantText = extractOutputFromParts(messages[i]?.parts) || ""
+                    break
+                }
+            }
+            if (lastAssistantText.slice(0, 256) === member.lastCapturedOutput) {
+                return { fresh: false, reason: "stale" }
+            }
+            // Content differs despite same count — fall through to capture.
+        } else {
+            return { fresh: false, reason: "stale" }
+        }
     }
     // Find the start of the current turn (last user message).
     let turnStart = 0
@@ -118,7 +137,7 @@ export async function captureMemberOutput(
     const outPath = isReduceTurn
         ? runReduceOutputPath(team.directory, runId)
         : isSignoffTurn
-        ? runSignoffOutputPath(team.directory, runId)
+        ? runSignoffOutputPath(team.directory, runId, member.name)
         : runMemberOutputPath(team.directory, runId, member.name)
 
     // Accumulate: read whatever was previously captured for this target, append
@@ -159,6 +178,7 @@ export async function captureMemberOutput(
     // Record the message-history watermark so a re-entry whose history hasn't
     // grown is skipped (idempotency guard at the top).
     member.lastCapturedMsgCount = messages.length
+    member.lastCapturedOutput = captured.slice(0, 256)
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "captured",

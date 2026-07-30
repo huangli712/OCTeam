@@ -357,6 +357,27 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     changes.push("prompt: updated")
                 }
 
+                // MEDIUM: if role or prompt changed, the existing session
+                // still carries the old system context. Force re-initialization
+                // by clearing sessionId so the next orchestration re-creates
+                // the session with the updated role prompt.
+                if ((args.new_role || args.new_prompt) && liveMember.sessionId && liveMember.initialized) {
+                    try {
+                        await ctx.client.session.delete({
+                            path: { id: liveMember.sessionId },
+                            query: { directory: liveMember.worktreePath ?? ctx.directory },
+                        })
+                    } catch (err) {
+                        if (!isEnoent(err)) {
+                            logSwallowed(ctx, "fixmember: session delete for re-init failed", err, { member: args.member_name })
+                        }
+                    }
+                    unindexSession(liveMember.sessionId)
+                    liveMember.sessionId = undefined
+                    liveMember.initialized = false
+                    changes.push("session: cleared for re-initialization with new role/prompt")
+                }
+
                 // --- agent: explicit new_agent wins; otherwise a changed role
                 // re-derives the agent. The agent registry was pre-fetched outside the mutex.
                 if (targetAgent) {

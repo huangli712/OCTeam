@@ -207,6 +207,12 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             status: "pending",
             owner: undefined,
             claimedAt: undefined,
+        }, {
+            // HIGH #11: CAS guard — only release if this member still owns it.
+            // Without this, a reaper reset + re-claim by another member
+            // would be clobbered.
+            expectedOwner: member.name,
+            expectedStatus: "claimed",
         })
         recordEvent(team, {
             timestamp: Date.now(),
@@ -374,7 +380,10 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 task.aggregationDispatchCount = 0
             }
             const result = output.length > 0 ? output : "(no output provided)"
-            await updateTask(team.directory, T.id, { status: "completed", result })
+            await updateTask(team.directory, T.id, { status: "completed", result }, {
+                // HIGH #11: CAS guard.
+                expectedOwner: member.name,
+            })
             delete task.responses[member.name]
         }
     }
@@ -387,12 +396,15 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
     //      undefined above — protocol slip; re-dispatch with a stronger
     //      aggregation instruction).
     if (task.rootTaskId && task.decomposerMember) {
-        const root = tasks.find(t => t.id === task.rootTaskId)
+        // MEDIUM: re-read tasks AFTER the leaf completion above so the
+        // root-ready check sees the updated child statuses.
+        const freshTasks = await listAllTasks(team.directory)
+        const root = freshTasks.find(t => t.id === task.rootTaskId)
         if (
             root
             && root.status === "pending"
             && root.blockedBy.length > 0
-            && root.blockedBy.every(id => tasks.find(x => x.id === id)?.status === "completed")
+            && root.blockedBy.every(id => freshTasks.find(x => x.id === id)?.status === "completed")
         ) {
             // Only dispatch if the decomposer did not just claim the root. If
             // T exists and T.id === rootTaskId, the decomposer is mid-

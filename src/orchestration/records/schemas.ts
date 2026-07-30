@@ -102,6 +102,10 @@ const WorkflowFanoutMetadataSchema = z.object({
     fanout => fanout.branchIds.length === fanout.branchRanges.length,
     "fanout branchIds and branchRanges length mismatch",
 ).refine(
+    // MEDIUM: reject empty fanout (zero branches).
+    fanout => fanout.branchIds.length > 0,
+    "fanout must have at least one branch",
+).refine(
     // M-33: cross-field constraints — joinPolicy requires its companion field.
     fanout => fanout.joinPolicy !== "reduce" && fanout.joinPolicy !== "select" || fanout.reducerMember !== undefined,
     "joinPolicy 'reduce'/'select' requires reducerMember",
@@ -494,6 +498,16 @@ export const RunRecordSchema = z.object({
         winnerMetric: z.string(),
         scoreboard: ArenaScoreboardSchema.optional(),
     }).superRefine((arena, ctx) => {
+        // MEDIUM: reject duplicate scoreboard entries for the same member.
+        if (arena.scoreboard) {
+            const seen = new Set<string>()
+            for (const s of arena.scoreboard.scores) {
+                if (seen.has(s.member)) {
+                    ctx.addIssue({ code: "custom", path: ["scoreboard"], message: `duplicate scoreboard entry for member ${s.member}` })
+                }
+                seen.add(s.member)
+            }
+        }
         if (arena.winner === undefined) return
         if (!arena.candidates.includes(arena.winner)) {
             ctx.addIssue({

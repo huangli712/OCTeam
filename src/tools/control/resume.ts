@@ -168,7 +168,11 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // the old crashed PID, causing reconcile to re-fail it.
                     team.runnerPid = process.pid
                     task.startedAt = Date.now() // full timeout re-granted
-                    if (timeout_ms) task.wallClockTimeoutMs = timeout_ms
+                    if (timeout_ms) {
+                        // MEDIUM: clamp override to team's wall-clock max.
+                        const maxMs = (team.bounds.maxWallClockMinutes ?? Infinity) * 60_000
+                        task.wallClockTimeoutMs = Math.min(timeout_ms, maxMs)
+                    }
                     if (token_budget) task.tokenBudget = token_budget
 
                     await resumeDispatch(ctx, team, task)

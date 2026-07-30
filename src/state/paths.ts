@@ -245,7 +245,12 @@ export function runReduceOutputPath(teamDirectory: string, runId: string): strin
  * so neither overwrites the other. Picked up automatically by persistRun's
  * .md readdir scan, mirroring runReduceOutputPath.
  */
-export function runSignoffOutputPath(teamDirectory: string, runId: string): string {
+export function runSignoffOutputPath(teamDirectory: string, runId: string, reviewer?: string): string {
+    // MEDIUM: per-reviewer signoff files for clear attribution.
+    if (reviewer) {
+        assertSafeSegment(reviewer, "runSignoffOutputPath", "reviewer")
+        return path.join(runDir(teamDirectory, runId), `signoff-${reviewer}.md`)
+    }
     return path.join(runDir(teamDirectory, runId), "signoff.md")
 }
 

@@ -119,9 +119,18 @@ runStatusOverride?: RunStatus,
         // be misattributed to the next run. A best-effort abort is better
         // than nothing; failures are swallowed (the run IS terminating).
         for (const m of team.members) {
-            if (!m.isMaster && m.sessionId && m.status === "running") {
+            // HIGH #8: abort running AND retrying members. Pre-fix code only
+            // checked status==="running"; sustained-retry members (errored
+            // with retryingSince) keep consuming tokens after the run ends.
+            if (!m.isMaster && m.sessionId
+                && (m.status === "running" || m.status === "errored" || m.retryingSince !== undefined)) {
                 try {
                     await ctx.client.session.abort({ path: { id: m.sessionId } })
+                    // Clear retry state so the member is clean for the next run.
+                    if (m.status === "errored" || m.retryingSince !== undefined) {
+                        m.status = "idle"
+                        m.retryingSince = undefined
+                    }
                 } catch (err) {
                     logSwallowed(ctx, "finishRun: best-effort session.abort failed", err, {
                         member: m.name, session: m.sessionId,

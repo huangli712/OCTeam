@@ -260,6 +260,12 @@ export async function processIdle(
     member: MemberState,
     sessionID: string,
 ): Promise<void> {
+    // CRITICAL #2: cross-process ownership guard. If runnerPid is set and
+    // differs from our PID, another process owns this run — our idle events
+    // are from a member session that may have been superseded. Skip to avoid
+    // double-processing. team_resume explicitly sets runnerPid before
+    // processing idles, so resume is not blocked.
+    if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
     // Tombstone: the team directory has been deleted (team_delete ran under
     // the mutex and set team.deleted=true). Bail before any state mutation or
     // saveTeamState / captureMemberOutput / recordEvent / persistRun call —

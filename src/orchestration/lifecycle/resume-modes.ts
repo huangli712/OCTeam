@@ -34,7 +34,7 @@ import { finishRun } from "../control/completion.js";
 import { buildArenaEvaluatorPrompt, handleArenaIdle } from "../modes/arena.js";
 import { buildReducePrompt, handleReduceIdle } from "../modes/reduce.js";
 import { handleQuorumIdle } from "../modes/quorum.js";
-import { buildSignoffReviewPrompt, evaluateSignoffQuorum } from "../control/signoff.js";
+import { buildSignoffReviewPrompt, evaluateSignoffQuorum, handleSignoffIdle } from "../control/signoff.js";
 import { listAllTasks, reapStaleClaims, updateTask } from "../../state/tasks.js";
 import {
     getActiveWorkflowStepIndices,
@@ -163,13 +163,17 @@ export async function resumeSignoffReduceStage(
         for (const m of reviewers) {
             // Skip reviewers who already have a recorded approval.
             if (task.signoffApprovals?.[m.name] !== undefined) continue;
-            // #16: also skip reviewers whose raw output was already captured
-            // (signoffRawOutputs) but not yet parsed into signoffApprovals.
-            // Pre-fix code only checked signoffApprovals, so a crash between
-            // capture and handleSignoffIdle would re-dispatch the reviewer,
-            // potentially getting a different verdict. Instead, re-process the
-            // already-captured output via handleSignoffIdle on the next idle.
-            if (task.signoffRawOutputs?.[m.name] !== undefined) continue;
+            // HIGH #6: if raw output was already captured but not yet parsed,
+            // process it NOW instead of skipping. Pre-fix code skipped and
+            // waited for a "next idle" that would never come (the member is
+            // already idle). This is the crash-recovery path: output was
+            // captured pre-crash, handleSignoffIdle never ran.
+            if (task.signoffRawOutputs?.[m.name] !== undefined
+                || task.responses[m.name] !== undefined) {
+                await handleSignoffIdle(ctx, team, m);
+                if (!team.activeTask) return true; // run terminated
+                continue;
+            }
             await dispatchToMember(
                 ctx,
                 m,

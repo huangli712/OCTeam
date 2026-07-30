@@ -220,8 +220,19 @@ export async function startOrchestration(
     // member-session spawns in Phase 2 (which runs OUTSIDE the mutex).
     let busy = false
     await team.mutex.runExclusive(async () => {
-        if (team.activeTask || team.spawning) busy = true
-        else team.spawning = true
+        if (team.activeTask || team.spawning) { busy = true; return }
+        team.spawning = true
+        // CRITICAL #1: persist spawning=true IMMEDIATELY so a concurrent
+        // process sees it on disk. Without this, two processes can both
+        // pass the check and enter Phase 2 simultaneously.
+        try {
+            await saveTeamState(team)
+        } catch (err) {
+            // If we cannot persist the spawn guard, do NOT proceed —
+            // the concurrent-safety guarantee is void without it.
+            team.spawning = false
+            throw err
+        }
     })
     if (busy) return "Error: team already has an active orchestration"
     let raced = false
@@ -337,7 +348,16 @@ export async function startOrchestration(
             }
         })
     } finally {
+        // CRITICAL #1: clear AND persist so a crashed process doesn't
+        // leave spawning=true on disk permanently.
         team.spawning = false
+        try {
+            await saveTeamState(team)
+        } catch {
+            // Best-effort: the run either succeeded (Phase 3 saved with
+            // spawning=false) or failed (Phase 3 rollback saved). This save
+            // ensures the finally path also clears spawning.
+        }
     }
     if (raced) return "Error: team already has an active orchestration"
     if (buildError) return buildError

@@ -61,6 +61,22 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
             }
         }
         let didBranchSave = false
+        // CRITICAL #1: if spawning=true but the runner PID is dead, the
+        // previous process crashed during spawn. Clear the stale flag so
+        // the team isn't permanently wedged.
+        if (team.spawning && team.runnerPid !== undefined) {
+            try {
+                process.kill(team.runnerPid, 0)
+            } catch (err) {
+                if ((err as NodeJS.ErrnoException).code === "ESRCH") {
+                    team.spawning = false
+                }
+            }
+        } else if (team.spawning && team.runnerPid === undefined) {
+            // No PID to check — clear spawning conservatively since no
+            // active run owns it.
+            team.spawning = false
+        }
         if (team.status === "busy") {
             // H38: PID-based fencing. If runnerPid is set and the process is
             // dead, the team IS crashed → safe to fail (enables team_resume).

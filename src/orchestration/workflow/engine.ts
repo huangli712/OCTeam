@@ -142,6 +142,9 @@ export async function dispatchTaskStep(
         : step.task;
     step.dispatchedActor = member.name;
     step.correlationId = crypto.randomUUID();
+    // HIGH #14: mark dispatched BEFORE dispatchToMember so the step state
+    // is persisted atomically with the dispatch intent.
+    markWorkflowStepDispatched(step);
     await dispatchToMember(
         ctx,
         member,
@@ -150,7 +153,6 @@ export async function dispatchTaskStep(
         team,
         { stepIndex: index, correlationId: step.correlationId },
     );
-    markWorkflowStepDispatched(step);
     return true;
 }
 

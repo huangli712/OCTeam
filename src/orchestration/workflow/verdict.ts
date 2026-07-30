@@ -733,7 +733,9 @@ export async function handleGateVerdict(
     } else {
         const response = task.responses[verifierName];
         if (response !== undefined) {
-            step.output = response;
+            // MEDIUM: cap the stored gate output so a verbose verifier
+            // can't inflate state.json or downstream prompts unbounded.
+            step.output = response.length > 8192 ? response.slice(0, 8192) + "\n[...truncated]" : response;
         }
         output = step.output ?? "";
     }

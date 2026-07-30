@@ -238,14 +238,15 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             "fanout steps: variable name bound to the current foreach value (default 'item').",
         ),
     }
-    /** Branches sub-schema for fanout steps (nested task/gate/fanout/join with branch-local step refs). */
+    /** Branches sub-schema for fanout steps. LOW: only task/gate allowed
+     *  inside branches — validate/lower explicitly reject nested fanout/join. */
     const workflowBranchStepSchema = tool.schema.object({
-        kind: tool.schema.enum(["task", "gate", "fanout", "join"]),
+        kind: tool.schema.enum(["task", "gate"]),
         ...workflowStepSchemaFields,
         branches: tool.schema.array(tool.schema.object({
             id: tool.schema.string().min(1).max(64),
             steps: tool.schema.array(tool.schema.object({
-                kind: tool.schema.enum(["task", "gate", "fanout", "join"]),
+                kind: tool.schema.enum(["task", "gate"]),
                 ...workflowStepSchemaFields,
             })).min(1),
         })).optional(),
