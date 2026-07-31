@@ -23,17 +23,14 @@ import { logger } from "../../core/log.js"
 const appendChains = new Map<string, Promise<void>>()
 
 /** Fire-and-forget: append one RunEvent to the run's events.jsonl timeline. */
+let eventSequenceCounter = 0
 export function recordEvent(team: Team, event: RunEvent): void {
-    // M-2: tombstone guard checked at BOTH the synchronous entry point AND
-    // inside the async append. The pre-fix code checked team.deleted only
-    // synchronously (line below), but the fire-and-forget appendJsonl at
-    // line 37 resolved AFTER other code paths could set team.deleted=true
-    // and run fs.rm — the late append would then recreate the deleted
-    // directory via appendJsonl's mkdir({recursive:true}). Re-checking inside
-    // the async callback closes the window.
     if (team.deleted) return
     const runId = team.activeTask?.runId
     if (!runId) return
+    // MEDIUM: assign a monotonic sequence for stable ordering when
+    // two events share the same millisecond.
+    event.sequence = ++eventSequenceCounter
     const eventsFile = runEventsPath(team.directory, runId)
     const previous = appendChains.get(eventsFile) ?? Promise.resolve()
     const append = previous.then(async () => {

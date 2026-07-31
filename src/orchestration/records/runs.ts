@@ -622,7 +622,12 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
             // skip malformed line
         }
     }
-    events.sort((a, b) => a.timestamp - b.timestamp)
+    // MEDIUM: sort by sequence (if present) for stable ordering of
+    // same-millisecond events, then by timestamp as fallback.
+    events.sort((a, b) => {
+        if (a.sequence !== undefined && b.sequence !== undefined) return a.sequence - b.sequence
+        return a.timestamp - b.timestamp
+    })
     return events
 }
 

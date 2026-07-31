@@ -164,9 +164,11 @@ export async function captureMemberOutput(
         if (!isEnoent(err)) throw err
     }
     const accumulated = appendTurnBlock(prev, full, new Date().toISOString())
-    // Cap the accumulated file so multi-turn members do not grow it unbounded.
-    const capped = Buffer.byteLength(accumulated, "utf8") > ACCUMULATED_OUTPUT_CAP
-        ? truncateOutput(accumulated, ACCUMULATED_OUTPUT_CAP)
+    const accumulatedBytes = Buffer.byteLength(accumulated, "utf8")
+    const wasTruncated = accumulatedBytes > ACCUMULATED_OUTPUT_CAP
+    // MEDIUM: include truncation metadata so consumers know the output is partial.
+    const capped = wasTruncated
+        ? truncateOutput(accumulated, ACCUMULATED_OUTPUT_CAP) + `\n[...output truncated: original ${accumulatedBytes} bytes, kept ${ACCUMULATED_OUTPUT_CAP} bytes]`
         : accumulated
 
     // Persist to disk FIRST. The in-memory response slot and the capture

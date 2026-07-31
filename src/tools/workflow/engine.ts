@@ -154,9 +154,9 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
             + " retry_verifier exhausted). Incompatible with on_invalid='escalate'.",
         ),
         where: tool.schema.object({
-            score_gte: tool.schema.number().optional(),
-            score_lt: tool.schema.number().optional(),
-            confidence_gte: tool.schema.number().optional(),
+            score_gte: tool.schema.number().min(0).max(10).optional(),
+            score_lt: tool.schema.number().min(0).max(10).optional(),
+            confidence_gte: tool.schema.number().min(0).max(1).optional(),
             has_issue_severity: tool.schema.enum(["low", "medium", "high", "critical"]).optional(),
         }).optional().describe(
             "gate steps: optional threshold condition gating on_pass_goto/on_fail_goto. Exactly one"

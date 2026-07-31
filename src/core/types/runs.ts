@@ -189,13 +189,15 @@ export type RunEventKind =
 
 /** A single entry in the append-only run timeline (events.jsonl). */
 export type RunEvent = {
-    timestamp: number                  // epoch ms (readers sort by this, not file order)
+    timestamp: number                  // epoch ms
+    sequence?: number                  // MEDIUM: monotonic sequence for stable
+                                       // ordering when timestamps collide
     kind: RunEventKind
     member?: string
     stage?: number                     // currentStageIndex (pipeline/loop)
     round?: number                     // currentRound (consensus/loop)
     stepIndex?: number                 // workflow step index (workflow mode)
-    correlationId?: string             // links related events (e.g. a step dispatch and its capture/verdict)
+    correlationId?: string             // links related events
     reason?: string                    // terminated / errored reason
     bytes?: number                     // captured output size
     detail?: string                    // free-form (signoff policy, "grace n/max", …)

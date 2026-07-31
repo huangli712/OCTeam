@@ -38,29 +38,33 @@ export async function buildSummary(
     const head = `<mode>${task.type}</mode>\n` 
         + `<reason>${reason}</reason>\n`
         + `<tokens>${task.tokensUsed}</tokens>\n`
+    // MEDIUM: enforce a total UTF-8 byte budget on the summary so large
+    // multi-member outputs don't create an oversized leader prompt.
+    const SUMMARY_BUDGET = 65536
+    let body: string
     switch (task.type) {
-        case "delegate": return await summarizeDelegate(team, task, head)
-        case "loop": return summarizeLoop(task, head)
-        case "route": return summarizeRoute(task, head)
-        case "arbitrate": return summarizeArbitrate(task, head)
-        case "recurse": return await summarizeRecurse(team, task, head)
-        case "tollgate": return summarizeTollgate(task, head)
-        case "pipeline": return summarizePipeline(task, head)
-        case "consensus": return summarizeConsensus(task, head)
-        case "parallel": return summarizeParallel(task, head)
-        case "workflow": return summarizeWorkflow(task, head)
-        case "arena": return summarizeArena(task, head)
-        case "quorum": return summarizeQuorum(task, head)
+        case "delegate": body = await summarizeDelegate(team, task, head); break
+        case "loop": body = summarizeLoop(task, head); break
+        case "route": body = summarizeRoute(task, head); break
+        case "arbitrate": body = summarizeArbitrate(task, head); break
+        case "recurse": body = await summarizeRecurse(team, task, head); break
+        case "tollgate": body = summarizeTollgate(task, head); break
+        case "pipeline": body = summarizePipeline(task, head); break
+        case "consensus": body = summarizeConsensus(task, head); break
+        case "parallel": body = summarizeParallel(task, head); break
+        case "workflow": body = summarizeWorkflow(task, head); break
+        case "arena": body = summarizeArena(task, head); break
+        case "quorum": body = summarizeQuorum(task, head); break
         default: {
-            // Exhaustiveness guard for OrchestrationType. Every variant has an
-            // explicit case above, so task narrows to `never` here. Adding a new
-            // OrchestrationType without a matching case fails this assignment at
-            // compile time. Runtime throw prevents silent fall-through.
             const _exhaustive: never = task
             void _exhaustive
             throw new Error(`buildSummary: unhandled OrchestrationType: ${String((task as { type: string }).type)}`)
         }
     }
+    if (Buffer.byteLength(body, "utf8") > SUMMARY_BUDGET) {
+        return truncateOutput(body, SUMMARY_BUDGET) + "\n[...summary truncated at 64KiB]"
+    }
+    return body
 }
 
 /** One-line-per-member digest of the current round's outputs (consensus). */
