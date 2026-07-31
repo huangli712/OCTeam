@@ -9,6 +9,8 @@ import { logSwallowed } from "../../core/log.js"
 import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
 import { isIndexedMasterOf } from "../../state/resolve.js"
+import { withLock } from "../../state/locks.js"
+import { teamLifecycleLockPath } from "../../state/paths.js"
 import { normalizeRole, roleAgent } from "../../core/role.js"
 import type { MemberSpec, MemberState, TeamSpec } from "../../core/types.js"
 import { MEMBER_NAME_POOL } from "../../state/naming.js"
@@ -103,7 +105,7 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
             let staleState = false
             let capReached = false
             let specError = false
-            await team.mutex.runExclusive(async () => {
+            await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status live→busy and
                 // committed an activeTask since the outside-mutex check at
@@ -168,7 +170,7 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                     }
                     throw err
                 }
-            })
+            }), team.directory)
 
             if (staleState) {
                 return `Error: team "${args.team_id}" status is "${team.status}", not "live". `

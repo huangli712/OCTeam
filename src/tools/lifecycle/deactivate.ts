@@ -10,6 +10,8 @@ import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
 import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
 import { clearActiveTeam, isIndexedMasterOf, setActiveTeam } from "../../state/resolve.js"
+import { withLock } from "../../state/locks.js"
+import { teamLifecycleLockPath } from "../../state/paths.js"
 
 /** Deactivate the currently active team for this session. */
 export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
@@ -42,7 +44,7 @@ export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
 
             let result = ""
             const prevActivatedAt = team.activatedAt
-            await team.mutex.runExclusive(async () => {
+            await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status to "busy" since
                 // the outside-mutex check at line 38. Refuse rather than
@@ -71,7 +73,7 @@ export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
                 }
                 result = `Team "${args.team_id}" deactivated. No team is active in this session — `
                     + `call team_activate to pick one.`
-            })
+            }), team.directory)
             return result
         },
     })

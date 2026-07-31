@@ -15,7 +15,8 @@ import {
     listTeamNames, loadTeamState, readTeamSpec, rekeyTeamRegistry, saveTeamState, writeTeamSpec,
 } from "../../state/store.js"
 import { indexMasterTeam, isIndexedMasterOf, setActiveTeam, unindexMasterTeam } from "../../state/resolve.js"
-import { teamDir } from "../../state/paths.js"
+import { teamDir, teamLifecycleLockPath } from "../../state/paths.js"
+import { withLock } from "../../state/locks.js"
 import type { TeamSpec } from "../../core/types.js"
 
 /** Rename a live team, updating its directory and all stored references. */
@@ -68,7 +69,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
             let staleState = false
             let collision = false
             let specError: string | undefined = undefined
-            await team.mutex.runExclusive(async () => {
+            await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status live→busy since
                 // the outside-mutex check at line 42. Refuse rather than
@@ -195,7 +196,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     }
                     throw writeErr
                 }
-            })
+            }), team.directory)
 
 
             if (specError) {

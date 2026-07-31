@@ -21,7 +21,8 @@ import { unindexMasterTeam, unindexSession, isIndexedMasterOf } from "../../stat
 import { clearWakeHint } from "../../messaging/wake-hint.js"
 import { abortAndResetMembers } from "../support.js"
 import { hasUncommittedChanges, destroyWorktree } from "../../state/worktrees.js"
-import { worktreesDir } from "../../state/paths.js"
+import { worktreesDir, teamLifecycleLockPath } from "../../state/paths.js"
+import { withLock } from "../../state/locks.js"
 
 /** Delete a team, with optional force mode to skip safety checks. */
 export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
@@ -90,7 +91,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 invalidateTeam(team.directory)
             }
             try {
-                await team.mutex.runExclusive(async () => {
+                await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status to "busy" since
                 // the outside-mutex check at line 45. For non-force, refuse
@@ -150,7 +151,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 }
                 await deleteQuarantinedTeamStorage(ctx.storageRoot, quarantined)
                 unindexDeletedTeam()
-                })
+                }), team.directory)
                 if (staleSpawning) {
                     return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). Retry in a few seconds.`
                 }

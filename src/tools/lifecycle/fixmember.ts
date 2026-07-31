@@ -13,7 +13,8 @@ import type { PluginContext } from "../../core/context.js"
 import { logger } from "../../core/log.js"
 import { loadTeamState, readTeamSpec, saveTeamState, saveTeamStateBounded, writeTeamSpec } from "../../state/store.js"
 import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
-import { inboxPath, worktreesDir } from "../../state/paths.js"
+import { inboxPath, worktreesDir, teamLifecycleLockPath } from "../../state/paths.js"
+import { withLock } from "../../state/locks.js"
 import { destroyWorktree, hasUncommittedChanges } from "../../state/worktrees.js"
 import { listAllTasks, updateTask } from "../../state/tasks.js"
 import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../../core/role.js"
@@ -230,7 +231,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             let staleState = false
             let renameCollision = false
             let specMissing = false
-            await team.mutex.runExclusive(async () => {
+            await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status to "busy" since
                 // the outside-mutex check at line 43. Refuse rather than
@@ -568,7 +569,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     })
                     throw teardownErr
                 }
-            })
+            }), team.directory)
 
             if (staleState) {
                 return `Error: team "${args.team_id}" is busy. `

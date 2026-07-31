@@ -10,7 +10,8 @@ import type { PluginContext } from "../../core/context.js"
 import fs from "node:fs/promises"
 import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
 import { isIndexedMasterOf } from "../../state/resolve.js"
-import { inboxPath } from "../../state/paths.js"
+import { withLock } from "../../state/locks.js"
+import { inboxPath, teamLifecycleLockPath } from "../../state/paths.js"
 import type { TeamSpec } from "../../core/types.js"
 
 /** Remove a member from a live team with at least one member remaining. */
@@ -53,7 +54,7 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
 
             let staleState = false
             let specError = false
-            await team.mutex.runExclusive(async () => {
+            await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status live→busy since
                 // the outside-mutex check at line 32. Refuse rather than
@@ -122,7 +123,7 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                     }
                     throw err
                 }
-            })
+            }), team.directory)
 
             if (staleState) {
                 return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
