@@ -79,13 +79,18 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 // Re-check name collision inside the mutex: a concurrent
                 // rename or create may have claimed the new directory since
                 // the outside-mutex check at line 52-56.
+                // HIGH #20: use atomic mkdir to claim the new dir name,
+                // eliminating the stat→rename TOCTOU window.
                 try {
-                    await fs.stat(newDir)
+                    await fs.mkdir(newDir, { recursive: false })
+                    // Directory created as a placeholder — remove it so
+                    // fs.rename(oldDir, newDir) succeeds (rename requires the
+                    // destination to not exist or be empty on some platforms).
+                    await fs.rmdir(newDir).catch(() => {})
+                } catch (err) {
+                    if (!isEnoent(err) && (err as NodeJS.ErrnoException).code !== "EEXIST") throw err
                     collision = true
                     return
-                } catch (err) {
-                    if (!isEnoent(err)) throw err
-                    // newDir does not exist — safe to rename
                 }
                 // Re-read spec INSIDE the mutex so concurrent mutators
                 // (e.g. a parallel add/remove) don't clobber each other's

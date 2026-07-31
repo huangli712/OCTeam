@@ -538,6 +538,9 @@ export function markWorkflowFanoutBranchErrored(
             );
             if (allResolved) {
                 activeStep.dispatchedAt = undefined;
+                // HIGH #16: cleared dispatchedAt — next sweep tick will
+                // detect allResolved and advance. Direct call would need
+                // ctx/team which aren't available in this pure function.
             }
         }
         return { kind: "within_tolerance" };

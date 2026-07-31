@@ -125,16 +125,12 @@ describe("parseScoreboard", () => {
         expect(r.rationale).toBe("")
     })
 
-    test("preserves duplicate member entries (dedup happens in selection, not parse)", () => {
+    test("rejects duplicate member entries (parseFailed)", () => {
         const r = parseScoreboard(
             sb('{"scores":[{"member":"alice","score":1,"passed":true},{"member":"alice","score":2,"passed":true}]}'),
         )
-        expect(r.parseFailed).toBeUndefined()
-        expect(r.scores).toHaveLength(2)
-        expect(r.scores[0].member).toBe("alice")
-        expect(r.scores[1].member).toBe("alice")
-        expect(r.scores[0].score).toBe(1)
-        expect(r.scores[1].score).toBe(2)
+        expect(r.parseFailed).toBe(true)
+        expect(r.scores).toHaveLength(0)
     })
 
     test("parses the bilingual <评分板> alias", () => {

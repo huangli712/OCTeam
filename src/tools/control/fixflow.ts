@@ -168,6 +168,20 @@ async function applyRedispatch(
     const invariantError = validateWorkflowAfterFix(task)
     if (invariantError !== null) return invariantError
     workflowStep.dispatchedAt = undefined
+    // HIGH #21: abort the currently dispatched actor before redispatching
+    // so the old prompt's late idle doesn't race with the new dispatch.
+    const oldActorName = workflowStep.dispatchedActor
+    if (oldActorName) {
+        const oldActor = team.members.find(m => m.name === oldActorName)
+        if (oldActor?.sessionId && oldActor.status === "running") {
+            try {
+                await ctx.client.session.abort({
+                    path: { id: oldActor.sessionId },
+                    query: { directory: oldActor.worktreePath ?? ctx.directory },
+                })
+            } catch { /* best-effort */ }
+        }
+    }
     const dispatched = await redispatchWorkflowStep(ctx, team, index)
     if (!dispatched) return `Error: step ${index + 1} cannot be redispatched`
     await saveTeamState(team)

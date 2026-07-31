@@ -251,8 +251,24 @@ export function parseRouteDecision(
 ): { targets: string[]; rationale: string; parseFailed?: boolean } {
     const p = extractTaggedJSON(rawText, "route", "路由")
     if (!p) return { targets: [], rationale: "", parseFailed: true }
-    const raw = p.branches ?? p.targets ?? p.branch ?? p.target
-    if (raw == null) return { targets: [], rationale: "", parseFailed: true }
+    // MEDIUM #27: detect conflicting alias values. If the LLM provides
+    // multiple aliases with different values, fail rather than silently
+    // picking one.
+    const aliasSources: Array<[string, unknown]> = [
+        ["branches", p.branches], ["targets", p.targets],
+        ["branch", p.branch], ["target", p.target],
+    ].filter(([, v]) => v != null) as Array<[string, unknown]>
+    if (aliasSources.length === 0) return { targets: [], rationale: "", parseFailed: true }
+    // If multiple aliases present, verify they are consistent.
+    const raw = aliasSources[0][1]
+    for (let i = 1; i < aliasSources.length; i++) {
+        const [, v] = aliasSources[i]!
+        const a = Array.isArray(raw) ? raw : [raw]
+        const b = Array.isArray(v) ? v : [v]
+        if (a.length !== b.length || !a.every((x, idx) => x === b[idx])) {
+            return { targets: [], rationale: "", parseFailed: true }
+        }
+    }
     const arr = Array.isArray(raw) ? raw : [raw]
     // H-16: strict — every element must be a non-empty string. One bad entry
     // fails the whole decision.
@@ -351,6 +367,7 @@ export function parseScoreboard(
     const p = extractTaggedJSON(rawText, "scoreboard", "评分板")
     if (!p || !Array.isArray(p.scores)) return { scores: [], rationale: "", parseFailed: true }
     const scores: ArenaCandidateScore[] = []
+    const seenMembers = new Set<string>()
     for (const item of p.scores) {
         // H-16 strict: any invalid entry makes the whole scoreboard fail.
         if (typeof item !== "object" || item === null || Array.isArray(item)) {
@@ -359,6 +376,11 @@ export function parseScoreboard(
         if (!("member" in item) || typeof item.member !== "string" || item.member.length === 0) {
             return { scores: [], rationale: "", parseFailed: true }
         }
+        // MEDIUM #29: reject duplicate member entries.
+        if (seenMembers.has(item.member)) {
+            return { scores: [], rationale: "", parseFailed: true }
+        }
+        seenMembers.add(item.member)
         const entry: ArenaCandidateScore = {
             member: item.member,
             passed: "passed" in item && item.passed === true,
