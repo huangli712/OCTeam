@@ -413,7 +413,17 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         record.artifacts = artifacts
     }
 
-    await atomicWrite(runRecordPath(team.directory, runId), JSON.stringify(record, null, 2), team.directory)
+    // MEDIUM: validate the record against the Zod schema before writing so
+    // a code bug that produces an invalid record fails loudly instead of
+    // silently writing a file that readRunRecord will strip or reject.
+    const serialized = JSON.stringify(record, null, 2)
+    const parseResult = RunRecordSchema.safeParse(JSON.parse(serialized))
+    if (!parseResult.success) {
+        logger.warn("persistRun: record failed schema validation, writing anyway for crash recovery", {
+            runId, issues: parseResult.error.issues.map(i => `${i.path.join(".")}: ${i.message}`),
+        })
+    }
+    await atomicWrite(runRecordPath(team.directory, runId), serialized, team.directory)
     await pruneRuns(team.directory, DEFAULT_MAX_RUNS)
 }
 

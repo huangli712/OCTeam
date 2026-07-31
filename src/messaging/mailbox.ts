@@ -65,7 +65,7 @@ export class AckMessagesError extends Error {
         public readonly acknowledgedMessages: Message[],
         cause: unknown,
     ) {
-        super(cause instanceof Error ? cause.message : String(cause))
+        super(cause instanceof Error ? cause.message : String(cause), { cause })
         this.name = "AckMessagesError"
     }
 }

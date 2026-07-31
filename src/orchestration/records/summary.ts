@@ -35,8 +35,12 @@ export async function buildSummary(
     task: ActiveTask,
     reason: string,
 ): Promise<string> {
+    // MEDIUM: escape XML control fields so member output or reason
+    // text containing </reason> etc. cannot break the summary structure.
+    const escapeXml = (s: string): string =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     const head = `<mode>${task.type}</mode>\n` 
-        + `<reason>${reason}</reason>\n`
+        + `<reason>${escapeXml(reason)}</reason>\n`
         + `<tokens>${task.tokensUsed}</tokens>\n`
     // MEDIUM: enforce a total UTF-8 byte budget on the summary so large
     // multi-member outputs don't create an oversized leader prompt.

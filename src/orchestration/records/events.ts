@@ -22,14 +22,14 @@ import { logger } from "../../core/log.js"
 
 const appendChains = new Map<string, Promise<void>>()
 
-/** Fire-and-forget: append one RunEvent to the run's events.jsonl timeline. */
+/** Fire-and-forget: append one RunEvent to the run's events.jsonl timeline.
+ *  Returns the append Promise so callers that need durability (termination,
+ *  signoff, persistRun) can await it via flushRunEvents. */
 let eventSequenceCounter = 0
-export function recordEvent(team: Team, event: RunEvent): void {
-    if (team.deleted) return
+export function recordEvent(team: Team, event: RunEvent): Promise<void> {
+    if (team.deleted) return Promise.resolve()
     const runId = team.activeTask?.runId
-    if (!runId) return
-    // MEDIUM: assign a monotonic sequence for stable ordering when
-    // two events share the same millisecond.
+    if (!runId) return Promise.resolve()
     event.sequence = ++eventSequenceCounter
     const eventsFile = runEventsPath(team.directory, runId)
     const previous = appendChains.get(eventsFile) ?? Promise.resolve()
@@ -78,7 +78,16 @@ export function recordEvent(team: Team, event: RunEvent): void {
         }
     })
     appendChains.set(eventsFile, append)
+    // Auto-cleanup the chain reference.
     void append.then(() => {
         if (appendChains.get(eventsFile) === append) appendChains.delete(eventsFile)
     })
+    return append
+}
+
+/** Await all pending event appends for a run so terminal events are durable. */
+export async function flushRunEvents(teamDirectory: string, runId: string): Promise<void> {
+    const eventsFile = runEventsPath(teamDirectory, runId)
+    const pending = appendChains.get(eventsFile)
+    if (pending) await pending.catch(() => {})
 }
