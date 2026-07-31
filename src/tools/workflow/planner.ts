@@ -96,18 +96,22 @@ function sleep(ms: number): Promise<void> {
  * cases, causing the rollback path to unlink an existing-but-unreadable file
  * — permanent data loss. */
 async function readFileForBackup(filePath: string, trustedRoot: string): Promise<string | null> {
-    const { readFile, lstat } = await import("node:fs/promises")
-    // Refuse to follow a symlinked ancestor chain: a tampered .octeam/ could
-    // otherwise redirect the backup read outside the team root.
+    const { open } = await import("node:fs/promises")
     await assertNoSymlinkTraversal(trustedRoot, filePath)
     try {
-        // Reject oversized files before reading them into memory so a tampered
-        // loader cannot exhaust memory during backup.
-        const stat = await lstat(filePath)
-        if (stat.size > MAX_BACKUP_BYTES) {
-            throw new Error(`readFileForBackup: file exceeds ${MAX_BACKUP_BYTES} bytes (${stat.size}): ${filePath}`)
+        // MEDIUM: use O_NOFOLLOW to atomically reject leaf symlinks,
+        // eliminating the lstat→readFile TOCTOU window.
+        const O_NOFOLLOW = 0x20000
+        const fh = await open(filePath, O_NOFOLLOW)
+        try {
+            const stat = await fh.stat()
+            if (stat.size > MAX_BACKUP_BYTES) {
+                throw new Error(`readFileForBackup: file exceeds ${MAX_BACKUP_BYTES} bytes (${stat.size}): ${filePath}`)
+            }
+            return await fh.readFile("utf8")
+        } finally {
+            await fh.close()
         }
-        return await readFile(filePath, "utf8")
     } catch (err: unknown) {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
         throw err

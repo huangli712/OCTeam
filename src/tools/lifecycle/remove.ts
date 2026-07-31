@@ -7,8 +7,10 @@ import { isEnoent } from "../../core/utils.js"
 import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
+import fs from "node:fs/promises"
 import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
 import { isIndexedMasterOf } from "../../state/resolve.js"
+import { inboxPath } from "../../state/paths.js"
 import type { TeamSpec } from "../../core/types.js"
 
 /** Remove a member from a live team with at least one member remaining. */
@@ -87,6 +89,15 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 }
                 const removedStateMember = team.members[currentIdx]
                 team.members.splice(currentIdx, 1)
+
+                // HIGH: clean up the removed member's mailbox directory
+                // so messages don't leak to a future member with the same name.
+                try {
+                    const mbPath = inboxPath(team.directory, args.member_name)
+                    await fs.rm(mbPath, { recursive: true, force: true })
+                } catch (err) {
+                    logSwallowed(ctx, "remove: mailbox cleanup failed", err, { member: args.member_name })
+                }
 
                 try {
                     await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId, ctx.storageRoot)

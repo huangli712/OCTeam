@@ -297,10 +297,18 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
     const results = resultEntries.map(([, result]) => result);
     const resultFromVerdict = (finalVerdict: Verdict, summary: string) => {
         const supporters = resultEntries.filter(([, result]) => result.verdict === finalVerdict)
-        const scores = supporters.map(([, result]) => result.score)
-            .filter((score): score is number => typeof score === "number")
-        const confidences = supporters.map(([, result]) => result.confidence)
-            .filter((confidence): confidence is number => typeof confidence === "number")
+        // HIGH: only include scores/confidences if ALL supporters have them.
+        // Pre-fix code took max of available, silently dropping missing
+        // values. A single high-score verifier + others missing score
+        // would pass a where:score_gte condition that should be unevaluable.
+        const allHaveScore = supporters.every(([, r]) => typeof r.score === "number")
+        const allHaveConfidence = supporters.every(([, r]) => typeof r.confidence === "number")
+        const scores = allHaveScore
+            ? supporters.map(([, r]) => r.score as number)
+            : []
+        const confidences = allHaveConfidence
+            ? supporters.map(([, r]) => r.confidence as number)
+            : []
         const supportersWithIssues = supporters.filter(([, result]) => result.issues !== undefined)
         const allIssues = supportersWithIssues.length > 0
             ? supportersWithIssues.flatMap(([, result]) => result.issues ?? [])

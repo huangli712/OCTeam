@@ -47,6 +47,7 @@ describe("extractOutputFromParts", () => {
                 type: "tool",
                 tool: "write",
                 state: {
+                    status: "completed",
                     input: {
                         filePath: "/tmp/solution.py",
                         content: "def gcd(a, b):\n    while b:\n        a, b = b, a % b\n    return a",
@@ -64,7 +65,7 @@ describe("extractOutputFromParts", () => {
     test("bash tool: captures command with $ prefix", () => {
         const parts = [
             { type: "text", text: "Running tests." },
-            { type: "tool", tool: "bash", state: { input: { command: "python -m pytest tests/" } } },
+            { type: "tool", tool: "bash", state: { status: "completed", input: { command: "python -m pytest tests/" } } },
         ]
         const result = extractOutputFromParts(parts)
         expect(result).toContain("Running tests.")
@@ -76,7 +77,7 @@ describe("extractOutputFromParts", () => {
             {
                 type: "tool",
                 tool: "aft_apply_patch",
-                state: { input: { patchText: "*** Begin Patch\n*** End Patch" } },
+                state: { status: "completed", input: { patchText: "*** Begin Patch\n*** End Patch" } },
             },
         ]
         const result = extractOutputFromParts(parts)
@@ -90,7 +91,7 @@ describe("extractOutputFromParts", () => {
             {
                 type: "tool",
                 tool: "team_send_message",
-                state: { input: { to: "master", body: "Task completed successfully." } },
+                state: { status: "completed", input: { to: "master", body: "Task completed successfully." } },
             },
         ]
         const result = extractOutputFromParts(parts)
@@ -104,7 +105,7 @@ describe("extractOutputFromParts", () => {
             {
                 type: "tool",
                 tool: "team_task_update",
-                state: { input: { task_id: "abc", status: "claimed" } },
+                state: { status: "completed", input: { task_id: "abc", status: "claimed" } },
             },
         ]
         const result = extractOutputFromParts(parts)
@@ -136,18 +137,19 @@ describe("extractOutputFromParts", () => {
                 type: "tool",
                 tool: "write",
                 state: {
+                    status: "completed",
                     input: {
                         filePath: "/tmp/gcd.py",
                         content: "def gcd(a, b):\n    while b:\n        a, b = b, a % b\n    return a\n\nassert gcd(48, 18) == 6",
                     },
                 },
             },
-            { type: "tool", tool: "bash", state: { input: { command: "python /tmp/gcd.py" } } },
+            { type: "tool", tool: "bash", state: { status: "completed", input: { command: "python /tmp/gcd.py" } } },
             { type: "text", text: "Done. All tests pass." },
             {
                 type: "tool",
                 tool: "team_send_message",
-                state: { input: { to: "master", body: "GCD implementation complete." } },
+                state: { status: "completed", input: { to: "master", body: "GCD implementation complete." } },
             },
         ]
         const result = extractOutputFromParts(parts)
@@ -167,7 +169,7 @@ describe("extractOutputFromParts", () => {
             {
                 type: "tool",
                 tool: "aft_write",
-                state: { input: { filePath: "src/main.ts", content: "console.log('hello')" } },
+                state: { status: "completed", input: { filePath: "src/main.ts", content: "console.log('hello')" } },
             },
         ]
         const result = extractOutputFromParts(parts)
@@ -190,7 +192,7 @@ describe("extractOutputFromParts", () => {
 
         for (const tool of tools) {
             const result = extractOutputFromParts([
-                { type: "tool", tool, state: { input: { content: `work from ${tool}` } } },
+                { type: "tool", tool, state: { status: "completed", input: { content: `work from ${tool}` } } },
             ])
             expect(result).toContain(`work from ${tool}`)
         }
@@ -206,7 +208,7 @@ describe("extractOutputFromParts", () => {
         ]
 
         for (const { tool, input, expected } of cases) {
-            const result = extractOutputFromParts([{ type: "tool", tool, state: { input } }])
+            const result = extractOutputFromParts([{ type: "tool", tool, state: { status: "completed", input } }])
             expect(result).toBe(expected)
         }
     })
@@ -469,7 +471,7 @@ describe("captureMemberOutput: delegate parity (captures like other modes)", () 
                 {
                     info: { role: "assistant", id: "a1", sessionID: "s1", time: { created: 0 }, parentID: "u1", modelID: "m", providerID: "p", mode: "x", path: { cwd: "/", root: "/" }, cost: 0, tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } } }, parts: [
                         { type: "text", text: "Solving task now." },
-                        { type: "tool", tool: "team_send_message", state: { input: { to: "master", body: "<!-- ANSWER: 42 -->" } } },
+                        { type: "tool", tool: "team_send_message", state: { status: "completed", input: { to: "master", body: "<!-- ANSWER: 42 -->" } } },
                     ],
                 },
             ])

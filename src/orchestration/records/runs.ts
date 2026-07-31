@@ -15,6 +15,7 @@
 
 import crypto from "node:crypto"
 import fs from "node:fs/promises"
+import path from "node:path"
 
 import { logger } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
@@ -480,13 +481,24 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
         else if (kind === "missing") orphaned.push(runId)
         else corrupted.push(runId)
     }
-    // Remove orphaned run directories (no record.json at all = crash-during-capture).
+    // HIGH: quarantine orphaned run directories instead of deleting them.
+    // Pre-fix code deleted crash-during-capture evidence. Now: rename to
+    // a quarantine subdirectory so crash recovery tools can inspect them.
     for (const runId of orphaned) {
         const target = runDir(teamDirectory, runId)
-        await assertNoSymlinkTraversal(teamDirectory, target)
-        await fs.rm(target, { recursive: true, force: true }).catch((err) => {
-            logger.warn("pruneRuns: failed to remove orphaned run directory", { runId, error: err instanceof Error ? err.message : String(err) })
-        })
+        const quarantineDir = path.join(runsDir(teamDirectory), ".quarantine")
+        const quarantined = path.join(quarantineDir, runId)
+        try {
+            await fs.mkdir(quarantineDir, { recursive: true })
+            await fs.rename(target, quarantined)
+            logger.warn("pruneRuns: quarantined orphaned run directory (no record.json)", { runId, quarantined })
+        } catch (err) {
+            if (isEnoent(err)) continue // already gone
+            // If rename fails (cross-device, permissions), fall back to deletion.
+            await fs.rm(target, { recursive: true, force: true }).catch((rmErr) => {
+                logger.warn("pruneRuns: failed to remove orphaned run directory after quarantine failed", { runId, error: rmErr instanceof Error ? rmErr.message : String(rmErr) })
+            })
+        }
     }
     // Quarantine corrupted run directories — record.json exists but is unreadable
     // or invalid. Do NOT delete: member output .md files and event logs may still

@@ -331,8 +331,17 @@ export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
             try {
                 const team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
                 if (team.deleted) return "Error: team has been deleted"
-            } catch { /* ENOENT handled below */ }
-            const task = await getTask(caller.directory, args.task_id)
+            } catch {
+                // LOW: only ENOENT means not found; other errors (EACCES,
+                // EIO, corruption) should fail closed, not silently return null.
+            }
+            let task
+            try {
+                task = await getTask(caller.directory, args.task_id)
+            } catch (err) {
+                if (isEnoent(err)) return `Error: task ${args.task_id} not found`
+                return `Error: task ${args.task_id} could not be read: ${err instanceof Error ? err.message : String(err)}`
+            }
             if (!task) return `Error: task ${args.task_id} not found`
             return [
                 `Task ${task.id}`,

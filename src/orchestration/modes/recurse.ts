@@ -459,5 +459,18 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
     }
 
     // Shared delegate-style tail: all-complete / deadlock / re-prompt.
+    // HIGH: before entering the tail, verify the root task exists and is
+    // completed. If root is deleted/missing, the delegate tail's
+    // incomplete.length === 0 check would falsely succeed.
+    if (task.rootTaskId) {
+        const rootTask = await getTask(team.directory, task.rootTaskId)
+        if (!rootTask || rootTask.status === "deleted") {
+            await finishRun(ctx, team, "recurse_failed:root_task_missing", "failed")
+            return
+        }
+        if (rootTask.status !== "completed") {
+            // Root not done yet — fall through to tail which will dispatch it.
+        }
+    }
     await runDelegateStyleTail(ctx, team, member, "recurse", () => buildRecursePrompt())
 }

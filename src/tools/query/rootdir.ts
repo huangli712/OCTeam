@@ -17,6 +17,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
+import { loadTeamState } from "../../state/store.js"
 
 /** Return the filesystem path to a team's root directory. */
 export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
@@ -38,6 +39,16 @@ export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
                 { requireActive: false },
             )
             if (!caller) return "Error: caller is not a member of this team"
+
+            // HIGH: restrict to master only — the control root contains
+            // state.json, sentinel, mailbox, tasks, and locks that must
+            // not be exposed to regular members.
+            const team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId).catch(() => undefined)
+            if (!team) return "Error: team could not be loaded"
+            const isMaster = team.leadSessionId === context.sessionID
+            if (!isMaster) {
+                return `Error: team_root_dir is restricted to the team leader (master session).`
+            }
 
             const absPath = path.resolve(caller.directory)
 

@@ -5,6 +5,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import type { MemberState } from "../../core/types.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import { finishRun } from "../control/completion.js"
@@ -35,7 +36,15 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     if (task.reduceStage) return true
     if (Object.keys(task.responses).length <= 1) return false
     const reducer = findMember(team, task.reducerMember ?? "")
-    if (!reducer?.sessionId || reducer.status === "errored") return false
+    if (!reducer?.sessionId || reducer.status === "errored") {
+        // MEDIUM: configured reducer unavailable — log so the run's
+        // silent summarize fallback is diagnosable. Pre-fix code returned
+        // false indistinguishably from "no reduce configured".
+        logSwallowed(ctx, "maybeTriggerReduce: configured reducer unavailable, falling back to summarize", undefined, {
+            reducer: task.reducerMember, status: reducer?.status,
+        })
+        return false
+    }
 
     task.reduceStage = true
     const body = await buildSummary(team, task, "pending_reduce")

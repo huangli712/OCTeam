@@ -31,7 +31,7 @@ describe("pickName (random, no reuse)", () => {
 
     test("falls back to member-N when pool exhausted", () => {
         const taken = new Set<string>(MEMBER_NAME_POOL)
-        expect(pickName(taken)).toBe(`member-${MEMBER_NAME_POOL.length + 1}`)
+        expect(pickName(taken)).toBe(`member-1`)
     })
 
     test("pool has 32 unique names exceeding the 16-member cap", () => {

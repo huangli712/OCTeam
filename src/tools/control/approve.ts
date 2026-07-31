@@ -36,6 +36,8 @@ function validateApproval(team: Team, approvalId: string | undefined): ApprovalR
     if (!task?.approvalStage || !task.approvalRequest) {
         return `Error: team "${team.teamName}" has no pending human approval.`
     }
+    // MEDIUM: when approval_id is provided, it must match exactly.
+    // Omission is allowed for backward compatibility (one pending approval per team).
     if (approvalId !== undefined && approvalId !== task.approvalRequest.id) {
         return `Error: approval_id "${approvalId}" does not match pending approval "${task.approvalRequest.id}".`
     }

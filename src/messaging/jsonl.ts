@@ -118,8 +118,9 @@ export async function readJsonl(filePath: string, trustedRoot?: string): Promise
         // hang readFile forever or produce infinite output.
         if (!stat.isFile()) return []
         if (stat.size > 10_485_760) {
-            logger.warn("readJsonl: file exceeds 10 MiB cap, refusing to read", { file: filePath, size: stat.size })
-            return []
+            // MEDIUM: throw instead of returning empty array. Pre-fix code
+            // silently returned [], making the mailbox appear permanently empty.
+            throw new Error(`readJsonl: file exceeds 10 MiB cap (${stat.size} bytes): ${filePath}`)
         }
         const raw = await fs.readFile(filePath, "utf8")
         const lines = raw.split("\n").filter(l => l.length > 0)

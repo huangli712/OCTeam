@@ -196,8 +196,12 @@ export async function destroyWorktree(
     await execFileP("git", ["branch", "-D", branch], {
         cwd: projectDir,
         timeout: 10_000,
-    }).catch(() => {
-        // Best effort — matches the historical spawn-rollback behavior.
+    }).catch((err) => {
+        // MEDIUM: log instead of silently swallowing so orphan branches
+        // are diagnosable.
+        logger.warn("destroyWorktree: branch deletion failed (best-effort)", {
+            branch, error: err instanceof Error ? err.message : String(err),
+        });
         // A missing or already-removed branch is not a teardown blocker.
     });
 }

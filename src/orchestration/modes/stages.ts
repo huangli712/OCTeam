@@ -29,9 +29,13 @@ export function buildUpstreamContext(
     responses: Record<string, string>,
     uptoIndex: number,
 ): string {
-    const blocks: string[] = [];
+    // HIGH: iterate from the most recent completed stage backward so
+    // truncation drops the oldest (least relevant) outputs, not the
+    // most recent ones. Pre-fix code iterated forward, keeping the
+    // earliest stages and discarding the immediately preceding one.
+    const collected: string[] = [];
     let used = 0;
-    for (let i = 0; i < uptoIndex; i++) {
+    for (let i = uptoIndex - 1; i >= 0; i--) {
         const stage = stages[i];
         if (!stage?.completed) continue;
         const output = responses[stage.member];
@@ -39,13 +43,13 @@ export function buildUpstreamContext(
         const block = `[Output from ${stage.member}]\n${truncateOutput(output)}`;
         const blockSize = Buffer.byteLength(block, "utf8");
         if (used + blockSize > UPSTREAM_TOTAL_CAP) {
-            blocks.push(`[…upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`);
+            collected.unshift(`[...upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`);
             break;
         }
-        blocks.push(block);
+        collected.unshift(block);
         used += blockSize;
     }
-    return blocks.join("\n\n");
+    return collected.join("\n\n");
 }
 
 /**

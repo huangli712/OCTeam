@@ -79,8 +79,15 @@ export function extractTaggedJSON(
     // decider's final (corrupt) restatement was ignored, double-completing or
     // double-advancing. The LATEST tag pair is authoritative: if it has no
     // parseable JSON, that is a real failure.
-    const re = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "g")
-    const matches = [...(text?.matchAll(re) ?? [])]
+    // HIGH: require same-language open/close pairs.
+    const pairs: Array<[string, string]> = zh ? [[en, en], [zh, zh]] : [[en, en]]
+    const allMatches: Array<RegExpMatchArray> = []
+    for (const [o, c] of pairs) {
+        const pairRe = new RegExp(`<${o}>([\\s\\S]*?)<\/${c}>`, "g")
+        for (const m of text?.matchAll(pairRe) ?? []) allMatches.push(m)
+    }
+    allMatches.sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    const matches = allMatches
     if (matches.length === 0) {
         // H39: before returning null ("no tag found"), check if the text has
         // an UNCLOSED opening tag (e.g. trailing `<decision>{...` without
@@ -297,6 +304,12 @@ export function parseArbitrationDecision(
 ): { ruling: string; rationale: string; parseFailed?: boolean } {
     const p = extractTaggedJSON(rawText, "ruling", "裁决")
     if (!p) return { ruling: "", rationale: "", parseFailed: true }
+    // MEDIUM: detect conflicting decision/ruling aliases.
+    if (p.decision !== undefined && p.ruling !== undefined
+        && typeof p.decision === "string" && typeof p.ruling === "string"
+        && p.decision.trim() !== p.ruling.trim()) {
+        return { ruling: "", rationale: "", parseFailed: true }
+    }
     const ruling = typeof p.decision === "string"
         ? p.decision
         : typeof p.ruling === "string" ? p.ruling : ""

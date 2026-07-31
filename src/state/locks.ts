@@ -162,10 +162,19 @@ export function shouldReapStaleLock(
  */
 async function maybeReapStaleLock(lockPath: string): Promise<void> {
     try {
-        // HIGH #12: if this process previously failed to release this lock,
-        // it's safe to reap regardless of PID liveness.
+        // HIGH #12/CRIT #3: if this process previously failed to release
+        // this lock, verify the lock STILL belongs to us before unlinking.
+        // Another process may have acquired a new lock in the window between
+        // our release failure and this reap attempt.
         if (locallyReleasedLocks.has(lockPath)) {
-            await fs.unlink(lockPath).catch(() => {})
+            try {
+                const currentPid = parseInt((await fs.readFile(lockPath, "utf8")).trim(), 10)
+                if (currentPid === process.pid) {
+                    await fs.unlink(lockPath).catch(() => {})
+                }
+            } catch {
+                // Lock file vanished or unreadable — nothing to reap.
+            }
             locallyReleasedLocks.delete(lockPath)
             return
         }

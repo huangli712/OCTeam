@@ -7,6 +7,8 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import { listTeamNames, loadTeamState, readTeamSpec } from "../../state/store.js"
+import { isIndexedMasterOf } from "../../state/resolve.js"
+import { teamDir } from "../../state/paths.js"
 
 /** List all teams in the current scope with status and member count. */
 export function teamListTool(ctx: PluginContext): ToolDefinition {
@@ -15,8 +17,16 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
         args: {},
         async execute(_args, context) {
             const leadSessionId = ctx.scope === "project" ? context.sessionID : undefined
-            const names = await listTeamNames(ctx.storageRoot, leadSessionId)
+            let names = await listTeamNames(ctx.storageRoot, leadSessionId)
             if (names.length === 0) return "No teams found."
+            // MEDIUM: in user scope, filter to only teams owned by this
+            // leader session. Pre-fix code listed ALL user-scope teams.
+            if (ctx.scope !== "project") {
+                names = names.filter(name => {
+                    const dir = teamDir(ctx.storageRoot, name)
+                    return isIndexedMasterOf(context.sessionID, dir)
+                })
+            }
             const rows = await Promise.all(
                 names.map(async name => {
                     // M-15: isolate per-team spec read so one corrupt config

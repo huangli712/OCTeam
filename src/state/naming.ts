@@ -31,6 +31,12 @@ export const RESERVED_NAMES = [MASTER_NAME, ORCHESTRATOR_NAME] as const
  */
 export function pickName(taken: Set<string>): string {
     const available = MEMBER_NAME_POOL.filter(n => !taken.has(n))
-    if (available.length === 0) return `member-${taken.size + 1}`
+    if (available.length === 0) {
+        // LOW: scan for the first unused member-N instead of assuming
+        // taken.size + 1 is available (custom names can cause gaps).
+        let i = 1
+        while (taken.has(`member-${i}`)) i++
+        return `member-${i}`
+    }
     return available[Math.floor(Math.random() * available.length)]
 }

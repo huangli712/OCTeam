@@ -120,7 +120,12 @@ function applyTemplateVarsBounded(
     if (Array.isArray(value)) return value.map(item => applyTemplateVarsBounded(item, vars, strict, depth + 1, budget))
     if (isRecord(value)) {
         const out: Record<string, unknown> = {}
-        for (const [key, inner] of Object.entries(value)) out[key] = applyTemplateVarsBounded(inner, vars, strict, depth + 1, budget)
+        for (const [key, inner] of Object.entries(value)) {
+            // MEDIUM: block prototype pollution — reject keys that target
+            // Object.prototype via __proto__ or constructor.
+            if (key === "__proto__" || key === "constructor" || key === "prototype") continue
+            out[key] = applyTemplateVarsBounded(inner, vars, strict, depth + 1, budget)
+        }
         return out
     }
     return value
@@ -547,10 +552,11 @@ async function loadWorkflowFileUnchecked(
 
     let raw: string
     try {
-        // MEDIUM #12: open with O_NOFOLLOW so a leaf symlink installed
-        // between assertNoSymlinkTraversal and open is rejected atomically.
+        // MEDIUM: O_NOFOLLOW rejects leaf symlinks; O_NONBLOCK prevents a
+        // FIFO named .json from blocking open() indefinitely.
         const O_NOFOLLOW = 0x20000
-        const fh = await fs.open(resolved.filePath, fs.constants.O_RDONLY | O_NOFOLLOW)
+        const O_NONBLOCK = 0x800
+        const fh = await fs.open(resolved.filePath, fs.constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
         try {
             const fileStat = await fh.stat()
             if (!fileStat.isFile()) {

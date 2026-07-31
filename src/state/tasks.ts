@@ -230,8 +230,14 @@ export async function listAllTasks(teamDirectory: string, strict = false): Promi
         if (!TASK_ID_PATTERN.test(id)) continue
         ids.push(id)
     }
-    const results = await Promise.all(
-        ids.map(async id => {
+    // MEDIUM: bounded concurrency to prevent unbounded file descriptor / memory
+    // consumption when a team has many tasks (up to 10,000).
+    const BATCH_SIZE = 50
+    const results: (Task | null)[] = []
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const batch = ids.slice(i, i + BATCH_SIZE)
+        const batchResults = await Promise.all(
+            batch.map(async id => {
             try {
                 return await readTaskFile(teamDirectory, id)
             } catch (err) {
@@ -245,7 +251,9 @@ export async function listAllTasks(teamDirectory: string, strict = false): Promi
                 return null
             }
         }),
-    )
+        )
+        results.push(...batchResults)
+    }
     // M28 fix: in strict mode, schema-invalid tasks (readTaskFile returned
     // null due to validation failure, NOT ENOENT) must also throw. Pre-fix
     // code treated schema-corrupt files the same as missing files, so
@@ -334,6 +342,11 @@ export async function updateTask(
                     `updateTask: transition from "${task.status}" to "in_progress" requires an owner`,
                 )
             }
+        }
+        // HIGH: enforce 64 KiB limit on result to match reader's cap.
+        if (patch.result !== undefined && typeof patch.result === "string"
+            && Buffer.byteLength(patch.result, "utf8") > 65536) {
+            patch.result = patch.result.slice(0, 65536) + "\n[...result truncated at 64KiB]"
         }
         Object.assign(task, patch, { updatedAt: Date.now() })
         await atomicWrite(taskPath(teamDirectory, taskId), JSON.stringify(task, null, 2), teamDirectory)
@@ -540,6 +553,9 @@ export async function reapStaleClaims(teamDirectory: string): Promise<void> {
                 await updateTask(teamDirectory, task.id, {
                     status: "pending",
                     owner: undefined,
+                    // MEDIUM: clear claimedAt on reaper reset so stale claim
+                    // metadata doesn't persist on a pending task.
+                    claimedAt: undefined,
                 }, { expectedStatus: "claimed", expectedClaimedAt: task.claimedAt })
             } catch (err) {
                 // Task transitioned out of "claimed" (e.g. owner moved to "in_progress")

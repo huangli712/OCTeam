@@ -58,7 +58,9 @@ export function extractOutputFromParts(parts: unknown): string {
             // recorded as a successful work product — the broken content would
             // flow into pipeline/reduce/signoff as if it were real output.
             const toolStatus = p.state?.status
-            if (toolStatus === "error" || toolStatus === "running" || toolStatus === "pending") continue
+            // MEDIUM: only accept completed tool calls as work output.
+            // Pre-fix code allowed undefined through; now require completed.
+            if (toolStatus !== "completed") continue
             const input = (p.state?.input ?? {}) as Record<string, unknown>
             let primaryInput: string | undefined
             switch (p.tool) {

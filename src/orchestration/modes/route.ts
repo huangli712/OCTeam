@@ -70,7 +70,16 @@ export async function advanceRouteAfterDecision(ctx: PluginContext, team: Team):
             return
         }
         const text = b.task ?? task.task ?? ""
-        await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
+        // HIGH: per-target error handling — if dispatch fails, finish the
+        // run instead of silently continuing. Pre-fix code let the first
+        // failure abort the entire loop, but with a generic throw that
+        // left the team busy without an error reason.
+        try {
+            await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
+        } catch (err) {
+            await finishRun(ctx, team, `route_failed:dispatch_error:${b.member}`, "failed")
+            return
+        }
     }
     await saveTeamState(team)
 }
