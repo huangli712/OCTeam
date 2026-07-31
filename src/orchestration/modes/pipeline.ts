@@ -67,6 +67,18 @@ export async function handlePipelineIdle(ctx: PluginContext, team: Team, member:
     const currentStage = stages[task.currentStageIndex]
     if (!currentStage || currentStage.member !== member.name) return // stray idle
 
+    // HIGH: empty turn should not mark stage as completed. Pre-fix code
+    // marked the stage complete even when the member produced no output.
+    if (task.responses[member.name] === undefined) {
+        // Re-dispatch the member for this stage.
+        const upstream = buildUpstreamContext(stages, task.responses, task.currentStageIndex)
+        const stageTask = upstream ? `${upstream}\n\n[Your task]\n${currentStage.task}` : currentStage.task
+        if (member.sessionId && member.status !== "running") {
+            await dispatchToMember(ctx, member, stageTask, member.worktreePath ?? ctx.directory, team)
+        }
+        return
+    }
+
     currentStage.completed = true
 
     const nextIndex = stages.findIndex(s => !s.completed)

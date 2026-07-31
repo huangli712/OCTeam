@@ -122,6 +122,17 @@ export async function handleLoopIdle(
     const currentStage = stages[task.currentStageIndex]
     if (!currentStage || currentStage.member !== member.name) return // stray idle
 
+    // HIGH: empty turn on non-decider stage should not advance. Only the
+    // decider stage uses parseDecision which has its own retry path.
+    const isDeciderStage = currentStage.member === task.deciderMember
+    if (!isDeciderStage && task.responses[member.name] === undefined) {
+        // Re-dispatch the member for this stage.
+        if (member.sessionId && member.status !== "running") {
+            await advanceToStage(ctx, team, currentStage)
+        }
+        return
+    }
+
     currentStage.completed = true
     task.currentStageIndex++
 

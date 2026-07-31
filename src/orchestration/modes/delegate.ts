@@ -66,6 +66,9 @@ export async function runDelegateStyleTail(
         // Idempotent: already-captured members yield empty outputs and return early.
         for (const m of team.members) {
             if (m.isMaster || !m.sessionId) continue
+            // Skip already-errored members — they're terminal, no need to
+            // re-check the status API.
+            if (m.status === "errored") continue
             // HIGH #11: verify the member's session is still live before
             // treating it as complete. A member whose cached status is
             // "idle" but whose session has actually errored/crashed would
@@ -73,9 +76,10 @@ export async function runDelegateStyleTail(
             // prematurely.
             try {
                 const st = await ctx.client.session.status({})
-                const statuses = Array.isArray(st.data) ? st.data : []
-                const entry = statuses.find((e: { sessionID?: string }) => e.sessionID === m.sessionId) as { type?: string } | undefined
-                if (entry?.type === "error" || entry?.type === "retry") {
+                // HIGH: use extractSessionStatusEntry which handles both object
+                // and array shapes. Pre-fix code treated .data as array.
+                const entry = extractSessionStatusEntry(st.data, m.sessionId)
+                if (entry?.type === "retry") {
                     return
                 }
             } catch {

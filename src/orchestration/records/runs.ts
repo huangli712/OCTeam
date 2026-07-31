@@ -387,6 +387,20 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         }
     }
 
+    // HIGH: write join artifacts BEFORE enumerating the directory so they
+    // exist when the readdir scan runs. Pre-fix code only indexed existing
+    // join-*.md files but never wrote them.
+    if (task.type === "workflow") {
+        const wfSteps = task.steps ?? []
+        for (let i = 0; i < wfSteps.length; i++) {
+            const step = wfSteps[i]
+            if (step?.kind === "join" && step.join?.joinedOutput) {
+                const joinFile = path.join(dir, `join-${i}.md`)
+                await atomicWrite(joinFile, step.join.joinedOutput, team.directory)
+            }
+        }
+    }
+
     // Index run-level artifacts (reduce.md, signoff.md) that the memberOutputs
     // scan skips because their basenames are not member names. Without this a
     // RunRecord consumer has no path reference to the reduced result or the

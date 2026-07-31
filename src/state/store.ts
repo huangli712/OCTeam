@@ -671,11 +671,14 @@ export async function saveTeamState(team: Team): Promise<void> {
                 // HIGH: do NOT write a state that the reader will reject.
                 // Pre-fix code wrote anyway, making the team vanish on restart.
                 logger.error("saveTeamState: state exceeds 1 MiB even after truncation, keeping old state", { dir, size: Buffer.byteLength(reSerialized, "utf8") })
-                return // keep existing on-disk state
+                // MEDIUM: do NOT update _diskSnapshot — the write didn't happen.
+                return
             }
         } else {
             await atomicWrite(statePath(dir), serialized, dir)
         }
+        // MEDIUM: only set _diskSnapshot after a successful write so it
+        // matches what's actually on disk.
         team._diskSnapshot = deepClone(toWrite)
         // Sync concurrent changes from the merged result back into the live
         // team. Without this, the live Team diverges from disk after a

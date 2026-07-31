@@ -345,8 +345,24 @@ export async function updateTask(
         }
         // HIGH: enforce 64 KiB limit on result to match reader's cap.
         if (patch.result !== undefined && typeof patch.result === "string"
-            && Buffer.byteLength(patch.result, "utf8") > 65536) {
-            patch.result = patch.result.slice(0, 65536) + "\n[...result truncated at 64KiB]"
+            && Buffer.byteLength(patch.result, "utf8") > 60_000) {
+            // MEDIUM: truncate by UTF-8 bytes, not UTF-16 code units.
+            // reader limits the entire JSON file to 65536 bytes, so we need
+            // to leave room for JSON overhead + marker.
+            const MAX_RESULT_BYTES = 60_000 // leave ~5KiB for JSON + other fields
+            if (Buffer.byteLength(patch.result, "utf8") > MAX_RESULT_BYTES) {
+                const marker = "\n[...result truncated]"
+                // Truncate from the start to fit MAX_RESULT_BYTES - marker.
+                let cutLen = MAX_RESULT_BYTES - Buffer.byteLength(marker, "utf8")
+                let truncated = ""
+                for (let i = 0; i < patch.result.length && cutLen > 0; i++) {
+                    const charBytes = Buffer.byteLength(patch.result[i]!, "utf8")
+                    if (charBytes > cutLen) break
+                    truncated += patch.result[i]
+                    cutLen -= charBytes
+                }
+                patch.result = truncated + marker
+            }
         }
         Object.assign(task, patch, { updatedAt: Date.now() })
         await atomicWrite(taskPath(teamDirectory, taskId), JSON.stringify(task, null, 2), teamDirectory)

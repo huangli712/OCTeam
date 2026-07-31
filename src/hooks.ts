@@ -135,7 +135,23 @@ export function createCompactingHook(): NonNullable<Hooks["experimental.session.
         const sid = typeof input === "object" && input !== null
             ? (input as Record<string, unknown>).sessionID
             : undefined
-        if (typeof sid === "string" && sid) compacting.set(sid, Date.now() + COMPACTING_FLAG_TTL_MS)
+        if (typeof sid === "string" && sid) {
+            // LOW: enforce COMPACTING_MAP_CAP on insert by evicting the
+            // oldest expired entry before adding a new one.
+            if (compacting.size >= COMPACTING_MAP_CAP) {
+                const now = Date.now()
+                for (const [k, exp] of compacting) {
+                    if (now >= exp) compacting.delete(k)
+                    if (compacting.size < COMPACTING_MAP_CAP) break
+                }
+                // If still at cap after evicting expired, remove the oldest.
+                if (compacting.size >= COMPACTING_MAP_CAP) {
+                    const oldest = [...compacting.entries()].sort((a, b) => a[1] - b[1])[0]
+                    if (oldest) compacting.delete(oldest[0])
+                }
+            }
+            compacting.set(sid, Date.now() + COMPACTING_FLAG_TTL_MS)
+        }
     }
 }
 

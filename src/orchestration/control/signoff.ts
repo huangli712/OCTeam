@@ -169,9 +169,15 @@ export async function evaluateSignoffQuorum(ctx: PluginContext, team: Team): Pro
     if (!task?.signoffStage || task.signoffPolicy !== "peer-quorum") return
     const reviewerRoster = task.signoffReviewers
         ?? team.members.filter(member => !member.isMaster && member.sessionId).map(member => member.name)
+    // MEDIUM: keep ALL recorded votes, even from members who later errored.
+    // Pre-fix code filtered out errored members from the reviewer set,
+    // which could drop a recorded rejection and flip the result.
+    // Only exclude errored members who have NOT yet voted.
     const reviewers = reviewerRoster.filter(name => {
         const reviewer = team.members.find(member => member.name === name)
-        return reviewer?.sessionId && reviewer.status !== "errored"
+        if (!reviewer?.sessionId) return false
+        if (reviewer.status === "errored" && task.signoffApprovals?.[name] === undefined) return false
+        return true
     })
     const reviewerSet = new Set(reviewers)
     const activeApprovals: Record<string, boolean> = {}

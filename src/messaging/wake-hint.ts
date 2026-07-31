@@ -76,20 +76,26 @@ export async function sendWakeHint(
                 ],
             },
         })
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
     const timeoutPromise = new Promise<never>((_, reject) => {
-        const t = setTimeout(() => reject(new Error("wake-hint promptAsync timeout")), WAKE_HINT_TIMEOUT_MS)
-        t.unref()
+        timeoutHandle = setTimeout(() => reject(new Error("wake-hint promptAsync timeout")), WAKE_HINT_TIMEOUT_MS)
+        timeoutHandle.unref()
     })
-    await Promise.race([promptPromise, timeoutPromise])
-        .catch((err) => {
-            // M2: only clear the throttle if OUR timestamp is still the one
-            // in the map. Pre-fix code deleted unconditionally, so a newer
-            // call's throttle would be cleared by an older call's failure.
-            if (wakeHintLastSent.get(sessionID) === snapshot) {
-                wakeHintLastSent.delete(sessionID)
-            }
-            logger.debug("wake-hint promptAsync failed (best-effort)", { sessionID, error: String(err) })
-        })
+    try {
+        await Promise.race([promptPromise, timeoutPromise])
+    } catch (err) {
+        // M2: only clear the throttle if OUR timestamp is still the one
+        // in the map. Pre-fix code deleted unconditionally, so a newer
+        // call's throttle would be cleared by an older call's failure.
+        if (wakeHintLastSent.get(sessionID) === snapshot) {
+            wakeHintLastSent.delete(sessionID)
+        }
+        logger.debug("wake-hint promptAsync failed (best-effort)", { sessionID, error: String(err) })
+    } finally {
+        // MEDIUM: clear the timeout timer on both success and failure so
+        // it doesn't linger as an unref'd timer.
+        if (timeoutHandle) clearTimeout(timeoutHandle)
+    }
 }
 
 /** Drop a session's throttle entry (L1) — called on team_delete to bound the map. */
