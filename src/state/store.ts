@@ -168,9 +168,16 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     // a non-string value that could break path operations. Absent is allowed
     // for legacy fixtures/tests that predate the field.
     if (s.leadSessionId !== undefined && (typeof s.leadSessionId !== "string" || s.leadSessionId.length === 0)) return false
-    // Reject any member whose agent is present but not in the oct-* allowlist.
-    // A missing agent is allowed here (legacy/old state) — safeMemberAgent at
-    // dispatch falls back to oct-oracle (read-only) in that case.
+    // HIGH #14: validate key fields that participate in concurrency control.
+    if (s.teamRunId !== undefined && typeof s.teamRunId !== "string") return false
+    if (s.spawning !== undefined && typeof s.spawning !== "boolean") return false
+    if (s.spawningOwner !== undefined && typeof s.spawningOwner !== "string") return false
+    if (s.runnerPid !== undefined && (typeof s.runnerPid !== "number" || !Number.isFinite(s.runnerPid))) return false
+    if (s.bounds !== undefined) {
+        if (typeof s.bounds !== "object" || s.bounds === null) return false
+    }
+    // member name uniqueness
+    const memberNames = new Set<string>()
     for (const m of s.members) {
             if (typeof m !== "object" || m === null) return false
             // Reject ANY truthy isMaster on persisted members, not just
@@ -188,6 +195,9 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
         // path operations (reservedDir → assertSafeSegment in the sweep loop).
         const name = (m as { name?: unknown }).name
         if (typeof name !== "string" || !isSafePathSegment(name)) return false
+        // HIGH #14: reject duplicate member names.
+        if (memberNames.has(name)) return false
+        memberNames.add(name)
         const status = (m as { status?: unknown }).status
         if (typeof status !== "string") return false
               // M-5: reject out-of-enum member statuses. The state machine only
@@ -637,12 +647,34 @@ export async function saveTeamState(team: Team): Promise<void> {
         // then refuses to read (>1 MiB cap), making the team appear to vanish
         // on restart.
         const serialized = JSON.stringify(toWrite, null, 2)
-        if (Buffer.byteLength(serialized, "utf8") > 1_048_576) {
-            logger.warn("saveTeamState: serialized state exceeds 1 MiB cap, writing anyway but load may fail on restart", { dir, size: Buffer.byteLength(serialized, "utf8") })
-            // We still write — losing state is worse than a large file. But
-            // the warning surfaces the issue for investigation.
+        const serializedBytes = Buffer.byteLength(serialized, "utf8")
+        if (serializedBytes > 1_048_576) {
+            // HIGH #13: writer must not produce a state that reader rejects.
+            // Pre-fix code wrote anyway, making the team vanish on restart.
+            // Now: truncate large response fields to fit under the cap.
+            const trimmed = JSON.parse(serialized) as Record<string, unknown>
+            if (trimmed.activeTask && typeof trimmed.activeTask === "object") {
+                const at = trimmed.activeTask as Record<string, unknown>
+                if (at.responses && typeof at.responses === "object") {
+                    const responses = at.responses as Record<string, string>
+                    for (const [k, v] of Object.entries(responses)) {
+                        if (typeof v === "string" && Buffer.byteLength(v, "utf8") > 32_768) {
+                            responses[k] = v.slice(0, 32_768) + "\n[...truncated by state size cap]"
+                        }
+                    }
+                }
+            }
+            const reSerialized = JSON.stringify(trimmed, null, 2)
+            if (Buffer.byteLength(reSerialized, "utf8") <= 1_048_576) {
+                logger.warn("saveTeamState: state exceeded 1 MiB, truncated responses to fit", { dir, original: serializedBytes, trimmed: Buffer.byteLength(reSerialized, "utf8") })
+                await atomicWrite(statePath(dir), reSerialized, dir)
+            } else {
+                logger.error("saveTeamState: state exceeds 1 MiB even after truncation, writing anyway", { dir, size: Buffer.byteLength(reSerialized, "utf8") })
+                await atomicWrite(statePath(dir), reSerialized, dir)
+            }
+        } else {
+            await atomicWrite(statePath(dir), serialized, dir)
         }
-        await atomicWrite(statePath(dir), serialized, dir)
         team._diskSnapshot = deepClone(toWrite)
         // Sync concurrent changes from the merged result back into the live
         // team. Without this, the live Team diverges from disk after a

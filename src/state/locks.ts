@@ -127,11 +127,13 @@ export async function withLock<T>(
         // lock reaper (LOCK_TTL_MS) will eventually clean up a stuck lock.
         try {
             await releaseLock(lockPath)
+            locallyReleasedLocks.delete(lockPath)
         } catch (err) {
-            logger.warn("withLock: failed to release lock after fn() completed; stale-lock reaper will recover", {
+            logger.warn("withLock: failed to release lock after fn() completed; will retry on next acquire", {
                 lockPath,
                 error: err instanceof Error ? err.message : String(err),
             })
+            locallyReleasedLocks.add(lockPath)
         }
     }
 }
@@ -160,6 +162,13 @@ export function shouldReapStaleLock(
  */
 async function maybeReapStaleLock(lockPath: string): Promise<void> {
     try {
+        // HIGH #12: if this process previously failed to release this lock,
+        // it's safe to reap regardless of PID liveness.
+        if (locallyReleasedLocks.has(lockPath)) {
+            await fs.unlink(lockPath).catch(() => {})
+            locallyReleasedLocks.delete(lockPath)
+            return
+        }
         const st = await fs.stat(lockPath)
         const pidStr = await fs.readFile(lockPath, "utf8")
         const pid = parseInt(pidStr.trim(), 10)
@@ -193,6 +202,11 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
         // Lock vanished or unreadable — next open("wx") retry handles it.
     }
 }
+
+// HIGH #12: track locks that releaseLock failed to delete. The local
+// process knows it has exited the critical section, so re-acquiring
+// is safe even though the PID is still alive.
+const locallyReleasedLocks = new Set<string>()
 
 /**
  * Cross-process lock acquisition via exclusive-create (fs.open "wx").
