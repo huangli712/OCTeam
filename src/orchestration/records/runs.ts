@@ -413,17 +413,19 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         record.artifacts = artifacts
     }
 
-    // MEDIUM: validate the record against the Zod schema before writing so
-    // a code bug that produces an invalid record fails loudly instead of
-    // silently writing a file that readRunRecord will strip or reject.
+    // HIGH: schema validation before write. If the record is invalid,
+    // write to record.invalid.json instead so readRunRecord doesn't
+    // produce a record that readers will silently strip or reject.
     const serialized = JSON.stringify(record, null, 2)
     const parseResult = RunRecordSchema.safeParse(JSON.parse(serialized))
     if (!parseResult.success) {
-        logger.warn("persistRun: record failed schema validation, writing anyway for crash recovery", {
-            runId, issues: parseResult.error.issues.map(i => `${i.path.join(".")}: ${i.message}`),
-        })
+        const issues = parseResult.error.issues.map(i => `${i.path.join(".")}: ${i.message}`)
+        logger.warn("persistRun: record failed schema validation, writing to record.invalid.json", { runId, issues })
+        const invalidPath = path.join(runDir(team.directory, runId), "record.invalid.json")
+        await atomicWrite(invalidPath, serialized, team.directory)
+    } else {
+        await atomicWrite(runRecordPath(team.directory, runId), serialized, team.directory)
     }
-    await atomicWrite(runRecordPath(team.directory, runId), serialized, team.directory)
     await pruneRuns(team.directory, DEFAULT_MAX_RUNS)
 }
 
@@ -440,7 +442,9 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     await assertNoSymlinkTraversal(teamDirectory, root)
     let runIds: string[] = []
     try {
-        runIds = await fs.readdir(root)
+        // HIGH: exclude .quarantine and non-directory entries.
+        const entries = await fs.readdir(root, { withFileTypes: true })
+        runIds = entries.filter(e => e.isDirectory() && e.name !== ".quarantine").map(e => e.name)
     } catch (err) {
         // M-PRUNE: distinguish ENOENT (no runs/ yet) from real errors.
         if (!isEnoent(err)) {
@@ -633,7 +637,9 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
         }
     }
     // MEDIUM: sort by sequence (if present) for stable ordering of
-    // same-millisecond events, then by timestamp as fallback.
+    // same-millisecond events. Process restart resets the counter to 0,
+    // so within a single file the sequence is monotonic. For events from
+    // multiple processes (rare), fall back to timestamp.
     events.sort((a, b) => {
         if (a.sequence !== undefined && b.sequence !== undefined) return a.sequence - b.sequence
         return a.timestamp - b.timestamp

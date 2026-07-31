@@ -377,7 +377,19 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             if (T.id === task.rootTaskId) {
                 task.aggregationDispatchCount = 0
             }
-            const result = output.length > 0 ? output : "(no output provided)"
+            // HIGH: empty output should NOT mark the task completed. Retry
+            // the member instead. Pre-fix code marked it completed with
+            // "(no output provided)", allowing the root to finish without
+            // any actual result.
+            if (output.length === 0) {
+                // Don't complete — re-dispatch the member for a direct solve.
+                const owner = team.members.find(m => m.name === member.name)
+                if (owner?.sessionId && owner.status !== "running") {
+                    await dispatchToMember(ctx, owner, T.subject, owner.worktreePath ?? ctx.directory, team)
+                }
+                return
+            }
+            const result = output
             await updateTask(team.directory, T.id, { status: "completed", result }, {
                 // HIGH #11: CAS guard.
                 expectedOwner: member.name,

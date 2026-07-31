@@ -4,6 +4,7 @@
  */
 
 import fs from "node:fs/promises"
+import path from "node:path"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
@@ -76,21 +77,33 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     staleState = true
                     return
                 }
-                // Re-check name collision inside the mutex: a concurrent
-                // rename or create may have claimed the new directory since
-                // the outside-mutex check at line 52-56.
-                // HIGH #20: use atomic mkdir to claim the new dir name,
-                // eliminating the stat→rename TOCTOU window.
+                // Re-check name collision: use O_CREAT|O_EXCL to atomically
+                // claim the new dir name. This is TOCTOU-safe because mkdir
+                // is atomic — if it succeeds, we are the sole creator.
+                // The placeholder is removed just before fs.rename below.
+                // CRIT #5: do NOT use mkdir+rmdir (which reopens the window).
+                // Instead, keep the empty dir as the rename destination —
+                // fs.rename on Linux replaces an empty dir atomically.
                 try {
                     await fs.mkdir(newDir, { recursive: false })
-                    // Directory created as a placeholder — remove it so
-                    // fs.rename(oldDir, newDir) succeeds (rename requires the
-                    // destination to not exist or be empty on some platforms).
-                    await fs.rmdir(newDir).catch(() => {})
                 } catch (err) {
-                    if (!isEnoent(err) && (err as NodeJS.ErrnoException).code !== "EEXIST") throw err
-                    collision = true
-                    return
+                    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+                        collision = true
+                        return
+                    }
+                    if (!isEnoent(err)) throw err
+                    // Parent dirs missing — this shouldn't happen for a valid
+                    // storage root, but create them and retry.
+                    await fs.mkdir(path.dirname(newDir), { recursive: true }).catch(() => {})
+                    try {
+                        await fs.mkdir(newDir, { recursive: false })
+                    } catch (retryErr) {
+                        if ((retryErr as NodeJS.ErrnoException).code === "EEXIST") {
+                            collision = true
+                            return
+                        }
+                        throw retryErr
+                    }
                 }
                 // Re-read spec INSIDE the mutex so concurrent mutators
                 // (e.g. a parallel add/remove) don't clobber each other's

@@ -175,7 +175,12 @@ export function extractTaggedJSON(
     if (countDepth !== 0 || topLevelObjects !== 1) return undefined
     const candidate = lastPayload.slice(openIdx, lastClose + 1)
     try {
-        return JSON.parse(candidate) as Record<string, unknown>
+        const parsed = JSON.parse(candidate)
+        // HIGH: reject array-wrapped objects. Pre-fix code accepted
+        // [{"approved":true}] as valid because the brace counter
+        // found exactly one object inside the array.
+        if (Array.isArray(parsed)) return undefined
+        return parsed as Record<string, unknown>
     } catch {
         return undefined
     }
@@ -342,7 +347,7 @@ export function parseVerdict(
         verdict: raw as Verdict,
         rationale: typeof p.rationale === "string" ? p.rationale : "",
         diff: typeof p.diff === "string" ? p.diff : "",
-        score: typeof p.score === "number" && Number.isFinite(p.score) ? p.score : undefined,
+        score: typeof p.score === "number" && Number.isFinite(p.score) && p.score >= 0 && p.score <= 10 ? p.score : undefined,
         confidence: typeof p.confidence === "number" && Number.isFinite(p.confidence) && p.confidence >= 0 && p.confidence <= 1 ? p.confidence : undefined,
         issues: parseWorkflowIssues(p.issues),
     }

@@ -545,8 +545,8 @@ describe("MEDIUM-1: maxTasks cap rejects an over-budget decomposition", () => {
 
 // --- LOW-4: empty-output leaf placeholder ---
 
-describe("LOW-4: empty member output finalizes with a placeholder result", () => {
-    test("a member that produced nothing leaves a recognizable result, not an empty string", async () => {
+describe("LOW-4: empty member output triggers re-dispatch, not placeholder completion", () => {
+    test("a member that produced nothing is re-dispatched, not marked completed", async () => {
         const team = makeTeam({
             activeTask: makeRecurseTask(),
             members: [{ name: "alice", sessionId: "ses_alice" }],
@@ -557,8 +557,8 @@ describe("LOW-4: empty member output finalizes with a placeholder result", () =>
         await processIdle(makeCtx({ outputs: {}, calls: [], status: statusIdleFrom({}) }), team, team.members[0], "ses_alice")
 
         const t = await getTask(team.directory, root.id)
-        expect(t!.status).toBe("completed")
-        expect(t!.result).toBe("(no output provided)")
+        // Task should NOT be completed when output is empty.
+        expect(t!.status).toBe("claimed")
     })
 })
 

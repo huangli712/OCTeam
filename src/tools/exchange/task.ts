@@ -120,6 +120,11 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                 const allTasks = await listAllTasks(caller.directory)
                 // blocked_by validation (moved inside mutex for TOCTOU safety).
                 if (args.blocked_by && args.blocked_by.length > 0) {
+                    // MEDIUM: cap blocker count to prevent oversized task files.
+                    if (args.blocked_by.length > 32) {
+                        blockedByError = `Error: blocked_by cannot exceed 32 entries (got ${args.blocked_by.length})`
+                        return
+                    }
                     const existingIds = new Set(
                         allTasks.filter(t => t.status !== "deleted").map(t => t.id),
                     )

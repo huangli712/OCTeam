@@ -574,6 +574,7 @@ export const RunRecordSchema = z.object({
 
 const RunEventCommonShape = {
     timestamp: z.number().nonnegative(),
+    sequence: z.number().int().nonnegative().optional(),
     member: z.string().min(1).optional(),
     stage: z.number().int().nonnegative().optional(),
     round: z.number().int().nonnegative().optional(),

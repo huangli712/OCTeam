@@ -27,6 +27,7 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
                     return isIndexedMasterOf(context.sessionID, dir)
                 })
             }
+            if (names.length === 0) return "No teams found."
             const rows = await Promise.all(
                 names.map(async name => {
                     // M-15: isolate per-team spec read so one corrupt config
