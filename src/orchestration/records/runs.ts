@@ -28,6 +28,7 @@ import { runsDir, runDir, runRecordPath, runEventsPath } from "../../state/paths
 import type { RunEvent } from "../../core/types.js"
 import { listAllTasks } from "../../state/tasks.js"
 import { RunRecordSchema, RunEventSchema } from "./schemas.js"
+import { flushRunEvents } from "./events.js"
 
 /** Keep at most this many run records per team; older ones are pruned. */
 export const DEFAULT_MAX_RUNS = 20
@@ -427,6 +428,9 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         await atomicWrite(runRecordPath(team.directory, runId), serialized, team.directory)
     }
     await pruneRuns(team.directory, DEFAULT_MAX_RUNS)
+    // MEDIUM: flush pending event writes so terminal events are durable
+    // before the caller reports completion.
+    try { await flushRunEvents(team.directory, runId) } catch { /* best-effort */ }
 }
 
 

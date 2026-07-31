@@ -199,6 +199,12 @@ export async function dispatchEnsembleGate(
     );
     let dispatchedAny = false;
     const unavailable: string[] = [];
+    // HIGH: if ALL verifiers already have results, the ensemble is already
+    // complete — return true so the engine doesn't try to re-dispatch or
+    // fail the run. This happens when a verifier crashed after all others
+    // completed, or on resume after a partial crash.
+    const allResolved = step.verifiers.every(v => step.ensembleResults?.[v] !== undefined);
+    if (allResolved) return true;
     // HIGH: mark dispatched BEFORE the first dispatch so crash between
     // dispatch and mark doesn't leave the step unmarked on disk.
     markWorkflowStepDispatched(step);

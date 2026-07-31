@@ -337,6 +337,15 @@ function checkJoinStep(context: WorkflowInvariantContext, index: number, step: W
             context.violations.push(`step ${index}: branch tail ${tailIndex} out of bounds`)
         } else if (tail.branch?.fanoutIndex !== join.fanoutIndex) {
             context.violations.push(`step ${index}: branch tail ${tailIndex} is not in fanout ${join.fanoutIndex}`)
+        } else {
+            // MEDIUM: verify tail matches the branch range's endIndex.
+            const fanout = context.steps[join.fanoutIndex]
+            if (fanout?.kind === "fanout" && fanout.fanout) {
+                const range = fanout.fanout.branchRanges[fanout.fanout.branchIds.indexOf(tail.branch!.branchId)]
+                if (range && tailIndex !== range.endIndex) {
+                    context.violations.push(`step ${index}: branch tail ${tailIndex} does not match range endIndex ${range.endIndex}`)
+                }
+            }
         }
     }
     for (const branchId of join.erroredBranchIds ?? []) {

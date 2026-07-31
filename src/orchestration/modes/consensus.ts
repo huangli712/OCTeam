@@ -44,7 +44,22 @@ export async function handleConsensusIdle(
         // with missing members. Failed-dispatch members need re-dispatch,
         // not silent exclusion.
         const allResponded = participants.every(name => task.responses[name] !== undefined)
-        if (!allResponded) return  // barrier not satisfied yet
+        if (!allResponded) {
+            // HIGH: re-dispatch members who haven't responded this round.
+            // Pre-fix code returned without re-dispatching, causing the
+            // barrier to stall until wall-clock timeout.
+            const roundText = `[Consensus Round ${task.currentRound ?? 1}]\n${buildRoundSummary(task.responses)}\n\nRespond, then emit <consensus>{"agreed": true|false}</consensus>.`
+            for (const m of nonMasterMembers(team)) {
+                if (task.responses[m.name] !== undefined) continue
+                if (m.status === "running") continue // still working
+                try {
+                    await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory, team)
+                } catch (err) {
+                    logSwallowed(ctx, "consensus: re-dispatch failed", err, { member: m.name })
+                }
+            }
+            return  // barrier not satisfied yet
+        }
         task.consensusReached = allMembersAgree(task.responses, participants)
         if (task.consensusReached) {
             await finishRun(ctx, team, "consensus_reached", "idle")

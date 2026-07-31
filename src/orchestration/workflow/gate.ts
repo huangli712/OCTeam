@@ -309,9 +309,12 @@ export function aggregateEnsembleVerdict(step: WorkflowGateStep): {
         const confidences = allHaveConfidence
             ? supporters.map(([, r]) => r.confidence as number)
             : []
-        const supportersWithIssues = supporters.filter(([, result]) => result.issues !== undefined)
-        const allIssues = supportersWithIssues.length > 0
-            ? supportersWithIssues.flatMap(([, result]) => result.issues ?? [])
+        // MEDIUM: only aggregate issues if ALL supporters provide them.
+        // Pre-fix code aggregated from any subset, treating a single
+        // empty issues:[] as definitive when others omitted the field.
+        const allHaveIssues = supporters.every(([, r]) => r.issues !== undefined)
+        const allIssues = allHaveIssues
+            ? supporters.flatMap(([, result]) => result.issues ?? [])
             : undefined
         const rationaleLines = supporters.flatMap(([verifierName, result]) => {
             const rationale = result.rationale?.trim()
