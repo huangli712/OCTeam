@@ -25,37 +25,29 @@ export function buildWorkflowUpstream(
     steps: WorkflowStep[],
     uptoIndex: number,
 ): string {
-    const blocks: string[] = [];
-    let used = 0;
     const explicitInputs = steps[uptoIndex]?.inputs;
     const inputIndices =
         explicitInputs ??
         Array.from({ length: uptoIndex }, (_, index) => index);
-    for (const i of inputIndices) {
+    let used = 0;
+    const collected: string[] = []
+    for (let idx = inputIndices.length - 1; idx >= 0; idx--) {
+        const i = inputIndices[idx]!
         const s = steps[i];
         if (!s?.completed) continue;
-        const block = workflowUpstreamBlock(
-            steps,
-            uptoIndex,
-            i,
-            explicitInputs !== undefined,
-        );
+        const block = workflowUpstreamBlock(steps, uptoIndex, i, explicitInputs !== undefined);
         if (block === null) continue;
-        const separator = blocks.length === 0 ? "" : "\n\n";
-        const separatorSize = Buffer.byteLength(separator, "utf8");
-        const blockSize = Buffer.byteLength(block, "utf8");
-        if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) {
-            const marker = `[…upstream context truncated at ${MAX_UPSTREAM_OUTPUT_BYTES} bytes]`;
-            const markerSize = Buffer.byteLength(marker, "utf8");
-            if (used + separatorSize + markerSize <= MAX_UPSTREAM_OUTPUT_BYTES) {
-                blocks.push(marker);
-            }
+        const sep = collected.length === 0 ? "" : "\n\n";
+        const sepBytes = Buffer.byteLength(sep, "utf8");
+        const blockBytes = Buffer.byteLength(block, "utf8");
+        if (used + sepBytes + blockBytes > MAX_UPSTREAM_OUTPUT_BYTES) {
+            collected.unshift(`[...upstream truncated at ${MAX_UPSTREAM_OUTPUT_BYTES} bytes]`);
             break;
         }
-        blocks.push(block);
-        used += separatorSize + blockSize;
+        collected.unshift(block);
+        used += sepBytes + blockBytes;
     }
-    return blocks.join("\n\n");
+    return collected.join("\n\n");
 }
 
 /** Build a single upstream-context block for a completed step, or null if it should be skipped. */
