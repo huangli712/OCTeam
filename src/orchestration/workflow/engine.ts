@@ -199,6 +199,9 @@ export async function dispatchEnsembleGate(
     );
     let dispatchedAny = false;
     const unavailable: string[] = [];
+    // HIGH: mark dispatched BEFORE the first dispatch so crash between
+    // dispatch and mark doesn't leave the step unmarked on disk.
+    markWorkflowStepDispatched(step);
     for (const verifierName of step.verifiers) {
         // skip verifiers that already have results (e.g., on partial retry)
         if (step.ensembleResults?.[verifierName] !== undefined) continue;
@@ -224,15 +227,6 @@ export async function dispatchEnsembleGate(
             { stepIndex: index, correlationId: step.correlationId },
         );
         dispatchedAny = true;
-    }
-    // When at least one verifier dispatched, populate INVALID for any
-    // unavailable verifiers so the ensemble can reach its completion
-    // threshold instead of hanging permanently.
-    if (dispatchedAny) {
-        // HIGH #18: mark dispatched BEFORE the dispatch loop, not after.
-        // Pre-fix code called markWorkflowStepDispatched after the loop,
-        // creating a window where crash left dispatched steps unmarked.
-        markWorkflowStepDispatched(step);
     }
     // When at least one verifier dispatched, populate INVALID for any
     // unavailable verifiers so the ensemble can reach its completion

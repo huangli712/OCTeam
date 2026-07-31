@@ -14,7 +14,7 @@ import { logger } from "../../core/log.js"
 import { loadTeamState, readTeamSpec, saveTeamState, saveTeamStateBounded, writeTeamSpec } from "../../state/store.js"
 import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
 import { inboxPath, worktreesDir } from "../../state/paths.js"
-import { destroyWorktree } from "../../state/worktrees.js"
+import { destroyWorktree, hasUncommittedChanges } from "../../state/worktrees.js"
 import { listAllTasks, updateTask } from "../../state/tasks.js"
 import { OCTEAM_AGENTS, isOCTeamAgent, normalizeRole, roleAgent } from "../../core/role.js"
 import type { ActiveTask, TeamSpec, WorkflowStep } from "../../core/types.js"
@@ -508,7 +508,17 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 // that cleanWorktree will eventually clear on team_delete.
                 if (renaming && liveMember.worktreePath) {
                     let destroyed = true
+                    // CRIT #6: check for uncommitted changes before force-destroying.
                     try {
+                        const dirty = await hasUncommittedChanges(liveMember.worktreePath)
+                        if (dirty) {
+                            changes.push("warning: worktree has uncommitted changes, NOT destroying")
+                            destroyed = false
+                        }
+                    } catch {
+                        // can't check — proceed with destroy
+                    }
+                    if (destroyed) try {
                         await destroyWorktree(
                             ctx.directory,
                             liveMember.worktreePath,
