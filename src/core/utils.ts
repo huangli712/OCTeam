@@ -27,14 +27,15 @@ export function isEnoent(err: unknown): boolean {
  * false) or immediate spurious rejection. */
 export function waitUntil(
     predicate: () => boolean,
-    opts: { timeoutMs: number; pollMs?: number },
+    opts: { timeoutMs: number; pollMs?: number; signal?: AbortSignal },
 ): Promise<void> {
-    // M6: reject invalid timeoutMs early instead of looping forever.
     if (!Number.isFinite(opts.timeoutMs) || opts.timeoutMs < 0) {
         return Promise.reject(new Error(`waitUntil: invalid timeoutMs ${opts.timeoutMs} (must be finite and >= 0)`))
     }
-    // M-POLLMS: validate pollMs is a finite positive number. NaN/Infinity/
-    // negative would cause tight polling or setTimeout warnings.
+    // MEDIUM: check AbortSignal for early cancellation.
+    if (opts.signal?.aborted) {
+        return Promise.reject(new Error("waitUntil: aborted"))
+    }
     const rawPollMs = opts.pollMs ?? 250
     const pollMs = Number.isFinite(rawPollMs) && rawPollMs > 0 ? rawPollMs : 250
     return new Promise<void>((resolve, reject) => {
@@ -54,6 +55,10 @@ export function waitUntil(
                 return
             }
             const remaining = deadline - performance.now()
+            if (opts.signal?.aborted) {
+                reject(new Error("waitUntil: aborted"))
+                return
+            }
             if (remaining <= 0) {
                 reject(new Error(`waitUntil: timed out after ${opts.timeoutMs}ms`))
                 return

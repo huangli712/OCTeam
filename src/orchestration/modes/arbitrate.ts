@@ -87,6 +87,27 @@ export async function handleArbitrateIdle(
     // Phase A: debate (arbitrationStage not yet set).
     if (!task.arbitrationStage) {
         await maybeAdvanceBarrier(team, disputants, async () => {
+            // HIGH: verify dispatched disputants have responses before
+            // advancing. Only check when a dispatch has occurred this round
+            // (dispatchedParticipants is populated). First round or fresh
+            // resume has no dispatchedParticipants, so skip the check.
+            const dispatched = task.dispatchedParticipants
+            if (dispatched && dispatched.length > 0) {
+                const missing = dispatched.filter(name => task.responses[name] === undefined)
+                if (missing.length > 0) {
+                    for (const name of missing) {
+                        const m = team.members.find(mm => mm.name === name)
+                        if (m?.sessionId && m.status !== "running") {
+                            try {
+                                await dispatchToMember(ctx, m, buildDebatePrompt({ ...task, currentRound: task.currentRound ?? 1 }), m.worktreePath ?? ctx.directory, team)
+                            } catch (err) {
+                                logSwallowed(ctx, "arbitrate: re-dispatch failed", err, { member: name })
+                            }
+                        }
+                    }
+                    return
+                }
+            }
             if ((task.currentRound ?? 1) >= (task.maxRounds ?? DEFAULT_ARBITRATE_ROUNDS)) {
                 // Debate exhausted -> transition to the ruling phase.
                 task.arbitrationStage = true

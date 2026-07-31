@@ -466,6 +466,14 @@ export const DEFAULT_ROLE = "reviewer"
  */
 export const ROLE_NAMES: readonly string[] = Object.freeze(Object.keys(ROLES))
 
+// MEDIUM: deep-freeze each RoleDef so instruction arrays and nested
+// objects are also immutable. Object.freeze(ROLES) only freezes the
+// top-level record; individual role objects remain mutable.
+for (const def of Object.values(ROLES)) {
+    Object.freeze(def)
+    if (Array.isArray(def.instruction)) Object.freeze(def.instruction)
+}
+
 /**
  * All hardened oct-* agent names used by OCTeam roles. Derived from ROLES so
  * the allowlist stays in sync as new roles/agents are added. This is the single
