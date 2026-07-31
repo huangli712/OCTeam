@@ -93,7 +93,21 @@ export function extractOutputFromParts(parts: unknown): string {
                 segments.push(`$ ${input.command}`)
             } else if (typeof input.patchText === "string" && input.patchText.trim()) {
                 segments.push(`[Patch]\n${input.patchText}`)
-            } else if (typeof input.newString === "string" && input.newString.trim()) {
+            } else {
+                // MEDIUM: for tool-only turns with no recognized input field,
+                // produce a non-empty summary so the turn isn't treated as
+                // empty (which would trigger re-dispatch or stalling).
+                const query = typeof input.query === "string" ? input.query.slice(0, 200)
+                    : typeof input.pattern === "string" ? input.pattern.slice(0, 200)
+                    : typeof input.prompt === "string" ? input.prompt.slice(0, 200)
+                    : typeof input.body === "string" ? input.body.slice(0, 200)
+                    : typeof input.subject === "string" ? input.subject.slice(0, 200)
+                    : typeof input.description === "string" ? input.description.slice(0, 200)
+                    : ""
+                if (query) segments.push(`[${p.tool}] ${query}`)
+                else segments.push(`[${p.tool}]`)
+            }
+            if (typeof input.newString === "string" && input.newString.trim()) {
                 // M-OUTPUT: capture edit tool's oldString→newString format.
                 const fp = typeof input.filePath === "string" ? input.filePath : ""
                 const oldStr = typeof input.oldString === "string" ? input.oldString : ""

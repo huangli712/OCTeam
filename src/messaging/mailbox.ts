@@ -372,6 +372,27 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
         kept.push(line)
     }
     if (pruned === 0 && !truncated) return
+    // MEDIUM: before writing the truncated log, collect IDs from active
+    // reservations so they're never lost from the processed dedup log.
+    // Pre-fix code's byte truncation could delete IDs that still have
+    // active reservations, causing the reaper to re-queue and re-deliver.
+    const reservedDir = path.join(path.dirname(p), "..", "reserved", recipient)
+    let reservedIds: Set<string> | undefined
+    try {
+        const reservedEntries = await fs.readdir(reservedDir)
+        reservedIds = new Set(reservedEntries.map(f => f.replace(/\.json$/, "")))
+    } catch { /* ENOENT — no reservations */ }
+    if (reservedIds && reservedIds.size > 0) {
+        // Re-add any reserved IDs that were pruned by truncation.
+        for (const line of lines) {
+            try {
+                const entry = JSON.parse(line) as { id?: string }
+                if (entry.id && reservedIds.has(entry.id) && !kept.includes(line)) {
+                    kept.push(line)
+                }
+            } catch { /* skip malformed */ }
+        }
+    }
     await atomicWrite(p, kept.join("\n") + "\n", teamDirectory)
 }
 
