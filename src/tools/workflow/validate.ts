@@ -147,6 +147,19 @@ function validateMatrixForeachShape(step: WorkflowFanoutToolStep, displayStep: n
         if ((step.steps ?? []).length === 0) {
             return `Error: fanout step ${displayStep} with matrix/foreach requires template \`steps\``
         }
+        // MEDIUM #24: validate post-expansion step count to prevent
+        // unbounded fanout. Matrix product or foreach length * steps per branch.
+        const templateSteps = step.steps?.length ?? 0
+        const matrixValues = step.matrix ? Object.values(step.matrix) : []
+        const foreachValues = step.foreach ?? []
+        const expansionCount = hasMatrix
+            ? matrixValues.reduce((acc, vals) => acc * vals.length, 1)
+            : foreachValues.length
+        const totalSteps = expansionCount * templateSteps
+        const MAX_EXPANDED_STEPS = 256
+        if (totalSteps > MAX_EXPANDED_STEPS) {
+            return `Error: fanout step ${displayStep} expands to ${totalSteps} steps (${expansionCount} branches × ${templateSteps} per branch), exceeding the ${MAX_EXPANDED_STEPS} limit`
+        }
     }
     return null
 }

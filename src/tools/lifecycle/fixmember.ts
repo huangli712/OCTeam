@@ -320,8 +320,9 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         migrateActiveTaskMemberRefs(team.lastInterruptedTask, oldName, newName)
                     }
                     changes.push(`name: ${oldName} → ${newName}`)
-                    // HIGH: migrate shared task ownership so claimed/in_progress
-                    // tasks are not orphaned under the old name.
+                    // HIGH #19: task migration is transactional — if any
+                    // update fails, roll back all previously migrated tasks.
+                    const migrated: Array<{ id: string; oldOwner: string }> = []
                     try {
                         const tasks = await listAllTasks(team.directory)
                         for (const t of tasks) {
@@ -330,10 +331,17 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                                     expectedOwner: oldName,
                                     expectedStatus: t.status as "claimed" | "in_progress",
                                 })
+                                migrated.push({ id: t.id, oldOwner: oldName })
                             }
                         }
                     } catch (err) {
-                        changes.push(`warning: task owner migration failed (${err instanceof Error ? err.message : String(err)})`)
+                        // Rollback all successfully migrated tasks.
+                        for (const m of migrated) {
+                            try {
+                                await updateTask(team.directory, m.id, { owner: m.oldOwner })
+                            } catch { /* best-effort */ }
+                        }
+                        changes.push(`warning: task owner migration failed and rolled back (${err instanceof Error ? err.message : String(err)})`)
                     }
                 }
 

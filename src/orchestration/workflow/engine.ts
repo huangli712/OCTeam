@@ -228,12 +228,20 @@ export async function dispatchEnsembleGate(
     // When at least one verifier dispatched, populate INVALID for any
     // unavailable verifiers so the ensemble can reach its completion
     // threshold instead of hanging permanently.
+    if (dispatchedAny) {
+        // HIGH #18: mark dispatched BEFORE the dispatch loop, not after.
+        // Pre-fix code called markWorkflowStepDispatched after the loop,
+        // creating a window where crash left dispatched steps unmarked.
+        markWorkflowStepDispatched(step);
+    }
+    // When at least one verifier dispatched, populate INVALID for any
+    // unavailable verifiers so the ensemble can reach its completion
+    // threshold instead of hanging permanently.
     if (dispatchedAny && unavailable.length > 0) {
         for (const name of unavailable) {
             recordUnavailableEnsembleVerifier(step, name);
         }
     }
-    if (dispatchedAny) markWorkflowStepDispatched(step);
     return dispatchedAny;
 }
 
@@ -299,6 +307,9 @@ export async function dispatchGateStep(
     );
     step.dispatchedActor = verifier.name;
     step.correlationId = crypto.randomUUID();
+    // HIGH #18: mark dispatched BEFORE dispatchToMember so the step state
+    // is persisted atomically with the dispatch intent.
+    markWorkflowStepDispatched(step);
     await dispatchToMember(
         ctx,
         verifier,
@@ -307,7 +318,6 @@ export async function dispatchGateStep(
         team,
         { stepIndex: index, correlationId: step.correlationId },
     );
-    markWorkflowStepDispatched(step);
     return true;
 }
 

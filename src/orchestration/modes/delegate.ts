@@ -66,6 +66,21 @@ export async function runDelegateStyleTail(
         // Idempotent: already-captured members yield empty outputs and return early.
         for (const m of team.members) {
             if (m.isMaster || !m.sessionId) continue
+            // HIGH #11: verify the member's session is still live before
+            // treating it as complete. A member whose cached status is
+            // "idle" but whose session has actually errored/crashed would
+            // pass the incomplete.length === 0 check and finish the run
+            // prematurely.
+            try {
+                const st = await ctx.client.session.status({})
+                const statuses = Array.isArray(st.data) ? st.data : []
+                const entry = statuses.find((e: { sessionID?: string }) => e.sessionID === m.sessionId) as { type?: string } | undefined
+                if (entry?.type === "error" || entry?.type === "retry") {
+                    return
+                }
+            } catch {
+                // Status API unavailable — fall through to cached-state check.
+            }
             // H4: log capture failures so operators can diagnose incomplete
             // output in run summaries. Pre-fix code silently swallowed all
             // errors — a transient session.messages failure or persistent I/O
