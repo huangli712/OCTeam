@@ -87,12 +87,11 @@ function hasNestedQuantifier(pattern: string): boolean {
     // C-18: consecutive identical-quantified items at top level. Patterns
     // like ^a*a*a*a*a*a*a*a*b$ have NO groups or alternation, so the checks
     // above miss them, yet V8 exhibits polynomial backtracking when the
-    // trailing literal (b) does not match: the engine tries every way to
-    // distribute the input characters among the consecutive quantified items.
-    // Heuristic: flag 3+ consecutive `X*`/`X+` items where X is the same
-    // character (the case that actually backtracks). Different chars
-    // (a*b*c*) are fine — each greedily matches its own character.
+    // trailing literal (b) does not match.
+    // MEDIUM: also catch repeated quantified character CLASSES like
+    // [a]*[a]*[a]* which the original regex misses.
     if (/([a-zA-Z0-9])([*+])(?:\1\2){2,}/.test(stripped)) return true
+    if (/((?:\[[^\]]{1,3}\])[*+])(?:\1){2,}/.test(stripped)) return true
     // Also catch the character-class variant: [a][a][a]+ or similar via
     // repeated single-char classes under quantifiers — rare but possible.
     // Skip: too rare and complex for a heuristic; the input cap mitigates.

@@ -480,8 +480,9 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
             await finishRun(ctx, team, "recurse_failed:root_task_missing", "failed")
             return
         }
-        if (rootTask.status !== "completed") {
-            // Root not done yet — fall through to tail which will dispatch it.
+        if (rootTask.status === "completed") {
+            // LOW: emit the aggregated event when root task completes.
+            await recordEvent(team, { timestamp: Date.now(), kind: "aggregated", member: member.name })
         }
     }
     await runDelegateStyleTail(ctx, team, member, "recurse", () => buildRecursePrompt())

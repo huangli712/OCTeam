@@ -8,7 +8,7 @@
 
 import type { MemberState } from "../../core/types.js"
 import { parseWorkflowCondition } from "../../orchestration/workflow/gate.js"
-import { loadWorkflowFile, validateWorkflowSteps } from "../../orchestration/workflow/loader.js"
+import { loadWorkflowFile, validateWorkflowSteps, WORKFLOW_MAX_TOTAL_STEPS } from "../../orchestration/workflow/loader.js"
 import { defaultBounds, validateSignoff } from "../support.js"
 import { AsyncMutex } from "../../state/locks.js"
 import type { Team } from "../../state/store.js"
@@ -1034,6 +1034,10 @@ export async function resolveWorkflowArgs(
         if ("error" in validated) return validated.error
         const expanded = safeExpandMatrixForeach(validated.steps)
         if (typeof expanded === "string") return expanded
+        // MEDIUM: enforce global step cap after expansion.
+        if (expanded.length > WORKFLOW_MAX_TOTAL_STEPS) {
+            return `Error: workflow expands to ${expanded.length} steps, exceeding the ${WORKFLOW_MAX_TOTAL_STEPS} limit`
+        }
         return { ...args, steps: expanded }
     }
     if (!args.workflow_file) {

@@ -101,6 +101,15 @@ export const humanApprovalSchemaFields = {
             "Pause at supported mid-run boundaries and require the leader to call " +
             "team_approve/team_reject before continuing.",
         ),
+    approval_timeout_ms: tool.schema
+        .number()
+        .int()
+        .min(1000)
+        .optional()
+        .describe(
+            "Maximum wall-clock milliseconds to wait for leader approval. " +
+            "If exceeded, the run fails (preventing indefinite busy status).",
+        ),
 }
 
 /**
