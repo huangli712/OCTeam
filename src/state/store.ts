@@ -318,20 +318,36 @@ export async function loadTeamState(
     const cached = teamRegistry.get(dir)
     if (cached) {
         // MEDIUM: check if the on-disk state has been modified by another
-        // process since our last read. If mtime is newer, the cache is stale.
+        // process since our last read. If mtime is newer, update the cached
+        // Team in-place (preserving mutex identity) rather than creating a new object.
         try {
             const diskStat = await fs.stat(statePath(dir))
-            if (cached._diskMtime !== undefined && diskStat.mtimeMs > cached._diskMtime) {
-                // Cache is stale — reload from disk but keep the same Team
-                // reference (preserves mutex identity).
-                inflightLoads.delete(dir)
-                teamRegistry.delete(dir)
-            } else {
-                return cached
+            if (cached._diskMtime !== undefined && diskStat.mtimeMs > cached._diskMtime + 5) {
+                // Reload state from disk and update the cached Team in-place.
+                const state = await readJsonOrNull<TeamState>(
+                    statePath(dir),
+                    (v): v is TeamState => isValidTeamState(v, dir),
+                )
+                if (state) {
+                    // Preserve mutex, directory, and runtime-only fields.
+                    const activeTask = cached.activeTask
+                    const runtime = {
+                        mutex: cached.mutex,
+                        directory: cached.directory,
+                        deleted: cached.deleted,
+                        spawning: cached.spawning,
+                        spawningOwner: cached.spawningOwner,
+                    }
+                    Object.assign(cached, state, runtime, { _diskSnapshot: deepClone(state), _diskMtime: diskStat.mtimeMs })
+                    // Preserve runtime-only ActiveTask fields.
+                    if (activeTask && cached.activeTask) {
+                        (cached.activeTask as { forcedDirectTaskIds?: string[] }).forcedDirectTaskIds = (activeTask as { forcedDirectTaskIds?: string[] }).forcedDirectTaskIds
+                    }
+                    return cached
+                }
             }
+            return cached
         } catch {
-            // stat failed (ENOENT or permission) — return cached (better
-            // than crashing on a transient I/O error).
             return cached
         }
     }
@@ -705,6 +721,8 @@ export async function saveTeamState(team: Team): Promise<void> {
         // MEDIUM: only set _diskSnapshot after a successful write so it
         // matches what's actually on disk.
         team._diskSnapshot = deepClone(toWrite)
+        // Update mtime so our own writes don't trigger a stale-cache reload.
+        try { team._diskMtime = (await fs.stat(statePath(dir))).mtimeMs } catch { /* best-effort */ }
         // Sync concurrent changes from the merged result back into the live
         // team. Without this, the live Team diverges from disk after a
         // cross-process mutation (e.g. another process changed status to
