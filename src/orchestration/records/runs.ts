@@ -545,7 +545,10 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
     await assertNoSymlinkTraversal(teamDirectory, root)
     let runIds: string[] = []
     try {
-        runIds = await fs.readdir(root)
+        // MEDIUM: use withFileTypes to skip non-directory entries (.quarantine,
+        // stray files) so they don't cause ENOTDIR on record reads.
+        const entries = await fs.readdir(root, { withFileTypes: true })
+        runIds = entries.filter(e => e.isDirectory() && e.name !== ".quarantine").map(e => e.name)
     } catch (err) {
         // M-12: distinguish ENOENT (no runs/ yet — return []) from real
         // storage failures (EACCES, EIO). Pre-fix code masked ALL errors as

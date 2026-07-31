@@ -169,6 +169,11 @@ export async function handleRouteIdle(
 
     // Phase B: target barrier (any selected target's idle re-checks readiness).
     const targets = task.routeTargets ?? []
+    // LOW: empty targets must not complete successfully.
+    if (targets.length === 0) {
+        await finishRun(ctx, team, "route_complete:no_targets", "failed")
+        return
+    }
     // H-29: detect partial fan-out failure. If SOME targets were dispatched
     // (turnCount > 0) but others were NOT (turnCount === 0), the barrier would
     // falsely conclude "all targets idle → run complete" for the undispatched

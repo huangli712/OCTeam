@@ -43,6 +43,9 @@ async function escalateMemberToErrored(
     entry: { type: string; message?: string } | undefined,
 ): Promise<void> {
     live.status = "errored"
+    // HIGH: clear retryingSince so sweep doesn't re-escalate this member
+    // on every tick. Pre-fix code left it set, causing repeated escalation.
+    live.retryingSince = undefined
     live.error =
         `sustained retry > ${RETRY_ESCALATION_MS}ms`
         + ((live.retryCount ?? 0) > 0 ? ` after ${live.retryCount} retries` : "")

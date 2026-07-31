@@ -47,7 +47,9 @@ async function rejectIfIsolated(
     try {
         const team = await loadTeamState(caller.storageRoot, teamId, caller.leadSessionId)
         const at = team.activeTask
-        if (at?.type === "parallel" && !at.tasks) {
+        // HIGH: check mode field, not tasks array presence. Pre-fix code
+        // used !at.tasks which can be bypassed by passing tasks in isolated mode.
+        if (at?.type === "parallel" && at.mode === "isolated") {
             return `Error: shared task access is disabled in parallel isolated mode. Isolated members cannot share a task list.`
         }
         return null

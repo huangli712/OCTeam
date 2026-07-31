@@ -530,6 +530,10 @@ export async function sweepTeamOnce(
         // Mirrors processIdle (idle.ts) and
         // handleStatusEvent (status.ts) tombstone guards.
         if (team.deleted) return
+        // CRIT: cross-process ownership guard. If runnerPid is set and
+        // belongs to another process, do NOT mutate this team's state —
+        // it is owned by a live sibling process.
+        if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
         // 1. Reclaim stale resources.
         // M12: wrap cleanup in try-catch so a single corrupt mailbox/task
         // doesn't block termination checks for this team. Pre-fix code ran

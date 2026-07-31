@@ -66,7 +66,9 @@ export async function buildSummary(
         }
     }
     if (Buffer.byteLength(body, "utf8") > SUMMARY_BUDGET) {
-        return truncateOutput(body, SUMMARY_BUDGET) + "\n[...summary truncated at 64KiB]"
+        const marker = "\n[...summary truncated at 64KiB]"
+        const markerBytes = Buffer.byteLength(marker, "utf8")
+        return truncateOutput(body, SUMMARY_BUDGET - markerBytes) + marker
     }
     return body
 }

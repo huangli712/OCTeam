@@ -142,7 +142,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
                 } catch (finishErr) {
                     logSwallowed(ctx, "signoff: finishRun failed after decider dispatch failure", finishErr, { team: team.teamName })
                 }
-                return false
+                return true
             }
         }
     }
@@ -154,7 +154,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
         } catch (finishErr) {
             logSwallowed(ctx, "signoff: finishRun failed after all-reviewers dispatch failure", finishErr, { team: team.teamName })
         }
-        return false
+        return true
     }
 
     task.signoffReviewers = dispatchedReviewers
