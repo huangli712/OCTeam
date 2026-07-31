@@ -182,10 +182,17 @@ export function extractSessionStatusEntry(
  */
 export function truncateOutput(text: string, maxBytes: number = 65536): string {
     if (Buffer.byteLength(text, "utf8") <= maxBytes) return text
-    // When maxBytes is smaller than the elision marker itself, return an empty
-    // string instead of producing a result longer than the requested cap.
+    // MEDIUM: for small budgets, return as much text as fits without
+    // the elision marker. Pre-fix code returned empty string for
+    // maxBytes <= 48, silently dropping all output.
     const sepOverhead = 48
-    if (maxBytes <= sepOverhead) return ""
+    if (maxBytes <= sepOverhead) {
+        const buf = Buffer.from(text, "utf8")
+        if (buf.length <= maxBytes) return text
+        let cut = maxBytes
+        while (cut > 0 && (buf[cut] & 0xc0) === 0x80) cut--
+        return buf.toString("utf8", 0, cut) + "…"
+    }
     const buf = Buffer.from(text, "utf8")
     // Reserve a fixed overhead for the elision marker and split the rest evenly
     // between head and tail. 48 bytes covers "\n...[truncated <digits> middle

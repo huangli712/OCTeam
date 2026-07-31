@@ -478,7 +478,13 @@ export const RunRecordSchema = z.object({
     consensusReached: z.boolean().optional(),
     signoffPolicy: SignoffPolicySchema.optional(),
     signoffApprovals: z.record(z.string(), z.boolean()).optional(),
-    memberOutputs: z.record(z.string(), z.object({ bytes: z.number().nonnegative(), file: z.string() })),
+    memberOutputs: z.record(z.string(), z.object({
+        bytes: z.number().nonnegative(),
+        // MEDIUM: restrict file names to safe segments (member.md, reduce.md,
+        // signoff-*.md, join-*.md) so a tampered record can't inject path
+        // traversal into consumer path helpers.
+        file: z.string().regex(/^[a-zA-Z0-9._-]+\.md$/),
+    })),
     artifacts: z.object({
         reduce: z.string().optional(),
         signoff: z.record(z.string(), z.string()).optional(),

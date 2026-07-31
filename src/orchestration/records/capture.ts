@@ -140,8 +140,16 @@ export async function captureMemberOutput(
     const isSignoffTurn =
         !!task.signoffStage
         && !member.isMaster
-        && (task.signoffPolicy === "peer-quorum"
-            || member.name === task.signoffDecider)
+        && (
+            // MEDIUM: for peer-quorum, only accept output from dispatched
+            // reviewers. If signoffReviewers is unset (not yet dispatched),
+            // accept any non-master member (first-idle fallback).
+            (task.signoffPolicy === "peer-quorum"
+                && (task.signoffReviewers === undefined
+                    || task.signoffReviewers.includes(member.name)))
+            || (task.signoffPolicy === "decider"
+                && member.name === task.signoffDecider)
+        )
     const outPath = isReduceTurn
         ? runReduceOutputPath(team.directory, runId)
         : isSignoffTurn
