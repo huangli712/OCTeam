@@ -390,12 +390,23 @@ function validatePlannerTeam(teamId: string, team: unknown): { memberNames: stri
         if (typeof member.role !== "string" || member.role.length === 0) {
             return { error: `Error: team.members[${i}] is missing a role` }
         }
+        // MEDIUM: validate role matches the preset regex (same as team_create).
+        if (!/^[a-z]+$/.test(member.role)) {
+            return { error: `Error: team.members[${i}] role "${member.role}" must be lowercase letters only` }
+        }
         if (typeof member.prompt !== "string" || member.prompt.length === 0) {
             return { error: `Error: team.members[${i}] is missing a prompt` }
+        }
+        // MEDIUM: enforce prompt/model length caps to match team_create.
+        if (member.prompt.length > 8192) {
+            return { error: `Error: team.members[${i}] prompt exceeds 8192 characters` }
         }
         // Optional fields type check
         if (member.model !== undefined && typeof member.model !== "string") {
             return { error: `Error: team.members[${i}] model must be a string` }
+        }
+        if (typeof member.model === "string" && member.model.length > 256) {
+            return { error: `Error: team.members[${i}] model exceeds 256 characters` }
         }
         if (member.worktree !== undefined && typeof member.worktree !== "boolean") {
             return { error: `Error: team.members[${i}] worktree must be a boolean` }

@@ -53,6 +53,7 @@ export type Team = TeamState & {
     spawning?: boolean
     _diskSnapshot?: TeamState  // last known on-disk state (for three-way merge in saveTeamState)
     _diskMtime?: number  // mtimeMs of the last disk read (for cross-process cache invalidation)
+    _lastCacheCheck?: number  // throttle: last time we stat'd the disk for staleness
 }
 
 // Process-level registry: resolved teamDir (absolute path) -> Team (with its
@@ -317,6 +318,14 @@ export async function loadTeamState(
     const dir = teamDir(storageRoot, teamName, leadSessionId)
     const cached = teamRegistry.get(dir)
     if (cached) {
+        // MEDIUM: throttle disk stat to once per second per team to avoid
+        // an fs.stat on every cached lookup (which happens very frequently
+        // during orchestration).
+        const now = Date.now()
+        if (cached._lastCacheCheck !== undefined && now - cached._lastCacheCheck < 1000) {
+            return cached
+        }
+        cached._lastCacheCheck = now
         // MEDIUM: check if the on-disk state has been modified by another
         // process since our last read. If mtime is newer, update the cached
         // Team in-place (preserving mutex identity) rather than creating a new object.
