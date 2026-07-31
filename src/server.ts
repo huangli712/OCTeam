@@ -41,9 +41,17 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
     // Accept "user" or "project" (case-insensitive); anything else falls
     // back to "project" for safety.
     const rawScope = options?.scope
-    const scope: StorageScope = typeof rawScope === "string" && rawScope.toLowerCase() === "user"
-        ? "user"
-        : "project"
+    let scope: StorageScope
+    if (rawScope === undefined) {
+        scope = "project"
+    } else if (typeof rawScope === "string") {
+        const normalized = rawScope.toLowerCase()
+        if (normalized === "user") scope = "user"
+        else if (normalized === "project") scope = "project"
+        else throw new Error(`octeam: invalid scope "${rawScope}" — must be "user" or "project"`)
+    } else {
+        throw new Error(`octeam: scope must be a string ("user" or "project"), got ${typeof rawScope}`)
+    }
     const ctx: PluginContext = createPluginContext(input, scope)
 
     // Initialize the global logger sink so bottom-layer modules (state/,
@@ -102,8 +110,8 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
     // reconciles missed idle events. Runs for the lifetime of the plugin.
     // M-28: retain the handle so a future plugin-reload path could
     // clearInterval(sweepHandle) to prevent duplicate sweep timers.
-    const sweepHandle = startSweepTimer(ctx)
-    void sweepHandle // retained for future teardown; .unref() prevents loop keepalive
+    const sweepTimer = startSweepTimer(ctx)
+    void sweepTimer // retained for future teardown; .unref() prevents loop keepalive
 
     return {
         tool: createTools(ctx),

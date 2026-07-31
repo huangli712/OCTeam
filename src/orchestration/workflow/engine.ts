@@ -204,7 +204,11 @@ export async function dispatchEnsembleGate(
     // fail the run. This happens when a verifier crashed after all others
     // completed, or on resume after a partial crash.
     const allResolved = step.verifiers.every(v => step.ensembleResults?.[v] !== undefined);
-    if (allResolved) return true;
+    if (allResolved) {
+        // NEW: settle the ensemble verdict immediately.
+        await settleEnsembleGate(ctx, team, task, step);
+        return true;
+    }
     // HIGH: mark dispatched BEFORE the first dispatch so crash between
     // dispatch and mark doesn't leave the step unmarked on disk.
     markWorkflowStepDispatched(step);
@@ -843,6 +847,25 @@ export async function advanceWorkflowStep(
         return;
     }
     await saveTeamState(team);
+}
+
+/** NEW: settle an ensemble gate whose verifiers have all responded. */
+async function settleEnsembleGate(
+    ctx: PluginContext,
+    team: Team,
+    task: WorkflowTask,
+    step: WorkflowGateStep,
+): Promise<void> {
+    // Lazy import to break the engine↔verdict cycle.
+    const { handleGateVerdict } = await import("./verdict.js")
+    const verifierName = step.verifiers?.[0];
+    if (!verifierName) return;
+    const member = team.members.find(m => m.name === verifierName);
+    if (!member) return;
+    const steps = task.steps ?? [];
+    const gateIndex = steps.indexOf(step);
+    if (gateIndex === -1) return;
+    await handleGateVerdict(ctx, team, member, step, gateIndex);
 }
 
 /** Re-dispatch a workflow step at the given index (used by crash-resume and timeout-retry paths). */

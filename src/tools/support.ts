@@ -74,7 +74,7 @@ export async function abortAndResetMembers(
     const abortFailed = new Set<string>()
     const abortResults: Array<{ member: string; aborted: boolean }> = []
     for (const m of team.members) {
-        if (!m.isMaster && m.sessionId && m.status === "running") {
+        if (!m.isMaster && m.sessionId && (m.status === "running" || m.status === "errored" || m.retryingSince !== undefined)) {
             try {
                 await ctx.client.session.abort({
                     path: { id: m.sessionId },

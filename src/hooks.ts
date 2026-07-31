@@ -663,8 +663,11 @@ export async function sweepTeamOnce(
  * sweep iteration cannot overlap with the next one. Pre-fix code used
  * setInterval(async ...) which allowed overlapping sweeps when a single
  * iteration took longer than SWEEP_INTERVAL_MS. */
-export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
+export function startSweepTimer(ctx: PluginContext): { stop: () => void } {
+    let stopped = false
+    let currentHandle: NodeJS.Timeout | undefined
     const scheduleSweep = (): NodeJS.Timeout => setTimeout(async () => {
+        if (stopped) return
         try {
             // Periodic cleanup of expired compacting flags so sessions
             // deleted without a transform do not leak entries.
@@ -718,12 +721,15 @@ export function startSweepTimer(ctx: PluginContext): NodeJS.Timeout {
         // overlapping intervals.
         sweepHandle = scheduleSweep()
         sweepHandle.unref()
+        currentHandle = sweepHandle
     }, SWEEP_INTERVAL_MS)
     let sweepHandle = scheduleSweep()
-    // .unref() so the sweep timer does not keep the host event loop alive on
-    // graceful shutdown — mirrors the lock heartbeat (locks.ts:110). Retained
-    // via `handle` so a future teardown could clearInterval(handle) if the
-    // plugin lifecycle ever grows a reload path.
     sweepHandle.unref()
-    return sweepHandle
+    currentHandle = sweepHandle
+    return {
+        stop: () => {
+            stopped = true
+            if (currentHandle) clearTimeout(currentHandle)
+        },
+    }
 }

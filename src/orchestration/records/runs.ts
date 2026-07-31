@@ -521,6 +521,9 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
         const quarantineDir = path.join(runsDir(teamDirectory), ".quarantine")
         const quarantined = path.join(quarantineDir, runId)
         try {
+            // HIGH: verify the quarantine target path before rename so a
+            // symlinked .quarantine can't redirect outside the team root.
+            await assertNoSymlinkTraversal(teamDirectory, quarantined)
             await fs.mkdir(quarantineDir, { recursive: true })
             await fs.rename(target, quarantined)
             logger.warn("pruneRuns: quarantined orphaned run directory (no record.json)", { runId, quarantined })
