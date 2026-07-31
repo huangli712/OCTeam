@@ -471,7 +471,8 @@ export const ROLE_NAMES: readonly string[] = Object.freeze(Object.keys(ROLES))
 // top-level record; individual role objects remain mutable.
 for (const def of Object.values(ROLES)) {
     Object.freeze(def)
-    if (Array.isArray(def.instruction)) Object.freeze(def.instruction)
+    // LOW: instruction is already a string from .join(), so
+    // Array.isArray is always false. Removed dead branch.
 }
 
 /**

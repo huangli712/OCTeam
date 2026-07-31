@@ -487,10 +487,15 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
             corrupted.push(runId)
         }
     }
+    const MAX_RECORD_FILE_BYTES = 2_097_152 // 2 MiB cap for safety
     const records = await Promise.all(
         checked.map(runId =>
-            fs.readFile(runRecordPath(teamDirectory, runId), "utf8")
-                .then(raw => {
+            fs.open(runRecordPath(teamDirectory, runId), "r")
+                .then(async fh => {
+                    const stat = await fh.stat()
+                    if (stat.size > MAX_RECORD_FILE_BYTES) return { kind: "corrupt" as const, rec: null }
+                    const raw = await fh.readFile("utf8")
+                    await fh.close()
                     try {
                         const rec = parseRunRecord(raw)
                         if (rec.runId !== runId) return { kind: "mismatch" as const, rec }

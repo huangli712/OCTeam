@@ -18,6 +18,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
+import { logSwallowed } from "../../core/log.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../../core/types.js"
 import { type Team, saveTeamState } from "../../state/store.js"
@@ -403,25 +404,40 @@ export async function processIdle(
     }
     // reduce stage takes priority (real map-reduce).
     if (team.activeTask.reduceStage) {
-        await handleReduceIdle(ctx, team, member, captureResult)
+        try {
+            await handleReduceIdle(ctx, team, member, captureResult)
+        } catch (handlerErr) {
+            // HIGH: handler exception after capture would stall the member
+            // (next idle sees same message count → stale → skip). Set
+            // retryingSince so sweep re-drives on the next tick.
+            member.retryingSince = Date.now()
+            logSwallowed(ctx, "processIdle: reduce handler threw", handlerErr, { member: member.name, team: team.teamName })
+        }
         await checkTermination(ctx, team)
         return
     }
     // signoff stage takes priority over normal mode dispatch.
     if (team.activeTask.signoffStage) {
-        // MEDIUM #4: only skip on STALE idle (no new turn). A genuinely new
-        // but EMPTY turn (reason="empty") must reach handleSignoffIdle so
-        // the missing-tag retry path can fire. Pre-fix code blocked ALL
-        // non-fresh idles, permanently stalling signoff on empty turns.
         if (captureResult?.fresh === false && captureResult.reason === "stale") return
-        await handleSignoffIdle(ctx, team, member)
+        try {
+            await handleSignoffIdle(ctx, team, member)
+        } catch (handlerErr) {
+            member.retryingSince = Date.now()
+            logSwallowed(ctx, "processIdle: signoff handler threw", handlerErr, { member: member.name, team: team.teamName })
+        }
         await checkTermination(ctx, team)
         return
     }
     // require_done_ack recovery (parallel-only): re-prompt premature idle.
     if (taskType === "parallel" && await maybeRepromptPrematureIdle(ctx, team, member)) return
 
-    await idleDispatch[taskType](ctx, team, member, captureResult)
+    try {
+        await idleDispatch[taskType](ctx, team, member, captureResult)
+    } catch (handlerErr) {
+        // HIGH: same stall prevention as above.
+        member.retryingSince = Date.now()
+        logSwallowed(ctx, "processIdle: mode handler threw", handlerErr, { member: member.name, team: team.teamName })
+    }
 
     // Step 9: Termination checks.
     await checkTermination(ctx, team)
