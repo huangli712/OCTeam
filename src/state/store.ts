@@ -52,6 +52,7 @@ export type Team = TeamState & {
     deleted?: boolean
     spawning?: boolean
     _diskSnapshot?: TeamState  // last known on-disk state (for three-way merge in saveTeamState)
+    _diskMtime?: number  // mtimeMs of the last disk read (for cross-process cache invalidation)
 }
 
 // Process-level registry: resolved teamDir (absolute path) -> Team (with its
@@ -315,7 +316,25 @@ export async function loadTeamState(
 ): Promise<Team> {
     const dir = teamDir(storageRoot, teamName, leadSessionId)
     const cached = teamRegistry.get(dir)
-    if (cached) return cached
+    if (cached) {
+        // MEDIUM: check if the on-disk state has been modified by another
+        // process since our last read. If mtime is newer, the cache is stale.
+        try {
+            const diskStat = await fs.stat(statePath(dir))
+            if (cached._diskMtime !== undefined && diskStat.mtimeMs > cached._diskMtime) {
+                // Cache is stale — reload from disk but keep the same Team
+                // reference (preserves mutex identity).
+                inflightLoads.delete(dir)
+                teamRegistry.delete(dir)
+            } else {
+                return cached
+            }
+        } catch {
+            // stat failed (ENOENT or permission) — return cached (better
+            // than crashing on a transient I/O error).
+            return cached
+        }
+    }
     // Deduplicate concurrent first-loads: if another caller is already
     // loading this directory, await their result instead of creating a
     // second Team object with a separate mutex.
@@ -344,6 +363,12 @@ async function loadTeamFromDisk(dir: string, teamName: string): Promise<Team> {
             throw err
         }
         const team: Team = { ...state, mutex: new AsyncMutex(), directory: dir, _diskSnapshot: deepClone(state) }
+        // MEDIUM: record the disk mtime so loadTeamState can detect
+        // cross-process modifications on subsequent cached lookups.
+        try {
+            const st = await fs.stat(statePath(dir))
+            team._diskMtime = st.mtimeMs
+        } catch { /* best-effort */ }
         teamRegistry.set(dir, team)
         return team
     } finally {
