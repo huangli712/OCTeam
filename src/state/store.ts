@@ -330,7 +330,6 @@ export async function loadTeamState(
                 )
                 if (state) {
                     // Preserve mutex, directory, and runtime-only fields.
-                    const activeTask = cached.activeTask
                     const runtime = {
                         mutex: cached.mutex,
                         directory: cached.directory,
@@ -338,11 +337,22 @@ export async function loadTeamState(
                         spawning: cached.spawning,
                         spawningOwner: cached.spawningOwner,
                     }
-                    Object.assign(cached, state, runtime, { _diskSnapshot: deepClone(state), _diskMtime: diskStat.mtimeMs })
-                    // Preserve runtime-only ActiveTask fields.
-                    if (activeTask && cached.activeTask) {
-                        (cached.activeTask as { forcedDirectTaskIds?: string[] }).forcedDirectTaskIds = (activeTask as { forcedDirectTaskIds?: string[] }).forcedDirectTaskIds
+                    // MEDIUM: update activeTask IN-PLACE instead of replacing
+                    // the reference, so external callers holding the old
+                    // reference still see updates. Pre-fix Object.assign
+                    // replaced the entire activeTask, breaking reference identity.
+                    if (cached.activeTask && state.activeTask) {
+                        const oldForcedDirect = (cached.activeTask as { forcedDirectTaskIds?: string[] }).forcedDirectTaskIds
+                        Object.assign(cached.activeTask, state.activeTask)
+                        if (oldForcedDirect !== undefined) {
+                            (cached.activeTask as { forcedDirectTaskIds?: string[] }).forcedDirectTaskIds = oldForcedDirect
+                        }
+                    } else {
+                        cached.activeTask = state.activeTask
                     }
+                    // Update non-activeTask fields from state.
+                    const { activeTask: _at, ...restState } = state
+                    Object.assign(cached, restState, runtime, { _diskSnapshot: deepClone(state), _diskMtime: diskStat.mtimeMs })
                     return cached
                 }
             }
