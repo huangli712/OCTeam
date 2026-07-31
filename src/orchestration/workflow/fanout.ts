@@ -114,22 +114,26 @@ function buildJoinedWorkflowOutput(
         if (erroredBranchIds.has(branchId)) continue;
         const branchBlocks: string[] = [];
 
+        // MEDIUM: cap each branch block to a per-branch budget so a
+        // single oversized branch doesn't get entirely dropped.
+        const branchBudget = Math.floor(MAX_UPSTREAM_OUTPUT_BYTES / ranges.length)
+        let branchUsed = 0
         for (
             let stepIndex = range.startIndex;
             stepIndex <= range.endIndex;
             stepIndex += 1
         ) {
             const step = steps[stepIndex];
-            // H-6: skip steps in cancelled (skipped) branches — any_success
-            // marks losing branches' intermediate steps skipped+completed
-            // when a winning branch opens the join. Pre-fix this only checked
-            // kind/completed/output, so losing branches' partial outputs
-            // leaked into the joined payload.
             if (step?.kind !== "task" || !step.completed || step.skipped === true || !step.output)
                 continue;
             if (step.exposeOutput === false) continue;
+            // Per-step truncation within the branch budget.
+            const remaining = branchBudget - branchUsed
+            if (remaining <= 0) break
+            const stepText = truncateOutput(step.output, Math.min(remaining, 8192))
+            branchUsed += Buffer.byteLength(stepText, "utf8")
             branchBlocks.push(
-                `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n${truncateOutput(step.output)}`,
+                `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n${stepText}`,
             );
         }
 

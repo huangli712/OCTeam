@@ -166,9 +166,13 @@ export async function captureMemberOutput(
     const accumulated = appendTurnBlock(prev, full, new Date().toISOString())
     const accumulatedBytes = Buffer.byteLength(accumulated, "utf8")
     const wasTruncated = accumulatedBytes > ACCUMULATED_OUTPUT_CAP
-    // MEDIUM: include truncation metadata so consumers know the output is partial.
+    // LOW: pre-compute the marker so the total stays within cap.
+    const marker = wasTruncated
+        ? `\n[...output truncated: original ${accumulatedBytes} bytes]`
+        : ""
+    const markerBytes = Buffer.byteLength(marker, "utf8")
     const capped = wasTruncated
-        ? truncateOutput(accumulated, ACCUMULATED_OUTPUT_CAP) + `\n[...output truncated: original ${accumulatedBytes} bytes, kept ${ACCUMULATED_OUTPUT_CAP} bytes]`
+        ? truncateOutput(accumulated, ACCUMULATED_OUTPUT_CAP - markerBytes) + marker
         : accumulated
 
     // Persist to disk FIRST. The in-memory response slot and the capture

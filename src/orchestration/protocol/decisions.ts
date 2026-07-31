@@ -401,7 +401,20 @@ export function parseScoreboard(
         seenMembers.add(item.member)
         const entry: ArenaCandidateScore = {
             member: item.member,
-            passed: "passed" in item && item.passed === true,
+            // MEDIUM: strict validate passed — must be boolean if provided.
+            passed: (() => {
+                if ("passed" in item) {
+                    if (typeof item.passed !== "boolean") {
+                        return null as unknown as boolean // signal invalid
+                    }
+                    return item.passed
+                }
+                return false
+            })(),
+        }
+        // If passed was provided but invalid, fail.
+        if (entry.passed === null) {
+            return { scores: [], rationale: "", parseFailed: true }
         }
         // HIGH #22: if score is present but not a finite number, the
         // evaluator's output is malformed — fail the ENTIRE scoreboard
