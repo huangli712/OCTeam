@@ -101,7 +101,7 @@ async function readFileForBackup(filePath: string, trustedRoot: string): Promise
     try {
         // MEDIUM: use O_NOFOLLOW to atomically reject leaf symlinks,
         // eliminating the lstat→readFile TOCTOU window.
-        const O_NOFOLLOW = 0x20000
+        const O_NOFOLLOW = (await import("node:fs")).constants.O_NOFOLLOW ?? 0x20000
         const fh = await open(filePath, O_NOFOLLOW)
         try {
             const stat = await fh.stat()

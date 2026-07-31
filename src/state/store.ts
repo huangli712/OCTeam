@@ -4,7 +4,7 @@
  */
 
 import fs from "node:fs/promises"
-import { realpathSync } from "node:fs"
+import { realpathSync, constants as fsSyncConstants } from "node:fs"
 import { randomUUID } from "node:crypto"
 import path from "node:path"
 
@@ -258,11 +258,10 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
  * @param validate    optional schema guard; null returned on mismatch
  */
 
-// #9: O_NOFOLLOW closes the TOCTOU window in readJsonOrNull. Without it,
-// an attacker can lstat (regular file) → swap to symlink → readFile (follows).
-// O_NOFOLLOW is checked atomically with open: ELOOP if leaf is a symlink.
-// 0x20000 is the Linux value; harmless on platforms that don't support it.
-const O_NOFOLLOW = 0x20000
+// #9: O_NOFOLLOW closes the TOCTOU window. Use fs.constants if available,
+// falling back to the Linux numeric value for platforms where constants
+// doesn't expose it.
+const O_NOFOLLOW = (fsSyncConstants as Record<string, number>).O_NOFOLLOW ?? 0x20000
 
 async function readJsonOrNull<T>(
     filePath: string,

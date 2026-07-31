@@ -262,7 +262,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                     // symlink plant cannot redirect the write to an arbitrary
                     // file. O_EXCL fails if the file already exists (fresh team).
                     // O_NOFOLLOW fails if the leaf is a symlink.
-                    const O_NOFOLLOW = 0x20000
+                    const O_NOFOLLOW = (await import("node:fs")).constants.O_NOFOLLOW ?? 0x20000
                     const fh = await fs.open(sentinelPath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY | O_NOFOLLOW, 0o644)
                     try {
                         await fh.writeFile(context.sessionID + "\n", "utf8")

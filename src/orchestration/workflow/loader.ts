@@ -554,7 +554,7 @@ async function loadWorkflowFileUnchecked(
     try {
         // MEDIUM: O_NOFOLLOW rejects leaf symlinks; O_NONBLOCK prevents a
         // FIFO named .json from blocking open() indefinitely.
-        const O_NOFOLLOW = 0x20000
+        const O_NOFOLLOW = (await import("node:fs")).constants.O_NOFOLLOW ?? 0x20000
         const O_NONBLOCK = 0x800
         const fh = await fs.open(resolved.filePath, fs.constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
         try {

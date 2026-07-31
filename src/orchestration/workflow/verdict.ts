@@ -686,7 +686,11 @@ async function handleGateRetry(
         `Rationale: ${v.rationale}\nDiff: ${v.diff}\nFix and resubmit.`;
     step.dispatchedActor = undefined;
     if (!(await dispatchTaskStep(ctx, team, task, producerIdx, feedback))) {
-        await handleWorkflowDispatchUnavailable(ctx, team, task, producerStep);
+        const result = await handleWorkflowDispatchUnavailable(ctx, team, task, producerStep);
+        // HIGH: if degraded (fanout tolerance), advance so the frontier
+        // doesn't stall waiting for an idle that won't come from the
+        // errored producer.
+        if (result === "degraded") await advanceWorkflowStep(ctx, team);
         return;
     }
     recordEvent(team, {

@@ -122,10 +122,13 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // code checks flags, not the callback return value, so a
                     // returned string was silently dropped.
                     specError = `Error: team "${args.team_id}" config is unreadable — refusing to rename (${err instanceof Error ? err.message : String(err)})`
+                    // MEDIUM: clean up the placeholder directory created above.
+                    await fs.rmdir(newDir).catch(() => {})
                     return
                 }
                 if (!spec) {
                     specError = `Error: team "${args.team_id}" config is missing — refusing to rename`
+                    await fs.rmdir(newDir).catch(() => {})
                     return
                 }
                 // Capture the original spec name so the rollback can restore it.
