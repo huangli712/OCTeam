@@ -219,6 +219,9 @@ export interface ActiveTaskBase {
     // round-bearing types (loop / arbitrate / consensus)
     maxRounds?: number                       // round limit
     currentRound?: number
+    // #15: immutable round prompt snapshot so late/retry dispatches use the
+    // same text as the initial dispatch, not mutable task.responses.
+    roundPrompt?: string
     // #4: track which participants were successfully dispatched this round.
     // Barrier checks this to avoid treating a failed-dispatch member as
     // "already responded" — the member is idle but never received the prompt.

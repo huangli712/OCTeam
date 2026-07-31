@@ -716,7 +716,17 @@ export async function saveTeamState(team: Team): Promise<void> {
             for (const m of mergedMembers) {
                 const live = liveMap.get(m.name)
                 if (live) {
-                    // In-place field sync for existing members.
+                    // In-place field sync. Object.assign only ADDS/overwrites
+                    // fields — it does NOT delete fields that exist in `live`
+                    // but are absent in `merged`. This can resurrect revoked
+                    // fields (e.g. sessionId cleared on disk but retained in
+                    // the stale live object).
+                    // #6: explicit deletion of fields absent from the merged
+                    // member but present in the live one.
+                    const mergedKeys = new Set(Object.keys(m))
+                    for (const key of Object.keys(live)) {
+                        if (!mergedKeys.has(key)) delete (live as Record<string, unknown>)[key]
+                    }
                     Object.assign(live, deepClone(m))
                 } else {
                     team.members.push(deepClone(m))

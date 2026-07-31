@@ -87,6 +87,18 @@ function mergePermissionsMonotonic(
     return result
 }
 
+/** Recursively freeze an object and all nested objects (deep freeze). */
+function deepFreeze<T>(obj: T): T {
+    if (obj === null || typeof obj !== "object") return obj
+    Object.freeze(obj)
+    for (const value of Object.values(obj as Record<string, unknown>)) {
+        if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+            deepFreeze(value)
+        }
+    }
+    return obj
+}
+
 /**
  * Create the config hook that registers OCTeam's built-in subagents into
  * opencode's agent registry. For oct-* names (security-hardened presets)
@@ -112,7 +124,7 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
                 // hook cannot in-place weaken it (e.g. flip edit to "allow").
                 // A later hook that REPLACES the whole permission object still
                 // can (visible operation), but silent field mutation is blocked.
-                const perm = Object.freeze(mergePermissionsMonotonic(def.permission))
+                const perm = deepFreeze(mergePermissionsMonotonic(def.permission))
                 cfg.agent[name] = { ...def, permission: perm }
                 continue
             }
@@ -144,7 +156,7 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
                 // H1: freeze the permission object so later hooks cannot mutate
                 // it in-place. Re-asserted after the allowed merge for the same
                 // reason as mode/description/prompt below.
-                permission: Object.freeze(mergePermissionsMonotonic(def.permission, existing?.permission)),
+                permission: deepFreeze(mergePermissionsMonotonic(def.permission, existing?.permission)),
                 ...allowed,
                 // Security-critical overrides (OCTeam wins) — re-asserted AFTER
                 // the allowed merge above so a stray `mode` in `existing` (which

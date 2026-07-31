@@ -100,6 +100,11 @@ export function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]):
                 if (steps[index - 1]?.kind !== "fanout") {
                     return `Error: join step ${index + 1} has no matching fanout step`
                 }
+                // #17: reject join-policy fields on join steps (they belong
+                // on the companion fanout). Pre-fix code silently dropped them.
+                if ("join_policy" in step || "quorum" in step || "required_branches" in step) {
+                    return `Error: join step ${index + 1} has join-policy fields (join_policy/quorum/required_branches). These belong on the companion fanout step.`
+                }
                 break
             case "fanout": {
                 if (steps[index + 1]?.kind !== "join") {

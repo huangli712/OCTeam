@@ -100,6 +100,9 @@ export async function handleConsensusIdle(
         const roundText =
             `[Consensus Round ${nextRound}]\n${summary}\n\n`
             + `Respond, then emit <consensus>{"agreed": true|false}</consensus> (or <共识>{"agreed": ...}</共识>).`
+        // #15: snapshot the round prompt so late/retry dispatches reuse
+        // the same text (not rebuilt from mutable task.responses).
+        task.roundPrompt = roundText
         for (const m of nonMasterMembers(team)) {
             try {
                 await dispatchToMember(ctx, m, roundText, m.worktreePath ?? ctx.directory, team)
