@@ -160,40 +160,29 @@ export function buildGateProducerOutput(
 ): string {
     const blocks: string[] = [];
     let used = 0;
+    // HIGH: fair per-target budget so later targets aren't entirely dropped.
+    const perTargetBudget = Math.floor(MAX_UPSTREAM_OUTPUT_BYTES / targetIndices.length);
     for (const targetIndex of targetIndices) {
         const producerStep = steps[targetIndex];
         if (!producerStep) continue;
+        const remaining = perTargetBudget - (used % perTargetBudget);
+        if (remaining <= 0) break;
         if (producerStep.kind === "task") {
             const block = `[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n` +
-                `${truncateOutput(producerStep.output ?? "")}`;
+                `${truncateOutput(producerStep.output ?? "", remaining)}`;
             const blockSize = Buffer.byteLength(block, "utf8");
-            const separatorSize = blocks.length > 0 ? 2 : 0; // "\n\n"
-            if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) {
-                const marker = `[…gate producer output truncated at ${MAX_UPSTREAM_OUTPUT_BYTES} bytes]`;
-                const markerSize = Buffer.byteLength(marker, "utf8");
-                if (used + separatorSize + markerSize <= MAX_UPSTREAM_OUTPUT_BYTES) {
-                    blocks.push(marker);
-                    used += separatorSize + markerSize;
-                }
-                break;
-            }
+            const separatorSize = blocks.length > 0 ? 2 : 0;
+            if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) break;
             blocks.push(block);
             used += separatorSize + blockSize;
         } else if (producerStep.kind === "join") {
             const joined = producerStep.join?.joinedOutput ?? "";
             if (joined) {
                 const block = `[Joined output from workflow step ${targetIndex + 1}]\n` +
-                    `${truncateOutput(joined)}`;
+                    `${truncateOutput(joined, remaining)}`;
                 const blockSize = Buffer.byteLength(block, "utf8");
                 const separatorSize = blocks.length > 0 ? 2 : 0;
-                if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) {
-                    const marker = `[…gate producer output truncated at ${MAX_UPSTREAM_OUTPUT_BYTES} bytes]`;
-                    const markerSize = Buffer.byteLength(marker, "utf8");
-                    if (used + separatorSize + markerSize <= MAX_UPSTREAM_OUTPUT_BYTES) {
-                        blocks.push(marker);
-                    }
-                    break;
-                }
+                if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) break;
                 blocks.push(block);
                 used += separatorSize + blockSize;
             }

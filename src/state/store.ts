@@ -669,8 +669,10 @@ export async function saveTeamState(team: Team): Promise<void> {
                 logger.warn("saveTeamState: state exceeded 1 MiB, truncated responses to fit", { dir, original: serializedBytes, trimmed: Buffer.byteLength(reSerialized, "utf8") })
                 await atomicWrite(statePath(dir), reSerialized, dir)
             } else {
-                logger.error("saveTeamState: state exceeds 1 MiB even after truncation, writing anyway", { dir, size: Buffer.byteLength(reSerialized, "utf8") })
-                await atomicWrite(statePath(dir), reSerialized, dir)
+                // HIGH: do NOT write a state that the reader will reject.
+                // Pre-fix code wrote anyway, making the team vanish on restart.
+                logger.error("saveTeamState: state exceeds 1 MiB even after truncation, keeping old state", { dir, size: Buffer.byteLength(reSerialized, "utf8") })
+                return // keep existing on-disk state
             }
         } else {
             await atomicWrite(statePath(dir), serialized, dir)
