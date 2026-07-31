@@ -66,9 +66,8 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
         logSwallowed(ctx, "rebuildSessionIndex failed; aborting plugin startup", err)
         throw new Error(
             `octeam: rebuildSessionIndex failed — session authorization index is unavailable. `
-            + `Plugin startup aborted to prevent inconsistent authorization. Error: ${
-                err instanceof Error ? err.message : String(err)
-            }`,
+            + `Plugin startup aborted to prevent inconsistent authorization.`,
+            { cause: err },
         )
     }
 
@@ -82,7 +81,8 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
     } catch (err) {
         throw new Error(
             `octeam: reconcileActivation failed — team activation state may be inconsistent. `
-            + `Plugin startup aborted. Error: ${err instanceof Error ? err.message : String(err)}`,
+            + `Plugin startup aborted.`,
+            { cause: err },
         )
     }
 
@@ -93,7 +93,8 @@ const server = async (input: PluginInput, options?: Record<string, unknown>): Pr
     } catch (err) {
         throw new Error(
             `octeam: reconcileCrashedTeams failed — crashed team recovery incomplete. `
-            + `Plugin startup aborted. Error: ${err instanceof Error ? err.message : String(err)}`,
+            + `Plugin startup aborted.`,
+            { cause: err },
         )
     }
 

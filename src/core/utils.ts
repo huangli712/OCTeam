@@ -44,26 +44,40 @@ export function waitUntil(
         // indefinite waiting.
         const start = performance.now()
         const deadline = start + opts.timeoutMs
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const cleanup = () => {
+            if (timer) clearTimeout(timer)
+            if (opts.signal) opts.signal.removeEventListener("abort", onAbort)
+        }
+        const onAbort = () => {
+            cleanup()
+            reject(new Error("waitUntil: aborted"))
+        }
+        if (opts.signal) opts.signal.addEventListener("abort", onAbort, { once: true })
         const tick = () => {
             try {
                 if (predicate()) {
+                    cleanup()
                     resolve()
                     return
                 }
             } catch (err) {
+                cleanup()
                 reject(err)
                 return
             }
             const remaining = deadline - performance.now()
             if (opts.signal?.aborted) {
+                cleanup()
                 reject(new Error("waitUntil: aborted"))
                 return
             }
             if (remaining <= 0) {
+                cleanup()
                 reject(new Error(`waitUntil: timed out after ${opts.timeoutMs}ms`))
                 return
             }
-            setTimeout(tick, Math.min(pollMs, remaining))
+            timer = setTimeout(tick, Math.min(pollMs, remaining))
         }
         tick()
     })

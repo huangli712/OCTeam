@@ -180,7 +180,7 @@ export function extractSessionStatusEntry(
  * run's <member>.md file. Head+tail at the same byte budget is strictly more
  * informative than head-only, so no caller regresses.
  */
-export function truncateOutput(text: string, maxBytes: number = 8192): string {
+export function truncateOutput(text: string, maxBytes: number = 65536): string {
     if (Buffer.byteLength(text, "utf8") <= maxBytes) return text
     // When maxBytes is smaller than the elision marker itself, return an empty
     // string instead of producing a result longer than the requested cap.

@@ -197,6 +197,12 @@ export async function reconcileActivation(ctx: PluginContext): Promise<void> {
             try {
                 const team = await loadTeamState(scope.root, teamName, leadSessionId)
                 if (team.activatedAt === undefined) continue
+                // MEDIUM: only clear activatedAt for teams in the CURRENT
+                // project scope. User-scope teams may be active in sibling
+                // processes — clearing them would deactivate a live team.
+                // In project scope, clearing is safe because only the current
+                // process owns this project.
+                if (!scope.seg) continue  // skip user-scope teams
                 await team.mutex.runExclusive(async () => {
                     team.activatedAt = undefined
                     await saveTeamState(team)
