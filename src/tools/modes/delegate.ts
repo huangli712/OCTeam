@@ -156,6 +156,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 // raced by a concurrent create.
                 async (team) => {
                     taskDirectory = team.directory
+                    const baseFields = baseTaskFields(args, team, DEFAULT_TIMEOUT_MS)
                     const liveTaskCount = (await listAllTasks(team.directory)).filter(
                         t => t.status !== "deleted",
                     ).length
@@ -184,6 +185,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                             .filter((taskId): taskId is string => taskId !== undefined)
                         await createTask(team.directory, {
                             id,
+                            runId: baseFields.runId,
                             subject: t.subject,
                             description: t.description,
                             blockedBy,
@@ -193,7 +195,7 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
 
                     return {
                         type: "delegate",
-                        ...baseTaskFields(args, team, DEFAULT_TIMEOUT_MS),
+                        ...baseFields,
                         stages: [],
                         maxErroredMembers: args.max_errored_members,
                         ...signoffTaskFields(args),
@@ -203,12 +205,12 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
                 // tasklist.
                 async (team) => {
                     for (const m of nonMasterMembers(team)) {
-                    const text =
-                        `You are on team "${team.teamName}" in delegate mode. `
-                        + `${args.tasks.length} task(s) published. `
-                        + `Use team_task_list to view, team_task_update (status "claimed") to claim, `
-                        + `execute, then team_send_message to report results to master. `
-                        + `Repeat until no tasks remain.`
+                        const text =
+                            `You are on team "${team.teamName}" in delegate mode. `
+                            + `${args.tasks.length} task(s) published. `
+                            + `Use team_task_list to view, team_task_update (status "claimed") to claim, `
+                            + `execute, then team_send_message to report results to master. `
+                            + `Repeat until no tasks remain.`
                         await dispatchToMember(ctx, m, text, m.worktreePath ?? ctx.directory, team)
                     }
                 },

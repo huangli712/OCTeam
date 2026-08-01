@@ -38,8 +38,7 @@ const id = "octeam"
  */
 const server = async (input: PluginInput, options?: Record<string, unknown>): Promise<Hooks> => {
     // H7: read storage scope from plugin options. Default to "project".
-    // Accept "user" or "project" (case-insensitive); anything else falls
-    // back to "project" for safety.
+    // Accept "user" or "project" (case-insensitive); reject any other value.
     const rawScope = options?.scope
     let scope: StorageScope
     if (rawScope === undefined) {

@@ -15,6 +15,7 @@ export type TaskStatus = "pending" | "claimed" | "in_progress" | "completed" | "
 export type Task = {
     version: 1
     id: string                         // UUID
+    runId?: string                     // orchestration run that created the task
     subject: string
     description: string
     status: TaskStatus

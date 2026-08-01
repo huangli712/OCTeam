@@ -33,6 +33,8 @@ import type {
 // trailing-position anchor enforces that the tag is the decider's FINAL
 // declaration, not a mid-text reference.
 const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>\s*$/
+const TASK_SUBJECT_MAX_LENGTH = 500
+const TASK_DESCRIPTION_MAX_LENGTH = 8_192
 
 /**
  * Extract and JSON.parse a `<tag>{...}</tag>` block from text. Supports an
@@ -271,27 +273,25 @@ export function parseRouteDecision(
         ["branch", p.branch], ["target", p.target],
     ].filter(([, v]) => v != null) as Array<[string, unknown]>
     if (aliasSources.length === 0) return { targets: [], rationale: "", parseFailed: true }
-    // If multiple aliases present, verify they are consistent.
-    const raw = aliasSources[0][1]
-    for (let i = 1; i < aliasSources.length; i++) {
-        const [, v] = aliasSources[i]!
-        const a = Array.isArray(raw) ? raw : [raw]
-        const b = Array.isArray(v) ? v : [v]
-        if (a.length !== b.length || !a.every((x, idx) => x === b[idx])) {
+    const normalizedAliases: string[][] = []
+    for (const [, value] of aliasSources) {
+        const values = Array.isArray(value) ? value : [value]
+        if (values.length === 0 || values.some(x => typeof x !== "string" || x.length === 0)) {
+            return { targets: [], rationale: "", parseFailed: true }
+        }
+        normalizedAliases.push(values as string[])
+    }
+    // If multiple aliases are present, compare them as sets while preserving
+    // the first alias's order for the returned route targets.
+    const targets = normalizedAliases[0]!
+    const canonicalTargets = [...targets].sort()
+    for (let i = 1; i < normalizedAliases.length; i++) {
+        const aliasTargets = [...normalizedAliases[i]!].sort()
+        if (canonicalTargets.length !== aliasTargets.length
+            || !canonicalTargets.every((target, index) => target === aliasTargets[index])) {
             return { targets: [], rationale: "", parseFailed: true }
         }
     }
-    const arr = Array.isArray(raw) ? raw : [raw]
-    // H-16: strict — every element must be a non-empty string. One bad entry
-    // fails the whole decision.
-    const targets: string[] = []
-    for (const x of arr) {
-        if (typeof x !== "string" || x.length === 0) {
-            return { targets: [], rationale: "", parseFailed: true }
-        }
-        targets.push(x)
-    }
-    if (targets.length === 0) return { targets: [], rationale: "", parseFailed: true }
     return {
         targets,
         rationale: typeof p.rationale === "string" ? p.rationale : "",
@@ -376,8 +376,8 @@ export function parseSelection(
  * entry makes the ENTIRE scoreboard parseFailed (H-16 strict: no lossy
  * filtering). `score` and each `metrics` value are coerced to FINITE numbers
  * (non-finite values are dropped); `passed` defaults to false when absent;
- * `rationale` is optional. Duplicate `member` entries are PRESERVED (dedup is
- * a selection concern, not a parse one).
+ * `rationale` is optional. Duplicate `member` entries make the entire
+ * scoreboard parseFailed so selection never sees ambiguous candidates.
  */
 export function parseScoreboard(
     rawText: string,
@@ -399,22 +399,22 @@ export function parseScoreboard(
             return { scores: [], rationale: "", parseFailed: true }
         }
         seenMembers.add(item.member)
+        // C6: strict validate passed — must be boolean if provided.
+        // Pre-fix used `null as unknown as boolean` sentinel then checked
+        // `entry.passed === null`, breaking the ArenaCandidateScore type
+        // contract. Now fail fast before constructing the entry.
+        let passed: boolean
+        if ("passed" in item) {
+            if (typeof item.passed !== "boolean") {
+                return { scores: [], rationale: "", parseFailed: true }
+            }
+            passed = item.passed
+        } else {
+            passed = false
+        }
         const entry: ArenaCandidateScore = {
             member: item.member,
-            // MEDIUM: strict validate passed — must be boolean if provided.
-            passed: (() => {
-                if ("passed" in item) {
-                    if (typeof item.passed !== "boolean") {
-                        return null as unknown as boolean // signal invalid
-                    }
-                    return item.passed
-                }
-                return false
-            })(),
-        }
-        // If passed was provided but invalid, fail.
-        if (entry.passed === null) {
-            return { scores: [], rationale: "", parseFailed: true }
+            passed,
         }
         // HIGH #22: if score is present but not a finite number, the
         // evaluator's output is malformed — fail the ENTIRE scoreboard
@@ -510,16 +510,18 @@ export function parseDecompose(
     const arr = Array.isArray(p.subtasks) ? p.subtasks : []
     const subtasks: { subject: string; description: string }[] = []
     for (const item of arr) {
-        if (
-            typeof item === "object" && item !== null
-            && "subject" in item && typeof item.subject === "string" && item.subject.length > 0
-            && "description" in item && typeof item.description === "string" && item.description.length > 0
-        ) {
-            subtasks.push({ subject: item.subject, description: item.description })
-        } else {
-            // H-16 strict: one invalid subtask entry fails the whole decompose.
+        if (typeof item !== "object" || item === null
+            || !("subject" in item) || typeof item.subject !== "string"
+            || !("description" in item) || typeof item.description !== "string") {
             return { subtasks: [], parseFailed: true }
         }
+        const subject = item.subject.trim()
+        const description = item.description.trim()
+        if (subject.length === 0 || subject.length > TASK_SUBJECT_MAX_LENGTH
+            || description.length === 0 || description.length > TASK_DESCRIPTION_MAX_LENGTH) {
+            return { subtasks: [], parseFailed: true }
+        }
+        subtasks.push({ subject, description })
     }
     if (subtasks.length === 0) return { subtasks: [], parseFailed: true }
     return { subtasks }
@@ -560,6 +562,28 @@ export function allReadOnlyStagesReportNoIssues(task: ActiveTask): boolean {
     return roStages.every(s => NO_ISSUES_TAG.test(task.responses[s.member] ?? ""))
 }
 
+type ConsensusParseResult =
+    | { readonly agreed: boolean; readonly parseFailed: false }
+    | {
+        readonly agreed: false
+        readonly parseFailed: true
+        readonly reason: "tag_not_found" | "json_parse_error" | "agreed_not_boolean"
+    }
+
+export function parseConsensus(text: string): ConsensusParseResult {
+    const parsed = extractTaggedJSON(text, "consensus", "共识")
+    if (parsed === null) {
+        return { agreed: false, parseFailed: true, reason: "tag_not_found" }
+    }
+    if (parsed === undefined) {
+        return { agreed: false, parseFailed: true, reason: "json_parse_error" }
+    }
+    if (typeof parsed.agreed !== "boolean") {
+        return { agreed: false, parseFailed: true, reason: "agreed_not_boolean" }
+    }
+    return { agreed: parsed.agreed, parseFailed: false }
+}
+
 /** Consensus: every participant must emit agreed consensus. */
 export function allMembersAgree(responses: Record<string, string>, participants?: string[]): boolean {
     // When participants are provided, verify EACH one has a response.
@@ -570,10 +594,7 @@ export function allMembersAgree(responses: Record<string, string>, participants?
     return names.every(name => {
         const t = responses[name]
         if (!t) return false
-        // Bilingual tag, aligned with parseDecision's <(?:decision|决策)> so a
-        // non-English agent emitting <共识> is recognized.
-        const parsed = extractTaggedJSON(t, "consensus", "共识")
-        return parsed?.agreed === true
+        return parseConsensus(t).agreed
     })
 }
 

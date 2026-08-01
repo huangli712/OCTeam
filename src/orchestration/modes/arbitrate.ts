@@ -33,6 +33,7 @@ import type { CaptureMemberOutputResult } from "../records/capture.js"
 
 /** Max consecutive arbiter ruling parse failures before aborting the run. */
 const MAX_RULING_PARSE_FAILURES = 2
+const ARBITER_PROMPT_TOTAL_CAP = 65_536
 
 /**
  * Build a debater's prompt for the current debate round. Round 1 states the
@@ -62,12 +63,12 @@ export function buildArbiterPrompt(task: ArbitrateTask): string {
     const positions = (task.disputants ?? [])
         .map(name => `\nby ${name}:\n${truncateOutput(task.responses[name] ?? "")}`)
         .join("\n\n")
-    return (
-        `[Arbitration ruling]\nDispute:\n${task.task ?? ""}\n\n`
-        + `Debater positions:\n${positions}\n\n`
-        + `Weigh impartially and issue a BINDING ruling. Emit exactly one:\n`
+    const prefix = `[Arbitration ruling]\nDispute:\n${task.task ?? ""}\n\nDebater positions:\n`
+    const suffix =
+        `\n\nWeigh impartially and issue a BINDING ruling. Emit exactly one:\n`
         + `<ruling>{"decision":"...","rationale":"..."}</ruling> (Chinese <裁决> also accepted)`
-    )
+    const positionsBudget = ARBITER_PROMPT_TOTAL_CAP - Buffer.byteLength(prefix + suffix, "utf8")
+    return prefix + truncateOutput(positions, positionsBudget) + suffix
 }
 
 /**
@@ -87,13 +88,14 @@ export async function handleArbitrateIdle(
     // Phase A: debate (arbitrationStage not yet set).
     if (!task.arbitrationStage) {
         await maybeAdvanceBarrier(team, disputants, async () => {
-            // HIGH: verify dispatched disputants have responses before
-            // advancing. Only check when a dispatch has occurred this round
-            // (dispatchedParticipants is populated). First round or fresh
-            // resume has no dispatchedParticipants, so skip the check.
-            const dispatched = task.dispatchedParticipants
-            if (dispatched && dispatched.length > 0) {
-                const missing = dispatched.filter(name => task.responses[name] === undefined)
+            const dispatched = task.dispatchedParticipants?.length
+                ? task.dispatchedParticipants
+                : disputants.filter(name => {
+                    const member = team.members.find(m => m.name === name)
+                    return (member?.turnCount ?? 0) > 0
+                })
+            if (dispatched.length > 0) {
+                const missing = dispatched.filter(name => !task.responses[name])
                 if (missing.length > 0) {
                     for (const name of missing) {
                         const m = team.members.find(mm => mm.name === name)

@@ -83,6 +83,38 @@ function validateStepId(ids: Map<string, number>, id: string | undefined, displa
     return null
 }
 
+const COMMON_STEP_FIELDS = [
+    "kind", "id", "inputs", "expose_output", "approval_before", "approval_after",
+    "max_output_bytes", "timeout_ms", "on_timeout", "max_timeout_retries",
+] as const
+
+const STEP_KIND_FIELDS: Record<WorkflowToolStep["kind"], readonly string[]> = {
+    task: ["member", "fallback_member", "task", "retry_on", "max_task_retries"],
+    gate: [
+        "verifier", "fallback_verifier", "verifiers", "ensemble_policy", "ensemble_quorum",
+        "criteria", "target_step", "targets", "on_fail", "max_retries", "on_invalid",
+        "on_malformed", "max_malformed_retries", "max_invalid_retries", "on_pass_goto",
+        "on_fail_goto", "on_invalid_goto", "where", "max_jumps", "loop",
+    ],
+    fanout: [
+        "branches", "max_errored", "join_policy", "quorum", "required_branches",
+        "reducer_member", "use_survivors", "matrix", "foreach", "as", "steps",
+    ],
+    join: ["join_policy", "quorum", "required_branches", "reducer_member", "use_survivors"],
+}
+
+function validateStepKindFields(step: WorkflowToolStep, location: string): string | null {
+    const allowed = new Set<string>([...COMMON_STEP_FIELDS, ...STEP_KIND_FIELDS[step.kind]])
+    const unexpected = Object.keys(step).find(field => !allowed.has(field))
+    if (unexpected === undefined) return null
+    const owner = Object.entries(STEP_KIND_FIELDS).find(
+        ([kind, fields]) => kind !== step.kind && fields.includes(unexpected),
+    )?.[0]
+    return owner === undefined
+        ? `Error: ${location} kind "${step.kind}" must not set field "${unexpected}"`
+        : `Error: ${location} kind "${step.kind}" must not set ${owner} fields (found "${unexpected}")`
+}
+
 // --- public shape validation ---
 
 /** Validate the structural shape of public workflow steps (fanout/join pairing, branch rules). */
@@ -92,6 +124,8 @@ export function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]):
     for (let index = 0; index < steps.length; index += 1) {
         const step = steps[index]
         if (step === undefined) continue
+        const fieldError = validateStepKindFields(step, `step ${index + 1}`)
+        if (fieldError !== null) return fieldError
         switch (step.kind) {
             case "task":
             case "gate":
@@ -102,8 +136,9 @@ export function validatePublicWorkflowShape(steps: readonly WorkflowToolStep[]):
                 }
                 // #17: reject join-policy fields on join steps (they belong
                 // on the companion fanout). Pre-fix code silently dropped them.
-                if ("join_policy" in step || "quorum" in step || "required_branches" in step) {
-                    return `Error: join step ${index + 1} has join-policy fields (join_policy/quorum/required_branches). These belong on the companion fanout step.`
+                if ("join_policy" in step || "quorum" in step || "required_branches" in step
+                    || "reducer_member" in step || "use_survivors" in step) {
+                    return `Error: join step ${index + 1} has join-policy fields. These belong on the companion fanout step.`
                 }
                 break
             case "fanout": {
@@ -139,6 +174,24 @@ export function validateMatrixForeachShapeInSteps(steps: readonly WorkflowToolSt
 
 /** Validate that a single fanout step does not combine matrix, foreach, and branches. */
 function validateMatrixForeachShape(step: WorkflowFanoutToolStep, displayStep: number): string | null {
+    const runtimeStep = step as unknown as Record<string, unknown>
+    if (runtimeStep.matrix !== undefined) {
+        if (typeof runtimeStep.matrix !== "object" || runtimeStep.matrix === null || Array.isArray(runtimeStep.matrix)) {
+            return `Error: fanout step ${displayStep} matrix must be an object of string arrays`
+        }
+        for (const [key, value] of Object.entries(runtimeStep.matrix)) {
+            if (!Array.isArray(value) || !value.every(item => typeof item === "string")) {
+                return `Error: fanout step ${displayStep} matrix.${key} must be a string array`
+            }
+        }
+    }
+    if (runtimeStep.foreach !== undefined
+        && (!Array.isArray(runtimeStep.foreach) || !runtimeStep.foreach.every(item => typeof item === "string"))) {
+        return `Error: fanout step ${displayStep} foreach must be a string array`
+    }
+    if (runtimeStep.as !== undefined && typeof runtimeStep.as !== "string") {
+        return `Error: fanout step ${displayStep} as must be a string`
+    }
     const hasMatrix = step.matrix !== undefined
     const hasForeach = step.foreach !== undefined
     const hasBranches = (step.branches ?? []).length > 0
@@ -309,6 +362,11 @@ function validateBranchSteps(
         const step = branch.steps[index]
         if (step === undefined) continue
         const displayStep = index + 1
+        const fieldError = validateStepKindFields(
+            step,
+            `fanout step ${fanoutDisplayStep} branch "${branch.id}" step ${displayStep}`,
+        )
+        if (fieldError !== null) return fieldError
         switch (step.kind) {
             case "fanout":
                 return `Error: fanout step ${fanoutDisplayStep} branch "${branch.id}" must not contain recursive fanout`

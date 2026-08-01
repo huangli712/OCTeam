@@ -11,7 +11,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import { initTeamState, writeTeamSpec } from "../../state/store.js"
-import { indexMasterTeam, isIndexedMember } from "../../state/resolve.js"
+import { isIndexedMember } from "../../state/resolve.js"
 import { teamDir, teamsDir } from "../../state/paths.js"
 import { assertNoSymlinkTraversal } from "../../state/locks.js"
 import { masterSentinelPath } from "../../state/paths.js"
@@ -277,7 +277,7 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                     throw new Error(`team_create: failed to create master.sentinel securely: ${err instanceof Error ? err.message : String(err)}`)
                 }
 
-                const createdTeam = await initTeamState(ctx.storageRoot, {
+                await initTeamState(ctx.storageRoot, {
                     version: 1,
                     teamRunId: crypto.randomUUID(),
                     teamName: args.name,
@@ -290,7 +290,6 @@ export function teamCreateTool(ctx: PluginContext): ToolDefinition {
                     activatedAt: undefined,
                 }, leadSessionId, ctx.storageRoot)
 
-                indexMasterTeam(context.sessionID, args.name, leadSessionId, ctx.storageRoot, createdTeam.directory)
             } catch (err) {
                 // Rollback the just-created directory so a transient write
                 // failure does not orphan it and permanently reserve the name.

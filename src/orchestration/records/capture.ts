@@ -7,12 +7,11 @@
  */
 
 import crypto from "node:crypto"
-import { readFile } from "node:fs/promises"
 
 import type { Team } from "../../state/store.js"
 import { isEnoent } from "../../core/utils.js"
 import { extractOutputFromParts, truncateOutput } from "../protocol/output.js"
-import { assertNoSymlinkTraversal, atomicWrite } from "../../state/locks.js"
+import { safeReadFile, atomicWrite } from "../../state/locks.js"
 import { runMemberOutputPath, runReduceOutputPath, runSignoffOutputPath } from "../../state/paths.js"
 import { recordEvent } from "./events.js"
 import type { MemberState, SdkMessage } from "../../core/types.js"
@@ -66,40 +65,6 @@ export async function captureMemberOutput(
     // from such members would pollute task.responses with output from a
     // cancelled branch. Check both workflow step status and member status.
     if (member.status === "errored") return { fresh: false, reason: "stale" }
-    // Idempotency: a member whose message history hasn't grown since its last
-    // classified turn has no new turn to persist. This guards the delegate
-    // completion sweep (which re-captures every member, including ones already
-    // captured via their own idle path) and stale pre-signoff idle events.
-    if (member.lastCapturedMsgCount !== undefined && messages.length === member.lastCapturedMsgCount) {
-        // HIGH #3: message count alone is not a reliable turn identity —
-        // compaction can produce the same count with different content.
-        // Only trust the stale verdict if we ALSO have a stored output
-        // snapshot to compare against. If lastCapturedOutput is unset
-        // (legacy member), fall back to count-only dedup.
-        if (member.lastCapturedOutput !== undefined) {
-            // HIGH: compute the FULL turn output for comparison, not just
-            // the last assistant message. Pre-fix code compared different
-            // strings (last message vs full turn), causing false negatives.
-            let turnStart = 0
-            for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i]?.info?.role === "user") { turnStart = i + 1; break }
-            }
-            const turnOutputs: string[] = []
-            for (let i = turnStart; i < messages.length; i++) {
-                if (messages[i]?.info?.role === "assistant") {
-                    const text = extractOutputFromParts(messages[i]?.parts) || ""
-                    if (text) turnOutputs.push(text)
-                }
-            }
-            const fullTurnText = turnOutputs.join("\n\n")
-            if (fullTurnText.slice(0, 256) === member.lastCapturedOutput) {
-                return { fresh: false, reason: "stale" }
-            }
-            // Content differs despite same count — fall through to capture.
-        } else {
-            return { fresh: false, reason: "stale" }
-        }
-    }
     // Find the start of the current turn (last user message).
     let turnStart = 0
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -116,11 +81,31 @@ export async function captureMemberOutput(
             if (text) outputs.push(text)
         }
     }
+    const full = outputs.join("\n\n")
+    const outputHash = crypto.createHash("sha256").update(full).digest("hex")
+
+    // Idempotency: message count alone is insufficient because compaction can
+    // preserve the count while replacing the turn contents.
+    if (member.lastCapturedMsgCount !== undefined && messages.length === member.lastCapturedMsgCount) {
+        if (member.lastCapturedOutputHash !== undefined) {
+            if (outputHash === member.lastCapturedOutputHash) {
+                return { fresh: false, reason: "stale" }
+            }
+        } else if (member.lastCapturedOutput !== undefined) {
+            // Legacy snapshots are only trusted when they contain the full turn.
+            if (full === member.lastCapturedOutput) {
+                return { fresh: false, reason: "stale" }
+            }
+        } else {
+            return { fresh: false, reason: "stale" }
+        }
+    }
     if (outputs.length === 0) {
         member.lastCapturedMsgCount = messages.length
+        member.lastCapturedOutput = undefined
+        member.lastCapturedOutputHash = undefined
         return { fresh: false, reason: "empty" }
     }
-    const full = outputs.join("\n\n")
     const captured = truncateOutput(full)
     const runId = (task.runId ??= crypto.randomUUID())
 
@@ -155,6 +140,19 @@ export async function captureMemberOutput(
         : isSignoffTurn
         ? runSignoffOutputPath(team.directory, runId, member.name)
         : runMemberOutputPath(team.directory, runId, member.name)
+    const captureKey = `${messages.length}:${outputHash}`
+    const captureMarker = `\n\n<!-- octeam-capture ${captureKey} -->`
+    const applyCaptureState = (): void => {
+        if (isSignoffTurn) {
+            if (!task.signoffRawOutputs) task.signoffRawOutputs = {}
+            task.signoffRawOutputs[member.name] = captured
+        } else {
+            task.responses[member.name] = captured
+        }
+        member.lastCapturedMsgCount = messages.length
+        member.lastCapturedOutput = undefined
+        member.lastCapturedOutputHash = outputHash
+    }
 
     // Accumulate: read whatever was previously captured for this target, append
     // the current turn with a separator, and write back atomically.
@@ -164,43 +162,40 @@ export async function captureMemberOutput(
     // without a trustedRoot-bearing check. Reading attacker-controlled content
     // into the accumulator is itself the leak (it gets mixed into the next
     // atomicWrite payload), so guard the read as well as the write.
-    await assertNoSymlinkTraversal(team.directory, outPath)
+    // C1: use fd-based safe read with size cap to shrink TOCTOU window and
+    // prevent OOM from a crafted oversized file. Pre-fix code called
+    // assertNoSymlinkTraversal then readFile separately.
     let prev = ""
     try {
-        prev = await readFile(outPath, "utf8")
+        const prevContent = await safeReadFile(team.directory, outPath, { maxBytes: ACCUMULATED_OUTPUT_CAP })
+        if (prevContent !== undefined) prev = prevContent
     } catch (err) {
         if (!isEnoent(err)) throw err
     }
+    // The output file carries the capture watermark in the same atomic write.
+    // If state persistence was interrupted, restore memory without appending.
+    if (prev.endsWith(captureMarker)) {
+        applyCaptureState()
+        return { fresh: true, output: captured }
+    }
+
     const accumulated = appendTurnBlock(prev, full, new Date().toISOString())
-    const accumulatedBytes = Buffer.byteLength(accumulated, "utf8")
+    const captureMarkerBytes = Buffer.byteLength(captureMarker, "utf8")
+    const accumulatedBytes = Buffer.byteLength(accumulated, "utf8") + captureMarkerBytes
     const wasTruncated = accumulatedBytes > ACCUMULATED_OUTPUT_CAP
-    // LOW: pre-compute the marker so the total stays within cap.
-    const marker = wasTruncated
+    const truncationMarker = wasTruncated
         ? `\n[...output truncated: original ${accumulatedBytes} bytes]`
         : ""
-    const markerBytes = Buffer.byteLength(marker, "utf8")
-    const capped = wasTruncated
-        ? truncateOutput(accumulated, ACCUMULATED_OUTPUT_CAP - markerBytes) + marker
+    const reservedBytes = Buffer.byteLength(truncationMarker, "utf8") + captureMarkerBytes
+    const cappedBody = wasTruncated
+        ? truncateOutput(accumulated, ACCUMULATED_OUTPUT_CAP - reservedBytes) + truncationMarker
         : accumulated
+    const capped = cappedBody + captureMarker
 
-    // Persist to disk FIRST. The in-memory response slot and the capture
-    // watermark are updated only after a successful write, so a write failure
-    // (which propagates to the caller) leaves no phantom "captured" entry that
-    // was never persisted.
+    // Persist to disk FIRST. The in-memory response slot and watermarks are
+    // updated only after a successful write.
     await atomicWrite(outPath, capped, team.directory)
-    // For signoff/reduce turns, store the output in a side-channel so the
-    // member's work output in task.responses is preserved for the final
-    // summary. The mode handler reads from the side-channel instead.
-    if (isSignoffTurn) {
-        if (!task.signoffRawOutputs) task.signoffRawOutputs = {}
-        task.signoffRawOutputs[member.name] = captured
-    } else {
-        task.responses[member.name] = captured
-    }
-    // Record the message-history watermark so a re-entry whose history hasn't
-    // grown is skipped (idempotency guard at the top).
-    member.lastCapturedMsgCount = messages.length
-    member.lastCapturedOutput = captured.slice(0, 256)
+    applyCaptureState()
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "captured",

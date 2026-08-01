@@ -9,7 +9,7 @@ import type { PluginContext } from "../../core/context.js"
 import { logger, logSwallowed } from "../../core/log.js"
 import { safeMemberAgent } from "../../core/role.js"
 import type { MemberSpec, MemberState } from "../../core/types.js"
-import { chunk, waitUntil } from "../../core/utils.js"
+import { waitUntil } from "../../core/utils.js"
 import { worktreesDir } from "../../state/paths.js"
 import { indexMember, unindexSession } from "../../state/resolve.js"
 import { type Team, readTeamSpecFromDir, saveTeamState, saveTeamStateBounded } from "../../state/store.js"
@@ -67,11 +67,11 @@ async function waitForRoleSetupBarrier(
                     }
                     if (current.worktreePath) {
                         try {
-                            await destroyWorktree(
+                            const destroyed = await destroyWorktree(
                                 ctx.directory, current.worktreePath,
                                 worktreesDir(team.directory), team.teamName, name,
                             )
-                            current.worktreePath = undefined
+                            if (destroyed) current.worktreePath = undefined
                         } catch (err) {
                             logSwallowed(ctx, "barrier timeout: destroyWorktree failed", err, {
                                 team: team.teamName, member: name,
@@ -191,11 +191,12 @@ async function spawnMemberSafely(
         // Pre-fix code only saved on the next unrelated idle; a restart would
         // re-create a second session, leaving the first orphaned.
         try {
-            await saveTeamStateBounded(team)
+            await team.mutex.runExclusive(() => saveTeamStateBounded(team))
         } catch (persistErr) {
             logSwallowed(ctx, "spawnMemberSafely: post-spawn persist failed", persistErr, {
                 team: team.teamName, member: member.name, sessionId,
             })
+            throw persistErr
         }
     } catch (err) {
         // Roll back every side effect before exposing the spawn error.
@@ -249,20 +250,20 @@ async function spawnMemberSafely(
         member.turnCount = 0
         if (worktreeCreated) {
             try {
-                await destroyWorktree(
+                const destroyed = await destroyWorktree(
                     ctx.directory,
                     member.worktreePath,
                     worktreesDir(team.directory),
                     team.teamName,
                     member.name,
                 )
+                if (destroyed) member.worktreePath = undefined
             } catch (worktreeError) {
                 // Do NOT let the cleanup error mask the original spawn error.
                 logSwallowed(ctx, "spawn rollback failed to destroy worktree", worktreeError, {
                     team: team.teamName, member: member.name,
                 })
             }
-            member.worktreePath = undefined
         }
         throw err
     }
@@ -299,26 +300,8 @@ export async function ensureMembersReady(
     const specByName = new Map((spec?.members ?? []).map((member) => [member.name, member]))
     const peerNames = (spec?.members ?? []).map((member) => member.name)
 
-    // Phase 2: spawn missing members in bounded parallel batches.
-    // H-10: use Promise.allSettled (not Promise.all) so a single spawn failure
-    // does NOT leave the rest of the batch running in the background. With
-    // Promise.all, the first rejection aborts the caller's await but the
-    // other in-flight spawns keep running — they create sessions/worktrees
-    // that team.spawning=false then allows a concurrent retry to collide
-    // with (duplicate sessions, orphan worktrees). Promise.allSettled waits
-    // for the entire batch to converge, then we surface the first rejection.
-    for (const batch of chunk(toSpawn, team.bounds.maxParallelMembers)) {
-        const results = await Promise.allSettled(
-            batch.map((member) =>
-                spawnMemberSafely(ctx, team, member, specByName, peerNames),
-            ),
-        )
-        const firstFailure = results.find(
-            (r): r is PromiseRejectedResult => r.status === "rejected",
-        )
-        if (firstFailure) {
-            throw firstFailure.reason
-        }
+    for (const member of toSpawn) {
+        await spawnMemberSafely(ctx, team, member, specByName, peerNames)
     }
 
     // Phase 3: wait outside the mutex for role-setup idle acknowledgements.

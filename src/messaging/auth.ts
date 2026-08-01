@@ -28,7 +28,7 @@ import type { Message } from "../core/types.js"
 import { logger } from "../core/log.js"
 
 // Cap on tracked directive authentications. When exceeded, the oldest
-// entries (older than AUTH_MIN_AGE_MS) are evicted to bound memory growth.
+// entries are evicted oldest-first to bound memory growth.
 // H-G2: pre-fix cap of 64 was too low — a 12-member team × 6 broadcasts
 // already produces 72 in-flight authentications. Raised to 512 and added
 // a minimum-age guard so fresh in-flight directives are never evicted.
@@ -42,22 +42,21 @@ function authKey(teamName: string | undefined, to: string, id: string): string {
 }
 
 /** Evict the oldest auth entries once the map exceeds the cap.
- * H-G2: never evict entries younger than AUTH_MIN_AGE_MS — they are likely
- * still in-flight (not yet polled/ACKed). Only evict aged entries. */
+ * Prefer aged entries, then evict fresh entries only when required to enforce
+ * the hard count cap. */
 function evictStaleAuthDirectives(): void {
     if (authenticatedDirectives.size <= AUTH_DIRECTIVE_MAP_CAP) return
     const now = Date.now()
-    const sorted = [...authenticatedDirectives.entries()]
-        .filter(([, v]) => now - v.ts > AUTH_MIN_AGE_MS)
-        .sort((a, b) => a[1].ts - b[1].ts)
+    const sorted = [...authenticatedDirectives.entries()].sort((a, b) => a[1].ts - b[1].ts)
+    const aged = sorted.filter(([, value]) => now - value.ts > AUTH_MIN_AGE_MS)
+    const fresh = sorted.filter(([, value]) => now - value.ts <= AUTH_MIN_AGE_MS)
     const excess = authenticatedDirectives.size - AUTH_DIRECTIVE_MAP_CAP
-    const toRemove = Math.min(sorted.length, excess)
-    for (let i = 0; i < toRemove; i++) {
+    const toRemove = [...aged, ...fresh].slice(0, excess)
+    for (const evicted of toRemove) {
         // M-7: log eviction so operators can detect if legitimate directives
         // are being silently downgraded. Pre-fix code deleted without logging,
         // so a large broadcast exceeding the 64-entry cap would silently
         // degrade earlier directives to regular messages.
-        const evicted = sorted[i]
         const teamDir = evicted[1].teamName ?? "(unknown)"
         logger.warn("evictStaleAuthDirectives: auth entry evicted (cap exceeded); directive will be downgraded to regular message if replayed", {
             teamDir, to: evicted[1].to, age: Date.now() - evicted[1].ts,
@@ -144,8 +143,9 @@ export function isAuthenticatedDirective(
  * before consumption. After this call, a replay of the same JSONL line no
  * longer matches the registry → downgraded to a regular message.
  *
- * Called from mailbox.ackMessages so consumption is tied to the durable
- * delivery confirmation (reserved file unlink), not to the in-memory render.
+ * Called from mailbox.ackMessages after its reserved-file unlink attempt.
+ * Consumption still occurs when unlink fails so the in-process auth record
+ * cannot be replayed from a reservation left on disk.
  *
  * runId independence (C7): consumption intentionally does NOT re-check the
  * runId binding. ACK is called after successful delivery — the directive

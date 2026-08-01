@@ -67,6 +67,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                 .number()
                 .int()
                 .min(0)
+                .max(20)
                 .optional()
                 .describe(
                     "gate FAIL retry cap, DISTINCT from provider-retry "
@@ -76,6 +77,7 @@ export function teamTollgateTool(ctx: PluginContext): ToolDefinition {
                 .number()
                 .int()
                 .min(0)
+                .max(20)
                 .optional()
                 .describe(
                     "cap on INVALID/escalate ping-pong per gate. Default 3; "

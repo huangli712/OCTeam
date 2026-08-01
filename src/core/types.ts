@@ -6,10 +6,9 @@
  * prefer importing directly from the focused file (e.g.
  * `from "../core/types/workflow.js"`) when only a single subsystem is needed.
  *
- * All types here are JSON-serializable — they are persisted to disk
- * (config.json / state.json / mailbox *.jsonl / tasks/*.json). Runtime-only
- * constructs that carry non-serializable handles (e.g. the Team wrapper with
- * its in-process mutex) live in state/store.ts, NOT here.
+ * Persisted model types here are JSON-serializable. SdkMessage is a runtime-only
+ * SDK projection and is never written to disk. Constructs carrying non-serializable
+ * handles (e.g. the Team wrapper with its in-process mutex) live in state/store.ts.
  *
  * Subsystem files (layered, no cycles):
  *   - workflow.ts         (Layer 0) WorkflowStep, Verdict, fanout/join metadata, WorkflowToolStep (external tool API)

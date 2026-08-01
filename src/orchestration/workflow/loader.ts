@@ -8,6 +8,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 import type { WorkflowFanoutToolStep, WorkflowToolStep } from "../../core/types/workflow.js"
+import { logger } from "../../core/log.js"
 import { assertNoSymlinkTraversal } from "../../state/locks.js"
 
 // Supported workflow_file schema versions. When the schema gains a v2, add it
@@ -226,6 +227,28 @@ function validateWorkflowStep(value: unknown, location: StepLocation, budget: Va
             // define variables that are expanded at runtime. Only validate
             // branches when neither matrix nor foreach is present.
             if (value.matrix !== undefined || value.foreach !== undefined) {
+                // C5: validate matrix/foreach runtime types before accepting.
+                // Pre-fix code cast via `as unknown as WorkflowToolStep`, so
+                // `matrix: null` or `matrix: 5` passed validation and reached
+                // runtime with a broken type contract.
+                if (value.matrix !== undefined) {
+                    if (!isRecord(value.matrix)) {
+                        return { error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                            + ` matrix must be an object of string arrays` }
+                    }
+                    for (const [mk, mv] of Object.entries(value.matrix)) {
+                        if (!Array.isArray(mv) || !mv.every((x): x is string => typeof x === "string")) {
+                            return { error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                                + ` matrix.${mk} must be a string array` }
+                        }
+                    }
+                }
+                if (value.foreach !== undefined) {
+                    if (!Array.isArray(value.foreach) || !value.foreach.every((x): x is string => typeof x === "string")) {
+                        return { error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                            + ` foreach must be a string array` }
+                    }
+                }
                 // C-13: validate the template `steps` array recursively so an
                 // invalid kind inside the template (which would be expanded
                 // into N branches at runtime) is caught at load time, and so
@@ -554,8 +577,8 @@ async function loadWorkflowFileUnchecked(
     try {
         // MEDIUM: O_NOFOLLOW rejects leaf symlinks; O_NONBLOCK prevents a
         // FIFO named .json from blocking open() indefinitely.
-        const O_NOFOLLOW = (await import("node:fs")).constants.O_NOFOLLOW ?? 0x20000
-        const O_NONBLOCK = 0x800
+        const O_NOFOLLOW = fs.constants.O_NOFOLLOW ?? 0
+        const O_NONBLOCK = fs.constants.O_NONBLOCK ?? 0
         const fh = await fs.open(resolved.filePath, fs.constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
         try {
             const fileStat = await fh.stat()
@@ -569,7 +592,12 @@ async function loadWorkflowFileUnchecked(
             }
             raw = await fh.readFile("utf8")
         } finally {
-            await fh.close().catch(() => { /* best-effort */ })
+            await fh.close().catch((err: unknown) => {
+                logger.warn("loadWorkflowFile: failed to close workflow file", {
+                    filePath: resolved.filePath,
+                    error: err instanceof Error ? err.message : String(err),
+                })
+            })
         }
     } catch {
         return { error: `Error: workflow_file "${relPath}" could not be read` }

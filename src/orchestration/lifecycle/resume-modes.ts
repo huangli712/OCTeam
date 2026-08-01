@@ -36,6 +36,7 @@ import { buildReducePrompt, handleReduceIdle } from "../modes/reduce.js";
 import { handleQuorumIdle } from "../modes/quorum.js";
 import { buildSignoffReviewPrompt, evaluateSignoffQuorum, handleSignoffIdle } from "../control/signoff.js";
 import { listAllTasks, reapStaleClaims, updateTask } from "../../state/tasks.js";
+import { buildPrematureIdleReprompt } from "./idle.js";
 import {
     getActiveWorkflowStepIndices,
     readyWorkflowStepIndices,
@@ -213,7 +214,9 @@ export async function resumeParallelMode(
     await resumeConcurrentDispatch(
         ctx, team, team.members,
         (m) => task.requireDoneAck ? !m.declaredDone : task.responses[m.name] === undefined,
-        (m) => task.tasks?.[m.name] ?? task.task ?? "",
+        (m) => task.requireDoneAck && task.responses[m.name] !== undefined
+            ? buildPrematureIdleReprompt(team.teamName)
+            : task.tasks?.[m.name] ?? task.task ?? "",
         () => handleParallelIdle(ctx, team),
     );
 }

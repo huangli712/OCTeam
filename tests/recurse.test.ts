@@ -87,6 +87,31 @@ describe("parseDecompose", () => {
         expect(result.parseFailed).toBeUndefined()
     })
 
+    test("trims subtask fields before returning them", () => {
+        const text = '<decompose>{"subtasks":[{"subject":"  a  ","description":"  x  "}]}</decompose>'
+        expect(parseDecompose(text)).toEqual({
+            subtasks: [{ subject: "a", description: "x" }],
+        })
+    })
+
+    test("rejects whitespace-only subtask fields", () => {
+        const subject = '<decompose>{"subtasks":[{"subject":"   ","description":"x"}]}</decompose>'
+        const description = '<decompose>{"subtasks":[{"subject":"a","description":"   "}]}</decompose>'
+        expect(parseDecompose(subject).parseFailed).toBe(true)
+        expect(parseDecompose(description).parseFailed).toBe(true)
+    })
+
+    test("rejects subtask fields over task-store limits", () => {
+        const longSubject = JSON.stringify({
+            subtasks: [{ subject: "s".repeat(501), description: "x" }],
+        })
+        const longDescription = JSON.stringify({
+            subtasks: [{ subject: "a", description: "d".repeat(8_193) }],
+        })
+        expect(parseDecompose(`<decompose>${longSubject}</decompose>`).parseFailed).toBe(true)
+        expect(parseDecompose(`<decompose>${longDescription}</decompose>`).parseFailed).toBe(true)
+    })
+
     test("no tag returns empty subtasks WITHOUT parseFailed (leaf signal)", () => {
         const result = parseDecompose("I solved it directly.")
         expect(result).toEqual({ subtasks: [] })

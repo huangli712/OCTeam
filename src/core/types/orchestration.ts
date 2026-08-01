@@ -325,10 +325,10 @@ export interface ConsensusTask extends ActiveTaskBase {
 /** Content-based routing — a router inspects input and selects branch(es). */
 export interface RouteTask extends ActiveTaskBase {
     type: "route"
-    routerMember?: string                    // the router member name (NOT master, NOT a branch member)
-    routeBranches?: RouteBranch[]            // caller-declared branches the router selects from
+    routerMember: string                     // the router member name (NOT master, NOT a branch member)
+    routeBranches: RouteBranch[]              // caller-declared branches the router selects from
     routeTargets?: string[]                  // resolved target member names after the router's decision
-    routeStage?: boolean                     // false/undefined = router phase; true = target fan-out phase
+    routeStage: boolean                      // false = router phase; true = target fan-out phase
     routeDecisionRationale?: string          // router's stated rationale (observability)
     maxRouteParseFailures?: number           // H42: override default parse-failure threshold (default 2)
 }
@@ -369,8 +369,8 @@ export interface RecurseTask extends ActiveTaskBase {
 /** Verdict-gated pipeline — advancing depends on a verifier's verdict, not just completion. */
 export interface TollgateTask extends ActiveTaskBase {
     type: "tollgate"
-    gatedStages?: GatedStage[]               // linear stages, each with its own verification gate
-    tollgatePhase?: "produce" | "verify" | "escalate"  // explicit three-phase state (avoids a two-value gate-stage deadlock)
+    gatedStages: GatedStage[]                 // linear stages, each with its own verification gate
+    tollgatePhase: "produce" | "verify" | "escalate"  // explicit three-phase state (avoids a two-value gate-stage deadlock)
     escalateTo?: string                      // INVALID escalation target member (optional; when unset, INVALID is escalated to the leader)
     maxGateRetries?: number                  // gate FAIL retry cap, DISTINCT from provider-retry maxRetries (default 0: first FAIL fails)
     maxInvalidCycles?: number                // cap on INVALID/escalate ping-pong per gate (default 3); beyond it the run fails with tollgate_invalid:exhausted instead of looping to wall-clock
@@ -382,7 +382,7 @@ export interface TollgateTask extends ActiveTaskBase {
 /** Declarative workflow orchestration — a task/gate/fanout/join step engine. */
 export interface WorkflowTask extends ActiveTaskBase {
     type: "workflow"
-    steps?: WorkflowStep[]                   // declarative step list; currentStageIndex is the cursor. Optional to match the codebase convention (all variant-specific fields are optional, like gatedStages?); handlers guard with `task.steps ?? []`.
+    steps: WorkflowStep[]                    // declarative step list; currentStageIndex is the cursor
     activeStepIndices?: number[]             // persisted active frontier for fanout/join; legacy readers fall back to [currentStageIndex]
 }
 

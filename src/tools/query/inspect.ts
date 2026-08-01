@@ -50,8 +50,10 @@ export function teamQueryTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "readTeamSpec failed (inspect)", err, { team: caller.teamName })
             }
 
-            // HIGH: restrict non-master callers to inspecting only themselves.
-            const isMaster = team.leadSessionId === context.sessionID
+            // C15: use caller.isMaster (from session index, rebuilt from
+            // directory structure at startup) instead of the tamperable
+            // team.leadSessionId field from state.json.
+            const isMaster = caller.isMaster === true
             if (!isMaster && member.name !== caller.name) {
                 return `Error: non-master members can only inspect their own member info.`
             }

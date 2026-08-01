@@ -120,6 +120,7 @@ function isValidTask(value: unknown): value is Task {
     if (t.blockedBy === undefined) t.blockedBy = []
     return (
         typeof t.id === "string"
+        && (t.runId === undefined || (typeof t.runId === "string" && t.runId.length > 0 && t.runId.length <= 128))
         && typeof t.subject === "string"
         && typeof t.status === "string"
         // M-21: reject out-of-enum task statuses.
@@ -183,7 +184,7 @@ async function readTaskFile(teamDirectory: string, taskId: string): Promise<Task
 /** Create a task with an optional preallocated UUID and write it atomically to disk. */
 export async function createTask(
     teamDirectory: string,
-    input: { id?: string; subject: string; description: string; blockedBy?: string[]; depth?: number },
+    input: { id?: string; runId?: string; subject: string; description: string; blockedBy?: string[]; depth?: number },
 ): Promise<Task> {
     const now = Date.now()
     const id = input.id ?? crypto.randomUUID()
@@ -191,6 +192,7 @@ export async function createTask(
     const task: Task = {
         version: 1,
         id,
+        ...(input.runId === undefined ? {} : { runId: input.runId }),
         subject: input.subject,
         description: input.description,
         status: "pending",
@@ -330,9 +332,8 @@ export async function updateTask(
         // done. The recurse internal path (claimed→pending for re-aggregation)
         // is allowed via the explicit `pending` target.
         if (patch.status !== undefined && patch.status !== task.status) {
-            const TERMINAL = new Set<TaskStatus>(["completed", "deleted"])
             const ACTIVE = new Set<TaskStatus>(["pending", "claimed", "in_progress"])
-            if (TERMINAL.has(task.status) && ACTIVE.has(patch.status)) {
+            if (task.status === "deleted" || (task.status === "completed" && ACTIVE.has(patch.status))) {
                 throw new Error(
                     `updateTask: cannot revive terminal task ${taskId} from "${task.status}" to "${patch.status}"`,
                 )

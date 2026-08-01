@@ -177,9 +177,11 @@ export function formatWorkflowDryRun(args: ResolvedWorkflowToolArgs): string {
                 if (step.join.joinPolicy !== undefined) controls.push(`join_policy=${step.join.joinPolicy}`)
                 if (step.join.reducerMember !== undefined) controls.push(`reducer_member=${step.join.reducerMember}`)
                 if (step.join.useSurvivors === true) controls.push("use_survivors=true")
+                const joinBehavior = step.join.joinPolicy === "any_success"
+                    ? "continues after the first successful branch"
+                    : "waits for all branches to reach a terminal state before applying join policy"
                 lines.push(
-                    `${i + 1}. [join]${idTag} waits for all branches to reach a terminal state`
-                    + ` before applying join policy; branches: ${branchIds.join(", ")}; ${controls.join("; ")}`,
+                    `${i + 1}. [join]${idTag} ${joinBehavior}; branches: ${branchIds.join(", ")}; ${controls.join("; ")}`,
                 )
                 break
             }

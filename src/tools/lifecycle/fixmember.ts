@@ -13,7 +13,7 @@ import type { PluginContext } from "../../core/context.js"
 import { logger } from "../../core/log.js"
 import { loadTeamState, readTeamSpec, saveTeamState, saveTeamStateBounded, writeTeamSpec } from "../../state/store.js"
 import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
-import { inboxPath, worktreesDir, teamLifecycleLockPath } from "../../state/paths.js"
+import { configPath, inboxPath, worktreesDir, teamLifecycleLockPath } from "../../state/paths.js"
 import { withLock } from "../../state/locks.js"
 import { destroyWorktree, hasUncommittedChanges } from "../../state/worktrees.js"
 import { listAllTasks, updateTask } from "../../state/tasks.js"
@@ -223,7 +223,8 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             if (targetAgent) {
                 try {
                     agentsList = (await ctx.client.app.agents({ query: { directory: ctx.directory } })).data ?? []
-                } catch {
+                } catch (err) {
+                    logSwallowed(ctx, "fixmember: agent registry unavailable", err, { targetAgent })
                     agentsList = []
                 }
             }
@@ -231,6 +232,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             let staleState = false
             let renameCollision = false
             let specMissing = false
+            let specUnreadable = false
             await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status to "busy" since
@@ -246,9 +248,32 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 try {
                     spec = await readTeamSpec(caller.storageRoot, caller.teamName, caller.leadSessionId)
                 } catch (err) {
-                    logger.warn("fixmember: failed to read team spec", { teamName: caller.teamName, error: String(err) })
+                    logSwallowed(ctx, "fixmember: failed to read team spec", err, { teamName: caller.teamName })
+                    specUnreadable = true
+                    return
+                }
+                if (!spec) {
+                    try {
+                        await fs.access(configPath(team.directory))
+                        specUnreadable = true
+                        return
+                    } catch (err) {
+                        if (!isEnoent(err)) {
+                            logSwallowed(ctx, "fixmember: failed to inspect team spec", err, { teamName: caller.teamName })
+                            specUnreadable = true
+                            return
+                        }
+                    }
+                    if (renaming || args.new_role || args.new_prompt) {
+                        specMissing = true
+                        return
+                    }
                 }
                 const specMember = spec?.members.find(m => m.name === args.member_name)
+                if (spec && !specMember) {
+                    specMissing = true
+                    return
+                }
 
                 // Re-check name collision INSIDE the mutex: a concurrent
                 // fixmember could have renamed another member to the same
@@ -267,14 +292,6 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     staleState = true
                     return
                 }
-                // If renaming, the spec must be readable and contain the
-                // member — otherwise config.json would retain the old name
-                // after rename, creating a state/spec inconsistency.
-                if (renaming && !specMember) {
-                    specMissing = true
-                    return
-                }
-
                 // --- H-23: snapshot all fields that will be mutated, for complete rollback ---
                 const savedAgent = liveMember.agent
                 const savedModel = liveMember.model
@@ -340,18 +357,12 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                         for (const m of migrated) {
                             try {
                                 await updateTask(team.directory, m.id, { owner: m.oldOwner })
-                            } catch { /* best-effort */ }
+                            } catch (rollbackErr) {
+                                logSwallowed(ctx, "fixmember: task owner rollback failed", rollbackErr, { taskId: m.id })
+                            }
                         }
                         changes.push(`warning: task owner migration failed and rolled back (${err instanceof Error ? err.message : String(err)})`)
                     }
-                }
-
-                // M-FIXMEMBER: if spec is unreadable but the user requested
-                // spec-only changes (new_role/new_prompt), fail explicitly
-                // rather than silently skipping and returning success.
-                if (!spec && (args.new_role || args.new_prompt)) {
-                    specMissing = true
-                    return
                 }
 
                 // --- new_role: normalize to a preset role ---
@@ -578,8 +589,11 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             if (renameCollision) {
                 return `Error: name "${args.new_name}" already exists in this team`
             }
+            if (specUnreadable) {
+                return "Error: cannot modify member — team config (config.json) is unreadable"
+            }
             if (specMissing) {
-                return `Error: cannot modify member — team config (config.json) is unreadable or member absent from spec`
+                return "Error: cannot modify member — team config is absent or member missing from spec"
             }
 
             return `Member "${args.member_name}" updated — ${changes.join("; ")}`

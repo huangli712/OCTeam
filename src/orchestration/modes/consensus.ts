@@ -17,7 +17,7 @@ import { buildRoundSummary } from "../records/summary.js"
 import { finishRun } from "../control/completion.js"
 import { recordEvent } from "../records/events.js"
 import { maybeAdvanceBarrier } from "../control/barriers.js"
-import { allMembersAgree } from "../protocol/decisions.js"
+import { parseConsensus } from "../protocol/decisions.js"
 import { maybeRequestApproval } from "../control/approval.js"
 import { nonMasterMembers } from "../../tools/support.js"
 import type { CaptureMemberOutputResult } from "../records/capture.js"
@@ -48,7 +48,8 @@ export async function handleConsensusIdle(
             // HIGH: re-dispatch members who haven't responded this round.
             // Pre-fix code returned without re-dispatching, causing the
             // barrier to stall until wall-clock timeout.
-            const roundText = `[Consensus Round ${task.currentRound ?? 1}]\n${buildRoundSummary(task.responses)}\n\nRespond, then emit <consensus>{"agreed": true|false}</consensus>.`
+            const roundText = task.roundPrompt
+                ?? `[Consensus Round ${task.currentRound ?? 1}]\n${buildRoundSummary(task.responses)}\n\nRespond, then emit <consensus>{"agreed": true|false}</consensus>.`
             for (const m of nonMasterMembers(team)) {
                 if (task.responses[m.name] !== undefined) continue
                 if (m.status === "running") continue // still working
@@ -60,7 +61,10 @@ export async function handleConsensusIdle(
             }
             return  // barrier not satisfied yet
         }
-        task.consensusReached = allMembersAgree(task.responses, participants)
+        const parsedVotes = participants.map(name => parseConsensus(task.responses[name] ?? ""))
+        const hasParseFailure = parsedVotes.some(vote => vote.parseFailed)
+        task.decisionParseFailures = hasParseFailure ? task.decisionParseFailures + 1 : 0
+        task.consensusReached = !hasParseFailure && parsedVotes.every(vote => vote.agreed)
         if (task.consensusReached) {
             await finishRun(ctx, team, "consensus_reached", "idle")
             return
@@ -77,9 +81,8 @@ export async function handleConsensusIdle(
             return
         }
         // Next round: broadcast prior-round summary, reset to running.
-        // currentRound is incremented AFTER the dispatch loop so a partial
-        // dispatch failure (promptAsync throws mid-loop) does not advance the
-        // round counter — the barrier re-fire will retry the same round.
+        // currentRound is incremented before dispatch so dispatchToMember's
+        // internal persistence cannot save cleared responses under the old round.
         const nextRound = (task.currentRound ?? 0) + 1
         const summary = buildRoundSummary(task.responses)
         // Clear stale responses from the previous round so the next barrier

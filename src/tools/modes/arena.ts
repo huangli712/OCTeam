@@ -43,6 +43,7 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                 ),
             eval_command: tool.schema
                 .string()
+                .max(8192)
                 .optional()
                 .describe(
                     "objective command the evaluator runs against each candidate worktree. "
@@ -50,6 +51,7 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                 ),
             eval_criteria: tool.schema
                 .string()
+                .max(8192)
                 .optional()
                 .describe(
                     "scoring criteria for the evaluator. At least one of "
@@ -57,6 +59,7 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                 ),
             winner_metric: tool.schema
                 .string()
+                .max(64)
                 .optional()
                 .describe("metric the winner is selected on (default \"score\")."),
             score_direction: tool.schema
@@ -67,6 +70,7 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                 .number()
                 .int()
                 .min(0)
+                .max(5)
                 .optional()
                 .describe("evaluator re-dispatch cap on scoreboard parse/selection failure (default 1)."),
             max_errored_members: tool.schema

@@ -313,7 +313,10 @@ function validatePlannerBounds(bounds: unknown, memberCount: number): string | n
     if (bounds === undefined) return null
     if (!isRecord(bounds)) return "Error: team.bounds must be an object"
     // Whitelist known bounds keys.
-    const KNOWN_BOUNDS = new Set(["maxMembers", "maxTasks", "maxWallClockMinutes", "maxMessagesPerRun"])
+    const KNOWN_BOUNDS = new Set([
+        "maxMembers", "maxParallelMembers", "maxTasks", "maxWallClockMinutes",
+        "maxMemberTurns", "maxMessagesPerRun",
+    ])
     for (const [key, value] of Object.entries(bounds)) {
         if (value !== undefined) {
             if (!KNOWN_BOUNDS.has(key)) {

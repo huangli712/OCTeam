@@ -55,6 +55,13 @@ export async function deliverQueuedResultsToMaster(
 
     // Acknowledge only after successful injection so delivery failures retry.
     if (delivered) {
-        await ackMessages(team.directory, "master", queued)
+        try {
+            await ackMessages(team.directory, "master", queued)
+        } catch (err) {
+            logSwallowed(ctx, "deliver queued results: acknowledgement failed; retrying", err, {
+                team: team.teamName,
+            })
+            await ackMessages(team.directory, "master", queued)
+        }
     }
 }

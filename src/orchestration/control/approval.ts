@@ -14,6 +14,7 @@ import { type Team, saveTeamState } from "../../state/store.js"
 import { recordEvent } from "../records/events.js"
 
 const NOTIFICATION_BACKOFF_MS = 100
+const DEFAULT_APPROVAL_TIMEOUT_MS = 600_000
 
 /** Caller-supplied input for constructing an ApprovalRequest at a pause site. */
 type ApprovalRequestInput = {
@@ -103,6 +104,7 @@ async function createApprovalPause(
     }
     task.approvalStage = true
     task.approvalRequest = request
+    task.approvalTimeoutMs ??= DEFAULT_APPROVAL_TIMEOUT_MS
     // Persist BEFORE notifying so a crash between notify and save does not
     // leave the leader notified of a pause that is not on disk (mirrors
     // completion.ts's persist-then-notify ordering).

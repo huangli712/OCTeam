@@ -111,7 +111,6 @@ export async function approveRecurseDecompose(
     // If updateTask(parent, blockedBy) threw, the children existed as
     // claimable tasks but the parent was never linked — delegate mode would
     // pick them up and they'd be aggregated into nothing, consuming tokens.
-    let parentUpdated = false
     try {
         for (const subtask of request.subtasks) {
             const child = await createTask(team.directory, {
@@ -126,7 +125,6 @@ export async function approveRecurseDecompose(
             owner: undefined,
             blockedBy: ids,
         })
-        parentUpdated = true
     } catch (err) {
         // M-9: clean up ALL created children regardless of which step failed.
         // Pre-fix only cleaned on create failure; parent-update failure left
@@ -138,7 +136,6 @@ export async function approveRecurseDecompose(
         }
         throw err
     }
-    if (!parentUpdated) return // TS narrowing — parentUpdated is always true here
     recordEvent(team, {
         timestamp: Date.now(),
         kind: "decomposed",
@@ -230,7 +227,7 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
         // (not just decomposition). Pre-fix code only reset on successful
         // decomposition, so a direct-solve success after a failure left the
         // counter at 1, and a later unrelated failure could terminate the run.
-        if (!dec.parseFailed && dec.subtasks.length >= 0) {
+        if (!dec.parseFailed) {
             task.decomposeParseFailures = 0
         }
         const maxDepth = task.maxDepth ?? DEFAULT_RECURSE_DEPTH

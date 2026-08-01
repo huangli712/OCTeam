@@ -68,7 +68,8 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 let spec: TeamSpec | null = null
                 try {
                     spec = await readTeamSpec(ctx.storageRoot, args.team_id, pathLeadSessionId)
-                } catch {
+                } catch (err) {
+                    logSwallowed(ctx, "team_remove_member: team spec unreadable", err, { team: args.team_id })
                     specError = true
                     return
                 }
@@ -90,15 +91,6 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 }
                 const removedStateMember = team.members[currentIdx]
                 team.members.splice(currentIdx, 1)
-
-                // HIGH: clean up the removed member's mailbox directory
-                // so messages don't leak to a future member with the same name.
-                try {
-                    const mbPath = inboxPath(team.directory, args.member_name)
-                    await fs.rm(mbPath, { recursive: true, force: true })
-                } catch (err) {
-                    logSwallowed(ctx, "remove: mailbox cleanup failed", err, { member: args.member_name })
-                }
 
                 try {
                     await writeTeamSpec(ctx.storageRoot, spec, pathLeadSessionId, ctx.storageRoot)
@@ -122,6 +114,17 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                         logSwallowed(ctx, "remove: compensating spec revert failed after state save failure", compensateErr, { team: args.team_id })
                     }
                     throw err
+                }
+                // C16: clean up mailbox ONLY after both config + state saved
+                // successfully. Pre-fix code deleted the inbox BEFORE saving,
+                // so a save failure rolled back the member but permanently
+                // lost messages. Now a save failure leaves the inbox intact
+                // for the restored member.
+                try {
+                    const mbPath = inboxPath(team.directory, args.member_name)
+                    await fs.rm(mbPath, { recursive: true, force: true })
+                } catch (err) {
+                    logSwallowed(ctx, "remove: mailbox cleanup failed", err, { member: args.member_name })
                 }
             }), team.directory)
 

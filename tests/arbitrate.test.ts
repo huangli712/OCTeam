@@ -2,7 +2,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 
 
 import { getExpectedMember } from "../src/orchestration/lifecycle/idle.js"
-import { handleArbitrateIdle } from "../src/orchestration/modes/arbitrate.js"
+import { buildArbiterPrompt, handleArbitrateIdle } from "../src/orchestration/modes/arbitrate.js"
 import { parseArbitrationDecision } from "../src/orchestration/protocol/decisions.js"
 import { readRunEvents, readRunRecord } from "../src/orchestration/records/runs.js"
 import { buildSummary } from "../src/orchestration/records/summary.js"
@@ -42,6 +42,19 @@ function makeArbitrateTask(opts: Partial<ArbitrateTask> = {}): ArbitrateTask {
         ...opts,
     } as ArbitrateTask
 }
+
+describe("buildArbiterPrompt", () => {
+    test("caps the aggregate ruling prompt across all debaters", () => {
+        const disputants = Array.from({ length: 12 }, (_, index) => `debater-${index}`)
+        const responses = Object.fromEntries(
+            disputants.map(name => [name, name.repeat(8_192)]),
+        )
+        const prompt = buildArbiterPrompt(makeArbitrateTask({ disputants, responses }))
+
+        expect(Buffer.byteLength(prompt, "utf8")).toBeLessThanOrEqual(65_536)
+        expect(prompt).toContain("<ruling>")
+    })
+})
 
 // --- parseArbitrationDecision (pure function) ---
 
@@ -169,6 +182,32 @@ describe("handleArbitrateIdle Phase A: debate round progression", () => {
         const arbiter = team.members.find(m => m.name === "arbiter")!
         expect(arbiter.status).toBe("running")
         expect(arbiter.turnCount).toBe(1)
+    })
+
+    test("first-round dispatched debater without output is re-dispatched before ruling", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({ calls })
+        const task = makeArbitrateTask({
+            arbiterMember: "arbiter",
+            disputants: ["alice", "bob"],
+            maxRounds: 1,
+            currentRound: 1,
+            dispatchedParticipants: [],
+            responses: { alice: "ship it", bob: "" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "arbiter", sessionId: "ses_arbiter" },
+                { name: "alice", sessionId: "ses_alice", status: "idle", turnCount: 1 },
+                { name: "bob", sessionId: "ses_bob", status: "idle", turnCount: 1 },
+            ],
+        })
+
+        await handleArbitrateIdle(ctx, team)
+
+        expect(task.arbitrationStage).toBe(false)
+        expect(calls.map(call => call.sessionId)).toEqual(["ses_bob"])
     })
 
     test("multi-round: round 1 barrier advances to round 2 (re-dispatches debaters)", async () => {

@@ -36,6 +36,13 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
             await finishRun(ctx, team, `member_error:${e?.name}:${e?.error ?? "unknown"}`, "failed")
             return
         }
+        const missingResponse = participants.some(name => {
+            const member = team.members.find(m => m.name === name)
+            return member?.status !== "errored"
+                && (member?.turnCount ?? 0) > 0
+                && !task.responses[name]
+        })
+        if (missingResponse) return
         // HIGH-D: clear stale responses from errored members BEFORE reduce / signoff.
         // Pre-fix code cleared them only just before final delivery, AFTER
         // reduce / signoff had already read them. A reducer or signoff

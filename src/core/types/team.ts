@@ -46,7 +46,7 @@ export type TeamSpec = {
     readonly name: string              // /^[a-z0-9-]+$/, unique within scope
     readonly description?: string
     readonly createdAt: number         // epoch ms
-    readonly members: MemberSpec[]     // 1-12 members (maxMembers default)
+    readonly members: MemberSpec[]     // readonly property; array contents remain mutable
 }
 
 /** Team lifecycle status: config-only, actively running, idle, or failed. */
@@ -147,7 +147,8 @@ export type MemberState = {
                                        // real task dispatch (NOT during role-setup, which is identity-only).
     promptDelivered?: boolean          // true after prompt has been prepended to a dispatch once
     lastCapturedMsgCount?: number      // capture dedup: messages.length at the last successful
-    lastCapturedOutput?: string       // HIGH #3: last assistant text for compaction-safe dedup
+    lastCapturedOutput?: string        // legacy output snapshot for compaction-safe dedup
+    lastCapturedOutputHash?: string    // SHA-256 of the full captured turn output
                                        // captureMemberOutput for this member. A re-entry whose message
                                        // history hasn't grown (stale idle, delegate completion sweep)
                                        // yields no new turn and is skipped, making capture effectively

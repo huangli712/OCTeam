@@ -18,7 +18,7 @@
  */
 
 import type { PluginContext } from "../../core/context.js"
-import { logSwallowed } from "../../core/log.js"
+import { logger, logSwallowed } from "../../core/log.js"
 import { dispatchToMember } from "../control/dispatch.js"
 import type { ActiveTask, MemberState, OrchestrationType, SdkMessage } from "../../core/types.js"
 import { type Team, saveTeamState } from "../../state/store.js"
@@ -134,7 +134,7 @@ export function getExpectedMember(task: ActiveTask): string | null {
  * team_done() under require_done_ack. Extracted from processIdle's parallel
  * case so the prompt copy lives in one named place rather than inline.
  */
-function buildPrematureIdleReprompt(teamName: string): string {
+export function buildPrematureIdleReprompt(teamName: string): string {
     return `[Team Orchestrator]\n` 
         + `You went idle on team "${teamName}" without calling `
         + `team_done(team_id="${teamName}"). This run uses require_done_ack: the `
@@ -267,6 +267,35 @@ export async function processErrorRecovery(
     }
 }
 
+export async function retryIdleHandler(
+    ctx: PluginContext,
+    team: Team,
+    member: MemberState,
+): Promise<void> {
+    const task = team.activeTask
+    if (!task || task.approvalStage || member.status !== "idle" || member.retryingSince === undefined) return
+
+    const retryingSince = member.retryingSince
+    member.retryingSince = undefined
+    const captureResult: CaptureMemberOutputResult = {
+        fresh: true,
+        output: task.responses[member.name] ?? "",
+    }
+    try {
+        if (task.reduceStage) {
+            await handleReduceIdle(ctx, team, member, captureResult)
+        } else if (task.signoffStage) {
+            await handleSignoffIdle(ctx, team, member)
+        } else {
+            await idleDispatch[task.type](ctx, team, member, captureResult)
+        }
+    } catch (err) {
+        member.retryingSince ??= retryingSince
+        throw err
+    }
+    await checkTermination(ctx, team)
+}
+
 /** Single entry point for the idle state machine, driven by session.idle events. */
 export async function processIdle(
     ctx: PluginContext,
@@ -304,7 +333,7 @@ export async function processIdle(
     // idle event (from a turn that was already aborted/failed) must not
     // resurrect the member to idle and re-enter the mode handler.
     if (member.status === "errored") {
-        console.warn("processIdle: skipping stale idle for errored member", {
+        logger.warn("processIdle: skipping stale idle for errored member", {
             team: team.teamName, member: member.name,
         })
         return

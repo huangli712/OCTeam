@@ -744,7 +744,14 @@ export async function handleGateVerdict(
             // version. Pre-fix code truncated before parsing, which could
             // cut the closing </verdict> tag and cause false parseFailed.
             output = response;
-            step.output = response.length > 8192 ? response.slice(0, 8192) + "\n[...truncated]" : response;
+            if (Buffer.byteLength(response, "utf8") > 8192) {
+                const responseBuffer = Buffer.from(response, "utf8");
+                step.output = responseBuffer
+                    .subarray(0, Math.min(responseBuffer.length, 8192))
+                    .toString("utf8") + "\n[...truncated]";
+            } else {
+                step.output = response;
+            }
         } else {
             output = step.output ?? "";
         }

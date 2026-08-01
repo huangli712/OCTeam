@@ -9,7 +9,7 @@ import type { TuiPluginApi } from "@opencode-ai/plugin/tui"
 import { loadTeams, type LoadState } from "./teams.js"
 
 /** Display status derived from OpenCode SessionStatus. */
-export type DisplayStatus = "running" | "idle" | "retrying" | "errored" | "unknown"
+export type DisplayStatus = "running" | "idle" | "retrying" | "unknown"
 
 /** A child session node for sidebar rendering. */
 export type SessionTreeNode = {

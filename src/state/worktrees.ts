@@ -93,8 +93,8 @@ export async function cleanWorktree(
     projectDir: string,
     worktreePath: string | undefined,
     worktreesRoot: string,
-): Promise<void> {
-    if (!worktreePath) return
+): Promise<boolean> {
+    if (!worktreePath) return true
     const root = path.resolve(worktreesRoot)
     const resolved = path.resolve(root, worktreePath)
     // Walk ancestor chain with lstat (no follow) so an intermediate-directory
@@ -106,11 +106,11 @@ export async function cleanWorktree(
         logger.warn("cleanWorktree: refusing symlink-bearing worktreePath", {
             path: worktreePath, error: err instanceof Error ? err.message : String(err),
         })
-        return
+        return false
     }
     if (resolved !== root && !resolved.startsWith(root + path.sep)) {
         logger.warn("cleanWorktree: refusing out-of-bounds worktreePath", { path: worktreePath })
-        return
+        return false
     }
     // C15: pass the validated `resolved` (absolute) path to git, not the
     // original `worktreePath`. The validation above checks `resolved` =
@@ -122,6 +122,7 @@ export async function cleanWorktree(
         cwd: projectDir,
         timeout: 30_000,
     })
+    return true
 }
 
 /**
@@ -180,17 +181,19 @@ export async function destroyWorktree(
     worktreesRoot: string,
     teamName: string,
     memberName: string,
-): Promise<void> {
+): Promise<boolean> {
     // No registered worktree → no OCTeam-owned companion branch. Skip BOTH
     // the worktree removal (cleanWorktree already early-returns on undefined)
     // and the branch deletion to avoid destroying a user-defined branch.
-    if (!worktreePath) return
+    if (!worktreePath) return true
     try {
-        await cleanWorktree(projectDir, worktreePath, worktreesRoot);
+        const cleaned = await cleanWorktree(projectDir, worktreePath, worktreesRoot);
+        if (!cleaned) return false
     } catch (err) {
-        logger.warn("destroyWorktree: cleanWorktree failed, proceeding with branch deletion", {
+        logger.warn("destroyWorktree: cleanWorktree failed, skipping branch deletion", {
             error: err instanceof Error ? err.message : String(err),
         });
+        return false
     }
     const branch = `team/${teamName}/${memberName}`;
     await execFileP("git", ["branch", "-D", branch], {
@@ -204,4 +207,5 @@ export async function destroyWorktree(
         });
         // A missing or already-removed branch is not a teardown blocker.
     });
+    return true
 }

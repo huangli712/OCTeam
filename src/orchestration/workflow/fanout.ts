@@ -113,11 +113,13 @@ function buildJoinedWorkflowOutput(
             fanout?.branchIds[branchIndex] ?? `branch-${branchIndex + 1}`;
         if (erroredBranchIds.has(branchId)) continue;
         const branchBlocks: string[] = [];
+        const separator = blocks.length === 0 ? "" : "\n\n";
+        const branchLabel = `[Branch ${branchId}]\n`;
 
         // MEDIUM: cap each branch block to a per-branch budget so a
         // single oversized branch doesn't get entirely dropped.
         const branchBudget = Math.floor(MAX_UPSTREAM_OUTPUT_BYTES / ranges.length)
-        let branchUsed = 0
+        let branchUsed = Buffer.byteLength(separator + branchLabel, "utf8")
         for (
             let stepIndex = range.startIndex;
             stepIndex <= range.endIndex;
@@ -128,18 +130,18 @@ function buildJoinedWorkflowOutput(
                 continue;
             if (step.exposeOutput === false) continue;
             // Per-step truncation within the branch budget.
+            const stepSeparator = branchBlocks.length === 0 ? "" : "\n\n"
+            const stepLabel = `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n`
             const remaining = branchBudget - branchUsed
+                - Buffer.byteLength(stepSeparator + stepLabel, "utf8")
             if (remaining <= 0) break
             const stepText = truncateOutput(step.output, Math.min(remaining, 8192))
-            branchUsed += Buffer.byteLength(stepText, "utf8")
-            branchBlocks.push(
-                `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n${stepText}`,
-            );
+            branchUsed += Buffer.byteLength(stepSeparator + stepLabel + stepText, "utf8")
+            branchBlocks.push(`${stepLabel}${stepText}`);
         }
 
         if (branchBlocks.length === 0) continue;
-        const block = `[Branch ${branchId}]\n${branchBlocks.join("\n\n")}`;
-        const separator = blocks.length === 0 ? "" : "\n\n";
+        const block = `${branchLabel}${branchBlocks.join("\n\n")}`;
         const separatorSize = Buffer.byteLength(separator, "utf8");
         const blockSize = Buffer.byteLength(block, "utf8");
         if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) {
@@ -172,17 +174,25 @@ export function buildBranchWorkflowOutput(
     const range = branchIndex < 0 ? undefined : fanout.branchRanges[branchIndex];
     if (range === undefined) return "";
 
+    const branchLabel = `[Branch ${branchId}]\n`;
     const branchBlocks: string[] = [];
+    let used = Buffer.byteLength(branchLabel, "utf8");
     for (let stepIndex = range.startIndex; stepIndex <= range.endIndex; stepIndex += 1) {
         const step = steps[stepIndex];
         if (step?.kind !== "task" || !step.completed || !step.output) continue;
         if (step.exposeOutput === false) continue;
-        branchBlocks.push(
-            `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n${truncateOutput(step.output)}`,
-        );
+        const separator = branchBlocks.length === 0 ? "" : "\n\n";
+        const stepLabel = `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n`;
+        const remaining = MAX_UPSTREAM_OUTPUT_BYTES
+            - used
+            - Buffer.byteLength(separator + stepLabel, "utf8");
+        if (remaining <= 0) break;
+        const block = `${stepLabel}${truncateOutput(step.output, remaining)}`;
+        branchBlocks.push(block);
+        used += Buffer.byteLength(separator + block, "utf8");
     }
 
-    return branchBlocks.length === 0 ? "" : `[Branch ${branchId}]\n${branchBlocks.join("\n\n")}`;
+    return branchBlocks.length === 0 ? "" : branchLabel + branchBlocks.join("\n\n");
 }
 
 // --- reduce/select reducer dispatch ---

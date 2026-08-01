@@ -54,6 +54,7 @@ export type Team = TeamState & {
     _diskSnapshot?: TeamState  // last known on-disk state (for three-way merge in saveTeamState)
     _diskMtime?: number  // mtimeMs of the last disk read (for cross-process cache invalidation)
     _lastCacheCheck?: number  // throttle: last time we stat'd the disk for staleness
+    _persistDirty?: boolean
 }
 
 // Process-level registry: resolved teamDir (absolute path) -> Team (with its
@@ -99,6 +100,9 @@ function stripRuntimeFields(team: Team): TeamState {
         directory: _directory,
         deleted: _deleted,
         _diskSnapshot: _snap,
+        _diskMtime: _mtime,
+        _lastCacheCheck: _cacheCheck,
+        _persistDirty: _persistDirty,
         ...state
     } = team
     // H3: proactively strip isMaster from every member before serialization.
@@ -177,6 +181,12 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     if (s.runnerPid !== undefined && (typeof s.runnerPid !== "number" || !Number.isFinite(s.runnerPid))) return false
     if (s.bounds !== undefined) {
         if (typeof s.bounds !== "object" || s.bounds === null) return false
+        // C12: all bounds values must be non-negative finite numbers.
+        // Pre-fix only checked that bounds was an object, so tampered state
+        // could set maxMembers: "unlimited" or maxWallClockMinutes: -1.
+        for (const v of Object.values(s.bounds as Record<string, unknown>)) {
+            if (v !== undefined && (typeof v !== "number" || !Number.isFinite(v) || v < 0)) return false
+        }
     }
     // member name uniqueness
     const memberNames = new Set<string>()
@@ -678,10 +688,17 @@ export async function saveTeamState(team: Team): Promise<void> {
         if (ancestor) {
             const diskState = await readJsonOrNull<TeamState>(statePath(dir))
             if (diskState && !isValidTeamState(diskState, dir)) {
-                // Disk state is corrupt or tampered. Do NOT merge it into the
-                // three-way merge — that would re-persist the corrupt data.
-                // Fall back to a blind write of the current state.
-                logger.warn("saveTeamState: disk state failed validation; skipping merge to avoid persisting corrupt data", { dir })
+                // C10: disk state is corrupt/tampered. Back it up for forensic
+                // recovery before overwriting with the known-good in-memory
+                // state, so the corrupt-but-potentially-recoverable data is
+                // not silently destroyed.
+                try {
+                    const backupPath = `${statePath(dir)}.corrupt-${Date.now()}.json`
+                    await fs.writeFile(backupPath, JSON.stringify(diskState, null, 2))
+                    logger.warn("saveTeamState: disk state failed validation; backed up corrupt state before overwrite", { dir, backupPath })
+                } catch {
+                    logger.warn("saveTeamState: disk state failed validation; backup failed, proceeding with overwrite", { dir })
+                }
                 toWrite = currentState
             } else {
                 diskChanged = diskState !== null && !jsonEqual(diskState, ancestor)
@@ -691,6 +708,13 @@ export async function saveTeamState(team: Team): Promise<void> {
                 // new team. Refuse to merge stale state.
                 if (diskState && diskState.teamRunId !== currentState.teamRunId) {
                     throw new Error(`saveTeamState: disk teamRunId (${diskState.teamRunId}) differs from live (${currentState.teamRunId}) — team was recreated; refusing to merge stale state`)
+                }
+                // C11: disk file vanished since last save but cache still has
+                // an ancestor snapshot. Another process may have deleted or
+                // renamed the team. Log prominently so operators can detect
+                // potential stale-state resurrection.
+                if (!diskState) {
+                    logger.warn("saveTeamState: team state file vanished since last save — team may have been deleted/renamed by another process", { dir })
                 }
                 toWrite = diskState
                     ? mergeTeamState(diskState, ancestor, currentState)
@@ -727,6 +751,7 @@ export async function saveTeamState(team: Team): Promise<void> {
             if (Buffer.byteLength(reSerialized, "utf8") <= 1_048_576) {
                 logger.warn("saveTeamState: state exceeded 1 MiB, truncated responses to fit", { dir, original: serializedBytes, trimmed: Buffer.byteLength(reSerialized, "utf8") })
                 await atomicWrite(statePath(dir), reSerialized, dir)
+                toWrite = trimmed as unknown as TeamState
             } else {
                 // HIGH: do NOT write a state that the reader will reject.
                 // Pre-fix code wrote anyway, making the team vanish on restart.
@@ -865,6 +890,7 @@ function isValidTeamSpec(value: unknown): value is TeamSpec {
     const s = value as Record<string, unknown>
     if (typeof s.name !== "string" || !s.name) return false
     if (s.version !== 1) return false
+    if (typeof s.createdAt !== "number" || !Number.isFinite(s.createdAt)) return false
     if (!Array.isArray(s.members)) return false
     const seenNames = new Set<string>()
     for (const m of s.members) {
@@ -874,10 +900,8 @@ function isValidTeamSpec(value: unknown): value is TeamSpec {
         // MEDIUM: reject duplicate member names.
         if (seenNames.has(mb.name)) return false
         seenNames.add(mb.name)
-        // Validate role is a non-empty string when present.
-        if (mb.role !== undefined && (typeof mb.role !== "string" || !mb.role)) return false
-        // Validate prompt is a string when present.
-        if (mb.prompt !== undefined && typeof mb.prompt !== "string") return false
+        if (typeof mb.role !== "string" || !mb.role) return false
+        if (typeof mb.prompt !== "string") return false
     }
     return true
 }
@@ -1003,7 +1027,7 @@ export async function listTeamNames(storageRoot: string, leadSessionId?: string)
     const root = teamsDir(storageRoot, leadSessionId)
     try {
         const entries = await fs.readdir(root, { withFileTypes: true })
-        return entries.filter(e => e.isDirectory()).map(e => e.name)
+        return entries.filter(e => e.isDirectory() && isSafePathSegment(e.name)).map(e => e.name)
     } catch (err: unknown) {
         if (isEnoent(err)) return []
         throw err

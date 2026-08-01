@@ -102,6 +102,9 @@ export function teamDetailsTool(ctx: PluginContext): ToolDefinition {
             )
             team.members.forEach((m, i) => {
                 const result = unreadResults[i]
+                if (result?.status === "rejected") {
+                    logSwallowed(ctx, "team_details: mailbox count failed", result.reason, { member: m.name })
+                }
                 const unread = result?.status === "fulfilled" ? result.value : undefined
                 const modelStr = m.model ? ` (${m.model})` : ""
                 const memberLine = `  - ${m.name}: ${m.status}${modelStr}`

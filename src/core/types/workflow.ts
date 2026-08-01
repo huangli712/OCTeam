@@ -143,16 +143,6 @@ export type WorkflowJoinMetadata = {
 }
 
 // ---------------------------------------------------------------------------
-// WorkflowStep — the runtime step (task, gate, fanout marker, or join marker)
-// ---------------------------------------------------------------------------
-
-/**
- * Shared runtime fields common to ALL step kinds. Every variant includes
- * these via intersection. NOTE: WorkflowRunStep (persisted JSON) is defined
- * INDEPENDENTLY in runs.ts and does NOT derive from this type — the union
- * base is intentionally slim (kind-specific fields live on each variant).
- */
-// ---------------------------------------------------------------------------
 // WorkflowStep — discriminated union of per-kind runtime step variants
 // ---------------------------------------------------------------------------
 

@@ -376,10 +376,14 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
     // reservations so they're never lost from the processed dedup log.
     // Pre-fix code's byte truncation could delete IDs that still have
     // active reservations, causing the reaper to re-queue and re-deliver.
-    const reservedDir = path.join(path.dirname(p), "..", "reserved", recipient)
+    // C8: pre-fix code manually built `<team>/reserved/<recipient>` which
+    // does not exist — the actual layout is `<team>/mailbox/<recipient>.reserved`
+    // (see paths.ts reservedDir). Use the canonical helper to read active
+    // reservation IDs so truncation never drops them from the dedup log.
+    const reservedDirPath = reservedDir(teamDirectory, recipient)
     let reservedIds: Set<string> | undefined
     try {
-        const reservedEntries = await fs.readdir(reservedDir)
+        const reservedEntries = await fs.readdir(reservedDirPath)
         reservedIds = new Set(reservedEntries.map(f => f.replace(/\.json$/, "")))
     } catch { /* ENOENT — no reservations */ }
     if (reservedIds && reservedIds.size > 0) {

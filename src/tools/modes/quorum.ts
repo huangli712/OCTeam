@@ -51,7 +51,8 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
                     + 'to emit <vote>{"<vote_key>": "<value>"}</vote>.',
                 ),
             vote_options: tool.schema
-                .array(tool.schema.string())
+                .array(tool.schema.string().min(1).max(256))
+                .max(20)
                 .optional()
                 .describe(
                     "whitelist of legal values. If omitted, any non-empty "

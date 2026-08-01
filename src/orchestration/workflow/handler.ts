@@ -81,9 +81,12 @@ function hasNestedQuantifier(pattern: string): boolean {
     // Strip escaped metacharacters so they do not confuse the heuristic.
     // (e.g. `\+` is a literal +, not a quantifier.)
     const stripped = pattern.replace(/\\[+*?{}()[\].\\|]/g, "")
-    // A group ending with a quantifier, followed by another quantifier.
-    // Matches: (a+)+, (.+)*, ([a-z]+)?, (a{2,3})+, (a+){2}, etc.
-    if (/\([^)]*[+*?}]\)[+*?{]/.test(stripped)) return true
+    // C4: a group containing a quantifier ANYWHERE inside it, followed by
+    // an outer quantifier, is the canonical nested-quantifier signature.
+    // Pre-fix regex `[^)]*[+*?}]` only matched when the quantifier was the
+    // LAST char before `)`, missing patterns like `(a+.)+` which have
+    // exponential backtracking on adversarial input.
+    if (/\([^)]*[+*?{}][^)]*\)[+*?{]/.test(stripped)) return true
     // C-18: consecutive identical-quantified items at top level. Patterns
     // like ^a*a*a*a*a*a*a*a*b$ have NO groups or alternation, so the checks
     // above miss them, yet V8 exhibits polynomial backtracking when the

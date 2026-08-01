@@ -95,7 +95,9 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     if (!isEnoent(err)) throw err
                     // Parent dirs missing — this shouldn't happen for a valid
                     // storage root, but create them and retry.
-                    await fs.mkdir(path.dirname(newDir), { recursive: true }).catch(() => {})
+                    await fs.mkdir(path.dirname(newDir), { recursive: true }).catch((mkdirErr) => {
+                        logSwallowed(ctx, "team_rename: failed to create teams directory", mkdirErr, { newDir })
+                    })
                     try {
                         await fs.mkdir(newDir, { recursive: false })
                     } catch (retryErr) {
@@ -123,13 +125,18 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // code checks flags, not the callback return value, so a
                     // returned string was silently dropped.
                     specError = `Error: team "${args.team_id}" config is unreadable — refusing to rename (${err instanceof Error ? err.message : String(err)})`
+                    logSwallowed(ctx, "team_rename: team spec unreadable", err, { team: args.team_id })
                     // MEDIUM: clean up the placeholder directory created above.
-                    await fs.rmdir(newDir).catch(() => {})
+                    await fs.rmdir(newDir).catch((cleanupErr) => {
+                        logSwallowed(ctx, "team_rename: placeholder cleanup failed", cleanupErr, { newDir })
+                    })
                     return
                 }
                 if (!spec) {
                     specError = `Error: team "${args.team_id}" config is missing — refusing to rename`
-                    await fs.rmdir(newDir).catch(() => {})
+                    await fs.rmdir(newDir).catch((cleanupErr) => {
+                        logSwallowed(ctx, "team_rename: placeholder cleanup failed", cleanupErr, { newDir })
+                    })
                     return
                 }
                 // Capture the original spec name so the rollback can restore it.

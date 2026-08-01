@@ -98,6 +98,18 @@ describe("bug② buildUpstreamContext (all completed upstream, capped)", () => {
         expect(ctx).toContain("upstream context truncated at")
         expect(ctx.length).toBeLessThan(70000) // bounded by 65536 cap, not 10×~8k unbounded
     })
+
+    test("single capped output reserves room for its label", () => {
+        const ctx = buildUpstreamContext(
+            [{ member: "latest", task: "", completed: true }],
+            { latest: "x".repeat(65_536) },
+            1,
+        )
+
+        expect(Buffer.byteLength(ctx, "utf8")).toBeLessThanOrEqual(65_536)
+        expect(ctx).toContain("[Output from latest]")
+        expect(ctx).toContain("x")
+    })
 })
 
 // --- bug③ structured <no_issues/> tag (i18n, no false-match) ---

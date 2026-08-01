@@ -70,6 +70,9 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
             if (team.status !== "busy" || !team.activeTask) {
                 return `Error: team "${args.team_id}" has no active run to intervene on.`
             }
+            if (args.to === "master") {
+                return `Error: team_intervene cannot target "master"; directives are delivered to member mailboxes only.`
+            }
 
             // Resolve recipients: a single member, or every non-master member on
             // broadcast. Validate each exists (mirror send_message validation).
@@ -78,7 +81,7 @@ export function teamInterveneTool(ctx: PluginContext): ToolDefinition {
                     ? nonMasterMembers(team).map(m => m.name)
                     : [args.to]
             for (const r of recipients) {
-                if (!team.members.some(m => m.name === r) && r !== "master") {
+                if (!team.members.some(m => m.name === r)) {
                     return `Error: unknown recipient "${r}"`
                 }
             }

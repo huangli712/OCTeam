@@ -10,7 +10,7 @@
 import { isEnoent } from "../core/utils.js"
 import { listAllTeams, loadTeamState } from "./store.js"
 import { masterSentinelPath } from "./paths.js"
-import fs from "node:fs/promises"
+import { safeReadFile } from "./locks.js"
 import type { MemberState } from "../core/types.js"
 import type { PluginContext } from "../core/context.js"
 import { logSwallowed, logger } from "../core/log.js"
@@ -391,7 +391,12 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
             } else {
                 try {
                     const sentinelPath = masterSentinelPath(team.directory)
-                    const sentinelContent = await fs.readFile(sentinelPath, "utf8")
+                    // C1: use fd-based safe read to shrink TOCTOU window and
+                    // cap size to prevent OOM from a crafted sentinel.
+                    const sentinelContent = await safeReadFile(team.directory, sentinelPath, { maxBytes: 1024 })
+                    if (sentinelContent === undefined) {
+                        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
+                    }
                     const sentinelLead = sentinelContent.trim()
                     if (sentinelLead && sentinelLead === team.leadSessionId) {
                         trustedLeadSessionId = sentinelLead

@@ -25,12 +25,10 @@ const appendChains = new Map<string, Promise<void>>()
 /** Fire-and-forget: append one RunEvent to the run's events.jsonl timeline.
  *  Returns the append Promise so callers that need durability (termination,
  *  signoff, persistRun) can await it via flushRunEvents. */
-let eventSequenceCounter = 0
 export function recordEvent(team: Team, event: RunEvent): Promise<void> {
     if (team.deleted) return Promise.resolve()
     const runId = team.activeTask?.runId
     if (!runId) return Promise.resolve()
-    event.sequence = ++eventSequenceCounter
     const eventsFile = runEventsPath(team.directory, runId)
     const previous = appendChains.get(eventsFile) ?? Promise.resolve()
     const append = previous.then(async () => {

@@ -149,6 +149,7 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 task = await createTask(caller.directory, {
+                    runId: team.activeTask?.runId,
                     subject: args.subject,
                     description: args.description,
                     blockedBy: args.blocked_by,
@@ -178,7 +179,7 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
             status: tool.schema
                 .enum(["pending", "claimed", "in_progress", "completed", "deleted"])
                 .optional(),
-            owner: tool.schema.string().optional(),
+            owner: tool.schema.string().trim().min(1).optional(),
         },
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
@@ -338,9 +339,10 @@ export function teamTaskGetTool(ctx: PluginContext): ToolDefinition {
             try {
                 const team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
                 if (team.deleted) return "Error: team has been deleted"
-            } catch {
-                // LOW: only ENOENT means not found; other errors (EACCES,
-                // EIO, corruption) should fail closed, not silently return null.
+            } catch (err) {
+                if (isEnoent(err)) return `Error: team "${args.team_id}" not found`
+                logSwallowed(ctx, "team_task_get: team state unreadable", err, { team: args.team_id })
+                return `Error: team "${args.team_id}" state could not be read`
             }
             let task
             try {

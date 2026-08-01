@@ -245,6 +245,28 @@ describe("handleTollgateIdle: produce -> verify", () => {
         expect(calls.some(c => c.sessionId === "ses_alice")).toBe(false)
     })
 
+    test("producer idle without output does not enter verification", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({ calls })
+        const task = makeTollgateTask({
+            gatedStages: [gate({ member: "alice", verifier: "bob" })],
+            tollgatePhase: "produce",
+            responses: { alice: "" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", turnCount: 1 },
+                { name: "bob", sessionId: "ses_bob" },
+            ],
+        })
+
+        await handleTollgateIdle(ctx, team, idle(team, "alice"))
+
+        expect(task.tollgatePhase).toBe("produce")
+        expect(calls).toHaveLength(0)
+    })
+
     test("stray idle in produce phase (verifier idles) is ignored", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
@@ -472,6 +494,7 @@ describe("handleTollgateIdle: FAIL retry semantics", () => {
         expect(fail1!.text).toContain("off by 1e-3")
 
         // Producer resubmits -> produce idle -> re-verify.
+        task.responses["alice"] = "revised artifact 1"
         await handleTollgateIdle(ctx, team, idle(team, "alice"))
         expect(task.tollgatePhase).toBe("verify")
         expect(calls.some(c => c.sessionId === "ses_bob")).toBe(true)
@@ -488,6 +511,7 @@ describe("handleTollgateIdle: FAIL retry semantics", () => {
         expect(calls.some(c => c.sessionId === "ses_alice")).toBe(true)
 
         // Producer resubmits -> produce idle -> re-verify.
+        task.responses["alice"] = "revised artifact 2"
         await handleTollgateIdle(ctx, team, idle(team, "alice"))
         expect(task.tollgatePhase).toBe("verify")
         // C17: re-populate verifier output after dispatch clears it.

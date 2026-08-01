@@ -38,6 +38,8 @@ import { ensureMembersReady } from "../../orchestration/control/members.js"
 import { loadTeamState, saveTeamState } from "../../state/store.js"
 import { resumeDispatch } from "../../orchestration/lifecycle/resume.js"
 
+const SESSION_REACHABILITY_TIMEOUT_MS = 5_000
+
 /** Resume an interrupted orchestration from its preserved checkpoint. */
 export function teamResumeTool(ctx: PluginContext): ToolDefinition {
     return tool({
@@ -144,9 +146,32 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                 const task = restored
 
                 // --- Phase 2 (outside mutex): ensure members ready. ---
-                // NOTE: ensureMembersReady only checks !sessionId field, NOT session
-                // reachability. A dead persisted session is NOT re-spawned; Phase 3
-                // dispatch to it hangs until wall-clock timeout. Host limitation.
+                const sessionApi = ctx.client?.session
+                const getSession = sessionApi?.get
+                if (typeof getSession === "function") {
+                    await Promise.all(team.members.map(async member => {
+                        const sessionId = member.sessionId
+                        if (!sessionId) return
+                        let timer: ReturnType<typeof setTimeout> | undefined
+                        try {
+                            const response = await Promise.race([
+                                getSession.call(sessionApi, {
+                                    path: { id: sessionId },
+                                    query: { directory: member.worktreePath ?? ctx.directory },
+                                }),
+                                new Promise<undefined>(resolve => {
+                                    timer = setTimeout(() => resolve(undefined), SESSION_REACHABILITY_TIMEOUT_MS)
+                                    timer.unref()
+                                }),
+                            ])
+                            if (response?.data === undefined) {
+                                throw new Error(`persisted session for member "${member.name}" is unreachable`)
+                            }
+                        } finally {
+                            if (timer) clearTimeout(timer)
+                        }
+                    }))
+                }
                 await ensureMembersReady(ctx, team)
 
                 // --- Phase 3 (mutex): commit + dispatch. ---

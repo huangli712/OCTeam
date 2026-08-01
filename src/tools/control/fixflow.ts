@@ -46,6 +46,7 @@ type MemberSnapshot = {
 /** Full team snapshot (status + task + members) for atomic rollback on fix failure. */
 type RepairSnapshot = {
     readonly status: Team["status"]
+    readonly runnerPid: number | undefined
     readonly activeTask: ActiveTask | undefined
     readonly lastInterruptedTask: ActiveTask | undefined
     readonly members: readonly MemberSnapshot[]
@@ -81,6 +82,7 @@ function cloneActiveTask(task: ActiveTask | undefined): ActiveTask | undefined {
 function snapshotTeam(team: Team): RepairSnapshot {
     return {
         status: team.status,
+        runnerPid: team.runnerPid,
         activeTask: cloneActiveTask(team.activeTask),
         lastInterruptedTask: cloneActiveTask(team.lastInterruptedTask),
         members: team.members.map(member => ({
@@ -98,6 +100,7 @@ function snapshotTeam(team: Team): RepairSnapshot {
 /** Restore a previously captured snapshot, reverting all mutable fields. */
 function restoreSnapshot(team: Team, snapshot: RepairSnapshot): void {
     team.status = snapshot.status
+    team.runnerPid = snapshot.runnerPid
     team.activeTask = cloneActiveTask(snapshot.activeTask)
     team.lastInterruptedTask = cloneActiveTask(snapshot.lastInterruptedTask)
     for (const memberState of snapshot.members) {

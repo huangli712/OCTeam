@@ -17,7 +17,7 @@ import { AckMessagesError, ackMessages, pollMailbox, releaseStaleReservations } 
 import { formatMailboxInjection } from "./messaging/format.js"
 import { reapStaleClaims } from "./state/tasks.js"
 import { handleStatusEvent, maybeEscalateRetry } from "./orchestration/lifecycle/status.js"
-import { processErrorRecovery, processIdle } from "./orchestration/lifecycle/idle.js"
+import { processErrorRecovery, processIdle, retryIdleHandler } from "./orchestration/lifecycle/idle.js"
 import { checkTermination } from "./orchestration/lifecycle/termination.js"
 import { finishRun } from "./orchestration/control/completion.js"
 import { handleSignoffIdle } from "./orchestration/control/signoff.js"
@@ -114,6 +114,7 @@ export async function persistTeamState(
     for (let attempt = 1; attempt <= SAVE_MAX_ATTEMPTS; attempt++) {
         try {
             await saveTeamState(team)
+            team._persistDirty = false
             return
         } catch (err) {
             lastErr = err
@@ -122,6 +123,7 @@ export async function persistTeamState(
             }
         }
     }
+    team._persistDirty = true
     logSwallowed(ctx, label, lastErr, { ...extra, attempts: SAVE_MAX_ATTEMPTS }, "error")
 }
 
@@ -227,13 +229,31 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                     const errProps = narrowed?.properties
                     // HIGH: JSON.stringify can throw on circular refs or BigInt.
                     // Use a safe serializer that never throws.
-                    const safeStringify = (v: unknown): string => {
-                        try { return JSON.stringify(v) } catch { return String(v) }
+                    const truncateError = (value: string): string => {
+                        const marker = "...[truncated]"
+                        return value.length <= 4_096
+                            ? value
+                            : value.slice(0, 4_096 - marker.length) + marker
+                    }
+                    const safeStringify = (value: unknown): string => {
+                        const sensitiveFields = new Set([
+                            "authorization", "cookie", "password", "secret", "token",
+                            "accesstoken", "refreshtoken", "apikey",
+                        ])
+                        try {
+                            const serialized = JSON.stringify(value, (key, nestedValue) => {
+                                const normalizedKey = key.replace(/[-_]/g, "").toLowerCase()
+                                return sensitiveFields.has(normalizedKey) ? "[REDACTED]" : nestedValue
+                            })
+                            return truncateError(serialized ?? "[unserializable error]")
+                        } catch {
+                            return "[unserializable error]"
+                        }
                     }
                     const errMsg = errProps?.error !== undefined
-                        ? (typeof errProps.error === "string" ? errProps.error : safeStringify(errProps.error))
+                        ? (typeof errProps.error === "string" ? truncateError(errProps.error) : safeStringify(errProps.error))
                         : errProps?.message !== undefined
-                            ? String(errProps.message)
+                            ? truncateError(String(errProps.message))
                             : "unknown"
                     const errSession = typeof errProps?.sessionID === "string" ? errProps.sessionID : undefined
                     live.error = `session.error: ${errMsg}${errSession ? ` (session: ${errSession})` : ""}`
@@ -399,15 +419,6 @@ export function createTransformHook(
                 compacting.delete(sessionID) // consume-once: next live transform proceeds
                 if (Date.now() < deadline) return
             }
-            // Opportunistic eviction: sweep expired entries so the Map does not grow
-            // unbounded when sessions are deleted without ever triggering a transform.
-            if (compacting.size > COMPACTING_MAP_CAP) {
-                const now = Date.now()
-                for (const [sid, exp] of compacting) {
-                    if (now >= exp) compacting.delete(sid)
-                }
-            }
-
             const unread = await pollMailbox(member.directory, member.name)
             if (unread.length === 0) return
 
@@ -433,27 +444,15 @@ export function createTransformHook(
                     activeRunId = team.activeTask?.runId
                     activeRunIdForAuth = activeRunId
                 } catch (err) {
-                    // Team state unreadable. Fail CLOSED for scoped directives:
-                    // dropping them is safer than failing open (the previous
-                    // behavior injected them with activeRunId=undefined, which
-                    // isAuthenticatedDirective interpreted as "skip runId check",
-                    // letting a directive authenticated for an ended run receive
-                    // [DIRECTIVE] priority during a different run).
-                    //
-                    // Non-scoped directives (no runId) are unaffected and still
-                    // inject normally below.
-                    logSwallowed(ctx, "transform: team state unreadable for scoped directive filter; dropping scoped directives", err, { teamName: member.teamName })
+                    // Without readable team state no directive can be bound to
+                    // the current run, including directives without a runId.
+                    logSwallowed(ctx, "transform: team state unreadable for directive filter; dropping directives", err, { teamName: member.teamName })
                     teamStateUnreadable = true
                 }
                 toInject = unread.filter(m => {
-                    // Non-directives, and directives without a runId, always pass
-                    // (backward-compat with unscoped directives).
-                    if (m.kind !== "directive" || m.runId === undefined) return true
-                    // Scoped directive. On unreadable team state we CANNOT
-                    // confirm the active run, so drop the directive entirely
-                    // (fail-closed). The ack-all below still clears the slot.
+                    if (m.kind !== "directive") return true
                     if (teamStateUnreadable) return false
-                    // Otherwise inject only when runId matches the active run.
+                    if (m.runId === undefined) return true
                     return m.runId === activeRunId
                 })
             }
@@ -601,6 +600,16 @@ export async function sweepTeamOnce(
         // so a long retry storm with no new status events would never escalate.
         for (const member of team.members) {
             if (member.retryingSince !== undefined) {
+                if (member.status === "idle") {
+                    await retryIdleHandler(ctx, team, member).catch(err =>
+                        logSwallowed(ctx, "sweepTeamOnce: idle handler retry failed", err, {
+                            team: team.teamName,
+                            member: member.name,
+                        }),
+                    )
+                    if (!team.activeTask) return
+                    continue
+                }
                 await maybeEscalateRetry(ctx, team, member)
                 // M13: after each escalation, check if the run ended. Pre-fix
                 // code only checked after the entire loop — the first member's

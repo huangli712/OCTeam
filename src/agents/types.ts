@@ -36,5 +36,11 @@ export interface OcteamAgentConfig {
     temperature?: number
     color?: string
     permission?: OcteamAgentPermission
+    /**
+     * C7: when permission.task is "allow", restrict delegation to these agent
+     * names. Enforced as a prompt-level constraint; full runtime enforcement
+     * awaits opencode framework support for per-tool argument validation.
+     */
+    taskTargets?: readonly string[]
     [key: string]: unknown
 }

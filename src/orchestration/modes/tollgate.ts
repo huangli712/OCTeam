@@ -230,6 +230,7 @@ export async function handleTollgateIdle(
     // produce phase: producer done -> HITL pause before verifier dispatch.
     if (phase === "produce") {
         if (member.name !== stage.member) return            // stray idle
+        if (!task.responses[stage.member]) return
         if (await maybeRequestApproval(ctx, team, {
             kind: "tollgate_gate",
             stage: task.currentStageIndex,

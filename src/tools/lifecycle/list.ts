@@ -53,6 +53,7 @@ export function teamListTool(ctx: PluginContext): ToolDefinition {
                         active = team.activatedAt !== undefined
                     } catch (err) {
                         logSwallowed(ctx, "team_list: state unreadable", err, { name }, "debug")
+                        status = "error: state unreadable"
                     }
                     const desc = (spec?.description ?? "").trim() || "-"
                     const created = createdAt

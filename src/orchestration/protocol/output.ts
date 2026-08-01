@@ -93,7 +93,7 @@ export function extractOutputFromParts(parts: unknown): string {
                 segments.push(`$ ${input.command}`)
             } else if (typeof input.patchText === "string" && input.patchText.trim()) {
                 segments.push(`[Patch]\n${input.patchText}`)
-            } else {
+            } else if (p.tool !== "edit" && p.tool !== "aft_edit") {
                 // MEDIUM: for tool-only turns with no recognized input field,
                 // produce a non-empty summary so the turn isn't treated as
                 // empty (which would trigger re-dispatch or stalling).
@@ -203,9 +203,12 @@ export function truncateOutput(text: string, maxBytes: number = 65536): string {
     if (maxBytes <= sepOverhead) {
         const buf = Buffer.from(text, "utf8")
         if (buf.length <= maxBytes) return text
-        let cut = maxBytes
+        const ellipsis = "…"
+        const ellipsisBytes = Buffer.byteLength(ellipsis, "utf8")
+        const appendEllipsis = maxBytes >= ellipsisBytes
+        let cut = appendEllipsis ? maxBytes - ellipsisBytes : maxBytes
         while (cut > 0 && (buf[cut] & 0xc0) === 0x80) cut--
-        return buf.toString("utf8", 0, cut) + "…"
+        return buf.toString("utf8", 0, cut) + (appendEllipsis ? ellipsis : "")
     }
     const buf = Buffer.from(text, "utf8")
     // Reserve a fixed overhead for the elision marker and split the rest evenly

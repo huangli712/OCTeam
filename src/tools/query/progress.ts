@@ -10,7 +10,6 @@
  */
 
 import { createReadStream } from "node:fs"
-import { createInterface } from "node:readline"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import { isEnoent } from "../../core/utils.js"
@@ -200,6 +199,8 @@ type RunEventWindow = {
     malformed: number
 }
 
+const MAX_RUN_EVENT_LINE_BYTES = 1024 * 1024
+
 async function readRunEventWindow(
     teamDirectory: string,
     runId: string,
@@ -212,33 +213,63 @@ async function readRunEventWindow(
     const events: RunEvent[] = []
     let total = 0
     let malformed = 0
-    const input = createReadStream(path, { encoding: "utf8" })
-    const lines = createInterface({ input, crlfDelay: Infinity })
-    try {
-        for await (const line of lines) {
-            if (!line.trim()) continue
-            let value: unknown
-            try {
-                value = JSON.parse(line)
-            } catch {
-                malformed += 1
-                continue
-            }
-            const result = RunEventSchema.safeParse(value)
-            if (!result.success) {
-                malformed += 1
-                continue
-            }
-            total += 1
-            if (since !== undefined && result.data.timestamp <= since) continue
-            events.push(result.data)
-            events.sort((left, right) => left.timestamp - right.timestamp)
-            if (events.length > limit) events.splice(0, events.length - limit)
+    const consumeLine = (line: string): void => {
+        if (!line.trim()) return
+        let value: unknown
+        try {
+            value = JSON.parse(line)
+        } catch {
+            malformed += 1
+            return
         }
+        const result = RunEventSchema.safeParse(value)
+        if (!result.success) {
+            malformed += 1
+            return
+        }
+        total += 1
+        if (since !== undefined && result.data.timestamp <= since) return
+        events.push(result.data)
+        events.sort((left, right) => left.timestamp - right.timestamp)
+        if (events.length > limit) events.splice(0, events.length - limit)
+    }
+
+    const input = createReadStream(path, { encoding: "utf8" })
+    let pending = ""
+    let pendingBytes = 0
+    let skippingOversizedLine = false
+    try {
+        for await (const chunk of input) {
+            const text = chunk as string
+            let offset = 0
+            for (;;) {
+                const newlineIndex = text.indexOf("\n", offset)
+                const segmentEnd = newlineIndex === -1 ? text.length : newlineIndex
+                const segment = text.slice(offset, segmentEnd)
+                if (!skippingOversizedLine) {
+                    const segmentBytes = Buffer.byteLength(segment, "utf8")
+                    if (pendingBytes + segmentBytes > MAX_RUN_EVENT_LINE_BYTES) {
+                        pending = ""
+                        pendingBytes = 0
+                        skippingOversizedLine = true
+                        malformed += 1
+                    } else {
+                        pending += segment
+                        pendingBytes += segmentBytes
+                    }
+                }
+                if (newlineIndex === -1) break
+                if (!skippingOversizedLine) consumeLine(pending)
+                pending = ""
+                pendingBytes = 0
+                skippingOversizedLine = false
+                offset = newlineIndex + 1
+            }
+        }
+        if (!skippingOversizedLine && pending.length > 0) consumeLine(pending)
     } catch (err) {
         if (!isEnoent(err)) throw err
     } finally {
-        lines.close()
         input.destroy()
     }
     return { events, total, malformed }

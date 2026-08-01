@@ -169,13 +169,15 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
         if (locallyReleasedLocks.has(lockPath)) {
             try {
                 const currentPid = parseInt((await fs.readFile(lockPath, "utf8")).trim(), 10)
-                if (currentPid === process.pid) {
-                    await fs.unlink(lockPath).catch(() => {})
+                if (currentPid !== process.pid) {
+                    locallyReleasedLocks.delete(lockPath)
+                    return
                 }
-            } catch {
-                // Lock file vanished or unreadable — nothing to reap.
+                await fs.unlink(lockPath)
+                locallyReleasedLocks.delete(lockPath)
+            } catch (err) {
+                if (isEnoent(err)) locallyReleasedLocks.delete(lockPath)
             }
-            locallyReleasedLocks.delete(lockPath)
             return
         }
         const st = await fs.stat(lockPath)
@@ -184,6 +186,11 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
         if (!Number.isFinite(pid) || pid <= 0) {
             // CRIT #1: empty/invalid PID means the lock was truncated by
             // a TOCTOU-safe reap or is corrupt. Safe to unlink now.
+            // C9 note: a NEW lock between open("wx") and writeFile(pid)
+            // is also 0-byte here, but that window is sub-millisecond
+            // (writeFile is called immediately after open in acquireLock).
+            // The trade-off favors reaping orphans over protecting a
+            // vanishingly brief race that acquireLock retries anyway.
             if (st.size === 0) await fs.unlink(lockPath).catch(() => {})
             return
         }
@@ -351,6 +358,43 @@ export async function assertNoSymlinkTraversal(trustedRoot: string, target: stri
             if (!isEnoent(err)) throw err
         }
         current = path.dirname(current)
+    }
+}
+
+/**
+ * C1: Safely read a file after symlink-traversal check, using an fd-based
+ * approach to shrink the TOCTOU window. assertNoSymlinkTraversal validates
+ * the full path chain, then fs.open with O_NOFOLLOW atomically rejects a
+ * leaf symlink swap between the check and the open. fstat on the fd then
+ * enforces an optional size cap BEFORE reading, preventing OOM from a
+ * crafted oversized file or hang from a FIFO/device.
+ *
+ * Returns the file contents as a string, or undefined if the file does not
+ * exist (ENOENT — the caller decides whether absence is an error).
+ */
+export async function safeReadFile(
+    trustedRoot: string,
+    filePath: string,
+    opts?: { maxBytes?: number; encoding?: BufferEncoding },
+): Promise<string | undefined> {
+    await assertNoSymlinkTraversal(trustedRoot, filePath)
+    // O_NOFOLLOW may be absent on non-Linux platforms (e.g. Windows); degrade
+    // gracefully — the path-chain check above still provides protection.
+    const O_NOFOLLOW = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0
+    const flags = fs.constants.O_RDONLY | O_NOFOLLOW
+    const fh = await fs.open(filePath, flags)
+    try {
+        const stat = await fh.stat()
+        if (!stat.isFile()) {
+            throw new Error(`safeReadFile: not a regular file: ${filePath}`)
+        }
+        if (opts?.maxBytes !== undefined && stat.size > opts.maxBytes) {
+            throw new Error(`safeReadFile: file exceeds ${opts.maxBytes}-byte cap: ${filePath} (${stat.size} bytes)`)
+        }
+        const encoding = opts?.encoding ?? "utf8"
+        return await fh.readFile({ encoding })
+    } finally {
+        await fh.close()
     }
 }
 

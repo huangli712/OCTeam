@@ -67,21 +67,21 @@ export async function deliverSummaryToLeader(
  * deliverSummaryToLeader directly and perform the remaining steps themselves.
  */
 export async function finishRun(
-ctx: PluginContext,
-team: Team,
-reason: string,
-status: "idle" | "failed",
-runStatusOverride?: RunStatus,
+    ctx: PluginContext,
+    team: Team,
+    reason: string,
+    status: "idle" | "failed",
+    runStatusOverride?: RunStatus,
 ): Promise<void> {
     const runStatus: RunStatus = runStatusOverride ?? (status === "failed" ? "failed" : "completed")
     // M25 fix: best-effort token refresh before terminal persistence.
     // Pre-fix code skipped token refresh on timeout/retry-escalation/session-error
     // paths, so the final token count underestimated actual usage. Refresh
-    // for all running members; failures are best-effort (network errors do
+    // for all running or errored members; failures are best-effort (network errors do
     // not block termination).
     if (team.activeTask) {
         for (const m of team.members) {
-            if (!m.isMaster && m.sessionId && m.status === "running") {
+            if (!m.isMaster && m.sessionId && (m.status === "running" || m.status === "errored")) {
                 try {
                     const msgs = await ctx.client.session.messages({ path: { id: m.sessionId } })
                     const messages = asSdkMessages(msgs.data)
@@ -158,6 +158,7 @@ runStatusOverride?: RunStatus,
                 reason,
                 status,
             }, "error")
+            throw err
         }
     }
 }

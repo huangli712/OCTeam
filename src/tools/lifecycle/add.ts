@@ -129,7 +129,8 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 let spec: TeamSpec | null = null
                 try {
                     spec = await readTeamSpec(ctx.storageRoot, args.team_id, pathLeadSessionId)
-                } catch {
+                } catch (err) {
+                    logSwallowed(ctx, "team_add_member: team spec unreadable", err, { team: args.team_id })
                     specError = true
                     return
                 }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { handleConsensusIdle } from "../src/orchestration/modes/consensus.js"
+import { parseConsensus } from "../src/orchestration/protocol/decisions.js"
 import type { ConsensusTask } from "../src/core/types.js"
 import { makeCtx, makeTeam, type DispatchCall } from "./helpers.js"
 
@@ -30,6 +31,36 @@ function makeConsensusTask(opts: Partial<ConsensusTask> = {}): ConsensusTask {
 
 const AGREE = '<consensus>{"agreed":true}</consensus>'
 const DISAGREE = '<consensus>{"agreed":false}</consensus>'
+
+describe("parseConsensus", () => {
+    test("distinguishes a missing tag from disagreement", () => {
+        expect(parseConsensus("I agree")).toEqual({
+            agreed: false,
+            parseFailed: true,
+            reason: "tag_not_found",
+        })
+    })
+
+    test("distinguishes malformed JSON from disagreement", () => {
+        expect(parseConsensus("<consensus>{bad json}</consensus>")).toEqual({
+            agreed: false,
+            parseFailed: true,
+            reason: "json_parse_error",
+        })
+    })
+
+    test("distinguishes a non-boolean agreed field from disagreement", () => {
+        expect(parseConsensus('<consensus>{"agreed":"yes"}</consensus>')).toEqual({
+            agreed: false,
+            parseFailed: true,
+            reason: "agreed_not_boolean",
+        })
+    })
+
+    test("preserves an explicit agreed false as a valid vote", () => {
+        expect(parseConsensus(DISAGREE)).toEqual({ agreed: false, parseFailed: false })
+    })
+})
 
 // --- consensus barrier outcomes ---
 
@@ -80,6 +111,7 @@ describe("handleConsensusIdle: barrier outcomes", () => {
 
         expect(task.consensusReached).toBe(false)
         expect(task.currentRound).toBe(2)
+        expect(task.decisionParseFailures).toBe(0)
         expect(team.status).toBe("busy")
         expect(team.activeTask).toBeDefined()
         // Both participants re-dispatched with the round-2 prompt.
@@ -141,6 +173,7 @@ describe("handleConsensusIdle: unparseable responses", () => {
 
         expect(task.consensusReached).toBe(false)
         expect(task.currentRound).toBe(2)
+        expect(task.decisionParseFailures).toBe(1)
         expect(team.activeTask).toBeDefined()
         // Both re-dispatched for round 2.
         const roundCalls = calls.filter(c => c.sessionId === "ses_alice" || c.sessionId === "ses_bob")

@@ -72,7 +72,11 @@ function workflowUpstreamBlock(
                 )
             )
                 return null;
-            return `[Output from ${candidate.member}]\n${truncateOutput(candidate.output)}`;
+            const label = `[Output from ${candidate.member}]\n`;
+            return label + truncateOutput(
+                candidate.output,
+                MAX_UPSTREAM_OUTPUT_BYTES - Buffer.byteLength(label, "utf8"),
+            );
         }
         case "join": {
             const joinedOutput = candidate.join?.joinedOutput;
@@ -82,7 +86,11 @@ function workflowUpstreamBlock(
             // drop the dependency.
             if (!joinedOutput || (!explicit && !shouldIncludeJoinUpstream(steps, uptoIndex)))
                 return null;
-            return `[Joined output from workflow step ${candidateIndex + 1}]\n${truncateOutput(joinedOutput)}`;
+            const label = `[Joined output from workflow step ${candidateIndex + 1}]\n`;
+            return label + truncateOutput(
+                joinedOutput,
+                MAX_UPSTREAM_OUTPUT_BYTES - Buffer.byteLength(label, "utf8"),
+            );
         }
         case "gate":
         case "fanout":

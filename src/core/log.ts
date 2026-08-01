@@ -8,8 +8,8 @@
  *   1. logEvent(ctx, ...) / logSwallowed(ctx, ...) — for code that already
  *      holds a PluginContext (tools/, hooks/, orchestration/).
  *   2. logger.warn(message, ...) — a global object for bottom-layer modules
- *      (state/, messaging/) that do NOT carry ctx. The sink is captured once
- *      at server startup via initLogger(ctx); before that, logger falls back
+ *      (state/, messaging/) that do NOT carry ctx. The sink is set at server
+ *      startup via initLogger(ctx); before that, logger falls back
  *      to console.warn so unit tests of those modules still see output.
  *
  * Level filtering: a module-level minLevel (default "info", overridable
@@ -90,13 +90,16 @@ function sendToSink(
 
 /**
  * Shared emit path for the global `logger` object. Routes to the captured
- * sink when available, otherwise falls back to console.warn so output is
- * still visible (e.g. in unit tests before initLogger is called).
+ * sink when available, otherwise falls back to the corresponding console
+ * level so output is still visible before initLogger is called.
  */
 function emitGlobal(level: LogLevel, message: string, extra?: Record<string, unknown>): void {
     if (!shouldLog(level)) return
     if (sink) sendToSink(sink, level, message, extra)
-    else console.warn(`[octeam] ${message}`, extra ?? "")
+    else if (level === "debug") console.debug(`[octeam] ${message}`, extra ?? "")
+    else if (level === "info") console.info(`[octeam] ${message}`, extra ?? "")
+    else if (level === "warn") console.warn(`[octeam] ${message}`, extra ?? "")
+    else console.error(`[octeam] ${message}`, extra ?? "")
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +111,7 @@ function emitGlobal(level: LogLevel, message: string, extra?: Record<string, unk
  * host's app.log sink so bottom-layer modules (state/, messaging/) can emit
  * structured logs via the `logger` object without a ctx parameter.
  *
- * Safe to call multiple times (only the first call captures the sink).
+ * Safe to call multiple times; each call replaces the sink for the current host.
  */
 export function initLogger(ctx: PluginContext): void {
     // H-C1: bind the log method to preserve `this` context. The SDK's
@@ -116,7 +119,7 @@ export function initLogger(ctx: PluginContext): void {
     // function reference and calling it without binding causes a
     // TypeError that H6's catch silently swallows, dropping ALL
     // structured logs. Binding at capture time is safe and idempotent.
-    if (sink === null) sink = ctx.client.app.log.bind(ctx.client.app)
+    sink = ctx.client.app.log.bind(ctx.client.app)
 }
 
 /** Set the minimum log level at runtime. */
@@ -176,7 +179,7 @@ type LogMethod = (message: string, extra?: Record<string, unknown>) => void
 /**
  * Global logger for bottom-layer modules that do not carry a PluginContext.
  * Uses the sink captured by initLogger; before initLogger is called (e.g. in
- * unit tests), falls back to console.warn so output is still visible.
+ * unit tests), falls back to the corresponding console level.
  */
 export const logger: Record<LogLevel, LogMethod> = {
     debug: (message, extra) => emitGlobal("debug", message, extra),

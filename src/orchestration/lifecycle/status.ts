@@ -42,6 +42,7 @@ async function escalateMemberToErrored(
     live: MemberState,
     entry: { type: string; message?: string } | undefined,
 ): Promise<void> {
+    const retryingSince = live.retryingSince
     live.status = "errored"
     // HIGH: clear retryingSince so sweep doesn't re-escalate this member
     // on every tick. Pre-fix code left it set, causing repeated escalation.
@@ -65,6 +66,7 @@ async function escalateMemberToErrored(
         // Save failed after retries — rollback in-memory status so the next
         // sweep re-attempts the escalation.
         live.status = "running"
+        live.retryingSince = retryingSince
         live.error = undefined
         return
     }
@@ -113,6 +115,7 @@ async function escalateMemberToErrored(
         await saveTeamStateBounded(team)
     } catch (err) {
         logger.warn("maybeEscalateRetry: trailing save failed after retries", { team: team.teamName, member: live.name, error: String(err) })
+        throw err
     }
 }
 

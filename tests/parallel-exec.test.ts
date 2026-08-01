@@ -79,6 +79,28 @@ describe("handleParallelIdle: barrier progression", () => {
         expect(team.activeTask).toBeDefined()
         expect(calls.some(c => c.sessionId === "ses_lead")).toBe(false)
     })
+
+    test("dispatched idle participant without output keeps the barrier pending", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({ calls })
+        const task = makeParallelTask({
+            mode: "isolated",
+            responses: { alice: "A", bob: "" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", status: "idle", turnCount: 1 },
+                { name: "bob", sessionId: "ses_bob", status: "idle", turnCount: 1 },
+            ],
+        })
+
+        await handleParallelIdle(ctx, team)
+
+        expect(team.status).toBe("busy")
+        expect(team.activeTask).toBe(task)
+        expect(calls.some(c => c.sessionId === "ses_lead")).toBe(false)
+    })
 })
 
 // --- output capture (processIdle Step 4) ---

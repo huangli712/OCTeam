@@ -83,12 +83,16 @@ export function teamLoopTool(ctx: PluginContext): ToolDefinition {
                 // buildTask (append decider as a final read-only stage if not
                 // already present).
                 async (team) => {
-                    const stages: Stage[] = args.stages.map(s => ({
-                        member: s.member,
-                        task: s.task,
-                        action: s.action,
-                        completed: false,
-                    }))
+                const stages: Stage[] = args.stages.map(s => ({
+                    member: s.member,
+                    task: s.task,
+                    // H41: default omitted action to read_only so the decider
+                    // participates in read-only/no-issues judgment. Pre-fix
+                    // code saved undefined, which excluded the decider from
+                    // these checks.
+                    action: s.action ?? "read_only",
+                    completed: false,
+                }))
                     if (!stages.some(s => s.member === args.decider)) {
                         stages.push({
                             member: args.decider,

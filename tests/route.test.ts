@@ -456,6 +456,35 @@ describe("handleRouteIdle Phase B: target barrier", () => {
         expect(team.activeTask).toBeDefined()
         expect(calls.some(c => c.sessionId === "ses_lead")).toBe(false)
     })
+
+    test("dispatched idle target without output keeps the barrier pending", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({ calls })
+        const task = makeRouteTask({
+            routerMember: "router",
+            routeStage: true,
+            routeTargets: ["alice", "bob"],
+            routeBranches: [
+                { name: "a", member: "alice" },
+                { name: "b", member: "bob" },
+            ],
+            responses: { alice: "A", bob: "" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "router", sessionId: "ses_router" },
+                { name: "alice", sessionId: "ses_alice", status: "idle", turnCount: 1 },
+                { name: "bob", sessionId: "ses_bob", status: "idle", turnCount: 1 },
+            ],
+        })
+
+        await handleRouteIdle(ctx, team)
+
+        expect(team.status).toBe("busy")
+        expect(team.activeTask).toBe(task)
+        expect(calls.some(c => c.sessionId === "ses_lead")).toBe(false)
+    })
 })
 
 // --- routed event observability ---

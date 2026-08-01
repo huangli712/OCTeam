@@ -190,8 +190,8 @@ export type RunEventKind =
 /** A single entry in the append-only run timeline (events.jsonl). */
 export type RunEvent = {
     timestamp: number                  // epoch ms
-    sequence?: number                  // MEDIUM: monotonic sequence for stable
-                                       // ordering when timestamps collide
+    sequence?: number                  // legacy per-process sequence; readers
+                                       // use timestamp and append order
     kind: RunEventKind
     member?: string
     stage?: number                     // currentStageIndex (pipeline/loop)

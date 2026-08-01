@@ -30,15 +30,13 @@ type ApprovalDecision = {
     feedback?: string
 }
 
-/** Validate that a team has a pending approval matching the given approvalId (if provided). */
-function validateApproval(team: Team, approvalId: string | undefined): ApprovalRequest | string {
+/** Validate that a team has a pending approval matching the given approvalId. */
+function validateApproval(team: Team, approvalId: string): ApprovalRequest | string {
     const task = team.activeTask
     if (!task?.approvalStage || !task.approvalRequest) {
         return `Error: team "${team.teamName}" has no pending human approval.`
     }
-    // MEDIUM: when approval_id is provided, it must match exactly.
-    // Omission is allowed for backward compatibility (one pending approval per team).
-    if (approvalId !== undefined && approvalId !== task.approvalRequest.id) {
+    if (approvalId !== task.approvalRequest.id) {
         return `Error: approval_id "${approvalId}" does not match pending approval "${task.approvalRequest.id}".`
     }
     return task.approvalRequest
@@ -286,7 +284,7 @@ function approvalTool(ctx: PluginContext, approved: boolean): ToolDefinition {
             : "Master-only: reject the current human approval pause and apply the mode-specific rejection behavior.",
         args: {
             team_id: tool.schema.string().min(1),
-            approval_id: tool.schema.string().optional(),
+            approval_id: tool.schema.string().min(1),
             feedback: tool.schema.string().max(32768).optional(),
         },
         async execute(args, context) {
@@ -305,9 +303,17 @@ function approvalTool(ctx: PluginContext, approved: boolean): ToolDefinition {
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
 
+            // Direct internal callers can bypass tool-schema validation. Pin the
+            // request visible at invocation time so a delayed call cannot resolve
+            // a different approval after waiting for the mutex.
+            const approvalIdAtInvocation = args.approval_id ?? team.activeTask?.approvalRequest?.id
             let result = ""
             await team.mutex.runExclusive(async () => {
-                const validation = validateApproval(team, args.approval_id)
+                if (approvalIdAtInvocation === undefined) {
+                    result = `Error: team "${team.teamName}" has no pending human approval.`
+                    return
+                }
+                const validation = validateApproval(team, approvalIdAtInvocation)
                 if (typeof validation === "string") {
                     result = validation
                     return

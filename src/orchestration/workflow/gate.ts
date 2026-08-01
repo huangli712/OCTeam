@@ -168,20 +168,24 @@ export function buildGateProducerOutput(
         const remaining = perTargetBudget - (used % perTargetBudget);
         if (remaining <= 0) break;
         if (producerStep.kind === "task") {
-            const block = `[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n` +
-                `${truncateOutput(producerStep.output ?? "", remaining)}`;
-            const blockSize = Buffer.byteLength(block, "utf8");
             const separatorSize = blocks.length > 0 ? 2 : 0;
+            const label = `[Step ${targetIndex + 1} output from ${producerStep.member ?? "?"}]\n`;
+            const bodyBudget = remaining - separatorSize - Buffer.byteLength(label, "utf8");
+            if (bodyBudget <= 0) break;
+            const block = label + truncateOutput(producerStep.output ?? "", bodyBudget);
+            const blockSize = Buffer.byteLength(block, "utf8");
             if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) break;
             blocks.push(block);
             used += separatorSize + blockSize;
         } else if (producerStep.kind === "join") {
             const joined = producerStep.join?.joinedOutput ?? "";
             if (joined) {
-                const block = `[Joined output from workflow step ${targetIndex + 1}]\n` +
-                    `${truncateOutput(joined, remaining)}`;
-                const blockSize = Buffer.byteLength(block, "utf8");
                 const separatorSize = blocks.length > 0 ? 2 : 0;
+                const label = `[Joined output from workflow step ${targetIndex + 1}]\n`;
+                const bodyBudget = remaining - separatorSize - Buffer.byteLength(label, "utf8");
+                if (bodyBudget <= 0) break;
+                const block = label + truncateOutput(joined, bodyBudget);
+                const blockSize = Buffer.byteLength(block, "utf8");
                 if (used + separatorSize + blockSize > MAX_UPSTREAM_OUTPUT_BYTES) break;
                 blocks.push(block);
                 used += separatorSize + blockSize;

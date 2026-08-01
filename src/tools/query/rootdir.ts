@@ -25,7 +25,7 @@ export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
         description:
             "Return the absolute filesystem path to a team's root directory " +
             "(contains config.json, state.json, mailbox/, runs/, tasks/, worktrees/). " +
-            "Read-only; any-member. Available from team_create onwards, including " +
+            "Read-only; master-only. Available from team_create onwards, including " +
             "during a busy orchestration. Use this instead of team_run_dir when you " +
             "need the team's own directory rather than a specific run's output directory.",
         args: {
@@ -43,9 +43,15 @@ export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
             // HIGH: restrict to master only — the control root contains
             // state.json, sentinel, mailbox, tasks, and locks that must
             // not be exposed to regular members.
-            const team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId).catch(() => undefined)
-            if (!team) return "Error: team could not be loaded"
-            const isMaster = team.leadSessionId === context.sessionID
+            try {
+                await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
+            } catch (err) {
+                logSwallowed(ctx, "team_root_dir: team state unreadable", err, { team: args.team_id })
+                return "Error: team could not be loaded (state file unreadable)"
+            }
+            // C15: use caller.isMaster (from session index) instead of
+            // the tamperable team.leadSessionId from state.json.
+            const isMaster = caller.isMaster === true
             if (!isMaster) {
                 return `Error: team_root_dir is restricted to the team leader (master session).`
             }

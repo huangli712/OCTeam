@@ -130,46 +130,17 @@ export function teamActivateTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 const now = Date.now()
-                const prevSiblingActivatedAt = activeSibling?.activatedAt
                 target.activatedAt = now
                 setActiveTeam(context.sessionID, target.directory)
-                // Deactivate the outgoing sibling so its state.json does not
-                // retain a stale activatedAt that would be incorrectly recovered
-                // as 'active' on restart.
-                if (activeSibling) {
-                    activeSibling.activatedAt = undefined
-                }
                 try {
                     await saveTeamState(target)
                 } catch (err) {
                     // Restore in-memory state to match the un-persisted disk.
                     target.activatedAt = undefined
                     clearActiveTeam(context.sessionID)
-                    if (activeSibling) activeSibling.activatedAt = prevSiblingActivatedAt
                     logSwallowed(ctx, "persist team state failed (activate)", err, { team: target.teamName })
                     result = `Error: failed to persist activation for team "${args.team_id}" (state file write failed)`
                     return
-                }
-                if (activeSibling) {
-                    try {
-                        await saveTeamState(activeSibling)
-                    } catch (err) {
-                        // Compensating write: undo target's activation on disk
-                        // so restart does not see two active teams. Without
-                        // this, target's state.json has activatedAt while
-                        // sibling's still has its old activatedAt.
-                        target.activatedAt = undefined
-                        try {
-                            await saveTeamState(target)
-                        } catch (compensateErr) {
-                            logSwallowed(ctx, "activate: compensating write failed after sibling deactivation failure", compensateErr, { team: target.teamName })
-                        }
-                        clearActiveTeam(context.sessionID)
-                        activeSibling.activatedAt = prevSiblingActivatedAt
-                        logSwallowed(ctx, "persist team state failed (deactivate sibling)", err, { team: activeSibling!.teamName })
-                        result = `Error: failed to persist deactivation of sibling "${activeSibling!.teamName}". Activation of "${args.team_id}" was rolled back.`
-                        return
-                    }
                 }
                 result = `Team "${args.team_id}" activated.`
             })

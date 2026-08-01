@@ -23,7 +23,7 @@ import { isEnoent } from "../../core/utils.js"
 import type { WorkflowJoinMetadata } from "../../core/types.js"
 import type { Team } from "../../state/store.js"
 import type { RunRecord, RunStatus, WorkflowBranchStatus, WorkflowRunStep, WorkflowStep } from "../../core/types.js"
-import { assertNoSymlinkTraversal, atomicWrite } from "../../state/locks.js"
+import { assertNoSymlinkTraversal, atomicWrite, safeReadFile } from "../../state/locks.js"
 import { runsDir, runDir, runRecordPath, runEventsPath } from "../../state/paths.js"
 import type { RunEvent } from "../../core/types.js"
 import { listAllTasks } from "../../state/tasks.js"
@@ -224,7 +224,10 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
 
     if (task.type === "delegate") {
         try {
-            const tasks = await listAllTasks(team.directory)
+            const tasks = (await listAllTasks(team.directory)).filter(t =>
+                (t.runId !== undefined && t.runId === runId)
+                || (t.runId === undefined && t.createdAt >= task.startedAt),
+            )
             record.tasks = tasks.map(t => ({
                 id: t.id,
                 subject: t.subject,
@@ -387,16 +390,15 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
         }
     }
 
-    // HIGH: write join artifacts BEFORE enumerating the directory so they
-    // exist when the readdir scan runs. Pre-fix code only indexed existing
-    // join-*.md files but never wrote them.
+    // Write join artifacts and add them to the directory snapshot used below.
     if (task.type === "workflow") {
         const wfSteps = task.steps ?? []
         for (let i = 0; i < wfSteps.length; i++) {
             const step = wfSteps[i]
             if (step?.kind === "join" && step.join?.joinedOutput) {
-                const joinFile = path.join(dir, `join-${i}.md`)
-                await atomicWrite(joinFile, step.join.joinedOutput, team.directory)
+                const joinFileName = `join-${i}.md`
+                await atomicWrite(path.join(dir, joinFileName), step.join.joinedOutput, team.directory)
+                if (!entries.includes(joinFileName)) entries.push(joinFileName)
             }
         }
     }
@@ -435,7 +437,7 @@ export async function persistRun(team: Team, reason: string, status?: RunStatus)
     const parseResult = RunRecordSchema.safeParse(JSON.parse(serialized))
     if (!parseResult.success) {
         const issues = parseResult.error.issues.map(i => `${i.path.join(".")}: ${i.message}`)
-        logger.warn("persistRun: record failed schema validation, writing to record.invalid.json", { runId, issues })
+        logger.error("persistRun: record failed schema validation; quarantining invalid run record", { runId, issues })
         const invalidPath = path.join(runDir(team.directory, runId), "record.invalid.json")
         await atomicWrite(invalidPath, serialized, team.directory)
     } else {
@@ -472,7 +474,7 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
     }
 
     const dated: Array<{ runId: string; finishedAt: number }> = []
-    const orphaned: string[] = []
+    const quarantine: Array<{ runId: string; reason: string }> = []
     const corrupted: string[] = []
     // C-2: pre-check each runRecordPath before reading so a symlinked
     // <team>/runs/<runId>/record.json cannot read attacker-controlled content
@@ -488,40 +490,56 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
         }
     }
     const MAX_RECORD_FILE_BYTES = 2_097_152 // 2 MiB cap for safety
-    const records = await Promise.all(
-        checked.map(runId =>
-            fs.open(runRecordPath(teamDirectory, runId), "r")
-                .then(async fh => {
+    const RECORD_READ_BATCH_SIZE = 50
+    const records: Array<{
+        runId: string
+        kind: "ok" | "mismatch" | "missing" | "corrupt"
+        rec: RunRecord | null
+    }> = []
+    for (let i = 0; i < checked.length; i += RECORD_READ_BATCH_SIZE) {
+        const batch = checked.slice(i, i + RECORD_READ_BATCH_SIZE)
+        const batchRecords = await Promise.all(batch.map(async runId => {
+            try {
+                const fh = await fs.open(runRecordPath(teamDirectory, runId), "r")
+                let raw: string
+                try {
                     const stat = await fh.stat()
-                    if (stat.size > MAX_RECORD_FILE_BYTES) return { kind: "corrupt" as const, rec: null }
-                    const raw = await fh.readFile("utf8")
-                    await fh.close()
-                    try {
-                        const rec = parseRunRecord(raw)
-                        if (rec.runId !== runId) return { kind: "mismatch" as const, rec }
-                        return { kind: "ok" as const, rec }
+                    if (stat.size > MAX_RECORD_FILE_BYTES) {
+                        return { runId, kind: "corrupt" as const, rec: null }
                     }
-                    catch { return { kind: "corrupt" as const, rec: null } }
-                })
-                .catch(err => ({
+                    raw = await fh.readFile("utf8")
+                } finally {
+                    await fh.close()
+                }
+                try {
+                    const rec = parseRunRecord(raw)
+                    if (rec.runId !== runId) return { runId, kind: "mismatch" as const, rec }
+                    return { runId, kind: "ok" as const, rec }
+                } catch {
+                    return { runId, kind: "corrupt" as const, rec: null }
+                }
+            } catch (err) {
+                return {
+                    runId,
                     kind: isEnoent(err) ? "missing" as const : "corrupt" as const,
                     rec: null,
-                }))
-                .then(result => ({ runId, ...result })),
-        ),
-    )
+                }
+            }
+        }))
+        records.push(...batchRecords)
+    }
     for (const { runId, kind, rec } of records) {
         if (kind === "ok" && rec) dated.push({ runId, finishedAt: rec.finishedAt ?? 0 })
         else if (kind === "mismatch" && rec) {
             logger.warn("pruneRuns: runId mismatch; skipping run record", { runId, recordRunId: rec.runId })
         }
-        else if (kind === "missing") orphaned.push(runId)
+        else if (kind === "missing") quarantine.push({ runId, reason: "record.json is missing" })
         else corrupted.push(runId)
     }
     // HIGH: quarantine orphaned run directories instead of deleting them.
     // Pre-fix code deleted crash-during-capture evidence. Now: rename to
     // a quarantine subdirectory so crash recovery tools can inspect them.
-    for (const runId of orphaned) {
+    for (const { runId, reason } of quarantine) {
         const target = runDir(teamDirectory, runId)
         const quarantineDir = path.join(runsDir(teamDirectory), ".quarantine")
         const quarantined = path.join(quarantineDir, runId)
@@ -531,12 +549,12 @@ export async function pruneRuns(teamDirectory: string, keep: number): Promise<vo
             await assertNoSymlinkTraversal(teamDirectory, quarantined)
             await fs.mkdir(quarantineDir, { recursive: true })
             await fs.rename(target, quarantined)
-            logger.warn("pruneRuns: quarantined orphaned run directory (no record.json)", { runId, quarantined })
+            logger.warn("pruneRuns: quarantined invalid run directory", { runId, reason, quarantined })
         } catch (err) {
             if (isEnoent(err)) continue // already gone
             // If rename fails (cross-device, permissions), fall back to deletion.
             await fs.rm(target, { recursive: true, force: true }).catch((rmErr) => {
-                logger.warn("pruneRuns: failed to remove orphaned run directory after quarantine failed", { runId, error: rmErr instanceof Error ? rmErr.message : String(rmErr) })
+                logger.warn("pruneRuns: failed to remove invalid run directory after quarantine failed", { runId, error: rmErr instanceof Error ? rmErr.message : String(rmErr) })
             })
         }
     }
@@ -586,8 +604,11 @@ export async function listRunRecords(teamDirectory: string): Promise<RunRecord[]
         const recordPath = runRecordPath(teamDirectory, runId)
         let raw: string
         try {
-            await assertNoSymlinkTraversal(teamDirectory, recordPath)
-            raw = await fs.readFile(recordPath, "utf8")
+            // C1: use fd-based safe read with size cap to shrink TOCTOU
+            // window and prevent OOM from crafted oversized run records.
+            const recordContent = await safeReadFile(teamDirectory, recordPath, { maxBytes: 2 * 1024 * 1024 })
+            if (recordContent === undefined) continue
+            raw = recordContent
         } catch (err) {
             if (isEnoent(err)) continue
             logger.warn("listRunRecords: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })
@@ -657,22 +678,21 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
         throw err
     }
     const events: RunEvent[] = []
+    let invalidLineCount = 0
     for (const line of raw.split("\n")) {
         if (!line.trim()) continue
         try {
             events.push(parseRunEvent(line))
         } catch {
-            // skip malformed line
+            invalidLineCount += 1
         }
     }
-    // MEDIUM: sort by sequence (if present) for stable ordering of
-    // same-millisecond events. Process restart resets the counter to 0,
-    // so within a single file the sequence is monotonic. For events from
-    // multiple processes (rare), fall back to timestamp.
-    events.sort((a, b) => {
-        if (a.sequence !== undefined && b.sequence !== undefined) return a.sequence - b.sequence
-        return a.timestamp - b.timestamp
-    })
+    if (invalidLineCount > 0) {
+        logger.warn("readRunEvents: skipped invalid event lines", { runId, invalidLineCount })
+    }
+    // Sequence values reset on process restart, so timestamp is the durable
+    // ordering key. Stable sorting preserves append order for ties.
+    events.sort((a, b) => a.timestamp - b.timestamp)
     return events
 }
 

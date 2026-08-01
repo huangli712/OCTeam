@@ -332,6 +332,7 @@ export function resetWorkflowStepTiming(step: WorkflowStep): void {
     step.durationMs = undefined;
     step.dispatchedAt = undefined;
     step.dispatchedActor = undefined;
+    step.correlationId = undefined;
 }
 
 /** Move the active-step cursor from one index to another (used by jumps and dynamic fanout). */

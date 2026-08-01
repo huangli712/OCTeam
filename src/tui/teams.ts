@@ -15,6 +15,7 @@ import path from "node:path"
 import { configPath, inboxPath, processedPath, statePath, teamDir, teamsDir } from "../state/paths.js"
 import { isValidTeamState } from "../state/store.js"
 import { assertNoSymlinkTraversal } from "../state/locks.js"
+import { isEnoent } from "../core/utils.js"
 
 export type LoadState<T> =
     | { status: "unknown" }
@@ -168,8 +169,10 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
                 for (const m of (config.members ?? [])) {
                     roleMap[m.name] = m.role
                 }
-            } catch {
-                // config.json may be absent for legacy teams
+            } catch (err) {
+                if (!isEnoent(err)) {
+                    console.warn(`[octeam] teams: failed to read config for ${e.name}`, err)
+                }
             }
             out.push({
                 name: state.teamName ?? e.name,

@@ -27,9 +27,12 @@ export async function summarizeDelegate(team: Team, task: ActiveTask, head: stri
     // history. Pre-fix code called listAllTasks which returns all statuses
     // including deleted tasks from previous runs, causing unbounded growth.
     const allTasks = await listAllTasks(team.directory)
-    // Filter to non-deleted tasks (deleted = from previous runs or explicit
-    // cleanup). This bounds the summary to the current run's active set.
-    const tasks = allTasks.filter(t => t.status !== "deleted")
+    const tasks = allTasks.filter(t =>
+        t.status !== "deleted"
+        && (
+            (t.runId !== undefined && t.runId === task.runId)
+            || (t.runId === undefined && t.createdAt >= task.startedAt)
+        ))
     const lines = tasks.map(
         t => `- [${t.status}] ${t.subject}${t.owner ? ` (@${t.owner})` : ""}`,
     )
@@ -141,7 +144,10 @@ export async function summarizeRecurse(team: Team, task: Extract<ActiveTask, { t
     if (task.rootTaskId) collectChildren(task.rootTaskId)
     // Render tree via DFS from root
     const treeLines: string[] = []
+    const rendered = new Set<string>()
     const renderNode = (taskId: string, depth: number) => {
+        if (rendered.has(taskId)) return
+        rendered.add(taskId)
         const t = taskById.get(taskId)
         if (!t) return
         treeLines.push(`${"  ".repeat(depth)}- [${t.status}] ${t.subject}`)

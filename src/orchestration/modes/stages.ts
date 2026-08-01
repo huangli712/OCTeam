@@ -40,7 +40,9 @@ export function buildUpstreamContext(
         if (!stage?.completed) continue;
         const output = responses[stage.member];
         if (!output) continue;
-        const block = `[Output from ${stage.member}]\n${truncateOutput(output)}`;
+        const label = `[Output from ${stage.member}]\n`;
+        const bodyBudget = UPSTREAM_TOTAL_CAP - Buffer.byteLength(label, "utf8");
+        const block = label + truncateOutput(output, bodyBudget);
         const blockSize = Buffer.byteLength(block, "utf8");
         if (used + blockSize > UPSTREAM_TOTAL_CAP) {
             collected.unshift(`[...upstream context truncated at ${UPSTREAM_TOTAL_CAP} bytes]`);
