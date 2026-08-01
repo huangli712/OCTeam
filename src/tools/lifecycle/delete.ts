@@ -115,14 +115,6 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 team.deleted = true  // tombstone: prevent any racing handler from resurrecting this dir
-                const quarantined = await quarantineTeamStorage(
-                    ctx.storageRoot,
-                    args.team_id,
-                    pathLeadSessionId,
-                    team.directory,
-                    team.teamRunId,
-                )
-                quarantineDirectory = quarantined
                 // Force-deleting a busy team: abort running members and clear the
                 // active task in memory FIRST (mirrors team_cancel) so any handler
                 // that acquires the mutex after us sees a consistent, finished state
@@ -136,6 +128,11 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                     clearActiveTask(team)
                     team.status = "idle"
                 }
+                // H26: destroy worktrees BEFORE quarantine rename. Pre-fix code
+                // quarantined the team directory first, then tried to destroy
+                // worktrees using paths inside the now-renamed directory. The
+                // paths no longer existed, git worktree registrations and
+                // branches were silently left behind.
                 for (const m of team.members) {
                     try {
                         await destroyWorktree(
@@ -149,6 +146,14 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                         worktreeErrors.push(`${m.name}: ${err instanceof Error ? err.message : String(err)}`)
                     }
                 }
+                const quarantined = await quarantineTeamStorage(
+                    ctx.storageRoot,
+                    args.team_id,
+                    pathLeadSessionId,
+                    team.directory,
+                    team.teamRunId,
+                )
+                quarantineDirectory = quarantined
                 await deleteQuarantinedTeamStorage(ctx.storageRoot, quarantined)
                 unindexDeletedTeam()
                 }), team.directory)

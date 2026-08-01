@@ -168,6 +168,13 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     if (wasActive) {
                         setActiveTeam(context.sessionID, newDir)
                     }
+                    // H21: the lifecycle lock file moved with the directory
+                    // rename. withLock will release from the OLD path (which
+                    // no longer exists) and fail gracefully, but the lock file
+                    // at newDir/team.lifecycle.lock still carries our PID.
+                    // Clean it up so future lifecycle operations on the renamed
+                    // team don't wait for TTL to expire on a stale lock.
+                    await fs.unlink(teamLifecycleLockPath(newDir)).catch(() => { /* best-effort: withLock handles it */ })
                 } catch (writeErr) {
                     // Rollback: restore the old directory and in-memory state.
                     team.teamName = args.team_id

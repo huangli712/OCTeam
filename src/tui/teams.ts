@@ -14,7 +14,7 @@ import path from "node:path"
 // for the teams/<name>/{state.json,config.json,mailbox/...} layout.
 import { configPath, inboxPath, processedPath, statePath, teamDir, teamsDir } from "../state/paths.js"
 import { isValidTeamState } from "../state/store.js"
-import { assertNoSymlinkTraversal } from "../state/locks.js"
+import { assertNoSymlinkTraversal, safeReadFile } from "../state/locks.js"
 import { isEnoent } from "../core/utils.js"
 
 export type LoadState<T> =
@@ -127,23 +127,12 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
             // only checks the team DIRECTORY, not its contents. A symlinked
             // state.json could read arbitrary content; /dev/zero could OOM.
             const stateP = statePath(dir)
-            await assertNoSymlinkTraversal(dir, stateP)
-            // C-8: cap state.json size and reject non-regular files. Same
-            // threat model as countMailbox: a tampered or replaced state.json
-            // (large file or /dev/zero) could OOM the sidebar.
-            const stateStat = await fs.lstat(stateP)
-            if (stateStat.isSymbolicLink() || !stateStat.isFile()) {
-                console.warn(`[octeam] teams: refusing non-regular state file`)
-                hadError = true
-                continue
-            }
-            if (stateStat.size > 1_048_576) {
-                console.warn(`[octeam] teams: ${stateP} exceeds 1 MiB cap, refusing to read`)
-                hadError = true
-                continue
-            }
-            const raw = await fs.readFile(stateP, "utf8")
-            const state = JSON.parse(raw)
+            // C1: use fd-based safeReadFile to shrink TOCTOU window and cap
+            // size at 1 MiB. Pre-fix code did lstat+size-check+readFile in
+            // three separate steps with races between each.
+            const stateRaw = await safeReadFile(dir, stateP, { maxBytes: 1_048_576 })
+            if (stateRaw === undefined) continue
+            const state = JSON.parse(stateRaw)
             if (!isValidTeamState(state, dir)) {
                 hadError = true
                 continue
@@ -152,19 +141,9 @@ async function readTeamsFrom(storageRoot: string, leadSessionId: string): Promis
             const roleMap: Record<string, string> = {}
             try {
                 const configP = configPath(dir)
-                await assertNoSymlinkTraversal(dir, configP)
-                // C-8: same non-regular/size guard as state.json above.
-                // Throw to land in the existing catch — config is optional.
-                const configStat = await fs.lstat(configP)
-                if (configStat.isSymbolicLink() || !configStat.isFile()) {
-                    console.warn(`[octeam] teams: refusing non-regular config file`)
-                    throw new Error("non-regular config")
-                }
-                if (configStat.size > 1_048_576) {
-                    console.warn(`[octeam] teams: ${configP} exceeds 1 MiB cap, refusing to read`)
-                    throw new Error("config too large")
-                }
-                const configRaw = await fs.readFile(configP, "utf8")
+                // C1: use fd-based safeReadFile for config.json too.
+                const configRaw = await safeReadFile(dir, configP, { maxBytes: 1_048_576 })
+                if (configRaw === undefined) throw new Error("config absent")
                 const config = JSON.parse(configRaw)
                 for (const m of (config.members ?? [])) {
                     roleMap[m.name] = m.role

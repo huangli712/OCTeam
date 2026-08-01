@@ -13,7 +13,7 @@ import type { PluginContext } from "../../core/context.js"
 import { logger } from "../../core/log.js"
 import { loadTeamState, readTeamSpec, saveTeamState, saveTeamStateBounded, writeTeamSpec } from "../../state/store.js"
 import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
-import { configPath, inboxPath, worktreesDir, teamLifecycleLockPath } from "../../state/paths.js"
+import { configPath, inboxPath, processedPath, reservedDir, worktreesDir, teamLifecycleLockPath } from "../../state/paths.js"
 import { withLock } from "../../state/locks.js"
 import { destroyWorktree, hasUncommittedChanges } from "../../state/worktrees.js"
 import { listAllTasks, updateTask } from "../../state/tasks.js"
@@ -322,6 +322,25 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     } catch (err) {
                         if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
                             changes.push(`warning: mailbox rename failed (${err instanceof Error ? err.message : String(err)})`)
+                        }
+                    }
+                    // H22: also rename processed log and reserved directory.
+                    // Pre-fix code only moved the inbox (.jsonl), leaving
+                    // .processed.jsonl and .reserved/ bound to the old name.
+                    // This caused dedup log loss and potential re-delivery of
+                    // reserved messages to a future member with the same name.
+                    try {
+                        await fs.rename(processedPath(team.directory, oldName), processedPath(team.directory, newName))
+                    } catch (err) {
+                        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+                            changes.push(`warning: processed log rename failed (${err instanceof Error ? err.message : String(err)})`)
+                        }
+                    }
+                    try {
+                        await fs.rename(reservedDir(team.directory, oldName), reservedDir(team.directory, newName))
+                    } catch (err) {
+                        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+                            changes.push(`warning: reserved dir rename failed (${err instanceof Error ? err.message : String(err)})`)
                         }
                     }
                     if (team.activeTask) {

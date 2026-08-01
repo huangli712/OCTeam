@@ -38,7 +38,23 @@ import { logSwallowed } from "../../core/log.js"
 async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx: PluginContext): Promise<unknown[]> {
     const failures: unknown[] = []
     if (team.status !== "busy" && team.status !== "idle") return failures
+    // H8: for busy teams, check if the runner process is alive BEFORE
+    // releasing reservations. Pre-fix code released stale reservations
+    // unconditionally, which could re-queue and re-execute deliveries that
+    // a live sibling process is still processing (over TTL).
+    let processAlive = false
+    if (team.status === "busy" && team.runnerPid !== undefined) {
+        try {
+            process.kill(team.runnerPid, 0)
+            processAlive = true
+        } catch (err) {
+            // ESRCH means dead; other errors (EPERM) mean alive but different user
+            processAlive = (err as NodeJS.ErrnoException).code !== "ESRCH"
+        }
+    }
     await team.mutex.runExclusive(async () => {
+        // H8: skip reservation release for busy teams with a live process.
+        if (team.status === "busy" && processAlive) return
         try {
             await releaseStaleReservations(team.directory, "master")
         } catch (err) {
@@ -74,8 +90,14 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
                 }
             }
         } else if (team.spawning && team.runnerPid === undefined) {
-            team.spawning = false
-            team.spawningOwner = undefined
+            // H9: spawning without runnerPid is the normal Phase 2 state
+            // (between Phase 1 mutex acquisition and Phase 3 PID recording).
+            // Pre-fix code unconditionally cleared it, allowing a concurrent
+            // sibling process's spawn lease to be stolen.
+            // Trade-off: a crash during Phase 2 (before runnerPid is set)
+            // leaves spawning=true permanently. This is accepted because
+            // stealing a live process's lease is worse — team_resume can
+            // still recover via explicit user action.
         }
         if (team.status === "busy") {
             // H38: PID-based fencing. If runnerPid is set and the process is

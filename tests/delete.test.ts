@@ -138,7 +138,7 @@ describe("team_delete git branch cleanup", () => {
         expect(after.stdout.trim()).toBe("")
     })
 
-    test("worktree cleanup starts only after the canonical team directory is quarantined", async () => {
+    test("worktree cleanup runs before quarantine so paths are valid", async () => {
         const storageRoot = tmpRoot("quarantine-order-store")
         const projectDir = tmpRoot("quarantine-order-project")
         const binDir = tmpRoot("quarantine-order-bin")
@@ -181,6 +181,9 @@ exit 0
         expect(result).toContain("deleted")
         const observations = (await readFile(logPath, "utf8")).trim().split("\n")
         expect(observations.length).toBeGreaterThan(0)
-        expect(observations.every(observation => observation === "absent")).toBe(true)
+        // H26: worktree cleanup now runs BEFORE quarantine rename so the
+        // worktree paths still exist when git is invoked. Pre-fix code ran
+        // cleanup after quarantine, operating on non-existent paths.
+        expect(observations.every(observation => observation === "present")).toBe(true)
     })
 })

@@ -386,39 +386,37 @@ async function indexScope(storageRoot: string, segmented: boolean, ctx?: PluginC
             // read-only permission and separate file raise the bar and make
             // tampering observable via the warning.
             let trustedLeadSessionId: string | undefined
-            if (segmented) {
-                trustedLeadSessionId = leadSessionId
-            } else {
-                try {
-                    const sentinelPath = masterSentinelPath(team.directory)
-                    // C1: use fd-based safe read to shrink TOCTOU window and
-                    // cap size to prevent OOM from a crafted sentinel.
-                    const sentinelContent = await safeReadFile(team.directory, sentinelPath, { maxBytes: 1024 })
-                    if (sentinelContent === undefined) {
-                        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
-                    }
-                    const sentinelLead = sentinelContent.trim()
-                    if (sentinelLead && sentinelLead === team.leadSessionId) {
-                        trustedLeadSessionId = sentinelLead
-                    } else {
-                        // Mismatch or empty sentinel — disk tampering signal.
-                        if (ctx) logSwallowed(ctx, "indexScope: user-scope master.sentinel mismatches state.json; refusing master privilege", undefined, {
-                            teamName, sentinelLead, diskLeadSessionId: team.leadSessionId,
-                        })
-                        // Do NOT grant master — leave trustedLeadSessionId undefined.
-                    }
-                } catch (sentinelErr) {
-                    // #5: fail-CLOSED on non-ENOENT errors. A missing sentinel
-                    // (ENOENT) is a legacy team — accept state.json.
-                    // EACCES/EIO/ELOOP/EISDIR mean the sentinel exists but is
-                    // unreadable (possible tampering) — do NOT grant master.
-                    if (isEnoent(sentinelErr)) {
-                        if (ctx) logSwallowed(ctx, "indexScope: user-scope team has no master.sentinel; using state.json (legacy, less secure)", sentinelErr, { teamName })
-                        trustedLeadSessionId = team.leadSessionId
-                    } else {
-                        if (ctx) logSwallowed(ctx, "indexScope: user-scope master.sentinel unreadable; refusing master privilege (fail-closed)", sentinelErr, { teamName })
-                        // trustedLeadSessionId stays undefined
-                    }
+            // C14: project scope also verifies the sentinel (previously only
+            // user scope did). Project scope stores auth state in member-
+            // writable .octeam/, so a member could forge a <sid>/teams/...
+            // directory to gain master privilege. Requiring the sentinel
+            // raises the bar: the attacker must also forge master.sentinel.
+            // A sentinel mismatch always refuses master; a missing sentinel
+            // (ENOENT) falls back to directory-derived value for backward
+            // compatibility but logs a prominent warning.
+            try {
+                const sentinelPath = masterSentinelPath(team.directory)
+                const sentinelContent = await safeReadFile(team.directory, sentinelPath, { maxBytes: 1024 })
+                if (sentinelContent === undefined) {
+                    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" })
+                }
+                const sentinelLead = sentinelContent.trim()
+                const expectedLead = segmented ? leadSessionId : team.leadSessionId
+                if (sentinelLead && sentinelLead === expectedLead) {
+                    trustedLeadSessionId = sentinelLead
+                } else {
+                    if (ctx) logSwallowed(ctx, `indexScope: ${segmented ? "project" : "user"}-scope master.sentinel mismatches; refusing master privilege`, undefined, {
+                        teamName, sentinelLead, expectedLead,
+                    })
+                    // Do NOT grant master — leave trustedLeadSessionId undefined.
+                }
+            } catch (sentinelErr) {
+                if (isEnoent(sentinelErr)) {
+                    if (ctx) logSwallowed(ctx, `indexScope: ${segmented ? "project" : "user"}-scope team has no master.sentinel; using ${segmented ? "directory" : "state.json"} value (less secure)`, sentinelErr, { teamName })
+                    trustedLeadSessionId = segmented ? leadSessionId : team.leadSessionId
+                } else {
+                    if (ctx) logSwallowed(ctx, `indexScope: ${segmented ? "project" : "user"}-scope master.sentinel unreadable; refusing master privilege (fail-closed)`, sentinelErr, { teamName })
+                    // trustedLeadSessionId stays undefined
                 }
             }
             if (ctx && segmented && team.leadSessionId !== leadSessionId) {

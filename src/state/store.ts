@@ -755,9 +755,12 @@ export async function saveTeamState(team: Team): Promise<void> {
             } else {
                 // HIGH: do NOT write a state that the reader will reject.
                 // Pre-fix code wrote anyway, making the team vanish on restart.
-                logger.error("saveTeamState: state exceeds 1 MiB even after truncation, keeping old state", { dir, size: Buffer.byteLength(reSerialized, "utf8") })
-                // MEDIUM: do NOT update _diskSnapshot — the write didn't happen.
-                return
+                logger.error("saveTeamState: state exceeds 1 MiB even after truncation, refusing to save", { dir, size: Buffer.byteLength(reSerialized, "utf8") })
+                // H27: throw so callers know the save failed. Pre-fix code
+                // returned silently, causing tools to report success and
+                // proceed with irreversible side-effects while disk stayed
+                // at the old state.
+                throw new Error(`saveTeamState: state for team in ${dir} exceeds 1 MiB even after truncation (${Buffer.byteLength(reSerialized, "utf8")} bytes); refusing to save stale state`)
             }
         } else {
             await atomicWrite(statePath(dir), serialized, dir)

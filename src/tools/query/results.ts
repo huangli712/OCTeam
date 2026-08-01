@@ -11,7 +11,6 @@ const STEP_OUTPUT_DISPLAY_CAP = 1024
  * common "I lost the team_result summary" case.
  */
 
-import fs from "node:fs/promises"
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
@@ -23,7 +22,7 @@ import { listRunRecords, readRunRecord } from "../../orchestration/records/runs.
 import { assertNeverWorkflowStepKind } from "../../orchestration/workflow/dag.js"
 import { logger } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
-import { assertNoSymlinkTraversal } from "../../state/locks.js"
+import { safeReadFile } from "../../state/locks.js"
 import { runMemberOutputPath, isSafePathSegment } from "../../state/paths.js"
 import type { RunRecord, WorkflowGateStep, WorkflowRunStep } from "../../core/types.js"
 
@@ -350,8 +349,10 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                     // arbitrary file and have its contents returned through the
                     // tool. assertNoSymlinkTraversal runs before readFile so the
                     // rejection is not swallowed by the catch below.
-                    await assertNoSymlinkTraversal(caller.directory, memberOutputFile)
-                    return await fs.readFile(memberOutputFile, "utf8")
+                    // C1: use fd-based safeReadFile to shrink TOCTOU window.
+                    const content = await safeReadFile(caller.directory, memberOutputFile, { maxBytes: 256 * 1024 })
+                    if (content === undefined) return `Error: output file for "${args.member}" is missing in run ${record.runId}`
+                    return content
                 } catch (err) {
                     if (isEnoent(err)) return `Error: output file for "${args.member}" is missing in run ${record.runId}`
                     logger.warn("team_result_get: failed to read member output file", { runId: record.runId, member: args.member, error: err instanceof Error ? err.message : String(err) })
@@ -385,8 +386,9 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
                 try {
                     // C-4: refuse to read through a symlinked member output
                     // file. See team_result_get for the same guard.
-                    await assertNoSymlinkTraversal(caller.directory, memberOutputFile)
-                    const content = await fs.readFile(memberOutputFile, "utf8")
+                    // C1: use fd-based safeReadFile to shrink TOCTOU window.
+                    const content = await safeReadFile(caller.directory, memberOutputFile, { maxBytes: 256 * 1024 })
+                    if (content === undefined) continue
                     previews.push(
                         `### ${name} (${info.bytes} bytes)\n${truncateOutput(content, STEP_OUTPUT_DISPLAY_CAP)}\n` +
                             `[full output: team_result_get(` +
