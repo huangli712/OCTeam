@@ -84,6 +84,7 @@ function makeRouteTask(): ActiveTask {
         routerMember: "alice",
         routeBranches: [{ name: "selected", member: "alice" }],
         routeTargets: ["alice"],
+        routeStage: false,
     }
 }
 

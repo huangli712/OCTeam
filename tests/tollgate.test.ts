@@ -189,7 +189,7 @@ describe("getExpectedMember: tollgate type", () => {
 
     test("undefined phase defaults to produce (returns producer)", () => {
         const task = makeTollgateTask({ gatedStages: [g] })
-        delete task.tollgatePhase
+        ;(task as { tollgatePhase?: TollgateTask["tollgatePhase"] }).tollgatePhase = undefined
         expect(getExpectedMember(task)).toBe("alice")
     })
 
