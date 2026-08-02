@@ -54,7 +54,6 @@ describe("wake-hint Map eviction", () => {
 describe("authenticatedDirectives Map eviction", () => {
     const AUTH_CAP = mailboxTest.AUTH_DIRECTIVE_MAP_CAP
     test("fresh entries exceed cap but aged entries are evicted", () => {
-        const before = mailboxTest.authDirectiveMapSize()
         for (let i = 0; i < AUTH_CAP + 10; i++) {
             authenticateDirective(makeDirective(`dir_evict_${i}_${Date.now()}_${i}`))
         }
