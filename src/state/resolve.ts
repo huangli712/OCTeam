@@ -159,7 +159,14 @@ export function resolveMasterTeams(sessionID: string): MasterTeamEntry[] {
 export function trustedLeadSessionId(directory: string): string | undefined {
     for (const [sessionID, entry] of masterIndex) {
         const team = entry.teams.get(directory)
-        if (team) return team.leadSessionId ?? sessionID
+        if (team) {
+            // P4: prefer the sentinel-verified sessionID (the map key) as
+            // the primary trust source — it was validated against
+            // master.sentinel at startup. Fall back to the entry's
+            // leadSessionId (directory-derived) only when the map key is
+            // empty (sentinel check failed during indexing).
+            return sessionID || team.leadSessionId
+        }
     }
     return undefined
 }
