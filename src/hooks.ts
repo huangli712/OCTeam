@@ -24,7 +24,7 @@ import { handleSignoffIdle } from "./orchestration/control/signoff.js"
 import { recordEvent } from "./orchestration/records/events.js"
 import type { MemberState } from "./core/types.js"
 import { asSdkMessages, extractSessionStatusEntry } from "./orchestration/protocol/output.js"
-import { logEvent, logSwallowed } from "./core/log.js"
+import { logEvent, logger, logSwallowed } from "./core/log.js"
 import { handleSessionDeleted } from "./orchestration/lifecycle/reconcile.js"
 
 /** Narrow an unknown SDK event into a type+properties shape, or null. */
@@ -90,7 +90,13 @@ const compacting = new Map<string, number>() // sessionID -> expiresAt
 
 // TTL for compacting flags; bounds a stuck flag if compaction aborts before transform.
 const COMPACTING_FLAG_TTL_MS = 15_000
-const COMPACTING_MAP_CAP = 64
+const COMPACTING_MAP_CAP = 256
+
+// P7 mitigation: ACK happens before the downstream LLM turn. Retain enough
+// in-process state to count explicit session.error turns that can no longer
+// redeliver their injected mailbox messages.
+const earlyAckedMessageCountBySession = new Map<string, number>()
+let droppedMailboxTurnsSinceStartup = 0
 
 /**
  * Save team state with bounded retry. Transient disk failures (EIO, ENOSPC)
@@ -147,9 +153,21 @@ export function createCompactingHook(): NonNullable<Hooks["experimental.session.
                     if (compacting.size < COMPACTING_MAP_CAP) break
                 }
                 // If still at cap after evicting expired, remove the oldest.
+                // P6: pre-fix code silently evicted STILL-VALID flags, causing
+                // the evicted session's transform to execute real
+                // pollMailbox+ackMessages on a compaction-clone turn,
+                // permanently losing messages. Now we log at error level so
+                // operators notice the capacity pressure. CAP raised to 256
+                // to make this a rare event.
                 if (compacting.size >= COMPACTING_MAP_CAP) {
                     const oldest = [...compacting.entries()].sort((a, b) => a[1] - b[1])[0]
-                    if (oldest) compacting.delete(oldest[0])
+                    if (oldest) {
+                        const stillValid = Date.now() < oldest[1]
+                        if (stillValid) {
+                            logger.error("compacting flag map at CAP; evicting still-valid flag — possible message loss", { sessionID: oldest[0], cap: COMPACTING_MAP_CAP })
+                        }
+                        compacting.delete(oldest[0])
+                    }
                 }
             }
             compacting.set(sid, Date.now() + COMPACTING_FLAG_TTL_MS)
@@ -184,6 +202,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
         if (type === "session.deleted") {
             const sid = sdkEventSessionID(event)
             if (sid) {
+                earlyAckedMessageCountBySession.delete(sid)
                 try {
                     await handleSessionDeleted(ctx, sid)
                 } catch (err) {
@@ -204,6 +223,16 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                 return typeof fromProps === "string" && fromProps ? fromProps : undefined
             })()
             if (!sessionID) return
+            const acknowledgedMessages = earlyAckedMessageCountBySession.get(sessionID)
+            earlyAckedMessageCountBySession.delete(sessionID)
+            if (acknowledgedMessages !== undefined) {
+                droppedMailboxTurnsSinceStartup++
+                logEvent(ctx, "error", "mailbox turn failed after transform ACK; messages cannot be redelivered", {
+                    sessionID,
+                    acknowledgedMessages,
+                    droppedTurnsSinceStartup: droppedMailboxTurnsSinceStartup,
+                })
+            }
             try {
                 const member = await resolveTeamMember(ctx.storageRoot, sessionID)
                 if (!member) return
@@ -305,6 +334,7 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
             return typeof fromProps === "string" && fromProps ? fromProps : undefined
         })()
         if (!sessionID) return
+        earlyAckedMessageCountBySession.delete(sessionID)
 
         // Master drain-all: a master session may own MULTIPLE teams. Drain each
         // owned team's master mailbox under that team's own mutex, independent of
@@ -388,7 +418,13 @@ function masterPseudoMember(): MemberState & { isMaster: true } {
  * Transform hook (Layer 3 of the three-layer communication model). On each chat turn for a team member,
  * atomically poll-and-reserve its mailbox and inject unread messages as a
  * synthetic text part on the last user message. Uses the same reservation
- * protocol as the master drain path → exactly-once delivery.
+ * protocol as the master drain path.
+ *
+ * P7 known limitation: ACK commits before the downstream LLM turn runs. If
+ * that turn fails, injected messages cannot be re-delivered, so this boundary
+ * is at-most-once rather than exactly-once. Explicit session.error events emit
+ * a cumulative dropped-turn counter; process crashes before an error event are
+ * not observable. A full fix requires durable cross-hook pending-ACK state.
  *
  * sessionID source: the SDK types this hook's `input` as `{}` and the
  * runtime passes `{}` at BOTH trigger sites (main loop + compaction), so the old
@@ -504,11 +540,21 @@ export function createTransformHook(
                     parts.pop()
                 } else try {
                     await ackMessages(member.directory, member.name, toAck)
+                    earlyAckedMessageCountBySession.set(
+                        sessionID,
+                        (earlyAckedMessageCountBySession.get(sessionID) ?? 0) + toInject.length,
+                    )
                 } catch (ackErr) {
                     const acknowledgedIds = ackErr instanceof AckMessagesError
                         ? new Set(ackErr.acknowledgedMessages.map(message => message.id))
                         : new Set<string>()
                     const acknowledgedInjection = toInject.filter(message => acknowledgedIds.has(message.id))
+                    if (acknowledgedInjection.length > 0) {
+                        earlyAckedMessageCountBySession.set(
+                            sessionID,
+                            (earlyAckedMessageCountBySession.get(sessionID) ?? 0) + acknowledgedInjection.length,
+                        )
+                    }
                     if (acknowledgedInjection.length === 0) {
                         parts.pop()
                     } else {

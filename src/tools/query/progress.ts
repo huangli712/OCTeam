@@ -200,6 +200,10 @@ type RunEventWindow = {
 }
 
 const MAX_RUN_EVENT_LINE_BYTES = 1024 * 1024
+// H44: cap total formatted output so limit=200 lines × large detail fields
+// cannot produce multi-hundred-MB responses. 256 KiB matches the
+// accumulated output capture cap.
+const MAX_FORMATTED_OUTPUT_BYTES = 256 * 1024
 
 async function readRunEventWindow(
     teamDirectory: string,
@@ -290,16 +294,27 @@ function formatTimeline(events: RunEvent[], runId: string, totalBefore: number, 
             e.round !== undefined ? `round ${e.round}` : "",
             e.bytes !== undefined ? `${e.bytes} bytes` : "",
             e.reason ? `— ${e.reason}` : "",
-            e.detail ? `(${e.detail})` : "",
+            // H44: truncate detail to prevent multi-MB detail fields from
+            // producing oversized responses.
+            e.detail ? `(${e.detail.length > 256 ? e.detail.slice(0, 256) + "…" : e.detail})` : "",
         ].filter(Boolean).join(" ")
         return `  [${rel(e.timestamp)}] ${e.kind}${who}${extra ? ` ${extra}` : ""}`
     })
-    const shown = events.length
+    // H44: cap total output to MAX_FORMATTED_OUTPUT_BYTES.
+    let totalBytes = 0
+    const cappedLines: string[] = []
+    for (const line of lines) {
+        const lineBytes = Buffer.byteLength(line, "utf8")
+        if (totalBytes + lineBytes > MAX_FORMATTED_OUTPUT_BYTES) break
+        totalBytes += lineBytes
+        cappedLines.push(line)
+    }
+    const shown = cappedLines.length
     const malformedSuffix = malformed > 0 ? `, ${malformed} malformed skipped` : ""
     const header = totalBefore > shown
         ? `Timeline (last ${shown} of ${totalBefore}${malformedSuffix}, run ${runId.slice(0, 8)}…):`
         : `Timeline (${shown} events${malformedSuffix}, run ${runId.slice(0, 8)}…):`
-    return [header, ...lines]
+    return [header, ...cappedLines]
 }
 
 /** Render a live mermaid diagram for an in-progress workflow, or null. */

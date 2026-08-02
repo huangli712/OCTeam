@@ -99,6 +99,7 @@ export async function applyApprovalDecision(
     // Shift startedAt by the paused duration so wall-clock timeout
     // accounts for the human delay. Guard against undefined startedAt.
     const savedStartedAt = task.startedAt
+    const savedApprovalHistory = task.approvalHistory
     task.startedAt = (task.startedAt ?? Date.now()) + pausedMs
     const record: ApprovalDecisionRecord = {
         id: request.id,
@@ -109,41 +110,7 @@ export async function applyApprovalDecision(
     }
     if (decision.feedback !== undefined) record.feedback = decision.feedback
     task.approvalHistory = [...(task.approvalHistory ?? []), record]
-    task.approvalStage = undefined
-    task.approvalRequest = undefined
-    // H-13/G: persist the approval resolution BEFORE dispatch/advance. Pre-fix
-    // code saved only at the end, so a dispatch throw left disk showing the
-    // approval as still pending. M20 moved save inside the try but the catch
-    // only restored startedAt — a SAVE failure left approvalStage/Request
-    // cleared and approvalHistory updated in memory while disk still showed
-    // the old pending request, so a retry could re-approve.
-    // G fix: wrap the save in its own try/catch. On save failure, restore the
-    // FULL approval state (approvalStage, approvalRequest, approvalHistory,
-    // startedAt) and rethrow. On dispatch failure (after successful save),
-    // keep the approval resolved (disk already has it) — only restore
-    // startedAt per H-13.
-    try {
-        await saveTeamStateBounded(team)
-    } catch (saveErr) {
-        // Save failed: disk does NOT have the resolution. Restore all
-        // mutated fields so a retry sees the original pending request.
-        task.startedAt = savedStartedAt
-        task.approvalStage = true
-        task.approvalRequest = request
-        task.approvalHistory = (task.approvalHistory ?? []).slice(0, -1)
-        throw saveErr
-    }
-    recordEvent(team, {
-        timestamp: resolvedAt,
-        kind: "approval_resolved",
-        stage: request.stage,
-        round: request.round,
-        detail: `${request.kind}:${decision.approved ? "approved" : "rejected"}`,
-    })
-
-    // Save succeeded — dispatch/advance below. A failure here must NOT
-    // restore the approval (disk already has the resolution; restoring
-    // would let the master re-approve and duplicate the dispatch).
+    let resolutionSucceeded = true
     try {
     if (!decision.approved) {
         switch (request.kind) {
@@ -256,23 +223,42 @@ export async function applyApprovalDecision(
         }
     }
     } catch (err) {
-        // A dispatch or advance threw after the approval was already cleared
-        // AND persisted. Pre-fix code restored ALL mutation state
-        // (approvalStage/approvalRequest/approvalHistory) back to the pending
-        // shape, but the disk already held the resolved state (saved at line
-        // 90 above). On retry this let the master re-approve the SAME request,
-        // re-dispatching branches that had partially completed — duplicate
-        // prompts and double-advancement.
-        //
-        // H-13 fix: keep the approval as resolved in memory AND on disk. Only
-        // restore startedAt (a pure wall-clock adjustment that is meaningless
-        // without a successful dispatch). The next approve call finds
-        // approvalStage=undefined and returns "no pending approval" instead
-        // of re-running the dispatch.
+        resolutionSucceeded = false
         task.startedAt = savedStartedAt
-        // MEDIUM: persist the startedAt rollback so disk and memory agree.
-        try { await saveTeamStateBounded(team) } catch { /* best-effort */ }
+        task.approvalStage = true
+        task.approvalRequest = request
+        task.approvalHistory = savedApprovalHistory
+        try {
+            await saveTeamStateBounded(team)
+        } catch (saveErr) {
+            const rollbackError = saveErr instanceof Error ? saveErr : new Error(String(saveErr))
+            logSwallowed(ctx, "approval rollback persist failed after resume error", rollbackError, {
+                team: team.teamName,
+                approvalId: request.id,
+            })
+        }
         throw err
+    } finally {
+        if (resolutionSucceeded && team.activeTask === task) {
+            task.approvalStage = undefined
+            task.approvalRequest = undefined
+            try {
+                await saveTeamStateBounded(team)
+            } catch (saveErr) {
+                task.startedAt = savedStartedAt
+                task.approvalStage = true
+                task.approvalRequest = request
+                task.approvalHistory = savedApprovalHistory
+                throw saveErr
+            }
+            recordEvent(team, {
+                timestamp: resolvedAt,
+                kind: "approval_resolved",
+                stage: request.stage,
+                round: request.round,
+                detail: `${request.kind}:${decision.approved ? "approved" : "rejected"}`,
+            })
+        }
     }
 }
 

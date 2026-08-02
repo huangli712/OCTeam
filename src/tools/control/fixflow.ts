@@ -182,7 +182,14 @@ async function applyRedispatch(
                     path: { id: oldActor.sessionId },
                     query: { directory: oldActor.worktreePath ?? ctx.directory },
                 })
-            } catch { /* best-effort */ }
+            } catch (err) {
+                const abortError = err instanceof Error ? err : new Error(String(err))
+                logSwallowed(ctx, "team_fix_workflow: session.abort failed before redispatch", abortError, {
+                    team: team.teamName,
+                    member: oldActor.name,
+                    session: oldActor.sessionId,
+                })
+            }
         }
     }
     const dispatched = await redispatchWorkflowStep(ctx, team, index)
@@ -206,9 +213,24 @@ async function applySkip(
     }
     const invariantError = validateWorkflowAfterFix(task)
     if (invariantError !== null) return invariantError
+    const oldActorName = workflowStep.dispatchedActor
+        ?? (workflowStep.kind === "task"
+            ? workflowStep.member
+            : workflowStep.verifier ?? workflowStep.verifiers?.[0])
+    if (oldActorName !== undefined) {
+        const oldActor = team.members.find(member => member.name === oldActorName)
+        if (oldActor?.sessionId !== undefined && ctx.client.session.abort !== undefined) {
+            await ctx.client.session.abort({
+                path: { id: oldActor.sessionId },
+                query: { directory: oldActor.worktreePath ?? ctx.directory },
+            })
+        }
+    }
     workflowStep.completed = true
     workflowStep.skipped = true
     workflowStep.dispatchedAt = undefined
+    workflowStep.dispatchedActor = undefined
+    workflowStep.correlationId = undefined
     await advanceWorkflowStep(ctx, team)
     await saveTeamState(team)
     return `team_fix_workflow skipped step ${index + 1}.`
@@ -216,8 +238,17 @@ async function applySkip(
 
 /** Advance the workflow to the next step unconditionally. */
 async function applyAdvance(ctx: PluginContext, team: Team, task: WorkflowTask): Promise<string> {
+    const index = stepIndexFromArg(undefined, task)
+    if (index === null) return "Error: workflow has no active step to advance"
+    const workflowStep = task.steps?.[index]
+    if (workflowStep === undefined) return `Error: step ${index + 1} does not exist`
+    if (!isActiveWorkflowStep(task, index)) return `Error: step ${index + 1} is not in the active workflow frontier`
     const invariantError = validateWorkflowAfterFix(task)
     if (invariantError !== null) return invariantError
+    workflowStep.completed = true
+    workflowStep.dispatchedAt = undefined
+    workflowStep.dispatchedActor = undefined
+    workflowStep.correlationId = undefined
     await advanceWorkflowStep(ctx, team)
     await saveTeamState(team)
     return "team_fix_workflow advanced workflow."
@@ -327,6 +358,16 @@ async function applyReassign(
 
     const invariantError = validateWorkflowAfterFix(task)
     if (invariantError !== null) return invariantError
+    const oldActorName = workflowStep.dispatchedActor ?? currentActor
+    if (oldActorName !== undefined) {
+        const oldActor = team.members.find(member => member.name === oldActorName)
+        if (oldActor?.sessionId !== undefined && ctx.client.session.abort !== undefined) {
+            await ctx.client.session.abort({
+                path: { id: oldActor.sessionId },
+                query: { directory: oldActor.worktreePath ?? ctx.directory },
+            })
+        }
+    }
     const dispatched = await redispatchWorkflowStep(ctx, team, index)
     if (!dispatched) return `Error: step ${index + 1} cannot be redispatched to "${toMember}"`
     await saveTeamState(team)

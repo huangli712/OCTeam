@@ -180,7 +180,10 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     if (s.teamRunId !== undefined && typeof s.teamRunId !== "string") return false
     if (s.spawning !== undefined && typeof s.spawning !== "boolean") return false
     if (s.spawningOwner !== undefined && typeof s.spawningOwner !== "string") return false
-    if (s.runnerPid !== undefined && (typeof s.runnerPid !== "number" || !Number.isFinite(s.runnerPid))) return false
+    if (s.runnerPid !== undefined && (typeof s.runnerPid !== "number" || !Number.isFinite(s.runnerPid) || s.runnerPid <= 0)) return false
+    // H57: PID 0 and negative PIDs are never valid process IDs. A tampered
+    // state.json with runnerPid:0 would bypass the cross-process ownership
+    // guard (process.pid is always > 0).
     if (s.bounds !== undefined) {
         if (typeof s.bounds !== "object" || s.bounds === null) return false
         // C12: all bounds values must be non-negative finite numbers.
@@ -209,6 +212,10 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
         // path operations (reservedDir → assertSafeSegment in the sweep loop).
         const name = (m as { name?: unknown }).name
         if (typeof name !== "string" || !isSafePathSegment(name)) return false
+        // H58: reject the reserved name "master" — it would collide with the
+        // synthetic master pseudo-member and let a tampered state.json inject
+        // a member that polls and ACKs the master mailbox.
+        if (name === "master") return false
         // HIGH #14: reject duplicate member names.
         if (memberNames.has(name)) return false
         memberNames.add(name)

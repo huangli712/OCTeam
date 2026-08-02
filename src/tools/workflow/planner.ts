@@ -25,7 +25,6 @@ import { logSwallowed } from "../../core/log.js"
 import { isEnoent } from "../../core/utils.js"
 import { isIndexedMember } from "../../state/resolve.js"
 import { assertNoSymlinkTraversal, atomicWrite, withLock } from "../../state/locks.js"
-import { stateLockPath } from "../../state/paths.js"
 import { validateMemberAgent, validateMemberName } from "../support.js"
 import { validateWorkflowSteps } from "../../orchestration/workflow/loader.js"
 import { validateWorkflowStepsAgainstMembers } from "./validate.js"
@@ -653,7 +652,11 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
     // + rollback so a concurrent process (another team_planner write, or team
     // lifecycle writer under the same directory) cannot interleave between the
     // no-overwrite check and the writes, producing a torn team/workflow pair.
-    return await withLock(stateLockPath(ctx.directory), async () => {
+    // P9: use a planner-specific lock name to avoid namespace collision
+    // with state.json.lock. The stale-lock reaper treats state.json.lock as
+    // a team-state lock and may reap it based on PID liveness; a dedicated
+    // name avoids accidental cross-domain deletion.
+    return await withLock(path.join(ctx.directory, "planner.lock"), async () => {
         if (args.overwrite !== true && (existsSync(teamPath) || existsSync(workflowPath))) {
             return (
                 `Error: refusing to overwrite existing loader(s). ${teamFileName(args.team_id)}`

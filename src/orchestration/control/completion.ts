@@ -7,6 +7,7 @@ import type { PluginContext } from "../../core/context.js"
 import { logSwallowed } from "../../core/log.js"
 import type { RunStatus } from "../../core/types.js"
 import { type Team, clearActiveTask, saveTeamStateBounded } from "../../state/store.js"
+import { trustedLeadSessionId } from "../../state/resolve.js"
 import { asSdkMessages } from "../protocol/output.js"
 import { sumMemberTokens } from "../protocol/output.js"
 import { recordEvent } from "../records/events.js"
@@ -44,8 +45,13 @@ export async function deliverSummaryToLeader(
     // Build and deliver the summary. A throw here is caught by finishRun's
     // finally block; the run record is already persisted.
     const summary = await buildSummary(team, team.activeTask, reason)
+    // P4: use the index-verified leadSessionId instead of the disk-tamperable
+    // team.leadSessionId. A state.json swap cannot redirect run output to an
+    // attacker-controlled session. Fall back to team.leadSessionId only when
+    // the index has no entry (very early in team_create before indexing).
+    const deliveryTarget = trustedLeadSessionId(team.directory) ?? team.leadSessionId
     await ctx.client.session.promptAsync({
-        path: { id: team.leadSessionId },
+        path: { id: deliveryTarget },
         body: {
             parts: [
                 {

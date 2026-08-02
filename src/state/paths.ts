@@ -52,12 +52,11 @@ export function stateLockPath(teamDirectory: string): string {
 
 /**
  * master.sentinel — write-once file pinning the team's authoritative
- * leadSessionId for user-scope teams (C-17). Written at team_create with
- * read-only permissions; never overwritten by any tool. At restart, user
- * scope reads this instead of the mutable state.json.leadSessionId so a
- * member with FS write to state.json cannot escalate to master by changing
- * the leadSessionId field. Project scope already derives the owner from the
- * directory segment and does not need the sentinel.
+ * leadSessionId (C-17/C-14). Written at team_create with read-only permissions;
+ * never overwritten by any tool. At restart, user scope verifies it against
+ * state.json while project scope verifies it against the directory-derived
+ * owner. A mismatch or unreadable sentinel fails closed; a missing legacy
+ * sentinel falls back to the scope's previous source with a warning.
  */
 export function masterSentinelPath(teamDirectory: string): string {
     return path.join(teamDirectory, "master.sentinel")

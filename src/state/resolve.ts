@@ -150,6 +150,21 @@ export function resolveMasterTeams(sessionID: string): MasterTeamEntry[] {
 }
 
 /**
+ * P4: Resolve the trusted (index-verified) leadSessionId for a team at
+ * `directory`. Returns undefined when no master session is registered as
+ * owning that directory. Use this in delivery paths (finishRun) instead of
+ * the disk-tamperable `team.leadSessionId` so a state.json swap cannot
+ * redirect sensitive run output to an attacker-controlled session.
+ */
+export function trustedLeadSessionId(directory: string): string | undefined {
+    for (const [sessionID, entry] of masterIndex) {
+        const team = entry.teams.get(directory)
+        if (team) return team.leadSessionId ?? sessionID
+    }
+    return undefined
+}
+
+/**
  * True if this session is already indexed as a (non-master) team member. Used by
  * team_create to refuse a member (child) session from spawning its own team —
  * which would overwrite its index entry (orphaning its original team) and let it

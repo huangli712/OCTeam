@@ -15,8 +15,10 @@ import { isEnoent } from "../../core/utils.js"
 import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
+import { withLock } from "../../state/locks.js"
+import { claimMutexPath } from "../../state/paths.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
-import { loadTeamState } from "../../state/store.js"
+import { loadTeamState, reloadTeamStateLocked } from "../../state/store.js"
 import {
     TASK_ID_PATTERN,
     MemberHoldsActiveTaskError,
@@ -89,12 +91,12 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
             // 65 outside the lock, allowing a race where recurse starts mid-
             // create and the member's manually-created task duplicates the
             // orchestrator's automatic subtask.
-            // Wrap the count-check + blocked_by-check + create in team.mutex so
-            // concurrent team_task_create / team_task_delete calls cannot race.
+            // Keep the count-check + blocked_by-check + create under both the
+            // cross-process claim mutex and the in-process team mutex.
             let task: Task | undefined
             let limitError = false
             let blockedByError: string | undefined
-            await team.mutex.runExclusive(async () => {
+            await withLock(claimMutexPath(team.directory), () => team.mutex.runExclusive(async () => {
                 // HIGH: tombstone guard — refuse writes after team_delete.
                 if (team.deleted) {
                     blockedByError = "Error: team has been deleted"
@@ -154,7 +156,7 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     description: args.description,
                     blockedBy: args.blocked_by,
                 })
-            })
+            }), team.directory)
             if (blockedByError) return blockedByError
             if (limitError) {
                 return (
@@ -222,13 +224,11 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                 // M29 fix: isolated mode (parallel without per-member tasks) also
                 // prohibits claiming shared tasks, not just creating them.
                 // Pre-fix code let isolated members claim existing tasks, forming
-                // a side channel for reading shared task content.
+                // a side channel for reading shared task content. The mode check
+                // and claim now share both lock scopes.
+                let team
                 try {
-                    const team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
-                    const at = team.activeTask
-                    if (at?.type === "parallel" && !at.tasks) {
-                        return `Error: team_task_claim is disabled in parallel isolated mode. Isolated members cannot share a task list.`
-                    }
+                    team = await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
                 } catch (err) {
                     // Fail closed: ENOENT means the team's state file is missing,
                     // so we cannot verify isolated-mode. Rejecting (rather than
@@ -240,8 +240,27 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                     return `Error: cannot verify team state for isolated-mode check. Task claim rejected. Underlying error: ${err instanceof Error ? err.message : String(err)}`
                 }
                 try {
-                    const task = await claimTask(dir, args.task_id, caller.name)
-                    return `Claimed task ${task.id} [${task.subject}].`
+                    return await withLock(claimMutexPath(team.directory), () => team.mutex.runExclusive(async () => {
+                        try {
+                            await reloadTeamStateLocked(team)
+                        } catch (err) {
+                            if (isEnoent(err)) {
+                                return `Error: team "${args.team_id}" not found`
+                            }
+                            return `Error: cannot verify team state for isolated-mode check. Task claim rejected. Underlying error: ${err instanceof Error ? err.message : String(err)}`
+                        }
+                        const at = team.activeTask
+                        if (at?.type === "parallel" && !at.tasks) {
+                            return `Error: team_task_claim is disabled in parallel isolated mode. Isolated members cannot share a task list.`
+                        }
+                        const task = await claimTask(
+                            dir,
+                            args.task_id,
+                            caller.name,
+                            { claimMutexHeld: true },
+                        )
+                        return `Claimed task ${task.id} [${task.subject}].`
+                    }), team.directory)
                 } catch (err) {
                     if (err instanceof TaskAlreadyClaimedError) {
                         return `Error: task ${args.task_id} already claimed or not claimable.`

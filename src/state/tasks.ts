@@ -429,12 +429,14 @@ async function tryCreateClaimLock(lockPath: string, owner: string): Promise<bool
  * task is not pending. Throws MemberHoldsActiveTaskError if `owner` already
  * holds another task in the "claimed" or "in_progress" window — this enforces
  * the claim → complete → idle → claim-next workflow (one active task per
- * member at a time).
+ * member at a time). `claimMutexHeld` is reserved for callers that already
+ * hold claimMutexPath across a larger check-and-claim critical section.
  */
 export async function claimTask(
     teamDirectory: string,
     taskId: string,
     owner: string,
+    options: { readonly claimMutexHeld?: boolean } = {},
 ): Promise<Task> {
     assertValidTaskId(taskId)
     // C-6: claimsDir mkdir happens before withLock; guard its ancestor chain
@@ -450,7 +452,7 @@ export async function claimTask(
     // across all callers so two concurrent claims by the same member cannot
     // both pass the "no active task" check (TOCTOU). Claim is not a hot path,
     // so a single team-wide mutex is acceptable.
-    return withLock(claimMutexPath(teamDirectory), async () => {
+    const runClaim = async (): Promise<Task> => {
         // 0. Per-member concurrency cap (1): reject if this owner already
         // holds a task in the "claimed" or "in_progress" window.
         const allTasks = await listAllTasks(teamDirectory, true)
@@ -542,7 +544,9 @@ export async function claimTask(
             }
             throw err
         }
-    }, teamDirectory)
+    }
+    if (options.claimMutexHeld) return runClaim()
+    return withLock(claimMutexPath(teamDirectory), runClaim, teamDirectory)
 }
 
 /**
