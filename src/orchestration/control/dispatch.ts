@@ -105,7 +105,14 @@ export async function dispatchToMember(
             member.promptDelivered = origPromptDelivered
             if (team.activeTask?.type === "workflow" && eventMeta?.stepIndex !== undefined) {
                 const step = team.activeTask.steps?.[eventMeta.stepIndex]
-                if (step) step.dispatchedAt = undefined
+                if (step) {
+                    step.dispatchedAt = undefined
+                    // H2: clear dispatchedActor/correlationId too so resume
+                    // doesn't see a stale actor reference without dispatchedAt
+                    // and misclassify the step as dispatched-but-broken.
+                    step.dispatchedActor = undefined
+                    step.correlationId = undefined
+                }
             }
             // #5: set retryingSince so the sweep timer re-drives this member
             // instead of stalling until wall-clock timeout. The mode handler
