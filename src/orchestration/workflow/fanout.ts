@@ -252,6 +252,12 @@ export async function dispatchWorkflowJoinReducer(
     delete task.responses[reducer.name];
     step.dispatchedActor = reducer.name;
     step.correlationId = crypto.randomUUID();
+    // H2: mark dispatched BEFORE promptAsync so a crash between dispatch and
+    // mark doesn't cause resume to re-dispatch (duplicate prompt). If
+    // dispatchToMember throws, dispatch.ts rollback clears member state and
+    // retryingSince; the stale dispatchedAt is acceptable — the next idle
+    // event will find no response and escalate the member to errored.
+    markWorkflowStepDispatched(step);
     await dispatchToMember(
         ctx,
         reducer,
@@ -262,7 +268,6 @@ export async function dispatchWorkflowJoinReducer(
         team,
         { stepIndex: index, correlationId: step.correlationId },
     );
-    markWorkflowStepDispatched(step);
     return true;
 }
 

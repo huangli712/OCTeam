@@ -26,6 +26,8 @@ import type { ToolContext } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
+import { teamLifecycleLockPath } from "../../state/paths.js"
+import { withLock } from "../../state/locks.js"
 import { ensureMembersReady } from "../control/members.js"
 import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
@@ -214,13 +216,32 @@ export async function startOrchestration(
     const validationError = validate(team)
     if (validationError) return validationError
 
-    // Step 4: Phase 1 — busy pre-check under mutex. The spawning guard
-    // reserves the spawn slot: a second concurrent caller that also passed
-    // Steps 1-3 sees spawning=true here and bails before duplicating
-    // member-session spawns in Phase 2 (which runs OUTSIDE the mutex).
+    // Step 4: Phase 1 — busy pre-check under mutex AND cross-process file
+    // lock. The spawning guard reserves the spawn slot: a second concurrent
+    // caller (including a sibling process) sees spawning=true and bails
+    // before duplicating member-session spawns in Phase 2.
+    // H7: pre-fix code only used the in-process mutex, so two sibling
+    // processes could both pass the spawning check and both start spawning.
+    // The file lock serializes the check-then-set across processes.
     let busy = false
     const spawnOwner = crypto.randomUUID()
-    await team.mutex.runExclusive(async () => {
+    await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
+        // H7: re-read from disk to catch a sibling process's spawn that
+        // our cache hasn't seen yet.
+        try {
+            const fresh = await loadTeamState(ctx.storageRoot, team.teamName, team.leadSessionId)
+            if (fresh.spawning || fresh.activeTask) {
+                // Sync our cache with disk state.
+                team.spawning = fresh.spawning
+                team.spawningOwner = fresh.spawningOwner
+                team.activeTask = fresh.activeTask
+                busy = true
+                return
+            }
+        } catch {
+            // Disk read failed — fall through to the cache check. The file
+            // lock still protects against siblings.
+        }
         if (team.activeTask || team.spawning) { busy = true; return }
         team.spawning = true
         team.spawningOwner = spawnOwner
@@ -231,7 +252,7 @@ export async function startOrchestration(
             team.spawningOwner = undefined
             throw err
         }
-    })
+    }), team.directory)
     if (busy) return "Error: team already has an active orchestration"
     let raced = false
     let buildError: string | undefined
