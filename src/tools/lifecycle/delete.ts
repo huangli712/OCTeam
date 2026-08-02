@@ -135,27 +135,52 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 // branches were silently left behind.
                 for (const m of team.members) {
                     try {
-                        await destroyWorktree(
+                        // N33: check the boolean return — false means the
+                        // worktree was rejected (out-of-bounds/symlink) but
+                        // no exception was thrown.
+                        const destroyed = await destroyWorktree(
                             ctx.directory,
                             m.worktreePath,
                             worktreesDir(team.directory),
                             team.teamName,
                             m.name,
                         )
+                        if (!destroyed) {
+                            worktreeErrors.push(`${m.name}: worktree cleanup rejected (out-of-bounds or symlink)`)
+                        }
                     } catch (err) {
                         worktreeErrors.push(`${m.name}: ${err instanceof Error ? err.message : String(err)}`)
                     }
                 }
-                const quarantined = await quarantineTeamStorage(
-                    ctx.storageRoot,
-                    args.team_id,
-                    pathLeadSessionId,
-                    team.directory,
-                    team.teamRunId,
-                )
+                let quarantineErr: Error | undefined
+                let quarantined: string
+                try {
+                    quarantined = await quarantineTeamStorage(
+                        ctx.storageRoot,
+                        args.team_id,
+                        pathLeadSessionId,
+                        team.directory,
+                        team.teamRunId,
+                    )
+                } catch (err) {
+                    // N7: quarantine failed AFTER worktrees were already destroyed.
+                    // The team is tombstoned; worktrees cannot be restored. Surface
+                    // the worktree errors alongside the quarantine failure so the
+                    // user knows the full extent of what was cleaned up.
+                    quarantineErr = err instanceof Error ? err : new Error(String(err))
+                    quarantined = ""
+                }
                 quarantineDirectory = quarantined
-                await deleteQuarantinedTeamStorage(ctx.storageRoot, quarantined)
+                if (!quarantineErr && quarantined) {
+                    await deleteQuarantinedTeamStorage(ctx.storageRoot, quarantined)
+                }
                 unindexDeletedTeam()
+                if (quarantineErr) {
+                    const wtMsg = worktreeErrors.length > 0
+                        ? ` Worktree cleanup completed: ${worktreeErrors.join("; ")}`
+                        : " Worktrees were destroyed before quarantine failure."
+                    throw new Error(`team_delete: quarantine failed for team "${args.team_id}" after worktree cleanup: ${quarantineErr.message}.${wtMsg}`)
+                }
                 }), team.directory)
                 if (staleSpawning) {
                     return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). Retry in a few seconds.`

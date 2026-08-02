@@ -31,7 +31,9 @@ import path from "node:path"
 import type { PluginContext } from "../../core/context.js"
 import { invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from "../../state/store.js"
 import { unindexSession } from "../../state/resolve.js"
-import { assertSafeSegment, teamDir } from "../../state/paths.js"
+import { assertSafeSegment, deletedMarkerPath, teamDir, worktreesDir } from "../../state/paths.js"
+import { atomicWrite } from "../../state/locks.js"
+import { destroyWorktree, hasUncommittedChanges } from "../../state/worktrees.js"
 import { releaseStaleReservations } from "../../messaging/mailbox.js"
 import { logSwallowed } from "../../core/log.js"
 
@@ -256,32 +258,74 @@ export async function handleSessionDeleted(ctx: PluginContext, sessionID: string
         // via path traversal" — this mirrors that posture for consistency.
         assertSafeSegment(sessionID, "handleSessionDeleted", "sessionID")
         const teams = await listAllTeams(ctx.projectStorageRoot, true)
+        const ownedTeams: Array<Awaited<ReturnType<typeof loadTeamState>>> = []
+        const unverifiableWorktrees: string[] = []
+        for (const { leadSessionId, teamName } of teams) {
+            if (leadSessionId !== sessionID) continue
+            try {
+                ownedTeams.push(await loadTeamState(ctx.projectStorageRoot, teamName, leadSessionId))
+            } catch (err) {
+                logSwallowed(ctx, "team state unreadable during session deletion", err, { team: teamName })
+                try {
+                    const entries = await fs.readdir(worktreesDir(teamDir(ctx.projectStorageRoot, teamName, leadSessionId)))
+                    if (entries.length > 0) unverifiableWorktrees.push(teamName)
+                } catch (scanError) {
+                    if ((scanError as NodeJS.ErrnoException).code !== "ENOENT") {
+                        unverifiableWorktrees.push(teamName)
+                    }
+                }
+            }
+        }
+
+        if (unverifiableWorktrees.length > 0) {
+            throw new Error(`refusing session deletion: worktrees cannot be verified for: ${unverifiableWorktrees.join(", ")}`)
+        }
+
+        const dirtyWorktrees: string[] = []
+        for (const team of ownedTeams) {
+            for (const member of team.members) {
+                if (member.worktreePath && await hasUncommittedChanges(member.worktreePath)) {
+                    dirtyWorktrees.push(`${team.teamName}/${member.name}`)
+                }
+            }
+        }
+        if (dirtyWorktrees.length > 0) {
+            throw new Error(`refusing session deletion: uncommitted worktrees: ${dirtyWorktrees.join(", ")}`)
+        }
+
+        for (const team of ownedTeams) {
+            for (const member of team.members) {
+                const destroyed = await destroyWorktree(
+                    ctx.directory,
+                    member.worktreePath,
+                    worktreesDir(team.directory),
+                    team.teamName,
+                    member.name,
+                )
+                if (!destroyed) {
+                    throw new Error(`refusing session deletion: worktree cleanup failed for ${team.teamName}/${member.name}`)
+                }
+            }
+        }
+
         // Collect directories to invalidate AFTER fs.rm so that during the
         // deletion window, cache hits return the tombstoned team object
         // (deleted=true) and racing handlers no-op instead of recreating
         // the directory via saveTeamState.
         const dirsToInvalidate: string[] = []
-        for (const { leadSessionId, teamName } of teams) {
-            if (leadSessionId !== sessionID) continue
+        for (const team of ownedTeams) {
+            team.deleted = true  // tombstone: prevent racing handlers from resurrecting
+            // HIGH: write a DURABLE deletion marker BEFORE fs.rm.
+            // saveTeamState skips deleted teams, so the in-memory tombstone
+            // alone is not crash-safe. Write a marker file so the next
+            // startup detects the deletion.
             try {
-                const team = await loadTeamState(ctx.projectStorageRoot, teamName, leadSessionId)
-                team.deleted = true  // tombstone: prevent racing handlers from resurrecting
-                // HIGH: write a DURABLE deletion marker BEFORE fs.rm.
-                // saveTeamState skips deleted teams, so the in-memory tombstone
-                // alone is not crash-safe. Write a marker file so the next
-                // startup detects the deletion.
-                try {
-                    const { deletedMarkerPath } = await import("../../state/paths.js")
-                    const marker = deletedMarkerPath(team.directory)
-                    const fs = await import("node:fs/promises")
-                    await fs.writeFile(marker, team.teamRunId, "utf8")
-                } catch (markerErr) {
-                    logSwallowed(ctx, "failed to write deletion marker", markerErr, { team: teamName })
-                }
-                dirsToInvalidate.push(team.directory)
-            } catch (err) {
-                logSwallowed(ctx, "team state unreadable during session deletion", err, { team: teamName })
+                const marker = deletedMarkerPath(team.directory)
+                await atomicWrite(marker, team.teamRunId, path.dirname(team.directory))
+            } catch (markerErr) {
+                logSwallowed(ctx, "failed to write deletion marker", markerErr, { team: team.teamName })
             }
+            dirsToInvalidate.push(team.directory)
         }
         const sessionDir = path.join(ctx.projectStorageRoot, sessionID)
         await fs.rm(sessionDir, { recursive: true, force: true })

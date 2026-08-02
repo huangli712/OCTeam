@@ -47,6 +47,6 @@ export const librarianAgent: OcteamAgentConfig = {
     // source files and exfiltrate them via webfetch — the prompt instruction
     // is not an authorization boundary. webfetch remains (external reference
     // research); context7 is provided by the host, not by this permission map.
-    permission: { edit: "deny", task: "deny", bash: "deny", webfetch: "allow", "*": "deny" },
+    permission: { "*": "deny", edit: "deny", task: "deny", bash: "deny", webfetch: "allow" },
     prompt: LIBRARIAN_PROMPT,
 }

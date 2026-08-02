@@ -105,9 +105,31 @@ function applyTemplateVarsBounded(
         throw new Error(`applyTemplateVars: exceeded max nesting depth (${TEMPLATE_MAX_DEPTH})`)
     }
     if (typeof value === "string") {
+        // N10: cap individual variable value length before substitution to
+        // prevent OOM from repeated placeholders multiplied by large values.
+        const MAX_VAR_VALUE_BYTES = 65_536
+        const boundedVars: Record<string, string> = {}
+        for (const [k, v] of Object.entries(vars)) {
+            const vBytes = Buffer.byteLength(v ?? "", "utf8")
+            if (vBytes > MAX_VAR_VALUE_BYTES) {
+                // N10-fix: use Buffer-based truncation for correct UTF-8 byte
+                // count. Pre-fix code used .slice() which counts UTF-16 code
+                // units — CJK/emoji strings would exceed the byte cap by 3x.
+                // Back off to the last complete UTF-8 character boundary so
+                // toString doesn't insert U+FFFD replacement chars.
+                const buf = Buffer.from(v ?? "", "utf8")
+                let end = MAX_VAR_VALUE_BYTES
+                // Walk back to a character boundary (0x00-0x7F start byte or
+                // continuation byte follows a start byte).
+                while (end > 0 && (buf[end] & 0xC0) === 0x80) end--
+                boundedVars[k] = buf.subarray(0, end).toString("utf8") + "[...truncated]"
+            } else {
+                boundedVars[k] = v ?? ""
+            }
+        }
         const result = value.replace(/\$\{([A-Za-z0-9_]+)\}/g, (match, name: string) => {
-            if (Object.prototype.hasOwnProperty.call(vars, name)) {
-                return vars[name] ?? ""
+            if (Object.prototype.hasOwnProperty.call(boundedVars, name)) {
+                return boundedVars[name]
             }
             if (strict) throw new UnknownTemplateVarError(name)
             return match
@@ -590,7 +612,14 @@ async function loadWorkflowFileUnchecked(
                     error: `Error: workflow_file "${relPath}" is too large: ${fileStat.size} bytes exceeds the ${WORKFLOW_FILE_MAX_BYTES}-byte limit`,
                 }
             }
-            raw = await fh.readFile("utf8")
+            // N11: read with explicit size cap to prevent concurrent-append
+            // TOCTOU. Pre-fix code checked stat.size then called unbounded
+            // fh.readFile(); a concurrent append could grow the file between
+            // the stat check and the read, bypassing the size limit.
+            const maxBytes = Math.min(fileStat.size, WORKFLOW_FILE_MAX_BYTES)
+            const buffer = Buffer.alloc(maxBytes)
+            const { bytesRead } = await fh.read(buffer, 0, maxBytes, 0)
+            raw = buffer.subarray(0, bytesRead).toString("utf8")
         } finally {
             await fh.close().catch((err: unknown) => {
                 logger.warn("loadWorkflowFile: failed to close workflow file", {

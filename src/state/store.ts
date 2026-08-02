@@ -12,7 +12,7 @@ import { logger } from '../core/log.js';
 import type { TeamState, TeamSpec } from "../core/types.js"
 import { isOCTeamAgent } from "../core/role.js"
 import { isEnoent } from '../core/utils.js';
-import { assertNoSymlinkTraversal, atomicWrite, AsyncMutex, withLock } from "./locks.js"
+import { assertNoSymlinkTraversal, atomicWrite, AsyncMutex, safeReadFile, withLock } from "./locks.js"
 import {
     configPath,
     deletedMarkerPath,
@@ -55,6 +55,7 @@ export type Team = TeamState & {
     _diskMtime?: number  // mtimeMs of the last disk read (for cross-process cache invalidation)
     _lastCacheCheck?: number  // throttle: last time we stat'd the disk for staleness
     _persistDirty?: boolean
+    _stateUnreadable?: boolean
 }
 
 // Process-level registry: resolved teamDir (absolute path) -> Team (with its
@@ -103,6 +104,7 @@ function stripRuntimeFields(team: Team): TeamState {
         _diskMtime: _mtime,
         _lastCacheCheck: _cacheCheck,
         _persistDirty: _persistDirty,
+        _stateUnreadable: _stateUnreadable,
         ...state
     } = team
     // H3: proactively strip isMaster from every member before serialization.
@@ -306,6 +308,58 @@ async function readJsonOrNull<T>(
     }
 }
 
+function applyReloadedTeamState(cached: Team, state: TeamState, diskMtime: number): void {
+    const currentState = stripRuntimeFields(cached)
+    const mergedState = mergeTeamState(state, cached._diskSnapshot ?? state, currentState)
+    const runtimeKeys = new Set([
+        "mutex", "directory", "deleted", "spawning", "spawningOwner", "members", "activeTask",
+        "_diskSnapshot", "_diskMtime", "_lastCacheCheck", "_persistDirty", "_stateUnreadable",
+    ])
+    const liveState = cached as Record<string, unknown>
+    const diskKeys = new Set(Object.keys(mergedState))
+    for (const key of Object.keys(cached)) {
+        if (!runtimeKeys.has(key) && !diskKeys.has(key)) delete liveState[key]
+    }
+
+    const diskMembers = mergedState.members
+    const diskMemberNames = new Set(diskMembers.map(member => member.name))
+    for (let index = cached.members.length - 1; index >= 0; index--) {
+        if (!diskMemberNames.has(cached.members[index].name)) cached.members.splice(index, 1)
+    }
+    const liveMembers = new Map(cached.members.map(member => [member.name, member] as const))
+    for (const diskMember of diskMembers) {
+        const liveMember = liveMembers.get(diskMember.name)
+        if (liveMember) {
+            const diskMemberKeys = new Set(Object.keys(diskMember))
+            for (const key of Object.keys(liveMember)) {
+                if (!diskMemberKeys.has(key)) delete (liveMember as Record<string, unknown>)[key]
+            }
+            Object.assign(liveMember, deepClone(diskMember))
+        } else {
+            cached.members.push(deepClone(diskMember))
+        }
+    }
+
+    if (cached.activeTask && mergedState.activeTask) {
+        const liveTask = cached.activeTask as unknown as Record<string, unknown>
+        const diskTask = mergedState.activeTask as unknown as Record<string, unknown>
+        const forcedDirectTaskIds = liveTask.forcedDirectTaskIds
+        for (const key of Object.keys(liveTask)) {
+            if (key !== "forcedDirectTaskIds" && !(key in diskTask)) delete liveTask[key]
+        }
+        Object.assign(liveTask, deepClone(diskTask))
+        if (forcedDirectTaskIds !== undefined) liveTask.forcedDirectTaskIds = forcedDirectTaskIds
+    } else {
+        cached.activeTask = mergedState.activeTask === undefined ? undefined : deepClone(mergedState.activeTask)
+    }
+
+    const { members: _members, activeTask: _activeTask, ...restState } = mergedState
+    Object.assign(cached, deepClone(restState))
+    cached._diskSnapshot = deepClone(state)
+    cached._diskMtime = diskMtime
+    cached._stateUnreadable = false
+}
+
 /**
  * Load (or refresh) a team's runtime state, preserving the singleton mutex
  * across calls.
@@ -332,51 +386,46 @@ export async function loadTeamState(
         // an fs.stat on every cached lookup (which happens very frequently
         // during orchestration).
         const now = Date.now()
-        if (cached._lastCacheCheck !== undefined && now - cached._lastCacheCheck < 1000) {
+        if (!cached._stateUnreadable && cached._lastCacheCheck !== undefined && now - cached._lastCacheCheck < 1000) {
             return cached
         }
         cached._lastCacheCheck = now
-        // MEDIUM: check if the on-disk state has been modified by another
-        // process since our last read. If mtime is newer, update the cached
-        // Team in-place (preserving mutex identity) rather than creating a new object.
+        // MEDIUM: refresh from disk when mtime is equal/newer, or when the
+        // filesystem clock moved backwards. Update the cached Team in-place
+        // so its mutex and live object references retain their identity.
         try {
             const diskStat = await fs.stat(statePath(dir))
-            if (cached._diskMtime !== undefined && diskStat.mtimeMs > cached._diskMtime + 5) {
+            const previousMtime = cached._diskMtime
+            const clockRolledBack = previousMtime !== undefined && diskStat.mtimeMs < previousMtime
+            if (previousMtime === undefined || diskStat.mtimeMs >= previousMtime || clockRolledBack) {
                 // Reload state from disk and update the cached Team in-place.
                 const state = await readJsonOrNull<TeamState>(
                     statePath(dir),
                     (v): v is TeamState => isValidTeamState(v, dir),
                 )
-                if (state) {
-                    // Preserve mutex, directory, and runtime-only fields.
-                    const runtime = {
-                        mutex: cached.mutex,
-                        directory: cached.directory,
-                        deleted: cached.deleted,
-                        spawning: cached.spawning,
-                        spawningOwner: cached.spawningOwner,
-                    }
-                    // MEDIUM: update activeTask IN-PLACE instead of replacing
-                    // the reference, so external callers holding the old
-                    // reference still see updates. Pre-fix Object.assign
-                    // replaced the entire activeTask, breaking reference identity.
-                    if (cached.activeTask && state.activeTask) {
-                        const oldForcedDirect = (cached.activeTask as { forcedDirectTaskIds?: string[] }).forcedDirectTaskIds
-                        Object.assign(cached.activeTask, state.activeTask)
-                        if (oldForcedDirect !== undefined) {
-                            (cached.activeTask as { forcedDirectTaskIds?: string[] }).forcedDirectTaskIds = oldForcedDirect
-                        }
-                    } else {
-                        cached.activeTask = state.activeTask
-                    }
-                    // Update non-activeTask fields from state.
-                    const { activeTask: _at, ...restState } = state
-                    Object.assign(cached, restState, runtime, { _diskSnapshot: deepClone(state), _diskMtime: diskStat.mtimeMs })
-                    return cached
+                if (!state) {
+                    throw new Error(`loadTeamState: cached state.json for team "${teamName}" is unreadable or invalid`)
                 }
+                await cached.mutex.runExclusive(async () => {
+                    applyReloadedTeamState(cached, state, diskStat.mtimeMs)
+                })
+                return cached
             }
             return cached
-        } catch {
+        } catch (err) {
+            if (isEnoent(err)) {
+                teamRegistry.delete(dir)
+                inflightLoads.delete(dir)
+                throw err
+            }
+            await cached.mutex.runExclusive(async () => {
+                cached._stateUnreadable = true
+            })
+            logger.error("loadTeamState: cached state is unreadable; returning flagged cache", {
+                team: teamName,
+                file: statePath(dir),
+                error: err instanceof Error ? err.message : String(err),
+            })
             return cached
         }
     }
@@ -389,6 +438,26 @@ export async function loadTeamState(
         inflightLoads.set(dir, inflight)
     }
     return inflight
+}
+
+/** Refresh a registered Team from disk. The caller must hold team.mutex. */
+export async function reloadTeamStateLocked(team: Team): Promise<void> {
+    const file = statePath(team.directory)
+    try {
+        const diskStat = await fs.stat(file)
+        const state = await readJsonOrNull<TeamState>(
+            file,
+            (value): value is TeamState => isValidTeamState(value, team.directory),
+        )
+        if (!state) {
+            throw new Error(`reloadTeamStateLocked: state.json for team "${team.teamName}" is unreadable or invalid`)
+        }
+        applyReloadedTeamState(team, state, diskStat.mtimeMs)
+        team._lastCacheCheck = Date.now()
+    } catch (error) {
+        team._stateUnreadable = true
+        throw error
+    }
 }
 
 /**
@@ -669,7 +738,7 @@ export async function saveTeamState(team: Team): Promise<void> {
         // team run is a tombstone; a replacement team removes the stale marker.
         const marker = deletedMarkerPath(dir)
         try {
-            const deletedTeamRunId = await fs.readFile(marker, "utf8")
+            const deletedTeamRunId = await safeReadFile(path.dirname(dir), marker, { maxBytes: 1024 })
             if (deletedTeamRunId === team.teamRunId) {
                 team.deleted = true
                 return
@@ -693,8 +762,17 @@ export async function saveTeamState(team: Team): Promise<void> {
                 // state, so the corrupt-but-potentially-recoverable data is
                 // not silently destroyed.
                 try {
-                    const backupPath = `${statePath(dir)}.corrupt-${Date.now()}.json`
-                    await fs.writeFile(backupPath, JSON.stringify(diskState, null, 2))
+                    // N3: use exclusive-create with random suffix to prevent
+                    // collision and symlink following. Pre-fix code used
+                    // Date.now() which can collide and fs.writeFile which
+                    // follows symlinks.
+                    const backupPath = `${statePath(dir)}.corrupt-${randomUUID()}.json`
+                    const backupFh = await fs.open(backupPath, "wx")
+                    try {
+                        await backupFh.writeFile(JSON.stringify(diskState, null, 2))
+                    } finally {
+                        await backupFh.close()
+                    }
                     logger.warn("saveTeamState: disk state failed validation; backed up corrupt state before overwrite", { dir, backupPath })
                 } catch {
                     logger.warn("saveTeamState: disk state failed validation; backup failed, proceeding with overwrite", { dir })
@@ -1006,7 +1084,7 @@ export async function quarantineTeamStorage(
         const qd = path.join(quarantineRoot, randomUUID())
         await fs.rename(dir, qd)
         return qd
-    })
+    }, dir)
     return quarantineDirectory
 }
 
@@ -1086,9 +1164,9 @@ export function rekeyTeamRegistry(oldDirectory: string, newDirectory: string, te
 }
 
 /**
- * Snapshot of registry teams that currently have an active orchestration. Used
- * by the sweep timer (it only needs to babysit busy teams) without scanning disk.
+ * Snapshot of registry teams that have an active orchestration or an unflushed
+ * state mutation. Used by the sweep timer without scanning disk.
  */
 export function activeTeams(): Team[] {
-    return Array.from(teamRegistry.values()).filter(t => t.activeTask)
+    return Array.from(teamRegistry.values()).filter(t => t.activeTask || t._persistDirty)
 }

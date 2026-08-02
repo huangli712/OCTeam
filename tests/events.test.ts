@@ -87,7 +87,7 @@ describe("recordEvent + readRunEvents", () => {
         expect(events.map(event => event.member)).toEqual(["first", "second"])
     })
 
-    test("readRunEvents sorts by timestamp, not file order", async () => {
+    test("readRunEvents preserves file append order", async () => {
         const dir = tmpTeamDir()
         // write out-of-order on disk
         await fs.mkdir(join(dir, "runs", "r2"), { recursive: true })
@@ -99,7 +99,10 @@ describe("recordEvent + readRunEvents", () => {
             JSON.stringify({ timestamp: 20, kind: "captured", member: "a", bytes: 1 }) + "\n",
         )
         const events = await readRunEvents(dir, "r2")
-        expect(events.map(e => e.timestamp)).toEqual([10, 20, 30])
+        // N31: events preserve file append order (the persistent order),
+        // NOT timestamp order. Timestamp sorting is unstable under clock
+        // rollback / NTP skew / restart.
+        expect(events.map(e => e.timestamp)).toEqual([30, 10, 20])
     })
 
     test("readRunEvents skips malformed lines", async () => {

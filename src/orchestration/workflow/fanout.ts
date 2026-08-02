@@ -103,6 +103,14 @@ function buildJoinedWorkflowOutput(
             endIndex: tailIndex,
         }));
     const erroredBranchIds = new Set(join.erroredBranchIds ?? []);
+    const survivingBranchCount = ranges.reduce((count, _range, branchIndex) => {
+        const branchId = fanout?.branchIds[branchIndex] ?? `branch-${branchIndex + 1}`;
+        const tailIndex = join.branchTailIndices[branchIndex];
+        return erroredBranchIds.has(branchId) || (tailIndex !== undefined && steps[tailIndex]?.skipped === true)
+            ? count
+            : count + 1;
+    }, 0);
+    const perBranchBytes = Math.floor(MAX_UPSTREAM_OUTPUT_BYTES / Math.max(survivingBranchCount, 1));
     const blocks: string[] = [];
     let used = 0;
 
@@ -111,14 +119,14 @@ function buildJoinedWorkflowOutput(
         if (range === undefined) continue;
         const branchId =
             fanout?.branchIds[branchIndex] ?? `branch-${branchIndex + 1}`;
-        if (erroredBranchIds.has(branchId)) continue;
+        const tailIndex = join.branchTailIndices[branchIndex];
+        if (erroredBranchIds.has(branchId) || (tailIndex !== undefined && steps[tailIndex]?.skipped === true)) continue;
         const branchBlocks: string[] = [];
         const separator = blocks.length === 0 ? "" : "\n\n";
         const branchLabel = `[Branch ${branchId}]\n`;
 
         // MEDIUM: cap each branch block to a per-branch budget so a
         // single oversized branch doesn't get entirely dropped.
-        const branchBudget = Math.floor(MAX_UPSTREAM_OUTPUT_BYTES / ranges.length)
         let branchUsed = Buffer.byteLength(separator + branchLabel, "utf8")
         for (
             let stepIndex = range.startIndex;
@@ -132,7 +140,7 @@ function buildJoinedWorkflowOutput(
             // Per-step truncation within the branch budget.
             const stepSeparator = branchBlocks.length === 0 ? "" : "\n\n"
             const stepLabel = `[Step ${stepIndex + 1} output from ${step.member ?? "?"}]\n`
-            const remaining = branchBudget - branchUsed
+            const remaining = perBranchBytes - branchUsed
                 - Buffer.byteLength(stepSeparator + stepLabel, "utf8")
             if (remaining <= 0) break
             const stepText = truncateOutput(step.output, Math.min(remaining, 8192))

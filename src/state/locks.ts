@@ -184,14 +184,14 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
         const pidStr = await fs.readFile(lockPath, "utf8")
         const pid = parseInt(pidStr.trim(), 10)
         if (!Number.isFinite(pid) || pid <= 0) {
-            // CRIT #1: empty/invalid PID means the lock was truncated by
-            // a TOCTOU-safe reap or is corrupt. Safe to unlink now.
-            // C9 note: a NEW lock between open("wx") and writeFile(pid)
-            // is also 0-byte here, but that window is sub-millisecond
-            // (writeFile is called immediately after open in acquireLock).
-            // The trade-off favors reaping orphans over protecting a
-            // vanishingly brief race that acquireLock retries anyway.
-            if (st.size === 0) await fs.unlink(lockPath).catch(() => {})
+            // N5: a zero-byte lock may be a NEW lock between open("wx") and
+            // writeFile(pid). Only unlink if it's been zero-byte for more
+    // than 1 second — a freshly created lock should have its PID written
+    // within milliseconds. This narrows the race window from "any" to
+    // "stale for > 1s".
+            if (st.size === 0 && Date.now() - st.mtimeMs > 1000) {
+                await fs.unlink(lockPath).catch(() => {})
+            }
             return
         }
         let alive = true
@@ -201,14 +201,17 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
             alive = (e as NodeJS.ErrnoException).code !== "ESRCH"
         }
         if (shouldReapStaleLock(st.mtimeMs, Date.now(), LOCK_TTL_MS, alive)) {
-            // CRIT #1: TOCTOU-safe reap. Instead of unlink (which can
-            // delete a newer lock if another process acquired between
-            // stat/read and unlink), truncate the file to empty. The
-            // next acquireLock's open("wx") still gets EEXIST, but the
-            // empty PID read in releaseLock/maybeReapStaleLock will
-            // return NaN → skip, letting acquireLock's timeout-retry
-            // eventually succeed. Alternatively the next maybeReapStaleLock
-            // will find a 0-byte file and immediately unlink it.
+            // N5: re-read the PID before truncating to verify the lock
+    // still belongs to the dead owner. Another process may have
+    // unlinked and re-created the lock between our initial read and
+    // this truncate, which would erase the new owner's PID.
+            try {
+                const currentPidStr = await fs.readFile(lockPath, "utf8")
+                const currentPid = parseInt(currentPidStr.trim(), 10)
+                if (currentPid !== pid) return // lock generation changed
+            } catch {
+                return // lock vanished — nothing to truncate
+            }
             const fh = await fs.open(lockPath, "w").catch(() => undefined)
             if (fh) {
                 try { await fh.writeFile("") } finally { await fh.close() }
@@ -381,7 +384,10 @@ export async function safeReadFile(
     // O_NOFOLLOW may be absent on non-Linux platforms (e.g. Windows); degrade
     // gracefully — the path-chain check above still provides protection.
     const O_NOFOLLOW = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0
-    const flags = fs.constants.O_RDONLY | O_NOFOLLOW
+    // N4: O_NONBLOCK prevents blocking on FIFOs/special files that would
+    // otherwise hang indefinitely in open() before fstat() can reject them.
+    const O_NONBLOCK = (fs.constants as { O_NONBLOCK?: number }).O_NONBLOCK ?? 0
+    const flags = fs.constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK
     const fh = await fs.open(filePath, flags)
     try {
         const stat = await fh.stat()

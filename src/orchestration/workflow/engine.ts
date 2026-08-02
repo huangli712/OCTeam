@@ -145,14 +145,19 @@ export async function dispatchTaskStep(
     // HIGH #14: mark dispatched BEFORE dispatchToMember so the step state
     // is persisted atomically with the dispatch intent.
     markWorkflowStepDispatched(step);
-    await dispatchToMember(
-        ctx,
-        member,
-        contextPrefix ? `${contextPrefix}\n\n${text}` : text,
-        member.worktreePath ?? ctx.directory,
-        team,
-        { stepIndex: index, correlationId: step.correlationId },
-    );
+    try {
+        await dispatchToMember(
+            ctx,
+            member,
+            contextPrefix ? `${contextPrefix}\n\n${text}` : text,
+            member.worktreePath ?? ctx.directory,
+            team,
+            { stepIndex: index, correlationId: step.correlationId },
+        );
+    } catch (error) {
+        step.dispatchedAt = undefined;
+        throw error;
+    }
     return true;
 }
 
@@ -479,12 +484,18 @@ export async function maybePauseBeforeWorkflowStep(
     // If forceApprovalRequest fails to pause (no escalation handler), roll
     // back the grant flag so the caller falls through to dispatch.
     step.approvalBeforeGranted = true;
-    const paused = await forceApprovalRequest(ctx, team, {
-        kind: "workflow_step",
-        stage: index,
-        summary: `Before ${describeStep(step, index)}. Approve to dispatch this step;`
-            + ` reject to fail the run as workflow_human_rejected.`,
-    });
+    let paused: boolean;
+    try {
+        paused = await forceApprovalRequest(ctx, team, {
+            kind: "workflow_step",
+            stage: index,
+            summary: `Before ${describeStep(step, index)}. Approve to dispatch this step;`
+                + ` reject to fail the run as workflow_human_rejected.`,
+        });
+    } catch (error) {
+        step.approvalBeforeGranted = undefined;
+        throw error;
+    }
     if (paused) {
         return true;
     }
@@ -508,12 +519,18 @@ export async function maybePauseAfterWorkflowStep(
     if (!task || task.type !== "workflow") return false;
     const step = task.steps?.[index];
     if (!step || !step.approvalAfter) return false;
-    const paused = await forceApprovalRequest(ctx, team, {
-        kind: "workflow_step",
-        stage: index,
-        summary: `After ${describeStep(step, index)}. Approve to continue;`
-            + ` reject to fail the run as workflow_human_rejected.`,
-    });
+    let paused: boolean;
+    try {
+        paused = await forceApprovalRequest(ctx, team, {
+            kind: "workflow_step",
+            stage: index,
+            summary: `After ${describeStep(step, index)}. Approve to continue;`
+                + ` reject to fail the run as workflow_human_rejected.`,
+        });
+    } catch (error) {
+        step.completed = false;
+        throw error;
+    }
     if (paused) {
         await saveTeamState(team);
         return true;
@@ -857,16 +874,69 @@ async function settleEnsembleGate(
     task: WorkflowTask,
     step: WorkflowGateStep,
 ): Promise<void> {
-    // Lazy import to break the engine↔verdict cycle.
-    const { handleGateVerdict } = await import("./verdict.js")
-    const verifierName = step.verifiers?.[0];
-    if (!verifierName) return;
-    const member = team.members.find(m => m.name === verifierName);
-    if (!member) return;
+    // N9: when allResolved is true, ensemble results are already collected.
+    // Do NOT call handleGateVerdict — it reads task.responses[verifierName]
+    // which was deleted during dispatch, causing an infinite loop on resume.
+    // Instead, aggregate directly and process the final verdict.
+    const { handleInvalidVerdict, handleGatePass, handleGateFail, handleGateRetry } = await import("./verdict.js");
+    const { aggregateEnsembleVerdict } = await import("./gate.js");
     const steps = task.steps ?? [];
     const gateIndex = steps.indexOf(step);
     if (gateIndex === -1) return;
-    await handleGateVerdict(ctx, team, member, step, gateIndex);
+    if (step.verifiers === undefined || step.ensembleResults === undefined) return;
+    // Idempotency guard: skip if already settled.
+    if (step.verdict !== undefined) return;
+    const verifierName = step.verifiers[0];
+    const aggregated = aggregateEnsembleVerdict(step);
+
+    // Record the ensemble aggregation event (matches collectEnsembleVerdicts
+    // behavior so resume-settled gates have the same diagnostic trail).
+    recordEvent(team, {
+        timestamp: Date.now(),
+        kind: "verdict",
+        member: "ensemble",
+        stage: gateIndex,
+        stepIndex: gateIndex,
+        detail: `${aggregated.verdict} (${aggregated.rationale})`,
+    });
+
+    const v = aggregated;
+    step.verdict = v.verdict;
+    step.score = v.score;
+    step.confidence = v.confidence;
+    step.issues = v.issues;
+
+    if (v.parseFailed || !v.verdict) {
+        await handleInvalidVerdict(
+            ctx,
+            team,
+            { step, gateIndex, verifierName, reason: "parse_failure", rationale: v.rationale, diff: v.diff },
+        );
+        return;
+    }
+    switch (v.verdict) {
+        case "INVALID":
+            await handleInvalidVerdict(
+                ctx,
+                team,
+                { step, gateIndex, verifierName, reason: "INVALID", rationale: v.rationale, diff: v.diff },
+            );
+            return;
+        case "PASS":
+            await handleGatePass(ctx, team, step, gateIndex, steps, verifierName, v);
+            return;
+        case "FAIL":
+            if ((step.onFail ?? "fail") === "retry") {
+                await handleGateRetry(ctx, team, task, step, gateIndex, steps, verifierName, v);
+            } else {
+                await handleGateFail(ctx, team, task, steps, { step, gateIndex, verifierName, v });
+            }
+            return;
+        default: {
+            const exhaustive: string = v.verdict ?? "";
+            throw new Error(`Unknown workflow verdict: ${exhaustive}`);
+        }
+    }
 }
 
 /** Re-dispatch a workflow step at the given index (used by crash-resume and timeout-retry paths). */

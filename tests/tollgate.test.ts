@@ -245,7 +245,7 @@ describe("handleTollgateIdle: produce -> verify", () => {
         expect(calls.some(c => c.sessionId === "ses_alice")).toBe(false)
     })
 
-    test("producer idle without output does not enter verification", async () => {
+    test("producer idle without output retries or fails, never hangs", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
         const task = makeTollgateTask({
@@ -263,8 +263,12 @@ describe("handleTollgateIdle: produce -> verify", () => {
 
         await handleTollgateIdle(ctx, team, idle(team, "alice"))
 
-        expect(task.tollgatePhase).toBe("produce")
-        expect(calls).toHaveLength(0)
+        // N16-tollgate: empty producer output now retries the produce stage
+        // instead of silently hanging. With maxGateRetries=0 (default),
+        // the first empty output exhausts retries and fails the run.
+        // The run must NOT stay stuck in produce with 0 calls.
+        const advanced = task.tollgatePhase !== "produce" || calls.length > 0 || team.status === "failed"
+        expect(advanced).toBe(true)
     })
 
     test("stray idle in produce phase (verifier idles) is ignored", async () => {

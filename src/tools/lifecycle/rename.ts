@@ -174,7 +174,9 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     // at newDir/team.lifecycle.lock still carries our PID.
                     // Clean it up so future lifecycle operations on the renamed
                     // team don't wait for TTL to expire on a stale lock.
-                    await fs.unlink(teamLifecycleLockPath(newDir)).catch(() => { /* best-effort: withLock handles it */ })
+                    await fs.unlink(teamLifecycleLockPath(newDir)).catch((unlinkErr) => {
+                        logSwallowed(ctx, "team_rename: stale lock cleanup after rename", unlinkErr, { lockPath: teamLifecycleLockPath(newDir) })
+                    })
                 } catch (writeErr) {
                     // Rollback: restore the old directory and in-memory state.
                     team.teamName = args.team_id

@@ -195,9 +195,23 @@ export async function handleRouteIdle(
     await maybeAdvanceBarrier(team, targets, async () => {
         const missingResponse = targets.some(name => {
             const member = findMember(team, name)
-            return (member?.turnCount ?? 0) > 0 && !task.responses[name]
+            return member?.status !== "errored"
+                && (member?.turnCount ?? 0) > 0
+                && !task.responses[name]
         })
-        if (missingResponse) return
+        if (missingResponse) {
+            for (const name of targets) {
+                const member = findMember(team, name)
+                if (!member) continue
+                if (member.status !== "errored"
+                    && (member.turnCount ?? 0) > 0
+                    && !task.responses[name]) {
+                    member.status = "errored"
+                    member.error = "no response captured after idle"
+                }
+            }
+            return
+        }
         // checkTermination owns fail-fast for route errors (route is excluded
         // from termination's concurrent set, so tolerance is 0); by the time the
         // barrier fires, all targets are idle.

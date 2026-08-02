@@ -5,6 +5,15 @@
 export type OcteamPermissionAction = "ask" | "allow" | "deny"
 
 /**
+ * Nested permission object matching the SDK v2 PermissionObjectConfig.
+ * Used for tools like `task` that support per-argument rules, e.g.
+ * `task: { "*": "deny", "oct-librarian": "allow" }`.
+ */
+export type OcteamPermissionObject = {
+    [key: string]: OcteamPermissionAction
+}
+
+/**
  * Permission map for an OCTeam agent. Explicitly includes `task` (subtask
  * delegation), which the installed v1 AgentConfig.permission type omits — this
  * local type lets us author `task: "deny"` without a tsc excess-property error.
@@ -13,15 +22,15 @@ export type OcteamPermissionAction = "ask" | "allow" | "deny"
  */
 export interface OcteamAgentPermission {
     edit?: OcteamPermissionAction
-    task?: OcteamPermissionAction
-    bash?: OcteamPermissionAction
+    task?: OcteamPermissionAction | OcteamPermissionObject
+    bash?: OcteamPermissionAction | OcteamPermissionObject
     webfetch?: OcteamPermissionAction
     read?: OcteamPermissionAction
     glob?: OcteamPermissionAction
     grep?: OcteamPermissionAction
     // Index signature: allows wildcard "*": "deny" to close default-allow
     // gaps where unlisted tools (MCP, plugins) inherit allow from OpenCode.
-    [key: string]: OcteamPermissionAction | undefined
+    [key: string]: OcteamPermissionAction | OcteamPermissionObject | undefined
 }
 
 /**
@@ -36,11 +45,5 @@ export interface OcteamAgentConfig {
     temperature?: number
     color?: string
     permission?: OcteamAgentPermission
-    /**
-     * C7: when permission.task is "allow", restrict delegation to these agent
-     * names. Enforced as a prompt-level constraint; full runtime enforcement
-     * awaits opencode framework support for per-tool argument validation.
-     */
-    taskTargets?: readonly string[]
     [key: string]: unknown
 }

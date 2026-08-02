@@ -237,13 +237,20 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                     }
                     const safeStringify = (value: unknown): string => {
                         const sensitiveFields = new Set([
-                            "authorization", "cookie", "password", "secret", "token",
-                            "accesstoken", "refreshtoken", "apikey",
+                            "authorization", "proxyauthorization", "authenticationinfo",
+                            "wwwauthenticate", "proxyauthenticate",
+                            "cookie", "cookie2", "setcookie", "setcookie2",
+                            "password", "passwd", "secret", "clientsecret",
+                            "credential", "credentials", "privatekey",
+                            "token", "accesstoken", "refreshtoken", "idtoken", "apikey",
+                            "xapikey", "xauthtoken", "xaccesstoken",
+                            "xamzsecuritytoken", "xgoogapikey", "xcsrftoken", "xsrftoken",
                         ])
                         try {
                             const serialized = JSON.stringify(value, (key, nestedValue) => {
                                 const normalizedKey = key.replace(/[-_]/g, "").toLowerCase()
-                                return sensitiveFields.has(normalizedKey) ? "[REDACTED]" : nestedValue
+                                if (sensitiveFields.has(normalizedKey)) return "[REDACTED]"
+                                return typeof nestedValue === "string" ? truncateError(nestedValue) : nestedValue
                             })
                             return truncateError(serialized ?? "[unserializable error]")
                         } catch {
@@ -436,9 +443,12 @@ export function createTransformHook(
             let toInject = unread
             let activeRunIdForAuth: string | undefined
             const hasDirective = unread.some(m => m.kind === "directive")
+            // N8: track team state unreadability OUTSIDE the hasDirective
+            // block so the empty-injection branch can decide whether to
+            // retain directives for retry.
+            let teamStateUnreadable = false
             if (hasDirective) {
                 let activeRunId: string | undefined
-                let teamStateUnreadable = false
                 try {
                     const team = await loadTeamState(member.storageRoot, member.teamName, member.leadSessionId)
                     activeRunId = team.activeTask?.runId
@@ -485,8 +495,15 @@ export function createTransformHook(
                 // block. If the batch partially commits, retain only messages
                 // whose processed records were written; otherwise roll back the
                 // entire injected part so unacknowledged messages can be retried.
-                try {
-                    await ackMessages(member.directory, member.name, unread)
+                // N8-residual: when teamStateUnreadable, only ack injected
+                // (non-directive) messages; retain directives for retry.
+                const toAck = teamStateUnreadable
+                    ? unread.filter(m => m.kind !== "directive")
+                    : unread
+                if (toAck.length === 0) {
+                    parts.pop()
+                } else try {
+                    await ackMessages(member.directory, member.name, toAck)
                 } catch (ackErr) {
                     const acknowledgedIds = ackErr instanceof AckMessagesError
                         ? new Set(ackErr.acknowledgedMessages.map(message => message.id))
@@ -504,9 +521,19 @@ export function createTransformHook(
                     throw ackErr
                 }
             } else {
-                // Empty injection (all filtered) — still ack the full set so
-                // stale directives are dropped exactly once.
-                await ackMessages(member.directory, member.name, unread)
+                // Empty injection (all filtered) — ack non-directive messages
+                // so they are dropped, but RETAIN directives when team state was
+                // unreadable so they can be retried after state recovers.
+                // N8: pre-fix code acked the FULL set including dropped directives,
+                // permanently consuming them without injection.
+                if (teamStateUnreadable) {
+                    const nonDirectives = unread.filter(m => m.kind !== "directive")
+                    if (nonDirectives.length > 0) {
+                        await ackMessages(member.directory, member.name, nonDirectives)
+                    }
+                } else {
+                    await ackMessages(member.directory, member.name, unread)
+                }
             }
         } catch (err) {
             // The transform hook runs inside the user's interactive turn. An
@@ -522,18 +549,18 @@ export function createTransformHook(
  * and per-team reclaim/termination/reconcile logic are unit-testable without
  * waiting on a real setInterval tick. Called once per active team per sweep.
  *
- * Runs the callback under team.mutex. The caller (startSweepTimer) snapshots
- * activeTeams() BEFORE acquiring each team's mutex — a team_delete can complete
- * between the snapshot and us acquiring the lock, so the tombstone guard at
- * the top is load-bearing (see processIdle in idle.ts for the same
- * pattern). `statusMap` is the already-fetched session.status snapshot shared
- * across all teams in this sweep tick.
+ * State is snapshotted and processed under team.mutex, while live host status
+ * reads run outside it. The caller snapshots activeTeams() before either lock,
+ * so both critical sections repeat the tombstone and ownership guards.
+ * `statusMap` is the already-fetched session.status snapshot shared across all
+ * teams in this sweep tick.
  */
 export async function sweepTeamOnce(
     ctx: PluginContext,
     team: Team,
     statusMap: unknown,
 ): Promise<void> {
+    let idleCandidates: Array<{ name: string; sessionId: string; turnCount: number }> = []
     await team.mutex.runExclusive(async () => {
         // Tombstone guard: a team_delete may have completed (set
         // team.deleted + removed the on-disk directory) between
@@ -549,6 +576,18 @@ export async function sweepTeamOnce(
         // belongs to another process, do NOT mutate this team's state —
         // it is owned by a live sibling process.
         if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
+        if (team._stateUnreadable) {
+            logEvent(ctx, "error", "sweep: team state is unreadable; refusing cached state mutations", {
+                team: team.teamName,
+            })
+            return
+        }
+        if (team._persistDirty) {
+            await persistTeamState(ctx, team, "persist dirty team state failed (sweep retry)", {
+                team: team.teamName ?? "(unknown)",
+            })
+        }
+        if (!team.activeTask) return
         // 1. Reclaim stale resources.
         // M12: wrap cleanup in try-catch so a single corrupt mailbox/task
         // doesn't block termination checks for this team. Pre-fix code ran
@@ -622,33 +661,38 @@ export async function sweepTeamOnce(
         // I-3/H-2: use the sweep-wide snapshot only to identify candidates.
         // Every candidate carries its turn generation, then gets a fresh SDK
         // status read and a final live-team-state check before processIdle.
-        const idleCandidates = team.members.flatMap(member => {
+        idleCandidates = team.members.flatMap(member => {
             if (!member.sessionId || member.status !== "running") return []
             const entry = extractSessionStatusEntry(statusMap, member.sessionId)
             return entry?.type === "idle"
                 ? [{ name: member.name, sessionId: member.sessionId, turnCount: member.turnCount }]
                 : []
         })
+        if (idleCandidates.length === 0) {
+            await persistTeamState(ctx, team, "persist team state failed (sweep)", { team: team.teamName ?? "(unknown)" })
+        }
+    })
+
+    if (idleCandidates.length === 0) return
+
+    const liveStatusMaps = new Map<string, unknown>()
+    for (const candidate of idleCandidates) {
+        try {
+            liveStatusMaps.set(candidate.name, (await ctx.client.session.status({})).data)
+        } catch (err) {
+            logSwallowed(ctx, "sweepTeamOnce: live session status read failed", err, {
+                team: team.teamName,
+                member: candidate.name,
+            })
+        }
+    }
+
+    await team.mutex.runExclusive(async () => {
+        if (team.deleted) return
+        if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
+        if (!team.activeTask) return
         for (const candidate of idleCandidates) {
-            const beforeStatusRead = team.members.find(member => member.name === candidate.name)
-            if (
-                !beforeStatusRead
-                || beforeStatusRead.sessionId !== candidate.sessionId
-                || beforeStatusRead.status !== "running"
-                || beforeStatusRead.turnCount !== candidate.turnCount
-            ) {
-                continue
-            }
-            let liveStatusMap: unknown
-            try {
-                liveStatusMap = (await ctx.client.session.status({})).data
-            } catch (err) {
-                logSwallowed(ctx, "sweepTeamOnce: live session status read failed", err, {
-                    team: team.teamName,
-                    member: candidate.name,
-                })
-                continue
-            }
+            if (!liveStatusMaps.has(candidate.name)) continue
             const liveMember = team.members.find(member => member.name === candidate.name)
             if (
                 !liveMember
@@ -658,9 +702,10 @@ export async function sweepTeamOnce(
             ) {
                 continue
             }
-            const liveEntry = extractSessionStatusEntry(liveStatusMap, candidate.sessionId)
+            const liveEntry = extractSessionStatusEntry(liveStatusMaps.get(candidate.name), candidate.sessionId)
             if (liveEntry?.type === "idle") {
                 await processIdle(ctx, team, liveMember, candidate.sessionId)
+                if (!team.activeTask) break
             }
         }
         await persistTeamState(ctx, team, "persist team state failed (sweep)", { team: team.teamName ?? "(unknown)" })

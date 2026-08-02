@@ -224,19 +224,4 @@ export async function maybeEscalateRetry(
     }
     // Grace exhausted: escalate the member to errored, then re-drive.
     await escalateMemberToErrored(ctx, team, live, undefined)
-    // HIGH #10: re-dispatch the errored member so the barrier can advance
-    // instead of waiting for wall-clock timeout. The error-recovery barrier
-    // (processErrorRecovery) will route the errored member through the mode
-    // handler so the barrier sees it and proceeds.
-    if (team.activeTask && !live.isMaster && live.sessionId) {
-        try {
-            const { processErrorRecovery } = await import("./idle.js")
-            await processErrorRecovery(ctx, team, live)
-        } catch (err) {
-            // Best-effort — the errored member will be caught by the next sweep.
-            logger.warn("maybeEscalateRetry: re-dispatch after escalation failed", {
-                team: team.teamName, member: live.name, error: String(err),
-            })
-        }
-    }
 }

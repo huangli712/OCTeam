@@ -74,10 +74,11 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     // Commit the signoff stage only once reviewers are confirmed available.
     task.signoffStage = true
     task.signoffApprovals = {}
+    task.signoffReviewers = reviewers.map(reviewer => reviewer.name)
     // Persist BEFORE dispatching reviewers so a crash between save and
-    // dispatch does not leave reviewers prompted without signoffStage
-    // persisted. On resume, signoffStage=true ensures reviewer responses
-    // are routed to handleSignoffIdle instead of being treated as stray.
+    // dispatch does not lose the original roster or leave reviewers prompted
+    // without signoffStage persisted. On resume, signoffStage=true ensures
+    // reviewer responses are routed to handleSignoffIdle instead of being stray.
     //
     // HIGH-A: rollback the in-memory signoffStage on save failure. Pre-fix
     // code let saveTeamState throw with signoffStage=true still set in memory,
@@ -93,6 +94,7 @@ export async function maybeTriggerSignoff(ctx: PluginContext, team: Team): Promi
     } catch (err) {
         task.signoffStage = false
         task.signoffApprovals = undefined
+        task.signoffReviewers = undefined
         throw err
     }
     recordEvent(team, {

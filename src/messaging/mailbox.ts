@@ -32,6 +32,7 @@
 
 import fs from "node:fs/promises"
 import path from "node:path"
+import { createInterface } from "node:readline"
 
 import { isEnoent } from "../core/utils.js"
 import { assertNoSymlinkTraversal, RESERVATION_TTL_MS, atomicWrite, withLock } from "../state/locks.js"
@@ -317,16 +318,36 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
     }
     let raw: string
     let truncated = false
+    let reservedIds: Set<string> | undefined
+    const reservedLines = new Map<string, string>()
     try {
         // H2: reject non-regular files and bound memory while compacting an
         // oversized log to its most recent complete-line window.
         const stat = await fs.lstat(p)
         if (!stat.isFile()) return
         if (stat.size > PROCESSED_MAX_BYTES) {
+            try {
+                reservedIds = new Set(await fs.readdir(reservedDir(teamDirectory, recipient)))
+            } catch {}
             const start = stat.size - PROCESSED_RETENTION_BYTES
             const buffer = Buffer.alloc(PROCESSED_RETENTION_BYTES)
             const handle = await fs.open(p, "r")
             try {
+                if (reservedIds && reservedIds.size > 0) {
+                    const reader = createInterface({
+                        input: handle.createReadStream({ encoding: "utf8", autoClose: false }),
+                        crlfDelay: Infinity,
+                    })
+                    for await (const line of reader) {
+                        if (line.length === 0) continue
+                        try {
+                            const entry = JSON.parse(line) as { id?: unknown }
+                            if (typeof entry.id === "string" && reservedIds.has(entry.id)) {
+                                reservedLines.set(entry.id, line)
+                            }
+                        } catch {}
+                    }
+                }
                 const { bytesRead } = await handle.read(buffer, 0, buffer.length, start)
                 const tail = buffer.subarray(0, bytesRead).toString("utf8")
                 const firstNewline = tail.indexOf("\n")
@@ -354,10 +375,13 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
     // prune what we can't age-check).
     const now = Date.now()
     const kept: string[] = []
+    const keptIds = new Set<string>()
     let pruned = 0
     for (const line of lines) {
+        let entryId: string | undefined
         try {
-            const entry = JSON.parse(line) as { timestamp?: unknown; processedAt?: unknown }
+            const entry = JSON.parse(line) as { id?: unknown; timestamp?: unknown; processedAt?: unknown }
+            entryId = typeof entry.id === "string" ? entry.id : undefined
             const retentionTime = typeof entry.processedAt === "number" && Number.isFinite(entry.processedAt)
                 ? entry.processedAt
                 : entry.timestamp
@@ -369,6 +393,7 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
         } catch {
             // malformed line — keep it (conservative)
         }
+        if (entryId !== undefined) keptIds.add(entryId)
         kept.push(line)
     }
     if (pruned === 0 && !truncated) return
@@ -380,24 +405,25 @@ async function pruneProcessedLogUnlocked(teamDirectory: string, recipient: strin
     // does not exist — the actual layout is `<team>/mailbox/<recipient>.reserved`
     // (see paths.ts reservedDir). Use the canonical helper to read active
     // reservation IDs so truncation never drops them from the dedup log.
-    const reservedDirPath = reservedDir(teamDirectory, recipient)
-    let reservedIds: Set<string> | undefined
-    try {
-        const reservedEntries = await fs.readdir(reservedDirPath)
-        reservedIds = new Set(reservedEntries.map(f => f.replace(/\.json$/, "")))
-    } catch { /* ENOENT — no reservations */ }
+    if (reservedIds === undefined) {
+        try {
+            reservedIds = new Set(await fs.readdir(reservedDir(teamDirectory, recipient)))
+        } catch {}
+    }
     if (reservedIds && reservedIds.size > 0) {
-        // Re-add any reserved IDs that were pruned by truncation.
         for (const line of lines) {
             try {
-                const entry = JSON.parse(line) as { id?: string }
-                if (entry.id && reservedIds.has(entry.id) && !kept.includes(line)) {
-                    kept.push(line)
+                const entry = JSON.parse(line) as { id?: unknown }
+                if (typeof entry.id === "string" && reservedIds.has(entry.id)) {
+                    reservedLines.set(entry.id, line)
                 }
             } catch { /* skip malformed */ }
         }
     }
-    await atomicWrite(p, kept.join("\n") + "\n", teamDirectory)
+    const restored = [...reservedLines]
+        .filter(([id]) => !keptIds.has(id))
+        .map(([, line]) => line)
+    await atomicWrite(p, [...restored, ...kept].join("\n") + "\n", teamDirectory)
 }
 
 /**

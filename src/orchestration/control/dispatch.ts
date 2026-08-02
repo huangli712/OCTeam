@@ -100,9 +100,13 @@ export async function dispatchToMember(
         // promptAsync failed after we persisted the dispatch intent. Rollback
         // to idle so the barrier can re-drive, and persist the rollback.
         if (team) {
-            member.status = origStatus
+            member.status = "idle"
             member.turnCount = origTurnCount
             member.promptDelivered = origPromptDelivered
+            if (team.activeTask?.type === "workflow" && eventMeta?.stepIndex !== undefined) {
+                const step = team.activeTask.steps?.[eventMeta.stepIndex]
+                if (step) step.dispatchedAt = undefined
+            }
             // #5: set retryingSince so the sweep timer re-drives this member
             // instead of stalling until wall-clock timeout. The mode handler
             // that called dispatchToMember may not have a catch path.

@@ -165,7 +165,7 @@ export function buildGateProducerOutput(
     for (const targetIndex of targetIndices) {
         const producerStep = steps[targetIndex];
         if (!producerStep) continue;
-        const remaining = perTargetBudget - (used % perTargetBudget);
+        const remaining = perTargetBudget;
         if (remaining <= 0) break;
         if (producerStep.kind === "task") {
             const separatorSize = blocks.length > 0 ? 2 : 0;

@@ -306,14 +306,20 @@ export async function handleInvalidVerdict(
         // LOW: compute nextIndex AFTER marking gate complete so the summary
         // describes the actual next step, not the current gate.
         const nextIndex = (task.steps ?? []).findIndex((s) => !s.completed);
-        const escalated = await forceApprovalRequest(ctx, team, {
-            kind: "workflow_step",
-            stage: gateIndex,
-            summary: `Step ${gateIndex + 1} (gate) by ${verifierName} could not be evaluated (${reason}).`
-                + ` Rationale: ${rationale}. Approve to override and continue`
-                + `${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""};`
-                + ` reject to fail as workflow_invalid.`,
-        });
+        let escalated: boolean;
+        try {
+            escalated = await forceApprovalRequest(ctx, team, {
+                kind: "workflow_step",
+                stage: gateIndex,
+                summary: `Step ${gateIndex + 1} (gate) by ${verifierName} could not be evaluated (${reason}).`
+                    + ` Rationale: ${rationale}. Approve to override and continue`
+                    + `${nextIndex !== -1 ? ` to ${describeStep((task.steps ?? [])[nextIndex], nextIndex)}` : ""};`
+                    + ` reject to fail as workflow_invalid.`,
+            });
+        } catch (error) {
+            step.completed = false;
+            throw error;
+        }
         if (escalated) {
             return;
         }
@@ -351,7 +357,7 @@ export async function handleInvalidVerdict(
  * Handle a PASS verdict: mark complete, honor on_pass_goto or approval_after,
  * then advance (or jump) to the next step.
  */
-async function handleGatePass(
+export async function handleGatePass(
     ctx: PluginContext,
     team: Team,
     step: WorkflowGateStep,
@@ -446,7 +452,7 @@ type FailVerdictPayload = GateVerdictContext & {
     v: ParsedVerdict;
 };
 
-async function handleGateFail(
+export async function handleGateFail(
     ctx: PluginContext,
     team: Team,
     task: WorkflowTask,
@@ -574,7 +580,7 @@ async function handleGateFail(
  * preceding task. Resets steps from the producer to the gate, then
  * re-dispatches the producer with feedback.
  */
-async function handleGateRetry(
+export async function handleGateRetry(
     ctx: PluginContext,
     team: Team,
     task: WorkflowTask,

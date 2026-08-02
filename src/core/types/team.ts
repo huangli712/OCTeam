@@ -147,6 +147,7 @@ export type MemberState = {
                                        // real task dispatch (NOT during role-setup, which is identity-only).
     promptDelivered?: boolean          // true after prompt has been prepended to a dispatch once
     lastCapturedMsgCount?: number      // capture dedup: messages.length at the last successful
+    lastCapturedTurnCount?: number
     lastCapturedOutput?: string        // legacy output snapshot for compaction-safe dedup
     lastCapturedOutputHash?: string    // SHA-256 of the full captured turn output
                                        // captureMemberOutput for this member. A re-entry whose message

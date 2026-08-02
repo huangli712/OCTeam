@@ -13,18 +13,29 @@ const realFs = require("node:fs/promises") as typeof import("node:fs/promises")
 let failProcessedMessageId: string | undefined
 const mockedFs = {
     ...realFs,
-    appendFile: (async (file: Parameters<typeof realFs.appendFile>[0], data: Parameters<typeof realFs.appendFile>[1]) => {
+    // Mock fs.open to intercept processed.jsonl writes. appendJsonl now uses
+    // fd-based open+appendFile (handle.appendFile) instead of fs.appendFile,
+    // so the mock must intercept at the open level.
+    open: (async (file: Parameters<typeof realFs.open>[0], flags: Parameters<typeof realFs.open>[1] | Parameters<typeof realFs.open>[1], ...rest: unknown[]) => {
+        const filePath = String(file)
+        const realHandle = await realFs.open(file as Parameters<typeof realFs.open>[0], flags as Parameters<typeof realFs.open>[1])
         if (
             failProcessedMessageId !== undefined
-            && String(file).endsWith(".processed.jsonl")
-            && String(data).includes(failProcessedMessageId)
+            && filePath.endsWith(".processed.jsonl")
         ) {
-            const error = new Error("EIO: simulated processed append failure") as NodeJS.ErrnoException
-            error.code = "EIO"
-            throw error
+            const originalAppendFile = realHandle.appendFile.bind(realHandle)
+            realHandle.appendFile = (async (data: Parameters<typeof realHandle.appendFile>[0]) => {
+                const str = Buffer.isBuffer(data) ? data.toString("utf8") : String(data)
+                if (str.includes(failProcessedMessageId!)) {
+                    const error = new Error("EIO: simulated processed append failure") as NodeJS.ErrnoException
+                    error.code = "EIO"
+                    throw error
+                }
+                return originalAppendFile(data)
+            }) as typeof realHandle.appendFile
         }
-        await realFs.appendFile(file, data)
-    }) as typeof realFs.appendFile,
+        return realHandle
+    }) as typeof realFs.open,
 }
 
 mock.module("node:fs/promises", () => ({ ...mockedFs, default: mockedFs }))

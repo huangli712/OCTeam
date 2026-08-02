@@ -8,7 +8,7 @@ import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
 import fs from "node:fs/promises"
-import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
+import { loadTeamState, readTeamSpec, reloadTeamStateLocked, saveTeamState, type Team, writeTeamSpec } from "../../state/store.js"
 import { isIndexedMasterOf } from "../../state/resolve.js"
 import { withLock } from "../../state/locks.js"
 import { inboxPath, teamLifecycleLockPath } from "../../state/paths.js"
@@ -27,7 +27,7 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
         },
         async execute(args, context) {
             const pathLeadSessionId = ctx.scope === "project" ? context.sessionID : undefined
-            let team
+            let team: Team
             try {
                 team = await loadTeamState(ctx.storageRoot, args.team_id, pathLeadSessionId)
             } catch (err) {
@@ -38,29 +38,31 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
             if (team.leadSessionId !== context.sessionID || !isIndexedMasterOf(context.sessionID, team.directory)) {
                 return "Error: team_remove_member is master-only (only the team's leader can remove members)"
             }
-            if (team.status !== "live") {
-                return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
-                    + `Members can only be removed before sessions are spawned (workflow calls).`
-            }
-
-            const stateIdx = team.members.findIndex(m => m.name === args.member_name)
-            if (stateIdx === -1) {
-                return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
-            }
-            if (team.members.length <= 1) {
-                return `Error: team "${args.team_id}" has only ${team.members.length} member(s). `
-                    + `Cannot remove the last member.`
-            }
-
             let staleState = false
             let specError = false
+            let stateError = false
+            let memberMissing = false
+            let lastMember = false
             await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
-                // Revalidate inside the mutex: a concurrent
-                // startOrchestration may have flipped status live→busy since
-                // the outside-mutex check at line 32. Refuse rather than
-                // mutating during an active run.
+                try {
+                    await reloadTeamStateLocked(team)
+                } catch (err) {
+                    logSwallowed(ctx, "team_remove_member: team state reload failed", err, { team: args.team_id })
+                    stateError = true
+                    return
+                }
+                // Validate mutable state only after the locked disk refresh.
                 if (team.status !== "live" || team.spawning) {
                     staleState = true
+                    return
+                }
+                const currentIdx = team.members.findIndex(member => member.name === args.member_name)
+                if (currentIdx === -1) {
+                    memberMissing = true
+                    return
+                }
+                if (team.members.length <= 1) {
+                    lastMember = true
                     return
                 }
                 // Re-read config.json INSIDE the mutex so concurrent mutators
@@ -80,15 +82,6 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 const specIdx = spec.members.findIndex(m => m.name === args.member_name)
                 const removedSpecMember = specIdx !== -1 ? spec.members[specIdx] : undefined
                 if (specIdx !== -1) spec.members.splice(specIdx, 1)
-                // Recompute index INSIDE the mutex: a concurrent remove may have
-                // shifted the array, making the outside-mutex stateIdx stale.
-                const currentIdx = team.members.findIndex(m => m.name === args.member_name)
-                if (currentIdx === -1 || team.members.length <= 1) {
-                    staleState = true
-                    // Restore spec mutation before returning
-                    if (specIdx !== -1 && removedSpecMember) spec.members.splice(specIdx, 0, removedSpecMember)
-                    return
-                }
                 const removedStateMember = team.members[currentIdx]
                 team.members.splice(currentIdx, 1)
 
@@ -128,12 +121,22 @@ export function teamRemoveMemberTool(ctx: PluginContext): ToolDefinition {
                 }
             }), team.directory)
 
+            if (stateError) {
+                return `Error: team "${args.team_id}" could not be reloaded (state file unreadable)`
+            }
             if (staleState) {
                 return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
                     + `Members can only be removed before sessions are spawned (workflow calls).`
             }
             if (specError) {
                 return `Error: cannot read config for team "${args.team_id}"`
+            }
+            if (memberMissing) {
+                return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
+            }
+            if (lastMember) {
+                return `Error: team "${args.team_id}" has only ${team.members.length} member(s). `
+                    + `Cannot remove the last member.`
             }
 
             return `Member "${args.member_name}" removed from team "${args.team_id}" `

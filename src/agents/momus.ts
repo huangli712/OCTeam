@@ -41,10 +41,8 @@ export const momusAgent: OcteamAgentConfig = {
     temperature: 0.1,
     color: "#ef4444",
     // task allowed: momus consults oracle/explore for review validation
-    // C7: task allowed but restricted to read-only review agents via
-    // taskTargets whitelist. Prevents prompt-injection escalation to
-    // edit/bash-capable agents (oct-junior, oct-deep).
-    taskTargets: ["oracle", "explore"],
-    permission: { edit: "deny", task: "allow", bash: "deny", webfetch: "deny", read: "allow", glob: "allow", grep: "allow", "*": "deny" },
+    // N1: '*' first so explicit allows override regardless of host match order.
+    // N2: nested task permission replaces ineffective taskTargets field.
+    permission: { "*": "deny", edit: "deny", task: { "*": "deny", "oct-oracle": "allow", "oct-explore": "allow" }, bash: "deny", webfetch: "deny", read: "allow", glob: "allow", grep: "allow" },
     prompt: MOMUS_PROMPT,
 }

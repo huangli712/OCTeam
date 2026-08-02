@@ -42,7 +42,23 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
                 && (member?.turnCount ?? 0) > 0
                 && !task.responses[name]
         })
-        if (missingResponse) return
+        if (missingResponse) {
+            // N16: pre-fix code just returned, leaving the barrier stuck
+            // because all participants were already idle and no future
+            // event would re-trigger the barrier. Escalate missing-response
+            // members to errored so the next sweep tick can re-evaluate.
+            for (const name of participants) {
+                const member = team.members.find(m => m.name === name)
+                if (!member) continue
+                if (member.status !== "errored"
+                    && (member.turnCount ?? 0) > 0
+                    && !task.responses[name]) {
+                    member.status = "errored"
+                    member.error = "no response captured after idle"
+                }
+            }
+            return
+        }
         // HIGH-D: clear stale responses from errored members BEFORE reduce / signoff.
         // Pre-fix code cleared them only just before final delivery, AFTER
         // reduce / signoff had already read them. A reducer or signoff

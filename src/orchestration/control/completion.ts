@@ -140,18 +140,12 @@ export async function finishRun(
                 }
             }
         }
-        // clearActiveTask and terminal status MUST execute even if delivery
-        // throws — otherwise the team is stuck in "busy" with an activeTask
-        // that can never be cleared.
-        clearActiveTask(team)
-        team.status = status
-        // H-12/G: persist the terminal state with bounded retry. Pre-fix code
-        // used `.catch(logSwallowed)` which left disk showing "busy" indefinitely
-        // after a transient I/O error. saveTeamStateBounded retries 3x before
-        // throwing; the catch here logs but cannot rollback (the run IS finished
-        // — restoring activeTask would be incorrect).
+        // Persist a terminal view before clearing the live activeTask. If the
+        // bounded save fails, the in-memory task remains available for retry.
+        const terminalTeam: Team = { ...team, status }
+        clearActiveTask(terminalTeam)
         try {
-            await saveTeamStateBounded(team)
+            await saveTeamStateBounded(terminalTeam)
         } catch (err) {
             logSwallowed(ctx, "finishRun: terminal state persist failed after retries", err, {
                 team: team.teamName,
@@ -160,5 +154,9 @@ export async function finishRun(
             }, "error")
             throw err
         }
+        team._diskSnapshot = terminalTeam._diskSnapshot
+        team._diskMtime = terminalTeam._diskMtime
+        team.status = status
+        clearActiveTask(team)
     }
 }

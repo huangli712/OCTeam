@@ -167,10 +167,16 @@ async function accountAndValidateIdle(
     if (team.activeTask) {
         // Step 4: Token accounting keeps the highest full-history observation
         // because session compaction can remove messages and lower the total.
+        // If compaction crosses the pre-run baseline before the first idle,
+        // count the currently visible history instead of pinning the run to zero.
         const baseline = team.activeTask.tokenBaselineByMember?.[member.name] ?? 0
-        const observedTokens = Math.max(0, sumMemberTokens(messages) - baseline)
+        const currentFullHistory = sumMemberTokens(messages)
+        const confirmedTokens = team.activeTask.tokensByMember[member.name] ?? 0
+        const observedTokens = currentFullHistory < baseline && confirmedTokens === 0
+            ? currentFullHistory
+            : Math.max(0, currentFullHistory - baseline)
         team.activeTask.tokensByMember[member.name] = Math.max(
-            team.activeTask.tokensByMember[member.name] ?? 0,
+            confirmedTokens,
             observedTokens,
         )
         team.activeTask.tokensUsed = Object.values(team.activeTask.tokensByMember).reduce(
@@ -417,7 +423,16 @@ export async function processIdle(
     // reply content, losing the original verdict / reduce output / work.
     // After step 8, if the task is still active, we wake-hint so the member
     // drains its mailbox on the next turn.
-    const unread = await countUnreadMessages(team.directory, member.name)
+    let unread: number
+    try {
+        unread = await countUnreadMessages(team.directory, member.name)
+    } catch (err) {
+        member.retryingSince = Date.now()
+        logSwallowed(ctx, "processIdle: unread message count failed", err, {
+            member: member.name, team: team.teamName,
+        })
+        return
+    }
     if (unread > 0 && !capturedNew) {
         await sendWakeHint(ctx, sessionID, unread)
         return

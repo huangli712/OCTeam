@@ -63,24 +63,8 @@ export type TeamSummary = {
 export async function countMailbox(teamDirectory: string, recipient: string): Promise<LoadState<MailboxCount>> {
     const countLines = async (file: string): Promise<number> => {
         try {
-            await assertNoSymlinkTraversal(teamDirectory, file)
-            // HIGH-G: cap the file size before reading so a maliciously
-            // placed large file (or /dev/zero via symlink) cannot OOM the
-            // sidebar process. 1 MiB is far above any legitimate processed.jsonl
-            // (the retention cap is 1000 lines, ~100 KB typical).
-            // H27/R1: use lstat (no follow) to detect symlinks AND check size.
-            // lstat on a symlink returns the symlink's own small size, NOT the
-            // H13: also reject non-regular files (FIFO, device) which would
-            // hang readFile or produce infinite output. Pre-fix code only
-            // rejected symlinks (R1).
-            const lstat = await fs.lstat(file)
-            if (lstat.isSymbolicLink() || !lstat.isFile()) {
-                throw new Error("refusing non-regular mailbox file")
-            }
-            if (lstat.size > 1_048_576) {
-                throw new Error("mailbox file exceeds 1 MiB cap")
-            }
-            const raw = await fs.readFile(file, "utf8")
+            const raw = await safeReadFile(teamDirectory, file, { maxBytes: 1_048_576 })
+            if (raw === undefined) return 0
             return raw.split("\n").filter(l => l.length > 0).length
         } catch (err: unknown) {
             // M-22: ENOENT (no inbox yet) is expected — return 0. Other errors

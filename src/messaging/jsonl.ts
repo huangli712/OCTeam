@@ -8,29 +8,30 @@ import path from "node:path"
 
 import { logger } from "../core/log.js"
 import { isEnoent } from "../core/utils.js"
-import { assertNoSymlinkTraversal, refuseSymlink } from "../state/locks.js"
+import { atomicWrite, refuseSymlink, safeReadFile } from "../state/locks.js"
 import { isSafePathSegment } from "../state/paths.js"
 import type { Message } from "../core/types.js"
 
 /** Append a JSON object as a single line to filePath. */
 export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: string): Promise<void> {
     await refuseSymlink(filePath, trustedRoot)
-    // H1: refuse non-regular files (FIFO, device). A FIFO at the mailbox
-    // path would hang appendFile indefinitely, holding the mailbox lock.
-    try {
-        const stat = await fs.lstat(filePath)
-        if (!stat.isFile()) throw new Error(`appendJsonl: not a regular file: ${filePath}`)
-    } catch (err) {
-        // C-20: pre-fix condition used `!startsWith("appendJsonl:")` which
-        // INVERTED the intent — our own FIFO/non-regular rejection carries
-        // that prefix, so the old check swallowed it and fell through to
-        // appendFile, which would block forever on a FIFO. Re-throw all
-        // non-ENOENT errors, including our own rejection.
-        if (!isEnoent(err)) throw err
-        // ENOENT is fine — appendFile will create the file.
-    }
     await fs.mkdir(path.dirname(filePath), { recursive: true })
-    await fs.appendFile(filePath, JSON.stringify(obj) + "\n", "utf8")
+    // P1a: fd-based open with O_NOFOLLOW|O_NONBLOCK|O_APPEND rejects leaf
+    // symlinks and FIFOs. stat-on-fd eliminates TOCTOU between check and
+    // write. handle.appendFile uses the same fd for atomic verify+write.
+    const noFollow = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0
+    const nonBlock = (fs.constants as { O_NONBLOCK?: number }).O_NONBLOCK ?? 0
+    const flags = fs.constants.O_WRONLY | fs.constants.O_APPEND | fs.constants.O_CREAT | noFollow | nonBlock
+    const handle = await fs.open(filePath, flags)
+    try {
+        const stat = await handle.stat()
+        if (!stat.isFile()) throw new Error(`appendJsonl: not a regular file: ${filePath}`)
+        await handle.appendFile(Buffer.from(JSON.stringify(obj) + "\n", "utf8"))
+    } finally {
+        await handle.close().catch((err: unknown) => {
+            logger.warn("appendJsonl: failed to close file handle", { filePath, error: err instanceof Error ? err.message : String(err) })
+        })
+    }
 }
 
 /**
@@ -100,29 +101,8 @@ function isValidMessage(value: unknown): value is Message {
 /** Read and parse all message lines from filePath. Returns [] on ENOENT. */
 export async function readJsonl(filePath: string, trustedRoot?: string): Promise<Message[]> {
     try {
-        // C-1: when a trusted root is supplied, walk the ancestor chain so a
-        // symlinked intermediate (e.g. <team>/mailbox) cannot redirect the
-        // read outside the team root. The leaf-symlink and non-regular file
-        // checks below handle the file itself; ancestor checks need the
-        // explicit helper because lstat on the leaf follows nothing.
-        if (trustedRoot !== undefined) {
-            await assertNoSymlinkTraversal(trustedRoot, filePath)
-        }
-        // H2: cap file size before reading. A tampered or runaway JSONL file
-        // (e.g. /dev/zero symlink bypassing backpressure, or multi-GB trash)
-        // would OOM the process during readFile. 10 MiB matches the mailbox
-        // backpressure cap; any legitimate file exceeding this is a red flag.
-        const stat = await fs.lstat(filePath)
-        // H1: reject non-regular files (symlinks, FIFOs, device files).
-        // Pre-fix code only rejected symlinks; a FIFO or /dev/zero would
-        // hang readFile forever or produce infinite output.
-        if (!stat.isFile()) return []
-        if (stat.size > 10_485_760) {
-            // MEDIUM: throw instead of returning empty array. Pre-fix code
-            // silently returned [], making the mailbox appear permanently empty.
-            throw new Error(`readJsonl: file exceeds 10 MiB cap (${stat.size} bytes): ${filePath}`)
-        }
-        const raw = await fs.readFile(filePath, "utf8")
+        const raw = await safeReadFile(trustedRoot ?? path.dirname(filePath), filePath, { maxBytes: 10_485_760 })
+        if (raw === undefined) return []
         const lines = raw.split("\n").filter(l => l.length > 0)
         const out: Message[] = []
         let skipped = 0
@@ -152,8 +132,19 @@ export async function readJsonl(filePath: string, trustedRoot?: string): Promise
 
 /** Truncate filePath to empty (0 bytes). Silently ignores ENOENT. */
 export async function truncateFile(filePath: string, trustedRoot?: string): Promise<void> {
-    await refuseSymlink(filePath, trustedRoot)
-    await fs.writeFile(filePath, "", "utf8").catch(err => {
+    const noFollow = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0
+    const nonBlock = (fs.constants as { O_NONBLOCK?: number }).O_NONBLOCK ?? 0
+    let handle: Awaited<ReturnType<typeof fs.open>> | undefined
+    try {
+        handle = await fs.open(filePath, fs.constants.O_WRONLY | noFollow | nonBlock)
+        const stat = await handle.stat()
+        if (!stat.isFile()) throw new Error(`truncateFile: not a regular file: ${filePath}`)
+    } catch (err) {
+        if (!isEnoent(err)) throw err
+    } finally {
+        await handle?.close()
+    }
+    await atomicWrite(filePath, "", trustedRoot ?? path.dirname(filePath)).catch(err => {
         if (!isEnoent(err)) throw err
     })
 }

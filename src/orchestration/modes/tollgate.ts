@@ -230,7 +230,16 @@ export async function handleTollgateIdle(
     // produce phase: producer done -> HITL pause before verifier dispatch.
     if (phase === "produce") {
         if (member.name !== stage.member) return            // stray idle
-        if (!task.responses[stage.member]) return
+        if (!task.responses[stage.member]) {
+            stage.attempts++
+            const maxR = task.maxGateRetries ?? 0
+            if (stage.attempts > maxR) {
+                await finishRun(ctx, team, `tollgate_failed:${stage.member}:empty_output`, "failed")
+                return
+            }
+            await advanceToGatedStage(ctx, team, stage)
+            return
+        }
         if (await maybeRequestApproval(ctx, team, {
             kind: "tollgate_gate",
             stage: task.currentStageIndex,

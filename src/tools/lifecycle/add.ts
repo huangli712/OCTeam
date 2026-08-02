@@ -7,7 +7,7 @@ import { isEnoent } from "../../core/utils.js"
 import { logSwallowed } from "../../core/log.js"
 
 import type { PluginContext } from "../../core/context.js"
-import { loadTeamState, readTeamSpec, saveTeamState, writeTeamSpec } from "../../state/store.js"
+import { loadTeamState, readTeamSpec, reloadTeamStateLocked, saveTeamState, type Team, writeTeamSpec } from "../../state/store.js"
 import { isIndexedMasterOf } from "../../state/resolve.js"
 import { withLock } from "../../state/locks.js"
 import { teamLifecycleLockPath } from "../../state/paths.js"
@@ -38,7 +38,7 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
         },
         async execute(args, context) {
             const pathLeadSessionId = ctx.scope === "project" ? context.sessionID : undefined
-            let team
+            let team: Team
             try {
                 team = await loadTeamState(ctx.storageRoot, args.team_id, pathLeadSessionId)
             } catch (err) {
@@ -49,30 +49,9 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
             if (team.leadSessionId !== context.sessionID || !isIndexedMasterOf(context.sessionID, team.directory)) {
                 return "Error: team_add_member is master-only (only the team's leader can add members)"
             }
-            if (team.status !== "live") {
-                return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
-                    + `Members can only be added before sessions are spawned (workflow calls).`
-            }
-            if (team.members.length >= team.bounds.maxMembers) {
-                return `Error: team already has ${team.bounds.maxMembers} members (maximum)`
-            }
-
-            // Resolve name: explicit name or auto-pick from pool.
-            const existingNames = new Set(team.members.map(m => m.name))
-            let memberName: string
             if (args.name) {
                 const nameErr = validateMemberName(args.name)
                 if (nameErr) return nameErr
-                if (existingNames.has(args.name)) {
-                    return `Error: name "${args.name}" already exists in team "${args.team_id}"`
-                }
-                memberName = args.name
-            } else {
-                const pool = (MEMBER_NAME_POOL as readonly string[]).filter(n => !existingNames.has(n))
-                if (pool.length === 0) {
-                    return "Error: no available names left in the pool (all taken by existing members)"
-                }
-                memberName = pool[Math.floor(Math.random() * pool.length)]
             }
 
             // Agent override (optional): must be one of OCTeam's hardened oct-*
@@ -85,42 +64,61 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
 
             const role = normalizeRole(args.role)
             const agent = args.agent ?? roleAgent(role)
-            const newSpec: MemberSpec = {
-                name: memberName,
-                role,
-                prompt: args.prompt,
-                agent,
-                model: args.model,
-                worktree: args.worktree,
-            }
-            const newState: MemberState = {
-                name: memberName,
-                status: "pending",
-                initialized: false,
-                turnCount: 0,
-                model: args.model,
-                agent,
-            }
 
+            let memberName: string | undefined
             let staleState = false
             let capReached = false
             let specError = false
+            let stateError = false
+            let nameError: string | undefined
             await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
-                // Revalidate inside the mutex: a concurrent
-                // startOrchestration may have flipped status live→busy and
-                // committed an activeTask since the outside-mutex check at
-                // line 40. Refuse rather than mutating during an active run.
+                try {
+                    await reloadTeamStateLocked(team)
+                } catch (err) {
+                    logSwallowed(ctx, "team_add_member: team state reload failed", err, { team: args.team_id })
+                    stateError = true
+                    return
+                }
+                // Validate mutable state only after the locked disk refresh.
                 if (team.status !== "live" || team.spawning) {
                     staleState = true
                     return
                 }
-                // Re-check the member cap inside the mutex: two concurrent
-                // team_add_member calls can both pass the outside-mutex cap
-                // check (line 43) with the same members.length, then both
-                // push inside the mutex → exceed maxMembers.
+                // Two concurrent add calls must not exceed maxMembers.
                 if (team.members.length >= team.bounds.maxMembers) {
                     capReached = true
                     return
+                }
+                const existingNames = new Set(team.members.map(member => member.name))
+                if (args.name) {
+                    if (existingNames.has(args.name)) {
+                        nameError = `Error: name "${args.name}" already exists in team "${args.team_id}"`
+                        return
+                    }
+                    memberName = args.name
+                } else {
+                    const pool = (MEMBER_NAME_POOL as readonly string[]).filter(name => !existingNames.has(name))
+                    if (pool.length === 0) {
+                        nameError = "Error: no available names left in the pool (all taken by existing members)"
+                        return
+                    }
+                    memberName = pool[Math.floor(Math.random() * pool.length)]
+                }
+                const newSpec: MemberSpec = {
+                    name: memberName,
+                    role,
+                    prompt: args.prompt,
+                    agent,
+                    model: args.model,
+                    worktree: args.worktree,
+                }
+                const newState: MemberState = {
+                    name: memberName,
+                    status: "pending",
+                    initialized: false,
+                    turnCount: 0,
+                    model: args.model,
+                    agent,
                 }
                 // Re-read config.json INSIDE the mutex so concurrent mutators
                 // (e.g. a parallel add/remove) don't clobber each other's spec
@@ -136,13 +134,6 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 }
                 if (!spec) {
                     specError = true
-                    return
-                }
-                // Re-check duplicate name INSIDE the mutex: a concurrent add
-                // (explicit OR auto-picked) could have pushed the same name
-                // since the outside-mutex check at line 59/67.
-                if (team.members.some(m => m.name === memberName)) {
-                    staleState = true
                     return
                 }
                 spec.members.push(newSpec)
@@ -173,6 +164,9 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
                 }
             }), team.directory)
 
+            if (stateError) {
+                return `Error: team "${args.team_id}" could not be reloaded (state file unreadable)`
+            }
             if (staleState) {
                 return `Error: team "${args.team_id}" status is "${team.status}", not "live". `
                     + `Members can only be added before sessions are spawned (workflow calls).`
@@ -183,6 +177,8 @@ export function teamAddMemberTool(ctx: PluginContext): ToolDefinition {
             if (specError) {
                 return `Error: cannot read config for team "${args.team_id}"`
             }
+            if (nameError) return nameError
+            if (!memberName) return `Error: team "${args.team_id}" changed while adding member`
 
             return `Member "${memberName}" added to team "${args.team_id}" (${team.members.length} members).`
         },

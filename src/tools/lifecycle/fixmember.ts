@@ -11,7 +11,7 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
 import { logger } from "../../core/log.js"
-import { loadTeamState, readTeamSpec, saveTeamState, saveTeamStateBounded, writeTeamSpec } from "../../state/store.js"
+import { loadTeamState, readTeamSpec, reloadTeamStateLocked, saveTeamState, saveTeamStateBounded, type Team, writeTeamSpec } from "../../state/store.js"
 import { indexMember, resolveCallerInTeam, unindexSession } from "../../state/resolve.js"
 import { configPath, inboxPath, processedPath, reservedDir, worktreesDir, teamLifecycleLockPath } from "../../state/paths.js"
 import { withLock } from "../../state/locks.js"
@@ -173,7 +173,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             if (!caller.isMaster) {
                 return "Error: team_fix_member is master-only (only the team's leader session can modify members)"
             }
-            let team
+            let team: Team
             try {
                 team = await loadTeamState(caller.storageRoot, caller.teamName, caller.leadSessionId)
             } catch (err) {
@@ -181,17 +181,6 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 logSwallowed(ctx, "loadTeamState failed", err, { team: args.team_id })
                 return `Error: team "${args.team_id}" could not be loaded (state file unreadable)`
             }
-            if (team.status === "busy") {
-                return `Error: team "${args.team_id}" is busy. `
-                    + `Wait for the workflow to finish before modifying members.`
-            }
-            const member = team.members.find(m => m.name === args.member_name)
-            if (!member) return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
-            if (member.status === "running") {
-                return `Error: member "${args.member_name}" is currently running. `
-                    + `Wait for it to finish before modifying.`
-            }
-
             // Agent override (optional): must be one of OCTeam's hardened oct-*
             // agents. A bare host agent (e.g. "build") would bypass the
             // role->agent permission-hardening chokepoint (role.ts).
@@ -207,9 +196,6 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 if (!(MEMBER_NAME_POOL as readonly string[]).includes(args.new_name!)) {
                     return `Error: name "${args.new_name}" is not a preset pool name. `
                         + `Choose one of: ${MEMBER_NAME_POOL.join(", ")}`
-                }
-                if (team.members.some(m => m.name === args.new_name)) {
-                    return `Error: name "${args.new_name}" already exists in this team`
                 }
             }
 
@@ -233,13 +219,33 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
             let renameCollision = false
             let specMissing = false
             let specUnreadable = false
+            let stateUnreadable = false
+            let memberMissing = false
+            let memberRunning = false
             await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
-                // Revalidate inside the mutex: a concurrent
-                // startOrchestration may have flipped status to "busy" since
-                // the outside-mutex check at line 43. Refuse rather than
-                // modifying members during an active run.
+                try {
+                    await reloadTeamStateLocked(team)
+                } catch (err) {
+                    logSwallowed(ctx, "fixmember: team state reload failed", err, { teamName: caller.teamName })
+                    stateUnreadable = true
+                    return
+                }
+                // Validate mutable state only after the locked disk refresh.
                 if (team.status === "busy" || team.spawning) {
                     staleState = true
+                    return
+                }
+                const liveMember = team.members.find(member => member.name === args.member_name)
+                if (!liveMember) {
+                    memberMissing = true
+                    return
+                }
+                if (liveMember.status === "running") {
+                    memberRunning = true
+                    return
+                }
+                if (renaming && team.members.some(member => member.name === args.new_name && member !== liveMember)) {
+                    renameCollision = true
                     return
                 }
                 // Re-read config.json INSIDE the mutex so concurrent mutators
@@ -275,23 +281,6 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
 
-                // Re-check name collision INSIDE the mutex: a concurrent
-                // fixmember could have renamed another member to the same
-                // new_name since the outside-mutex check at line 88.
-                if (renaming && team.members.some(m => m.name === args.new_name && m !== member)) {
-                    renameCollision = true
-                    return
-                }
-                // H59: re-find the member INSIDE the mutex. The `member` reference
-                // at line 65 was obtained outside the lock; a concurrent
-                // team_remove_member could have removed it since. Operating on the
-                // stale reference would mutate a member that no longer belongs to
-                // the team, and the subsequent save would silently drop the change.
-                const liveMember = team.members.find(m => m.name === args.member_name)
-                if (!liveMember) {
-                    staleState = true
-                    return
-                }
                 // --- H-23: snapshot all fields that will be mutated, for complete rollback ---
                 const savedAgent = liveMember.agent
                 const savedModel = liveMember.model
@@ -446,7 +435,7 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     // that the next unrelated save would silently persist.
                     if (renaming) {
                         const newName = args.new_name!
-                        const oldName = member.name === newName ? args.member_name : newName
+                        const oldName = liveMember.name === newName ? args.member_name : newName
                         // Restore member name
                         liveMember.name = args.member_name
                         if (specMember) specMember.name = args.member_name
@@ -601,12 +590,22 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                 }
             }), team.directory)
 
+            if (stateUnreadable) {
+                return `Error: team "${args.team_id}" could not be reloaded (state file unreadable)`
+            }
             if (staleState) {
                 return `Error: team "${args.team_id}" is busy. `
                     + `Wait for the workflow to finish before modifying members.`
             }
             if (renameCollision) {
                 return `Error: name "${args.new_name}" already exists in this team`
+            }
+            if (memberMissing) {
+                return `Error: member "${args.member_name}" not found in team "${args.team_id}"`
+            }
+            if (memberRunning) {
+                return `Error: member "${args.member_name}" is currently running. `
+                    + `Wait for it to finish before modifying.`
             }
             if (specUnreadable) {
                 return "Error: cannot modify member — team config (config.json) is unreadable"

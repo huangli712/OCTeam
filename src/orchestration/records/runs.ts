@@ -33,6 +33,7 @@ import { flushRunEvents } from "./events.js"
 /** Keep at most this many run records per team; older ones are pruned. */
 export const DEFAULT_MAX_RUNS = 20
 
+const MAX_RUN_EVENT_LINE_BYTES = 1_048_576
 const WORKFLOW_OUTPUT_BYTE_BUDGET = 512 * 1024
 const WORKFLOW_OUTPUT_TRUNCATED_MARKER = "[workflow outputs truncated: 524288-byte budget exceeded]"
 
@@ -639,7 +640,9 @@ export async function readRunRecord(teamDirectory: string, runId: string): Promi
     await assertNoSymlinkTraversal(teamDirectory, recordPath)
     let raw: string
     try {
-        raw = await fs.readFile(recordPath, "utf8")
+        const content = await safeReadFile(teamDirectory, recordPath, { maxBytes: 2 * 1024 * 1024 })
+        if (content === undefined) return null
+        raw = content
     } catch (err) {
         if (isEnoent(err)) return null
         logger.warn("readRunRecord: failed to read run record", { runId, error: err instanceof Error ? err.message : String(err) })
@@ -658,9 +661,9 @@ export async function readRunRecord(teamDirectory: string, runId: string): Promi
 }
 
 /**
- * Read a run's event timeline (runs/<runId>/events.jsonl), sorted by timestamp.
- * Per-run appends preserve emission order, and stable sorting preserves that
- * file order when multiple events share a timestamp. Bad lines are skipped.
+ * Read a run's event timeline (runs/<runId>/events.jsonl) in append order.
+ * Per-run appends preserve emission order even when the system clock moves
+ * backward. Bad lines are skipped.
  * Returns [] when the file is absent (run produced no events yet).
  */
 export async function readRunEvents(teamDirectory: string, runId: string): Promise<RunEvent[]> {
@@ -669,31 +672,81 @@ export async function readRunEvents(teamDirectory: string, runId: string): Promi
     // See readRunRecord: must run before the try-catch below so the symlink
     // rejection is not swallowed as "file unreadable".
     await assertNoSymlinkTraversal(teamDirectory, eventsPath)
-    let raw: string
+    const noFollow = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0
+    const nonBlock = (fs.constants as { O_NONBLOCK?: number }).O_NONBLOCK ?? 0
+    const flags = fs.constants.O_RDONLY | noFollow | nonBlock
+    let handle: Awaited<ReturnType<typeof fs.open>>
     try {
-        raw = await fs.readFile(eventsPath, "utf8")
+        handle = await fs.open(eventsPath, flags)
     } catch (err) {
         if (isEnoent(err)) return []
         logger.warn("readRunEvents: failed to read events file", { runId, error: err instanceof Error ? err.message : String(err) })
         throw err
     }
-    const events: RunEvent[] = []
+    const events: Array<{ event: RunEvent; lineNumber: number }> = []
     let invalidLineCount = 0
-    for (const line of raw.split("\n")) {
-        if (!line.trim()) continue
-        try {
-            events.push(parseRunEvent(line))
-        } catch {
-            invalidLineCount += 1
+    let lineNumber = 0
+    let lineParts: Buffer[] = []
+    let lineBytes = 0
+    let oversizedLine = false
+    const appendSegment = (segment: Buffer): void => {
+        if (oversizedLine || segment.length === 0) return
+        if (lineBytes + segment.length > MAX_RUN_EVENT_LINE_BYTES) {
+            lineParts = []
+            lineBytes = 0
+            oversizedLine = true
+            return
         }
+        lineParts.push(segment)
+        lineBytes += segment.length
+    }
+    const finishLine = (): void => {
+        if (oversizedLine) {
+            invalidLineCount += 1
+        } else if (lineBytes > 0) {
+            const line = Buffer.concat(lineParts, lineBytes).toString("utf8")
+            if (line.trim()) {
+                try {
+                    events.push({ event: parseRunEvent(line), lineNumber })
+                } catch {
+                    invalidLineCount += 1
+                }
+            }
+        }
+        lineNumber += 1
+        lineParts = []
+        lineBytes = 0
+        oversizedLine = false
+    }
+    try {
+        const stat = await handle.stat()
+        if (!stat.isFile()) throw new Error(`readRunEvents: not a regular file: ${eventsPath}`)
+        for await (const chunk of handle.createReadStream({ autoClose: false })) {
+            if (!Buffer.isBuffer(chunk)) throw new Error(`readRunEvents: unexpected non-buffer chunk: ${eventsPath}`)
+            let offset = 0
+            while (offset < chunk.length) {
+                const newline = chunk.indexOf(0x0a, offset)
+                if (newline === -1) {
+                    appendSegment(chunk.subarray(offset))
+                    break
+                }
+                appendSegment(chunk.subarray(offset, newline))
+                finishLine()
+                offset = newline + 1
+            }
+        }
+        if (lineBytes > 0 || oversizedLine) finishLine()
+    } catch (err) {
+        logger.warn("readRunEvents: failed to read events file", { runId, error: err instanceof Error ? err.message : String(err) })
+        throw err
+    } finally {
+        await handle.close()
     }
     if (invalidLineCount > 0) {
         logger.warn("readRunEvents: skipped invalid event lines", { runId, invalidLineCount })
     }
-    // Sequence values reset on process restart, so timestamp is the durable
-    // ordering key. Stable sorting preserves append order for ties.
-    events.sort((a, b) => a.timestamp - b.timestamp)
-    return events
+    events.sort((a, b) => a.lineNumber - b.lineNumber)
+    return events.map(({ event }) => event)
 }
 
 /**

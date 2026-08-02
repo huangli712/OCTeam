@@ -86,7 +86,15 @@ export async function captureMemberOutput(
 
     // Idempotency: message count alone is insufficient because compaction can
     // preserve the count while replacing the turn contents.
-    if (member.lastCapturedMsgCount !== undefined && messages.length === member.lastCapturedMsgCount) {
+    const sameCapturedTurn = member.lastCapturedTurnCount === member.turnCount
+        || (member.lastCapturedTurnCount === undefined
+            && member.lastCapturedOutputHash === undefined
+            && member.lastCapturedOutput === undefined)
+    if (
+        member.lastCapturedMsgCount !== undefined
+        && messages.length === member.lastCapturedMsgCount
+        && sameCapturedTurn
+    ) {
         if (member.lastCapturedOutputHash !== undefined) {
             if (outputHash === member.lastCapturedOutputHash) {
                 return { fresh: false, reason: "stale" }
@@ -102,6 +110,7 @@ export async function captureMemberOutput(
     }
     if (outputs.length === 0) {
         member.lastCapturedMsgCount = messages.length
+        member.lastCapturedTurnCount = member.turnCount
         member.lastCapturedOutput = undefined
         member.lastCapturedOutputHash = undefined
         return { fresh: false, reason: "empty" }
@@ -140,7 +149,7 @@ export async function captureMemberOutput(
         : isSignoffTurn
         ? runSignoffOutputPath(team.directory, runId, member.name)
         : runMemberOutputPath(team.directory, runId, member.name)
-    const captureKey = `${messages.length}:${outputHash}`
+    const captureKey = `${messages.length}:${member.turnCount}:${outputHash}`
     const captureMarker = `\n\n<!-- octeam-capture ${captureKey} -->`
     const applyCaptureState = (): void => {
         if (isSignoffTurn) {
@@ -150,6 +159,7 @@ export async function captureMemberOutput(
             task.responses[member.name] = captured
         }
         member.lastCapturedMsgCount = messages.length
+        member.lastCapturedTurnCount = member.turnCount
         member.lastCapturedOutput = undefined
         member.lastCapturedOutputHash = outputHash
     }
