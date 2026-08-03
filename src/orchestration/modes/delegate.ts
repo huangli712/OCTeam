@@ -79,7 +79,11 @@ export async function runDelegateStyleTail(
                 // HIGH: use extractSessionStatusEntry which handles both object
                 // and array shapes. Pre-fix code treated .data as array.
                 const entry = extractSessionStatusEntry(st.data, m.sessionId)
-                if (entry?.type === "retry") {
+                // H26: any non-idle live status means the member is still
+                // working. Pre-fix code only checked "retry" and ignored
+                // "busy"/"running", allowing delegate to finish while the
+                // member's turn was still in flight.
+                if (entry?.type === "retry" || entry?.type === "busy" || entry?.type === "running") {
                     return
                 }
             } catch {

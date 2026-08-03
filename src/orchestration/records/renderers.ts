@@ -9,6 +9,16 @@
 import type { Team } from "../../state/store.js"
 import { listAllTasks } from "../../state/tasks.js"
 import { truncateOutput } from "../protocol/output.js"
+
+/** Escape XML control characters in member output to prevent tag injection. */
+function escapeXmlUnsafe(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+/** Truncate then escape member output for safe embedding in XML summary. */
+function safeMemberOutput(text: string, maxBytes?: number): string {
+    return escapeXmlUnsafe(truncateOutput(text, maxBytes))
+}
 import { formatWorkflowLedgerLines, formatWorkflowOutputSections } from "./ledger.js"
 import type { ActiveTask, ArenaCandidateScore } from "../../core/types.js"
 import type { Task } from "../../core/types.js"
@@ -50,12 +60,12 @@ export async function summarizeDelegate(team: Team, task: ActiveTask, head: stri
             const result = t.result
             if (!result || result.trim().length === 0) return []
             if (t.owner) coveredOwners.add(t.owner)
-            return [`by ${t.owner ?? "unknown"} (task: ${t.subject}):\n${truncateOutput(result)}`]
+            return [`by ${t.owner ?? "unknown"} (task: ${t.subject}):\n${safeMemberOutput(result)}`]
         })
         .join("\n\n")
     const memberOutputs = Object.entries(task.responses)
         .filter(([name, out]) => out.trim().length > 0 && !coveredOwners.has(name))
-        .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
+        .map(([name, out]) => `by ${name}:\n${safeMemberOutput(out)}`)
         .join("\n\n")
     const outputs = [taskResults, memberOutputs].filter(s => s.length > 0).join("\n\n")
     return outputs
@@ -77,7 +87,7 @@ export function summarizeLoop(task: ActiveTask, head: string): string {
     // Include the actual member outputs (the work product), not just the
     // decision log — otherwise a finished loop delivers nothing usable.
     const outputs = Object.entries(task.responses)
-        .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
+        .map(([name, out]) => `by ${name}:\n${safeMemberOutput(out)}`)
         .join("\n\n")
     return outputs ? `${decisions}\n\n${outputs}` : decisions
 }
@@ -88,7 +98,7 @@ export function summarizeRoute(task: Extract<ActiveTask, { type: "route" }>, hea
     // selected targets' outputs plus the router's rationale.
     const targets = task.routeTargets ?? []
     const outputs = targets
-        .map(name => `\nby ${name}:\n\n${truncateOutput(task.responses[name] ?? "")}`)
+        .map(name => `\nby ${name}:\n\n${safeMemberOutput(task.responses[name] ?? "")}`)
         .join("\n\n")
     const rationale = task.routeDecisionRationale
         ? `\n[Router rationale]\n${task.routeDecisionRationale}`
@@ -101,7 +111,7 @@ export function summarizeArbitrate(task: Extract<ActiveTask, { type: "arbitrate"
     // Lead with the arbiter's binding ruling; follow with the debaters'
     // final positions. The arbiter's raw <ruling> JSON is excluded.
     const positions = (task.disputants ?? [])
-        .map(name => `by ${name}:\n${truncateOutput(task.responses[name] ?? "")}`)
+        .map(name => `by ${name}:\n${safeMemberOutput(task.responses[name] ?? "")}`)
         .join("\n\n")
     const ruling = task.arbitrationRuling
         ? `[Ruling]\n${task.arbitrationRuling}\n\n`
@@ -156,7 +166,7 @@ export async function summarizeRecurse(team: Team, task: Extract<ActiveTask, { t
         }
     }
     if (task.rootTaskId) renderNode(task.rootTaskId, 0)
-    return `${head}\nRoot result:\n${truncateOutput(rootResult)}\n\nTask tree:\n${treeLines.join("\n")}`
+    return `${head}\nRoot result:\n${safeMemberOutput(rootResult)}\n\nTask tree:\n${treeLines.join("\n")}`
 }
 
 /** Render a tollgate run: per-gate verdict table + completed gates' outputs. */
@@ -178,7 +188,7 @@ export function summarizeTollgate(task: Extract<ActiveTask, { type: "tollgate" }
             seen.add(s.member)
             return true
         })
-        .map(s => `by ${s.member}:\n${truncateOutput(task.responses[s.member] ?? "")}`)
+        .map(s => `by ${s.member}:\n${safeMemberOutput(task.responses[s.member] ?? "")}`)
         .join("\n\n")
     return outputs
         ? `${head}\n[Gates]\n${rows.join("\n")}\n\n${outputs}`
@@ -205,7 +215,7 @@ export function summarizePipeline(task: ActiveTask, head: string): string {
         if (!seen.has(name)) orderedNames.push(name)
     }
     const candidates = orderedNames
-        .map(name => `by ${name}:\n${truncateOutput(task.responses[name] ?? "")}`)
+        .map(name => `by ${name}:\n${safeMemberOutput(task.responses[name] ?? "")}`)
         .join("\n\n")
     return `${head}\n${candidates}`
 }
@@ -252,7 +262,7 @@ export function summarizeConsensus(task: ActiveTask, head: string): string {
     // Consensus has no reducePolicy; concatenate member outputs
     // (the same summarize behavior the old default branch produced).
     const candidates = Object.entries(task.responses)
-        .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
+        .map(([name, out]) => `by ${name}:\n${safeMemberOutput(out)}`)
         .join("\n\n")
     return `${head}\n${candidates}`
 }
@@ -272,7 +282,7 @@ export function summarizeParallel(task: ActiveTask, head: string): string {
     }
     const outputs = Object.entries(task.responses)
     const candidates = outputs
-        .map(([name, out]) => `by ${name}:\n${truncateOutput(out)}`)
+        .map(([name, out]) => `by ${name}:\n${safeMemberOutput(out)}`)
         .join("\n\n")
 
     // parallel: switch on reducePolicy

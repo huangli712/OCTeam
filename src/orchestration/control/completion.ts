@@ -15,6 +15,44 @@ import { persistRun } from "../records/runs.js"
 import { buildSummary } from "../records/summary.js"
 
 /**
+ * H15: deliver a message with bounded retries. Extracted to avoid triplicated
+ * promptAsync call bodies (the original H15 fix had 3 copies of the message
+ * construction, flagged as duplicated code by AFT inspect).
+ */
+async function deliverWithRetry(
+    ctx: PluginContext,
+    session: PluginContext["client"]["session"],
+    target: string,
+    teamName: string,
+    summary: string,
+): Promise<void> {
+    const text = `<team_result team="${teamName}">\n${summary}\n</team_result>\n<!-- OMO_INTERNAL_INITIATOR -->`
+    const maxAttempts = 3
+    let lastErr: unknown
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            await session.promptAsync({
+                path: { id: target },
+                body: { parts: [{ type: "text", text, synthetic: false }] },
+            })
+            return  // success
+        } catch (err) {
+            lastErr = err
+            if (attempt < maxAttempts) {
+                await new Promise(r => {
+                    const t = setTimeout(r, 500 * attempt)
+                    t.unref()
+                })
+            }
+        }
+    }
+    logSwallowed(ctx, "deliverSummaryToLeader: all delivery attempts failed", lastErr as Error, {
+        team: teamName, attempts: maxAttempts,
+    }, "error")
+    throw lastErr
+}
+
+/**
  * Build and deliver the active run summary to the team leader.
  *
  * Ordering is intentional: emit the terminal event and persist the run while
@@ -45,24 +83,17 @@ export async function deliverSummaryToLeader(
     // Build and deliver the summary. A throw here is caught by finishRun's
     // finally block; the run record is already persisted.
     const summary = await buildSummary(team, team.activeTask, reason)
-    // P4: use the index-verified leadSessionId instead of the disk-tamperable
-    // team.leadSessionId. A state.json swap cannot redirect run output to an
-    // attacker-controlled session. Fall back to team.leadSessionId only when
-    // the index has no entry (very early in team_create before indexing).
-    const deliveryTarget = trustedLeadSessionId(team.directory) ?? team.leadSessionId
-    await ctx.client.session.promptAsync({
-        path: { id: deliveryTarget },
-        body: {
-            parts: [
-                {
-                    type: "text",
-                    text: `<team_result team="${team.teamName}">\n${summary}\n</team_result>\n` +
-                        `<!-- OMO_INTERNAL_INITIATOR -->`,
-                    synthetic: false,
-                },
-            ],
-        },
-    })
+    // P4+R4: prefer the index-verified leadSessionId. The disk-tamperable
+    // team.leadSessionId is only used when the trusted index has no entry
+    // (very early in team_create before indexing, or sentinel validation
+    // failed). In the latter case, log prominently so operators can detect
+    // potential tampering.
+    const trustedTarget = trustedLeadSessionId(team.directory)
+    const deliveryTarget = trustedTarget ?? team.leadSessionId
+    if (!trustedTarget) {
+        logSwallowed(ctx, "finishRun: trusted leadSessionId unavailable; falling back to team.leadSessionId (possible tampering risk)", undefined, { team: team.teamName })
+    }
+    await deliverWithRetry(ctx, ctx.client.session, deliveryTarget, team.teamName, summary)
 }
 
 /**

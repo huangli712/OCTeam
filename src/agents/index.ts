@@ -16,8 +16,8 @@ import { ultrabrainAgent } from "./ultrabrain.js"
 import { multimodalLookerAgent } from "./multimodal-looker.js"
 import type { OcteamAgentConfig, OcteamAgentPermission, OcteamPermissionAction } from "./types.js"
 
-type MergedPermissionValue = OcteamPermissionAction | Record<string, OcteamPermissionAction>
-type MergedAgentPermission = Record<string, MergedPermissionValue | undefined>
+export type MergedPermissionValue = OcteamPermissionAction | Record<string, OcteamPermissionAction>
+export type MergedAgentPermission = Record<string, MergedPermissionValue | undefined>
 
 function isPermissionAction(value: unknown): value is OcteamPermissionAction {
     return value === "allow" || value === "deny" || value === "ask"
@@ -52,7 +52,7 @@ export const OCTEAM_AGENTS: Record<string, OcteamAgentConfig> = {
  * serves as the effective baseline for any tool the preset does not name
  * explicitly.
  */
-function mergePermissionsMonotonic(
+export function mergePermissionsMonotonic(
     preset: OcteamAgentPermission | undefined,
     userPerm?: unknown,
 ): MergedAgentPermission {
@@ -76,22 +76,41 @@ function mergePermissionsMonotonic(
             // CRIT #5: preserve the preset's wildcard baseline so the nested
             // map doesn't weaken the default-deny posture. Pre-fix code
             // replaced the scalar entirely, losing the "*":"deny" floor.
+            //
+            // R1: pre-fix code ALSO lost preset nested subtool rules — it
+            // seeded only "*" from the scalar/wildcard baseline and ignored
+            // any existing nested subtool allows in the preset. Fix: when
+            // the preset value is already a nested map, INHERIT its entries
+            // as the starting point, then apply user entries on top.
             const presetValue = result[tool]
             const presetScalar = isPermissionAction(presetValue)
                 ? presetValue
                 : isPermissionAction(wildcardAction) ? wildcardAction : undefined
             const nested: Record<string, OcteamPermissionAction> = {}
+            // R1: inherit existing nested preset entries first.
+            if (presetValue !== undefined && typeof presetValue === "object" && !Array.isArray(presetValue)) {
+                for (const [k, v] of Object.entries(presetValue)) {
+                    if (isPermissionAction(v)) nested[k] = v
+                }
+            } else if (presetScalar !== undefined) {
+                // Preset was scalar — seed baseline wildcard.
+                nested["*"] = presetScalar
+            }
             const nestedEntries = Object.entries(action)
             if (nestedEntries.length === 0 || nestedEntries.some(([, value]) => !isPermissionAction(value))) {
                 continue
             }
-            // Always seed with the preset baseline so unlisted sub-keys inherit it.
-            if (presetScalar !== undefined) {
-                nested["*"] = presetScalar
-            }
+            // Apply user entries, respecting monotonic tightening.
+            const nestedWildcardBaseline = isPermissionAction(nested["*"])
+                ? nested["*"]
+                : isPermissionAction(wildcardAction) ? wildcardAction : undefined
             for (const [subTool, subAction] of nestedEntries) {
                 if (!isPermissionAction(subAction)) continue
-                if (presetScalar === undefined || rank[subAction] >= rank[presetScalar]) {
+                const existingNested = nested[subTool]
+                const baseline = isPermissionAction(existingNested)
+                    ? existingNested
+                    : nestedWildcardBaseline
+                if (baseline === undefined || rank[subAction] >= rank[baseline]) {
                     nested[subTool] = subAction
                 }
             }

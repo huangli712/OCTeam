@@ -146,6 +146,9 @@ export type MemberState = {
                                        // spawn). Delivered as <member-instruction> on the member's FIRST
                                        // real task dispatch (NOT during role-setup, which is identity-only).
     promptDelivered?: boolean          // true after prompt has been prepended to a dispatch once
+    promptSentAt?: number              // H14: epoch ms when the current turn's promptAsync succeeded.
+                                       // Used by resume-modes to detect crash-between-persist-and-send:
+                                       // running without promptSentAt means the prompt was never delivered.
     lastCapturedMsgCount?: number      // capture dedup: messages.length at the last successful
     lastCapturedTurnCount?: number
     lastCapturedOutput?: string        // legacy output snapshot for compaction-safe dedup

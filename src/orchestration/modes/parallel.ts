@@ -43,10 +43,12 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
                 && !task.responses[name]
         })
         if (missingResponse) {
-            // N16: pre-fix code just returned, leaving the barrier stuck
-            // because all participants were already idle and no future
-            // event would re-trigger the barrier. Escalate missing-response
-            // members to errored so the next sweep tick can re-evaluate.
+            // N16+R2: escalate missing-response members to errored, then
+            // re-evaluate tolerance. Pre-fix (N16-only) code escalated and
+            // returned, leaving the barrier permanently stuck — no future
+            // event re-triggered maybeAdvanceBarrier because all participants
+            // were already idle. Now we update the errored array in-place and
+            // fall through to the survivor delivery path below.
             for (const name of participants) {
                 const member = team.members.find(m => m.name === name)
                 if (!member) continue
@@ -55,9 +57,16 @@ export async function handleParallelIdle(ctx: PluginContext, team: Team): Promis
                     && !task.responses[name]) {
                     member.status = "errored"
                     member.error = "no response captured after idle"
+                    errored.push(name)
                 }
             }
-            return
+            // Re-check tolerance after escalation.
+            const survivorsAfter = participants.length - errored.length
+            if (survivorsAfter === 0 || errored.length > tolerance) {
+                const e = team.members.find(m => m.name === errored[0])
+                await finishRun(ctx, team, `member_error:${e?.name}:${e?.error ?? "unknown"}`, "failed")
+                return
+            }
         }
         // HIGH-D: clear stale responses from errored members BEFORE reduce / signoff.
         // Pre-fix code cleared them only just before final delivery, AFTER

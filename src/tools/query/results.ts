@@ -93,8 +93,10 @@ function formatRunLine(r: RunRecord): string {
     const when = new Date(r.finishedAt).toISOString()
     const members = Object.keys(r.memberOutputs).length
     const winner = r.arena?.winner ? `  winner=${r.arena.winner}` : ""
+    // S3: cap reason to prevent oversized list entries.
+    const reason = r.reason.length > 200 ? r.reason.slice(0, 200) + "..." : r.reason
     return (
-        `- ${r.runId}  [${r.type}${mode}] ${r.status}  reason=${r.reason}  ${when}  tokens=${r.tokensUsed}` +
+        `- ${r.runId}  [${r.type}${mode}] ${r.status}  reason=${reason}  ${when}  tokens=${r.tokensUsed}` +
         `  members=${members}${winner}`
     )
 }
@@ -424,7 +426,13 @@ export function teamResultGetTool(ctx: PluginContext): ToolDefinition {
             }
 
             const body = previews.length > 0 ? previews.join("\n\n") : "(no member outputs captured)"
-            return `${header.join("\n")}\n\n${body}`
+            // S3: cap final response to 256 KiB to prevent oversized responses.
+            const MAX_RESULT_GET_BYTES = 256 * 1024
+            let result = `${header.join("\n")}\n\n${body}`
+            if (Buffer.byteLength(result, "utf8") > MAX_RESULT_GET_BYTES) {
+                result = truncateOutput(result, MAX_RESULT_GET_BYTES)
+            }
+            return result
         },
     })
 }

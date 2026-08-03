@@ -226,6 +226,56 @@ export function truncateOutput(text: string, maxBytes: number = 65536): string {
     let tailStart = buf.length - half
     while (tailStart < buf.length && (buf[tailStart] & 0xc0) === 0x80) tailStart++
 
+    // H23: if the head boundary cuts inside a structured <tag>...</tag>
+    // pair, move headEnd backward to before the opening tag so the
+    // truncated output doesn't contain a half-open tag that corrupts
+    // downstream JSON parsing.
+    const headText = buf.toString("utf8", 0, headEnd)
+    // 1. Check for unclosed tag name: `<sco` (no `>` yet).
+    const lastOpenInHead = headText.lastIndexOf("<")
+    if (lastOpenInHead >= 0) {
+        const afterOpen = headText.slice(lastOpenInHead)
+        if (!afterOpen.includes(">")) {
+            headEnd = lastOpenInHead
+            while (headEnd > 0 && (buf[headEnd] & 0xc0) === 0x80) headEnd--
+        }
+    }
+    // 2. Check for complete opening <tag> without matching </tag> in head.
+    //    This means the tag pair spans head+tail — JSON inside is corrupted.
+    //    Find the last complete <tag>...</tag> pair and truncate before
+    //    any orphaned opening tag.
+    const updatedHeadText = buf.toString("utf8", 0, headEnd)
+    const tagPairRegex = /<([a-zA-Z_][\w]*)>([\s\S]*?)<\/\1>/g
+    let lastCompleteTagEnd = 0
+    let lastOrphanOpenEnd = -1
+    let match: RegExpExecArray | null
+    while ((match = tagPairRegex.exec(updatedHeadText)) !== null) {
+        lastCompleteTagEnd = match.index + match[0].length
+    }
+    // Find opening tags after the last complete pair.
+    const afterComplete = updatedHeadText.slice(lastCompleteTagEnd)
+    const orphanMatch = afterComplete.match(/<[a-zA-Z_][\w]*>/)
+    if (orphanMatch && orphanMatch.index !== undefined) {
+        lastOrphanOpenEnd = lastCompleteTagEnd + orphanMatch.index
+    }
+    if (lastOrphanOpenEnd >= 0 && lastOrphanOpenEnd < headEnd) {
+        // Truncate before the orphaned opening tag.
+        headEnd = lastOrphanOpenEnd
+        while (headEnd > 0 && (buf[headEnd] & 0xc0) === 0x80) headEnd--
+    }
+    // Same for tail: if the tail starts mid-tag (before the first `>`),
+    // advance tailStart past the first `>`.
+    const tailText = buf.toString("utf8", tailStart)
+    const firstCloseInTail = tailText.indexOf(">")
+    const firstOpenInTail = tailText.indexOf("<")
+    if (firstOpenInTail === -1 || (firstCloseInTail >= 0 && firstCloseInTail < firstOpenInTail)) {
+        // Tail starts with `...>` — a fragment of a broken tag. Advance past it.
+        if (firstCloseInTail >= 0 && (firstOpenInTail === -1 || firstCloseInTail < firstOpenInTail)) {
+            tailStart += firstCloseInTail + 1
+            while (tailStart < buf.length && (buf[tailStart] & 0xc0) === 0x80) tailStart++
+        }
+    }
+
     const omitted = buf.length - headEnd - (buf.length - tailStart)
     const sep = `\n...[truncated ${omitted} middle bytes]...\n`
     return buf.toString("utf8", 0, headEnd) + sep + buf.toString("utf8", tailStart)

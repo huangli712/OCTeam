@@ -107,12 +107,13 @@ describe("parseScoreboard", () => {
         expect(r.parseFailed).toBe(true)
     })
 
-    test("drops non-finite metric values but keeps finite ones", () => {
+    test("non-finite metric values fail the entire scoreboard (H22)", () => {
         const r = parseScoreboard(
             sb('{"scores":[{"member":"alice","metrics":{"speed":1e400,"accuracy":0.9},"passed":true}]}'),
         )
-        expect(r.parseFailed).toBeUndefined()
-        expect(r.scores[0].metrics).toEqual({ accuracy: 0.9 })
+        // H22: pre-fix code silently dropped non-finite values, which could
+        // change winner selection. Now the entire scoreboard fails.
+        expect(r.parseFailed).toBe(true)
     })
 
     test("passed defaults to false when absent", () => {

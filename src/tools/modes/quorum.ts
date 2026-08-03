@@ -60,8 +60,8 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
                     + "as abstain (invalid ballot).",
                 ),
             members: tool.schema
-                .array(tool.schema.string())
-                .optional()
+                .array(tool.schema.string().min(1).max(256))
+                .max(50)
                 .describe(
                     "subset of members who ballot; default = all non-master "
                     + "members. Must have length >= 2.",

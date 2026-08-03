@@ -67,7 +67,18 @@ export async function resumeConcurrentDispatch(
 ): Promise<void> {
     let dispatched = 0;
     for (const m of members) {
-        if (m.isMaster || m.status === "running") continue;
+        if (m.isMaster) continue
+        // H14: skip running members whose prompt was confirmed sent.
+        // But re-dispatch running members WITHOUT promptSentAt — the
+        // crash window between persist-running and promptAsync means
+        // the prompt was never delivered and the host will never idle.
+        if (m.status === "running" && m.promptSentAt !== undefined) continue
+        if (m.status === "running" && m.promptSentAt === undefined) {
+            // Crash window detected — mark errored so barrier can re-evaluate.
+            m.status = "errored"
+            m.error = "dispatch crash recovery: prompt was never sent"
+            continue
+        }
         if (shouldDispatch(m)) {
             await dispatchToMember(ctx, m, text(m), m.worktreePath ?? ctx.directory, team);
             dispatched++;
@@ -128,6 +139,9 @@ export async function resumeSignoffReduceStage(
             return true;
         }
         if (task.responses[reducer.name] === undefined) {
+            // H33: skip dispatch if reducer is already running (crash resume
+            // may find the host turn still in flight).
+            if (reducer.status === "running") return true
             const body = await buildSummary(team, task, "pending_reduce");
             const prompt = buildReducePrompt(body);
             await dispatchToMember(
@@ -164,6 +178,8 @@ export async function resumeSignoffReduceStage(
         for (const m of reviewers) {
             // Skip reviewers who already have a recorded approval.
             if (task.signoffApprovals?.[m.name] !== undefined) continue;
+            // H33: skip running reviewers (crash resume may find turn in flight).
+            if (m.status === "running") continue;
             // HIGH: only use signoffRawOutputs for resume — task.responses
             // holds the reviewer's PRIMARY task output, not their signoff
             // verdict. Pre-fix code treated primary output as signoff output,
@@ -281,6 +297,9 @@ export async function resumeSequentialMode(
         return;
     }
     // No response yet: re-dispatch the stage normally.
+    // H33: skip if the stage member is already running (crash resume may
+    // find the host turn still in flight).
+    if (stageMember?.status === "running") return
     await advanceToStage(ctx, team, stage);
 }
 
@@ -332,6 +351,8 @@ export async function resumeRouteMode(
                 await finishRun(ctx, team, "route_resume_missing_router", "failed");
                 return;
             }
+            // H33: skip if router is already running.
+            if (router.status === "running") return
             const prompt = buildRouterPrompt(
                 team.teamName,
                 task.task ?? "",
@@ -391,6 +412,8 @@ export async function resumeArbitrateMode(
             await finishRun(ctx, team, "arbitrate_resume_missing_arbiter", "failed");
             return;
         }
+        // H33: skip if arbiter is already running.
+        if (arbiter.status === "running") return
         await dispatchToMember(
             ctx,
             arbiter,

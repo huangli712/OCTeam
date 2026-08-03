@@ -80,7 +80,7 @@ describe("handleParallelIdle: barrier progression", () => {
         expect(calls.some(c => c.sessionId === "ses_lead")).toBe(false)
     })
 
-    test("dispatched idle participant without output keeps the barrier pending", async () => {
+    test("dispatched idle participant without output escalates to errored and finishes (R2)", async () => {
         const calls: DispatchCall[] = []
         const ctx = makeCtx({ calls })
         const task = makeParallelTask({
@@ -97,9 +97,45 @@ describe("handleParallelIdle: barrier progression", () => {
 
         await handleParallelIdle(ctx, team)
 
-        expect(team.status).toBe("busy")
-        expect(team.activeTask).toBe(task)
-        expect(calls.some(c => c.sessionId === "ses_lead")).toBe(false)
+        // R2: bob (empty output) is escalated to errored, and with
+        // maxErroredMembers=0, the run fails immediately instead of
+        // hanging at "busy" until wall-clock timeout.
+        const bob = team.members.find(m => m.name === "bob")
+        expect(bob?.status).toBe("errored")
+        expect(bob?.error).toContain("no response")
+        expect(team.status).toBe("failed")
+        // finishRun delivers a summary (including failure reason) to the leader.
+        expect(calls.some(c => c.sessionId === "ses_lead")).toBe(true)
+    })
+
+    test("R2: empty-response with tolerance delivers survivors instead of hanging", async () => {
+        const calls: DispatchCall[] = []
+        const ctx = makeCtx({ calls })
+        const task = makeParallelTask({
+            mode: "isolated",
+            maxErroredMembers: 1,
+            responses: { alice: "A", bob: "" },
+        })
+        const team = makeTeam({
+            activeTask: task,
+            members: [
+                { name: "alice", sessionId: "ses_alice", status: "idle", turnCount: 1 },
+                { name: "bob", sessionId: "ses_bob", status: "idle", turnCount: 1 },
+            ],
+        })
+
+        await handleParallelIdle(ctx, team)
+
+        // R2: bob is escalated to errored, but with maxErroredMembers=1,
+        // tolerance allows 1 error. Survivors (alice) are delivered.
+        const bob = team.members.find(m => m.name === "bob")
+        expect(bob?.status).toBe("errored")
+        expect(team.status).toBe("idle")
+        expect(team.activeTask).toBeUndefined()
+        // Summary delivered with partial success.
+        const leaderCall = calls.find(c => c.sessionId === "ses_lead")
+        expect(leaderCall).toBeDefined()
+        expect(leaderCall!.text).toContain("parallel_isolated_partial")
     })
 })
 

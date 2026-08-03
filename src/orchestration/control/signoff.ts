@@ -230,7 +230,12 @@ export async function handleSignoffIdle(
         return
     }
 
-    const memberOutput = task.signoffRawOutputs?.[member.name] ?? task.responses[member.name] ?? ""
+    // H16: prefer signoffRawOutputs (the reviewer's signoff-specific turn).
+    // Pre-fix code fell back to task.responses[member.name] (the PRIMARY task
+    // output), which could contain a <signoff> example that was miscounted
+    // as a real verdict. Now: if signoffRawOutputs has no entry, treat as
+    // empty output (triggers retry), never read the primary response.
+    const memberOutput = task.signoffRawOutputs?.[member.name] ?? ""
     const signoff = parseSignoff(memberOutput)
     // HIGH: a completely missing tag (null) should enter the same retry path
     // as a malformed payload (parseFailed). Pre-fix code treated null as an

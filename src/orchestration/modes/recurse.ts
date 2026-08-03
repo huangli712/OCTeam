@@ -382,7 +382,11 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 // Don't complete — re-dispatch the member for a direct solve.
                 const owner = team.members.find(m => m.name === member.name)
                 if (owner?.sessionId && owner.status !== "running") {
-                    await dispatchToMember(ctx, owner, T.subject, owner.worktreePath ?? ctx.directory, team)
+                    // H25: include the full description, not just subject.
+                    // Pre-fix code sent only T.subject, losing the main task
+                    // content and leaving the member to guess the requirements.
+                    const prompt = T.description ? `${T.subject}\n\n${T.description}` : T.subject
+                    await dispatchToMember(ctx, owner, prompt, owner.worktreePath ?? ctx.directory, team)
                 }
                 return
             }

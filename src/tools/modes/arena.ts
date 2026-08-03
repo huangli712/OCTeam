@@ -35,7 +35,8 @@ export function teamArenaTool(ctx: PluginContext): ToolDefinition {
                 .min(1)
                 .describe("member name of the evaluator (NOT \"master\", NOT a candidate)"),
             candidates: tool.schema
-                .array(tool.schema.string().min(1))
+                .array(tool.schema.string().min(1).max(64))
+                .max(12)
                 .optional()
                 .describe(
                     "candidate member names (unique, >=2). Defaults to all non-master "

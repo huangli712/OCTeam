@@ -623,10 +623,20 @@ export async function sweepTeamOnce(
         // it is owned by a live sibling process.
         if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
         if (team._stateUnreadable) {
-            logEvent(ctx, "error", "sweep: team state is unreadable; refusing cached state mutations", {
-                team: team.teamName,
-            })
-            return
+            // H32: pre-fix code permanently returned without retrying.
+            // Attempt a fresh loadTeamState — the disk may have recovered
+            // since the flag was set (e.g. transient NFS issue resolved).
+            // If it succeeds, _stateUnreadable is cleared internally and
+            // we can proceed. If it fails again, bail as before.
+            try {
+                await loadTeamState(ctx.storageRoot, team.teamName, team.leadSessionId)
+            } catch {
+                logEvent(ctx, "error", "sweep: team state still unreadable after retry", {
+                    team: team.teamName,
+                })
+                return
+            }
+            // Successfully reloaded — fall through to normal sweep processing.
         }
         if (team._persistDirty) {
             await persistTeamState(ctx, team, "persist dirty team state failed (sweep retry)", {

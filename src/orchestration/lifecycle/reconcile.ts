@@ -32,7 +32,7 @@ import type { PluginContext } from "../../core/context.js"
 import { invalidateTeam, listAllTeams, loadTeamState, saveTeamState } from "../../state/store.js"
 import { unindexSession } from "../../state/resolve.js"
 import { assertSafeSegment, deletedMarkerPath, teamDir, worktreesDir } from "../../state/paths.js"
-import { atomicWrite } from "../../state/locks.js"
+import { atomicWrite, LOCK_TTL_MS } from "../../state/locks.js"
 import { destroyWorktree, hasUncommittedChanges } from "../../state/worktrees.js"
 import { releaseStaleReservations } from "../../messaging/mailbox.js"
 import { logSwallowed } from "../../core/log.js"
@@ -92,14 +92,21 @@ async function reconcileOne(team: Awaited<ReturnType<typeof loadTeamState>>, ctx
                 }
             }
         } else if (team.spawning && team.runnerPid === undefined) {
-            // H9: spawning without runnerPid is the normal Phase 2 state
-            // (between Phase 1 mutex acquisition and Phase 3 PID recording).
-            // Pre-fix code unconditionally cleared it, allowing a concurrent
-            // sibling process's spawn lease to be stolen.
-            // Trade-off: a crash during Phase 2 (before runnerPid is set)
-            // leaves spawning=true permanently. This is accepted because
-            // stealing a live process's lease is worse — team_resume can
-            // still recover via explicit user action.
+            // H9: spawning without runnerPid is the normal Phase 2 state.
+            // R6: a crash during Phase 2 leaves spawning=true permanently.
+            // Fix: if the state file hasn't been modified for >2× LOCK_TTL_MS,
+            // the spawning process is certainly dead. Use _diskMtime as
+            // the last-write timestamp.
+            if (team._diskMtime !== undefined) {
+                const age = Date.now() - team._diskMtime
+                if (age > LOCK_TTL_MS * 2) {
+                    team.spawning = false
+                    team.spawningOwner = undefined
+                }
+            } else {
+                // No mtime info — can't determine age. Leave as-is to
+                // avoid stealing a live lease.
+            }
         }
         if (team.status === "busy") {
             // H38: PID-based fencing. If runnerPid is set and the process is

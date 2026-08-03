@@ -70,6 +70,16 @@ export function teamLifecycleLockPath(teamDirectory: string): string {
 }
 
 /**
+ * C2: namespace-level lock guarding team name lifecycle (create/rename/delete).
+ * Placed in the storage root (parent of all team directories) so that rename
+ * and create cannot race on the old/new name slots. Each operation acquires
+ * this lock in addition to the per-team lifecycle lock.
+ */
+export function teamNamespaceLockPath(storageRoot: string): string {
+    return path.join(storageRoot, "team.namespace.lock")
+}
+
+/**
  * C-16: deletion marker placed in the PARENT of the team directory so it
  * survives the team dir rm. Another process holding a stale Team reference
  * checks this marker inside the state lock before writing state.json,

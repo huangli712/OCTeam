@@ -126,6 +126,7 @@ export type GatedStage = {
     verdict?: Verdict                  // last verdict rendered by this gate
     attempts: number                   // FAIL retry count against maxGateRetries
     invalidAttempts: number            // INVALID/escalate cycle count against maxInvalidCycles
+    producerEmptyAttempts?: number     // S7: empty producer output count (distinct from FAIL retries)
 }
 
 /** Pending human-in-the-loop approval request. */

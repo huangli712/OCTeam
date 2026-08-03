@@ -184,11 +184,10 @@ async function applyRedispatch(
                 })
             } catch (err) {
                 const abortError = err instanceof Error ? err : new Error(String(err))
-                logSwallowed(ctx, "team_fix_workflow: session.abort failed before redispatch", abortError, {
-                    team: team.teamName,
-                    member: oldActor.name,
-                    session: oldActor.sessionId,
-                })
+                // H19: pre-fix code logged and continued, leaving the old
+                // turn running alongside the new dispatch. Now we return an
+                // error so the caller knows abort failed and can retry.
+                return `Error: cannot abort previous turn for member "${oldActor.name}" before redispatch. ${abortError.message}`
             }
         }
     }

@@ -157,16 +157,16 @@ export function resolveMasterTeams(sessionID: string): MasterTeamEntry[] {
  * redirect sensitive run output to an attacker-controlled session.
  */
 export function trustedLeadSessionId(directory: string): string | undefined {
+    // R4: never return a tamperable leadSessionId. The sessionID map key is
+    // the ONLY trust source — it was validated against master.sentinel at
+    // startup. An empty sessionID means sentinel validation FAILED, and
+    // the team was indexed under "" as a last-resort fallback. Returning
+    // the disk-derived leadSessionId in that case re-opens the P4 attack
+    // vector (state.json swap redirects run output). Fail closed instead.
     for (const [sessionID, entry] of masterIndex) {
+        if (sessionID === "") continue  // skip unverified entries
         const team = entry.teams.get(directory)
-        if (team) {
-            // P4: prefer the sentinel-verified sessionID (the map key) as
-            // the primary trust source — it was validated against
-            // master.sentinel at startup. Fall back to the entry's
-            // leadSessionId (directory-derived) only when the map key is
-            // empty (sentinel check failed during indexing).
-            return sessionID || team.leadSessionId
-        }
+        if (team) return sessionID
     }
     return undefined
 }

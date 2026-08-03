@@ -111,10 +111,11 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     return
                 }
                 // H8: parallel isolated mode prohibits task creation.
-                // Isolated members must not communicate via shared task list.
-                // isolated = no per-member tasks assigned (cooperative has `tasks`).
+                // H11: use at.mode === "isolated" (the authoritative field),
+                // not !at.tasks (tamperable — a forged state.json with
+                // mode:"isolated" + non-empty tasks bypassed this check).
                 const at = team.activeTask
-                if (at?.type === "parallel" && !at.tasks) {
+                if (at?.type === "parallel" && at.mode === "isolated") {
                     blockedByError = (
                         `Error: team_task_create is disabled in parallel isolated mode. `
                         + `Isolated members cannot share a task list.`
@@ -182,6 +183,7 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
                 .enum(["pending", "claimed", "in_progress", "completed", "deleted"])
                 .optional(),
             owner: tool.schema.string().trim().min(1).optional(),
+            limit: tool.schema.number().int().min(1).max(200).optional(),
         },
         async execute(args, context) {
             const caller = await resolveCallerInTeam(ctx.storageRoot, context.sessionID, args.team_id)
@@ -191,15 +193,37 @@ export function teamTaskListTool(ctx: PluginContext): ToolDefinition {
             let tasks = await listAllTasks(caller.directory)
             if (args.status) tasks = tasks.filter(t => t.status === (args.status as TaskStatus))
             if (args.owner) tasks = tasks.filter(t => t.owner === args.owner)
+            // S2: cap output size. Default 100, max 200 via schema.
+            const limit = args.limit ?? 100
+            const totalCount = tasks.length
+            const truncated = tasks.length > limit
+            if (truncated) tasks = tasks.slice(0, limit)
             if (tasks.length === 0) return "No tasks."
-            return tasks
-                .map(
-                    t =>
-                        `- [${t.status}] ${t.id} ${t.subject}`
-                        + `${t.owner ? ` @${t.owner}` : ""}`
-                        + `${t.blockedBy.length ? ` (blocked by ${t.blockedBy.length})` : ""}`,
-                )
-                .join("\n")
+            const lines = tasks.map(
+                t =>
+                    `- [${t.status}] ${t.id} ${t.subject}`
+                    + `${t.owner ? ` @${t.owner}` : ""}`
+                    + `${t.blockedBy.length ? ` (blocked by ${t.blockedBy.length})` : ""}`,
+            )
+            // S2: hard byte cap to prevent oversized responses.
+            const MAX_TASK_LIST_BYTES = 64 * 1024
+            let result = lines.join("\n")
+            if (Buffer.byteLength(result, "utf8") > MAX_TASK_LIST_BYTES) {
+                // Truncate to byte boundary, keeping as many complete lines as fit.
+                let used = 0
+                const kept: string[] = []
+                for (const line of lines) {
+                    const lineBytes = Buffer.byteLength(line, "utf8")
+                    if (used + lineBytes + 1 > MAX_TASK_LIST_BYTES - 100) break
+                    kept.push(line)
+                    used += lineBytes + 1
+                }
+                result = kept.join("\n") + `\n[...truncated to fit ${MAX_TASK_LIST_BYTES} bytes]`
+            }
+            if (truncated) {
+                result += `\n[...showing ${tasks.length} of ${totalCount} tasks; use limit to show more]`
+            }
+            return result
         },
     })
 }
@@ -250,7 +274,8 @@ export function teamTaskUpdateTool(ctx: PluginContext): ToolDefinition {
                             return `Error: cannot verify team state for isolated-mode check. Task claim rejected. Underlying error: ${err instanceof Error ? err.message : String(err)}`
                         }
                         const at = team.activeTask
-                        if (at?.type === "parallel" && !at.tasks) {
+                        // H11: use at.mode === "isolated" (authoritative).
+                        if (at?.type === "parallel" && at.mode === "isolated") {
                             return `Error: team_task_claim is disabled in parallel isolated mode. Isolated members cannot share a task list.`
                         }
                         const task = await claimTask(

@@ -752,7 +752,7 @@ export function teamPlannerTool(ctx: PluginContext): ToolDefinition {
             ),
             previous_team: tool.schema.unknown().optional().describe("revise: the prior team JSON to revise."),
             previous_workflow: tool.schema.unknown().optional().describe("revise: the prior workflow JSON to revise."),
-            feedback: tool.schema.string().optional().describe("revise: what to change about the previous plan."),
+            feedback: tool.schema.string().max(32768).optional().describe("revise: what to change about the previous plan."),
             team: tool.schema.unknown().optional().describe("write: the team JSON to validate and persist."),
             workflow: tool.schema.unknown().optional().describe("write: the workflow JSON to validate and persist."),
             dry_run: tool.schema.boolean().optional().describe(

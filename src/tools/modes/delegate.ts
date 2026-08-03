@@ -81,10 +81,10 @@ export function teamDelegateTool(ctx: PluginContext): ToolDefinition {
             tasks: tool.schema
                 .array(
                     tool.schema.object({
-                        ref: tool.schema.string().optional().describe("human-readable id for blockedBy references"),
+                        ref: tool.schema.string().max(256).optional().describe("human-readable id for blockedBy references"),
                         subject: tool.schema.string().min(1).max(500),
                         description: tool.schema.string().min(1).max(8192),
-                        blocked_by: tool.schema.array(tool.schema.string()).optional(),
+                        blocked_by: tool.schema.array(tool.schema.string().max(256)).max(50).optional(),
                     }),
                 )
                 .min(1)

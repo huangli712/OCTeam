@@ -233,15 +233,30 @@ export async function dispatchEnsembleGate(
         if (step.correlationId === undefined) {
             step.correlationId = crypto.randomUUID();
         }
-        await dispatchToMember(
-            ctx,
-            verifier,
-            contextPrefix ? `${contextPrefix}\n\n${prompt}` : prompt,
-            verifier.worktreePath ?? ctx.directory,
-            team,
-            { stepIndex: index, correlationId: step.correlationId },
-        );
-        dispatchedAny = true;
+        // R3: do NOT pass stepIndex in eventMeta for ensemble verifiers.
+        // dispatch.ts rollback clears step.dispatchedAt/dispatchedActor/
+        // correlationId on failure, but ensemble gate shares ONE step
+        // across MULTIPLE verifiers. Clearing shared fields when verifier #2
+        // fails would wipe the successful dispatch of verifier #1.
+        // Instead, ensemble gate manages step state itself (dispatchedAny
+        // tracking + unavailable handling below).
+        try {
+            await dispatchToMember(
+                ctx,
+                verifier,
+                contextPrefix ? `${contextPrefix}\n\n${prompt}` : prompt,
+                verifier.worktreePath ?? ctx.directory,
+                team,
+                { correlationId: step.correlationId },
+            );
+            dispatchedAny = true;
+        } catch {
+            // Individual verifier dispatch failed — dispatch.ts already
+            // rolled back the MEMBER state (status, turnCount, retryingSince).
+            // The shared step fields are intentionally NOT cleared here.
+            // The unavailable list tracks this verifier for INVALID result.
+            unavailable.push(verifier.name);
+        }
     }
     // When at least one verifier dispatched, populate INVALID for any
     // unavailable verifiers so the ensemble can reach its completion

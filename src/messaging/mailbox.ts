@@ -624,6 +624,7 @@ export async function unreadInboxBytes(
     teamDirectory: string,
     recipient: string,
 ): Promise<number> {
+    let total = 0
     try {
         // C-1: unreadInboxBytes runs OUTSIDE the mailbox lock; guard the
         // inbox path's ancestor chain so a symlinked <team>/mailbox (or the
@@ -631,9 +632,25 @@ export async function unreadInboxBytes(
         const inboxP = inboxPath(teamDirectory, recipient)
         await assertNoSymlinkTraversal(teamDirectory, inboxP)
         const stat = await fs.stat(inboxP)
-        return stat.size
+        total += stat.size
     } catch (err: unknown) {
-        if (isEnoent(err)) return 0
-        throw err
+        if (!isEnoent(err)) throw err
     }
+    // H29: also count reserved directory size so backpressure accounts for
+    // reserved messages. Pre-fix code only measured inbox, allowing reserved
+    // messages to accumulate beyond the limit and flood the inbox when their
+    // TTL expires.
+    try {
+        const reservedDirectory = reservedDir(teamDirectory, recipient)
+        const entries = await fs.readdir(reservedDirectory)
+        for (const entry of entries) {
+            try {
+                const reservedStat = await fs.stat(path.join(reservedDirectory, entry))
+                total += reservedStat.size
+            } catch { /* best-effort */ }
+        }
+    } catch (err: unknown) {
+        if (!isEnoent(err)) throw err
+    }
+    return total
 }

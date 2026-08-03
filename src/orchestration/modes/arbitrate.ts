@@ -185,7 +185,15 @@ export async function handleArbitrateIdle(
                     await dispatchToMember(ctx, m, prompts.get(name)!, m.worktreePath ?? ctx.directory, team)
                     task.dispatchedParticipants.push(name)
                 } catch (err) {
-                    logSwallowed(ctx, "arbitrate: dispatch failed for disputant", err, { member: name, round: nextRound })
+                    // H24: mark errored so maybeAdvanceBarrier counts this
+                    // member as ready (line 32: errored returns true).
+                    // Pre-fix code only logged, leaving the member in idle
+                    // status but never re-dispatched — the barrier waited
+                    // forever for a response that never comes.
+                    m.status = "errored"
+                    m.error = "debate dispatch failed"
+                    task.dispatchedParticipants.push(name)
+                    logSwallowed(ctx, "arbitrate: dispatch failed for disputant (marked errored)", err, { member: name, round: nextRound })
                 }
             }
             await saveTeamState(team)

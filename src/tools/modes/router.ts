@@ -43,10 +43,11 @@ export function teamRouteTool(ctx: PluginContext): ToolDefinition {
             routes: tool.schema
                 .array(
                     tool.schema.object({
-                        name: tool.schema.string().min(1).describe("branch label the router selects by (unique)"),
+                        name: tool.schema.string().min(1).max(64).describe("branch label the router selects by (unique)"),
                         member: tool.schema
                             .string()
                             .min(1)
+                            .max(64)
                             .describe("target member to dispatch to (unique across branches)"),
                         task: tool.schema
                             .string()

@@ -25,9 +25,9 @@ import crypto from "node:crypto"
 import type { ToolContext } from "@opencode-ai/plugin"
 
 import type { PluginContext } from "../../core/context.js"
-import { loadTeamState, saveTeamState, type Team } from "../../state/store.js"
-import { teamLifecycleLockPath } from "../../state/paths.js"
-import { withLock } from "../../state/locks.js"
+import { loadTeamState, saveTeamState, isValidTeamState, type Team } from "../../state/store.js"
+import { teamLifecycleLockPath, statePath } from "../../state/paths.js"
+import { withLock, safeReadFile } from "../../state/locks.js"
 import { ensureMembersReady } from "../control/members.js"
 import { activationError } from "../../state/activation.js"
 import { resolveCallerInTeam } from "../../state/resolve.js"
@@ -226,17 +226,22 @@ export async function startOrchestration(
     let busy = false
     const spawnOwner = crypto.randomUUID()
     await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
-        // H7: re-read from disk to catch a sibling process's spawn that
-        // our cache hasn't seen yet.
+        // C1/H7: read state.json directly (NOT via loadTeamState, which
+        // re-acquires team.mutex internally and self-deadlocks the
+        // non-reentrant AsyncMutex). The teamLifecycleLockPath file lock
+        // guarantees no sibling process is concurrently writing state.json.
         try {
-            const fresh = await loadTeamState(ctx.storageRoot, team.teamName, team.leadSessionId)
-            if (fresh.spawning || fresh.activeTask) {
-                // Sync our cache with disk state.
-                team.spawning = fresh.spawning
-                team.spawningOwner = fresh.spawningOwner
-                team.activeTask = fresh.activeTask
-                busy = true
-                return
+            const diskRaw = await safeReadFile(team.directory, statePath(team.directory), { maxBytes: 1024 * 1024 })
+            if (diskRaw !== undefined) {
+                const parsed = JSON.parse(diskRaw) as unknown
+                if (isValidTeamState(parsed, team.directory) && (parsed.spawning || parsed.activeTask)) {
+                    // Sync our cache with disk state.
+                    team.spawning = parsed.spawning
+                    team.spawningOwner = parsed.spawningOwner
+                    team.activeTask = parsed.activeTask
+                    busy = true
+                    return
+                }
             }
         } catch {
             // Disk read failed — fall through to the cache check. The file
@@ -377,12 +382,19 @@ export async function startOrchestration(
             }
         })
     } finally {
-        // CRIT #2: only clear if we still own the lease.
-        if (team.spawningOwner === spawnOwner) {
-            team.spawning = false
-            team.spawningOwner = undefined
-            try { await saveTeamState(team) } catch { /* best-effort */ }
-        }
+        // CRIT #2 + R5: only clear if we still own the lease. Perform
+        // the check+clear INSIDE the mutex so a concurrent Phase 1
+        // acquiring the lifecycle lock sees the correct on-disk state.
+        // Pre-fix (R5): this ran outside mutex, so a concurrent startup
+        // could read stale spawning=true from disk and bail even though
+        // we already cleared it in memory.
+        await team.mutex.runExclusive(async () => {
+            if (team.spawningOwner === spawnOwner) {
+                team.spawning = false
+                team.spawningOwner = undefined
+                try { await saveTeamState(team) } catch { /* best-effort */ }
+            }
+        })
     }
     if (raced) return "Error: team already has an active orchestration"
     if (buildError) return buildError

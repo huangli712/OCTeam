@@ -59,6 +59,50 @@ const TASK_DESCRIPTION_MAX_LENGTH = 8_192
  * entries silently, so `["fix A", 7]` became `["fix A"]` without signaling
  * a malformed payload.
  */
+/**
+ * H21: detect duplicate keys in a JSON object string. JSON.parse uses
+ * last-wins for duplicates, so {"approved":false,"approved":true} silently
+ * becomes true. This scanner rejects such payloads.
+ */
+function hasDuplicateKeys(jsonStr: string): boolean {
+    const seen = new Set<string>()
+    let i = 0
+    const len = jsonStr.length
+    let depth = 0
+    while (i < len) {
+        const ch = jsonStr[i]
+        if (ch === '"') {
+            // Read the complete string (handle escapes).
+            const start = i + 1
+            i++
+            let esc = false
+            while (i < len) {
+                if (esc) { esc = false }
+                else if (jsonStr[i] === '\\') { esc = true }
+                else if (jsonStr[i] === '"') { break }
+                i++
+            }
+            const strEnd = i // position of closing quote
+            i++ // past closing quote
+            // At depth 1, check if next non-ws char is ':' (it's a key).
+            if (depth === 1) {
+                let j = i
+                while (j < len && /\s/.test(jsonStr[j])) j++
+                if (j < len && jsonStr[j] === ':') {
+                    const key = jsonStr.slice(start, strEnd)
+                    if (seen.has(key)) return true
+                    seen.add(key)
+                }
+            }
+            continue
+        }
+        if (ch === '{' || ch === '[') { depth++; i++; continue }
+        if (ch === '}' || ch === ']') { depth--; i++; continue }
+        i++
+    }
+    return false
+}
+
 function validateNextActions(raw: unknown): string[] | null {
     if (raw === undefined) return []
     if (!Array.isArray(raw)) return null
@@ -176,6 +220,10 @@ export function extractTaggedJSON(
     // Depth must be 0 (balanced) and exactly one top-level object.
     if (countDepth !== 0 || topLevelObjects !== 1) return undefined
     const candidate = lastPayload.slice(openIdx, lastClose + 1)
+    // H21: reject duplicate keys at the top level. JSON.parse uses
+    // last-wins semantics, so {"approved":false,"approved":true} silently
+    // becomes approved. Scan for duplicate keys before parsing.
+    if (hasDuplicateKeys(candidate)) return undefined
     try {
         const parsed = JSON.parse(candidate)
         // HIGH: reject array-wrapped objects. Pre-fix code accepted
@@ -427,9 +475,16 @@ export function parseScoreboard(
             entry.score = item.score
         }
         if (typeof item.metrics === "object" && item.metrics !== null && !Array.isArray(item.metrics)) {
-            const metrics: Record<string, number> = {}
+            // H22: if metrics exists, ALL values must be finite numbers.
+            // Pre-fix code silently dropped non-numeric values, which could
+            // change winner selection by hiding a candidate's best metric.
+            // H27: use null-prototype to prevent prototype pollution.
+            const metrics: Record<string, number> = Object.create(null)
             for (const [key, value] of Object.entries(item.metrics)) {
-                if (typeof value === "number" && Number.isFinite(value)) metrics[key] = value
+                if (typeof value !== "number" || !Number.isFinite(value)) {
+                    return { scores: [], rationale: "", parseFailed: true }
+                }
+                metrics[key] = value
             }
             if (Object.keys(metrics).length > 0) entry.metrics = metrics
         }

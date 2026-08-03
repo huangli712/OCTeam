@@ -32,7 +32,8 @@ export function teamArbitrateTool(ctx: PluginContext): ToolDefinition {
             task: tool.schema.string().min(1).max(8192).describe("the dispute / subject under arbitration"),
             arbiter: tool.schema.string().min(1).describe("member name of the arbiter (NOT \"master\", NOT a debater)"),
             debaters: tool.schema
-                .array(tool.schema.string().min(1))
+                .array(tool.schema.string().min(1).max(64))
+                .max(12)
                 .min(2)
                 .describe("debater member names (at least 2, unique; none may be the arbiter)"),
             max_rounds: tool.schema

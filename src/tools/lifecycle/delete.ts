@@ -21,7 +21,7 @@ import { unindexMasterTeam, unindexSession, isIndexedMasterOf } from "../../stat
 import { clearWakeHint } from "../../messaging/wake-hint.js"
 import { abortAndResetMembers } from "../support.js"
 import { hasUncommittedChanges, destroyWorktree } from "../../state/worktrees.js"
-import { worktreesDir, teamLifecycleLockPath } from "../../state/paths.js"
+import { worktreesDir, teamLifecycleLockPath, teamNamespaceLockPath } from "../../state/paths.js"
 import { withLock } from "../../state/locks.js"
 
 /** Delete a team, with optional force mode to skip safety checks. */
@@ -91,7 +91,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 invalidateTeam(team.directory)
             }
             try {
-                await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
+                await withLock(teamNamespaceLockPath(ctx.storageRoot), async () => withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status to "busy" since
                 // the outside-mutex check at line 45. For non-force, refuse
@@ -181,7 +181,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                         : " Worktrees were destroyed before quarantine failure."
                     throw new Error(`team_delete: quarantine failed for team "${args.team_id}" after worktree cleanup: ${quarantineErr.message}.${wtMsg}`)
                 }
-                }), team.directory)
+                }), team.directory), ctx.storageRoot)
                 if (staleSpawning) {
                     return `Error: team "${args.team_id}" is initializing (session/worktree creation in progress). Retry in a few seconds.`
                 }

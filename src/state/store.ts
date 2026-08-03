@@ -177,10 +177,17 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     // for legacy fixtures/tests that predate the field.
     if (s.leadSessionId !== undefined && (typeof s.leadSessionId !== "string" || s.leadSessionId.length === 0)) return false
     // HIGH #14: validate key fields that participate in concurrency control.
-    if (s.teamRunId !== undefined && typeof s.teamRunId !== "string") return false
+    // S8: teamRunId must be a non-empty string when present (empty string
+    // would fail runId comparisons and bypass deletion marker checks).
+    if (s.teamRunId !== undefined && (typeof s.teamRunId !== "string" || s.teamRunId.length === 0)) return false
     if (s.spawning !== undefined && typeof s.spawning !== "boolean") return false
     if (s.spawningOwner !== undefined && typeof s.spawningOwner !== "string") return false
     if (s.runnerPid !== undefined && (typeof s.runnerPid !== "number" || !Number.isFinite(s.runnerPid) || s.runnerPid <= 0)) return false
+    // S8: validate timestamp fields are finite numbers when present.
+    // Note: createdAt/activatedAt use 0 as a sentinel for "not yet set"
+    // (e.g. inactive teams). Only reject negative or non-finite values.
+    if (s.createdAt !== undefined && (typeof s.createdAt !== "number" || !Number.isFinite(s.createdAt) || s.createdAt < 0)) return false
+    if (s.activatedAt !== undefined && (typeof s.activatedAt !== "number" || !Number.isFinite(s.activatedAt) || s.activatedAt < 0)) return false
     // H57: PID 0 and negative PIDs are never valid process IDs. A tampered
     // state.json with runnerPid:0 would bypass the cross-process ownership
     // guard (process.pid is always > 0).
@@ -827,7 +834,11 @@ export async function saveTeamState(team: Team): Promise<void> {
                     const responses = at.responses as Record<string, string>
                     for (const [k, v] of Object.entries(responses)) {
                         if (typeof v === "string" && Buffer.byteLength(v, "utf8") > 32_768) {
-                            responses[k] = v.slice(0, 32_768) + "\n[...truncated by state size cap]"
+                            // Truncate by UTF-8 bytes, not UTF-16 code units.
+                            const buf = Buffer.from(v, "utf8")
+                            let end = 32_768
+                            while (end > 0 && (buf[end] & 0xc0) === 0x80) end--
+                            responses[k] = buf.toString("utf8", 0, end) + "\n[...truncated by state size cap]"
                         }
                     }
                 }
