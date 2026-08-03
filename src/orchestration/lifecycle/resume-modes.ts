@@ -67,18 +67,7 @@ export async function resumeConcurrentDispatch(
 ): Promise<void> {
     let dispatched = 0;
     for (const m of members) {
-        if (m.isMaster) continue
-        // H14: skip running members whose prompt was confirmed sent.
-        // But re-dispatch running members WITHOUT promptSentAt — the
-        // crash window between persist-running and promptAsync means
-        // the prompt was never delivered and the host will never idle.
-        if (m.status === "running" && m.promptSentAt !== undefined) continue
-        if (m.status === "running" && m.promptSentAt === undefined) {
-            // Crash window detected — mark errored so barrier can re-evaluate.
-            m.status = "errored"
-            m.error = "dispatch crash recovery: prompt was never sent"
-            continue
-        }
+        if (m.isMaster || m.status === "running") continue;
         if (shouldDispatch(m)) {
             await dispatchToMember(ctx, m, text(m), m.worktreePath ?? ctx.directory, team);
             dispatched++;

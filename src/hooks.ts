@@ -12,6 +12,8 @@ import type { Hooks } from "@opencode-ai/plugin"
 import type { PluginContext } from "./core/context.js"
 import type { Team } from "./state/store.js"
 import { activeTeams, loadTeamState, saveTeamState } from "./state/store.js"
+import { safeReadFile } from "./state/locks.js"
+import { statePath } from "./state/paths.js"
 import { resolveMasterTeams, resolveTeamMember, isMasterSession } from "./state/resolve.js"
 import { AckMessagesError, ackMessages, pollMailbox, releaseStaleReservations } from "./messaging/mailbox.js"
 import { formatMailboxInjection } from "./messaging/format.js"
@@ -623,20 +625,24 @@ export async function sweepTeamOnce(
         // it is owned by a live sibling process.
         if (team.runnerPid !== undefined && team.runnerPid !== process.pid) return
         if (team._stateUnreadable) {
-            // H32: pre-fix code permanently returned without retrying.
-            // Attempt a fresh loadTeamState — the disk may have recovered
-            // since the flag was set (e.g. transient NFS issue resolved).
-            // If it succeeds, _stateUnreadable is cleared internally and
-            // we can proceed. If it fails again, bail as before.
+            // N1-H32: pre-fix code called loadTeamState() here, but sweepTeamOnce
+            // already holds team.mutex. loadTeamState's cache refresh internally
+            // re-acquires the same non-reentrant mutex → permanent self-deadlock.
+            // Fix: read state.json directly via safeReadFile (same pattern as C1).
             try {
-                await loadTeamState(ctx.storageRoot, team.teamName, team.leadSessionId)
+                const raw = await safeReadFile(team.directory, statePath(team.directory), { maxBytes: 1024 * 1024 })
+                if (raw !== undefined) {
+                    JSON.parse(raw)  // throws if corrupt
+                    team._stateUnreadable = false
+                } else {
+                    return  // ENOENT — team deleted
+                }
             } catch {
                 logEvent(ctx, "error", "sweep: team state still unreadable after retry", {
                     team: team.teamName,
                 })
                 return
             }
-            // Successfully reloaded — fall through to normal sweep processing.
         }
         if (team._persistDirty) {
             await persistTeamState(ctx, team, "persist dirty team state failed (sweep retry)", {

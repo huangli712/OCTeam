@@ -232,11 +232,9 @@ export async function handleTollgateIdle(
         if (member.name !== stage.member) return            // stray idle
         if (!task.responses[stage.member]) {
             // S7: use a separate counter for empty producer output so it
-            // does not consume gate FAIL retries. Pre-fix code shared
-            // stage.attempts, so one empty output could exhaust maxGateRetries
-            // before any FAIL had a chance to retry.
+            // does not consume gate FAIL retries.
             stage.producerEmptyAttempts = (stage.producerEmptyAttempts ?? 0) + 1
-            const maxEmpty = 3  // hard cap on consecutive empty producer outputs
+            const maxEmpty = 3
             if (stage.producerEmptyAttempts > maxEmpty) {
                 await finishRun(ctx, team, `tollgate_failed:${stage.member}:empty_output`, "failed")
                 return
@@ -244,6 +242,9 @@ export async function handleTollgateIdle(
             await advanceToGatedStage(ctx, team, stage)
             return
         }
+        // S7: reset on successful non-empty output so the counter tracks
+        // CONSECUTIVE empty outputs, not cumulative.
+        stage.producerEmptyAttempts = 0
         if (await maybeRequestApproval(ctx, team, {
             kind: "tollgate_gate",
             stage: task.currentStageIndex,
