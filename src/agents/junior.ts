@@ -39,6 +39,6 @@ export const juniorAgent: OcteamAgentConfig = {
     description: "OCTeam focused task executor",
     temperature: 0.1,
     color: "#20b2aa",
-    permission: { "*": "deny", edit: "allow", task: "deny", bash: "allow", webfetch: "deny", read: "allow", glob: "allow", grep: "allow" },
+    permission: { "*": "deny", edit: { "*": "allow" }, task: "deny", bash: "allow", webfetch: "deny", read: "allow", glob: "allow", grep: "allow" },
     prompt: JUNIOR_PROMPT,
 }

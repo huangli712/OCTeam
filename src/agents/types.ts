@@ -21,7 +21,7 @@ export type OcteamPermissionObject = {
  * so each agent definition assigns cleanly into opencode's live `cfg.agent`.
  */
 export interface OcteamAgentPermission {
-    edit?: OcteamPermissionAction
+    edit?: OcteamPermissionAction | OcteamPermissionObject
     task?: OcteamPermissionAction | OcteamPermissionObject
     bash?: OcteamPermissionAction | OcteamPermissionObject
     webfetch?: OcteamPermissionAction
