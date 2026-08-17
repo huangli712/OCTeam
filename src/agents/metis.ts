@@ -47,6 +47,15 @@ export const metisAgent: OcteamAgentConfig = {
     color: "#a855f7",
     // N1: '*' first so explicit allows override regardless of host match order.
     // N2: nested task permission replaces ineffective taskTargets field.
-    permission: { "*": "deny", edit: "deny", task: { "*": "deny", "oct-librarian": "allow", "oct-explore": "allow" }, bash: "deny", webfetch: "deny", read: "allow", glob: "allow", grep: "allow" },
+    permission: {
+        "*": "deny",
+        edit: "deny",
+        task: { "*": "deny", "oct-librarian": "allow", "oct-explore": "allow" },
+        bash: "deny",
+        webfetch: "deny",
+        read: "allow",
+        glob: "allow",
+        grep: "allow",
+    },
     prompt: METIS_PROMPT,
 }

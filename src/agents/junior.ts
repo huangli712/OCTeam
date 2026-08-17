@@ -39,6 +39,21 @@ export const juniorAgent: OcteamAgentConfig = {
     description: "OCTeam focused task executor",
     temperature: 0.1,
     color: "#20b2aa",
-    permission: { "*": "deny", edit: { "*": "allow" }, task: "deny", bash: "allow", webfetch: "deny", read: "allow", glob: "allow", grep: "allow" },
+    permission: {
+        "*": "deny",
+        // File tools (edit/write/patch) ask with a path RELATIVE to the worktree:
+        // allow by default, block escapes ("../.."), re-allow /tmp (relative form
+        // varies with worktree depth, hence the leading wildcard).
+        edit: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
+        // Paths outside the worktree ALSO ask external_directory with an
+        // ABSOLUTE path pattern — allow exactly /tmp there.
+        external_directory: { "*": "deny", "/tmp/*": "allow" },
+        task: "deny",
+        bash: "allow",
+        webfetch: "deny",
+        read: "allow",
+        glob: "allow",
+        grep: "allow",
+    },
     prompt: JUNIOR_PROMPT,
 }

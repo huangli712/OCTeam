@@ -43,6 +43,15 @@ export const momusAgent: OcteamAgentConfig = {
     // task allowed: momus consults oracle/explore for review validation
     // N1: '*' first so explicit allows override regardless of host match order.
     // N2: nested task permission replaces ineffective taskTargets field.
-    permission: { "*": "deny", edit: "deny", task: { "*": "deny", "oct-oracle": "allow", "oct-explore": "allow" }, bash: "deny", webfetch: "deny", read: "allow", glob: "allow", grep: "allow" },
+    permission: {
+        "*": "deny",
+        edit: "deny",
+        task: { "*": "deny", "oct-oracle": "allow", "oct-explore": "allow" },
+        bash: "deny",
+        webfetch: "deny",
+        read: "allow",
+        glob: "allow",
+        grep: "allow",
+    },
     prompt: MOMUS_PROMPT,
 }

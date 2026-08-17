@@ -36,6 +36,15 @@ export const multimodalLookerAgent: OcteamAgentConfig = {
     description: "OCTeam media analysis specialist",
     temperature: 0.1,
     color: "#ec4899",
-    permission: { "*": "deny", edit: "deny", task: "deny", bash: "deny", webfetch: "deny", read: "allow", glob: "allow", grep: "allow" },
+    permission: {
+        "*": "deny",
+        edit: "deny",
+        task: "deny",
+        bash: "deny",
+        webfetch: "deny",
+        read: "allow",
+        glob: "allow",
+        grep: "allow",
+    },
     prompt: MULTIMODAL_LOOKER_PROMPT,
 }

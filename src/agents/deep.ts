@@ -43,6 +43,21 @@ export const deepAgent: OcteamAgentConfig = {
     description: "OCTeam heavy-duty executor for long-range, complex, challenging tasks",
     temperature: 0.1,
     color: "#f59e0b",
-    permission: { "*": "deny", edit: "allow", task: "deny", bash: "allow", webfetch: "allow", read: "allow", glob: "allow", grep: "allow" },
+    permission: {
+        "*": "deny",
+        // File tools (edit/write/patch) ask with a path RELATIVE to the worktree:
+        // allow by default, block escapes ("../.."), re-allow /tmp (relative form
+        // varies with worktree depth, hence the leading wildcard).
+        edit: { "*": "allow", "../*": "deny", "*tmp/*": "allow" },
+        // Paths outside the worktree ALSO ask external_directory with an
+        // ABSOLUTE path pattern — allow exactly /tmp there.
+        external_directory: { "*": "deny", "/tmp/*": "allow" },
+        task: "deny",
+        bash: "allow",
+        webfetch: "allow",
+        read: "allow",
+        glob: "allow",
+        grep: "allow",
+    },
     prompt: DEEP_PROMPT,
 }
