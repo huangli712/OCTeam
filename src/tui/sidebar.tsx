@@ -80,7 +80,8 @@ export function SessionNavigatorSidebar(props: {
     }
 
     // Debounce refreshes by 300 ms to coalesce bursts. Each refresh performs
-    // N+1 HTTP calls plus O(n^2) child-count work, so batching reduces load.
+    // N+1 HTTP calls plus a full child-count pass over every session, so
+    // batching reduces load.
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     const scheduleRefresh = () => {
         clearTimeout(refreshTimer)

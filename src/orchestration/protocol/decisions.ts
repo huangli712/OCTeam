@@ -25,8 +25,9 @@ import type {
 // read_only stage emits <no_issues/> or its Chinese-language alias to declare
 // clean without relying on an ambiguous keyword substring.
 //
-// The tag MUST appear at the end of the output after trailing whitespace. This
-// makes it the decider's final declaration rather than a mid-text reference.
+// The tag MUST appear at the END of the output once trailing whitespace is
+// trimmed. This makes it the decider's final declaration rather than a
+// mid-text reference.
 const NO_ISSUES_TAG = /<(?:no_issues|无问题)\s*\/?>\s*$/
 const TASK_SUBJECT_MAX_LENGTH = 500
 const TASK_DESCRIPTION_MAX_LENGTH = 8_192
@@ -204,9 +205,9 @@ export function parseDecision(rawText: string): DecisionRecord & { parseFailed?:
         timestamp: Date.now(),
         parseFailed: true,
     })
-    // Lazy {...} + closing tag anchor: the regex expands until it finds the
-    // brace that precedes </decision>, so nested braces in structured
-    // nextActions parse correctly.
+    // extractTaggedJSON takes the last <decision> pair and brace-scans backward
+    // from the payload's final `}`, so nested braces in structured nextActions
+    // parse correctly.
     const parsed = extractTaggedJSON(rawText, "decision", "决策")
     if (!parsed) return fail()
     // Strictly accept only explicit "done", explicit "continue", or boolean
@@ -321,8 +322,8 @@ export function parseArbitrationDecision(
 /**
  * Parse a verifier's <verdict>{...}</verdict> block or its Chinese-language alias into the
  * three-valued verdict (PASS/FAIL/INVALID) plus rationale and diff. Mirrors
- * parseArbitrationDecision's regex/JSON shape but owns a DISTINCT tag:
- * verdict tag. It MUST NOT reuse the ruling tag owned by
+ * parseArbitrationDecision's regex/JSON shape but owns a DISTINCT <verdict>
+ * tag. It MUST NOT reuse the <ruling> tag owned by
  * parseArbitrationDecision because a shared tag would cross-wire parsers.
  * An absent/invalid tag returns parseFailed so handleTollgateIdle treats the
  * response as INVALID (the verifier could not evaluate), NOT a producer FAIL.
@@ -366,9 +367,9 @@ export function parseSelection(
  * malformed JSON returns parseFailed. `scores` must be a non-empty array; each
  * entry MUST be a valid object with a string `member` — a single invalid
  * entry makes the entire scoreboard parseFailed without lossy filtering.
- * `score` and each `metrics` value are coerced to finite numbers
- * (non-finite values are dropped); `passed` defaults to false when absent;
- * `rationale` is optional. Duplicate `member` entries make the entire
+ * `score` and each `metrics` value must be finite numbers; a non-finite value
+ * makes the entire scoreboard parseFailed. `passed` defaults to false when
+ * absent; `rationale` is optional. Duplicate `member` entries make the entire
  * scoreboard parseFailed so selection never sees ambiguous candidates.
  */
 export function parseScoreboard(
@@ -440,8 +441,10 @@ export function parseScoreboard(
 
 /**
  * Parse a raw `issues` array from a verdict payload into typed WorkflowIssue
- * objects. Drops entries missing a valid severity. Returns undefined when the
- * input is not an array or no valid issues remain.
+ * objects. Any malformed entry (non-object, missing severity, or unknown
+ * severity label) makes the whole field unevaluable: returns undefined.
+ * Returns [] for a legitimate empty issues array, and undefined when input is
+ * not an array.
  */
 function parseWorkflowIssues(raw: unknown): WorkflowIssue[] | undefined {
     if (!Array.isArray(raw)) return undefined

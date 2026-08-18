@@ -85,8 +85,9 @@ export async function handleQuorumIdle(ctx: PluginContext, team: Team): Promise<
         const threshold = Math.floor(nEff / 2) + 1
 
         task.ballots = ballots
-        // Record the combined count for backward compatibility, but also
-        // store the split for diagnostic tools.
+        // Record the combined abstain count for backward compatibility. The
+        // errored/malformed split stays local and surfaces only in the
+        // all-abstained termination reason below.
         task.erroredCount = abstainCount
         task.nEff = nEff
         task.threshold = threshold

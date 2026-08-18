@@ -104,9 +104,9 @@ export function teamTaskCreateTool(ctx: PluginContext): ToolDefinition {
                     )
                     return
                 }
-                // Use at.mode === "isolated", the authoritative field,
-                // not !at.tasks (tamperable — a forged state.json with
-                // mode:"isolated" + non-empty tasks bypassed this check).
+                // Use at.mode === "isolated", the authoritative field. Presence of
+                // at.tasks is tamperable — a forged state.json with mode:"isolated"
+                // plus a non-empty tasks array would slip past a tasks-based check.
                 const at = team.activeTask
                 if (at?.type === "parallel" && at.mode === "isolated") {
                     blockedByError = (

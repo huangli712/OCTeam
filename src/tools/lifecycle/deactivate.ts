@@ -47,7 +47,7 @@ export function teamDeactivateTool(ctx: PluginContext): ToolDefinition {
             await withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status to "busy" since
-                // the outside-mutex check at line 38. Refuse rather than
+                // the outside-mutex check at line 40. Refuse rather than
                 // deactivating during an active run. Also refuse during
                 // spawning (Phase 2 member sessions are being created).
                 if (team.status === "busy" || team.activeTask !== undefined || team.spawning) {

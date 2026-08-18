@@ -336,9 +336,11 @@ export async function ensureMembersReady(
     const { toSpawn, waitNames } = planMemberSpawn(team)
     if (waitNames.size === 0) return
 
-    // Read config.json from team.directory because project scope includes a
-    // session path segment while user scope does not. The resolved team path
-    // handles both layouts without a scope mismatch.
+    // Read config.json from team.directory, not readTeamSpec(storageRoot,
+    // teamName, leadSessionId): passing leadSessionId as a path segment is
+    // correct for project scope (<root>/<sid>/teams/<name>) but wrong for
+    // user scope (<root>/teams/<name>, no session segment). team.directory
+    // is already scope-resolved.
     const spec = toSpawn.length > 0
         ? await readTeamSpecFromDir(team.directory)
         : undefined

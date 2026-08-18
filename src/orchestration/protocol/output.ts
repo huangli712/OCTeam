@@ -320,7 +320,9 @@ export function buildRolePrompt(
     lines.push("", "<role-instruction>", rolePreset(spec.role), "</role-instruction>")
     // NOTE: spec.prompt is intentionally delivered as <member-instruction> on
     // the first real task dispatch (see prependStandingInstruction in dispatch.ts).
-    // Role setup stays identity-only so members acknowledge and idle promptly.
+    // Embedding it here makes members execute the task during the role-setup
+    // barrier, blowing ROLE_SETUP_BARRIER_TIMEOUT_MS and letting the later task
+    // turn overwrite the deliverable with an ack. Role setup is identity-only.
     lines.push(
         "",
         "<tools-instruction>",

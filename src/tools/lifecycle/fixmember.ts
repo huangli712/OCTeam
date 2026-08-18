@@ -297,9 +297,9 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                             caller.leadSessionId, caller.storageRoot,
                         )
                     }
-                    // Defer worktree destruction until persistence succeeds so a
-                    // write failure can roll back the member without losing its
-                    // worktree or session.
+                    // Worktree destruction is deferred until persistence succeeds
+                    // (see the destroy block below) so a write failure can roll back
+                    // the member without losing its worktree or session.
                     try {
                         await fs.rename(inboxPath(team.directory, oldName), inboxPath(team.directory, newName))
                     } catch (err) {

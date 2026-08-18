@@ -69,7 +69,8 @@ export class AckMessagesError extends Error {
 
 /**
  * Append one message to a recipient's inbox under its mailbox lock.
- * Enforces backpressure and registers directive authentication after the write.
+ * Caller handles broadcast by invoking this once per recipient. Enforces
+ * backpressure and registers directive authentication after the write.
  */
 export async function writeMailboxMessage(
     teamDirectory: string,
@@ -415,9 +416,9 @@ export async function releaseStaleReservations(
 ): Promise<void> {
     return withLock(mailboxLockPath(teamDirectory, recipient), async () => {
         const dir = reservedDir(teamDirectory, recipient)
-        // reservedDir is <team>/mailbox/reserved/<recipient>; the lock
+        // reservedDir is <team>/mailbox/<recipient>.reserved; the lock
         // walks ancestors of <team>/mailbox/<recipient>.lock only, so the
-        // reserved/ subdir chain needs its own guard before readdir.
+        // <recipient>.reserved chain needs its own guard before readdir.
         try {
             await assertNoSymlinkTraversal(teamDirectory, dir)
         } catch (err: unknown) {
@@ -590,7 +591,7 @@ export async function countUnreadMessages(
  * Total on-disk byte size of a recipient's inbox and reserved messages.
  * Used for backpressure checks (messageUnreadMaxBytes) and measures actual
  * bytes, including max-size message bodies. Returns 0 when both are absent.
- * Cheaper than countUnreadMessages (one stat, no JSON parse).
+ * Cheaper than countUnreadMessages (stats only, no JSON parse).
  */
 export async function unreadInboxBytes(
     teamDirectory: string,

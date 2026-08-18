@@ -18,8 +18,10 @@
  * runs concurrently. Iterates BOTH scopes: project (session-segmented) + user
  * (flat).
  *
- * Layer note: this module lives in orchestration/lifecycle/ because its lifecycle
- * dependencies would invert the state layer dependency if placed under state/.
+ * Layer note: lives in orchestration/lifecycle/ (not state/) for historical
+ * reasons — the original implementation persisted terminated run records here.
+ * That persistence was removed; the module stays put to avoid wide import
+ * churn.
  */
 
 import fs from "node:fs/promises"

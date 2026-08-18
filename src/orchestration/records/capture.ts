@@ -63,7 +63,9 @@ export async function captureMemberOutput(
     // Do not capture output for a member whose workflow step has been
     // skipped (e.g. any_success cancelled their branch). Late idle events
     // from such members would pollute task.responses with output from a
-    // cancelled branch. Check both workflow step status and member status.
+    // cancelled branch. This guard checks member status; the workflow
+    // step-status gate is applied by the caller (processIdle) before capture
+    // is invoked.
     if (member.status === "errored") return { fresh: false, reason: "stale" }
     // Find the start of the current turn (last user message).
     let turnStart = 0

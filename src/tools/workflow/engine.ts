@@ -239,7 +239,8 @@ export function teamWorkflowTool(ctx: PluginContext): ToolDefinition {
         ),
     }
     /** Fanout branch steps may only be tasks or gates.
-     *  Validation and lowering reject nested fanout and join steps. */
+     *  Validation rejects nested fanout and join steps; lowering silently
+     *  skips any that reach it. */
     const workflowBranchStepSchema = tool.schema.object({
         kind: tool.schema.enum(["task", "gate"]),
         ...workflowStepSchemaFields,

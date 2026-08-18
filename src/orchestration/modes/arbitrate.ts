@@ -146,8 +146,6 @@ export async function handleArbitrateIdle(
                 return
             }
             // Next debate round: broadcast prior positions, re-dispatch debaters.
-            // Increment round AFTER the dispatch loop (not before) so a partial
-            // dispatch failure followed by a barrier re-fire does not skip a round.
             const nextRound = (task.currentRound ?? 1) + 1
             // Build the debate prompt before clearing responses because later
             // rounds include prior positions from task.responses. Clearing first

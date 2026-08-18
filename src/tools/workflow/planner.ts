@@ -182,8 +182,9 @@ function buildCorrectionPrompt(error: string): string {
 }
 
 /** Poll the child session until it yields complete assistant text, or throw on timeout.
- * Wait for a closing tag or stable output so partial streams are never evaluated
- * as complete responses. */
+ * Prefer the closing tag, falling back to output that stays unchanged across two
+ * polls; on timeout any partial output is returned so the correction loop can
+ * report the real error. */
 async function pollForAssistantOutput(ctx: PluginContext, childId: string, poll: PollConfig): Promise<string> {
     const deadline = Date.now() + poll.timeoutMs
     let lastOutput = ""
@@ -382,14 +383,14 @@ function validatePlannerTeam(teamId: string, team: unknown): { memberNames: stri
         if (typeof member.role !== "string" || member.role.length === 0) {
             return { error: `Error: team.members[${i}] is missing a role` }
         }
-        // Validate roles against the preset pattern used by team_create.
+        // Roles must be lowercase letters only — stricter than team_create's /^[a-zA-Z]+$/ role pattern.
         if (!/^[a-z]+$/.test(member.role)) {
             return { error: `Error: team.members[${i}] role "${member.role}" must be lowercase letters only` }
         }
         if (typeof member.prompt !== "string" || member.prompt.length === 0) {
             return { error: `Error: team.members[${i}] is missing a prompt` }
         }
-        // Apply team_create's prompt and model length caps.
+        // Apply team_create's 8192-character prompt cap, plus a planner-only 256-character model cap.
         if (member.prompt.length > 8192) {
             return { error: `Error: team.members[${i}] prompt exceeds 8192 characters` }
         }
@@ -636,7 +637,7 @@ async function runWriteOp(ctx: PluginContext, args: TeamPlannerArgs): Promise<st
     if (args.dry_run === true) {
         return `Validation OK for "${args.team_id}". Dry run — nothing written.\n\n${artifact}`
     }
-    // Hold the state lock across the existsSync check, backup, both writes,
+    // Hold the planner lock across the existsSync check, backup, both writes,
     // and rollback so a concurrent process (another team_planner write, or team
     // lifecycle writer under the same directory) cannot interleave between the
     // no-overwrite check and the writes, producing a torn team/workflow pair.

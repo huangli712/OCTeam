@@ -70,8 +70,9 @@ export async function approveLoopDone(ctx: PluginContext, team: Team): Promise<v
     const decision = parseDecision(deciderOutput ?? "")
     // Record the final decision BEFORE delivering so summarizeLoop reads it as
     // the last history entry (final: done + rationale), not after (final: n/a).
-    // The HITL trigger in handleLoopIdle already records this decision,
-    // so skip if the last entry is identical (same round + decision verb).
+    // The max_rounds HITL trigger in handleLoopIdle records this decision
+    // before pausing (the decider-done path does not), so skip only when the
+    // last entry is identical (same round + decision verb).
     const history = task.decisionHistory ?? []
     const prev = history[history.length - 1]
     if (!prev || prev.round !== (task.currentRound ?? 0) || prev.decision !== decision.decision) {
@@ -86,7 +87,9 @@ export async function rejectLoopDone(ctx: PluginContext, team: Team, feedback?: 
     if (!task || task.type !== "loop") return
     const deciderOutput = task.responses[task.deciderMember ?? ""]
     const decision = parseDecision(deciderOutput ?? "")
-    // The HITL trigger already records this decision.
+    // The max_rounds HITL trigger in handleLoopIdle records this decision
+    // before pausing (the decider-done path does not), so skip only when the
+    // last entry is identical (same round + decision verb).
     const history = task.decisionHistory ?? []
     const prev = history[history.length - 1]
     if (!prev || prev.round !== (task.currentRound ?? 0) || prev.decision !== decision.decision) {

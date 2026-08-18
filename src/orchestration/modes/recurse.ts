@@ -347,9 +347,8 @@ export async function handleRecurseIdle(ctx: PluginContext, team: Team, member: 
                 detail: `recurse: malformed <decompose> on task ${T.id}, re-dispatched`,
             })
         } else {
-            // Leaf: finalize with the member's output,
-            // or a placeholder when the member produced nothing (so an aggregating
-            // parent reads a recognizable sub-result, not an empty string).
+            // Leaf: finalize with the member's output. An empty output is not
+            // finalized — the member is re-dispatched for a direct solve instead.
             // Reset aggregation stall counter when the decomposer claims and
             // finalizes the ROOT — the decomposer is doing its job.
             if (T.id === task.rootTaskId) {

@@ -43,7 +43,7 @@ export async function appendJsonl(filePath: string, obj: unknown, trustedRoot?: 
  *
  * Validate every field consumed by downstream code. A non-string `to` crashes
  * path operations, a non-string `kind` breaks switch statements, and a non-string
- * `correlationId` (when present) crashed formatMailboxInjection's
+ * `correlationId` (when present) crashes formatMailboxInjection's
  * String.replace call. One maliciously crafted line could block an entire
  * mailbox batch (never acked, retried forever).
  *

@@ -88,8 +88,9 @@ async function fsyncDir(dir: string): Promise<void> {
 
 /**
  * Cross-process exclusive file lock built on exclusive-create (fs.open 'wx').
- * An existing lock is never unlinked by a waiter because stat/read/unlink cannot
- * identify one lock generation atomically. Waiters poll until release or timeout.
+ * A waiter never unlinks a live lock because stat/read/unlink cannot identify
+ * one lock generation atomically; only a zero-byte stale lock older than 1s is
+ * unlinked, and only by a later reap pass. Waiters poll until release or timeout.
  * While held, a heartbeat refreshes mtime; release verifies pid ownership before
  * unlinking. Used to guard state.json writes and mailbox reservations.
  */
@@ -138,9 +139,11 @@ export async function withLock<T>(
 }
 
 /**
- * Pure stale-lock policy helper retained for callers and direct tests. acquireLock
- * deliberately does not use it: deciding from stat/read and then unlinking has a
- * TOCTOU window in which a waiter can delete a newer lock generation.
+ * Pure stale-lock policy helper: true once the lock is past its TTL and its
+ * owner PID is dead. acquireLock reaches it through maybeReapStaleLock, which
+ * re-reads the PID and truncates instead of unlinking outright, because
+ * deciding from stat/read and then unlinking has a TOCTOU window in which a
+ * waiter can delete a newer lock generation.
  */
 export function shouldReapStaleLock(
     mtimeMs: number,
@@ -153,11 +156,14 @@ export function shouldReapStaleLock(
 
 /**
  * Stale-lock recovery: if the lock's owner PID is dead and mtime exceeds
- * TTL, unlink it so the next open("wx") retry can acquire. Closes the gap
- * where releaseLock failed (EPERM, crash mid-release) and the lock file
+ * TTL, truncate it to zero bytes instead of unlinking it outright. A lock
+ * that stays zero-byte for more than 1s is unlinked by a later pass through
+ * this function, and the next open("wx") retry can then acquire. Closes the
+ * gap where releaseLock failed (EPERM, crash mid-release) and the lock file
  * became a permanent orphan — all future acquireLock calls would spin to
- * timeout with no recovery. TOCTOU-safe: after unlink, acquireLock retries
- * open("wx"); if another process grabbed it, we get EEXIST and loop.
+ * timeout with no recovery. TOCTOU-safe: truncation leaves the inode in
+ * place for a racing acquirer, and acquireLock retries open("wx") after
+ * every reap pass; if another process grabbed it, we get EEXIST and loop.
  */
 async function maybeReapStaleLock(lockPath: string): Promise<void> {
     try {
@@ -184,7 +190,8 @@ async function maybeReapStaleLock(lockPath: string): Promise<void> {
         const pid = parseInt(pidStr.trim(), 10)
         if (!Number.isFinite(pid) || pid <= 0) {
             // A zero-byte lock may be a NEW lock between open("wx") and
-            // writeFile(pid). Only unlink if it's been zero-byte for more
+            // writeFile(pid), or a stale lock truncated by an earlier pass
+            // through this function. Only unlink if it's been zero-byte for more
     // than 1 second — a freshly created lock should have its PID written
     // within milliseconds. This narrows the race window from "any" to
     // "stale for > 1s".
@@ -277,8 +284,9 @@ async function acquireLock(lockPath: string): Promise<void> {
  * Release a lock previously acquired by this process. Reads the pid recorded in
  * the lock file and unlinks ONLY when it matches the current process: this
  * prevents a slow holder from blindly deleting a lock that another process has
- * already, legitimately, re-acquired. A missing or unreadable
- * lock file is treated as already released.
+ * already, legitimately, re-acquired. A missing lock file is treated as already
+ * released; an unreadable one (EACCES, EIO) is rethrown so the caller learns
+ * the release failed.
  */
 async function releaseLock(lockPath: string): Promise<void> {
     let owner: string
@@ -314,8 +322,8 @@ async function releaseLock(lockPath: string): Promise<void> {
  *
  * Walks every ancestor of `target` from leaf up to (but not including)
  * `trustedRoot` with `lstat`, refusing any symlink. The trusted root itself is
- * assumed already verified (team_create confirms the team directory is a real
- * directory under storageRoot before any state is written to it).
+ * also lstat-checked and refused when it is a symlink; ENOENT is tolerated
+ * because the root may not exist yet.
  *
  * Note: like all userspace traversal checks this is TOCTOU-vulnerable — an
  * attacker who can swap a path component between this check and the subsequent

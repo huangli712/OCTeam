@@ -177,15 +177,15 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     if (s.teamRunId !== undefined && (typeof s.teamRunId !== "string" || s.teamRunId.length === 0)) return false
     if (s.spawning !== undefined && typeof s.spawning !== "boolean") return false
     if (s.spawningOwner !== undefined && typeof s.spawningOwner !== "string") return false
+    // PID 0 and negative PIDs are never valid process IDs. A tampered
+    // state.json with runnerPid:0 would bypass the cross-process ownership
+    // guard (process.pid is always > 0).
     if (s.runnerPid !== undefined && (typeof s.runnerPid !== "number" || !Number.isFinite(s.runnerPid) || s.runnerPid <= 0)) return false
     // Validate timestamp fields as finite numbers when present.
     // Note: createdAt/activatedAt use 0 as a sentinel for "not yet set"
     // (e.g. inactive teams). Only reject negative or non-finite values.
     if (s.createdAt !== undefined && (typeof s.createdAt !== "number" || !Number.isFinite(s.createdAt) || s.createdAt < 0)) return false
     if (s.activatedAt !== undefined && (typeof s.activatedAt !== "number" || !Number.isFinite(s.activatedAt) || s.activatedAt < 0)) return false
-    // PID 0 and negative PIDs are never valid process IDs. A tampered
-    // state.json with runnerPid:0 would bypass the cross-process ownership
-    // guard (process.pid is always > 0).
     if (s.bounds !== undefined) {
         if (typeof s.bounds !== "object" || s.bounds === null) return false
         // All bounds values must be non-negative finite numbers.
@@ -1055,7 +1055,10 @@ export async function initTeamState(
     return team
 }
 
-/** Fence writes, mark a team deleted, and move its directory into quarantine. */
+/**
+ * Fence writes, mark a team deleted, and move its directory into quarantine.
+ * Returns the quarantine directory path.
+ */
 export async function quarantineTeamStorage(
     storageRoot: string,
     teamName: string,

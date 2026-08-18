@@ -214,7 +214,7 @@ export async function handleInvalidVerdict(
         if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
             return;
         // Honor task-level human approval before advancing, as in
-        // handleGatePass). Without this, a malformed+skip would advance to the
+        // handleGatePass. Without this, a malformed+skip would advance to the
         // next step without the human review pause that human_approval promises.
         const wfSteps = task.steps ?? [];
         const malformedNextIndex = wfSteps.findIndex((s) => !s.completed);
@@ -390,7 +390,7 @@ export async function handleGatePass(
     const gotoIdx = gatedGotoIndex(steps, gateIndex, step.onPassGoto);
     if (gotoIdx === -2) {
         // The where condition was unevaluable because the verifier omitted a
-        // required field). Route to INVALID instead of silently advancing
+        // required field. Route to INVALID instead of silently advancing
         // to the default successor — the verifier's contract was violated.
         //
         // The step MUST NOT be marked completed before this check: the
@@ -449,7 +449,6 @@ type FailVerdictPayload = GateVerdictContext & {
     v: ParsedVerdict;
 };
 
-/** Apply a terminal FAIL gate policy, including skip and bounded goto paths. */
 export async function handleGateFail(
     ctx: PluginContext,
     team: Team,
@@ -474,7 +473,7 @@ export async function handleGateFail(
         if (await maybePauseAfterWorkflowStep(ctx, team, gateIndex))
             return;
         // Honor task-level human approval before advancing, as in
-        // handleGatePass). Without this, a FAIL+skip would advance without
+        // handleGatePass. Without this, a FAIL+skip would advance without
         // the human review pause that human_approval promises.
         const failSkipNextIndex = steps.findIndex((s) => !s.completed);
         if (
@@ -645,7 +644,7 @@ export async function handleGateRetry(
             retryStep.output = undefined;
             retryStep.taskAttempts = 0;
             // Reset task timeoutAttempts, as in the gate branch
-            // below and the backward-jump reset in engine.ts).
+            // below and the backward-jump reset in engine.ts.
             retryStep.timeoutAttempts = 0;
         }
         if (retryStep.kind === "gate") {
@@ -682,7 +681,7 @@ export async function handleGateRetry(
     moveActiveWorkflowStep(task, gateIndex, producerIdx);
     // Honor producer approval_before on retry re-dispatch (parity with goto
     // backward jump and the initial advance path). Without this, a FAIL retry
-    // silently bypassed the leader gate that the step declared.
+    // would silently bypass the leader gate that the step declared.
     if (await maybePauseBeforeWorkflowStep(ctx, team, producerIdx)) return;
     const feedback =
         `[Gate FAILED - attempt ${step.attempts}/${maxR}]\n` +

@@ -84,7 +84,9 @@ export function teamQuorumTool(ctx: PluginContext): ToolDefinition {
         async execute(args, context) {
             return startOrchestration(
                 args.team_id, context, ctx, "team_quorum",
-                // validate — inline loop matching arena.ts:119-123 pattern
+                // validate — participant checks inlined (arena uses assertMember in
+                // its candidate loop; here membership is checked inline alongside
+                // the duplicate-name guard)
                 (team) => {
                     if (!args.task) return "Error: team_quorum requires `task`"
                     if (!args.vote_key) return "Error: team_quorum requires `vote_key`"

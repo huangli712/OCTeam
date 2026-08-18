@@ -66,7 +66,7 @@ export async function abortAndResetMembers(
     team: Team,
 ): Promise<Array<{ member: string; aborted: boolean }>> {
     // Abort running member turns (best-effort).
-    // Track abort failures so affected members remain errored instead of being
+    // Track abort failures so affected members are marked errored instead of being
     // reset to idle while their sessions may still be running.
     const abortFailed = new Set<string>()
     const abortResults: Array<{ member: string; aborted: boolean }> = []
@@ -89,7 +89,7 @@ export async function abortAndResetMembers(
     // Reset every non-master member to a clean idle state.
     for (const m of team.members) {
         if (m.isMaster) continue
-        // Members whose abort failed remain errored; all others return to idle.
+        // Members whose abort failed are marked errored; all others return to idle.
         if (abortFailed.has(m.name)) {
             m.status = "errored"
         } else {

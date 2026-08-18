@@ -199,6 +199,7 @@ export function teamResumeTool(ctx: PluginContext): ToolDefinition {
                     // handleXxxIdle already cleared activeTask + set status; this only
                     // clears lastInterruptedTask, which is idempotent-safe.)
                     team.lastInterruptedTask = undefined
+                    // Clear the resume lease set in Phase 1.
                     team.spawning = false
                     await saveTeamState(team)
                 })

@@ -18,7 +18,7 @@ import { assertNoSymlinkTraversal } from "../../state/locks.js"
 const SUPPORTED_WORKFLOW_FILE_VERSIONS = new Set([1])
 
 // Resource caps protect caller-supplied JSON read from the
-// project workspace, which member agents can write to). Without caps a
+// project workspace, which member agents can write to. Without caps a
 // hostile or buggy file can exhaust memory (giant file, giant branch array)
 // or stack (deeply nested fanout). These limits are generous enough for any
 // realistic workflow and tight enough to fail fast on abuse.
@@ -575,7 +575,8 @@ async function loadWorkflowFileUnchecked(
     // resolveWorkflowFilePath checks the resolved string path, but the gap
     // between that check and this read is a TOCTOU window where a symlink
     // could be installed. The helper walks every ancestor with lstat (no
-    // follow), failing closed on any symlink or lstat error in the chain.
+    // follow), failing closed on any symlink or non-ENOENT lstat error in
+    // the chain.
     try {
         await assertNoSymlinkTraversal(base, resolved.filePath)
     } catch (err) {

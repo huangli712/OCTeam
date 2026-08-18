@@ -33,12 +33,10 @@ export function prependStandingInstruction(
  * until an explicit recovery path resets them. When a Team is supplied, the
  * dispatch is also appended to the run event stream.
  *
- * Atomicity: after promptAsync succeeds and state is mutated, saveTeamState
- * is called IMMEDIATELY (before returning to the caller). This eliminates the
- * window where a caller could forget or delay the save, leaving the member
- * dispatched on the host but not persisted to disk. Callers that also call
- * saveTeamState after dispatch will double-save (harmless: the second save is
- * a three-way merge no-op for unchanged fields).
+ * Atomicity: the dispatch intent (status, turnCount, promptDelivered) is
+ * persisted via saveTeamStateBounded BEFORE promptAsync is sent, so a crash
+ * cannot leave the member prompted on the host but unrecorded on disk. If
+ * promptAsync throws, the state is rolled back and re-persisted.
  */
 export async function dispatchToMember(
     ctx: PluginContext,
@@ -96,9 +94,9 @@ export async function dispatchToMember(
             },
             query: { directory },
         })
-        // Record the successful prompt delivery timestamp. On crash-resume,
-        // a running member without promptSentAt indicates the prompt was
-        // never actually sent (crash between persist-running and promptAsync).
+        // Record the successful prompt delivery timestamp. A running member
+        // without promptSentAt means the prompt was never sent (crash between
+        // persist-running and promptAsync); no resume path consumes this yet.
         member.promptSentAt = Date.now()
     } catch (err) {
         // promptAsync failed after we persisted the dispatch intent. Rollback

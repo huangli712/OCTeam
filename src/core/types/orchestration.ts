@@ -256,12 +256,12 @@ export interface ActiveTaskBase {
     // Read un-narrowed by maybeTriggerSignoff/handleSignoffIdle, so Base.
     signoffPolicy?: SignoffPolicy
     signoffDecider?: string                  // member name (decider mode)
-    signoffQuorum?: number                   // 0-1, default 0.5 (peer-quorum mode, Phase D)
+    signoffQuorum?: number                   // 0-1, default 0.5 (peer-quorum mode)
     signoffApprovals?: Record<string, boolean>  // collected approvals
     signoffReviewers?: string[]              // reviewers that successfully received the signoff prompt
     signoffParseFailures?: Record<string, number> // consecutive malformed responses by reviewer
     signoffStage?: boolean                   // true when in signoff phase
-    signoffFailed?: boolean                  // signoff configured but no reviewers available; caller must fail run
+    signoffFailed?: boolean                  // set when signoff setup already terminated the run; re-entry guard for maybeTriggerSignoff
     signoffRawOutputs?: Record<string, string>  // per-reviewer signoff turn output (side-channel so task.responses preserves work output)
 
     // human approval policy (mid-run HITL pause; distinct from post-completion signoff)

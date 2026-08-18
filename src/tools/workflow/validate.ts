@@ -561,6 +561,7 @@ function validateTaskInputs(
 
 /** Maximum retry count accepted from workflow input. */
 const MAX_RETRY_COUNT = 5
+/** Validate that a retry-count field is an integer in [0, MAX_RETRY_COUNT]. Returns null when absent or valid, an error string otherwise. */
 function validateRetryCountField(
     value: number | undefined,
     fieldName: string,

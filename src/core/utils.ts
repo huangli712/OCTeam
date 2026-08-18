@@ -22,7 +22,7 @@ export function isEnoent(err: unknown): boolean {
 // --- polling primitive ---
 
 /** Resolve when predicate is true; reject on timeout. Polls every pollMs.
- * Validates timeoutMs is a finite positive number. NaN/Infinity/
+ * Validates timeoutMs is a finite non-negative number. NaN/Infinity/
  * negative values would cause an infinite loop (NaN comparison is always
  * false) or immediate spurious rejection. */
 export function waitUntil(

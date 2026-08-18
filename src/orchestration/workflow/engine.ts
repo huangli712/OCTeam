@@ -631,7 +631,7 @@ export async function gotoWorkflowStep(
                 s.taskAttempts = 0;
                 // Reset task timeoutAttempts too. The base-class field
                 // (WorkflowStepRuntime.timeoutAttempts) is shared by task
-                // and gate, but only the gate branch reset it. A task with
+                // and gate, so both branches clear it. A task with
                 // exhausted timeoutAttempts from a previous pass would fail
                 // immediately on timeout in the re-run.
                 s.timeoutAttempts = 0;

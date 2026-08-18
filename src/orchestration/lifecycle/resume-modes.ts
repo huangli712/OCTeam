@@ -1,7 +1,7 @@
 /**
  * Per-mode resume dispatch handlers. resume.ts owns the Phase 1/2/3 entry point
- * and rollback, while this module owns the 12 mode-specific re-dispatch
- * functions and their shared helpers.
+ * and rollback, while this module owns the per-mode re-dispatch functions for
+ * the 12 orchestration modes and their shared helpers.
  */
 
 import type { PluginContext } from "../../core/context.js";

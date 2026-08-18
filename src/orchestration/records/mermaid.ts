@@ -138,7 +138,7 @@ export function formatWorkflowMermaid(
                     if (current === undefined || next === undefined) continue
                     // Suppress the default sequential edge when the current
                     // step is a gate whose PASS verdict jumps elsewhere (mirrors
-                    // the hasPassGoto check on the outer loop at line 162).
+                    // the hasPassGoto check on the outer loop below).
                     // Otherwise the diagram would show both sequential and PASS
                     // goto edges from the same gate. Only suppress when the goto is unconditional
                     // (no `where` clause). A conditional goto (where != null)

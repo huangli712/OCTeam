@@ -94,7 +94,7 @@ export function teamDeleteTool(ctx: PluginContext): ToolDefinition {
                 await withLock(teamNamespaceLockPath(ctx.storageRoot), async () => withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status to "busy" since
-                // the outside-mutex check at line 45. For non-force, refuse
+                // the outside-mutex check at line 53. For non-force, refuse
                 // rather than aborting an active run the user did not authorize.
                 if (!force && team.status === "busy") {
                     staleBusy = true

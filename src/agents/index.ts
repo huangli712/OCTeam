@@ -181,7 +181,7 @@ export function createConfigHook(): NonNullable<Hooks["config"]> {
             cfg.agent[name] = {
                 ...def,
                 // Freeze the permission object so later hooks cannot mutate
-                // it in-place. Re-asserted after the allowed merge for the same
+                // it in-place. Re-asserted over the `...def` spread for the same
                 // reason as mode/description/prompt below.
                 permission: deepFreeze(mergePermissionsMonotonic(def.permission, existing?.permission)),
                 ...allowed,

@@ -88,9 +88,10 @@ export function teamParallelTool(ctx: PluginContext): ToolDefinition {
                 args.team_id, context, ctx, "team_parallel",
                 // validate
                 (team) => {
-                    // Isolated mode must not carry `tasks` because the task tool
-                    // uses !activeTask.tasks to enforce the create/claim
-                    // isolation boundary.
+                    // Isolated mode must not carry `tasks`: the isolated dispatch
+                    // path ignores it (only `task` is sent), and team_task_create
+                    // already refuses isolated runs via activeTask.mode, so an
+                    // accepted `tasks` object would be silently dead configuration.
                     if (args.mode === "isolated" && args.tasks) {
                         return "Error: isolated mode does not support `tasks` — use cooperative mode for per-member tasks"
                     }

@@ -194,8 +194,8 @@ export async function applyApprovalDecision(
                 }
             } else {
                 // Post-ruling pause approved: deliver the ruling.
-                // Honor signoff before finishRun, matching the
-                // non-HITL path in handleArbitrateIdle (line 191).
+                // Honor signoff before finishRun, matching the non-HITL path at the
+                // end of handleArbitrateIdle (orchestration/modes/arbitrate.ts).
                 if (await maybeTriggerSignoff(ctx, team)) {
                     return `Approved ${request.kind} for team "${team.teamName}"; signoff in progress.`
                 }

@@ -18,11 +18,11 @@ const execFileP = promisify(execFile)
 
 /**
  * Safety check: does the worktree at `worktreePath` have uncommitted
- * changes (staged, unstaged, or untracked)? Returns false if the path is
- * missing or not a git repo. On a Git command failure (e.g. corrupt repo,
- * permission denied), returns TRUE (fail-closed) so that team_delete refuses
- * to proceed without force — protecting potentially uncommitted work that
- * could not be verified.
+ * changes (staged, unstaged, or untracked)? Returns false only when the
+ * worktree path itself is absent. On any other git failure (corrupt .git,
+ * not a git repo, permission denied) returns true (fail-closed) so that
+ * team_delete refuses to proceed without force — protecting potentially
+ * uncommitted work that could not be verified.
  */
 export async function hasUncommittedChanges(worktreePath: string): Promise<boolean> {
     try {

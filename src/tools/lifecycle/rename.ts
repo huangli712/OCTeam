@@ -74,7 +74,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
             await withLock(teamNamespaceLockPath(ctx.storageRoot), async () => withLock(teamLifecycleLockPath(team.directory), async () => team.mutex.runExclusive(async () => {
                 // Revalidate inside the mutex: a concurrent
                 // startOrchestration may have flipped status live→busy since
-                // the outside-mutex check at line 42. Refuse rather than
+                // the outside-mutex check at line 51. Refuse rather than
                 // renaming during an active run.
                 if (team.status !== "live" || team.spawning) {
                     staleState = true
@@ -83,7 +83,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                 // Re-check name collision: use O_CREAT|O_EXCL to atomically
                 // claim the new dir name. This is TOCTOU-safe because mkdir
                 // is atomic — if it succeeds, we are the sole creator.
-                // The placeholder is removed just before fs.rename below.
+                // The placeholder is kept and replaced in place by fs.rename below.
                 // Do not use mkdir+rmdir because that reopens the collision window.
                 // Instead, keep the empty dir as the rename destination —
                 // fs.rename on Linux replaces an empty dir atomically.
@@ -171,7 +171,7 @@ export function teamRenameTool(ctx: PluginContext): ToolDefinition {
                     }
                     // The directory rename moves the lifecycle lock file.
                     // withLock releases from the old path (which
-                    // no longer exists) and fail gracefully, but the lock file
+                    // no longer exists) and fails gracefully, but the lock file
                     // at newDir/team.lifecycle.lock still carries our PID.
                     // Clean it up so future lifecycle operations on the renamed
                     // team don't wait for TTL to expire on a stale lock.

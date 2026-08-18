@@ -319,8 +319,9 @@ export async function updateTask(
         if (opts.expectedClaimedAt !== undefined && task.claimedAt !== opts.expectedClaimedAt) {
             throw new TaskStatusError(taskId, "claimed (same claimedAt)", `claimed (different claimedAt: ${task.claimedAt})`)
         }
-        // Enforce the status transition matrix. Terminal statuses (completed, deleted)
-        // cannot be revived to active statuses (pending, claimed, in_progress).
+        // Enforce the status transition matrix. A `deleted` task admits no status
+        // change at all; a `completed` task cannot be revived to an active status
+        // (pending, claimed, in_progress) but may still be marked deleted.
         // The recurse internal path from claimed to pending remains available
         // through the explicit `pending` target.
         if (patch.status !== undefined && patch.status !== task.status) {

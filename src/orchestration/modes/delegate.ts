@@ -75,8 +75,9 @@ export async function runDelegateStyleTail(
             // prematurely.
             try {
                 const st = await ctx.client.session.status({})
-                // Use extractSessionStatusEntry to handle both object and array
-                // response shapes.
+                // Use extractSessionStatusEntry so the SDK status payload is
+                // narrowed safely instead of cast at the call site; a shape
+                // mismatch yields undefined.
                 const entry = extractSessionStatusEntry(st.data, m.sessionId)
                 // Any non-idle live status means the member is still working and
                 // prevents delegate completion while its turn remains in flight.
@@ -148,7 +149,7 @@ export async function runDelegateStyleTail(
         : incomplete
 
     // Claimable tasks: pending AND all blockers completed or deleted.
-    // claimTask treats deleted blockers as resolved (tasks.ts:400);
+    // claimTask treats deleted blockers as resolved (tasks.ts:496);
     // the tail must match, or a pending task whose only blocker was deleted
     // is forever unclaimable → false deadlock.
     const claimable = incompleteForClaimable.filter(

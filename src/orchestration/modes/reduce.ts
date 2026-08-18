@@ -50,7 +50,7 @@ export async function maybeTriggerReduce(ctx: PluginContext, team: Team): Promis
     // Clear the reducer's stale mapper-stage response so a crash between this
     // dispatch and the reducer's capture cannot promote it as reducedResult
     // on resume (resume.ts sees responses[reducer] truthy → handleReduceIdle
-    // → task.reducedResult = stale mapper output). Mirrors fanout.ts:218-220.
+    // → task.reducedResult = stale mapper output). Mirrors fanout.ts:249-251.
     // Snapshot the value first so empty-output retries can restore it
     // and rebuild the same input set as the first attempt.
     task._reducerMapperSnapshot = task.responses[reducer.name]
@@ -109,7 +109,7 @@ export async function handleReduceIdle(
                 task._reducerMapperSnapshot = undefined
             }
             // Honor signoff on the fallback path, matching the normal
-            // reduce completion path (line 125). Without this, a parallel
+            // reduce completion path (line 158). Without this, a parallel
             // task configured with signoffPolicy + a reducer could deliver
             // unreviewed raw mapper outputs when the reducer errors.
             if (await maybeTriggerSignoff(ctx, team)) return
