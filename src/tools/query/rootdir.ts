@@ -40,9 +40,6 @@ export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
             )
             if (!caller) return "Error: caller is not a member of this team"
 
-            // Restrict access to the master because the control root contains
-            // state.json, sentinel, mailbox, tasks, and locks that must
-            // not be exposed to regular members.
             try {
                 await loadTeamState(caller.storageRoot, args.team_id, caller.leadSessionId)
             } catch (err) {
@@ -52,6 +49,9 @@ export function teamRootDirTool(ctx: PluginContext): ToolDefinition {
             // Use caller.isMaster (from session index) instead of
             // the tamperable team.leadSessionId from state.json.
             const isMaster = caller.isMaster === true
+            // Restrict access to the master because the control root contains
+            // state.json, sentinel, mailbox, tasks, and locks that must
+            // not be exposed to regular members.
             if (!isMaster) {
                 return `Error: team_root_dir is restricted to the team leader (master session).`
             }

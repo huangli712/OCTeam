@@ -251,14 +251,14 @@ export function createEventHandler(ctx: PluginContext): NonNullable<Hooks["event
                     // Serialize the full error info instead of relying on
                     // SDK properties.error being a string (it may be an object).
                     const errProps = narrowed?.properties
-                    // JSON.stringify can throw on circular refs or BigInt.
-                    // Use a safe serializer that never throws.
                     const truncateError = (value: string): string => {
                         const marker = "...[truncated]"
                         return value.length <= 4_096
                             ? value
                             : value.slice(0, 4_096 - marker.length) + marker
                     }
+                    // JSON.stringify can throw on circular refs or BigInt.
+                    // Use a safe serializer that never throws.
                     const safeStringify = (value: unknown): string => {
                         const sensitiveFields = new Set([
                             "authorization", "proxyauthorization", "authenticationinfo",

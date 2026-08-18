@@ -527,14 +527,14 @@ export function teamFixMemberTool(ctx: PluginContext): ToolDefinition {
                     // so clearing worktreePath/sessionId would report success while
                     // orphaning a live worktree; keep the fields and warn instead.
                     if (destroyed) {
+                        // Unindex the old session and persist the cleared fields so
+                        // a restart cannot reload the destroyed worktree as active.
                         liveMember.worktreePath = undefined
                         if (liveMember.sessionId) {
                             unindexSession(liveMember.sessionId)
                         }
                         liveMember.sessionId = undefined
                         liveMember.initialized = false
-                        // Unindex the old session and persist the cleared fields so
-                        // a restart cannot reload the destroyed worktree as active.
                         changes.push(`worktree: destroyed old (will re-create on next start)`)
                     } else {
                         changes.push(`worktree: WARNING old worktree destroy failed; stale worktree left in place`)

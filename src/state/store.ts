@@ -272,18 +272,17 @@ export function isValidTeamState(value: unknown, teamDirectory: string): value i
     return true
 }
 
+// O_NOFOLLOW closes the TOCTOU window. Use fs.constants if available,
+// falling back to the Linux numeric value for platforms where constants
+// doesn't expose it.
+const O_NOFOLLOW = (fsSyncConstants as Record<string, number>).O_NOFOLLOW ?? 0x20000
+
 /**
  * Read and parse a JSON file, returning null on ENOENT or schema failure.
  *
  * @param filePath    path to the JSON file
  * @param validate    optional schema guard; null returned on mismatch
  */
-
-// O_NOFOLLOW closes the TOCTOU window. Use fs.constants if available,
-// falling back to the Linux numeric value for platforms where constants
-// doesn't expose it.
-const O_NOFOLLOW = (fsSyncConstants as Record<string, number>).O_NOFOLLOW ?? 0x20000
-
 async function readJsonOrNull<T>(
     filePath: string,
     validate?: (value: unknown) => value is T,

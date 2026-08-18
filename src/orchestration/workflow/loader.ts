@@ -74,17 +74,28 @@ function normalizeBase(baseDir: string): string {
 }
 
 /** Resolve a relative workflow_file path, validating it stays within the workspace. */
-async function resolveWorkflowFilePath(baseDir: string, relPath: string): Promise<{ filePath: string } | { error: string }> {
-    if (path.isAbsolute(relPath)) return { error: "Error: workflow_file must be relative to the workspace" }
-    if (!relPath.endsWith(".json")) return { error: "Error: workflow_file must point to a .json file" }
+async function resolveWorkflowFilePath(
+    baseDir: string,
+    relPath: string,
+): Promise<{ filePath: string } | { error: string }> {
+    if (path.isAbsolute(relPath)) {
+        return { error: "Error: workflow_file must be relative to the workspace" }
+    }
+    if (!relPath.endsWith(".json")) {
+        return { error: "Error: workflow_file must point to a .json file" }
+    }
     const base = normalizeBase(baseDir)
     const filePath = path.resolve(base, relPath)
-    if (!isInside(base, filePath)) return { error: "Error: workflow_file must stay inside the workspace" }
+    if (!isInside(base, filePath)) {
+        return { error: "Error: workflow_file must stay inside the workspace" }
+    }
     // Resolve symlinks and re-check containment so a symlinked workflow_file
     // cannot redirect the read outside the workspace.
     try {
         const real = await fs.realpath(filePath)
-        if (!isInside(base, real)) return { error: "Error: workflow_file must not be a symlink outside the workspace" }
+        if (!isInside(base, real)) {
+            return { error: "Error: workflow_file must not be a symlink outside the workspace" }
+        }
     } catch (err: unknown) {
         // File does not exist yet — the string-path check above is sufficient.
         const code = (err as NodeJS.ErrnoException).code
@@ -120,6 +131,7 @@ function applyTemplateVars(value: unknown, vars: Record<string, string>, strict:
     return applyTemplateVarsBounded(value, vars, strict, 0, { expansionBytes: 0 })
 }
 
+/** Recursive worker for applyTemplateVars; tracks current depth and cumulative expansion bytes. */
 function applyTemplateVarsBounded(
     value: unknown,
     vars: Record<string, string>,
@@ -194,10 +206,15 @@ function validateWorkflowStepArrayInternal(
         budget.totalSteps += 1
         if (budget.totalSteps > WORKFLOW_MAX_TOTAL_STEPS) {
             return {
-                error: `Error: workflow_file "${location.filePath}" exceeds the maximum of ${WORKFLOW_MAX_TOTAL_STEPS} total steps`,
+                error: `Error: workflow_file "${location.filePath}" exceeds the maximum `
+                    + `of ${WORKFLOW_MAX_TOTAL_STEPS} total steps`,
             }
         }
-        const step = validateWorkflowStep(value[index], { ...location, prefix: `${location.prefix} ${index + 1}` }, budget)
+        const step = validateWorkflowStep(
+            value[index],
+            { ...location, prefix: `${location.prefix} ${index + 1}` },
+            budget,
+        )
         if ("error" in step) return step
         steps.push(step.step)
     }
@@ -215,22 +232,35 @@ function validateWorkflowStepArrayInternal(
  * the real relative workflow_file path so its error strings keep naming the
  * actual file.
  */
-export function validateWorkflowSteps(value: unknown): { steps: WorkflowToolStep[] } | { error: string }
+export function validateWorkflowSteps(
+    value: unknown,
+): { steps: WorkflowToolStep[] } | { error: string }
 
+/** Overload: explicit sourcePath names the real workflow_file in error messages. */
 export function validateWorkflowSteps(
     value: unknown, sourcePath: string,
 ): { steps: WorkflowToolStep[] } | { error: string }
 
+/** Implementation signature for both overloads; sourcePath defaults to a synthetic location. */
 export function validateWorkflowSteps(
     value: unknown, sourcePath = "<workflow>",
 ): { steps: WorkflowToolStep[] } | { error: string } {
-    return validateWorkflowStepArrayInternal(value, { filePath: sourcePath, prefix: "step" }, { totalSteps: 0, depth: 0 })
+    return validateWorkflowStepArrayInternal(
+        value,
+        { filePath: sourcePath, prefix: "step" },
+        { totalSteps: 0, depth: 0 },
+    )
 }
 
 /** Validate a single workflow step, recursing into fanout branches. */
-function validateWorkflowStep(value: unknown, location: StepLocation, budget: ValidationBudget): { step: WorkflowToolStep } | { error: string } {
+function validateWorkflowStep(
+    value: unknown,
+    location: StepLocation,
+    budget: ValidationBudget,
+): { step: WorkflowToolStep } | { error: string } {
     if (!isRecord(value)) {
-        return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} must be an object` }
+        return { error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+            + ` must be an object` }
     }
     const kind = value.kind
     if (kind !== "task" && kind !== "gate"
@@ -277,7 +307,8 @@ function validateWorkflowStep(value: unknown, location: StepLocation, budget: Va
                 // into N branches at runtime) is caught at load time, and so
                 // the total step budget accounts for the expanded size.
                 if (!Array.isArray(value.steps)) {
-                    return { error: `Error: workflow_file "${location.filePath}" ${location.prefix} with matrix/foreach requires a \`steps\` array` }
+                    return { error: `Error: workflow_file "${location.filePath}" ${location.prefix}`
+                        + ` with matrix/foreach requires a \`steps\` array` }
                 }
                 // Bound the matrix/foreach expansion to prevent resource
                 // exhaustion via a large matrix.
@@ -292,7 +323,11 @@ function validateWorkflowStep(value: unknown, location: StepLocation, budget: Va
                 const totalBeforeTemplate = budget.totalSteps
                 const parentDepth = budget.depth
                 budget.depth = parentDepth + 1
-                const validatedSteps = validateWorkflowStepArrayInternal(value.steps, { filePath: location.filePath, prefix: `${location.prefix} steps` }, budget)
+                const validatedSteps = validateWorkflowStepArrayInternal(
+                    value.steps,
+                    { filePath: location.filePath, prefix: `${location.prefix} steps` },
+                    budget,
+                )
                 budget.depth = parentDepth
                 if ("error" in validatedSteps) return { error: validatedSteps.error }
                 const recursiveTemplateSteps = budget.totalSteps - totalBeforeTemplate
@@ -304,7 +339,12 @@ function validateWorkflowStep(value: unknown, location: StepLocation, budget: Va
                             + ` exceeds the ${WORKFLOW_MAX_TOTAL_STEPS}-step budget`,
                     }
                 }
-                return { step: { ...(value as Record<string, unknown>), steps: validatedSteps.steps } as unknown as WorkflowToolStep }
+                return {
+                    step: {
+                        ...(value as Record<string, unknown>),
+                        steps: validatedSteps.steps,
+                    } as unknown as WorkflowToolStep,
+                }
             }
             const branches = validateWorkflowBranches(value.branches, location, budget)
             if ("error" in branches) return branches
@@ -576,6 +616,7 @@ export async function loadWorkflowFile(
     }
 }
 
+/** Unchecked loader body for loadWorkflowFile; exceptions are converted to error strings by the wrapper. */
 async function loadWorkflowFileUnchecked(
     baseDir: string, relPath: string, vars: Record<string, string>,
 ): Promise<WorkflowFileResult> {
@@ -617,7 +658,8 @@ async function loadWorkflowFileUnchecked(
             }
             if (fileStat.size > WORKFLOW_FILE_MAX_BYTES) {
                 return {
-                    error: `Error: workflow_file "${relPath}" is too large: ${fileStat.size} bytes exceeds the ${WORKFLOW_FILE_MAX_BYTES}-byte limit`,
+                    error: `Error: workflow_file "${relPath}" is too large: `
+                        + `${fileStat.size} bytes exceeds the ${WORKFLOW_FILE_MAX_BYTES}-byte limit`,
                 }
             }
             // Read with an explicit cap so a concurrent append between the stat

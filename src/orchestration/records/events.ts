@@ -57,10 +57,10 @@ export function recordEvent(team: Team, event: RunEvent): Promise<void> {
                 // team_delete, team.deleted should also be true.
                 if (team.deleted) return
             }
+            if (team.deleted) return
             // Pass team.directory as trustedRoot so refuseSymlink walks the
             // full ancestor chain. Without it, a symlinked runs/ or intermediate
             // <runId>/ directory could redirect the append outside the team root.
-            if (team.deleted) return
             await appendJsonl(
                 eventsFile,
                 JSON.stringify(event) + "\n",

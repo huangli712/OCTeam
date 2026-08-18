@@ -96,10 +96,6 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
                 return `Error: isolated mode forbids member-to-member messaging. You may message "master" only.`
             }
 
-            // Enforce backpressure inside the mailbox lock through
-            // writeMailboxMessage (via deliverToRecipients) so concurrent
-            // senders cannot both pass the check and collectively exceed the cap.
-
             // Enforce maxMessagesPerRun during an active orchestration.
             if (team.activeTask) {
                 let overLimit = false
@@ -144,6 +140,9 @@ export function teamSendMessageTool(ctx: PluginContext): ToolDefinition {
             // recipients so partial success refunds only undelivered messages.
             const taskAtDispatch = team.activeTask
             let deliveredCount = 0
+            // Enforce backpressure inside the mailbox lock through
+            // writeMailboxMessage (via deliverToRecipients) so concurrent
+            // senders cannot both pass the check and collectively exceed the cap.
             try {
                 await deliverToRecipients(
                     ctx,

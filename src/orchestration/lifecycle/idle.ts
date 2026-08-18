@@ -158,8 +158,6 @@ export function buildPrematureIdleReprompt(teamName: string): string {
         + `idle again without either acking or making concrete progress.`
 }
 
-// --- main entry ---
-
 // Helpers for processIdle's accounting and recovery stages.
 
 /**
@@ -315,6 +313,8 @@ export async function retryIdleHandler(
     await checkTermination(ctx, team)
 }
 
+// --- main entry ---
+
 /** Single entry point for the idle state machine, driven by session.idle events. */
 export async function processIdle(
     ctx: PluginContext,
@@ -347,7 +347,6 @@ export async function processIdle(
         return
     }
 
-    // Step 2: member is now idle.
     // Refuse stale idle for errored members. An errored member's late
     // idle event (from a turn that was already aborted/failed) must not
     // resurrect the member to idle and re-enter the mode handler.
@@ -397,8 +396,8 @@ export async function processIdle(
     }
     const capturedNew = captureResult.fresh
 
-    // Once capture succeeds, flip the status to idle. A capture failure leaves
-    // the member "running" so the sweep retries on the next tick.
+    // Step 2: flip the member to idle once capture succeeds. A capture failure
+    // leaves the member "running" so the sweep retries on the next tick.
     member.retryingSince = undefined
     member.status = "idle"
     await saveTeamState(team)
