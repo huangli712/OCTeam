@@ -85,7 +85,8 @@ export async function handlePipelineIdle(ctx: PluginContext, team: Team, member:
     if (nextIndex !== -1 && await maybeRequestApproval(ctx, team, {
         kind: "pipeline_stage",
         stage: task.currentStageIndex,
-        summary: `Pipeline stage ${task.currentStageIndex} completed by ${currentStage.member}. Review before stage ${nextIndex} starts.`,
+        summary: `Pipeline stage ${task.currentStageIndex} completed by ${currentStage.member}. `
+            + `Review before stage ${nextIndex} starts.`,
     })) {
         return
     }
