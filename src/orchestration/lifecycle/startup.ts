@@ -57,14 +57,6 @@ export const DEFAULT_TIMEOUT_MS = 600_000
 /** Default loop orchestration timeout in milliseconds (15 minutes). */
 export const DEFAULT_LOOP_TIMEOUT_MS = 900_000
 
-/** Re-export named orchestration defaults from defaults.ts for tool-layer callers. */
-export {
-    DEFAULT_CONSENSUS_ROUNDS,
-    DEFAULT_ARBITRATE_ROUNDS,
-    DEFAULT_RECURSE_DEPTH,
-    DEFAULT_RECURSE_SUBTASKS,
-} from "../modes/defaults.js"
-
 /** Default signoff policy: no post-completion review. */
 export const DEFAULT_SIGNOFF_POLICY: SignoffPolicy = "none"
 
@@ -154,7 +146,9 @@ export function baseTaskFields(
     return {
         runId: crypto.randomUUID(),
         startedAt: Date.now(),
-        wallClockTimeoutMs: effectiveTimeoutMs(args.timeout_ms, defaultTimeoutMs, team.bounds.maxWallClockMinutes),
+        wallClockTimeoutMs: effectiveTimeoutMs(
+            args.timeout_ms, defaultTimeoutMs, team.bounds.maxWallClockMinutes,
+        ),
         tokenBudget: args.token_budget,
         tokensUsed: 0,
         tokensByMember: {},

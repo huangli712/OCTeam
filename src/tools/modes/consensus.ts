@@ -7,13 +7,13 @@ import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { PluginContext } from "../../core/context.js"
 import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 import {
-    DEFAULT_CONSENSUS_ROUNDS,
     DEFAULT_SIGNOFF_POLICY,
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     humanApprovalTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
+import { DEFAULT_CONSENSUS_ROUNDS } from "../../orchestration/modes/defaults.js"
 import { commonOrchestrationFields, humanApprovalSchemaFields } from "../schema.js"
 import { nonMasterMembers } from "../support.js"
 

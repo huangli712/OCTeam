@@ -12,14 +12,16 @@ import { dispatchToMember } from "../../orchestration/control/dispatch.js"
 import { createTask, listAllTasks, updateTask } from "../../state/tasks.js"
 import { buildRecursePrompt } from "../../orchestration/modes/recurse.js"
 import {
-    DEFAULT_RECURSE_DEPTH,
-    DEFAULT_RECURSE_SUBTASKS,
     DEFAULT_TIMEOUT_MS,
     baseTaskFields,
     humanApprovalTaskFields,
     signoffTaskFields,
     startOrchestration,
 } from "../../orchestration/lifecycle/startup.js"
+import {
+    DEFAULT_RECURSE_DEPTH,
+    DEFAULT_RECURSE_SUBTASKS,
+} from "../../orchestration/modes/defaults.js"
 import { commonOrchestrationFields, humanApprovalSchemaFields, parseThresholdFields, signoffSchemaFields } from "../schema.js"
 import { assertMember, validateSignoff, findMember } from "../support.js"
 import { MASTER_NAME } from "../../state/naming.js"
