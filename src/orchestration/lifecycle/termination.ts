@@ -10,7 +10,10 @@ import type { WorkflowStep, WorkflowTask } from "../../core/types.js"
 import { getActiveWorkflowStepActors } from "../workflow/dag.js"
 import type { Team } from "../../state/store.js"
 import { finishRun } from "../control/completion.js"
-import { advanceWorkflowStep, redispatchWorkflowStep } from "../workflow/engine.js"
+import {
+    advanceWorkflowStep,
+    redispatchWorkflowStep
+} from "../workflow/engine.js"
 import { markWorkflowFanoutBranchErrored } from "../workflow/fanout.js"
 import {
     workflowNoSessionReason,
