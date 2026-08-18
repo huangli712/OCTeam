@@ -9,11 +9,18 @@
 import crypto from "node:crypto"
 
 import type { PluginContext } from "../../core/context.js"
-import type { ApprovalKind, ApprovalRequest, ApprovalSubtask } from "../../core/types.js"
+import type {
+    ApprovalKind,
+    ApprovalRequest,
+    ApprovalSubtask
+} from "../../core/types.js"
 import { type Team, saveTeamState } from "../../state/store.js"
 import { recordEvent } from "../records/events.js"
 
+/** Base delay for the linear backoff between leader notification retries. */
 const NOTIFICATION_BACKOFF_MS = 100
+
+/** Fallback approval pause timeout (10 minutes) when the task sets none. */
 const DEFAULT_APPROVAL_TIMEOUT_MS = 600_000
 
 /** Caller-supplied input for constructing an ApprovalRequest at a pause site. */
@@ -138,7 +145,9 @@ async function createApprovalPause(
                 await new Promise(r => setTimeout(r, NOTIFICATION_BACKOFF_MS * attempt))
             } else {
                 const { logSwallowed } = await import("../../core/log.js")
-                logSwallowed(ctx, "approval notification failed after retries; leader must use team_progress to discover pending approval", err, {
+                const message = "approval notification failed after retries; "
+                    + "leader must use team_progress to discover pending approval"
+                logSwallowed(ctx, message, err, {
                     team: team.teamName,
                     approvalId: request.id,
                 }, "error")
