@@ -27,7 +27,10 @@ import type { CaptureMemberOutputResult } from "../records/capture.js"
 const MAX_DECISION_PARSE_FAILURES = 3
 
 /** Append a parsed decision to the loop's history with the current round. */
-function recordLoopDecision(task: { decisionHistory: DecisionRecord[]; currentRound?: number }, decision: DecisionRecord): void {
+function recordLoopDecision(
+    task: { decisionHistory: DecisionRecord[]; currentRound?: number },
+    decision: DecisionRecord,
+): void {
     task.decisionHistory.push({ ...decision, round: task.currentRound ?? 0 })
 }
 
@@ -184,7 +187,8 @@ export async function handleLoopIdle(
         if (await maybeRequestApproval(ctx, team, {
             kind: "loop_done",
             round: task.currentRound,
-            summary: `Loop decider ${task.deciderMember ?? "unknown"} reported done. Review before the loop completes.\n\nRationale: ${decision.rationale}`,
+            summary: `Loop decider ${task.deciderMember ?? "unknown"} reported done. `
+                + `Review before the loop completes.\n\nRationale: ${decision.rationale}`,
         })) {
             return
         }
@@ -223,7 +227,9 @@ export async function handleLoopIdle(
         if (await maybeRequestApproval(ctx, team, {
             kind: "loop_done",
             round: task.currentRound,
-            summary: `Loop reached max rounds (${task.maxRounds}) without a done decision. The decider's last rationale: ${decision.rationale}. Approve to deliver current state, or reject to fail the run.`,
+            summary: `Loop reached max rounds (${task.maxRounds}) without a done decision. `
+                + `The decider's last rationale: ${decision.rationale}. `
+                + `Approve to deliver current state, or reject to fail the run.`,
         })) {
             return
         }
